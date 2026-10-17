@@ -34,7 +34,11 @@
 // that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
 // the record, a live.json and a kept origin; the trust sandbox with STUB_FONTS_NULL_*.
 // Fix rounds: countsAsRound (a verdict; a reused row's too), roundsOf (rounds.json, else the legacy runs/*.json seed),
-// capRefusal (the cap line), nextRounds (count, reset, seed record).
+// capRefusal (the cap line), nextRounds (count, reset, seed record); the trust sandbox with its own --out (rounds 1-7):
+// three counted rounds, a 4th refused before any write (--max-rounds lowers the cap, a full run neither counts nor refuses),
+// --max-rounds / --round-reset usage, a reset recorded (rounds.json + row), an INCONCLUSIVE crawl-fullpage row not counted,
+// a live process's rounds.lock refused and a dead one's reaped, the legacy seed. The other sandboxes clear the round
+// state before each run (clearRounds) — their repeated --only runs are independent scenarios.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -948,6 +952,15 @@ const RS = join(root, 'stardust/scripts/replica'); const DS = join(root, 'stardu
 mkdirSync(RS, { recursive: true }); cpSync(SCRIPT, join(RS, 'gate-all.mjs')); cpSync(DIFF, DS, { recursive: true });
 const STITCH_LOG = join(root, 'stitch.log'); const CP_LOG = join(root, 'cp.log');
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
+// Each run of the gate / hgate / tgate helpers is its own fix-round scenario: the round counter's state in the given out
+// dirs (runs/ and <slug>/rounds.json) is cleared first, so their repeated --only runs never meet the cap — the cap has its
+// own scenarios (rounds 1-7: their own --out, never cleared, never a higher cap).
+const clearRounds = (...outs) => {
+  for (const out of outs.filter((o) => existsSync(o))) {
+    rmSync(join(out, 'runs'), { recursive: true, force: true });
+    for (const d of readdirSync(out, { withFileTypes: true }).filter((x) => x.isDirectory())) rmSync(join(out, d.name, 'rounds.json'), { force: true });
+  }
+};
 // stitch-shot: one line per call (ORIGIN = the www.example.com side, EDS = anything else), writes a PNG stand-in and its
 // --json record; STUB_ORIGIN_RC makes the origin capture fail with that exit code.
 stub(RS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
@@ -978,10 +991,12 @@ const read = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 const lines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean) : []);
 const gate = (args, env = {}) => {
   for (const f of [STITCH_LOG, CP_LOG]) rmSync(f, { force: true });
+  clearRounds(OUT, join(root, 'stardust/replica/gates/prototypes-1440'));
   const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: root, env: e, encoding: 'utf8', timeout: 60e3 });
   const st = lines(STITCH_LOG); const run = (r.stdout.match(/run → (.*)/) || [])[1];
-  return { ...r, origin: st.filter((l) => l.startsWith('ORIGIN')).length, eds: st.filter((l) => l.startsWith('EDS')).length, cp: lines(CP_LOG).map((l) => JSON.parse(l)), row: (slug) => (run ? read(run) : read('stardust/replica/gates/all-1440/summary.json')).rows.find((x) => x.slug === slug) };
+  const doc = (() => { try { return run ? read(run) : read('stardust/replica/gates/all-1440/summary.json'); } catch { return null; } })(); // read now: the next run clears runs/
+  return { ...r, origin: st.filter((l) => l.startsWith('ORIGIN')).length, eds: st.filter((l) => l.startsWith('EDS')).length, cp: lines(CP_LOG).map((l) => JSON.parse(l)), row: (slug) => doc.rows.find((x) => x.slug === slug) };
 };
 const runLog = () => readFileSync(join(OUT, '_run.log'), 'utf8');
 const presence = (slug) => `stardust/replica/gates/all-1440/${slug}/presence-origin.json`;
@@ -1366,11 +1381,12 @@ writeFileSync(join(hroot, 'stardust/state.json'), JSON.stringify({ pages })); //
 appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 60e3).toISOString(), skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
 const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
 const hgate = (args) => {
-  rmSync(HLOG, { force: true });
+  rmSync(HLOG, { force: true }); clearRounds(HOUT, HPROTO);
   const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
   const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
   const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
-  return { ...r, all, by: (name, slug) => all.filter((l) => l.startsWith(`${name} `) && l.includes(`-1440/${slug}/`)), row: (slug) => JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')).rows.find((x) => x.slug === slug) };
+  const doc = (() => { try { return JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')); } catch { return null; } })(); // read now: the next run clears runs/
+  return { ...r, all, by: (name, slug) => all.filter((l) => l.startsWith(`${name} `) && l.includes(`-1440/${slug}/`)), row: (slug) => doc.rows.find((x) => x.slug === slug) };
 };
 const hideArg = (l) => { const a = l.split(' '); const i = a.indexOf('--hide'); return i < 0 ? null : a[i + 1]; };
 const hjson = (slug, f, out = HOUT) => JSON.parse(readFileSync(join(out, slug, f), 'utf8'));
@@ -1500,7 +1516,7 @@ stub(TDS, 'unit-geometry.mjs', 'export function unitsFor() { return []; }');
 appendFileSync(join(troot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 60e3).toISOString(), skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
 const tpages = (slugs) => writeFileSync(join(troot, 'stardust/state.json'), JSON.stringify({ pages: slugs.map((slug) => ({ slug, url: `https://www.example.com/${slug}`, liveUrl: `https://main--site--org.aem.live/${slug}`, status: 'deployed', template: 'page' })) }));
 const tgate = (args, env = {}) => {
-  rmSync(TLOG, { force: true });
+  rmSync(TLOG, { force: true }); clearRounds(TOUT);
   const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(TRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: troot, env: e, encoding: 'utf8', timeout: 60e3 });
   const run = (r.stdout.match(/run → (.*)/) || [])[1]; const s = JSON.parse(readFileSync(run ? join(troot, run) : join(TOUT, 'summary.json'), 'utf8'));
@@ -1644,6 +1660,103 @@ check('trust 12: --compare-only (no captures) reads a stitched record without an
   const unchecked = 'unchecked (capture predates the overlay-left check)';
   assert.deepEqual([r.row('a').inconclusive, r.row('a').reasons], [true, [`origin capture polluted: overlay left — ${unchecked}`, `build capture polluted: overlay left — ${unchecked}`]]);
   assert.deepEqual(['overlayLeft' in tjson('a', 'origin.json'), 'fontsFailed' in tjson('a', 'eds.json')], [false, false]);
+});
+// ---- fix rounds (the cap is mechanical): the trust sandbox with its own --out per scenario family, never cleared --------
+tpages(['a', 'b']);
+const ROUT_REL = 'stardust/replica/gates/rounds-1440'; const ROUT = join(troot, ROUT_REL);
+const rgate = (args, env = {}, out = ROUT_REL) => {
+  rmSync(TLOG, { force: true });
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
+  const r = spawnSync(process.execPath, [join(TRS, 'gate-all.mjs'), '--width', '1440', '--out', out, ...args], { cwd: troot, env: e, encoding: 'utf8', timeout: 60e3 });
+  const run = (r.stdout.match(/run → (.*)/) || [])[1];
+  const doc = (() => { try { return JSON.parse(readFileSync(join(troot, run || join(out, 'summary.json')), 'utf8')); } catch { return null; } })();
+  return { ...r, doc, row: (slug) => doc.rows.find((x) => x.slug === slug), stitches: lines(TLOG).length, log: () => readFileSync(join(troot, out, '_run.log'), 'utf8') };
+};
+const roundsFile = (slug, out = ROUT) => join(out, slug, 'rounds.json');
+const roundsJson = (slug, out = ROUT) => JSON.parse(readFileSync(roundsFile(slug, out), 'utf8'));
+const tree = () => readdirSync(troot, { recursive: true }).sort();
+const ROUND_ATS = [];
+check('rounds 1: three --only a runs with a verdict count 1, 2, 3 — rounds.json { rounds, max, at } (indent 1, trailing newline; at = each run table\'s writtenAt), every row stamped round, _provenance.maxRounds 3; no rounds.lock left', () => {
+  for (const i of [1, 2, 3]) {
+    const r = rgate(['--only', 'a']);
+    assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.row('a').round, i); assert.equal(r.doc._provenance.maxRounds, 3);
+    ROUND_ATS.push(r.doc._provenance.writtenAt); assert.equal(existsSync(join(ROUT, 'a', 'rounds.lock')), false, 'the reservation is released');
+    assert.match(r.log(), new RegExp(`rounds @1440: a ${i}/3$`, 'm'));
+  }
+  assert.deepEqual(roundsJson('a'), { rounds: 3, max: 3, at: ROUND_ATS });
+  assert.equal(readFileSync(roundsFile('a'), 'utf8'), `${JSON.stringify({ rounds: 3, max: 3, at: ROUND_ATS }, null, 1)}\n`);
+  assert.equal(existsSync(join(ROUT, 'b')), false, 'b was never selected');
+});
+check('rounds 2: a 4th --only round is refused before any write — exit 2, one stderr line (no verdict, cap reached — re-prototype decision, a 3/3 @1440, the remedy), no capture, the tree unchanged (b\'s reservation dir removed); --max-rounds 2 refuses too; a full run neither counts nor refuses', () => {
+  rmSync(TLOG, { force: true }); const before = tree();
+  const r = rgate(['--only', 'a,b']);
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
+  assert.match(r.stderr, /no verdict/); assert.match(r.stderr, /cap reached — re-prototype decision: a 3\/3 @1440 \(/); assert.doesNotMatch(r.stderr, / b \d/);
+  assert.match(r.stderr, /drop a from --only, or record the re-prototype decision with --round-reset "<reason>"/);
+  assert.equal(r.stitches, 0); assert.deepEqual(tree(), before);
+  const low = rgate(['--only', 'a', '--max-rounds', '2']);
+  assert.equal(low.status, 2, low.stderr + low.stdout); assert.match(low.stderr, /cap reached — re-prototype decision: a 3\/2 @1440 \(the fix-round cap, --max-rounds 2\)/); assert.deepEqual(tree(), before);
+  const full = rgate([]);
+  assert.equal(full.status, 0, full.stderr + full.stdout); assert.deepEqual([full.row('a').round, full.row('b').round], [3, 0]); assert.equal(full.doc._provenance.maxRounds, 3);
+  assert.deepEqual(roundsJson('a'), { rounds: 3, max: 3, at: ROUND_ATS }); assert.equal(existsSync(roundsFile('b')), false, 'a full run writes no count');
+});
+check('rounds 3: --max-rounds takes 1..3 only (it may only lower the cap) — 4, 0, 2.5, x, nothing → usage exit 1 naming --round-reset; --round-reset needs --only and a reason → usage exit 1; nothing written', () => {
+  const usage = (args, re) => {
+    const cwd = mkdtempSync(join(tmpdir(), 'gate-all-rounds-usage-'));
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 1, `${args.join(' ')}: ${r.stderr}`); assert.match(r.stderr, re, args.join(' ')); assert.deepEqual(readdirSync(cwd), []);
+    rmSync(cwd, { recursive: true, force: true });
+  };
+  for (const bad of ['4', '0', '2.5', 'x']) usage(['--only', 'a', '--max-rounds', bad], new RegExp(`^--max-rounds must be an integer from 1 to 3 \\(got ${bad.replace('.', '\\.')}\\) — it may only lower the cap; .* --round-reset "<reason>"`));
+  usage(['--max-rounds'], /^--max-rounds must be an integer from 1 to 3 \(got nothing\)/);
+  usage(['--round-reset', 're-prototyped'], /^--round-reset needs --only <slug,…>/);
+  usage(['--only', 'a', '--round-reset', ' '], /^--round-reset takes the re-prototype decision's reason, a non-empty text/);
+  usage(['--only', 'a', '--round-reset'], /^--round-reset takes the re-prototype decision's reason, a non-empty text \(got nothing\)/);
+});
+const REASON = 're-prototyped the hero section';
+check('rounds 4: --round-reset "<reason>" — the selected page at the cap starts a new count (resets[{ at, reason, from 3, history }], the row\'s roundReset, round 1), a selected page below the cap is not reset; then no page at the cap → one log line, nothing reset', () => {
+  const r = rgate(['--only', 'a,b', '--round-reset', REASON]);
+  assert.equal(r.status, 0, r.stderr + r.stdout); const t = r.doc._provenance.writtenAt;
+  assert.deepEqual(roundsJson('a'), { rounds: 1, max: 3, at: [t], resets: [{ at: t, reason: REASON, from: 3, history: ROUND_ATS }] });
+  assert.deepEqual([r.row('a').round, r.row('a').roundReset], [1, { reason: REASON, at: t }]);
+  assert.deepEqual([r.row('b').round, 'roundReset' in r.row('b'), roundsJson('b')], [1, false, { rounds: 1, max: 3, at: [t] }]);
+  assert.match(r.log(), new RegExp(`round-reset: a 3/3 @1440 → a new count \\(${REASON}\\)$`, 'm')); assert.match(r.log(), /rounds @1440: a 1\/3 \(after the reset\), b 1\/3$/m);
+  const again = rgate(['--only', 'a', '--round-reset', 'once more']);
+  assert.equal(again.status, 0, again.stderr + again.stdout); assert.match(again.log(), /round-reset: no --only slug at the cap — nothing reset$/m);
+  assert.deepEqual([again.row('a').round, 'roundReset' in again.row('a'), roundsJson('a').rounds, roundsJson('a').resets.length], [2, false, 2, 1]);
+});
+check('rounds 5: an INCONCLUSIVE row (a crawl-fullpage origin fallback) is no round — rounds.json untouched, the row carries the current count, logged', () => {
+  mkdirSync(join(troot, 'shots'), { recursive: true }); writeFileSync(join(troot, 'shots/a.png'), 'png');
+  const before = readFileSync(roundsFile('a'), 'utf8');
+  const r = rgate(['--only', 'a', '--recapture-origin', '--blocked', 'example\\.com/a', '--crawl-shots', 'shots']);
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.deepEqual([r.row('a').inconclusive, r.row('a').origin, r.row('a').round], [true, 'crawl-fullpage', 2]);
+  assert.equal(readFileSync(roundsFile('a'), 'utf8'), before); assert.match(r.log(), /rounds @1440: a 2\/3 \(no verdict — not counted\)$/m);
+});
+check('rounds 6: the reservation — a rounds.lock of a running process refuses the run (no verdict — a round of <slug> is in progress (pid n)), its lock kept, the other selected page\'s lock released; a dead process\'s lock is reaped (logged) and the round counts; no lock left behind', () => {
+  const lock = (slug) => join(ROUT, slug, 'rounds.lock'); const live = `${JSON.stringify({ pid: process.pid, at: RT(1) })}\n`;
+  writeFileSync(lock('b'), live);
+  const before = readFileSync(roundsFile('a'), 'utf8');
+  const r = rgate(['--only', 'a,b']);
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
+  assert.match(r.stderr, new RegExp(`no verdict — a round of b is in progress \\(pid ${process.pid}\\)`)); assert.equal(r.stitches, 0);
+  assert.equal(readFileSync(lock('b'), 'utf8'), live, 'another run\'s lock is never removed'); assert.equal(existsSync(lock('a')), false, 'a\'s reservation released');
+  assert.equal(readFileSync(roundsFile('a'), 'utf8'), before);
+  const dead = spawnSync(process.execPath, ['-e', '']).pid; // exited: its pid is no running process
+  writeFileSync(lock('b'), `${JSON.stringify({ pid: dead, at: RT(2) })}\n`);
+  const g = rgate(['--only', 'b']);
+  assert.equal(g.status, 0, g.stderr + g.stdout); assert.match(g.log(), new RegExp(`rounds lock b → reaped pid ${dead} \\(not running; taken ${RT(2).replace(/\./g, '\\.')}\\)$`, 'm'));
+  assert.deepEqual([g.row('b').round, roundsJson('b').rounds], [2, 2]); assert.equal(existsSync(lock('b')), false);
+});
+check('rounds 7: legacy seed — no rounds.json: the run tables with a verdict row for the page seed the count (an INCONCLUSIVE or error row is none, a reused row is one); the first write records seeded: "runs", seededFrom; the next --only is refused at the cap', () => {
+  const LREL = 'stardust/replica/gates/legacy-1440'; const LOUT = join(troot, LREL); mkdirSync(join(LOUT, 'runs'), { recursive: true });
+  const table = (m, row) => writeFileSync(join(LOUT, 'runs', `${RT(m).replace(/[:.]/g, '-')}-a.json`), JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt: RT(m), breakpoint: 1440 }, rows: [{ slug: 'a', ...row }] }));
+  table(1, { pct: 2, pass: true }); table(2, { pct: 1.5, inconclusive: true }); table(3, { pct: null, error: 'missing capture' }); table(4, { pct: 2, pass: true, reused: { what: 'row', at: RT(1) } });
+  assert.deepEqual(roundsOf(LOUT, 'a'), { rounds: 2, max: 3, at: [RT(1), RT(4)], resets: [], from: 'runs' });
+  const r = rgate(['--only', 'a'], {}, LREL);
+  assert.equal(r.status, 0, r.stderr + r.stdout); const t = r.doc._provenance.writtenAt;
+  assert.deepEqual(roundsJson('a', LOUT), { rounds: 3, max: 3, at: [RT(1), RT(4), t], seeded: 'runs', seededFrom: 2 }); assert.equal(r.row('a').round, 3);
+  const capped = rgate(['--only', 'a'], {}, LREL);
+  assert.equal(capped.status, 2, capped.stderr + capped.stdout); assert.match(capped.stderr, /cap reached — re-prototype decision: a 3\/3 @1440 /);
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

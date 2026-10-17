@@ -15,7 +15,8 @@
  * prototype is authored from the same capture content-diff already reconciles) and unit-geometry (D3)
  * for the repeated-unit families stardust/replica/units.json declares for the page. Writes
  * <out>/<slug>/{origin,eds,diff}.png + pixel.json + clip.json [+ content.json, units.json] + probes.json
- * [+ gate-key.json], <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead.
+ * [+ gate-key.json], <out>/summary.{json,md}; --only runs write <out>/runs/<ts>-<slug>.json instead, and count fix
+ * rounds in <out>/<slug>/rounds.json (FIX ROUNDS below).
  * --one-load (opt-in): ONE navigation per side — each side's stitch (both headed real Chrome) also takes the presence,
  * clip and unit inventories of the page it loaded (stitch-shot --inventory: after its settle, at the top, before the
  * freeze; <slug>/<side>-inventory[.spec].json) and content.json / clip.json / units.json are built from the two with
@@ -122,12 +123,29 @@
  * the out dir and any capture, probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate,
  * the deadline and the remedy `--timeout <estimate>`), exit 2.
  *
+ * FIX ROUNDS — the cap is mechanical, per page per out dir (stage and width): every --only run counts one round per
+ * selected page whose row has a verdict (`countsAsRound`: a pixel measurement, not INCONCLUSIVE; a reused row's verdict
+ * counts too) in <out>/<slug>/rounds.json { rounds, max, at[ISO…], [resets], [seeded: "runs", seededFrom] } (indent 1,
+ * atomic; `at` = the counted rounds since the last reset); full runs never count and are never refused. Every row carries
+ * `round` (the count after this run), the table `_provenance.maxRounds`. Without rounds.json the count is seeded from the
+ * legacy runs/*.json tables holding a verdict row for the page (`roundsOf`, which gate-triage reads too) and the first
+ * write records `seeded`. Each --only run first reserves its pages — <slug>/rounds.lock { pid, at }, sorted, created
+ * exclusively: a lock of a running process refuses the run (one stderr line `no verdict — a round of <slug> is in progress
+ * (pid <n>)`, exit 2), a dead process's lock is reaped (logged `rounds lock <slug> → reaped …`); released on exit. Then the
+ * cap, beside the deadline guard (before the out dir and any capture): a selected page at --max-rounds (default 3; 1..3 —
+ * it may only lower the cap, anything else is a usage error) refuses the run — one stderr line `no verdict — cap reached —
+ * re-prototype decision: <slug> <n>/<max> @<w>` naming the remedy (drop the page from --only, or record the re-prototype
+ * decision with --round-reset "<reason>"), exit 2, nothing written. --round-reset (with --only; a non-empty reason) starts
+ * a new count for the selected pages at the cap — resets[] { at, reason, from, history }, the row's `roundReset` { reason,
+ * at } — or logs `round-reset: no --only slug at the cap — nothing reset`. rounds.json is written before the run table (a
+ * crash over-counts, never under-counts); _run.log names each page's count (`rounds @<w>: <slug> <n>/<max>`).
+ *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
  *        [--coverage f] [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
- *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load]
+ *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load] [--max-rounds 3] [--round-reset "<reason>"]
  * --eds-host takes a bare host (https:// added) or an http(s) origin URL and is normalised to `<protocol>//<host>`
  * (`edsOrigin`; the summary's `edsHostOverride` records it); a path, query or hash → one stderr line and the usage
  * line, exit 2, before any I/O.
@@ -145,8 +163,9 @@
  * `(machine browser slot held; 1 browser(s) per slot — clamped from 2/4/2; capture pools sequential)`.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or --eds-host, 1 error,
- * a usage error (an unknown flag or a bad value: --stage, --origin-max-age, the pool flags) or an empty selection.
+ * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg deadline, a page
+ * at the round cap, a round of the page in progress) or --eds-host, 1 error, a usage error (an unknown flag or a bad
+ * value: --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset) or an empty selection.
  * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
@@ -156,7 +175,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEFAULT_OUT as FREEZE_MANIFEST, DEFAULT_PATHS as FOUNDATION_PATHS, snapshot } from './foundation-freeze.mjs';
@@ -172,7 +191,11 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --state <file>            stardust/state.json — the prototype stage, legacy projects; template / tier of coverage rows
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
-  --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
+  --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched): a fix round — each selected page
+                            whose row has a verdict (not INCONCLUSIVE; a reused row counts) counts one round
+  --max-rounds <n>          3 — fix rounds per page per out dir; 1..3 only (it may only lower the cap). An --only run
+                            with a selected page at the cap is refused (no verdict, exit 2, nothing written)
+  --round-reset "<reason>"  with --only: the re-prototype decision — the selected pages at the cap start a new count
   --skip-existing           reuse captures (not a stitched one recorded before the overlay-left check:
                             re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
@@ -219,6 +242,12 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   rejected: <rule>" reasons and the row stays FAIL.
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
+Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
+  count is seeded from runs/*.json rows with a verdict; every row carries round (+ roundReset on a reset row). An --only
+  run first takes <slug>/rounds.lock { pid, at }: one held by a running process → "no verdict — a round of <slug> is in
+  progress (pid <n>)", exit 2; a dead process's lock is reaped (logged). A page at the cap → "no verdict — cap reached —
+  re-prototype decision: <slug> <n>/<max> @<w>" (drop it from --only, or --round-reset "<reason>"), exit 2, before the
+  out dir; --round-reset with no selected page at the cap logs "round-reset: no --only slug at the cap — nothing reset".
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
   the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
@@ -228,8 +257,9 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
   run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
   "no verdict" naming --timeout <estimate>; exit 2.
-Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or
-  --eds-host, 1 error, a usage error (an unknown flag or a bad value) or an empty selection.`;
+Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg
+  deadline, a page at the round cap, a round of the page in progress) or --eds-host, 1 error, a usage error (an unknown
+  flag or a bad value) or an empty selection.`;
 const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
 
 /**
@@ -277,7 +307,7 @@ function poolFlag(flag, raw) {
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null };
+  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i]; const v = () => rest[++i];
     if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
@@ -292,11 +322,21 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
     else if (a === '--one-load') o.oneLoad = true;
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
+    else if (a === '--max-rounds') {
+      const raw = v(); const n = Number(raw);
+      if (raw == null || String(raw).trim() === '' || !Number.isInteger(n) || n < 1 || n > MAX_ROUNDS) { console.error(`--max-rounds must be an integer from 1 to ${MAX_ROUNDS} (got ${raw ?? 'nothing'}) — it may only lower the cap; a page at the cap gets another round only through the re-prototype decision: --only <slug> --round-reset "<reason>"\n\n${HELP}`); process.exit(1); }
+      o.maxRounds = n;
+    } else if (a === '--round-reset') {
+      const raw = v();
+      if (raw == null || !String(raw).trim() || String(raw).startsWith('--')) { console.error(`--round-reset takes the re-prototype decision's reason, a non-empty text (got ${raw ?? 'nothing'})\n\n${HELP}`); process.exit(1); }
+      o.roundReset = String(raw).trim();
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
   o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged)
   o.pools = browserPools({ oc: o.oc, ec: o.ec, pc: o.pc }, env); o.oc = o.pools.oc; o.ec = o.pools.ec; o.pc = o.pools.pc;
   const deadline = Number(env.RUN_BG_DEADLINE_SEC); o.deadlineSec = deadline > 0 ? deadline : null; // run-bg exports the job's --timeout (s); absent / ≤ 0 = none
+  if (o.roundReset != null && !(o.only && o.only.length)) { console.error(`--round-reset needs --only <slug,…>: it resets the round count of the selected pages at the cap\n\n${HELP}`); process.exit(1); }
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
   return o;
@@ -979,6 +1019,42 @@ function run(cmd, args, { timeoutMs = 480000 } = {}) {
 async function pool(items, n, fn) { const q = [...items]; const workers = []; for (let i = 0; i < Math.max(1, n); i += 1) workers.push((async () => { while (q.length) await fn(q.shift()); })()); await Promise.all(workers); }
 const lastLine = (s) => (s || '').trim().split('\n').filter(Boolean).pop() || '';
 
+// ---- fix-round reservation: <out>/<slug>/rounds.lock { pid, at } per selected page, released on exit -----------------
+const HELD = []; // { file (null until taken), made: the dirs the reservation created, deepest first (removed again while empty) }
+const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; } };
+function releaseRounds() {
+  while (HELD.length) {
+    const { file, made } = HELD.pop();
+    if (file) { try { if (JSON.parse(readFileSync(file, 'utf8')).pid === process.pid) rmSync(file, { force: true }); } catch { /* gone */ } }
+    for (const d of made) { try { rmdirSync(d); } catch { /* not empty: the run wrote there */ } }
+  }
+}
+/**
+ * Takes every selected page's rounds.lock (sorted, the `wx` flag) before the cap check → the log notes (a dead process's
+ * lock reaped). A lock of a running process refuses the run: one stderr line, exit 2 (the locks taken so far and the dirs
+ * the reservation created are released by the exit handler — nothing written).
+ */
+function reserveRounds(out, slugs) {
+  process.on('exit', releaseRounds);
+  const notes = [];
+  for (const slug of slugs) {
+    const d = resolve(out, slug); const file = join(d, 'rounds.lock');
+    const made = []; for (let x = d; !existsSync(x) && dirname(x) !== x; x = dirname(x)) made.push(x);
+    const entry = { file: null, made }; HELD.push(entry);
+    mkdirSync(d, { recursive: true });
+    for (let reaped = false; ;) {
+      try { writeFileSync(file, `${JSON.stringify({ pid: process.pid, at: new Date().toISOString() })}\n`, { flag: 'wx' }); entry.file = file; break; } catch (e) { if (e.code !== 'EEXIST') throw e; }
+      let held = null; try { held = JSON.parse(readFileSync(file, 'utf8')); } catch { held = null; }
+      const pid = held && Number.isInteger(held.pid) && held.pid > 0 ? held.pid : null;
+      if (reaped || (pid && pid !== process.pid && pidAlive(pid))) { console.error(`gate-all: refused to start, no verdict — a round of ${slug} is in progress (pid ${pid ?? 'unknown'}): ${join(out, slug, 'rounds.lock')}; wait for that run to end`); process.exit(2); }
+      rmSync(file, { force: true }); reaped = true;
+      notes.push(`rounds lock ${slug} → reaped ${pid ? `pid ${pid} (not running${held.at ? `; taken ${held.at}` : ''})` : 'an unreadable lock'}`);
+    }
+  }
+  return notes;
+}
+const writeJsonAtomic = (f, doc) => { mkdirSync(dirname(f), { recursive: true }); const tmp = `${f}.${process.pid}.tmp`; writeFileSync(tmp, `${JSON.stringify(doc, null, 1)}\n`); renameSync(tmp, f); };
+
 async function main() {
   const opts = parseArgs(process.argv);
   const startedAt = new Date().toISOString(); // this process's start (gate-key.json); runStart below is the run anchor
@@ -997,6 +1073,13 @@ async function main() {
   // Deadline guard: a run-bg deadline below the estimate would kill the job mid-roster — refuse before any write.
   const R = roster(pages.length, opts);
   if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
+  // Fix rounds (--only): reserve every selected page's round, then the cap — refused before the out dir and any write.
+  const slugs = [...new Set(pages.map((p) => p.slug))].sort();
+  const lockNotes = opts.only ? reserveRounds(opts.out, slugs) : [];
+  const TABLES = runTables(opts.out);
+  const ROUNDS = Object.fromEntries(slugs.map((slug) => [slug, roundsOf(opts.out, slug, TABLES)]));
+  const refusal = opts.only ? capRefusal(slugs.map((slug) => ({ slug, rounds: ROUNDS[slug].rounds })), { max: opts.maxRounds, width: opts.width, reset: opts.roundReset }) : null;
+  if (refusal) { console.error(refusal); process.exit(2); }
   mkdirSync(opts.out, { recursive: true });
   const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   // the inconsistency register an override must name an entry of (read once; cwd-relative like units.json)
@@ -1016,6 +1099,11 @@ async function main() {
   const reuseOf = (from, m, policy) => ({ ...(FRESH ? FRESH.reuseRecord(from, m, { policy }) : { reused: true, from, at: m.at, policy }), reusedAt: new Date().toISOString() });
   const tryJson = (f) => { try { return readJson(f); } catch { return null; } };
   log(`origin reuse: ${!FRESH ? 'off (live-session.mjs not found in the diff scripts dir)' : runStart ? `same run since ${runStart}` : `no run anchor in ${ledger} (reuse only with --origin-max-age)`}${FRESH && maxAgeH ? `; captures up to ${maxAgeH}h old` : ''}; pools origin ${opts.oc} / eds ${opts.ec} / probe ${opts.pc}${poolsNote(opts.pools)}`);
+  for (const note of lockNotes) log(note);
+  if (opts.roundReset) {
+    const capped = slugs.filter((slug) => ROUNDS[slug].rounds >= opts.maxRounds);
+    log(capped.length ? `round-reset: ${capped.map((slug) => `${slug} ${ROUNDS[slug].rounds}/${opts.maxRounds} @${opts.width}`).join(', ')} → a new count (${opts.roundReset})` : 'round-reset: no --only slug at the cap — nothing reset');
+  }
   // presence.json `hide` → the page's one list (live-session presenceHide: "*" then the slug's) for both stitches and the probes
   const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
   const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
@@ -1351,6 +1439,20 @@ async function main() {
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null,
       gateKey: opts.stage === 'published' ? rowKey(storedKey(p), KEYS[p.slug], !!r.probedAt) : null, reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
   });
+  // Fix rounds: an --only run counts each row with a verdict (countsAsRound) — rounds.json written before the run table, so
+  // a crash over-counts, never under-counts; --round-reset first starts a new count for the selected pages at the cap.
+  // Every row carries `round` (a full run: the current count, never counted); a reset row `roundReset`.
+  const writtenAt = new Date().toISOString(); const roundLines = [];
+  for (const row of rows) {
+    const prev = ROUNDS[row.slug]; delete row.roundReset; // a reused row's own reset belongs to its own run
+    if (!opts.only) { row.round = prev.rounds; continue; }
+    const counted = countsAsRound(row);
+    const next = nextRounds(prev, { at: writtenAt, max: opts.maxRounds, counted, reset: opts.roundReset && prev.rounds >= opts.maxRounds ? opts.roundReset : null });
+    if (next.changed) writeJsonAtomic(join(opts.out, row.slug, 'rounds.json'), next.doc);
+    row.round = next.round; if (next.roundReset) row.roundReset = next.roundReset;
+    roundLines.push(`${row.slug} ${next.round}/${opts.maxRounds}${counted ? '' : ' (no verdict — not counted)'}${next.roundReset ? ' (after the reset)' : ''}`);
+  }
+  if (roundLines.length) log(`rounds @${opts.width}: ${roundLines.join(', ')}`);
   const n = (f) => rows.filter(f).length;
   // an INCONCLUSIVE row is neither a FAIL nor an error, and has no pixel / height verdict (null) to count; only a validated
   // override lifts a failing row (overridePass), an invalid one is counted as rejected
@@ -1361,9 +1463,9 @@ async function main() {
   totals.overrideShare = totals.pages ? Number((totals.overridePass / totals.pages).toFixed(3)) : 0;
   totals.originReused = n((r) => r.originReused);
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only, maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
   const md = formatSummary(summary);
-  if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${new Date().toISOString().replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
+  if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${writtenAt.replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }
   console.log(JSON.stringify(totals));
   process.exitCode = totals.pass + totals.overridePass === totals.pages ? 0 : 2;
@@ -1371,5 +1473,5 @@ async function main() {
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
-  main().catch((e) => { console.error(`gate-all error: ${e.message}`); process.exit(1); });
+  main().catch((e) => { console.error(`gate-all error: ${e.message}`); process.exit(1); }).finally(releaseRounds);
 }
