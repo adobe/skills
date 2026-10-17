@@ -45,7 +45,10 @@
  *     --slug <s>             compare: evidence to stardust/replica/gates/<slug>-<probeWidth>/
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
- *     --timeout-ms, --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
+ *     --timeout-ms <ms>      per-page navigation timeout (default: STARDUST_NAV_TIMEOUT_MS, else
+ *                            stardust/current/_crawl-log.json crawl.navMs.p95 × 2 clamped to
+ *                            20–180 s, else 30000)
+ *     --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
  *
  * Output (capture): per URL the probe width and its derivation, one line per cap origin (kind, px,
  * via, selector, tier, share), a modules line (capped values × count, full-bleed count); then across
@@ -57,7 +60,8 @@
  * a wrapper, `content cap` (the shared module cap). Outer shell caps beyond the wrapper cap are
  * informational. The verdict line:
  * `cap-probe: PASS|FAIL at <probeWidth> — <n> of <m> rows…`. A ✗ names the sizing rule to fix
- * (deploy Step 3 scaffold); never iterate pixels on it.
+ * (deploy Step 3 scaffold); never iterate pixels on it. The JSON's `_provenance` records
+ * `navTimeout: { ms, source }`.
  *
  * Exit codes: 0 pass / measured, 2 compare FAIL, 1 a page failed to load or playwright missing,
  * 3 bot challenge on the live side (escalate --headed), 125 usage. probePage and the pure
@@ -84,6 +88,7 @@ export const MIN_PROBE_WIDTH = 2560;
 export const PROBE_FACTOR = 1.25;
 export const CAP_TOLERANCE = 20;
 export const WRAPPER_SHARE = 0.9;
+export const DEFAULT_TIMEOUT_MS = 30000; // the navigation timeout when neither the env nor a crawl figure gives one
 const VIEWPORT_H = 900;
 const EDGE = 8; // px: a box this close to the viewport is full width
 
@@ -100,7 +105,7 @@ async function loadLiveSession() {
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
-  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: 30000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: null, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   const int = (v, flag) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw new UsageError(`${flag} must be a positive integer, got ${v}`); return n; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -489,7 +494,10 @@ async function main(argv) {
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
   const session = await loadLiveSession();
-  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
+  // An explicit --timeout-ms wins; else session.resolveNavTimeoutMs's chain (env → crawl p95 × 2 → 30000), with its source.
+  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS });
+  o.timeoutMs = nav.ms;
+  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width, navTimeout: { ms: nav.ms, source: nav.source } };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let result; let code = 0;
   try {
