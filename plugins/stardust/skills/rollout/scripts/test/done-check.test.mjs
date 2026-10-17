@@ -42,16 +42,27 @@ const ENDED = [
 const finding = (severity, status, evidence = 'x') => ({ id: `${severity}-${status}-${evidence}`, severity, status, fixability: evidence.startsWith(SOURCE_PARITY_PREFIX) ? 'out-of-scope' : 'platform-migration', evidence });
 
 // --- pure verdict ---------------------------------------------------------------------------------
-check('publicUrl: a folder index is served at /a/ (its migrated file is …/index.html); leaves, the root and --new rows keep their path', () => {
-  assert.equal(publicUrl({ path: '/en/news', source: { migratedHtml: 'stardust/migrated/en/news/index.html' } }), '/en/news/');
+check('publicUrl: the URL the page was deployed at (delivery.deployedUrl by the delivered-path contract), else its path — the migrated file name never adds a slash', () => {
+  const news = { path: '/en/news', source: { migratedHtml: 'stardust/migrated/en/news/index.html' } };
+  assert.equal(publicUrl(news), '/en/news');
+  assert.equal(publicUrl({ ...news, delivery: { deployedUrl: 'https://h/en/news/' } }), '/en/news/');
+  assert.equal(publicUrl({ ...news, delivery: { deployedUrl: 'https://h/en/news' } }), '/en/news');
+  assert.equal(publicUrl({ ...news, delivery: { deployedUrl: 'https://h/en/news.html?x=1#top' } }), '/en/news');
+  assert.equal(publicUrl({ path: '/a', delivery: { deployedUrl: '/a/index' } }), '/a/');
   assert.equal(publicUrl({ path: '/en/news/story', source: { migratedHtml: 'stardust/migrated/en/news/story.html' } }), '/en/news/story');
   assert.equal(publicUrl({ path: '/', source: { migratedHtml: 'stardust/migrated/index.html' } }), '/');
+  for (const deployedUrl of ['https://h/', 'https://h', 'https://h/index', '/index.html']) assert.equal(publicUrl({ path: '/', delivery: { deployedUrl } }), '/', deployedUrl);
+  assert.equal(publicUrl({ slug: 'search', delivery: { deployedUrl: '' } }), '/search');
   assert.equal(publicUrl({ path: '/search', source: { migratedHtml: 'https://example.com:search' } }), '/search');
 });
-check('deliveredPaths probes a folder index at /a/, which a 200-only HEAD accepts (/a 404s)', async () => {
-  const pages = [{ path: '/en/news', source: { migratedHtml: 'm/en/news/index.html' }, delivery: { status: 'verified' } }];
-  assert.deepEqual(deliveredPaths(pages), ['/en/news/']);
-  const served = { '/en/news/': 200, '/en/news': 404 };
+check('deliveredPaths probes each row where it was deployed — a folder index at /a/ only when its document went there', async () => {
+  const pages = [
+    { path: '/en/news', source: { migratedHtml: 'm/en/news/index.html' }, delivery: { status: 'verified', deployedUrl: 'https://example.com/en/news/' } },
+    { path: '/en/about', source: { migratedHtml: 'm/en/about/index.html' }, delivery: { status: 'verified', deployedUrl: 'https://example.com/en/about' } },
+    { path: '/en/team', source: { migratedHtml: 'm/en/team/index.html' }, delivery: { status: 'verified' } },
+  ];
+  assert.deepEqual(deliveredPaths(pages), ['/en/news/', '/en/about', '/en/team']);
+  const served = { '/en/news/': 200, '/en/news': 404, '/en/about': 200, '/en/about/': 404, '/en/team': 200, '/en/team/': 404 };
   assert.deepEqual(await probeLive('https://example.com', deliveredPaths(pages), { fetchImpl: async (u) => ({ status: served[new URL(u).pathname] }) }), []);
 });
 check('a clean run is complete, with the live probe recorded as run', () => {
@@ -200,7 +211,9 @@ check('unit_unproven: a progress.json without a units map is listed as skipped, 
   assert.deepEqual(units({ progress: { units: {} } }), { gaps: [], skipped: [] });
 });
 
-const SIDE_PAGES = [proven(row('home', '/', 'verified')), proven(row('about', '/about', 'verified')), { ...proven(row('news', '/news', 'deployed')), source: { sourceUrl: 'https://example.com/news/', migratedHtml: 'stardust/migrated/news/index.html' } }, row('draft', '/draft', 'pending')];
+// news is a folder index whose document went to /news/index — deployed at /news/, the source's own path
+const NEWS = proven(row('news', '/news', 'deployed'));
+const SIDE_PAGES = [proven(row('home', '/', 'verified')), proven(row('about', '/about', 'verified')), { ...NEWS, delivery: { ...NEWS.delivery, deployedUrl: 'https://main--site--org.aem.live/news/' }, source: { sourceUrl: 'https://example.com/news/', migratedHtml: 'stardust/migrated/news/index.html' } }, row('draft', '/draft', 'pending')];
 const withSource = (r, sourceUrl) => ({ ...r, source: { ...r.source, sourceUrl } });
 const sidecars = (pages, over = {}) => sidecarGap({ pages, widths: ['1440', '360'], schemaExists: () => true, redirects: '', ...over });
 
@@ -224,6 +237,10 @@ check('sidecars_missing: a changed path needs a redirects line for its source pa
   const accented = [withSource(proven(row('cafe', '/cafe', 'verified')), 'https://example.com/caf%C3%A9')];
   assert.equal(sidecars(accented, { redirects: '/café\t/cafe\n' }).gap, null);
   assert.equal(sidecars(accented).gap, 'sidecars_missing:1: schema 0, gate widths 0, redirects 1: /cafe');
+  // a folder-index source (/news/) whose document went to /news is served without the slash: that is a changed path
+  const flat = SIDE_PAGES.map((p) => (p.slug === 'news' ? { ...p, delivery: { ...p.delivery, deployedUrl: 'https://main--site--org.aem.live/news' } } : p));
+  assert.equal(sidecars(flat).gap, 'sidecars_missing:1: schema 0, gate widths 0, redirects 1: /news');
+  assert.equal(sidecars(flat, { redirects: '/news/\t/news\n' }).gap, null);
 });
 
 check('sidecars_missing: delivered rows without source.sourceUrl are not judged for redirects — counted as skipped', () => {
@@ -232,7 +249,7 @@ check('sidecars_missing: delivered rows without source.sourceUrl are not judged 
 });
 
 check('sidecars_missing: gate widths are judged only in a flow with a gate table (replica, or any gated row); otherwise skipped, never a gap', () => {
-  const ungated = SIDE_PAGES.map((p) => ({ ...p, delivery: { status: p.delivery.status } }));
+  const ungated = SIDE_PAGES.map((p) => ({ ...p, delivery: { status: p.delivery.status, deployedUrl: p.delivery.deployedUrl } }));
   assert.equal(widthsJudged({ flow: 'redesign', pages: ungated }), false);
   assert.equal(widthsJudged({ flow: null, pages: ungated }), false);
   assert.equal(widthsJudged({ flow: 'replica', pages: ungated }), true);

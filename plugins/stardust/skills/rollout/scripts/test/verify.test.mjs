@@ -3,10 +3,12 @@
 // temp project: one <h1> verifies; none verifies only when <current>/pages/<slug>.json records headings without an h1
 // (a `note:` line and `· <n> note(s)` in the summary, never a failure); a capture with an h1, no capture, or more than
 // one <h1> fails as before; a failed delivery.gate is never rescued by the note; --current is honoured. --help writes nothing.
+// --base (a local server): a page is fetched where it was deployed (delivery.deployedUrl), else at its path.
 // Run: node plugins/stardust/skills/rollout/scripts/test/verify.test.mjs
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +40,14 @@ function project() {
   return proj;
 }
 const run = (proj, args) => spawnSync(process.execPath, [SCRIPT, '--root', 'site', ...args], { cwd: proj, encoding: 'utf8' });
+// an async run, so a server in this process can answer verify's requests
+const runAsync = (proj, args) => new Promise((ok) => {
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: proj });
+  let stdout = ''; let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.on('close', (status) => ok({ status, stdout, stderr }));
+});
 const statusOf = (proj) => Object.fromEntries(JSON.parse(readFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.delivery.status]));
 const lines = (r) => r.stdout.trim().split('\n');
 
@@ -114,6 +124,34 @@ check('--help prints the usage header and writes nothing', () => {
   assert.match(r.stdout, /--current/);
   assert.deepEqual(readdirSync(empty), []);
   rmSync(empty, { recursive: true, force: true });
+});
+
+// --base: each page is fetched where it was deployed (delivery.deployedUrl), else at its path — an index.html source
+// adds no slash. The server answers only those URLs (the slash forms 404, as on a plain EDS site) and logs each request.
+check('--base fetches a page at its deployedUrl, else its path — never a slash appended for an index.html source', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'verify-base-'));
+  mkdirSync(join(proj, 'stardust', 'rollout', 'coverage'), { recursive: true });
+  const page = (slug, delivery) => ({ slug, path: `/${slug}`, source: { migratedHtml: `stardust/migrated/${slug}/index.html` }, delivery: { status: 'deployed', ...delivery } });
+  writeFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: [
+    page('x', { deployedUrl: 'https://h/x' }), page('y', {}), page('z', { deployedUrl: 'https://h/z/' }),
+  ] }));
+  const served = new Set(['/x', '/y', '/z/']);
+  const asked = [];
+  const server = createServer((req, res) => {
+    asked.push(req.url);
+    res.writeHead(served.has(req.url) ? 200 : 404, { 'content-type': 'text/html' });
+    res.end(`<main><h1>${req.url}</h1><a href="/x">x</a></main>`);
+  });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const r = await runAsync(proj, ['--base', `http://127.0.0.1:${server.address().port}`]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(asked.sort(), ['/x', '/y', '/z/']);
+    assert.deepEqual(statusOf(proj), { x: 'verified', y: 'verified', z: 'verified' });
+  } finally {
+    server.close();
+    rmSync(proj, { recursive: true, force: true });
+  }
 });
 
 for (const [name, fn] of tests) {

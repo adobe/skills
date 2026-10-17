@@ -133,13 +133,20 @@ export function edsName(id) {
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
 /**
- * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
- * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ * The URL the page was deployed at: the pathname of `delivery.deployedUrl` (an absolute URL or a root-relative path)
+ * read by the delivered-path contract (deploy/scripts/eds-path.mjs) — `.html` dropped, a trailing `/index` → `/`, the
+ * root `/`, a recorded trailing slash kept — else the page's `path` as it stands. The migrated file name does not
+ * decide it: an `…/index.html` page whose document went to `/a` (not `/a/index`) is served at `/a`. Pure.
  */
 export function publicUrl(page) {
-  const p = page.path || `/${page.slug}`;
-  const src = (page.source && page.source.migratedHtml) || '';
-  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+  const dep = page.delivery && page.delivery.deployedUrl;
+  if (typeof dep !== 'string' || !dep.trim()) return page.path || `/${page.slug}`;
+  let p;
+  try { p = new URL(dep.trim(), 'https://deployed.invalid').pathname; } catch { p = dep.trim().split(/[?#]/)[0]; }
+  p = p.replace(/\/{2,}/g, '/').replace(/\.html?$/i, '');
+  if (!p.startsWith('/')) p = `/${p}`;
+  if (p.endsWith('/index')) p = p.slice(0, -'index'.length);
+  return p;
 }
 
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
