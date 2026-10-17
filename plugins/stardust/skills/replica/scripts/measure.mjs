@@ -53,9 +53,9 @@
  *                          of the first; with --against matches are paired by index
  *     --json               the full structure on stdout instead of the table
  *     --out <file>         also write that JSON to <file> (directories created)
- *     --timeout-ms <ms>    per-page navigation timeout (default: STARDUST_NAV_TIMEOUT_MS, else
- *                          stardust/current/_crawl-log.json crawl.navMs.p95 × 2 clamped to 20–180 s,
- *                          else 20000)
+ *     --timeout-ms <ms>    per-page navigation timeout AND per-width deadline (default:
+ *                          STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
+ *                          crawl.navMs.p95 × 2 clamped to 20–180 s, else 20000)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA)
  *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
@@ -73,32 +73,56 @@
  * settle from top to bottom and back so lazy and entrance-animated content is
  * at rest, and the read at each width.
  *
- * Output (table): one block per width, opening with the root line per side
+ * Per width: the read (resize + settle + measure) races --timeout-ms. A read
+ * the page navigated under (execution context destroyed — a site that
+ * navigates after a resize or a consent click) is re-read ONCE on a fresh page
+ * in the same browser context (cookies and consent kept, opened at that
+ * width) — a stderr warning names it; a deadline is never retried (a second
+ * one would double the wait). A width that still fails is recorded as not
+ * measured — `_provenance.failed` gets { url, width, error }, `partial` turns
+ * true — and the next width starts on a fresh page. Why: in a recorded
+ * hands-off run measure reused one page across widths with no deadline on the
+ * reads and hung 8× at 900 s on a site that navigates after a resize or a
+ * consent click.
+ *
+ * Output (table): when any width failed the FIRST line is a status line —
+ * `measure: PARTIAL — <k> of <n> width read(s) failed: <url> @<w> (<error>); …`
+ * or `measure: NO VERDICT — every width read failed (exit 124): …` (under
+ * --json the same line goes to stderr; without a failed width the output is
+ * unchanged). Then one block per width, opening with the root line per side
  * (`root  scrollWidth <n>  viewport <n>  scrollHeight <n>`, plus
  * `◄◄ OVERFLOW +<n>px` when scrollWidth exceeds the root's clientWidth — the
  * viewport, headless has no scrollbar gutter), then one line per match
  * (`sel[i]  x y w h vis "text"`, an image match adds `img <nw>×<nh> …/<file>`)
  * followed by its properties, then — with --against — the delta line
  * (`img.naturalWidth: a → b` / `img.file: a → b` when the rendition differs).
+ * A failed width prints `✗ <url> @<w> not measured — <error>` (in the header
+ * list and in its width block); with --against that width prints each measured
+ * side on its own under `Δ not computed at <w> — a side was not measured`.
  * In the table a backgroundImage `url("https://host/long/path/flag-de.svg")`
  * prints as `url(…/flag-de.svg)` so a row stays one line (the JSON keeps the
  * full value). --json: { _provenance: { writtenBy, writtenAt, urls[], widths[],
  * selectors[], props[], allMatches, navTimeout: { ms, source: flag | env | crawl |
- * default }, failed[], warnings[] }, widths[],
+ * default }, partial, failed: [ { url, width?, error } ] (no width: the page
+ * failed to load), warnings[] }, widths[],
  * selectors[], root: { [url]: { [width]: { viewport, clientWidth, scrollWidth,
  * scrollHeight, overflowX } } }, pages: { [url]: { [width]: { [selector]: [ {
  * index, of, rect: { x, y, w, h }, visible, text, props, img?: { naturalWidth,
- * naturalHeight, currentSrc } } ] } } }, deltas?: { [width]: { [selector]: {
+ * naturalHeight, currentSrc } } ] } } } (a failed width has no key), deltas?: {
+ * [width]: null (a side not measured there) | { [selector]: {
  * status, countA, countB, pairs: [ { index, rect: { dx, dy, dw, dh }, props: {
  * [prop]: [a, b] }, img?: { naturalWidth|naturalHeight|file: [a, b] } } ] } } },
  * rootDeltas?: { [width]: { scrollWidth, scrollHeight } } } (B − A).
  *
  * Writes: nothing — unless --out <file>, which receives the JSON above.
  *
- * Exit codes: 0 measured, 1 a page failed to load (named on stderr; what was
- * measured is still printed), 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live side served an edge
- * interstitial (fail loud; nothing is printed as measured; escalate --headed).
+ * Exit codes: 0 measured — possibly partial (`_provenance.partial`, the status
+ * line), 1 a page failed to load (named on stderr; what was measured is still
+ * printed), 2 usage error, playwright not importable or live-session.mjs not
+ * found, 3 bot challenge — the live side served an edge interstitial (fail
+ * loud; nothing is printed as measured; escalate --headed), 124 every width
+ * read failed — no verdict (the run-capped "deadline, no verdict" convention).
+ * Precedence 3 > 1 > 124 > 0.
  * A delta or an overflow never changes the exit code — this is a measurement,
  * not a gate; gate.sh's overflow verdict comes from stitch-shot's `overflow:` line.
  *
@@ -106,8 +130,9 @@
  * skill's live-session.mjs in one of two layouts — the plugin tree
  * (../../diff/scripts/live-session.mjs) or the project copy
  * (../diff/live-session.mjs; replica SKILL.md § Setup copies both scripts
- * dirs into the project and you run the copy). The delta and table functions
- * are exported and pure — the contract test runs them without a browser.
+ * dirs into the project and you run the copy). The delta, table, exit-code and
+ * status-line functions and the width-read orchestration (readWidths) are
+ * exported and browser-free — the contract test runs them without a browser.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
@@ -130,6 +155,11 @@ export const TEXT_MAX = 40;
 // The navigation timeout when neither --timeout-ms, STARDUST_NAV_TIMEOUT_MS nor a crawl latency figure gives one.
 export const DEFAULT_TIMEOUT_MS = 20000;
 const VIEWPORT_H = 900;
+// Closing an abandoned page is bounded: a page wedged by a busy loop can stall its close.
+const CLOSE_DEADLINE_MS = 5000;
+// A fresh page's open is a navigation (bounded by the navigation timeout) plus the open path's fixed waits — the
+// settle, the overlay late window, dismissal clicks — so its deadline is the navigation timeout plus this margin.
+const REOPEN_SLACK_MS = 30000;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
@@ -244,6 +274,11 @@ async function settle(page) {
 // headers + webdriver spoof on the context, gotoLive (BotChallengeError on an edge interstitial —
 // never measured as the source; solveWindow only under --headed), then both overlay classes
 // dismissed. The local prototype side is a plain page from the same browser.
+//
+// Then one read per width (resize + settle + measureInPage) through readWidths: each races
+// --timeout-ms, a read the page navigated under is re-read once on a fresh page in the same
+// context (cookies and consent kept; opened at that width, so no resize can re-trigger it), and a
+// width that still fails is returned as failed, never as measured.
 async function measurePage(browser, url, o, session) {
   const live = isLiveHttpUrl(url);
   const viewport = { width: o.widths[0], height: VIEWPORT_H };
@@ -251,29 +286,93 @@ async function measurePage(browser, url, o, session) {
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
-  const page = await context.newPage();
-  const byWidth = {};
-  try {
+  // Errors ignored: the page is abandoned either way, and browser.close() kills what is left.
+  const closeBounded = (p) => session.withDeadline(p.close(), CLOSE_DEADLINE_MS, `${url} page close`).catch(() => {});
+  const open = async (p) => {
     if (live) {
-      await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
-      const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
+      await session.gotoLive(p, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
+      const d = await session.dismissOverlays(p, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
       if (d.consent) console.error(`measure: consent dismissed via ${d.consent}`);
       for (const sel of d.extra) console.error(`measure: overlay dismissed via extra selector ${sel}`);
       for (const sel of d.marketing) console.error(`measure: marketing modal dismissed via ${sel}`);
     } else {
-      const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+      const resp = await p.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
       if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
-      await page.waitForTimeout(300);
+      await p.waitForTimeout(300);
     }
-    for (const width of o.widths) {
-      await page.setViewportSize({ width, height: VIEWPORT_H });
-      await settle(page);
-      byWidth[width] = await page.evaluate(measureInPage, { selectors: o.selectors, props: o.props, allMatches: o.allMatches, cap: MATCH_CAP, textMax: TEXT_MAX });
-    }
+  };
+  let page = await context.newPage();
+  let opens = 0; // a fresh page whose open was abandoned on its deadline must never become the page a later read uses
+  try {
+    // The first open failing is "a page failed to load" (the caller's { url, error }, exit 1).
+    await open(page);
+    return await readWidths(o.widths, {
+      read: async (width) => {
+        // The page this read started on: a late step of an abandoned read never touches a newer page.
+        const p = page;
+        await p.setViewportSize({ width, height: VIEWPORT_H });
+        await settle(p);
+        return p.evaluate(measureInPage, { selectors: o.selectors, props: o.props, allMatches: o.allMatches, cap: MATCH_CAP, textMax: TEXT_MAX });
+      },
+      reopen: async (width) => {
+        const mine = ++opens;
+        const old = page; page = null;
+        if (old) await closeBounded(old);
+        const p = await context.newPage();
+        if (mine !== opens) { await closeBounded(p); throw new Error('fresh page superseded'); }
+        page = p;
+        await p.setViewportSize({ width, height: VIEWPORT_H });
+        await open(p);
+      },
+      deadlineMs: o.timeoutMs,
+      reopenDeadlineMs: o.timeoutMs + REOPEN_SLACK_MS,
+      withDeadline: session.withDeadline,
+      isContextDestroyed: session.isContextDestroyed,
+      label: (width) => `${url} @${width}`,
+    });
   } finally {
-    await context.close().catch(() => {});
+    await session.withDeadline(context.close(), CLOSE_DEADLINE_MS, `${url} context close`).catch(() => {});
   }
-  return byWidth;
+}
+
+/**
+ * One page's width reads, browser-free (read / reopen carry the page) → { byWidth, failed: [{ width, error }], retried: [width] }.
+ *   - each read(width) races `deadlineMs` (label `label(width)`);
+ *   - a destroyed execution context (the page navigated under the read — after a resize or a consent click) is
+ *     re-read ONCE: reopen(width) (a fresh page, raced against `reopenDeadlineMs`) then read(width);
+ *   - a deadline is never retried (a second one would double the wait) — recorded at once, like a second failure
+ *     or any other error (first line of its message);
+ *   - after any failed width the next width starts on a fresh page (the old one navigated away or is wedged);
+ *   - a BotChallengeError (a fresh page's open met an edge interstitial) is rethrown, never recorded.
+ */
+export async function readWidths(widths, { read, reopen, deadlineMs, reopenDeadlineMs = deadlineMs, withDeadline, isContextDestroyed, label = (width) => `@${width}` }) {
+  const byWidth = {}; const failed = []; const retried = [];
+  const attempt = async (width, fresh) => {
+    if (fresh) await withDeadline(reopen(width), reopenDeadlineMs, `${label(width)} fresh page`);
+    return withDeadline(read(width), deadlineMs, label(width));
+  };
+  const rethrowChallenge = (e) => { if (e && e.name === 'BotChallengeError') throw e; };
+  let fresh = false;
+  for (const width of widths) {
+    try {
+      byWidth[width] = await attempt(width, fresh);
+      fresh = false;
+    } catch (e) {
+      rethrowChallenge(e);
+      let err = e;
+      if (isContextDestroyed(e)) {
+        try {
+          byWidth[width] = await attempt(width, true);
+          retried.push(width);
+          fresh = false;
+          continue;
+        } catch (e2) { rethrowChallenge(e2); err = e2; }
+      }
+      failed.push({ width, error: String((err && err.message) || err).split('\n')[0] });
+      fresh = true;
+    }
+  }
+  return { byWidth, failed, retried };
 }
 
 async function main(argv) {
@@ -287,12 +386,21 @@ async function main(argv) {
   // One navigation timeout across the instruments: the flag, else env, else the crawl's p95 × 2, else 20000.
   const nav = o.timeoutMs === null ? session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS }) : { ms: o.timeoutMs, source: 'flag' };
   o.timeoutMs ??= nav.ms;
-  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
+  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, partial: false, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   try {
     for (const url of urls) {
-      try { result.pages[url] = await measurePage(browser, url, o, session); } catch (e) {
+      try {
+        const reads = await measurePage(browser, url, o, session);
+        result.pages[url] = reads.byWidth;
+        // A width that could not be read is recorded with its width — never measured, never a delta.
+        for (const f of reads.failed) {
+          result._provenance.failed.push({ url, width: f.width, error: f.error });
+          console.error(`measure: ${url} @${f.width} not measured — ${f.error}`);
+        }
+        for (const width of reads.retried) result._provenance.warnings.push(`${url} @${width}: execution context destroyed (the page navigated) — re-read on a fresh page`);
+      } catch (e) {
         // A bot challenge is never a per-page "failed to load": fail loud (exit 3), measure nothing.
         if (e.name === 'BotChallengeError') { e.code = 3; throw e; }
         const msg = String(e.message || e).split('\n')[0];
@@ -303,6 +411,8 @@ async function main(argv) {
   } finally {
     await browser.close().catch(() => {});
   }
+  // Monotonic caution: partial whenever a width failed, also when every width did.
+  result._provenance.partial = result._provenance.failed.some((f) => f.width != null);
   // Per selector the JSON carries the match array; an invalid selector becomes a warning. The root
   // line moves to result.root[url][width]; an overflow is warned on stderr as well as printed.
   for (const [url, byWidth] of Object.entries(result.pages)) {
@@ -321,8 +431,37 @@ async function main(argv) {
   if (o.against) { result.deltas = buildDeltas(result, o.url, o.against); result.rootDeltas = buildRootDeltas(result, o.url, o.against); }
   for (const w of result._provenance.warnings) console.error(`measure: ${w}`);
   if (o.out) { mkdirSync(dirname(o.out), { recursive: true }); writeFileSync(o.out, JSON.stringify(result, null, 2)); }
+  // The status line opens the table; --json keeps stdout pure JSON, so there it goes to stderr.
+  const status = statusLine(result);
+  if (o.json && status) console.error(status);
   console.log(o.json ? JSON.stringify(result, null, 2) : formatTable(result));
-  return result._provenance.failed.length ? 1 : 0;
+  return exitCodeFor(result);
+}
+
+// ---- exit code + status line (pure) --------------------------------------------------------------
+
+// Width reads that failed vs width reads that were measured, over the pages that loaded.
+function widthTally(result) {
+  const failedWidths = (result._provenance.failed || []).filter((f) => f.width != null);
+  const measured = Object.values(result.pages || {}).reduce((n, byWidth) => n + Object.keys(byWidth || {}).length, 0);
+  return { failedWidths, measured };
+}
+
+// Precedence: 3 a bot challenge (thrown before any result exists) > 1 a page failed to load > 124 every attempted
+// width read failed (the run-capped "deadline, no verdict" convention) > 0 measured, complete or partial.
+export function exitCodeFor(result) {
+  if ((result._provenance.failed || []).some((f) => f.width == null)) return 1;
+  const { failedWidths, measured } = widthTally(result);
+  return failedWidths.length && !measured ? 124 : 0;
+}
+
+// The first line of the table (stderr under --json) when any width failed; null otherwise — the output is unchanged.
+export function statusLine(result) {
+  const { failedWidths, measured } = widthTally(result);
+  if (!failedWidths.length) return null;
+  const list = failedWidths.map((f) => `${f.url} @${f.width} (${f.error})`).join('; ');
+  if (!measured) return `measure: NO VERDICT — every width read failed (exit ${exitCodeFor(result)}): ${list}`;
+  return `measure: PARTIAL — ${failedWidths.length} of ${failedWidths.length + measured} width read(s) failed: ${list}`;
 }
 
 // ---- deltas + table (pure) -----------------------------------------------------------------------
@@ -369,14 +508,16 @@ export function computeDeltas(a, b) {
   return { status, countA: A.length, countB: B.length, pairs };
 }
 
-// deltas[width][selector]; null when either page failed to load (no half-comparison).
+// deltas[width][selector]; null when either page failed to load (no half-comparison). deltas[width] is null when
+// either side has no read at that width — a failed width is never a "MISSING" delta.
 export function buildDeltas(result, urlA, urlB) {
   const PA = result.pages[urlA]; const PB = result.pages[urlB];
   if (!PA || !PB) return null;
   const out = {};
   for (const width of result.widths) {
+    if (!PA[width] || !PB[width]) { out[width] = null; continue; }
     out[width] = {};
-    for (const sel of result.selectors) out[width][sel] = computeDeltas((PA[width] || {})[sel], (PB[width] || {})[sel]);
+    for (const sel of result.selectors) out[width][sel] = computeDeltas(PA[width][sel], PB[width][sel]);
   }
   return out;
 }
@@ -435,11 +576,15 @@ export function formatTable(result) {
   const { urls, failed } = result._provenance;
   const [urlA, urlB] = urls;
   const lines = [];
+  const status = statusLine(result);
+  if (status) lines.push(status);
   lines.push(urlB ? `measure  A = ${urlA}\n         B = ${urlB}` : `measure  ${urlA}`);
   lines.push(`  widths ${result.widths.join(', ')} · ${result.selectors.length} selector(s) · ${result._provenance.props.length} props${result._provenance.allMatches ? ` · all matches (≤ ${MATCH_CAP})` : ' · first match'}`);
-  for (const f of failed) lines.push(`  ✗ ${f.url} failed to load — ${f.error}`);
+  const notMeasured = (f) => `  ✗ ${f.url} @${f.width} not measured — ${f.error}`;
+  for (const f of failed) lines.push(f.width == null ? `  ✗ ${f.url} failed to load — ${f.error}` : notMeasured(f));
   for (const width of result.widths) {
     lines.push(`\n@ ${width}px`);
+    for (const f of failed) if (f.width != null && Number(f.width) === Number(width)) lines.push(notMeasured(f));
     // Root line(s) first: one side prints `root  …`; two sides print A / B and the Δ.
     const rootOf = (url) => ((result.root || {})[url] || {})[width];
     if (!urlB) { const ra = rootOf(urlA); if (ra) lines.push(`  root  ${formatRoot(ra)}`); } else {
@@ -451,10 +596,13 @@ export function formatTable(result) {
         if (ra && rb) lines.push(`    Δ  scrollWidth ${signed(rb.scrollWidth - ra.scrollWidth)}  scrollHeight ${signed(rb.scrollHeight - ra.scrollHeight)}`);
       }
     }
+    // Two loaded sides, one of them not measured at this width: each measured side prints on its own, no Δ.
+    const deltasAt = result.deltas ? result.deltas[width] : null;
+    if (urlB && result.deltas && !deltasAt) lines.push(`  Δ not computed at ${width} — a side was not measured`);
     for (const sel of result.selectors) {
       const A = ((result.pages[urlA] || {})[width] || {})[sel];
-      // One page, or two with a side that failed: print each loaded side on its own.
-      if (!urlB || !result.deltas) {
+      // One page, or two with a side that failed (to load, or at this width): print each measured side on its own.
+      if (!urlB || !deltasAt) {
         for (const [tag, url] of (urlB ? [['A', urlA], ['B', urlB]] : [[' ', urlA]])) {
           const M = ((result.pages[url] || {})[width] || {})[sel];
           if (!M) continue;
@@ -467,7 +615,7 @@ export function formatTable(result) {
         }
         continue;
       }
-      const d = result.deltas[width][sel];
+      const d = deltasAt[sel];
       const B = ((result.pages[urlB] || {})[width] || {})[sel] || [];
       if (d.status !== 'ok') {
         const side = d.status === 'missing-both' ? 'A and B' : (d.status === 'missing-a' ? `A (${d.countB} on B)` : `B (${d.countA} on A)`);
