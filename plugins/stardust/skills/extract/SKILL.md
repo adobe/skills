@@ -143,13 +143,9 @@ Additional checks for this sub-command:
    the worker's first page, or clone the probe context's
    `storageState`). Record the resolved method in
    `_crawl-log.json#consent.method`.
-4. **Bot-management probe.** When the first navigation in the run
-   returns `ERR_HTTP2_PROTOCOL_ERROR` or `ERR_QUIC_PROTOCOL_ERROR`,
-   or hangs through the entire hard-cap on what should be a fast
-   origin, **do not retry headless** — switch to headed Chrome per
-   § Failure modes → Bot-management block and record the switch in
-   `_crawl-log.json#discovery.fetchTechnique` so re-runs start in
-   headed mode without rediscovering the issue.
+4. **Bot-management probe.** A fingerprint block at the first navigation
+   (§ Failure modes → Bot-management block): headed Chrome, recorded in
+   `_crawl-log.json#discovery.fetchTechnique` so re-runs start headed.
 
 ## Procedure
 
@@ -732,7 +728,11 @@ this in the user report; do not engineer around it.
   hatch for the residual cases. The headed window pops visibly,
   which is acceptable for interactive runs and unacceptable for
   unattended pipelines — surface this to the user when first
-  triggered. Note for asset harvest: a page-level bot wall usually
+  triggered. A 2xx denial page (live-session's signatures, or a tiny
+  page under one error heading) counts as a challenge: at the entry the
+  crawl escalates to its headed fallback; any other such page lands in
+  `crawl.failures` as `BotChallengeError`, with no record or screenshot.
+  Note for asset harvest: a page-level bot wall usually
   does NOT gate assets — media/CSS/font URLs commonly return 200 to
   a plain browser-UA curl even while every page navigation is
   challenged (Cloudflare challenge, field-confirmed). Probe one

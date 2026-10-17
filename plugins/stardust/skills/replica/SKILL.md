@@ -339,11 +339,13 @@ blocked step (reference doc § Iteration discipline).
 **Hardening (each a recorded false-measurement trap — gate doc § Hardening
 rules):** real-Chrome UA **plus the standard request headers** on every
 capture, the client hints on same-origin subresources too (native in the
-full Chromium build stitch-shot prefers, else added; `--hints document-only`
-opts out); a challenge, blocked interstitial or 2xx denial page (a vendor
-signature, a tiny page under one error heading) **fails loud (exit 3)**,
-never measured — escalate with `--headed`, and a site that still blocks
-needs crawl.mjs-class capture; `domcontentloaded` on live targets, never
+full Chromium build stitch-shot prefers, else added; opt out with
+stitch-shot's `--hints document-only`, in gate rounds — gate.sh / gate-all
+spawn the captures — with `STARDUST_LIVE_HINTS=document-only`); a
+challenge, blocked interstitial or 2xx denial page (a vendor signature, a
+tiny page under one error heading) **fails loud (exit 3)**, never measured
+— escalate with `--headed`, and a site that still blocks needs
+crawl.mjs-class capture; `domcontentloaded` on live targets, never
 `networkidle`; symmetric `--main` scoping on both sides (`--main body` is
 never valid); consent banners, timed marketing modals and open dialogs
 dismissed (a closed dialog's scroll lock released for the capture, a

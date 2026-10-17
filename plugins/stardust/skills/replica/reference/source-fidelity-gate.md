@@ -534,7 +534,7 @@ rather than erroring.
    HTTP 200 — bot managers fingerprint the *absence* of those headers.
    Every instrument sends both via the shared `diff/scripts/live-session.mjs`
    (`--ua` overrides the UA string only): the full set on **document
-   requests only**, cross-origin requests never (F-B2: forced there,
+   requests only**, cross-origin subresources never (F-B2: forced there,
    CORS-mode webfont fetches die — rule 14), and **the client hints on
    same-origin subresources too** — recorded (a site behind a vendor wall,
    a controlled test): a 200 "System Down" page whenever the UA claimed
@@ -551,10 +551,12 @@ rather than erroring.
    `*.aem.live`, `*.hlx.page`, `*.hlx.live` — are the exception and get
    `networkidle`, they decorate async) and keep `networkidle` for local
    prototypes; `--wait-until` overrides. stitch-shot is always
-   `domcontentloaded`. The navigation timeout is
-   max(`STARDUST_NAV_TIMEOUT_MS`, 2 × the crawl's `crawl.navMs.p95`)
+   `domcontentloaded`. stitch-shot, measure, cap-probe, style-census, the
+   crawl's page gotos and the probes on `gotoLive` / `visit()` defaults
+   navigate under max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95`)
    clamped to 20–180 s (the env is only a floor: the crawl measured the
-   real pages), else the instrument's default (`gotoLive`: 60 s); a flag wins.
+   real pages), else their own default; a flag wins. content-diff and
+   visual-diff keep a fixed 60 s.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
    contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
    of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
@@ -628,11 +630,11 @@ rather than erroring.
     prototype replicates the chrome with its scroll-state trigger or the
     seams diff as ghost bands — `recreation-procedure.md` § Fixed and
     sticky chrome.
-12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
+    live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker —
+    exits **3** with a `BotChallengeError` naming the URL and the marker —
     and so does a **2xx denial page** (recorded: a large logistics site
     served a 200 denial page that stitch-shot wrote as a 900 px capture,
     exit 0). After every navigation under 400 settles (either side),
