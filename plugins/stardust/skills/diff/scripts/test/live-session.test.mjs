@@ -7,12 +7,17 @@
 // per-width deadline helpers (withDeadline, isContextDestroyed), and the 2xx denial page (the vendor signatures in
 // order, normalizeDenialText, denialMarker per signature / the 2 KB rule / the one-error-heading rule, and gotoLive on
 // stub pages: a denial throws BotChallengeError "origin blocked", a >= 400 is never probed, a failing probe is one
-// "skipped" stderr line, the solve window clears on a clean reload, the header-marker message unchanged). No browser:
-// dismissOverlays itself runs inside stitch-shot / the diff probes against a page (stitch-shot.test.mjs runs the
-// EDS single sweep against a late consent banner).
+// "skipped" stderr line, the solve window clears on a clean reload, the header-marker message unchanged), and the
+// dialog-pass constants (NATIVE_DIALOG, MODAL_DIALOGS, DIALOG_CLOSE_CANDIDATES — pinned, frozen). Then, where playwright
+// is importable (a skip line otherwise), a browser section against an in-process node:http origin: dismissOverlays'
+// dialog pass on fixture pages — a native <dialog> close()d and the body lock released, a dialog CSS keeps displayed
+// closed by its "Schließen" control, a non-native modal by its close control and an Escape-only panel (the html lock
+// released), a surviving modal that keeps the lock (R1), a lock class with no modal that stays, and the consent click
+// unchanged (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner).
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import * as session from '../live-session.mjs';
@@ -24,9 +29,11 @@ const check = (name, fn) => { checks += 1; try { fn(); console.log(`✓ ${name}`
 check('the exported surface the instruments import', () => {
   for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'isEdsHost', 'lateWindowFor', 'waitEdsDelayedPhase', 'defaultWaitUntil', 'newLiveContext', 'gotoLive', 'dismissOverlays', 'launchStealthHeaded', 'browserTier',
     'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed',
-    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
+    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError',
+    'NATIVE_DIALOG', 'MODAL_DIALOGS', 'DIALOG_CLOSE_CANDIDATES', 'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs']) assert.ok(name in session, `${name} exported`);
   assert.equal(typeof session.dismissOverlays, 'function');
-  for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError']) assert.equal(typeof session[name], 'function', name);
+  for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError',
+    'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs']) assert.equal(typeof session[name], 'function', name);
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
   assert.ok(session.DENIAL_ERROR_HEADING instanceof RegExp && session.DENIAL_ERROR_HEADING.flags.includes('i'), 'a case-insensitive RegExp');
   assert.equal(typeof session.waitEdsDelayedPhase, 'function');
@@ -39,6 +46,12 @@ check('consent candidates: OneTrust first, the cmp-prefixed consent-manager butt
   assert.ok(c.indexOf('#cmpwelcomebtnyes') < c.indexOf('button:has-text("Accept all")'), 'id selectors before the text fallbacks');
   assert.equal(new Set(c).size, c.length, 'no duplicate candidate');
   assert.ok(c.every((sel) => typeof sel === 'string' && sel.trim() === sel && sel.length), 'every candidate is a trimmed selector string');
+});
+check('dialog pass: NATIVE_DIALOG, MODAL_DIALOGS and DIALOG_CLOSE_CANDIDATES pinned in order, the lists frozen', () => {
+  assert.equal(session.NATIVE_DIALOG, 'dialog[open]');
+  assert.deepEqual(session.MODAL_DIALOGS, ['[role="dialog"][aria-modal="true"]', '.modal.show', '[class*="modal"][class*="open"]']);
+  assert.deepEqual(session.DIALOG_CLOSE_CANDIDATES, ['[aria-label*="close" i]', '[aria-label*="schließen" i]', '[data-dismiss]', 'button.close', '.modal__close', '[class*="close"]']);
+  for (const list of [session.MODAL_DIALOGS, session.DIALOG_CLOSE_CANDIDATES]) assert.ok(Object.isFrozen(list), 'frozen');
 });
 check('isLiveHttpUrl: live http(s) only — never localhost, loopback, file: or garbage', () => {
   assert.equal(session.isLiveHttpUrl('https://www.example.com/page'), true);
@@ -539,6 +552,116 @@ check('side cache: write → hit; one key field changed → miss naming it; key 
     assert.ok(existsSync(file));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
+
+// ---- browser (needs playwright importable): pages from an in-process node:http origin on 127.0.0.1 ----------------
+let chromium = null;
+try { ({ chromium } = await import('playwright')); } catch { chromium = null; console.log('skip  browser checks (playwright not importable here; run this test in an environment that has it)'); }
+// One origin for every browser check: `routes` maps a path (query stripped) to an HTML string, or to a handler
+// (req, res) for a route that answers otherwise; any other path is a 404. close() resolves once the server is down.
+const serveRoutes = async (routes) => {
+  const server = createServer((req, res) => {
+    const route = routes[req.url.split('?')[0]];
+    if (typeof route === 'function') { route(req, res); return; }
+    res.writeHead(route ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(route || 'not found');
+  });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  return { base: `http://127.0.0.1:${server.address().port}`, close: () => new Promise((r) => { server.close(r); }) };
+};
+// A fixture page ≥ 3000 px tall with > 2 KB of ordinary copy under a plain heading (never read as a denial page);
+// `extra` lands after <main>, `head` in <head>, `htmlClass` / `bodyClass` on html / body.
+const COPY = '<p>Ordinary page copy: the spring range, store hours, delivery options and the size guide.</p>'.repeat(40);
+const fixturePage = (extra, { head = '', htmlClass = '', bodyClass = '' } = {}) => `<!doctype html><html${htmlClass ? ` class="${htmlClass}"` : ''}><head><meta charset="utf-8">`
+  + `<title>Spring range</title><style>html,body{margin:0}main{min-height:3200px}</style>${head}</head>`
+  + `<body${bodyClass ? ` class="${bodyClass}"` : ''}><main><h1>Spring range</h1>${COPY}</main>${extra}</body></html>`;
+const DIALOG_PAGES = {
+  // (a) a native modal dialog whose opener also locked the body
+  '/dialog-modal': fixturePage(`<dialog id="promo"><p>Free delivery this week.</p></dialog>
+    <script>document.getElementById('promo').showModal(); document.body.style.overflow = 'hidden';</script>`),
+  // (b) page CSS keeps a closed dialog displayed; only its "Schließen" button hides it
+  '/dialog-styled': fixturePage(`<dialog id="notice" open><p>Neue Öffnungszeiten.</p>
+    <button type="button" aria-label="Schließen" onclick="this.closest('dialog').style.display = 'none'">Schließen</button></dialog>`,
+  { head: '<style>dialog{display:block}</style>' }),
+  // (c) a non-native modal its close control hides — the html lock class stays — and a fixed panel only Escape hides.
+  // The control is a non-button `.modal__close`: a `button.close` in a `.modal` is the marketing pass's
+  // (`button[class*="close" i]`), so that modal would never reach the dialog pass.
+  '/modals': fixturePage(`<div class="modal show" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.5)">
+    <p>Choose your region.</p><span class="modal__close" role="button" tabindex="0" onclick="this.closest('.modal').style.display = 'none'">×</span></div>
+    <div class="promo-modal is-open" style="position:fixed;left:0;right:0;bottom:0;height:240px;background:#eee"><p>Spring offer.</p></div>
+    <script>document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelector('.promo-modal').style.display = 'none'; });</script>`,
+  { htmlClass: 'locked', head: '<style>html.locked{overflow:hidden}</style>' }),
+  // (d) a fixed modal no control and no Escape closes, over a body lock — beside a dialog close() does close
+  '/modal-stuck': fixturePage(`<dialog id="note" open><p>Store hours changed.</p></dialog>
+    <div id="blocker" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.6)"><p>Please wait.</p></div>`,
+  { head: '<style>body{overflow:hidden}</style>' }),
+  // (e) a lock class with no modal open, and an in-content button whose class names a modal opener
+  '/lock-class': fixturePage('<button type="button" class="modal-opener">Open the size guide</button>',
+    { bodyClass: 'modal-open', head: '<style>body.modal-open{overflow:hidden}</style>' }),
+  // (f) no dialog; a consent banner
+  '/consent': fixturePage(`<div id="onetrust-banner-sdk" style="position:fixed;left:0;right:0;bottom:0;height:120px;background:#123">
+    <button type="button" id="onetrust-accept-btn-handler" onclick="document.getElementById('onetrust-banner-sdk').remove()">Accept</button></div>`),
+};
+if (chromium) {
+  const origin = await serveRoutes(DIALOG_PAGES);
+  let browser = null;
+  try {
+    browser = await chromium.launch();
+    // one fresh page per fixture, a plain goto (these exercise dismissOverlays, not gotoLive), one sweep (no late
+    // window), then `read(page)` → the fields merged into the result
+    const sweep = async (path, read = async () => ({})) => {
+      const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
+      try {
+        await page.goto(`${origin.base}${path}`, { waitUntil: 'load' });
+        const d = await session.dismissOverlays(page, { lateWindowMs: 0 });
+        return { d, ...(await read(page)) };
+      } finally { await page.close(); }
+    };
+    const readLock = async (page) => ({
+      lock: await page.evaluate(session.scrollLockInPage),
+      x: await page.evaluate(() => [getComputedStyle(document.documentElement).overflowX, getComputedStyle(document.body).overflowX]),
+      y: await page.evaluate(() => { window.scrollTo(0, 1000); return window.scrollY; }),
+    });
+    const pass = (d) => [d.dialogs, d.dialogsLeft, d.scrollLockReleased];
+
+    await checkAsync('dismissOverlays (a): an open native <dialog> is close()d and the body lock it set released — overflow-y only; the window scrolls', async () => {
+      const { d, lock, x, y } = await sweep('/dialog-modal', readLock);
+      assert.deepEqual(Object.keys(d), ['extra', 'consent', 'marketing', 'dialogs', 'dialogsLeft', 'scrollLockReleased'], 'the return shape');
+      assert.deepEqual(pass(d), [['dialog#promo (close())'], [], true]);
+      assert.equal(lock.locked, false, JSON.stringify(lock));
+      assert.equal(x[1], 'hidden', 'the body keeps its overflow-x (R2)');
+      assert.ok(y >= 900, `window.scrollY ${y} after scrollTo(0, 1000)`);
+    });
+    await checkAsync('dismissOverlays (b): a dialog page CSS keeps displayed after close() is closed by its "Schließen" control', async () => {
+      const { d } = await sweep('/dialog-styled');
+      assert.deepEqual(pass(d), [['dialog#notice (close control [aria-label*="schließen" i])'], [], false], 'no lock to release');
+    });
+    await checkAsync('dismissOverlays (c): a non-native modal closed by its close control, a panel by Escape — the html lock released (overflow-y only)', async () => {
+      const { d, lock, x } = await sweep('/modals', readLock);
+      assert.deepEqual(pass(d), [['div.modal.show (close control .modal__close)', 'div.promo-modal.is-open (Escape)'], [], true], JSON.stringify(d));
+      assert.deepEqual(d.marketing, [], 'the marketing pass left both to the dialog pass');
+      assert.equal(lock.locked, false, JSON.stringify(lock));
+      assert.equal(x[0], 'hidden', 'html keeps its overflow-x (R2)');
+    });
+    await checkAsync('dismissOverlays (d): a modal that survives keeps the lock (R1) — dialogsLeft names it, though another dialog closed', async () => {
+      const { d, lock } = await sweep('/modal-stuck', readLock);
+      assert.deepEqual(pass(d), [['dialog#note (close())'], ['div#blocker'], false]);
+      assert.deepEqual(lock, { html: 'visible', body: 'hidden', locked: true }, 'the lock is still in place');
+    });
+    await checkAsync('dismissOverlays (e): a lock class with no modal stays (R1) — body.modal-open and an in-content .modal-opener are no modal', async () => {
+      const { d, lock } = await sweep('/lock-class', readLock);
+      assert.deepEqual(pass(d), [[], [], false]);
+      assert.equal(lock.locked, true, 'the page\'s own lock is not released');
+    });
+    await checkAsync('dismissOverlays (f): no dialog → empty dialog fields; the consent candidates still click the banner', async () => {
+      const { d, banner } = await sweep('/consent', async (page) => ({ banner: await page.locator('#onetrust-banner-sdk').count() }));
+      assert.equal(d.consent, '#onetrust-accept-btn-handler');
+      assert.deepEqual(pass(d), [[], [], false]);
+      assert.equal(banner, 0, 'the banner is gone');
+    });
+  } finally {
+    if (browser) await browser.close();
+    await origin.close();
+  }
+}
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nlive-session: all ${checks} checks passed`);
 process.exit(failed ? 1 : 0);
