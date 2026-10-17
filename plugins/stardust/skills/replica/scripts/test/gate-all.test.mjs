@@ -28,7 +28,9 @@
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
 // one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
-// font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*.
+// font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*. A font check
+// that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
+// the record, a live.json and a kept origin; the trust sandbox with STUB_FONTS_NULL_*.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -37,7 +39,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { OVERRIDE_VERDICTS, REGISTER_FILE, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { OVERRIDE_VERDICTS, REGISTER_FILE, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -52,8 +54,9 @@ const px = (pct, heightDelta, height = 10000) => ({ pct, heightDelta, compared: 
 const clip = (total) => ({ counts: { total, textClipped: total, textHidden: 0, controlHidden: 0, controlClipped: 0 } });
 const content = (missing, hidden, controlState = 0) => ({ totals: { missing, hidden, controlState } });
 // stitch-shot's --json capture record, written by every stitch stub: overlayLeft = STUB_OVERLAY_<ORIGIN|EDS>, fontsFailed =
-// STUB_FONTS_<ORIGIN|EDS> (a comma list). `side` is an expression in the stub that evaluates to 'ORIGIN' or 'EDS'.
-const SHOT_RECORD = (side) => `if (process.argv.includes('--json')) writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ overlayLeft: process.env['STUB_OVERLAY_' + ${side}] || null, fontsFailed: (process.env['STUB_FONTS_' + ${side}] || '').split(',').filter(Boolean) }));`;
+// STUB_FONTS_<ORIGIN|EDS> (a comma list), or null with a fontCheck note when STUB_FONTS_NULL_<ORIGIN|EDS> is set (the
+// check could not run). `side` is an expression in the stub that evaluates to 'ORIGIN' or 'EDS'.
+const SHOT_RECORD = (side) => `if (process.argv.includes('--json')) writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ overlayLeft: process.env['STUB_OVERLAY_' + ${side}] || null, ...(process.env['STUB_FONTS_NULL_' + ${side}] ? { fontsFailed: null, fontCheck: 'failed: stub font check' } : { fontsFailed: (process.env['STUB_FONTS_' + ${side}] || '').split(',').filter(Boolean) }) }));`;
 
 check('the recorded card page: pixel PASS, elements FAIL — pixelOnlyPass true, pass false, both reasons named', () => {
   const v = verdict({ pixel: px(6.68, 69, 29326), clip: clip(379), content: content(0, 284, 2) });
@@ -169,6 +172,32 @@ check('formatSummary: the calibration line names the faces that did not load —
   const r1 = { ...r0, slug: 'b', path: '/b', fontsNotLoaded: ['Brand Serif', 'Brand Sans'] };
   assert.match(formatSummary({ _provenance: pv, totals: { ...totals, pages: 3, fontsNotLoaded: 2 }, rows: [r1, { ...r0, slug: 'c', path: '/c', fontsNotLoaded: [] }, r0] }), /, fonts not loaded 2 \(Brand Sans, Brand Serif\); content n\/a/);
   assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontsNotLoaded: 0 }, rows: [{ ...r0, fontsNotLoaded: [] }] }), /fonts not loaded/);
+});
+// ---- a font check that could not run (record fontsFailed: null) fails the row too ---------------------------------------
+check('fontChecksSkipped: the sides (origin, build) whose stitch-live record says fontsFailed: null — explicit null only; [] or an absent key (a legacy meta) or another instrument adds none', () => {
+  const live = (fontsFailed) => ({ instrument: 'stitch-live', overlayLeft: null, fontsFailed });
+  assert.deepEqual(fontChecksSkipped(live(null), live([])), ['origin']);
+  assert.deepEqual(fontChecksSkipped(live(['A']), live(null)), ['build']);
+  assert.deepEqual(fontChecksSkipped(live(null), live(null)), ['origin', 'build']);
+  assert.deepEqual(fontChecksSkipped({ instrument: 'stitch-live', overlayLeft: null }, live([])), [], 'absent key: the legacy reading');
+  assert.deepEqual(fontChecksSkipped({ instrument: 'crawl-fullpage', asymmetric: true, fontsFailed: null }, null), []);
+  assert.deepEqual(fontsNotLoaded(live(null), live(['A'])), ['A'], 'null is not a family list');
+});
+check('verdict: a skipped font check fails an otherwise passing row — one font-check-skipped:<side> reason each, after any font-not-loaded reason; on an INCONCLUSIVE row it joins the reasons; the row carries fontChecksSkipped', () => {
+  const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: [], fonts: [], fontsSkipped: ['build'] } });
+  assert.deepEqual([v.pass, v.pixelOnlyPass, v.passWithOverride, v.fontChecksSkipped, v.fontsNotLoaded, v.reasons], [false, true, false, ['build'], [], ['font-check-skipped:build']]);
+  const both = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), register, override: { verdict: 'PASS', reason: 'R-01' }, capture: { polluted: [], fonts: ['A'], fontsSkipped: ['origin'] } });
+  assert.deepEqual(both.reasons, ['font-not-loaded:A', 'font-check-skipped:origin', `override rejected: verdict "PASS" ${KIND}`]);
+  const inc = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: ['origin capture polluted: overlay left — X'], fonts: [], fontsSkipped: ['origin', 'build'] } });
+  assert.deepEqual(inc.reasons, ['origin capture polluted: overlay left — X', 'font-check-skipped:origin', 'font-check-skipped:build']); assert.equal(inc.inconclusive, true);
+  assert.deepEqual(verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: [], fonts: [] } }).fontChecksSkipped, [], 'no fontsSkipped input: none');
+});
+check('formatSummary: the calibration line adds "font check skipped <n>" only when a row has one', () => {
+  const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
+  const r0 = { slug: 'a', path: '/a', pct: 1.5, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: false, pixelOnlyPass: true, fontsNotLoaded: [], fontChecksSkipped: ['build'], reasons: ['font-check-skipped:build'], override: null, error: null };
+  const totals = { pages: 1, pass: 0, pixelOnlyPass: 1, overridePass: 0, fail: 1, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, fontsNotLoaded: 0, fontChecksSkipped: 1 };
+  assert.match(formatSummary({ _provenance: pv, totals, rows: [r0] }), /Failing by criterion: pixel 0, height 0, clip 0, content 0, font check skipped 1; content n\/a/);
+  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontChecksSkipped: 0 }, rows: [{ ...r0, fontChecksSkipped: [] }] }), /font check skipped/);
 });
 // ---- a polluted capture: no pixel verdict — the row is INCONCLUSIVE ---------------------------------------------------
 check('capturePollution: a crawl-fullpage origin, an overlay left on either side → one reason per side; a legacy meta without overlayLeft, a failed or missing capture → none', () => {
@@ -1407,12 +1436,12 @@ check('trust 4: a crawl-fullpage origin fallback (the stitch failed, a crawl sho
   assert.deepEqual(row.reasons, ['origin capture polluted: crawl-fullpage fallback — stitch exit 1: stitch-shot error: stub exit 1 — crawl screenshot used']);
   assert.equal(r.s.totals.asymmetricOrigins, 1); assert.equal(r.s.totals.inconclusive, 1);
 });
-check('trust 5: a stitch-shot that writes no --json record (an older copy; the previous records deleted before each stitch) → both captures unchecked, INCONCLUSIVE — never clean', () => {
+check('trust 5: a stitch-shot that writes no --json record (an older copy; the previous records deleted before each stitch) → both captures unchecked (overlay and font check), INCONCLUSIVE — never clean', () => {
   const r = tgate([], { STUB_NO_JSON: '1' });
   assert.equal(r.status, 2, r.stderr + r.stdout);
-  assert.deepEqual(r.row('a').reasons, [`origin capture polluted: overlay left — ${UNCHECKED}`, `build capture polluted: overlay left — ${UNCHECKED}`]);
+  assert.deepEqual(r.row('a').reasons, [`origin capture polluted: overlay left — ${UNCHECKED}`, `build capture polluted: overlay left — ${UNCHECKED}`, 'font-check-skipped:origin', 'font-check-skipped:build']);
   assert.equal(existsSync(join(TOUT, 'a/eds-shot.json')), false, 'the last run\'s record was not read');
-  assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed], [UNCHECKED, []]);
+  assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed], [UNCHECKED, null]);
 });
 // overrides.json: v valid; k a free-text kind; u an R-<nn> the register lacks; c clip FAIL — all four pixel-FAIL rows.
 const OV = { v: { verdict: 'tier-shift', reason: 'R-01: the source serves another tier at 1440' }, k: { verdict: 'PASS (source capture)', reason: 'R-01: live drifted since capture' },
@@ -1468,6 +1497,27 @@ check('trust 9: a failed --recapture-origin that keeps a previous origin from be
   assert.equal(tgate([]).status, 0, 'a full round re-stitches it');
   const kept = tgate(['--only', 'a', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
   assert.equal(kept.status, 0, kept.stderr + kept.stdout); assert.deepEqual([kept.row('a').inconclusive, tjson('a', 'origin.json').overlayLeft], [false, null]);
+});
+check('trust 10: a font check that could not run (record fontsFailed: null) → font-check-skipped:<side>, a FAIL row, exit 2 — carried from the stitch record, a kept origin after a failed --recapture-origin and a live.json; an absent key in live.json stays absent', () => {
+  const r = tgate([], { STUB_FONTS_NULL_EDS: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  const row = r.row('a'); assert.deepEqual([row.pass, row.pixelOnlyPass, row.inconclusive, row.fontChecksSkipped, row.fontsNotLoaded, row.reasons], [false, true, false, ['build'], [], ['font-check-skipped:build']]);
+  assert.deepEqual([tjson('a', 'eds.json').fontsFailed, tjson('a', 'eds.json').fontCheck, tjson('a', 'origin.json').fontsFailed], [null, 'failed: stub font check', []]);
+  assert.deepEqual([r.s.totals.fontChecksSkipped, r.s.totals.fontsNotLoaded, r.s.totals.fail], [1, 0, 1]); assert.match(r.md, /, font check skipped 1; content n\/a/);
+  assert.equal(tgate([], { STUB_FONTS_NULL_ORIGIN: '1' }).row('a').reasons[0], 'font-check-skipped:origin');
+  const kept = tgate(['--only', 'a', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(kept.status, 2, kept.stderr + kept.stdout); assert.deepEqual(kept.row('a').reasons, ['font-check-skipped:origin'], 'the kept origin\'s null is not read as all fonts loaded');
+  assert.equal(tjson('a', 'origin.json').fontsFailed, null);
+  const g = join(troot, 'stardust/replica/gates/a-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/a', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, fontsFailed: null, at: new Date().toISOString() };
+  writeFileSync(join(g, 'live.json'), JSON.stringify(live));
+  const l = tgate([]);
+  assert.equal(l.status, 2, l.stderr + l.stdout); assert.equal(l.stitches('ORIGIN').length, 0); assert.equal(l.row('a').originReused.from, 'stardust/replica/gates/a-1440/live.png');
+  assert.deepEqual([l.row('a').reasons, tjson('a', 'origin.json').fontsFailed], [['font-check-skipped:origin'], null]);
+  const legacy = { ...live }; delete legacy.fontsFailed; writeFileSync(join(g, 'live.json'), JSON.stringify(legacy));
+  const a = tgate([]);
+  assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.stitches('ORIGIN').length, 0); assert.equal('fontsFailed' in tjson('a', 'origin.json'), false);
+  rmSync(g, { recursive: true, force: true });
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
