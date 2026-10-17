@@ -7,17 +7,19 @@
 // a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host,
 // INCONCLUSIVE rows listed as capture fixes (never failing, never errors), a row without a pixel measurement a no-verdict
 // row whatever its override says, and only a validated override skipping a row; the fix-round count per group row
-// (gate-all's roundsOf: rounds.json over the table count, else the runs/ seed) and the layout cap read from it.
+// (gate-all's roundsOf: rounds.json over the table count, else the runs/ seed) and the layout cap read from it;
+// triageGate, the in-process `--gate <dir> --no-parity --no-route` (only its pair written, nothing spawned, same bytes).
 // Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import cp, { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { blockOf, buildTriage, classifyRow, firstPass, formatTriage, parsePairMsg, requestLine } from '../gate-triage.mjs';
+import { blockOf, buildTriage, classifyRow, firstPass, formatTriage, parsePairMsg, requestLine, triageGate } from '../gate-triage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-triage.mjs');
@@ -501,5 +503,36 @@ check('(u) fix rounds: rounds.json wins over the table count; without it the run
   assert.deepEqual(pure.groups[0].rows.map((r) => [r.rounds, r.maxRounds, r.roundsFrom]), [[null, 3, null], [null, 3, null]], 'no rounds accessor: unknown, never a cap');
   assert.match(formatTriage(pure), /\(clip; untyped; rounds n\/a\)/);
 });
+check('(v) triageGate: one gate dir in-process — only its triage pair written, nothing spawned or appended; byte-identical to --gate <dir> --no-parity --no-route', () => withProject(merge(A, E), { parityOut: PARITY_E, mobile: E }, (root) => {
+  const gate = join(root, GATE); const pair = () => ['triage.json', 'triage.md'].map((f) => readFileSync(join(gate, f), 'utf8'));
+  put(root, `${GATE}/presence.json`, { '*': { hide: ['.geo-bar'] } });
+  put(root, `${GATE}/p10/rounds.json`, { rounds: 2, max: 3, at: [T1, T1] });
+  const before = treeHash(root).split('\n');
+  // every child_process entry point counted, the ESM bindings included (gate-triage imports spawnSync by name)
+  const names = ['spawn', 'spawnSync', 'exec', 'execSync', 'execFile', 'execFileSync', 'fork'];
+  const orig = Object.fromEntries(names.map((n) => [n, cp[n]])); const spawned = [];
+  for (const n of names) cp[n] = (...a) => { spawned.push([n, a[0]]); return orig[n](...a); };
+  syncBuiltinESMExports();
+  let res;
+  try { res = triageGate(gate, { root, parityScript: join(root, 'parity-stub.mjs'), noParity: false, noRoute: false, requests: join(root, 'queue.md') }); } finally { Object.assign(cp, orig); syncBuiltinESMExports(); }
+  assert.deepEqual(spawned, [], 'nothing spawned'); assert.deepEqual(calls(root), []);
+  const after = treeHash(root).split('\n');
+  assert.deepEqual(before.filter((l) => !after.includes(l)), [], 'nothing changed or removed');
+  assert.deepEqual(after.filter((l) => !before.includes(l)).map((l) => l.split(' ').slice(0, 2).join(' ')), [`f ${GATE}/triage.json`, `f ${GATE}/triage.md`], 'only the pair, only in its gate dir');
+  const [json, md] = pair();
+  assert.equal(res.md, md); assert.equal(`${JSON.stringify(res.triage, null, 2)}\n`, json);
+  assert.equal(res.triage._provenance.parity, 'off'); assert.equal(res.triage._provenance.presence, null);
+  const footer = res.triage.groups.find((g) => g.cause === 'block:footer');
+  assert.match(footer.requestLine, /property diff not run \(parity off\)/, 'a routed cause keeps its line in triage.json, appended nowhere');
+  assert.deepEqual(footer.rows.map((r) => [r.slug, r.rounds, r.roundsFrom]), [['p10', 2, 'rounds.json'], ['p11', 0, 'runs']]);
+  rmSync(join(gate, 'triage.json')); rmSync(join(gate, 'triage.md'));
+  const r = ok(run(root, ['--gate', gate, '--no-parity', '--no-route']));
+  assert.deepEqual(pair(), [json, md], 'the CLI writes the same bytes');
+  assert.match(r.stdout, /request not routed: block:footer@1440 \(--no-route\)/);
+  assert.equal(existsSync(join(root, 'stardust/rollout/foundation-requests.md')), false); assert.equal(existsSync(join(root, 'queue.md')), false);
+  assert.equal(existsSync(join(root, GATE360, 'triage.json')), false);
+  const empty = join(root, 'stardust/replica/gates/all-768'); mkdirSync(empty, { recursive: true });
+  assert.throws(() => triageGate(empty, { root }), /gate-triage: no gate table in /); assert.deepEqual(readdirSync(empty), []);
+}));
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

@@ -26,7 +26,11 @@
  * outputs and no new request line; run-dependent status goes to stdout only, as does the unit view (--unit with
  * units/<unit>.paths: own vs another unit's groups, and `first pass <w>: x/y` for the cluster's verdict line).
  *
- * Exports: parseArgs, blockOf, parsePairMsg, classifyRow, firstPass, buildTriage, requestLine, formatTriage.
+ * In-process: triageGate(<gate dir>, opts) is the CLI's `--gate <dir> --no-parity --no-route` on the same loading
+ * code — it writes that dir's triage.{json,md} (byte-identical to the CLI's), spawns nothing and appends nothing, so a
+ * caller can triage a gate dir right after a fix round (a recorded hands-off run never ran the triage at all).
+ *
+ * Exports: parseArgs, blockOf, parsePairMsg, classifyRow, firstPass, buildTriage, requestLine, formatTriage, triageGate.
  */
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
@@ -109,11 +113,15 @@ export function parseArgs(args) {
     else if (BOOL_FLAGS[a]) o[BOOL_FLAGS[a]] = true;
     else fail(`unknown argument ${a}`);
   }
+  return checkOpts(o);
+}
+/** The checks parseArgs and triageGate share: numbers coerced in place, --unit one table-safe name. */
+function checkOpts(o) {
   for (const k of ['hot', 'parityMax', 'parityTimeout']) {
     o[k] = Number(o[k]);
     if (!Number.isFinite(o[k]) || o[k] < 0) fail(`--${k.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)} must be a non-negative number`);
   }
-  if (/[|\r\n]/.test(o.unit) || !o.unit.trim()) fail('--unit must be a non-empty name without | or a newline');
+  if (/[|\r\n]/.test(String(o.unit)) || !String(o.unit).trim()) fail('--unit must be a non-empty name without | or a newline');
   return o;
 }
 
@@ -618,6 +626,36 @@ function discoverGates(rootAbs, noRuns) {
   return readdirSync(base).filter((n) => n.startsWith('all-')).map((n) => join(base, n)).filter((d) => statSync(d).isDirectory() && hasTable(d, noRuns)).sort(cmp);
 }
 
+/** The run's project: --root, the input paths (defaults under the root, explicit flags from the working directory), frozen paths. */
+function projectOf(opts) {
+  const rootAbs = resolve(opts.root);
+  if (!existsSync(rootAbs) || !statSync(rootAbs).isDirectory()) fail(`--root is not a directory: ${opts.root}`);
+  const rel = (p) => posix(relative(rootAbs, p)) || '.';
+  const at = (flag, def) => (flag ? resolve(flag) : join(rootAbs, def));
+  const P = { blocks: at(opts.blocks, 'stardust/rollout/coverage/blocks.json'), pages: at(opts.pages, 'stardust/rollout/coverage/pages.json'), state: at(opts.state, 'stardust/state.json'), units: at(opts.units, 'stardust/replica/units.json'), captures: at(opts.captures, 'stardust/current/pages'), manifest: at(opts.manifest, 'stardust/rollout/foundation-freeze.json'), requests: at(opts.requests, 'stardust/rollout/foundation-requests.md') };
+  const manifest = readJson(P.manifest);
+  const frozen = manifest && Array.isArray(manifest.paths) ? manifest.paths.map(String) : [...DEFAULT_PATHS];
+  return { rootAbs, rel, P, frozen };
+}
+const assertTable = (g, noRuns) => { if (!existsSync(g) || !hasTable(g, noRuns)) fail(`no gate table in ${g} (summary.json${noRuns ? '' : ' or runs/*.json'})`); };
+const assertNotFrozen = ({ rootAbs, rel, frozen }, p) => { const z = frozenHit(rootAbs, p, frozen); if (z) fail(`${rel(p)} is inside the frozen path ${z} — triage writes nothing there`); };
+/** The project documents every gate dir of a run reads (coverage blocks / pages, state, unit families). */
+const docsOf = ({ P }) => ({ blocksDoc: readJson(P.blocks), pagesDoc: readJson(P.pages), stateDoc: readJson(P.state), families: readJson(P.units) });
+
+/** One gate dir's buildTriage input (fs reads only): its tables, per-page evidence, captures, presence.json, fix rounds. */
+function gateInput({ rel, P, frozen }, { blocksDoc, pagesDoc, stateDoc, families }, g, opts) {
+  const files = [...(existsSync(join(g, 'summary.json')) ? [join(g, 'summary.json')] : []), ...(!opts.noRuns && existsSync(join(g, 'runs')) ? readdirSync(join(g, 'runs')).filter((f) => f.endsWith('.json')).sort(cmp).map((f) => join(g, 'runs', f)) : [])];
+  const sources = files.map((f) => { const d = readJson(f); if (!d || !Array.isArray(d.rows)) fail(`${f} is not a gate table (needs rows[])`); const prov = d._provenance || {}; return { file: rel(f), writtenAt: prov.writtenAt || null, prov, rows: d.rows }; });
+  const cache = new Map();
+  const ev = (slug, kind) => { const k = `${slug}\u0000${kind}`; if (!cache.has(k)) cache.set(k, readJson(join(g, String(slug), `${kind}.json`))); return cache.get(k); };
+  const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
+  const presAbs = join(g, 'presence.json'); const presence = existsSync(presAbs) && statSync(presAbs).isFile() ? rel(presAbs) : null;
+  // fix rounds as gate-all counts them (one rule): rounds.json, else the runs/ seed — whatever --no-runs says
+  let tables = null; const rounds = (slug) => roundsOf(g, String(slug), tables || (tables = runTables(g)));
+  return { gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence, rounds };
+}
+const writeTriage = (g, t, md) => { writeAtomic(join(g, 'triage.json'), `${JSON.stringify(t, null, 2)}\n`); writeAtomic(join(g, 'triage.md'), md); };
+
 /** The chrome-parity spawn behind buildTriage: one --parity-max budget per run, stored result reused on an equal key,
  * own live cache (never the gate's); the gate's presence.json and the rep row's hide list ride in the argv (= the key). */
 function parityRunner({ rootAbs, gateAbs, rel, opts, say, budget }) {
@@ -650,38 +688,44 @@ function parityRunner({ rootAbs, gateAbs, rel, opts, say, budget }) {
   };
 }
 
+/**
+ * triageGate(gateDir, opts) → { triage, md } — the in-process twin of `--gate <gateDir> --no-parity --no-route` (same
+ * loading code as the CLI, byte-identical triage.json / triage.md): reads one gate dir's inputs, builds the triage
+ * offline, writes <gateDir>/triage.{json,md} (tmp + rename) and nothing else — never spawns chrome-parity, never appends
+ * to foundation-requests.md (a routed group keeps its requestLine in triage.json). opts = parseArgs' option names:
+ * root (default '.'), noRuns, blocks, pages, state, units, captures, manifest, unit, hot, regions; parity and routing
+ * are always off. Throws (message `gate-triage: …`, nothing written) on no gate table, malformed JSON or a gate dir
+ * inside a frozen path. For a caller that runs the triage itself after a fix round, e.g. gate-all.
+ */
+export function triageGate(gateDir, opts = {}) {
+  const given = Object.fromEntries(Object.entries(opts || {}).filter(([, v]) => v !== undefined));
+  const o = checkOpts({ ...parseArgs([]), ...given, gates: [], noParity: true, noRoute: true, dryRun: false });
+  const proj = projectOf(o); const g = resolve(String(gateDir));
+  assertTable(g, o.noRuns); assertNotFrozen(proj, g);
+  const triage = buildTriage(gateInput(proj, docsOf(proj), g, o), null);
+  const md = formatTriage(triage);
+  writeTriage(g, triage, md);
+  return { triage, md };
+}
+
 function main(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
   const opts = parseArgs(argv);
-  const rootAbs = resolve(opts.root);
-  if (!existsSync(rootAbs) || !statSync(rootAbs).isDirectory()) fail(`--root is not a directory: ${opts.root}`);
-  const rel = (p) => posix(relative(rootAbs, p)) || '.';
-  const at = (flag, def) => (flag ? resolve(flag) : join(rootAbs, def));
-  const P = { blocks: at(opts.blocks, 'stardust/rollout/coverage/blocks.json'), pages: at(opts.pages, 'stardust/rollout/coverage/pages.json'), state: at(opts.state, 'stardust/state.json'), units: at(opts.units, 'stardust/replica/units.json'), captures: at(opts.captures, 'stardust/current/pages'), manifest: at(opts.manifest, 'stardust/rollout/foundation-freeze.json'), requests: at(opts.requests, 'stardust/rollout/foundation-requests.md') };
-  const manifest = readJson(P.manifest);
-  const frozen = manifest && Array.isArray(manifest.paths) ? manifest.paths.map(String) : [...DEFAULT_PATHS];
+  const proj = projectOf(opts); const { rootAbs, rel, P } = proj;
   const gates = opts.gates.length ? opts.gates.map((g) => resolve(g)) : discoverGates(rootAbs, opts.noRuns);
   if (!gates.length) fail('no gate table found (stardust/replica/gates/all-*/ with summary.json or runs/*.json) — run gate-all.mjs first or pass --gate');
-  for (const g of gates) { if (!existsSync(g) || !hasTable(g, opts.noRuns)) fail(`no gate table in ${g} (summary.json${opts.noRuns ? '' : ' or runs/*.json'})`); }
-  for (const p of [...gates, P.requests]) { const z = frozenHit(rootAbs, p, frozen); if (z) fail(`${rel(p)} is inside the frozen path ${z} — triage writes nothing there`); }
-  const blocksDoc = readJson(P.blocks); const pagesDoc = readJson(P.pages); const stateDoc = readJson(P.state); const families = readJson(P.units);
+  for (const g of gates) assertTable(g, opts.noRuns);
+  for (const p of [...gates, P.requests]) assertNotFrozen(proj, p);
+  const docs = docsOf(proj); const { pagesDoc } = docs;
   // the unit's own pages (handoff contract § 3 row C: units/<cluster>.paths, one web path per line)
   const unitFile = /^[\w.-]+$/.test(opts.unit) ? join(rootAbs, 'stardust', 'rollout', 'units', `${opts.unit}.paths`) : null;
   const unitPaths = unitFile && existsSync(unitFile) && statSync(unitFile).isFile() ? { file: rel(unitFile), keys: new Set(readFileSync(unitFile, 'utf8').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#')).map(pathKey)) } : null;
   const log = []; const say = (s) => log.push(s);
   const triages = []; const budget = { left: opts.parityMax };
   for (const g of gates) {
-    const files = [...(existsSync(join(g, 'summary.json')) ? [join(g, 'summary.json')] : []), ...(!opts.noRuns && existsSync(join(g, 'runs')) ? readdirSync(join(g, 'runs')).filter((f) => f.endsWith('.json')).sort(cmp).map((f) => join(g, 'runs', f)) : [])];
-    const sources = files.map((f) => { const d = readJson(f); if (!d || !Array.isArray(d.rows)) fail(`${f} is not a gate table (needs rows[])`); const prov = d._provenance || {}; return { file: rel(f), writtenAt: prov.writtenAt || null, prov, rows: d.rows }; });
-    const cache = new Map();
-    const ev = (slug, kind) => { const k = `${slug}\u0000${kind}`; if (!cache.has(k)) cache.set(k, readJson(join(g, String(slug), `${kind}.json`))); return cache.get(k); };
-    const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
+    const input = gateInput(proj, docs, g, opts); const { sources } = input;
     const gateLog = [];
-    const presAbs = join(g, 'presence.json'); const presence = existsSync(presAbs) && statSync(presAbs).isFile() ? rel(presAbs) : null;
-    // fix rounds as gate-all counts them (one rule): rounds.json, else the runs/ seed — whatever --no-runs says
-    let tables = null; const rounds = (slug) => roundsOf(g, String(slug), tables || (tables = runTables(g)));
-    const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence, rounds },
-      parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
+    const t = buildTriage(input, parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
     // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages,
     // then the unit's first pass at this width (the cluster verdict's `first pass 360: x/y`)
     if (unitPaths) {
@@ -695,7 +739,7 @@ function main(argv) {
   }
   const out = (s) => (opts.json ? console.error(s) : console.log(s));
   for (const { g, t, md, gateLog } of triages) {
-    if (!opts.dryRun) { writeAtomic(join(g, 'triage.json'), `${JSON.stringify(t, null, 2)}\n`); writeAtomic(join(g, 'triage.md'), md); }
+    if (!opts.dryRun) writeTriage(g, t, md);
     if (!opts.json) console.log(opts.dryRun ? md : md.split('\n').slice(0, 12).join('\n'));
     if (!opts.dryRun) out(`triage → ${rel(join(g, 'triage.md'))}`);
     for (const s of gateLog) out(s);
