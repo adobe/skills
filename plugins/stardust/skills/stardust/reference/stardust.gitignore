@@ -8,9 +8,12 @@
 # Heavy regenerable captures, not tracked by default. Delete a line or add
 # a negation below it to track one in this project.
 current/assets/
-replica/gates/
 migrated/assets/
 rollout/qa/
+# The gate's JSON (row of record: summary, overrides, presence, rounds, triage, probes) is tracked so a lost container keeps the evidence; images stay untracked.
+replica/gates/**
+!replica/gates/**/
+!replica/gates/**/*.json
 
 # Screenshots are never tracked, wherever a skill writes them.
 qa/shots/
