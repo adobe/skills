@@ -425,9 +425,10 @@ tables, writes each row into `delivery.gate` — each width's own verdict in
 `delivery.gate.passByWidth`, so a unit is proven only when every width passed — and flips a
 failing page to `failed`; `verify` never marks it `verified` while the
 gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
-the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); pages it still fails
-get one bounded `gap-closure` pass per template, and what fails after it is reported as residuals,
-never looped again (handoff contract § 3).
+the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); only when
+`done-check.mjs` lists `pages_failed` after C-final does one bounded `gap-closure` pass per
+template run, and what fails after it is reported as residuals, never looped again (handoff
+contract § 3).
 
 ### Phase E2 — Link-audit completeness
 
