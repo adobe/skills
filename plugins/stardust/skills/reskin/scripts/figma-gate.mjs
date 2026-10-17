@@ -59,10 +59,15 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          decorates is exit 124 "stalled decoration: ..."). The reskin page is joined to mapping.md as above; then each slot
          is found in the preview's authored form (<url>.plain.html, read as text) as the first non-empty top-level <div>
          after the previous slot's whose text holds the slot's first heading (a split sub-slot has its parent's and may
-         share one), and takes that section's decorated position: selector "main > div:nth-child(k)", index k - 1. A
-         <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index. A slot with
-         no authored section, a slot found before the previous one and a non-empty authored section no slot took are
-         "section drift: ..." ("section drift: plain section 3 matches no slot"). join.json records regime "preview".
+         share one). A <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index.
+         A slot with no authored section, a slot found before the previous one and a non-empty authored section no slot
+         took are "section drift: ..." ("section drift: plain section 3 matches no slot"). Each slot is then found the same
+         way in the decorated page, and its selector is "main > div:nth-child(k)" of the decorated div holding its heading
+         (index k - 1): decoration may prepend a section (a hero block) or drop an empty one, so k is not the authored
+         position. A slot that moved gets one line under the PASS line ("  note: s01: decoration moved plain section 1 to
+         main > div:nth-child(3): ...") and an entry in join.json notes; a heading in no decorated div, a slot out of order
+         there or two slots in one decorated div are "section drift: s02: anchor "..." not in any decorated main > div"
+         and the like. join.json records regime "preview".
 geometry B1. Runs the join first (drift stops here, exit 1), validates the checks file, then measures every
          geometry entry on the page (one page load per width) against the same measure taken from its Figma
          node (relative to the module root) or its token: width, height, left, right, top, gapX, gapY and
@@ -146,7 +151,9 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          local takes neither --reskin nor a site token.
 --auth-header <value> | --token-env <NAME>  (preview only) the Authorization header value for a protected preview, or the
          environment variable (or .env entry) holding the token; neither may be empty. Sent to the preview origin only, on
-         the page and on its .plain.html, never printed (every line the gate prints has it redacted) and never written.
+         the page and on its .plain.html, never printed (every line the gate prints has it redacted, and a usage error
+         never quotes a flag's value or a stray argument next to one: write the value as a separate argument, quoted if it
+         has a space: --auth-header "token <value>") and never written. --token-env takes a variable NAME.
          HTTP 401 or 403 from the preview is exit 2.
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
@@ -200,11 +207,19 @@ export function parseArgs(argv, UsageError) {
       opts[a.slice(2)] = val;
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
-    else if (a.startsWith('--')) throw new UsageError(`unknown flag ${a} for ${cmd}`);
-    else positional.push(a);
+    else if (a.startsWith('--')) {
+      // An unknown --flag=value is named by its flag alone: the value may be a secret.
+      const name = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+      throw new UsageError(name === a ? `unknown flag ${a} for ${cmd}` : `unknown flag ${name} for ${cmd}: a flag and its value are separate arguments (${name} <value>)`);
+    } else positional.push(a);
   }
   if (positional.length < spec.positional.length) throw new UsageError(`${cmd} needs ${spec.positional.join(' ')}`);
-  if (positional.length > spec.positional.length) throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
+  if (positional.length > spec.positional.length) {
+    // Next to a site-token flag the stray argument may be the rest of an unquoted header value: it is not printed.
+    throw new UsageError(rest.some((x) => SECRET_FLAGS.has(x))
+      ? 'unexpected argument: quote the value of --auth-header ("token <value>"), it has a space; the argument is not shown, it may be part of the secret'
+      : `unexpected argument "${positional[spec.positional.length]}"`);
+  }
   return { cmd, positional, opts };
 }
 
@@ -258,6 +273,7 @@ function logDrift(result, log) {
 function logJoin(result, log) {
   if (!result.pass) { logDrift(result, log); return; }
   log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
+  for (const n of result.notes ?? []) log(`  note: ${n}`);
 }
 
 async function joinStep({ dir, opts, log, UsageError, auth }) {
@@ -505,10 +521,12 @@ function checkTarget(cmd, opts, UsageError) {
 // text: nothing the gate prints or throws may carry it. The token goes to the preview origin through previewTarget only.
 async function siteToken(opts, UsageError) {
   if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return null;
+  // The variable's name is never printed: a token typed in its place would be echoed.
+  if (opts['token-env'] !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(opts['token-env'])) throw new UsageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
   const eds = await helper('eds', 'deployed');
   await eds.loadLiveSession();
   const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
-  if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
+  if (!auth?.trim()) throw new UsageError('no site token: the variable --token-env names is not set in the environment or .env');
   return { auth, redact: (text) => eds.redact(text, auth) };
 }
 

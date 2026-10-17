@@ -105,8 +105,9 @@ async function fetchPlain(url, auth) {
 // A deployed EDS page (--target preview). open() navigates it like any EDS page, with the site token sent to its
 // origin only, and waits for the decoration: a block that never decorates throws code 124 "stalled decoration: …",
 // a bot challenge code 3, a 401 or 403 a usage error. Its sections are not marked, so join.collect reads what the
-// join needs, the authored form of the page and the data-slot sections of the reskin page (a file or URL, opened
-// in a second page of the same browser), and join.match is plain-join.mjs's plainJoin over them.
+// join needs: the authored form of the page, the text of each decorated `main > div` (the page is open) and the
+// data-slot sections of the reskin page (a file or URL, opened in a second page of the same browser); join.match is
+// plain-join.mjs's plainJoin over them.
 export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000 } = {}) {
   const url = toUrl(input);
   if (!/^https?:/i.test(url)) throw new UsageError(`--target preview needs the http(s) URL of the preview, got ${input}`);
@@ -120,12 +121,13 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
       name: '.plain.html',
       async collect(page) {
         const html = await fetchPlain(plainUrl(url), auth);
+        const decorated = await page.evaluate(() => [...document.querySelectorAll('main > div')].map((el) => el.innerText));
         const local = await reskinPage.open(page.context().browser(), page.viewportSize()?.width ?? 1440);
-        try { return { local: await localAttributes.collect(local), html }; } finally { await local.context().close(); }
+        try { return { local: await localAttributes.collect(local), html, decorated }; } finally { await local.context().close(); }
       },
       async match({ dom, ...rest }) {
         const { plainJoin, plainSections } = await import('./plain-join.mjs');
-        return plainJoin({ ...rest, local: dom.local, plain: plainSections(dom.html) });
+        return plainJoin({ ...rest, local: dom.local, plain: plainSections(dom.html), decorated: dom.decorated });
       },
     },
     async open(browser, width) {

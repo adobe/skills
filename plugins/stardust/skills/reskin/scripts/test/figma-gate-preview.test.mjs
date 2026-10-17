@@ -46,7 +46,9 @@ const local = [
   { slot: 's02', module: 'M2', text: 'Everything in one place Plan the work. Ship each change. New Try it', nested: false },
 ];
 const plain = plainSections(PLAIN);
-const joined = (over = {}) => plainJoin({ local, plain, mapping, anchors: a, modules, ...over });
+// The decorated page's sections as the browser reads them (innerText per main > div): the authored ones, one to one.
+const decorated = plain.map((s) => s.text);
+const joined = (over = {}) => plainJoin({ local, plain, decorated, mapping, anchors: a, modules, ...over });
 const doc = (...divs) => `<body>\n<header><div>header</div></header>\n<main>\n${divs.join('\n')}\n</main>\n<footer><div>footer</div></footer>\n</body>`;
 const sub = [{ slot: 's01', module: 'M1', status: 'mapped' }, { slot: 's02-a', module: 'M2', status: 'mapped' }, { slot: 's02-b', module: 'M2', status: 'mapped' }];
 
@@ -75,6 +77,24 @@ await check('plainSections: a section holding nothing, or only a metadata or sec
   assert.equal(s[3].text, '');
 });
 
+await check('plainSections: only a real class attribute names a metadata block (data-class, a class-like attribute value do not)', () => {
+  const meta = (attrs) => `<div ${attrs}><div><div>title</div><div>Hidden title</div></div></div>`;
+  const s = plainSections(doc(
+    `<div>${meta('data-class="metadata"')}</div>`,
+    `<div>${meta('title="x class=metadata"')}</div>`,
+    `<div>${meta('data-class="metadata" class="hero"')}</div>`,
+    `<div>${meta('id="m" class=\'metadata\'')}</div>`,
+    `<div>${meta('DATA-CLASS=metadata CLASS=Section-Metadata')}</div>`,
+  ));
+  assert.deepEqual(s.map((x) => [x.index, x.text, x.empty]), [
+    [0, 'title hidden title', false],
+    [1, 'title hidden title', false],
+    [2, 'title hidden title', false],
+    [3, '', true],
+    [4, '', true],
+  ]);
+});
+
 await check('plainSections: a metadata block\'s text is left out of the section that holds it', () => {
   const smeta = '<div class="section-metadata"><div><div>style</div><div>dark</div></div></div>';
   const meta = '<div class="metadata"><div><div>title</div><div>Hidden title</div></div></div>';
@@ -99,10 +119,57 @@ await check('plainJoin passes the fixture: s01 and s02 land on the decorated chi
   const r = joined();
   assert.equal(r.pass, true, r.problems.join('\n'));
   assert.deepEqual(r.problems, []);
+  assert.deepEqual(r.notes, []);
   assert.deepEqual(r.sections, [
     { slot: 's01', module: 'M1', node: '1:3', selector: 'main > div:nth-child(2)', index: 1 },
     { slot: 's02', module: 'M2', node: '1:7', selector: 'main > div:nth-child(3)', index: 2 },
   ]);
+});
+
+await check('plainJoin: a section the decoration prepended (stock buildHeroBlock) moves the selectors to the decorated divs holding the anchors, with a note each', () => {
+  const r = joined({ decorated: ['Banner promo', ...decorated] });
+  assert.equal(r.pass, true, r.problems.join('\n'));
+  assert.deepEqual(r.sections.map((s) => [s.slot, s.selector, s.index]), [['s01', 'main > div:nth-child(3)', 2], ['s02', 'main > div:nth-child(4)', 3]]);
+  assert.deepEqual(r.notes, [
+    's01: decoration moved plain section 1 to main > div:nth-child(3): the selector follows the decorated page',
+    's02: decoration moved plain section 2 to main > div:nth-child(4): the selector follows the decorated page',
+  ]);
+});
+
+await check('plainJoin: a section the decoration dropped (an empty one) moves the selectors up; only the moved slots are noted', () => {
+  const r = joined({ decorated: decorated.slice(1) });
+  assert.equal(r.pass, true, r.problems.join('\n'));
+  assert.deepEqual(r.sections.map((s) => [s.slot, s.selector]), [['s01', 'main > div:nth-child(1)'], ['s02', 'main > div:nth-child(2)']]);
+  assert.equal(r.notes.length, 2);
+  const between = joined({ decorated: [decorated[0], decorated[1], 'Banner promo', decorated[2]] });
+  assert.equal(between.pass, true, between.problems.join('\n'));
+  assert.deepEqual(between.sections.map((s) => s.selector), ['main > div:nth-child(2)', 'main > div:nth-child(4)']);
+  assert.deepEqual(between.notes, ['s02: decoration moved plain section 2 to main > div:nth-child(4): the selector follows the decorated page']);
+});
+
+await check('plainJoin: the decorated text is read as the browser gives it (newlines, case, spacing)', () => {
+  const r = joined({ decorated: ['', 'WELCOME\nto the   kit\n\nGet started', 'Everything\nIN one place'] });
+  assert.equal(r.pass, true, r.problems.join('\n'));
+  assert.deepEqual(r.notes, []);
+});
+
+await check('plainJoin: a slot whose anchor is in no decorated section is section drift (the page was decorated without it)', () => {
+  const r = joined({ decorated: [decorated[0], decorated[1], 'Something else entirely'] });
+  assert.equal(r.pass, false);
+  assert.deepEqual(r.problems, ['section drift: s02: anchor "everything in one place" not in any decorated main > div']);
+  assert.deepEqual(r.sections.map((s) => s.slot), ['s01']);
+});
+
+await check('plainJoin: decorated sections in another order than the slots, or two slots in one decorated section, are section drift', () => {
+  const swapped = joined({ decorated: [decorated[0], decorated[2], decorated[1]] });
+  assert.deepEqual(swapped.problems, ['section drift: s02 before s01 in the decorated main: its text is in main > div:nth-child(2), s01 is in main > div:nth-child(3)']);
+  const merged = joined({ decorated: [decorated[0], `${decorated[1]} ${decorated[2]}`] });
+  assert.deepEqual(merged.problems, ['section drift: s02 shares main > div:nth-child(2) with s01: one decorated section per slot']);
+});
+
+await check('plainJoin: a slot the authored form lacks is reported once; the decorated page is searched for the slots found there only', () => {
+  const r = joined({ plain: plain.slice(0, 2) });
+  assert.deepEqual(r.problems, ['section drift: s02: anchor "everything in one place" not in any .plain.html section']);
 });
 
 await check('plainJoin: swapped plain sections are section drift', () => {
@@ -121,7 +188,7 @@ await check('plainJoin: an extra non-empty plain section is "plain section 3 mat
 });
 
 await check('plainJoin: an extra section between two slots is named, and the later slot still joins past it', () => {
-  const r = joined({ plain: [plain[0], plain[1], { index: 2, text: 'promo', empty: false }, { ...plain[2], index: 3 }] });
+  const r = joined({ plain: [plain[0], plain[1], { index: 2, text: 'promo', empty: false }, { ...plain[2], index: 3 }], decorated: [decorated[0], decorated[1], 'promo', decorated[2]] });
   assert.deepEqual(r.problems, ['section drift: plain section 2 matches no slot']);
   assert.equal(r.sections[1].selector, 'main > div:nth-child(4)');
 });
@@ -213,9 +280,12 @@ if (playwrightOk) {
         assert.equal(await page.evaluate(() => innerWidth), 1280);
         assert.equal(await page.evaluate(() => document.body.classList.contains('appear')), true);
         assert.equal(await page.evaluate(() => [...document.querySelectorAll('[data-block-status]')].every((el) => el.getAttribute('data-block-status') === 'loaded')), true);
-        const { local, html } = await target.join.collect(page);
+        const { local, html, decorated: texts } = await target.join.collect(page);
         assert.deepEqual(local.map((s) => [s.slot, s.module, s.nested]), [['s01', 'M1', false], ['s02', 'M2', false]]);
         assert.equal(html, PLAIN);
+        assert.equal(texts.length, 3);
+        assert.equal(texts[0], '');
+        assert.ok(texts[1].startsWith('Welcome to the kit') && texts[2].includes('Everything in one place'), texts.join(' | '));
         await page.context().close();
       });
     });
@@ -321,6 +391,53 @@ if (playwrightOk) {
     });
   });
 
+  const decoratedWith = (name, change) => customPreview(name, PLAIN, change);
+  const firstSection = '<div class="section" data-section-status="initialized"></div>\n';
+
+  await check('CLI join --target preview: a section the decoration prepended does not shift the sections: selectors follow the decorated divs, with notes', async () => {
+    const promo = '<div class="section" data-section-status="initialized"><div class="default-content-wrapper"><p>Banner promo</p></div></div>\n';
+    const page = decoratedWith('decorated-prepend', (html) => html.replace('<main>\n', `<main>\n${promo}`));
+    await withPreview({ pages: { '/ns/home': page } }, async (server) => {
+      const p = project('cli-prepend');
+      const r = await run(joinArgs(p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.match(r.stdout, /^PASS join: 2 section\(s\)/m);
+      assert.match(r.stdout, /^ {2}note: s01: decoration moved plain section 1 to main > div:nth-child\(3\)/m);
+      const j = joinJson(p);
+      assert.deepEqual(j.sections.map((s) => [s.slot, s.selector, s.index]), [['s01', 'main > div:nth-child(3)', 2], ['s02', 'main > div:nth-child(4)', 3]]);
+      assert.equal(j.notes.length, 2);
+      // The recorded selector measures the section of the slot: the decorated div at that position holds the slot's heading.
+      const browser = await openBrowser(chromium, { tier: 'plain' });
+      try {
+        const page2 = await previewTarget(`${server.origin}/ns/home`, { reskin: p.page }).open(browser, 1440);
+        assert.match(await page2.locator(j.sections[0].selector).innerText(), /^Welcome to the kit/);
+        assert.match(await page2.locator(j.sections[1].selector).innerText(), /^Everything in one place/);
+        await page2.context().close();
+      } finally { await browser.close(); }
+    });
+  });
+
+  await check('CLI join --target preview: an empty section the decoration dropped moves the selectors up (main > div:nth-child(1) and (2))', async () => {
+    const page = decoratedWith('decorated-drop', (html) => html.replace(firstSection, ''));
+    await withPreview({ pages: { '/ns/home': page } }, async (server) => {
+      const p = project('cli-drop');
+      const r = await run(joinArgs(p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.deepEqual(joinJson(p).sections.map((s) => s.selector), ['main > div:nth-child(1)', 'main > div:nth-child(2)']);
+    });
+  });
+
+  await check('CLI join --target preview: a heading the decoration lost is exit 1, "section drift: s02: anchor … not in any decorated main > div"', async () => {
+    const page = decoratedWith('decorated-lost', (html) => html.replace('<h2 id="everything-in-one-place">Everything in one place</h2>', '<h2>Something else</h2>'));
+    await withPreview({ pages: { '/ns/home': page } }, async (server) => {
+      const p = project('cli-lost');
+      const r = await run(joinArgs(p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 1, r.all);
+      assert.match(r.stdout, /^ {2}section drift: s02: anchor "everything in one place" not in any decorated main > div$/m);
+      assert.equal(joinJson(p).pass, false);
+    });
+  });
+
   await check('CLI join --target preview: a stalled decoration is exit 124 "stalled decoration: …" and no join.json', async () => {
     await withPreview({ stallBlock: 'cards' }, async (server) => {
       const p = project('cli-stall');
@@ -396,7 +513,7 @@ await check('CLI usage errors: --target preview needs --reskin; a blank secret, 
     [[...withReskin, '--auth-header', ' '], /--auth-header needs a value/],
     [[...withReskin, '--auth-header'], /--auth-header needs a value/],
     [[...withReskin, '--token-env', ' '], /--token-env needs a value/],
-    [[...withReskin, '--token-env', 'NO_SUCH_PREVIEW_TOKEN'], /no site token: --token-env NO_SUCH_PREVIEW_TOKEN/],
+    [[...withReskin, '--token-env', 'NO_SUCH_PREVIEW_TOKEN'], /no site token: the variable --token-env names is not set in the environment or \.env/],
     [[...base, '--target', 'remote'], /--target is local or preview, got "remote"/],
     [[...base, '--target', 'preview', '--reskin', join(scratch, 'no-such.html')], /no-such\.html/],
     [[...base, '--reskin', p.page], /--reskin applies to --target preview/],
@@ -411,6 +528,40 @@ await check('CLI usage errors: --target preview needs --reskin; a blank secret, 
     assert.match(r.stderr, pattern, args.slice(4).join(' '));
   }
   assert.equal(existsSync(join(workDir(p.dir, p.slug), 'join.json')), false);
+});
+
+await check('a mistyped secret flag is never echoed: --auth-header=<value>, an unquoted header value, a token typed as the --token-env name', async () => {
+  const p = makeProject(join(scratch, 'secrets'));
+  const canary = 'hlxtok-canary-7f3a91';
+  const base = ['join', '--page', p.slug, '--url', 'http://127.0.0.1:9/ns/home', '--dir', p.dir, '--target', 'preview', '--reskin', p.page];
+  const clean = async (args, pattern, why, secrets = [canary]) => {
+    const r = await run(args, { cwd: p.root });
+    assert.equal(r.status, 2, `${why}\n${r.all.replaceAll(canary, '[canary]')}`);
+    for (const s of secrets) {
+      assert.equal(r.all.includes(s), false, `${why}: the secret is in the output:\n${r.all}`);
+      assert.equal(r.all.includes(s.slice(4, -2)), false, `${why}: part of the secret is in the output:\n${r.all}`);
+    }
+    assert.match(r.stderr, pattern, why);
+  };
+  await clean([...base, `--auth-header=token ${canary}`], /^figma-gate: unknown flag --auth-header for join: .*--auth-header <value>/m, '--auth-header=value');
+  await clean([...base, `--auth-header=${canary}`], /unknown flag --auth-header for join/, '--auth-header=bare token');
+  await clean([...base, `--token-env=${canary}`], /unknown flag --token-env for join: .*--token-env <value>/, '--token-env=value');
+  await clean([...base, '--auth-header', 'token', canary], /unexpected argument: quote the value/, 'unquoted --auth-header value');
+  await clean([...base, '--token-env', 'NAME', canary], /unexpected argument: quote the value/, 'a stray argument after --token-env');
+  await clean(['join', canary, ...base.slice(1), '--token-env', 'NAME'], /unexpected argument: quote the value/, 'a stray argument before --token-env');
+  await clean([...base, '--token-env', canary], /--token-env takes the name of an environment variable/, 'a token typed as the --token-env name');
+  const bare = 'hlxtokcanary7f3a91';
+  await clean([...base, '--token-env', bare], /no site token: the variable --token-env names is not set/, 'a token typed as the --token-env name, shaped like a name', [bare]);
+  // Without a secret flag the message still names what it did not understand.
+  const plainRun = await run(['join', 'stray-arg', '--page', p.slug], { cwd: p.root });
+  assert.equal(plainRun.status, 2, plainRun.all);
+  assert.match(plainRun.stderr, /unexpected argument "stray-arg"/);
+  const other = await run(['join', `--dir=${join(scratch, 'x')}`, '--page', p.slug], { cwd: p.root });
+  assert.equal(other.status, 2, other.all);
+  assert.match(other.stderr, /unknown flag --dir for join: .*--dir <value>/);
+  assert.equal(other.all.includes(scratch), false, 'the value of an unknown --x=… flag is echoed');
+  const known = await run(['join', '--bogus', '--page', p.slug], { cwd: p.root });
+  assert.match(known.stderr, /unknown flag --bogus for join/);
 });
 
 await check('--target preview is join only for now: geometry, ramp, pixel and all exit 2 "lands in a later task" before any browser', async () => {
@@ -437,7 +588,7 @@ await check('every line the gate prints and every error it throws has the token 
 await check('--help lists --target, --reskin, --auth-header and --token-env, the preview join and its exit codes', async () => {
   const r = await run(['--help']);
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['--target local|preview', '--reskin', '--auth-header', '--token-env', '.plain.html', 'plain section', 'stalled decoration']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['--target local|preview', '--reskin', '--auth-header', '--token-env', '.plain.html', 'plain section', 'stalled decoration', 'decorated main > div', 'note:']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
 
 rmSync(scratch, { recursive: true, force: true });
