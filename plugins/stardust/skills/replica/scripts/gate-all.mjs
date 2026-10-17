@@ -66,7 +66,8 @@
  * stardust/status.jsonl (--origin-max-age: older ones too); the row (`originReused`), origin.json and _run.log record it.
  * A kept origin (a fix round's, either stage's live.png) must record the overlay-left check with nothing left
  * (origin.json / live.json `overlayLeft: null`) — a capture from before the check, or one that left an overlay, is
- * re-stitched; --skip-existing and --compare-only keep what is on disk as documented.
+ * re-stitched; a previous origin kept after a failed --recapture-origin without that record is `unchecked` (an
+ * INCONCLUSIVE row); --skip-existing and --compare-only keep what is on disk as documented.
  *
  * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
  * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
@@ -416,7 +417,9 @@ export function formatSummary(summary) {
   // validated overrides lift a row (counted); rejected ones are named — both with the share of the table they cover
   const counted = t.overridePass || 0; const rejected = t.overrideRejected || 0;
   const ovClause = counted + rejected ? ` · overrides: ${counted} counted / ${rejected} rejected — override share ${counted} of ${t.pages} (${(t.pages ? (100 * counted) / t.pages : 0).toFixed(1)} %)` : '';
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
+  // the faces that did not load, named once across the table (the calibration line)
+  const fonts = [...new Set(summary.rows.flatMap((r) => r.fontsNotLoaded || []))].sort();
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -989,7 +992,9 @@ async function main() {
         // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
         const kept = readJson(meta); const f = fresh(kept);
         warn = `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept`;
-        r = { ...kept, ...reuseOf(out, kept, f.fresh ? f.policy : 'recapture-failed'), stale: f.fresh ? undefined : f.reason, note: warn };
+        // a kept origin from before the overlay-left check is unchecked, never clean (the row is INCONCLUSIVE)
+        const checked = 'overlayLeft' in kept ? {} : { overlayLeft: 'unchecked (previous origin predates the overlay-left check)' };
+        r = { ...kept, ...checked, ...(Array.isArray(kept.fontsFailed) ? {} : { fontsFailed: [] }), ...reuseOf(out, kept, f.fresh ? f.policy : 'recapture-failed'), stale: f.fresh ? undefined : f.reason, note: warn };
       }
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `stitch exit ${s.code}: ${lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };

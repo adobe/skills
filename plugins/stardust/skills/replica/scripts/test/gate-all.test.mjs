@@ -23,7 +23,8 @@
 // same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line.
 // Gate trust: capturePollution, an INCONCLUSIVE verdict / summary cell / head, rowReuse and the reuse deciders refusing a
 // capture without the overlay-left check or with an overlay left; every stitch stub writes the --json capture record
-// (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record → INCONCLUSIVE, exit 2.
+// (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record, a failed
+// --recapture-origin keeping an origin from before the check → INCONCLUSIVE, exit 2.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
 // one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
@@ -160,12 +161,14 @@ check('verdict: a face that did not load fails an otherwise passing row — one 
   assert.deepEqual(ov.reasons, ['font-not-loaded:A', `override rejected: verdict "PASS" ${KIND}`]);
   assert.deepEqual(verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) }).fontsNotLoaded, [], 'no capture input: none');
 });
-check('formatSummary: the calibration line names fonts not loaded only when a row has one', () => {
+check('formatSummary: the calibration line names the faces that did not load — the row count, then the sorted unique families of every row — only when a row has one', () => {
   const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
   const r0 = { slug: 'a', path: '/a', pct: 1.5, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: false, pixelOnlyPass: true, fontsNotLoaded: ['Brand Sans'], reasons: ['font-not-loaded:Brand Sans'], override: null, error: null };
   const totals = { pages: 1, pass: 0, pixelOnlyPass: 1, overridePass: 0, fail: 1, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, fontsNotLoaded: 1 };
-  assert.match(formatSummary({ _provenance: pv, totals, rows: [r0] }), /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1; content n\/a/);
-  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontsNotLoaded: 0 }, rows: [r0] }), /fonts not loaded/);
+  assert.match(formatSummary({ _provenance: pv, totals, rows: [r0] }), /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1 \(Brand Sans\); content n\/a/);
+  const r1 = { ...r0, slug: 'b', path: '/b', fontsNotLoaded: ['Brand Serif', 'Brand Sans'] };
+  assert.match(formatSummary({ _provenance: pv, totals: { ...totals, pages: 3, fontsNotLoaded: 2 }, rows: [r1, { ...r0, slug: 'c', path: '/c', fontsNotLoaded: [] }, r0] }), /, fonts not loaded 2 \(Brand Sans, Brand Serif\); content n\/a/);
+  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontsNotLoaded: 0 }, rows: [{ ...r0, fontsNotLoaded: [] }] }), /fonts not loaded/);
 });
 // ---- a polluted capture: no pixel verdict — the row is INCONCLUSIVE ---------------------------------------------------
 check('capturePollution: a crawl-fullpage origin, an overlay left on either side → one reason per side; a legacy meta without overlayLeft, a failed or missing capture → none', () => {
@@ -1446,10 +1449,25 @@ check('trust 8: a declared face that did not load on the build side (the record\
   const row = r.row('a'); assert.deepEqual([row.pass, row.pixelOnlyPass, row.inconclusive, row.fontsNotLoaded, row.reasons], [false, true, false, ['Brand Sans'], ['font-not-loaded:Brand Sans']]);
   assert.deepEqual(tjson('a', 'eds.json').fontsFailed, ['Brand Sans']); assert.deepEqual(tjson('a', 'origin.json').fontsFailed, []);
   assert.deepEqual([r.s.totals.fontsNotLoaded, r.s.totals.fail, r.s.totals.pass], [1, 1, 0]);
-  assert.match(r.md, /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1;/); assert.match(r.md, /\| FAIL \(elements\) \| font-not-loaded:Brand Sans \|/);
+  assert.match(r.md, /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1 \(Brand Sans\);/); assert.match(r.md, /\| FAIL \(elements\) \| font-not-loaded:Brand Sans \|/);
   const both = tgate([], { STUB_FONTS_ORIGIN: 'Brand Serif,Brand Sans', STUB_FONTS_EDS: 'Brand Sans' });
   assert.deepEqual(both.row('a').reasons, ['font-not-loaded:Brand Sans', 'font-not-loaded:Brand Serif'], 'either side, once each');
+  assert.match(both.md, /, fonts not loaded 1 \(Brand Sans, Brand Serif\);/);
   const clean = tgate([]); assert.equal(clean.status, 0, clean.stderr + clean.stdout); assert.equal(clean.s.totals.fontsNotLoaded, 0); assert.doesNotMatch(clean.md, /fonts not loaded/);
+});
+check('trust 9: a failed --recapture-origin that keeps a previous origin from before the overlay-left check (origin.json without overlayLeft) → unchecked, INCONCLUSIVE — never a clean PASS; a kept checked origin stays clean', () => {
+  const meta = join(TOUT, 'a/origin.json'); const old = tjson('a', 'origin.json'); delete old.overlayLeft; delete old.fontsFailed;
+  writeFileSync(meta, JSON.stringify(old, null, 2));
+  const r = tgate(['--only', 'a', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stitches('ORIGIN').length, 1);
+  const unchecked = 'unchecked (previous origin predates the overlay-left check)';
+  assert.deepEqual([r.row('a').inconclusive, r.row('a').pass, r.row('a').originReused.policy], [true, false, 'same-run']);
+  assert.deepEqual(r.row('a').reasons, [`origin capture polluted: overlay left — ${unchecked}`]);
+  assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed], [unchecked, []]);
+  assert.match(tlog(), /origin a → stitch-live reused .*WARN re-shoot failed \(exit 1: .*\) — previous origin kept; overlay left — unchecked \(previous origin predates the overlay-left check\)/);
+  assert.equal(tgate([]).status, 0, 'a full round re-stitches it');
+  const kept = tgate(['--only', 'a', '--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(kept.status, 0, kept.stderr + kept.stdout); assert.deepEqual([kept.row('a').inconclusive, tjson('a', 'origin.json').overlayLeft], [false, null]);
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
