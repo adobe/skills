@@ -274,14 +274,14 @@ await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
 });
-await check('browsersPerSlot: max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BROWSER_SLOTS)); a budget that is not a positive number and a slot count that is not a positive number (0 = lock off, junk) count as the default 3; a non-integer slot count rounds up, as browser-lock admits holders', () => {
+await check('browsersPerSlot: max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BROWSER_SLOTS)); a budget that is not a positive number and a slot count that is not a positive number (0 = lock off, junk) count as the default 3; a non-integer slot count rounds up — browser-lock keeps floor(S) holders, ceil(S) bounds the share so it never overshoots the budget', () => {
   assert.equal(browsersPerSlot({}), 1, 'defaults: 3 / 3');
   assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }), 3);
   assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }), 1, 'a budget below the slots: the floor of one');
   assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '7', STARDUST_BROWSER_SLOTS: '2' }), 3, 'floored');
   assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '4.5', STARDUST_BROWSER_SLOTS: '2' }), 2);
-  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '10', STARDUST_BROWSER_SLOTS: '4.5' }), 2, '4.5 slots admit 5 holders: 10 / 5');
-  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: '1.5' }), 4, '1.5 slots admit 2 holders: 9 / 2');
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '10', STARDUST_BROWSER_SLOTS: '4.5' }), 2, '4.5 slots: 10 / ceil 5 (browser-lock keeps 4 holders — 8 ≤ 10)');
+  assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: '1.5' }), 4, '1.5 slots: 9 / ceil 2 (browser-lock keeps 1 holder — 4 ≤ 9)');
   for (const s of [undefined, '0', '', ' ', 'x', '-2']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: s }), 3, `slots ${JSON.stringify(s)}: 9 / 3`);
   for (const b of [undefined, '0', '', 'x', '-6']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: b, STARDUST_BROWSER_SLOTS: '1' }), 3, `budget ${JSON.stringify(b)}: 3 / 1`);
 });

@@ -190,7 +190,7 @@ export const BROWSER_SCRIPTS = new Set([
   'dynamics-check.mjs', 'dynamics-detect.mjs', 'snapshot-api.mjs', 'snapshot-forms.mjs', // dynamics
   'crawl.mjs', 'style-census.mjs', // extract
   'qa.mjs', // qa
-  'anchor.mjs', 'cap-probe.mjs', 'chrome-parity.mjs', 'gate-all.mjs', 'gate.sh', 'measure.mjs', 'motion-observe.mjs', 'sibling-variance.mjs', 'stitch-shot.mjs', // replica
+  'anchor.mjs', 'cap-probe.mjs', 'chrome-parity.mjs', 'gate-all.mjs', 'gate.sh', 'measure.mjs', 'motion-observe.mjs', 'presence.mjs', 'sibling-variance.mjs', 'stitch-shot.mjs', // replica
   'capture-content.mjs', 'dom-equality.mjs', 'donor-probe.mjs', 'slot-coverage.mjs', // reskin
   'spec-capture.mjs', 'spec-fetch.mjs', 'spec-inventory.mjs', 'spec-sheet.mjs', // spec
 ]);
@@ -357,8 +357,9 @@ export function lockWaitS(env = process.env) {
 // The browsers one machine-wide slot may run: the machine's browser budget shared by its slots. budget =
 // STARDUST_BROWSER_BUDGET (a positive number, else the default 3 — the contract's 3 browsers across all jobs); slots =
 // STARDUST_BROWSER_SLOTS as set before the wrapper zeroes it for the command (a positive number, rounded up — browser-lock
-// admits holders while fewer than it hold, so 4.5 admits 5 — else the default 3: 0 = lock off and junk alike; run-bg
-// exports the value only while it holds a slot, so 0 never reaches a reader).
+// keeps floor(S) holders, its re-check backs off any holder past floor(S); ceil(S) is kept as an upper bound so the
+// per-slot share never overshoots the budget — else the default 3: 0 = lock off and junk alike; run-bg exports the value
+// only while it holds a slot, so 0 never reaches a reader).
 // perSlot = max(1, floor(budget / slots)): a budget below the slots cannot be held — one browser per slot is the floor.
 const DEFAULT_BROWSER_BUDGET = 3;
 const DEFAULT_MACHINE_SLOTS = 3; // browser-lock.mjs's default slot count
