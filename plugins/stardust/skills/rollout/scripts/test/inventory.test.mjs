@@ -13,17 +13,20 @@
 // Encoded pages (migrate's encoder: a sidecar with `encode`, the document under stardust/encoded/):
 // listed once from the sidecar, sourceHash over the encoded document (a re-encode with new bytes
 // marks a delivered page stale; a stopped, hand-edited or missing one keeps its last clean hash),
-// publicUrl from the encoded path; the archetype and clone pages keep their migrated-HTML rows — so does a stopped
-// sibling beside its clone HTML (the A′ exception).
+// publicUrl from the encoded path (a clone row: its path, else its deployedUrl); the archetype and clone pages keep
+// their migrated-HTML rows — so does a stopped sibling beside its clone HTML (the A′ exception).
 // --state: a roster row (no document) carries its status when its encode appears — content-pending
-// advances to pending, a status update-coverage recorded stays; the coverage lock is taken.
+// advances to pending, a status update-coverage recorded stays (named as not compared); the coverage lock is taken;
+// a clone sibling in the tree refuses --state, an encoded one does not.
+// --state takes a state file's real shape (pages[] of objects with a url; folder URLs with their slash) or
+// refuses in one line, writing nothing; it refuses a tree that holds siblings. Stale only when the same
+// document's bytes change: identical bytes never; a roster row's hash (another basis) is never compared —
+// the row keeps its status and the report names it as not compared.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { existsSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -75,6 +78,7 @@ check('an archetype with template null groups under its own slug, together with 
   assert.equal(t['tours-bali'].pageCount, 3); assert.deepEqual(t['tours-bali'].pages, ['tours-alps', 'tours-bali', 'tours-utah']);
   assert.equal(t.home.pageCount, 1); assert.equal(t.unique.pages[0], 'faq');
   assert.match(first.stdout, /Templates {3}3 \(home:1, tours-bali:3, unique:1\)/);
+  assert.deepEqual(json('rollout.json').lastRun.blocks, { total: 0, converted: 0, notDelivered: 0, pending: 0 }, 'the block roll-up has blockCounts\' shape before blocks.mjs runs');
 });
 check('the representative of a template is its archetype, not the first slug', () => {
   const t = Object.fromEntries(json('coverage/templates.json').templates.map((x) => [x.id, x]));
@@ -365,7 +369,10 @@ check('--content <dir> reads another content tree; a page outside it gets delive
   assert.ok(siteJson('stardust/rollout/coverage/pages.json')._provenance.readArtifacts.includes('alt-content'));
 });
 check('archetypes-only mode: a roster sibling with a content file gets delivered too', () => {
-  put('stardust/state.json', { ...siteJson('stardust/state.json'), pages: [...siteJson('stardust/state.json').pages, { slug: 'contact', url: 'https://www.example.com/contact', type: 'about' }] });
+  // --state takes an archetypes-only tree and a url on every roster page: the news siblings leave, about gets its url
+  rmSync(join(site, 'stardust/migrated/news'), { recursive: true, force: true });
+  const roster = siteJson('stardust/state.json').pages.map((p) => (p.slug === 'about' ? { ...p, url: 'https://www.example.com/about' } : p));
+  put('stardust/state.json', { ...siteJson('stardust/state.json'), pages: [...roster, { slug: 'contact', url: 'https://www.example.com/contact', type: 'about' }] });
   put('content/contact.html', '<main><div><h2>Write to us</h2><div class="form"><div><div>Name</div></div></div></div></main>\n');
   const r = runSite('--state', 'stardust/state.json');
   assert.equal(r.status, 0, r.stderr);
@@ -454,11 +461,13 @@ check('the archetype and a clone sibling keep their migrated-HTML rows; a siblin
   assert.equal(r['tours-east'].source.migratedHtml, null); assert.equal(r['tours-east'].source.encodedHtml, join(proj, 'stardust/encoded/tours/east.html'));
   assert.equal(r['tours-east'].source.sourceHash, hash(DOC.east), 'the encoded document, not the clone'); assert.equal(r['tours-east'].path, '/tours/east');
 });
-check('publicUrl: the encoded path decides the trailing slash (a leaf stays bare though its sidecar sits in a folder); clone rows as before', () => {
+check('publicUrl: the encoded path decides the trailing slash (a leaf stays bare though its sidecar sits in a folder); a clone row is served at its path; a recorded deployedUrl decides for either', () => {
   const r = rowsOf(POUT);
   assert.equal(publicUrl(r['tours-north']), '/tours/north'); assert.equal(publicUrl(r['tours-east']), '/tours/east');
   assert.equal(publicUrl(r['tours-south']), '/tours/south/');
-  assert.equal(publicUrl(r.tours), '/tours/'); assert.equal(publicUrl(r['tours-west']), '/tours/west/');
+  assert.equal(publicUrl(r.tours), '/tours'); assert.equal(publicUrl(r['tours-west']), '/tours/west');
+  assert.equal(publicUrl({ ...r['tours-south'], delivery: { ...r['tours-south'].delivery, deployedUrl: 'https://x.test/tours/south' } }), '/tours/south');
+  assert.equal(publicUrl({ ...r.tours, delivery: { ...r.tours.delivery, deployedUrl: 'https://x.test/tours/' } }), '/tours/');
 });
 check('an encode that is not current (stopped, document gone) keeps its row with the last clean encode\'s hash; the report names each', () => {
   const r = rowsOf(POUT);
@@ -499,6 +508,16 @@ check('an encoded page gets delivered from its content file like any row, lang f
   assert.equal(row.delivered.lang, 'de'); assert.equal(row.delivered.contentHash, hash(body));
   assert.deepEqual(row.delivered.blocks.map((b) => [b.kind, b.variant]), [['default', 'text']]);
 });
+check('--state refuses the tree while a clone sibling is in it (tours-west; tours-except, stopped beside its clone) — an encoded sibling is none; nothing written', () => {
+  const state = join(proj, 'stardust', 'state.json'); const out1 = join(proj, 'rollout-refused');
+  put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }] }));
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', PM, '--out', out1, '--state', state], { encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.stderr, `rollout inventory: --state is the archetypes-only mode, but ${PM} holds 2 sibling page(s) (tours-except, tours-west) — re-run without --state\n`);
+  assert.ok(!existsSync(out1), 'nothing written');
+});
+// the archetypes-only tree for the --state checks below: the clone siblings leave, the encoded ones stay
+for (const dir of ['tours/west', 'tours/except']) rmSync(join(PM, dir), { recursive: true, force: true });
 check('--state (archetypes-only): an encoded sibling keeps its template and its roster entry is not listed again; other roster pages join as content-pending', () => {
   const state = join(proj, 'stardust', 'state.json'); const out2 = join(proj, 'rollout-state');
   put(state, JSON.stringify({ pages: [{ slug: 'tours', url: 'https://example.com/tours/', type: 'tour' }, { slug: 'tours-north', url: 'https://example.com/Tours/North', type: 'tours' }, { slug: 'tours-extra', url: 'https://example.com/tours/extra', representative: 'tours' }] }));
@@ -536,7 +555,9 @@ check('--state: a roster row a cluster marked deployed (no document yet) stays d
   let row = rowsOf(out4)['tours-late'];
   assert.equal(row.delivery.status, 'deployed', 'the roster hash is not the document\'s: no re-flag'); assert.equal(row.delivery.deployedUrl, 'https://x.test/tours/late');
   assert.equal(row.source.sourceHash, hash('<main>late v1</main>'));
+  assert.match(r.stdout, /^Kept {8}1 delivered row\(s\) whose hash basis changed \(roster → document\), not compared: tours-late$/m, r.stdout);
   r = inv(); assert.equal(rowsOf(out4)['tours-late'].delivery.status, 'deployed', 'an unchanged re-run');
+  assert.doesNotMatch(r.stdout, /not compared/, 'the encoded row is compared now — nothing reported');
   encoded('tours/late/_meta.json', 'tours/late.html', sib('tours-late'), '<main>late v2</main>');
   r = inv(); assert.equal(r.status, 0, r.stderr);
   row = rowsOf(out4)['tours-late']; assert.equal(row.delivery.status, 'stale'); assert.equal(row.source.sourceHash, hash('<main>late v2</main>'));
@@ -570,6 +591,112 @@ check('--state: a roster row a cluster marked deployed (no document yet) stays d
     assert.deepEqual(readdirSync(join(out5, 'coverage')).sort(), ['pages.json', 'templates.json']);
   });
 }
+}
+
+// --- --state: the state file's real shape or a one-line refusal; the archetypes-only mode refuses a tree with siblings ---
+{ // block scope: this section's helpers (put, …) share names with the delivered-structure section above
+const box = mkdtempSync(join(tmpdir(), 'rollout-inventory-state-'));
+const boxMigrated = join(box, 'migrated');
+const boxOut = join(box, 'rollout');
+const put = (rel, body) => { mkdirSync(dirname(join(box, rel)), { recursive: true }); writeFileSync(join(box, rel), typeof body === 'string' ? body : JSON.stringify(body)); };
+const boxPage = (rel, meta, body = rel) => { put(`migrated/${rel}`, `<html><body><main>${body}</main></body></html>`); put(join('migrated', dirname(rel), sidecarName(rel.split('/').pop())), meta); };
+// cwd = the scratch box, so the default `stardust/state.json` and `--content content` never resolve inside the repo
+const runBox = (...args) => spawnSync(process.execPath, [SCRIPT, '--migrated', boxMigrated, '--out', boxOut, ...args], { encoding: 'utf8', cwd: box });
+const boxRows = () => Object.fromEntries(JSON.parse(readFileSync(join(boxOut, 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p]));
+const deliver = (...slugs) => { const f = join(boxOut, 'coverage', 'pages.json'); const doc = JSON.parse(readFileSync(f, 'utf8')); for (const p of doc.pages) if (slugs.includes(p.slug)) p.delivery = { ...p.delivery, status: 'deployed', deployedUrl: `https://x.test${p.path}` }; writeFileSync(f, JSON.stringify(doc)); };
+boxPage('index.html', { slug: 'home', type: 'home', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['hero'] });
+boxPage('tours/bali/index.html', { slug: 'tours-bali', type: 'program', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['gallery'] });
+const ROSTER = { pages: [
+  { slug: 'home', url: 'https://example.com/', type: 'home' },
+  { slug: 'tours-bali', url: 'https://example.com/tours/bali/', type: 'tours-bali' },
+  { slug: 'tours-utah', url: 'https://example.com/tours/utah/', type: 'tours-bali' },
+] };
+put('state.json', ROSTER);
+
+check('--state with a file that is not a state file (pages[] of objects with a url) → exit 2, one line, nothing written', () => {
+  const bad = { 'missing.json': null, 'not-json.json': '{"pages": [', 'top-array.json': ROSTER.pages, 'pages-map.json': { pages: { home: ROSTER.pages[0] } },
+    'no-url.json': { pages: [{ slug: 'home', type: 'home' }] }, 'string-entry.json': { pages: ['https://example.com/'] }, 'null-entry.json': { pages: [ROSTER.pages[0], null] } };
+  for (const [name, body] of Object.entries(bad)) {
+    if (body !== null) put(name, body);
+    const file = join(box, name);
+    const r = runBox('--state', file);
+    assert.equal(r.status, 2, `${name}: ${r.stdout}${r.stderr}`);
+    assert.equal(r.stderr, `rollout inventory: ${file} is not a state file (pages[] of {slug, url, type}) — nothing written\n`, name);
+    assert.equal(r.stdout, '', name);
+    assert.ok(!existsSync(boxOut), `${name}: nothing written`);
+  }
+});
+
+check('--state over a tree that holds siblings (fidelityTier sibling, or a template naming another slug) → exit 2, one line, nothing written', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', boxOut, '--state', join(box, 'state.json')], { encoding: 'utf8' });
+  assert.equal(r.status, 2, r.stdout + r.stderr);
+  assert.equal(r.stderr, `rollout inventory: --state is the archetypes-only mode, but ${migrated} holds 2 sibling page(s) (tours-alps, tours-utah) — re-run without --state\n`);
+  assert.ok(!existsSync(boxOut), 'nothing written');
+  const many = join(box, 'many');
+  const manyPage = (rel, meta) => { mkdirSync(dirname(join(many, rel)), { recursive: true }); writeFileSync(join(many, rel), `<main>${rel}</main>`); writeFileSync(join(many, dirname(rel), sidecarName(rel.split('/').pop())), JSON.stringify(meta)); };
+  manyPage('a.html', { slug: 'a', fidelityTier: 'archetype', template: null });
+  manyPage('f.html', { slug: 'f', fidelityTier: 'archetype', template: 'f' });
+  manyPage('e.html', { slug: 'e', template: 'a' });
+  manyPage('d.html', { slug: 'd', template: 'a' });
+  manyPage('c.html', { slug: 'c', fidelityTier: 'sibling' });
+  manyPage('b.html', { slug: 'b', template: 'a' });
+  const m = spawnSync(process.execPath, [SCRIPT, '--migrated', many, '--out', boxOut, '--state', join(box, 'state.json')], { encoding: 'utf8' });
+  assert.equal(m.status, 2, m.stdout + m.stderr);
+  assert.equal(m.stderr, `rollout inventory: --state is the archetypes-only mode, but ${many} holds 4 sibling page(s) (b, c, d…) — re-run without --state\n`);
+  assert.ok(!existsSync(boxOut), 'nothing written');
+});
+
+const seeded = runBox('--state', join(box, 'state.json'));
+check('--state over an archetypes-only tree seeds the roster page content-pending under the archetype its type names', () => {
+  assert.equal(seeded.status, 0, seeded.stderr);
+  const rows = boxRows();
+  assert.deepEqual(Object.keys(rows).sort(), ['home', 'tours-bali', 'tours-utah']);
+  assert.equal(rows['tours-utah'].delivery.status, 'content-pending'); assert.equal(rows['tours-utah'].templateId, 'tours-bali');
+  assert.equal(rows['tours-utah'].source.migratedHtml, null); assert.deepEqual(rows['tours-utah'].blocks, ['gallery']);
+});
+
+check('a delivered page re-inventoried with identical bytes is not stale', () => {
+  deliver('home', 'tours-utah');
+  const r = runBox('--state', join(box, 'state.json'));
+  assert.equal(r.status, 0, r.stderr);
+  const rows = boxRows();
+  assert.equal(rows.home.delivery.status, 'deployed'); assert.equal(rows['tours-utah'].delivery.status, 'deployed');
+  assert.match(r.stdout, /0 stale$/m, r.stdout);
+  assert.doesNotMatch(r.stdout, /hash basis changed/, 'nothing skipped, nothing reported');
+});
+
+check('a delivered roster row, then migrated (its hash now of the migrated file — another basis), keeps its status, takes the new hash and is reported as not compared', () => {
+  const rosterHash = boxRows()['tours-utah'].source.sourceHash;
+  boxPage('tours/utah/index.html', { slug: 'tours-utah', type: 'program', fidelityTier: 'sibling', template: 'tours-bali', modules: ['gallery'] });
+  const before = readFileSync(join(boxOut, 'coverage', 'pages.json'), 'utf8');
+  const refused = runBox('--state', join(box, 'state.json'));
+  assert.equal(refused.status, 2, refused.stdout);
+  assert.equal(refused.stderr, `rollout inventory: --state is the archetypes-only mode, but ${boxMigrated} holds 1 sibling page(s) (tours-utah) — re-run without --state\n`);
+  assert.equal(readFileSync(join(boxOut, 'coverage', 'pages.json'), 'utf8'), before, 'nothing written');
+  const r = runBox();
+  assert.equal(r.status, 0, r.stderr);
+  const utah = boxRows()['tours-utah'];
+  assert.equal(utah.delivery.status, 'deployed');
+  assert.equal(utah.source.migratedHtml, join(boxMigrated, 'tours/utah/index.html'));
+  assert.notEqual(utah.source.sourceHash, rosterHash);
+  assert.equal(utah.templateId, 'tours-bali');
+  assert.match(r.stdout, /^Kept {8}1 delivered row\(s\) whose hash basis changed \(roster → document\), not compared: tours-utah$/m, r.stdout);
+});
+
+check('changed bytes of the same delivered document → stale; the unchanged one stays delivered', () => {
+  const again = runBox();
+  assert.equal(again.status, 0, again.stderr);
+  assert.equal(boxRows()['tours-utah'].delivery.status, 'deployed', 'the migrated row re-read with identical bytes');
+  assert.doesNotMatch(again.stdout, /^Kept /m, 'the migrated row is compared now — nothing reported');
+  boxPage('index.html', { slug: 'home', type: 'home', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['hero'] }, 'home, edited');
+  const r = runBox();
+  assert.equal(r.status, 0, r.stderr);
+  const rows = boxRows();
+  assert.equal(rows.home.delivery.status, 'stale'); assert.equal(rows['tours-utah'].delivery.status, 'deployed');
+  assert.match(r.stdout, /1 stale$/m, r.stdout);
+});
+
+rmSync(box, { recursive: true, force: true });
 }
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

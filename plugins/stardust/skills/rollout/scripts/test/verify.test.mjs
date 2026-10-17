@@ -2,11 +2,15 @@
 // skills/rollout/scripts/test/verify.test.mjs — verify.mjs's <h1> rule against the source capture, offline (--root) in a
 // temp project: one <h1> verifies; none verifies only when <current>/pages/<slug>.json records headings without an h1
 // (a `note:` line and `· <n> note(s)` in the summary, never a failure); a capture with an h1, no capture, or more than
-// one <h1> fails as before; a failed delivery.gate is never rescued by the note; --current is honoured. --help writes nothing.
+// one <h1> fails as before; a failed delivery.gate is never rescued by the note; a gate failed at any recorded width
+// (delivery.gate.passByWidth) is never verified; --current is honoured. --help writes nothing.
+// --base (a local server): a page is fetched where it was deployed (delivery.deployedUrl), else at its path. Media and
+// text-track links are assets, never broken page links.
 // Run: node plugins/stardust/skills/rollout/scripts/test/verify.test.mjs
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,6 +42,14 @@ function project() {
   return proj;
 }
 const run = (proj, args) => spawnSync(process.execPath, [SCRIPT, '--root', 'site', ...args], { cwd: proj, encoding: 'utf8' });
+// an async run, so a server in this process can answer verify's requests
+const runAsync = (proj, args) => new Promise((ok) => {
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: proj });
+  let stdout = ''; let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.on('close', (status) => ok({ status, stdout, stderr }));
+});
 const statusOf = (proj) => Object.fromEntries(JSON.parse(readFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.delivery.status]));
 const lines = (r) => r.stdout.trim().split('\n');
 
@@ -85,6 +97,24 @@ check('the note never rescues a failed gate: no <h1>, a capture without one, del
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('a gate failed at any recorded width is never verified, though the width gated last passed; a width with no verdict (null) is no failure', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.find((p) => p.slug === 'one').delivery.gate = { pass: true, reasons: [], passByWidth: { 1440: false, 360: true } };
+  writeFileSync(file, JSON.stringify(doc));
+  const r = run(proj, ['--slug', 'one']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.equal(statusOf(proj).one, 'failed');
+  assert.match(r.stdout, /✗ one \(page\): gate: FAIL at 1440$/m);
+  doc.pages.find((p) => p.slug === 'one').delivery.gate.passByWidth = { 1440: true, 360: null };
+  writeFileSync(file, JSON.stringify(doc));
+  const ok = run(proj, ['--slug', 'one']);
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.equal(statusOf(proj).one, 'verified');
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('more than one <h1> fails even when the source has none', () => {
   const proj = project();
   const r = run(proj, ['--slug', 'double']);
@@ -107,13 +137,60 @@ check('--all reports every page; --current points at another capture directory',
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('media and text-track links are assets, not pages; a link to an unknown page still fails', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.push({ slug: 'media', path: '/media', delivery: { status: 'deployed' } }, { slug: 'lost', path: '/lost', delivery: { status: 'deployed' } });
+  writeFileSync(file, JSON.stringify(doc));
+  const exts = ['vtt', 'srt', 'ttml', 'dfxp', 'sbv', 'mp3', 'm4a', 'aac', 'oga', 'ogg', 'wav', 'flac', 'm4v', 'ogv', 'm3u8', 'mpd'];
+  writeFileSync(join(proj, 'site', 'media.html'), `<main><h1>Media</h1>${exts.map((e) => `<a href="/media/clip.${e}?v=1">${e}</a>`).join('')}<a href="/one">one</a></main>`);
+  writeFileSync(join(proj, 'site', 'lost.html'), '<main><h1>Lost</h1><a href="/media/clip.vtt">vtt</a><a href="/nowhere">x</a></main>');
+  const media = run(proj, ['--slug', 'media']);
+  assert.equal(media.status, 0, media.stdout + media.stderr);
+  assert.equal(statusOf(proj).media, 'verified');
+  const lost = run(proj, ['--slug', 'lost']);
+  assert.equal(lost.status, 1, lost.stdout);
+  assert.match(lost.stdout, /✗ lost \(page\): broken internal links: \/nowhere$/m);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('--help prints the usage header and writes nothing', () => {
   const empty = mkdtempSync(join(tmpdir(), 'verify-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd: empty, encoding: 'utf8' });
   assert.equal(r.status, 0);
   assert.match(r.stdout, /--current/);
+  assert.match(r.stdout, /media and text-track links are assets/i);
   assert.deepEqual(readdirSync(empty), []);
   rmSync(empty, { recursive: true, force: true });
+});
+
+// --base: each page is fetched where it was deployed (delivery.deployedUrl), else at its path — an index.html source
+// adds no slash. The server answers only those URLs (the slash forms 404, as on a plain EDS site) and logs each request.
+check('--base fetches a page at its deployedUrl, else its path — never a slash appended for an index.html source', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'verify-base-'));
+  mkdirSync(join(proj, 'stardust', 'rollout', 'coverage'), { recursive: true });
+  const page = (slug, delivery) => ({ slug, path: `/${slug}`, source: { migratedHtml: `stardust/migrated/${slug}/index.html` }, delivery: { status: 'deployed', ...delivery } });
+  writeFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify({ pages: [
+    page('x', { deployedUrl: 'https://h/x' }), page('y', {}), page('z', { deployedUrl: 'https://h/z/' }),
+  ] }));
+  const served = new Set(['/x', '/y', '/z/']);
+  const asked = [];
+  const server = createServer((req, res) => {
+    asked.push(req.url);
+    res.writeHead(served.has(req.url) ? 200 : 404, { 'content-type': 'text/html' });
+    res.end(`<main><h1>${req.url}</h1><a href="/x">x</a></main>`);
+  });
+  await new Promise((ok) => server.listen(0, '127.0.0.1', ok));
+  try {
+    const r = await runAsync(proj, ['--base', `http://127.0.0.1:${server.address().port}`]);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.deepEqual(asked.sort(), ['/x', '/y', '/z/']);
+    assert.deepEqual(statusOf(proj), { x: 'verified', y: 'verified', z: 'verified' });
+  } finally {
+    server.close();
+    rmSync(proj, { recursive: true, force: true });
+  }
 });
 
 for (const [name, fn] of tests) {

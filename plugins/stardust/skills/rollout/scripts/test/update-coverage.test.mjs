@@ -15,7 +15,12 @@
 // order (newest row wins); an absent summary.json beside runs/ tables ingests those with one stdout note; not found,
 // unparsable and no-rows files are refused apart (exit 1, nothing written), and so is a table that cannot be read (a
 // directory named *.json in runs/); delivery.gate.host records the EDS origin a
-// verdict was measured against — the row's `host`, else its own table's `_provenance.eds`, else null.
+// verdict was measured against — the row's `host`, else its own table's `_provenance.eds`, else null; each width keeps
+// its own verdict (delivery.gate.passByWidth) whichever table came last, an INCONCLUSIVE width records null (no
+// verdict, never false or true), and a page leaves a gate failure for deployed only when no recorded width failed.
+// And `--block <name> --status
+// not-delivered --reason <text>`: the reason is required (exit 2), recorded as delivery.reason, cleared by
+// any other status, the block found by id then by edsBlockName, and counted in lastRun.blocks.notDelivered.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -96,10 +101,10 @@ const readBlocks = (out) => JSON.parse(readFileSync(join(out, BLOCKS_FILE), 'utf
 const blockRollup = (out) => JSON.parse(readFileSync(join(out, 'rollout.json'), 'utf8')).lastRun.blocks;
 
 await check('blockCounts: a default-content mapping is converted whatever its status; other rows follow the status rule', () => {
-  assert.deepEqual(blockCounts([]), { total: 0, converted: 0, pending: 0 });
-  assert.deepEqual(blockCounts([row('title', 'pending', 'default-content'), row('text', 'failed', 'default-content')]), { total: 2, converted: 2, pending: 0 });
-  assert.deepEqual(blockCounts([row('hero', 'pending'), row('cards', 'failed'), row('faq', 'converted'), row('stats', 'verified')]), { total: 4, converted: 2, pending: 2 });
-  assert.deepEqual(blockCounts([{ id: 'bare' }]), { total: 1, converted: 0, pending: 1 });
+  assert.deepEqual(blockCounts([]), { total: 0, converted: 0, notDelivered: 0, pending: 0 });
+  assert.deepEqual(blockCounts([row('title', 'pending', 'default-content'), row('text', 'failed', 'default-content')]), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
+  assert.deepEqual(blockCounts([row('hero', 'pending'), row('cards', 'failed'), row('faq', 'converted'), row('stats', 'verified')]), { total: 4, converted: 2, notDelivered: 0, pending: 2 });
+  assert.deepEqual(blockCounts([{ id: 'bare' }]), { total: 1, converted: 0, notDelivered: 0, pending: 1 });
 });
 
 await check('(a) a default-content row recorded pending → lastRun.blocks.pending is 0 and converted counts it', async () => {
@@ -107,7 +112,7 @@ await check('(a) a default-content row recorded pending → lastRun.blocks.pendi
   writeBlocks(out, [row('title', 'pending', 'default-content'), row('text', 'pending', 'default-content')]);
   const r = await run(['page-0', '--status', 'deployed'], proj); // any write re-rolls rollout.json
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
   assert.deepEqual(readBlocks(out).map((b) => b.delivery.status), ['pending', 'pending'], 'a roll-up rule, not a status rewrite');
 });
 
@@ -121,7 +126,7 @@ await check('(b) --block <id> --status converted --eds-name default-content sets
   assert.equal(b.delivery.edsBlockName, 'default-content');
   assert.equal(b.delivery.blockPath, null);
   assert.match(b.delivery.convertedAt, /^\d{4}-\d{2}-\d{2}T/);
-  assert.deepEqual(blockRollup(out), { total: 1, converted: 1, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 1, converted: 1, notDelivered: 0, pending: 0 });
 });
 
 await check('(c) a real pending block still counts as pending beside a default-content mapping recorded pending', async () => {
@@ -129,10 +134,10 @@ await check('(c) a real pending block still counts as pending beside a default-c
   writeBlocks(out, [row('hero', 'pending'), row('title', 'pending')]);
   let r = await run(['--block', 'title', '--status', 'pending', '--eds-name', 'default-content'], proj); // what the recorded run did
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
   r = await run(['--block', 'hero', '--status', 'converted', '--eds-name', 'hero'], proj);
   assert.equal(r.code, 0, r.err);
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, pending: 0 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 2, notDelivered: 0, pending: 0 });
 });
 
 await check('a blocks.mjs re-run keeps a default-content mapping recorded pending and rolls it up as converted', async () => {
@@ -144,7 +149,63 @@ await check('a blocks.mjs re-run keeps a default-content mapping recorded pendin
   const byId = Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
   assert.equal(byId.title.edsBlockName, 'default-content');
   assert.equal(byId.hero.edsBlockName, 'hero');
-  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, pending: 1 });
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
+});
+
+// --- not-delivered: a block left undelivered on purpose, with its reason ------------------------
+await check('blockCounts: not-delivered is its own count — never pending, never converted; a default-content mapping stays converted', () => {
+  assert.deepEqual(blockCounts([row('promo', 'not-delivered'), row('hero', 'pending'), row('faq', 'converted')]), { total: 3, converted: 1, notDelivered: 1, pending: 1 });
+  assert.deepEqual(blockCounts([row('title', 'not-delivered', 'default-content')]), { total: 1, converted: 1, notDelivered: 0, pending: 0 });
+});
+
+await check('--block <id> --status not-delivered without --reason is a usage error (exit 2), the ledger untouched', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('promo', 'converted')]);
+  const before = readFileSync(join(out, BLOCKS_FILE), 'utf8');
+  let r = await run(['--block', 'promo', '--status', 'not-delivered'], proj);
+  assert.equal(r.code, 2); assert.match(r.err, /--reason/);
+  r = await run(['--block', 'promo', '--status', 'not-delivered', '--reason', '  '], proj);
+  assert.equal(r.code, 2, 'a blank reason is no reason');
+  assert.equal(readFileSync(join(out, BLOCKS_FILE), 'utf8'), before);
+});
+
+await check('--block <id> --status not-delivered --reason records delivery.reason and lastRun.blocks.notDelivered; another status clears the reason', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('promo', 'converted'), row('hero', 'pending')]);
+  let r = await run(['--block', 'promo', '--status', 'not-delivered', '--reason', 'seasonal teaser, no page uses it'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^block promo → not-delivered/m, r.out);
+  const promo = readBlocks(out).find((b) => b.id === 'promo');
+  assert.equal(promo.delivery.status, 'not-delivered'); assert.equal(promo.delivery.reason, 'seasonal teaser, no page uses it');
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 0, notDelivered: 1, pending: 1 });
+  r = await run(['--block', 'promo', '--status', 'converted'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.ok(!('reason' in readBlocks(out).find((b) => b.id === 'promo').delivery), 'any other status deletes delivery.reason');
+  assert.deepEqual(blockRollup(out), { total: 2, converted: 1, notDelivered: 0, pending: 1 });
+});
+
+await check('--block finds the row by id first, then by delivery.edsBlockName; several rows sharing that name are refused (exit 1)', async () => {
+  const { proj, out } = fixture();
+  writeBlocks(out, [row('Hero Banner', 'pending', 'hero-banner'), row('cards', 'pending', 'teaser'), row('teaser', 'pending'), row('news', 'pending', 'tiles'), row('products', 'pending', 'tiles')]);
+  let r = await run(['--block', 'hero-banner', '--status', 'not-delivered', '--reason', 'replaced by the default hero'], proj);
+  assert.equal(r.code, 0, r.err);
+  const by = () => Object.fromEntries(readBlocks(out).map((b) => [b.id, b.delivery]));
+  assert.equal(by()['Hero Banner'].status, 'not-delivered'); assert.equal(by()['Hero Banner'].reason, 'replaced by the default hero');
+  r = await run(['--block', 'teaser', '--status', 'converted'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(by().teaser.status, 'converted', 'the id match wins'); assert.equal(by().cards.status, 'pending');
+  r = await run(['--block', 'nothing-here', '--status', 'converted'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /no block "nothing-here"/);
+  const before = readFileSync(join(out, BLOCKS_FILE), 'utf8');
+  r = await run(['--block', 'tiles', '--status', 'not-delivered', '--reason', 'x'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /news, products/);
+  assert.equal(readFileSync(join(out, BLOCKS_FILE), 'utf8'), before, 'an ambiguous name changes nothing');
+});
+
+await check('--help names not-delivered and --reason', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help4-'));
+  const r = await run(['--help'], proj);
+  assert.equal(r.code, 0); assert.match(r.out, /not-delivered/); assert.match(r.out, /--reason "<text>"/); assert.deepEqual(readdirSync(proj), []);
 });
 
 // --- --new: a page built outside the migrated tree enters coverage --------------------------------
@@ -251,6 +312,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-3'].status, 'verified', 'a valid documented override keeps the page'); assert.deepEqual(by['page-3'].gate.override, { verdict: 'source-volatile', reason: 'R-1 live drifted', valid: true });
   assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
   assert.deepEqual(by['page-1'].gate.rounds, {}, 'a round without a width has no map entry');
+  assert.deepEqual(by['page-1'].gate.passByWidth, {}, 'a table without a width records no per-width verdict');
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });
@@ -302,8 +364,54 @@ for (const [a, b] of [[1440, 360], [360, 1440]]) {
     assert.equal(stripGen(pagesText(out)), stripGen(before), 'only the top-level generatedAt may change');
     const d = gateOf(out, 'page-0');
     assert.equal(d.status, 'deployed'); assert.equal(d.gate.width, b); assert.deepEqual(d.gate.atByWidth, { [a]: T2, [b]: T3 });
+    assert.deepEqual(d.gate.passByWidth, { [a]: true, [b]: true }, 'the skipped older row leaves the per-width verdicts alone');
   });
 }
+
+for (const [a, b] of [[1440, 360], [360, 1440]]) {
+  await check(`--gate records each width's verdict in delivery.gate.passByWidth — ${a} then ${b} keeps both keys; pass stays the last width's verdict`, async () => {
+    const { proj, out } = fixture();
+    let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+    const rowAt = (w) => (w === 1440 ? passRow('page-0') : failRow('page-0'));
+    r = await run(['--gate', gateTable(proj, `first-${a}.json`, T1, a, [rowAt(a)])], proj); assert.equal(r.code, 0, r.err);
+    assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { [a]: a === 1440 });
+    r = await run(['--gate', gateTable(proj, `then-${b}.json`, T2, b, [rowAt(b)])], proj); assert.equal(r.code, 0, r.err);
+    const d = gateOf(out, 'page-0');
+    assert.deepEqual(d.gate.passByWidth, { 1440: true, 360: false });
+    assert.deepEqual(Object.keys(d.gate.passByWidth).sort(), ['1440', '360'], 'keys are width strings, as atByWidth');
+    assert.equal(d.gate.pass, b === 1440, 'pass keeps its meaning: the verdict of the row applied last');
+    assert.equal(d.status, 'failed', 'a recorded failing width keeps the page failed, whichever width came last');
+    assert.equal(d.error, 'gate: pixel 12% > 10%');
+  });
+}
+
+await check('--gate: a page failing at 1440 stays failed when 360 passes last; it returns to deployed only once no recorded width fails', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'verified'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [failRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 status flip\(s\)/, r.out);
+  r = await run(['--gate', gateTable(proj, 'mob.json', T2, 360, [passRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /0 status flip\(s\)/, r.out);
+  let d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed', 'the 360 pass never flips back a page the 1440 table failed');
+  assert.equal(d.error, 'gate: pixel 12% > 10%');
+  assert.equal(d.gate.pass, true); assert.deepEqual(d.gate.passByWidth, { 1440: false, 360: true });
+  r = await run(['--gate', gateTable(proj, 'desk2.json', T3, 1440, [passRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 status flip\(s\)/, r.out);
+  d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'deployed', 'every recorded width passes now'); assert.equal(d.error, null);
+  assert.deepEqual(d.gate.passByWidth, { 1440: true, 360: true });
+});
+
+await check('--gate passByWidth: an override passes its width; a width re-gated replaces only its own entry', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [{ ...failRow('page-0'), override: { verdict: 'tier-shift', reason: 'R-01', valid: true } }])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'mob.json', T1, 360, [failRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { 1440: true, 360: false });
+  r = await run(['--gate', gateTable(proj, 'mob2.json', T2, 360, [passRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { 1440: true, 360: true });
+});
 
 await check('--gate records a whole-row reuse at its measured time (row.reused.at), a probe reuse at the table\'s writtenAt, and the width', async () => {
   const { proj, out } = fixture();
@@ -326,6 +434,7 @@ await check('--gate overwrites a recorded gate without atByWidth (recorded befor
   assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 1 status flip\(s\), 0 older row\(s\) skipped/, r.out);
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'failed'); assert.equal(d.gate.at, T1); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.atByWidth, { 1440: T1 });
+  assert.deepEqual(d.gate.passByWidth, { 1440: false });
 });
 
 await check('--gate records an INCONCLUSIVE row as pass false with its reasons and never flips the status either way', async () => {
@@ -340,7 +449,7 @@ await check('--gate records an INCONCLUSIVE row as pass false with its reasons a
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'verified', 'no verdict: the status stays'); assert.equal(d.error, null);
   assert.equal(d.gate.pass, false); assert.equal(d.gate.inconclusive, reasons.join('; ')); assert.equal(d.gate.pct, null); assert.deepEqual(d.gate.atByWidth, { 1440: T2 });
-  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth', 'rounds', 'host']);
+  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth', 'passByWidth', 'rounds', 'host']);
   assert.equal(gateOf(out, 'page-2').gate.inconclusive, null, 'a measured row records inconclusive null');
   const clean = await run(['--gate', gateTable(proj, 'clean.json', T3, 1440, [passRow('page-2')])], proj);
   assert.equal(clean.code, 0, clean.err); assert.match(clean.out, /0 older row\(s\) skipped$/m, 'no inconclusive row, no suffix');
@@ -350,6 +459,23 @@ await check('--gate records an INCONCLUSIVE row as pass false with its reasons a
   const f = gateOf(out, 'page-1');
   assert.equal(f.status, 'failed'); assert.equal(f.error, 'gate: pixel 12% > 10%'); assert.equal(f.gate.pass, false); assert.equal(f.gate.inconclusive, 'no verdict');
   assert.match((await run(['--help'], proj)).out, /inconclusive/);
+});
+
+await check('--gate records an INCONCLUSIVE width as passByWidth null — never false, never true — and flips no status either way', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([run(['page-0', '--status', 'verified'], proj), run(['page-1', '--status', 'deployed'], proj)])) assert.equal(r.code, 0, r.err);
+  let r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [passRow('page-0'), failRow('page-1')])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'mob.json', T1, 360, [passRow('page-0'), passRow('page-1')])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-1').gate.passByWidth, { 1440: false, 360: true }); assert.equal(gateOf(out, 'page-1').status, 'failed');
+  const polluted = (slug) => ({ slug, inconclusive: true, pct: null, heightDelta: null, clipped: null, content: null, pass: true, reasons: ['origin capture polluted'], override: { verdict: 'tier-shift', reason: 'R-1', valid: true } });
+  r = await run(['--gate', gateTable(proj, 'desk-polluted.json', T2, 1440, [polluted('page-0'), polluted('page-1')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /2 of 2 rows matched, 0 status flip\(s\), 0 older row\(s\) skipped, 2 inconclusive \(status unchanged\)$/m, r.out);
+  const ok = gateOf(out, 'page-0');
+  assert.deepEqual(ok.gate.passByWidth, { 1440: null, 360: true }, 'the passing 1440 verdict is replaced by no verdict, not kept true');
+  assert.equal(ok.status, 'verified', 'no verdict never fails a page'); assert.equal(ok.error, null);
+  const bad = gateOf(out, 'page-1');
+  assert.deepEqual(bad.gate.passByWidth, { 1440: null, 360: true }, 'the failing 1440 verdict is replaced by no verdict, not passed');
+  assert.equal(bad.status, 'failed', 'no verdict never lifts a gate failure'); assert.equal(bad.error, 'gate: pixel 12% > 10%');
 });
 
 await check('--gate copies the validated override {verdict, reason, valid}; only valid: true passes a failing row — a raw override without valid is not valid', async () => {
@@ -404,6 +530,7 @@ await check('--help says the newest row per page and width wins and names the ru
   const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help3-'));
   const r = await run(['--help'], proj);
   assert.equal(r.code, 0); assert.match(r.out, /newest row per page and width wins/); assert.match(r.out, /delivery\.gate\.atByWidth/); assert.match(r.out, /runs\/<ts>-<slug>\.json/);
+  assert.match(r.out, /delivery\.gate\.passByWidth/);
 });
 
 // --- --gate takes every table gate-all writes: the roster summary.json, an --only run's runs/<ts>-<slug>.json, the gate dir ---

@@ -121,13 +121,20 @@ sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
 - **pending** — inventoried as a distinct block, not yet converted.
 - **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists.
 - **deployed / verified** — live on the delivered site.
+- **not-delivered** — deliberately left undelivered, from any status (a block under
+  `blocks/` no page uses, a module the site drops): `update-coverage.mjs --block <name>
+  --status not-delivered --reason "<text>"`. The reason is required and kept as
+  `delivery.reason` (any other status deletes it); counted apart, never pending.
 - **default-content mapping** — `edsBlockName: "default-content"` records a module that
   maps to EDS default content and needs no block; every roll-up counts it as converted
   whatever its status (record it `--status converted --eds-name default-content`).
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and
 `edsBlockName`; only still-`pending` blocks get a freshly derived name, never one mapped
-to `default-content`.
+to `default-content`. It also registers every `blocks/<name>/` holding `<name>.js` or
+`<name>.css` that no row covers (by id, EDS name or `delivery.edsBlockName`; header and
+nav count as one chrome) as a row with `source: blocks-dir`, no pages, 0 instances and
+its prior delivery, else `converted` — no delivered block without a ledger row.
 
 ## Dedup contract (plan.json)
 
@@ -171,7 +178,8 @@ See `checks.md` for the catalog.
 `update-coverage.mjs`, `inventory.mjs`, `blocks.mjs`, and `verify.mjs` all
 re-derive, from the per-unit rows:
 - each template's `{ verified, deployed, pending }` in `templates.json`;
-- the site-wide `lastRun.pages` + `lastRun.blocks` counts in `rollout.json`.
+- the site-wide `lastRun.pages` + `lastRun.blocks` counts in `rollout.json` (blocks:
+  `{total, converted, notDelivered, pending}`).
 
 So the counts never drift from the per-unit truth — they are always recomputed,
 never incremented.

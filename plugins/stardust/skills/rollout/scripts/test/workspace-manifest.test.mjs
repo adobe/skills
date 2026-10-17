@@ -92,8 +92,8 @@ const NEEDLES = ['fixture-org', 'fixture-site', 'fixture-owner', 'aem.page', 'ae
 const leaks = (s, needles = NEEDLES) => needles.filter((n) => s.toLowerCase().includes(n.toLowerCase()));
 const BASE_PLACEHOLDERS = [
   'blocks[].baseType: 1 block(s) unknown (not judged)',
-  'blocks[].purpose: 3 block(s) without purpose (not judged)',
-  'blocks[].reuseGuidance: 3 block(s) without reuse guidance (not judged)',
+  'blocks[].purpose: 4 block(s) without purpose (not judged)',
+  'blocks[].reuseGuidance: 4 block(s) without reuse guidance (not judged)',
   'templates[].description: 2 template(s) without a description (not judged)',
   'templates[].name: 2 template(s) without a name (not judged)',
 ];
@@ -407,15 +407,15 @@ check('judgement: --draft-judgement writes only judgement.json, only when absent
   assert.equal(j._provenance.writtenBy, 'stardust:rollout/workspace-manifest');
   const open = { purpose: '', reuseGuidance: { suitableFor: [], notSuitableFor: [] }, colorScheme: '' };
   assert.deepEqual(j.templates, { 'about-us': { name: '', description: '' }, home: { name: '', description: '' } });
-  assert.deepEqual(j.blocks, { columns: { baseType: 'columns', ...open }, hero: { baseType: 'hero', ...open }, teaser: { baseType: '', ...open } });
+  assert.deepEqual(j.blocks, { breadcrumb: { baseType: 'breadcrumbs', ...open }, columns: { baseType: 'columns', ...open }, hero: { baseType: 'hero', ...open }, teaser: { baseType: '', ...open } });
   const modules = 'blocks hero-banner, link-list, three-up.';
   assert.deepEqual(j.defaults, {
     templates: { 'about-us': { name: 'article', description: `article: 2 page(s); ${modules}` }, home: { name: 'home', description: `home: 1 page(s); ${modules}` } },
-    blocks: { columns: { baseType: 'columns' }, hero: { baseType: 'hero' }, teaser: { baseType: 'unknown' } },
+    blocks: { breadcrumb: { baseType: 'breadcrumbs' }, columns: { baseType: 'columns' }, hero: { baseType: 'hero' }, teaser: { baseType: 'unknown' } },
   });
   assert.deepEqual(j.toFill, [
     ...['about-us', 'home'].flatMap((t) => [`templates.${t}.name`, `templates.${t}.description`]),
-    ...['columns', 'hero', 'teaser'].flatMap((b) => [`blocks.${b}.purpose`, `blocks.${b}.reuseGuidance`]),
+    ...['breadcrumb', 'columns', 'hero', 'teaser'].flatMap((b) => [`blocks.${b}.purpose`, `blocks.${b}.reuseGuidance`]),
     'blocks.teaser.baseType',
   ].sort(byStr));
   j.templates['about-us'].name = 'story-page';
@@ -431,8 +431,8 @@ check('judgement: --draft-judgement writes only judgement.json, only when absent
   ok(run(dir));
   assert.equal(JSON.parse(readFileSync(join(dir, COV[2]), 'utf8')).templates.find((t) => t.id === 'about-us').name, 'story-page');
   assert.deepEqual(doc(dir, 'manifest.json').placeholders, [
-    'blocks[].purpose: 2 block(s) without purpose (not judged)',
-    'blocks[].reuseGuidance: 3 block(s) without reuse guidance (not judged)',
+    'blocks[].purpose: 3 block(s) without purpose (not judged)',
+    'blocks[].reuseGuidance: 4 block(s) without reuse guidance (not judged)',
     'templates[].description: 2 template(s) without a description (not judged)',
     'templates[].name: 1 template(s) without a name (not judged)',
   ], 'one name, one purpose and the unknown base type judged; toFill is informational; colorScheme is never a placeholder');
@@ -461,6 +461,7 @@ check('placeholders: the "(not judged)" summary lines from coverage, sorted; pag
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').placeholders, BASE_PLACEHOLDERS);
   const roster = copy('roster');
+  rmSync(join(roster, 'stardust', 'migrated', 'de'), { recursive: true }); // --state is archetypes-only: no sibling in the tree
   rebuild(roster, '--state', 'stardust/state.json');
   ok(run(roster));
   const lines = doc(roster, 'manifest.json').placeholders;

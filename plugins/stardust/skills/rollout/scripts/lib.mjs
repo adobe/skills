@@ -85,11 +85,16 @@ export function pageCounts(pages) {
 export const DEFAULT_CONTENT = 'default-content';
 export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
 
-/** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
+/**
+ * Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted.
+ * A block recorded `not-delivered` (left undelivered on purpose, with its reason) is its own count —
+ * neither converted nor pending: pending = total − converted − notDelivered.
+ */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified']
-    .includes(b.delivery && b.delivery.status)).length;
-  return { total: blocks.length, converted, pending: blocks.length - converted };
+  const status = (b) => b.delivery && b.delivery.status;
+  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified'].includes(status(b))).length;
+  const notDelivered = blocks.filter((b) => !isDefaultContent(b) && status(b) === 'not-delivered').length;
+  return { total: blocks.length, converted, notDelivered, pending: blocks.length - converted - notDelivered };
 }
 
 /** Recompute each template's delivery roll-up in place from the page rows. */
@@ -116,7 +121,7 @@ export function rollupConfig(config, pages, blocks, now) {
     ...(config.lastRun || {}),
     at: now,
     pages: counts,
-    blocks: blocks ? blockCounts(blocks) : (config.lastRun && config.lastRun.blocks) || { total: 0, converted: 0, pending: 0 },
+    blocks: blocks ? blockCounts(blocks) : (config.lastRun && config.lastRun.blocks) || { total: 0, converted: 0, notDelivered: 0, pending: 0 },
     verifyFailures: counts.failed,
   };
 }
@@ -135,14 +140,26 @@ export function edsName(id) {
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
 /**
- * The URL EDS serves a page at: its path, plus `/` when the page is a folder index — its migrated file is
- * `…/index.html` (`/a` 404s on a plain EDS site), or, for an encoded page with no migrated file, its encoded
- * document `stardust/encoded/…/index.html` (the DA path `/a/index`). `path` stays the page's key. Pure.
+ * The URL the page was deployed at: the pathname of `delivery.deployedUrl` (an absolute URL or a root-relative path)
+ * read by the delivered-path contract (deploy/scripts/eds-path.mjs) — `.html` dropped, a trailing `/index` → `/`, the
+ * root `/`, a recorded trailing slash kept — else the page's `path` as it stands, plus `/` for an encoded page with no
+ * migrated file whose encoded document is `stardust/encoded/…/index.html` (the DA path `/a/index`, served at `/a/`).
+ * The migrated file name does not decide it: an `…/index.html` page whose document went to `/a` (not `/a/index`) is
+ * served at `/a`. `path` stays the page's key. Pure.
  */
 export function publicUrl(page) {
-  const p = page.path || `/${page.slug}`;
-  const src = (page.source && (page.source.migratedHtml || page.source.encodedHtml)) || '';
-  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+  const dep = page.delivery && page.delivery.deployedUrl;
+  if (typeof dep !== 'string' || !dep.trim()) {
+    const p = page.path || `/${page.slug}`;
+    const src = (page.source && !page.source.migratedHtml && page.source.encodedHtml) || '';
+    return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+  }
+  let p;
+  try { p = new URL(dep.trim(), 'https://deployed.invalid').pathname; } catch { p = dep.trim().split(/[?#]/)[0]; }
+  p = p.replace(/\/{2,}/g, '/').replace(/\.html?$/i, '');
+  if (!p.startsWith('/')) p = `/${p}`;
+  if (p.endsWith('/index')) p = p.slice(0, -'index'.length);
+  return p;
 }
 
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);

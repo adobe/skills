@@ -21,8 +21,10 @@
  *       (4 main, not 6 lines; 1 subagent, not 2), the subagent column separate, prompts 2 / acks 1 (tool_result and
  *       <system-reminder> lines skipped), pages + tokens/page from the end detail, the cost-state line surfaced as
  *       session cost, the unwindowed row reconciling the late request;
- *   (b) no --transcripts and a HOME with no harness project dir → `usage: unknown`, exit 0, nothing written; the same
- *       for a --transcripts dir that does not exist;
+ *   (b) no --transcripts and a HOME with no harness project dir → `usage: unknown (…) → stardust/usage.md (windows
+ *       without tokens)`, exit 0, the table written: the 4 windows + unwindowed with from/to, wall min and pages kept and
+ *       every token / request cell `unknown` (JSON null, top-level usage "unknown" + unknownReason); under --dry-run the
+ *       bare `usage: unknown (…)` line and nothing written; the same for a --transcripts dir that does not exist;
  *   (c) --json schema keys; (d) a second run is byte-identical except generatedAt / writtenAt;
  *   (e) --dry-run writes nothing; the fixture tree is untouched; (f) a value flag followed by a flag exits 2;
  *   (g) --prices with fewer than four numbers → a note, no NaN; (h) a rollout wave closes the previous one;
@@ -36,11 +38,17 @@
  *   (n) STARDUST_TRANSCRIPTS names the directory; --transcripts wins over it;
  *   (o) --help in an empty cwd: exit 0 within 15 s, nothing written;
  *   (p) unit timestamps with a +02:00 offset → the same unit rows (counts, parents, overlaps) as the UTC form;
- *       an unparsable startedAt → a `usage:` note, no row.
+ *       an unparsable startedAt → a `usage:` note, no row;
+ *   (q) unreachable transcripts (an empty --transcripts dir: no *.jsonl) + a status.jsonl with two rollout phases + a
+ *       rollout progress.json with a done unit and a running one → both phase rows and both unit rows with `unknown`
+ *       cells (the running unit's `to` and wall min stay unknown: `—`, not a zero-minute span), usage.json usage
+ *       "unknown"; --json keeps stdout the record (the line on stderr); --dry-run writes nothing; no status.jsonl →
+ *       the table is one `usage: unknown (…)` row and nothing else; a transcript dir that cannot be listed → unknown
+ *       (not readable), exit 0.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -59,15 +67,35 @@ const run = (...a) => runIn(proj, {}, ...a);
 const strip = (s) => s.replace(/"?(generatedAt|writtenAt)"?: ?"?[^",\n]+"?,?/g, '');
 const before = snapshot(FIX);
 try {
-  // (b) unknown first: nothing to read, nothing written
-  let r = run();
+  // (b) unknown first: no transcripts to read, yet the table is written — windows from status.jsonl, token cells unknown
+  const TOKEN_KEYS = ['turns', 'prompts', 'acks', 'fresh', 'cacheWrite', 'cacheWrite1h', 'cacheWrite5m', 'cacheRead', 'output', 'thinking', 'subRequests', 'subRead', 'subOut', 'tokensPerPage', 'estCost'];
+  const allNull = (w) => TOKEN_KEYS.every((k) => w[k] === null);
+  const U8 = Array(8).fill('unknown').join(' | ');
+  let r = run('--dry-run');
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^usage: unknown \(no transcript directory for /);
-  assert.ok(!existsSync(join(proj, 'stardust', 'usage.md')) && !existsSync(join(proj, 'stardust', 'usage.json')), 'unknown writes nothing');
+  assert.match(r.stdout, /^usage: unknown \(no transcript directory for [^\n]*STARDUST_TRANSCRIPTS\)$/m, 'dry run: the bare unknown line');
+  assert.ok(!existsSync(join(proj, 'stardust', 'usage.md')) && !existsSync(join(proj, 'stardust', 'usage.json')), 'unknown --dry-run writes nothing');
+  r = run();
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^usage: unknown \(no transcript directory for [^\n]*STARDUST_TRANSCRIPTS\) → stardust\/usage\.md \(windows without tokens\)$/m);
+  const jk = JSON.parse(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8'));
+  assert.equal(jk.usage, 'unknown'); assert.match(jk.unknownReason, /^no transcript directory for /);
+  assert.deepEqual(jk.windows.map((w) => w.label), ['migrate plan', 'migrate per-page render', 'migrate sitewide assets and bundle finalisation', 'migrate state and report', 'unwindowed']);
+  assert.ok(jk.windows.every(allNull) && allNull(jk.total), 'every token / request field is null');
+  const pk = jk.windows[0];
+  assert.deepEqual([pk.from, pk.to, pk.wallMin, pk.pages, pk.secondsPerPage], ['2026-09-10T15:20:00Z', '2026-09-10T15:24:12Z', 4, 6, 40], 'from/to, wall min and pages stay');
+  assert.deepEqual([jk.source.main, jk.source.sub, jk.harnessCost, jk.retention], [0, 0, null, null]);
+  const mdk = readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8');
+  assert.ok(mdk.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
+  assert.ok(mdk.includes(`| migrate plan | 2026-09-10T15:20:00Z | 2026-09-10T15:24:12Z | 4 | ${U8} | 6 | unknown |\n`), mdk);
+  assert.ok(mdk.includes(`| unwindowed | — | — | — | ${U8} | — | unknown |\n`), 'the unwindowed row keeps the shape');
+  assert.ok(mdk.includes(`| **total** | 2026-09-10T15:20:00Z | 2026-09-10T15:40:02Z | — | ${U8} | — | unknown |\n`), 'the total row too');
+  assert.match(mdk, /^Usage unknown \(no transcript directory for /m, 'the reason is in the prose');
+  rmSync(join(proj, 'stardust', 'usage.md')); rmSync(join(proj, 'stardust', 'usage.json'));
   r = run('--transcripts', join(tmp, 'no-such-dir'));
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /^usage: unknown \(transcript directory .*no-such-dir does not exist/);
-  assert.ok(!existsSync(join(proj, 'stardust', 'usage.md')), 'a missing transcripts dir writes nothing');
+  assert.match(r.stdout, /^usage: unknown \(transcript directory [^\n]*no-such-dir does not exist or is not a directory\) → stardust\/usage\.md \(windows without tokens\)$/m);
+  assert.equal(JSON.parse(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8')).windows.length, 5, 'a missing transcripts dir still writes the windows');
 
   // (a) with the fixture transcripts
   r = run('--transcripts', join(FIX, 'transcripts'), '--prices', '3,3.75,0.3,15');
@@ -197,6 +225,73 @@ try {
   assert.deepEqual(jo.units, ju.units, 'same rows, parents, overlaps and counts as the UTC form; timestamps shown in UTC');
   assert.deepEqual(jo.windows, ju.windows, 'phase rows unchanged');
 
+  // (q) unreachable transcripts (an empty dir: no *.jsonl) + two rollout phases + two rollout units
+  const unk = join(tmp, 'unknown-rows');
+  const noJsonl = join(tmp, 'empty-transcripts');
+  mkdirSync(join(unk, 'stardust', 'rollout'), { recursive: true }); mkdirSync(noJsonl);
+  writeFileSync(join(unk, 'stardust', 'status.jsonl'), [
+    { ts: '2026-09-12T08:00:00Z', skill: 'stardust:rollout', phase: 'C-plan', event: 'start' },
+    { ts: '2026-09-12T08:10:00Z', skill: 'stardust:rollout', phase: 'C-plan', event: 'end', detail: '5 pages in scope' },
+    { ts: '2026-09-12T08:10:30Z', skill: 'stardust:rollout', phase: 'C-deliver', event: 'start' },
+    { ts: '2026-09-12T09:10:30Z', skill: 'stardust:rollout', phase: 'C-deliver', event: 'end', detail: '5 pages live' },
+  ].map((l) => JSON.stringify(l)).join('\n') + '\n');
+  writeFileSync(join(unk, 'stardust', 'rollout', 'progress.json'), JSON.stringify({ units: {
+    'cluster-a': { status: 'done', kind: 'cluster', pages: 3, startedAt: '2026-09-12T08:20:00Z', endedAt: '2026-09-12T08:50:00Z' },
+    final: { status: 'running', kind: 'final', startedAt: '2026-09-12T09:00:00Z' },
+  } }));
+  const why = `no *.jsonl under ${noJsonl}`;
+  r = runIn(unk, {}, '--transcripts', noJsonl, '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `usage: unknown (${why})\n`, 'dry run: only the bare line');
+  assert.deepEqual(readdirSync(join(unk, 'stardust')).sort(), ['rollout', 'status.jsonl'], '--dry-run writes nothing');
+  r = runIn(unk, {}, '--transcripts', noJsonl, '--json', '--dry-run');
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).usage, 'unknown', '--json: stdout stays the record');
+  assert.match(r.stderr, /^usage: unknown \(no \*\.jsonl under /m, '--json: the line goes to stderr');
+  r = runIn(unk, {}, '--transcripts', noJsonl);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `usage: unknown (${why}) → stardust/usage.md (windows without tokens)\n`);
+  const jq = JSON.parse(readFileSync(join(unk, 'stardust', 'usage.json'), 'utf8'));
+  assert.deepEqual([jq.usage, jq.unknownReason], ['unknown', why]);
+  assert.deepEqual(jq.windows.map((w) => [w.label, w.from, w.to, w.wallMin, w.pages]), [
+    ['rollout C-plan', '2026-09-12T08:00:00Z', '2026-09-12T08:10:00Z', 10, 5],
+    ['rollout C-deliver', '2026-09-12T08:10:30Z', '2026-09-12T09:10:30Z', 60, 5],
+    ['unwindowed', null, null, null, null]]);
+  assert.deepEqual(jq.units.map((u) => [u.label, u.parent, u.from, u.to, u.wallMin, u.pages, u.overlaps]), [
+    ['↳ rollout cluster-a', 'rollout C-deliver', '2026-09-12T08:20:00Z', '2026-09-12T08:50:00Z', 30, 3, []],
+    ['↳ rollout final', 'rollout C-deliver', '2026-09-12T09:00:00Z', null, null, null, []]], 'no endedAt and no requests → the end stays unknown');
+  assert.ok([...jq.windows, ...jq.units, jq.total].every(allNull), 'every token / request field is null');
+  const mdq = readFileSync(join(unk, 'stardust', 'usage.md'), 'utf8');
+  assert.ok(mdq.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
+  assert.match(mdq, /^ {4}- stardust\/rollout\/progress\.json$/m);
+  const rowsQ = mdq.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| window |'));
+  assert.deepEqual(rowsQ, [
+    `| rollout C-plan | 2026-09-12T08:00:00Z | 2026-09-12T08:10:00Z | 10 | ${U8} | 5 | unknown |`,
+    `| rollout C-deliver | 2026-09-12T08:10:30Z | 2026-09-12T09:10:30Z | 60 | ${U8} | 5 | unknown |`,
+    `| ↳ rollout cluster-a | 2026-09-12T08:20:00Z | 2026-09-12T08:50:00Z | 30 | ${U8} | 3 | unknown |`,
+    `| ↳ rollout final | 2026-09-12T09:00:00Z | — | — | ${U8} | — | unknown |`,
+    `| unwindowed | — | — | — | ${U8} | — | unknown |`,
+    `| **total** | 2026-09-12T08:00:00Z | 2026-09-12T09:10:30Z | — | ${U8} | — | unknown |`], 'phase rows, unit rows under their phase, unknown cells');
+  // no status.jsonl either: one `usage: unknown (…)` row and nothing else
+  const none = join(tmp, 'no-status');
+  mkdirSync(join(none, 'stardust'), { recursive: true });
+  r = runIn(none, {}, '--transcripts', noJsonl);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `usage: unknown (${why}) → stardust/usage.md (windows without tokens)\n`);
+  const mdn = readFileSync(join(none, 'stardust', 'usage.md'), 'utf8');
+  assert.ok(mdn.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
+  assert.deepEqual(mdn.split('\n').filter((l) => l.startsWith('| ') && !l.startsWith('| window |')), [`| usage: unknown (${why}) | — | — | — | ${U8} | — | unknown |`], 'a single unknown row');
+  const jn = JSON.parse(readFileSync(join(none, 'stardust', 'usage.json'), 'utf8'));
+  assert.deepEqual([jn.usage, jn.windows.map((w) => w.label), jn.units], ['unknown', [`usage: unknown (${why})`], []]);
+  assert.ok(allNull(jn.windows[0]) && allNull(jn.total));
+  // a directory that cannot be listed is unreachable too, never a crash (skipped where permissions do not bind)
+  if (process.platform !== 'win32' && process.getuid?.() !== 0) {
+    const locked = join(tmp, 'locked-transcripts'); mkdirSync(locked); chmodSync(locked, 0o000);
+    try { r = runIn(none, {}, '--transcripts', locked, '--dry-run'); } finally { chmodSync(locked, 0o755); }
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^usage: unknown \(transcript directory [^\n]*locked-transcripts is not readable \(EACCES\)\)$/m);
+  }
+
   // (m) discovery: HOME/.<dot-dir>/projects/<root, non-alphanumerics as '-'>/ whose transcript carries cwd = root
   const home2 = join(tmp, 'home2');
   const mangled = proj.replace(/[^a-zA-Z0-9]/g, '-');
@@ -236,7 +331,7 @@ try {
   assert.match(r.stdout, /Exit codes: 0 always/); assert.match(r.stdout, /2 only for a\nvalue flag followed by another flag/);
   assert.match(r.stdout, /STARDUST_TRANSCRIPTS/); assert.match(r.stdout, /unit rows/i);
   assert.deepEqual(snapshot(FIX), before, 'fixture untouched');
-  console.log('token-ledger test: ok (unknown → exit 0 no write; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; offsets normalised; discovery; env; help)');
+  console.log('token-ledger test: ok (unknown → exit 0, table written with unknown cells, dry-run writes nothing, no status → one row; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; offsets normalised; discovery; env; help)');
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }

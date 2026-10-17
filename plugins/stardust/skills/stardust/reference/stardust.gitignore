@@ -10,11 +10,7 @@
 current/assets/
 migrated/assets/
 rollout/qa/
-
-# The gate's renders and diffs are not tracked; its JSON sidecars (summary.json,
-# runs/, rounds.json, triage.json, gate keys) are: a verdict's evidence. Git
-# re-includes a file only when its directory is re-included, hence the
-# directory negation.
+# The gate's JSON (row of record: summary, overrides, presence, rounds, triage, probes) is tracked so a lost container keeps the evidence; images stay untracked.
 replica/gates/**
 !replica/gates/**/
 !replica/gates/**/*.json

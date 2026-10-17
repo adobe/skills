@@ -10,7 +10,13 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page; a re-read
+ * of identical bytes never is. A roster row's hash (archetypes-only mode: its
+ * current-state capture or its URL) is never compared — its basis changes when the
+ * document appears; the row keeps its status, takes the file's hash and is reported
+ * as kept (`Kept … not compared: <slugs>`). Any other prior hash is compared (a
+ * migrated file's bytes; an encoded document's; an `update-coverage.mjs --new` row's
+ * `origin:slug:path` digest) — a basis change re-flags stale, the cautious side.
  * The read-modify-write runs under update-coverage.mjs's lock (`<out>/.coverage.lock`,
  * taken before the prior coverage is read, released at exit), so a status a cluster
  * records meanwhile is never lost.
@@ -30,9 +36,9 @@
  * template's archetype keeps its migrated-HTML row (deploy converts it from that HTML
  * and never stages it). An encoded page's prior `content-pending` becomes `pending`; any
  * other status a `--state` roster row carried (update-coverage.mjs recorded `deployed`)
- * stays — the roster row's hash was never the document's. Both rules are migrate's
- * (encode/provenance.mjs encodedPageOf, currentEncode), loaded only when a sidecar
- * records an encode; without that file beside this script such a run exits 1.
+ * stays — the roster row's hash was never the document's (reported as kept, not compared).
+ * Both rules are migrate's (encode/provenance.mjs encodedPageOf, currentEncode), loaded
+ * only when a sidecar records an encode; without that file beside this script such a run exits 1.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -48,7 +54,12 @@
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
- * sibling content is populated later by a separate content track.
+ * sibling content is populated later by a separate content track. A roster URL is read
+ * as delivered (`/a/`, `/a/index`, `/a.html` → `/a`), so an archetype is never seeded twice.
+ * The state file must be a state file — `pages[]` of objects with a `url` — and the tree
+ * must hold no sibling (a sidecar `template` naming another slug, or fidelityTier
+ * `sibling`): else exit 2 with one line, nothing written; re-run without --state. An
+ * encoded sibling is none: it is listed from its sidecar under the template it names.
  *
  * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
  * a search results page from the dynamics phase; `source.migratedHtml` carries the
@@ -75,7 +86,8 @@
  *   to rollout.json `exports`, which survives every re-run. Another name exits 2 before any write.
  *
  * Exit: 0 coverage written · 1 the migrated tree is not found (message on stderr, nothing written), or an
- *   unexpected read/write failure · 2 an unknown --export name (message on stderr, nothing written).
+ *   unexpected read/write failure · 2 an unknown --export name, or --state refused (not a state file, or
+ *   siblings) — one line on stderr, nothing written.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { join, dirname, relative, basename } from 'node:path';
@@ -177,11 +189,12 @@ function deliveredPath(relHtml) {
   return `/${noExt}`;
 }
 
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster). */
+/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster): `/a/`, `/a/index`, `/a.html` → `/a`. */
 function urlToDeliveredPath(url) {
   let p;
   try { p = new URL(url).pathname; } catch { p = String(url); }
   p = p.replace(/\.html$/, '');
+  if (p.length > 1) p = p.replace(/\/+$/, '');
   if (p === '' || p === '/' || p === '/index') return '/';
   if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
   return p;
@@ -206,33 +219,17 @@ if (!existsSync(MIGRATED)) {
   process.exit(1);
 }
 
-// --- Load prior coverage to preserve delivery state ----------------------------
-const coverageDir = join(OUT, 'coverage');
-const pagesPath = join(coverageDir, 'pages.json');
-const templatesPath = join(coverageDir, 'templates.json');
-const configPath = join(OUT, 'rollout.json');
-
-// update-coverage.mjs's lock for the same files (cluster writers record rows under it): taken before the first read,
-// released at exit, so a status recorded meanwhile is never lost.
-try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout inventory: ${e.message}`); process.exit(1); }
-const priorPages = readJSON(pagesPath, { pages: [] });
-const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
-const priorConfig = readJSON(configPath, null);
+// --state takes a state file's real shape — pages[] of objects with a url — or refuses: no rows read from a wrong shape.
+const isStateDoc = (doc) => !!doc && typeof doc === 'object' && Array.isArray(doc.pages)
+  && doc.pages.every((p) => !!p && typeof p === 'object' && !Array.isArray(p) && typeof p.url === 'string' && p.url.trim() !== '');
+const stateDoc = STATE ? readJSON(STATE, null) : null;
+if (STATE && !isStateDoc(stateDoc)) {
+  console.error(`rollout inventory: ${STATE} is not a state file (pages[] of {slug, url, type}) — nothing written`);
+  process.exit(2);
+}
 
 // --- Inventory the migrated tree -----------------------------------------------
 const htmlFiles = walkHtml(MIGRATED).sort();
-// the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
-const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
-const stateDoc = stateFile ? readJSON(stateFile, { pages: [] }) : null;
-const statePages = (stateDoc && Array.isArray(stateDoc.pages) ? stateDoc.pages : []).filter((p) => p && p.slug);
-const stateUrls = new Map(statePages.filter((p) => p.url).map((p) => [p.slug, p.url]));
-// identity (DA org/site, project hosts) a free-text field must not carry; the source origin is not identity
-const tokens = identityTokens({
-  rollout: { site: { ...((priorConfig && priorConfig.site) || {}), ...(SITE_URL ? { sourceUrl: SITE_URL } : {}) } },
-  state: stateDoc,
-});
-const sidecars = new Map();
-const pages = [];
 
 // "Is this sidecar an encoded page?" and "is it the current clean encode?" are migrate's (encode/provenance.mjs
 // encodedPageOf, currentEncode), in either layout — loaded only when a sidecar records an encode output.
@@ -250,6 +247,51 @@ const encoder = await (async () => {
 })();
 const PROJECT = (() => { const m = MIGRATED.replace(/[/\\]+$/, ''); return basename(m) === 'migrated' && basename(dirname(m)) === 'stardust' ? dirname(dirname(m)) : '.'; })();
 
+// --state over a tree that holds a sibling (listed from its migrated HTML, not as encoded) is refused before the lock
+// is taken, so nothing is written — see the archetypes-only mode below.
+if (STATE) {
+  const siblings = [];
+  for (const relHtml of htmlFiles) {
+    const meta = readJSON(join(MIGRATED, sidecarFor(relHtml)), {});
+    if (encoder && encoder.encodedPageOf(meta, { hasHtml: true })) continue;
+    const path = deliveredPath(relHtml);
+    const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+    if ((meta.template && meta.template !== slug) || meta.fidelityTier === 'sibling') siblings.push(slug);
+  }
+  if (siblings.length) {
+    const names = siblings.sort();
+    console.error(`rollout inventory: --state is the archetypes-only mode, but ${MIGRATED} holds ${names.length} sibling page(s) (${names.slice(0, 3).join(', ')}${names.length > 3 ? '…' : ''}) — re-run without --state`);
+    process.exit(2);
+  }
+}
+
+// --- Load prior coverage to preserve delivery state ----------------------------
+const coverageDir = join(OUT, 'coverage');
+const pagesPath = join(coverageDir, 'pages.json');
+const templatesPath = join(coverageDir, 'templates.json');
+const configPath = join(OUT, 'rollout.json');
+
+// update-coverage.mjs's lock for the same files (cluster writers record rows under it): taken before the first read,
+// released at exit, so a status recorded meanwhile is never lost.
+try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout inventory: ${e.message}`); process.exit(1); }
+const priorPages = readJSON(pagesPath, { pages: [] });
+const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
+const priorConfig = readJSON(configPath, null);
+
+// the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
+const defaultState = !STATE && existsSync('stardust/state.json') ? readJSON('stardust/state.json', null) : null;
+const stateRows = STATE ? stateDoc.pages : (defaultState && Array.isArray(defaultState.pages) ? defaultState.pages : []);
+const statePages = stateRows.filter((p) => p && p.slug);
+const stateUrls = new Map(statePages.filter((p) => p.url).map((p) => [p.slug, p.url]));
+// identity (DA org/site, project hosts) a free-text field must not carry; the source origin is not identity
+const tokens = identityTokens({
+  rollout: { site: { ...((priorConfig && priorConfig.site) || {}), ...(SITE_URL ? { sourceUrl: SITE_URL } : {}) } },
+  state: STATE ? stateDoc : defaultState,
+});
+const sidecars = new Map();
+const pages = [];
+const notCompared = [];
+
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
   const sourceHash = sha256(readFileSync(absHtml));
@@ -263,11 +305,18 @@ for (const relHtml of htmlFiles) {
   const prior = priorBySlug.get(slug);
   let delivery;
   if (prior && prior.delivery) {
-    const changed = prior.source && prior.source.sourceHash !== sourceHash;
-    if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
+    // A roster row's hash (no migratedHtml or encodedHtml: its current-state capture or its URL) is never compared — its
+    // basis changes when the document appears; reported as kept. Any other prior hash is compared (a migrated file's bytes,
+    // an encoded document's, or the `origin:slug:path` digest of an update-coverage --new row) — a basis change re-flags
+    // stale, the cautious side.
+    const was = prior.source || {};
+    const compared = [was.migratedHtml, was.encodedHtml].some((s) => typeof s === 'string' && s !== '');
+    const delivered = ['deployed', 'verified'].includes(prior.delivery.status);
+    if (compared && delivered && was.sourceHash !== sourceHash) {
       delivery = { ...prior.delivery, status: 'stale' };
     } else {
       delivery = prior.delivery;
+      if (!compared && delivered) notCompared.push(slug);
     }
   } else {
     delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
@@ -311,15 +360,17 @@ if (encoder) {
     const sourceHash = st.ok ? st.sha : lastClean;
     if (!st.ok) notCurrent.push(`${slug} (${st.kind})`);
     // delivery carried by slug: content-pending → pending (the document exists now); a roster row's status stays (its
-    // hash was the roster's, never the document's); a delivered page whose document's bytes changed → stale
+    // hash was the roster's, never the document's; reported as kept); a delivered page whose document's bytes changed → stale
     const prior = priorBySlug.get(slug);
     let delivery = { status: 'pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null };
     if (prior && prior.delivery) {
       const rosterRow = !prior.source || (!prior.source.migratedHtml && !prior.source.encodedHtml);
       const changed = !rosterRow && sourceHash !== null && prior.source.sourceHash !== sourceHash;
+      const delivered = ['deployed', 'verified'].includes(prior.delivery.status);
       if (prior.delivery.status === 'content-pending') delivery = { ...prior.delivery, status: 'pending' };
-      else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) delivery = { ...prior.delivery, status: 'stale' };
+      else if (changed && delivered) delivery = { ...prior.delivery, status: 'stale' };
       else delivery = prior.delivery;
+      if (rosterRow && delivered) notCompared.push(slug);
     }
     const templateId = meta.template || (isArchetype(meta) ? slug : null) || meta.type || null;
     encodedTemplates.set(slug, templateId);
@@ -342,8 +393,10 @@ if (encoder) {
 }
 
 // --- Archetypes-only mode: merge content-pending siblings from state.json -------
-// In --state mode each migrated archetype is keyed by its own fine slug (the
-// archetypes are genuinely distinct templates that share only chrome). A roster
+// The tree must hold archetypes only: a sibling in it would be regrouped as its own
+// template, so --state refuses it (above, before the lock: nothing written) and points at a full run.
+// Each migrated page is then keyed by its own fine slug (the archetypes are genuinely
+// distinct templates that share only chrome). A roster
 // page's `type` names the archetype slug it clones; it joins that archetype's
 // template group as a `content-pending` sibling, inheriting the archetype's blocks
 // and pushing no document of its own.
@@ -356,9 +409,7 @@ if (STATE) {
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
-  const state = readJSON(STATE, { pages: [] });
-  for (const sp of (state.pages || [])) {
-    if (!sp || !sp.url) continue;
+  for (const sp of stateDoc.pages) {
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
     if (encodedSlugs.has(sp.slug)) continue; // an encoded page, listed from its sidecar at its delivered (sanitised) path
@@ -520,7 +571,7 @@ const config = {
     liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
   },
   exports: [...new Set([...priorExports, ...EXPORTS])],
-  lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
+  lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, notDelivered: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 
@@ -530,6 +581,10 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+if (notCompared.length) {
+  const names = notCompared.sort();
+  console.log(`Kept        ${names.length} delivered row(s) whose hash basis changed (roster → document), not compared: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ' …' : ''}`);
+}
 const delivered = pages.filter((p) => p.delivered).length;
 console.log(`Delivered   ${delivered}/${pages.length} pages parsed from ${CONTENT}${delivered < pages.length ? ` · ${pages.length - delivered} without a content file (delivered: null)` : ''}${wrote.some(Boolean) ? '' : ' · coverage unchanged, not rewritten'}`);
 if (notCurrent.length) console.log(`Not current ${notCurrent.length} encoded page(s) — deploy stages none of them until each encodes clean; the row keeps the last clean encode's hash: ${notCurrent.join(', ')}`);

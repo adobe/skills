@@ -59,4 +59,5 @@ while the typeahead returned 10 entries for a source answer of 3.
    register.
 6. **Owner decisions by name.** `scaffolded-awaiting-owner` lists the exact decision, so the report
    is honest about what runs.
-7. **Re-run after every phase** and before the final report. The check is read-only.
+7. **Re-run after every phase** and before the final report. The check is read-only; any FAIL
+   exits 2, never a silent 0.

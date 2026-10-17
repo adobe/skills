@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/inspect.test.mjs — the four inspection helpers' contracts:
-// section.mjs (outline, one section, fences ignored, caps), css-rules.mjs (nested @media,
+// section.mjs (outline, one section, fences ignored, caps, the word fallback, the outline on stdout
+// on a miss), css-rules.mjs (nested @media,
 // raw at-rules, strings/comments/data URIs, filters, minified offsets), json-query.mjs (shape,
 // table, --match/--fields/--keys/--path, caps, --tsv whole values, the truncation footer),
 // html-slice.mjs (nesting, attribute stripping,
@@ -12,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCss, splitDeclarations } from '../css-rules.mjs';
-import { outline, section } from '../section.mjs';
+import { outline, section, wordsMatch } from '../section.mjs';
 import { getPath, matches, parseMatch, shape, tsv } from '../json-query.mjs';
 import { clean, findElements, parseSelector } from '../html-slice.mjs';
 
@@ -60,9 +61,9 @@ check('section: --max-lines caps and names the remaining range; --level filters'
   assert.equal(run('section.mjs', md, 'setup', '--level', '3').code, 0); // matches "Sub of setup"
   assert.equal(run('section.mjs', md, 'setup', '--level', '3').out.includes('### Sub of setup'), true);
 });
-check('section: no match exits 2 and prints the outline to stderr; usage exits 125', () => {
+check('section: no match exits 2 and prints the outline to stdout; usage exits 125', () => {
   const r = run('section.mjs', md, 'nope');
-  assert.equal(r.code, 2); assert.match(r.err, /no heading matches/); assert.match(r.err, /## Residuals/);
+  assert.equal(r.code, 2); assert.match(r.out, /no heading matches/); assert.match(r.out, /## Residuals/); assert.equal(r.err, '');
   assert.equal(run('section.mjs', md).code, 125); assert.equal(run('section.mjs').code, 125);
   assert.equal(section(MD, /nope/), null);
 });
@@ -87,6 +88,50 @@ check('section: --all over the 20 KB cap prints the sections that fit, then one 
 check('section: a single section is never truncated by the cap; --all under the cap prints no NOTE', () => {
   const r = run('section.mjs', md2, 'beta'); assert.equal(r.code, 0, r.err); assert.match(r.out, /beta line 300/); assert.doesNotMatch(r.out, /NOTE:/);
   const two = run('section.mjs', md2, '^(alpha|gamma)$', '--all'); assert.equal(two.code, 0); assert.match(two.out, /alpha line 190/); assert.match(two.out, /gamma line 010/); assert.doesNotMatch(two.out, /NOTE:/);
+});
+
+// Word fallback: a cited heading passed verbatim (parentheses, §, dashes) still lands.
+const PHASE_C = 'Phase C — Deliver the site (drive `deploy`)';
+const MD3 = `# Rollout\n\n## Deliver checklist\n\nlist\n\n## Phases\n\n### Phase B — Plan the pages\n\nbody b\n\n### ${PHASE_C}\n\nbody c\n\n#### Delivery notes\n\ndeep c\n\n### 15. Wrap up — later\n\nbody fifteen\n\n### 5. Lean on button conventions — do NOT manufacture anchors\n\nbody five\n`;
+const md3 = join(dir, 'phases.md'); writeFileSync(md3, MD3);
+const plain = join(dir, 'plain.md'); writeFileSync(plain, 'just text, no headings\n');
+const FALLBACK = (p) => `section: no heading matches /${p}/i — matched by its words (case and punctuation ignored)\n`;
+check('section: wordsMatch — case, accents and punctuation ignored, words in order, a word may start a longer one', () => {
+  assert.equal(wordsMatch(PHASE_C, 'Phase C (Deliver'), true);
+  assert.equal(wordsMatch(PHASE_C, 'phase c deliver'), true);
+  assert.equal(wordsMatch(PHASE_C, 'deliver phase'), false, 'wrong order');
+  assert.equal(wordsMatch('Delivery notes', 'deliver'), true, 'a prefix of a title word');
+  assert.equal(wordsMatch('Delivery notes', 'livery'), false, 'not the middle of a title word');
+  assert.equal(wordsMatch('5. Lean on button conventions', '§ 5. Lean on button'), true);
+  assert.equal(wordsMatch('15. Wrap up', '§ 5'), false, '"5" is not the start of "15"');
+  assert.equal(wordsMatch('Café Überblick', 'CAFE uberblick'), true, 'accents removed (NFKD)');
+  assert.equal(wordsMatch(PHASE_C, '— (§) —'), false, 'an empty normalised pattern never matches'); assert.equal(wordsMatch(PHASE_C, ''), false);
+  assert.deepEqual(section(MD3, (t) => wordsMatch(t, 'deliver'), { level: 4 }).map((h) => h.title), ['Delivery notes'], 'section() takes a predicate too');
+});
+check('section: a bad regex falls back to the heading words — one stderr line, the section printed, exit 0', () => {
+  const r = run('section.mjs', md3, 'Phase C (Deliver');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, FALLBACK('Phase C (Deliver'));
+  assert.ok(r.out.split('\n').includes(`### ${PHASE_C}`), r.out); assert.match(r.out, /deep c/); assert.doesNotMatch(r.out, /body fifteen|Plan the pages/);
+  const w = run('section.mjs', md3, 'phase c deliver'); assert.equal(w.code, 0, w.err); assert.equal(w.err, FALLBACK('phase c deliver')); assert.ok(w.out.includes(`### ${PHASE_C}`));
+  const s = run('section.mjs', md3, '§ 5. Lean on button'); assert.equal(s.code, 0, s.err); assert.equal(s.err, FALLBACK('§ 5. Lean on button'));
+  assert.match(s.out, /^### 5\. Lean on button conventions/m); assert.match(s.out, /body five/); assert.doesNotMatch(s.out, /body fifteen/);
+  const re = run('section.mjs', md3, 'Phase C'); assert.equal(re.code, 0); assert.equal(re.err, '', 'a regex hit prints no fallback line');
+});
+check('section: the word fallback respects --level', () => {
+  const r = run('section.mjs', md3, '(deliver', '--level', '4');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, FALLBACK('(deliver')); assert.match(r.out, /^#### Delivery notes$/m); assert.doesNotMatch(r.out, /Phase C|Deliver checklist/);
+  const two = run('section.mjs', md3, '(deliver', '--level', '2'); assert.equal(two.code, 0); assert.match(two.out, /^## Deliver checklist\n\nlist$/m); assert.doesNotMatch(two.out, /also matches|Phases/);
+  const miss = run('section.mjs', md3, 'phase c deliver', '--level', '2'); assert.equal(miss.code, 2, miss.out); assert.match(miss.out, /its headings:/);
+});
+check('section: a total miss exits 2 with one line naming the pattern, then the outline, all on stdout', () => {
+  const r = run('section.mjs', md3, 'deliver phase');
+  assert.equal(r.code, 2, r.out); assert.equal(r.err, '');
+  const lines = r.out.trimEnd().split('\n');
+  assert.equal(lines[0], `section: no heading matches "deliver phase" in ${md3} — its headings:`);
+  assert.equal(lines[1], `${md3}: 8 headings`); assert.ok(lines.some((l) => l.endsWith(`### ${PHASE_C}  (8 lines)`)), r.out);
+  const none = run('section.mjs', plain, 'anything');
+  assert.equal(none.code, 2); assert.deepEqual(none.out.trimEnd().split('\n'), [`section: no heading matches "anything" in ${plain} — its headings:`, `${plain}: 0 headings`]);
+  const h = run('section.mjs', '--help'); assert.equal(h.code, 0); assert.match(h.out, /0 printed, 2 no match — outline on stdout, 125 usage/);
 });
 // ---- css-rules ----------------------------------------------------------------------------------
 check('css-rules: parser handles comments, strings, data URIs, nested conditionals and raw at-rules', () => {

@@ -7,7 +7,9 @@
  * each page's deploy step, and after each block converts.
  *
  * Page:   node update-coverage.mjs <slug>  --status <s> [--url <deployedUrl>] [--error <msg>]
- * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
+ * Block:  node update-coverage.mjs --block <id|edsName> --status <s> [--eds-name <name>] [--reason "<text>"]
+ *   the row is found by `id`, then by `delivery.edsBlockName` (several rows sharing that name: refused,
+ *   name the id instead).
  * Gate:   node update-coverage.mjs --gate <table | dir>
  *   <table> = a gate-all table: the roster stardust/replica/gates/all-<w>/summary.json, or the
  *   runs/<ts>-<slug>.json an --only run writes instead (never summary.json; same rows, fewer); <dir> = the
@@ -21,10 +23,11 @@
  *   without a rows array, `<path> is not a gate-all summary (no rows[])`; a dir holding no table,
  *   `<dir> holds no gate-all table (no summary.json, no runs/*.json)`. One bad table in a dir refuses the ingest.
  *   Writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, inconclusive, override, table, at, width, atByWidth, rounds, host} (`table` = the file the row came
- *   from) and flips a failing page (no valid override) from deployed / verified to `failed` (error
- *   `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs never marks a page
- *   `verified` while its `delivery.gate.pass` is false (#125 —
+ *   reasons, inconclusive, override, table, at, width, atByWidth, passByWidth, rounds, host} (`table` = the file
+ *   the row came from) and flips a failing page (no valid override) from deployed / verified to `failed` (error
+ *   `gate: <reasons>`), a passing one out of that failure back to `deployed` only when no recorded width's verdict
+ *   (passByWidth) is false; verify.mjs never marks a page `verified` while its `delivery.gate.pass` or any recorded
+ *   width's verdict is false (#125 —
  *   completion derives from one place: a page the pixel table failed cannot read as verified).
  *   `override` = gate-all's validated {verdict, reason, valid}; only `valid: true` passes a failing row (a table
  *   whose override has no `valid` predates the check: not valid). An INCONCLUSIVE row (a polluted capture — no
@@ -35,6 +38,11 @@
  *   gate recorded without `atByWidth` (before 0.34.4), is applied. Row time (`at`) = `reused.at` of a whole-row
  *   reuse (when the row was measured), else the table's `_provenance.writtenAt`, else null (never skipped, no map
  *   entry); `width` = the table's `_provenance.breakpoint`.
+ *   `pass` is the verdict of the row applied last, whatever its width; `delivery.gate.passByWidth`
+ *   ({"<width>": bool | null}, keys as atByWidth) keeps each width's own verdict (a valid override passes it; an
+ *   INCONCLUSIVE row records null — no verdict, never false, never true): the row sets its table's width, other
+ *   widths' entries are kept, a skipped older row touches none, a table without a breakpoint none. done-check.mjs
+ *   proves a page only when every width is true, and lists it in pages_failed while any recorded width is false.
  *   `delivery.gate.rounds` ({"<width>": n}) = the row's fix-round count (`round`, a non-negative integer) per
  *   width, merged across ingests like `atByWidth` (the newest applied row of a width sets it, also a lower count
  *   after a round reset); a row without a valid `round` (a table written before gate-all counted rounds), a
@@ -46,9 +54,13 @@
  *   row leaves it.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
- *   block <status>: pending | converted | deployed | verified | failed
+ *   block <status>: pending | converted | deployed | verified | failed | not-delivered
  *   A module mapped to EDS default content (no block needed) is recorded
  *   `--block <id> --status converted --eds-name default-content`; it is never counted pending.
+ *   A block deliberately left undelivered (one under blocks/ no page uses, a module the site drops) is
+ *   recorded `--block <name> --status not-delivered --reason "<text>"` — --reason is required for it
+ *   (exit 2 otherwise) and kept as `delivery.reason`; any other status deletes `delivery.reason`.
+ *   rollout.json lastRun.blocks counts it apart: {total, converted, notDelivered, pending}.
  *
  *   --new adds a page that was built OUTSIDE the migrated tree — a search results page from the
  *   dynamics phase (D2), a landing page for a redirect — so it enters coverage, `verify.mjs --all`,
@@ -73,7 +85,8 @@
  * Writes (under --out, default stardust/rollout): coverage/pages.json (page + new forms) or
  * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
  * they exist. One result line on stdout (a --gate ingest of an absent summary.json: the note line first).
- * Exit 0 ok, 2 usage, 1 missing ledger / refused row / refused --gate input (not found, cannot be read, unparsable,
+ * Exit 0 ok, 2 usage (also a not-delivered block without --reason), 1 missing ledger / refused row (no such page
+ * or block, an EDS block name several block rows share) / refused --gate input (not found, cannot be read, unparsable,
  * no rows[], a dir that holds no gate-all table).
  */
 import { join, dirname, basename } from 'node:path';
@@ -199,21 +212,34 @@ if (newSlug) {
 }
 
 if (blockId) {
-  const STATUSES = ['pending', 'converted', 'deployed', 'verified', 'failed'];
+  const STATUSES = ['pending', 'converted', 'deployed', 'verified', 'failed', 'not-delivered'];
   if (!status || !STATUSES.includes(status)) { console.error(`block status must be one of ${STATUSES.join('|')}`); process.exit(2); }
+  const reason = (arg('reason', '') || '').trim();
+  if (status === 'not-delivered' && !reason) {
+    console.error('usage: update-coverage.mjs --block <id> --status not-delivered --reason "<text>"   (--reason is required: why the block is not delivered)');
+    process.exit(2);
+  }
   const doc = readJSON(blocksPath);
   if (!doc) { console.error(`rollout: ${blocksPath} not found — run blocks.mjs first.`); process.exit(1); }
-  const b = (doc.blocks || []).find((x) => x.id === blockId);
+  const rows = doc.blocks || [];
+  let b = rows.find((x) => x.id === blockId);
+  if (!b) {
+    const byEds = rows.filter((x) => x.delivery && x.delivery.edsBlockName === blockId);
+    if (byEds.length > 1) { console.error(`rollout: "${blockId}" is the EDS block of ${byEds.length} rows (${byEds.map((x) => x.id).join(', ')}) — name one by its id.`); process.exit(1); }
+    [b] = byEds;
+  }
   if (!b) { console.error(`rollout: no block "${blockId}".`); process.exit(1); }
   b.delivery = b.delivery || {};
   b.delivery.status = status;
   const edsNameArg = arg('eds-name', null);
   if (edsNameArg) b.delivery.edsBlockName = edsNameArg;
   if (status === 'converted') b.delivery.convertedAt = now;
+  if (status === 'not-delivered') b.delivery.reason = reason;
+  else delete b.delivery.reason;
   doc.generatedAt = now;
   writeJSON(blocksPath, doc);
   reRoll();
-  console.log(`block ${blockId} → ${status}`);
+  console.log(`block ${b.id === blockId ? blockId : `${b.id} (${blockId})`} → ${status}${status === 'not-delivered' ? `   reason: ${reason}` : ''}`);
   process.exit(0);
 }
 
@@ -279,10 +305,15 @@ if (gateArg) {
       // gate-all's validated override; a table written before the check carries none with `valid` — not earned
       const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
       const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
-      p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds, host: originOf(r.host) ?? tableHost };
+      const passByWidth = { ...((rec && rec.passByWidth) || {}) };
+      // an inconclusive row has no verdict at its width: null, never false (done-check: gates_inconclusive, not
+      // pages_failed) and never true (unit_unproven needs every width true)
+      if (width != null) passByWidth[String(width)] = r.inconclusive ? null : pass;
+      const widthFailed = Object.values(passByWidth).some((v) => v === false);
+      p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, passByWidth, rounds, host: originOf(r.host) ?? tableHost };
       if (r.inconclusive) inconclusive += 1;
       else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
-      else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
+      else if (pass && !widthFailed && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
     }
   }
   doc.generatedAt = now;
@@ -296,7 +327,7 @@ if (gateArg) {
 // Page update
 if (!slug || !status || !PAGE_STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${PAGE_STATUSES.join('|')}> [--url <u>] [--error <m>]`);
-  console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
+  console.error('   or: update-coverage.mjs --block <id|edsName> --status <pending|converted|deployed|verified|failed|not-delivered> [--eds-name <n>] [--reason "<text>"]   (--reason required with not-delivered)');
   console.error('   or: update-coverage.mjs --gate <table | dir>   (stardust/replica/gates/all-<w>/summary.json, …/runs/<ts>-<slug>.json, or all-<w>/)');
   console.error('   or: update-coverage.mjs --new <slug> --path </path> --template <id> --origin <origin> [--title <t>] [--status <s>]');
   process.exit(2);

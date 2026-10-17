@@ -319,7 +319,10 @@ verdict}`. One `plan` unit (Phase 1), one `render` unit per template
 cluster of at most ~8 siblings (`migrate.mjs render <slug…>` takes the
 cluster's slug list), one `assets` unit when Phase 3 rehosts media, one
 `report` unit (Phase 4). Per unit, in this order: the `progress.json`
-write → the checkpoint commit → the next unit; a unit end is a safe
+write
+(`node stardust/scripts/stardust/progress.mjs unit start|done|failed <name> --ledger migrate [--kind …]`;
+it locks through deploy's `file-lock.mjs`, copied to `stardust/scripts/deploy/`)
+→ the checkpoint commit → the next unit; a unit end is a safe
 resume point, not a stop. A session resumed inside migrate reads the file
 and runs only the units not `done`; a unit left `running` re-renders its
 slugs — the driver is idempotent, unchanged pages are skipped.

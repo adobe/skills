@@ -16,7 +16,7 @@
  * Writes (under --out, default stardust/qa):
  *   dynamics-report.md     one row per replayed check (PASS/FAIL, detail, third-party requests)
  *   dynamics-report.json   the same results with _provenance
- * Progress lines go to stderr. Exit 0 when every check passed, 1 otherwise, 2 on usage.
+ * Progress lines go to stderr. Exit 0 when every check passed, 2 when any check FAILed, 1 on usage.
  *
  * Check types (* = required):
  *   fetch-json     { url*, minRows?, expectKeys? }                 GET on the origin returns JSON with rows / keys
@@ -309,6 +309,9 @@ export async function replay({ origin, parity, contract = null, authHeader = nul
   return results;
 }
 
+/** The CLI's exit code for replayed results: 0 when every check passed (none replayed included), 2 when any FAILed. Pure. */
+export const exitCodeFor = (results) => (!Array.isArray(results) || results.some((r) => !r || r.pass !== true) ? 2 : 0);
+
 /* ---------------------------------------------------------------- cli ---- */
 if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -319,7 +322,7 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
     process.exit(0);
   }
   const origin = (arg('origin') || '').replace(/\/$/, '');
-  if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json]'); process.exit(2); }
+  if (!origin) { console.error('usage: dynamics-check.mjs --origin <published origin> [--parity stardust/dynamics/parity.json]'); process.exit(1); }
   const parityFile = arg('parity', 'stardust/dynamics/parity.json');
   const contractFile = arg('contract') || (existsSync(DEFAULT_CONTRACT) ? DEFAULT_CONTRACT : null);
   const contract = contractFile ? readJSON(contractFile) : null;
@@ -339,5 +342,9 @@ if (process.argv[1] && process.argv[1].endsWith('dynamics-check.mjs')) {
   writeText(join(out, 'dynamics-report.md'), md.join('\n'));
   writeJSON(join(out, 'dynamics-report.json'), { _provenance: provenance('check', { origin, parity: parityFile, ...(contractFile && { contract: contractFile }) }), results });
   console.error(`[dynamics-check] ${pass}/${results.length} pass → ${join(out, 'dynamics-report.md')}`);
-  setTimeout(() => process.exit(pass === results.length ? 0 : 1), 200).unref();
+  // the exit code is set before the timer: when the event loop drains first, node exits with it (it used to exit 0
+  // with a FAIL row); the unref'd timer stays only as a backstop for a handle the browser left open
+  const code = exitCodeFor(results);
+  process.exitCode = code;
+  setTimeout(() => process.exit(code), 200).unref();
 }

@@ -81,10 +81,13 @@ order from `content/`), `coverage/templates.json` (pages grouped by template), a
 **Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
 full mode; pages present only in `state.json` are seeded with `templateId` from
 `type`, `blocks` from the archetype sidecar, and `delivery.status:
-content-pending`.
+content-pending`. `--state` needs a state file (`pages[]` of `{slug, url, type}`)
+and an archetypes-only tree: a sibling in the tree or a malformed file exits 2 with
+nothing written — re-run without `--state`.
 
-Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
+Inventory is **idempotent and incremental**: delivery status is preserved; a
+delivered page is re-flagged `stale` only when the same document's bytes change — a
+roster row later migrated keeps its status. Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 
@@ -105,7 +108,11 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
   block set; `content-pending` pages add none. A module that maps to EDS **default
   content** (title, text, image, button, separator — deploy's D1) needs no block: record
   it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
-  such a row is never counted pending, whatever its status.
+  such a row is never counted pending, whatever its status. Every directory under
+  `blocks/` is registered — one no page lists gets a row `source: blocks-dir` (header
+  and nav count as one chrome); a block deliberately left undelivered is recorded
+  `update-coverage.mjs --block <name> --status not-delivered --reason "<text>"`.
+  `rollout.json` `lastRun.blocks` counts `{total, converted, notDelivered, pending}`.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
@@ -219,7 +226,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `--status deployed` line runs right after its `.plain.html` checks, then,
    inside a C-deliver unit, `node skills/stardust/scripts/unit-commit.mjs <unit>`
    (`<unit>`: the recorded unit holding the page, `stardust/rollout/units/<unit>.paths`);
-   pages outside any unit (D2-built pages, C0 chrome documents) are recorded and
+   D2-built pages and `foundation-chrome`'s chrome documents are recorded and
    committed at the checkpoint commit. The published-origin gate comes after
    (handoff contract § 3, row C).
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
@@ -234,15 +241,22 @@ prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
-§ Runtime-detection probe). `deployed` means after PUT + preview: the gate's
-probes run against the page's preview URL, never a local harness — a
-pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
+§ Runtime-detection probe). Its probes run against the preview URL, never a
+harness (step 1). A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
-every grid stacks. This one gate is the difference between fixing one page
-and rebuilding every template. The same gate runs `qa.mjs --checks metadata`
+every grid stacks. The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
-icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):** the
+icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
+the foundation is three recorded units run one after another — `foundation-chrome`
+(header + footer blocks, the chrome documents), `foundation-styles` (styles, fonts,
+favicon, scripts, `stardust/runtime-contract.json`),
+then `archetype-<template>` of the shell template — each its own `progress.json`
+entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
+ask; the foundation sub-units close on their own lint and `.plain.html` checks, this
+gate runs once, on that archetype page (a failing check reopens the sub-unit owning its files:
+`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze` runs once it
+passes (handoff contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
@@ -253,7 +267,8 @@ unit is then the map plus the exceptions, and the main agent alone re-runs
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry (same shape), checkpoint
+with its own `stardust/rollout/progress.json` entry
+(`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint
 commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
 are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
@@ -269,16 +284,11 @@ variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
 per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
---branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
-already-live pages, retry/backoff, append-only log, delivered-`.plain.html` check).
-The driver and every batch run in the background; its log and ledger are the
-progress file. Check them at most every 4 minutes and never with a fixed `sleep`
-of 5 minutes or more (the prompt-cache window) — the master skill's wait
-discipline. After a transient blip, re-run the same command — it re-drives
+--branch <branch> --content <dir>`. The driver and every batch run in the background; its log and ledger are the
+progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
-(step 4's order). **Foundation first** (lint AND commit `styles.css`,
-header/footer CSS and the contract file before the first agent spawns; no token
-or custom-property rename after fan-out), **disjoint clusters spawn
+(step 4's order). **Foundation first** (C0's sub-units, committed and
+frozen before the first cluster spawns), **disjoint clusters spawn
 concurrently**, and **every tool call stays under 4 minutes, the main agent's
 included** — long instruments through `run-bg.mjs start`, `wait` the NEXT call
 (the master skill's wait discipline; handoff contract § Fan-out discipline).
@@ -355,8 +365,10 @@ media as URL, client-compute blocks, owner-facing tag config disabled, off-origi
 sheet sync); emit every other row as **one owner decision batch** and ship its interim tier.
 Query indexes build from the **published** tree — publish per page in Phase C, then poll `total`.
 Each feature ends with a parity row in `stardust/dynamics/parity.json` carrying a replayable check;
-`dynamics-check.mjs --origin <live host>` runs before Phase H and the report carries its table.
-Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes.
+`dynamics-check.mjs --origin <live host>` runs before Phase H (exit 2 on any FAIL) and the report
+carries its table. Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes;
+a parity fix changes block code, never the delivered content's meaning (a recorded run turned a
+video button into a source link so its own replay passed).
 Index-backed listings ship **document-first** (authored rows, index for non-text and top-up —
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
 
@@ -399,9 +411,12 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 # or: --base <url>   (explicit host)   |   --root <dir>   (offline, against a local export)
 ```
 
-For every delivered page, `verify` confirms HTTP 200, no `about:error` (deploy
-#75), and that every internal `href="/…"` resolves to a known delivered path — then
-flips each page to `verified` or `failed`. Exits non-zero if any page failed.
+For every delivered page — fetched where it was deployed (`delivery.deployedUrl`,
+else its path: the delivered-path contract) — `verify` confirms HTTP 200, no
+`about:error` (deploy #75), and that every internal `href="/…"` resolves to a known
+delivered path (media and text-track links — `.vtt`, `.mp3`, … — are assets, not
+broken links) — then flips each page to `verified` or `failed`. Exits non-zero if
+any page failed.
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
 blank — decoration failures (missing script, wrong block wrapper class, 404
@@ -420,13 +435,19 @@ DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content pe
 is the coverage: rows `deployed` / `verified` with a `deployedUrl`, and `failed` by the gate so a
 fix round re-gates them — no state file, no hand-built roster.
 `update-coverage.mjs --gate <table | dir>` (the roster `summary.json`, an `--only` run's
-`runs/<ts>-<slug>.json`, or the gate dir `stardust/replica/gates/all-<w>/`) feeds each row back into
-`delivery.gate` (with the `host` measured) and flips a failing page to `failed`; `verify` never marks it `verified` while the
-gate fails — completion derives from one place, never from the pixel number alone. An INCONCLUSIVE
+`runs/<ts>-<slug>.json`, or the gate dir `stardust/replica/gates/all-<w>/`), run for both widths'
+tables, feeds each row back into `delivery.gate` (with the `host` measured) — each width's own verdict in
+`delivery.gate.passByWidth`, so a unit is proven only when every width passed — and flips a
+failing page to `failed`, back only when no width fails; while any width fails, `verify` never
+marks it `verified` and `done-check.mjs` lists it in `pages_failed` — completion derives from
+one place, never from the pixel number alone. An INCONCLUSIVE
 row (a polluted capture) is no pass: `--gate` leaves the status alone and records
 `delivery.gate.inconclusive`, and `verify` reads it as not passed until a measured row replaces it; an
 override counts only when gate-all validated it (`delivery.gate.override.valid`). In C-deliver
-the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
+the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); only when
+`done-check.mjs` lists `pages_failed` after C-final does one bounded `gap-closure` pass per
+template run, and what fails after it is reported as residuals, never looped again (handoff
+contract § 3).
 
 ### Phase E2 — Link-audit completeness
 
@@ -445,10 +466,12 @@ link **targets** a roster-driven batch misses
   --content content --redirects stardust/redirects.tsv` rewrites every
   source-host href whose path exists in the content tree (header/footer/home
   included) to the canonical root-relative form and lists the ones it kept
-  absolute (no local page — a bounce beats a 404). **Re-run over the WHOLE
-  tree after every wave**: earlier waves' pages gain newly valid targets only
-  when a later wave ships them. `--check` is the gate (exit 2 = localizable
-  links remain).
+  absolute (no local page — a bounce beats a 404). Inside a C-deliver unit
+  with pages pass `--unit <unit>` to the plain pass and to `--check` (only the
+  unit's documents are written; the map still spans the whole tree). **The
+  whole-tree pass runs elsewhere** (C0's foundation sub-units, C-final, this
+  phase): earlier units' pages gain newly valid targets only when a later unit
+  ships them. `--check` is the gate (exit 2 = localizable links remain).
 - **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
   no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
   slash 404 while `.plain.html` passes. Repoint `.html` links with no local
@@ -557,7 +580,7 @@ rollout — <site> → aem-eds
 ==================================================
 Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> content-pending · <s> stale
 Templates   <T> (per-template delivered/total)
-Blocks      <B> total · <c> converted · <p> pending
+Blocks      <B> total · <c> converted · <n> not delivered · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
 Pixel table prototypes <p>/<P> PASS · deployed <d>/<D> PASS (pixel-only <x>/<D>) — gates/{prototypes,all}-1440/summary.md
 To deliver  <list of remaining slugs>
@@ -571,11 +594,13 @@ page missing from `all-1440/summary.json` is ungated and belongs in that list (#
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.
 
+**Usage:** `node skills/stardust/scripts/token-ledger.mjs` writes `stardust/usage.md` +
+`usage.json` — commit them; with the session transcripts unreachable it still writes the
+table, its token cells `unknown`.
+
 **Also write/refresh `stardust/learnings.md`** per
 `skills/stardust/reference/learnings.md`: one entry per failure class this run
 surfaced (evidence, proposed skill + section to change, `status: pending`).
-plugin maintainers harvest pending entries into skill
-diffs — this is how a run's hard-won fixes stop being re-learned.
 
 ### Phase I — Dashboard
 

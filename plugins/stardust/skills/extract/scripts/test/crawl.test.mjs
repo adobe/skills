@@ -5,7 +5,12 @@
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
 // detail string, both link-list shapes, the entry-locale scope (the entry URL's leading two-letter locale
 // segments, and whether fewer than half of the captured pages lie under them) — and that importing the module or
-// asking --help starts no crawl and writes nothing. Run: node <this file>.
+// asking --help starts no crawl and writes nothing. One consent table: consentTable() hands back live-session's
+// CONSENT_CANDIDATES (the same array object, resolved in the plugin tree and in the project-copy layouts —
+// scripts/extract ↔ scripts/diff, flat, and a crawl.mjs in stardust/scripts/ beside replica's
+// stardust/scripts/diff/), crawl.mjs keeps no selector list of its own, and a copy without live-session beside it
+// still imports and answers --help while consentTable() rejects naming the four looked-in paths and the copy step;
+// a stale live-session copy without the export is refused the same way. Run: node <this file>.
 // Also navMsSummary (pure: the crawl figure { n, p50, p95, max }, nearest-rank) and, where playwright is importable,
 // e2e crawls of a local fixture origin: navMs on every record and crawl.navMs in _crawl-log.json; the page goto
 // timeout and its source on one stderr line and in crawl.navTimeout (default, env, a previous crawl's figure in the
@@ -13,18 +18,20 @@
 // live-session.mjs keeps 45 s and says so once on stderr. Prints a skip line otherwise.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { captureGaps, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { captureGaps, consentTable, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
 import { navMsSummary } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
+const LIVE_SESSION = join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
 // The fixture's links the way the browser hands them to capture(): every a[href], resolved against the page.
 const hrefs = (html, base) => [...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/gi)].map((m) => { try { return new URL(m[1], base).href; } catch { return null; } }).filter(Boolean);
@@ -169,92 +176,131 @@ check('--help names the goto timeout\'s env and crawl figure, its stderr line, n
 });
 
 // ---- e2e: navMs per record, crawl.navMs in the log, the shared goto timeout (needs playwright) -------------------
-const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
-let playwrightOk = false;
-try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  e2e crawl (playwright not importable here; run this test in an environment that has it)'); }
-if (playwrightOk) {
-  const html = (title) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1><h2>Section of ${title}</h2><p>${`Body copy of ${title}, long enough to count as page content. `.repeat(4)}</p></main></body></html>`;
-  const pages = { '/': html('Home'), '/a': html('Page A'), '/b': html('Page B'), '/slow': html('Slow page') };
-  const server = createServer((req, res) => {
-    const p = req.url.split('?')[0];
-    const send = () => { if (res.destroyed) return; const body = pages[p]; res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope'); };
-    // /slow answers after 4 s: past a 1500 ms goto timeout, well inside 45 s
-    if (p === '/slow') setTimeout(send, 4000); else send();
-  });
-  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
-  const base = `http://127.0.0.1:${server.address().port}`;
-  const work = mkdtempSync(join(tmpdir(), 'crawl-e2e-'));
-  const cleanEnv = { ...process.env }; delete cleanEnv.STARDUST_NAV_TIMEOUT_MS;
-  // asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running
-  const crawl = (script, args, env) => new Promise((done) => {
-    const child = spawn(process.execPath, [script, '--url', `${base}/`, '--wait', 'fast', ...args], { cwd: work, env });
-    let stderr = ''; child.stderr.on('data', (d) => { stderr += d; }); child.stdout.resume();
-    const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
-    child.on('close', (status) => { clearTimeout(timer); done({ status, stderr }); });
-  });
-  const readOut = (out) => ({
-    log: JSON.parse(readFileSync(join(out, '_crawl-log.json'), 'utf8')),
-    records: readdirSync(join(out, 'pages')).filter((f) => f.endsWith('.json')).sort().map((f) => JSON.parse(readFileSync(join(out, 'pages', f), 'utf8'))),
-  });
-  const gotoLines = (stderr) => stderr.split('\n').filter((l) => l.startsWith('[crawl] page goto timeout '));
-  // a re-crawl into an --out whose previous log holds a fast figure (p95 3000 → 6000, clamped up to 20000)
-  mkdirSync(join(work, 'again'), { recursive: true });
-  writeFileSync(join(work, 'again', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [], navMs: { n: 9, p50: 1200, p95: 3000, max: 3400 } } }));
-  // a copy of crawl.mjs with no live-session.mjs in any layout (extract copied alone); playwright still resolves
-  let alone = null;
-  try {
-    const nodeModules = fileURLToPath(import.meta.resolve('playwright')).replace(/([\\/]node_modules)[\\/].*$/, '$1');
-    alone = join(work, 'alone', 'scripts', 'crawl.mjs');
-    mkdirSync(dirname(alone), { recursive: true }); copyFileSync(SCRIPT, alone); symlinkSync(nodeModules, join(work, 'alone', 'node_modules'), 'dir');
-  } catch (e) { alone = null; console.log(`skip  e2e crawl without live-session.mjs (${e.message})`); }
-  try {
-    const [plain, byEnv, bare, again] = await Promise.all([
-      crawl(SCRIPT, ['--pages', '/a,/b', '--out', join(work, 'plain')], cleanEnv),
-      crawl(SCRIPT, ['--pages', '/slow', '--out', join(work, 'env')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }),
-      alone ? crawl(alone, ['--pages', '/slow', '--out', join(work, 'bare')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }) : null,
-      crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'again')], cleanEnv),
-    ]);
-    await checkAsync('e2e: every page record carries navMs (integer ms); _crawl-log.json crawl.navMs is navMsSummary of them, beside crawl.failures', () => {
-      assert.equal(plain.status, 0, plain.stderr);
-      const { log, records } = readOut(join(work, 'plain'));
-      assert.deepEqual(records.map((r) => r.slug), ['a', 'b', 'index']);
-      for (const r of records) assert.ok(Number.isInteger(r.navMs) && r.navMs >= 0 && r.navMs < 45000, `${r.slug} navMs ${r.navMs}`);
-      assert.deepEqual(log.crawl.navMs, navMsSummary(records.map((r) => r.navMs)));
-      assert.equal(log.crawl.navMs.n, 3); assert.deepEqual(log.crawl.failures, []);
-      assert.doesNotMatch(plain.stderr, /live-session\.mjs/);
+{ // scoped: this block keeps its own checkAsync (the consent checks below use the file-level one)
+  const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
+  let playwrightOk = false;
+  try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  e2e crawl (playwright not importable here; run this test in an environment that has it)'); }
+  if (playwrightOk) {
+    const html = (title) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1><h2>Section of ${title}</h2><p>${`Body copy of ${title}, long enough to count as page content. `.repeat(4)}</p></main></body></html>`;
+    const pages = { '/': html('Home'), '/a': html('Page A'), '/b': html('Page B'), '/slow': html('Slow page') };
+    const server = createServer((req, res) => {
+      const p = req.url.split('?')[0];
+      const send = () => { if (res.destroyed) return; const body = pages[p]; res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope'); };
+      // /slow answers after 4 s: past a 1500 ms goto timeout, well inside 45 s
+      if (p === '/slow') setTimeout(send, 4000); else send();
     });
-    await checkAsync('e2e: the page goto timeout and its source — one stderr line and crawl.navTimeout { ms, source }: 45000 default, 1500 env, 20000 from a previous fast figure in the same --out', () => {
-      const cases = [[plain, 'plain', 45000, 'default', /no STARDUST_NAV_TIMEOUT_MS/], [byEnv, 'env', 1500, 'env', /STARDUST_NAV_TIMEOUT_MS=1500/], [again, 'again', 20000, 'crawl', /crawl\.navMs\.p95 3000 ms/]];
-      for (const [r, out, ms, source, detail] of cases) {
-        assert.equal(r.status, 0, r.stderr);
-        const lines = gotoLines(r.stderr);
-        assert.equal(lines.length, 1, `${out}: ${r.stderr}`); assert.ok(lines[0].startsWith(`[crawl] page goto timeout ${ms} ms (${source}) — `), lines[0]); assert.match(lines[0], detail);
-        assert.deepEqual(readOut(join(work, out)).log.crawl.navTimeout, { ms, source }, out);
-      }
-      assert.equal(readOut(join(work, 'again')).log.crawl.navMs.n, 2, 'the re-crawl wrote its own figure');
+    await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+    const base = `http://127.0.0.1:${server.address().port}`;
+    const work = mkdtempSync(join(tmpdir(), 'crawl-e2e-'));
+    const cleanEnv = { ...process.env }; delete cleanEnv.STARDUST_NAV_TIMEOUT_MS;
+    // asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running
+    const crawl = (script, args, env) => new Promise((done) => {
+      const child = spawn(process.execPath, [script, '--url', `${base}/`, '--wait', 'fast', ...args], { cwd: work, env });
+      let stderr = ''; child.stderr.on('data', (d) => { stderr += d; }); child.stdout.resume();
+      const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
+      child.on('close', (status) => { clearTimeout(timer); done({ status, stderr }); });
     });
-    await checkAsync('e2e: env STARDUST_NAV_TIMEOUT_MS bounds each page\'s goto — a 4 s page fails at 1500 ms, the entry (probe and page) is still captured', () => {
-      assert.equal(byEnv.status, 0, byEnv.stderr);
-      const { log } = readOut(join(work, 'env'));
-      assert.equal(log.crawl.failures.length, 1, JSON.stringify(log.crawl.failures)); assert.equal(log.crawl.failures[0].slug, 'slow'); assert.match(log.crawl.failures[0].message, /Timeout 1500ms exceeded/);
-      assert.equal(log.crawl.navMs.n, 1, 'only captured pages are samples');
+    const readOut = (out) => ({
+      log: JSON.parse(readFileSync(join(out, '_crawl-log.json'), 'utf8')),
+      records: readdirSync(join(out, 'pages')).filter((f) => f.endsWith('.json')).sort().map((f) => JSON.parse(readFileSync(join(out, 'pages', f), 'utf8'))),
     });
-    if (alone) {
-      await checkAsync('e2e: without live-session.mjs the crawl keeps 45 s (the env is not read: the 4 s page is captured) and says so on ONE stderr line; navMs still recorded', () => {
-        assert.equal(bare.status, 0, bare.stderr);
-        const lines = bare.stderr.split('\n').filter((l) => /live-session\.mjs/.test(l));
-        assert.equal(lines.length, 1, bare.stderr); assert.match(lines[0], /no usable live-session\.mjs .* 45000 ms/);
-        assert.deepEqual(gotoLines(bare.stderr), [], 'that line is the only timeout report');
-        const { log, records } = readOut(join(work, 'bare'));
-        assert.deepEqual(log.crawl.failures, []); assert.equal(log.crawl.navMs.n, 2); assert.deepEqual(log.crawl.navTimeout, { ms: 45000, source: 'default' });
-        assert.ok(records.find((r) => r.slug === 'slow').navMs >= 3900, 'navMs times the goto: the 4 s answer is in it');
+    const gotoLines = (stderr) => stderr.split('\n').filter((l) => l.startsWith('[crawl] page goto timeout '));
+    // a re-crawl into an --out whose previous log holds a fast figure (p95 3000 → 6000, clamped up to 20000)
+    mkdirSync(join(work, 'again'), { recursive: true });
+    writeFileSync(join(work, 'again', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [], navMs: { n: 9, p50: 1200, p95: 3000, max: 3400 } } }));
+    // a copy of crawl.mjs with no live-session.mjs in any layout (extract copied alone); playwright still resolves
+    let alone = null;
+    try {
+      const nodeModules = fileURLToPath(import.meta.resolve('playwright')).replace(/([\\/]node_modules)[\\/].*$/, '$1');
+      alone = join(work, 'alone', 'scripts', 'crawl.mjs');
+      mkdirSync(dirname(alone), { recursive: true }); copyFileSync(SCRIPT, alone); symlinkSync(nodeModules, join(work, 'alone', 'node_modules'), 'dir');
+    } catch (e) { alone = null; console.log(`skip  e2e crawl without live-session.mjs (${e.message})`); }
+    try {
+      const [plain, byEnv, bare, again] = await Promise.all([
+        crawl(SCRIPT, ['--pages', '/a,/b', '--out', join(work, 'plain')], cleanEnv),
+        crawl(SCRIPT, ['--pages', '/slow', '--out', join(work, 'env')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }),
+        alone ? crawl(alone, ['--pages', '/slow', '--no-consent-dismiss', '--out', join(work, 'bare')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }) : null,
+        crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'again')], cleanEnv),
+      ]);
+      await checkAsync('e2e: every page record carries navMs (integer ms); _crawl-log.json crawl.navMs is navMsSummary of them, beside crawl.failures', () => {
+        assert.equal(plain.status, 0, plain.stderr);
+        const { log, records } = readOut(join(work, 'plain'));
+        assert.deepEqual(records.map((r) => r.slug), ['a', 'b', 'index']);
+        for (const r of records) assert.ok(Number.isInteger(r.navMs) && r.navMs >= 0 && r.navMs < 45000, `${r.slug} navMs ${r.navMs}`);
+        assert.deepEqual(log.crawl.navMs, navMsSummary(records.map((r) => r.navMs)));
+        assert.equal(log.crawl.navMs.n, 3); assert.deepEqual(log.crawl.failures, []);
+        assert.doesNotMatch(plain.stderr, /live-session\.mjs/);
       });
+      await checkAsync('e2e: the page goto timeout and its source — one stderr line and crawl.navTimeout { ms, source }: 45000 default, 1500 env, 20000 from a previous fast figure in the same --out', () => {
+        const cases = [[plain, 'plain', 45000, 'default', /no STARDUST_NAV_TIMEOUT_MS/], [byEnv, 'env', 1500, 'env', /STARDUST_NAV_TIMEOUT_MS=1500/], [again, 'again', 20000, 'crawl', /crawl\.navMs\.p95 3000 ms/]];
+        for (const [r, out, ms, source, detail] of cases) {
+          assert.equal(r.status, 0, r.stderr);
+          const lines = gotoLines(r.stderr);
+          assert.equal(lines.length, 1, `${out}: ${r.stderr}`); assert.ok(lines[0].startsWith(`[crawl] page goto timeout ${ms} ms (${source}) — `), lines[0]); assert.match(lines[0], detail);
+          assert.deepEqual(readOut(join(work, out)).log.crawl.navTimeout, { ms, source }, out);
+        }
+        assert.equal(readOut(join(work, 'again')).log.crawl.navMs.n, 2, 'the re-crawl wrote its own figure');
+      });
+      await checkAsync('e2e: env STARDUST_NAV_TIMEOUT_MS bounds each page\'s goto — a 4 s page fails at 1500 ms, the entry (probe and page) is still captured', () => {
+        assert.equal(byEnv.status, 0, byEnv.stderr);
+        const { log } = readOut(join(work, 'env'));
+        assert.equal(log.crawl.failures.length, 1, JSON.stringify(log.crawl.failures)); assert.equal(log.crawl.failures[0].slug, 'slow'); assert.match(log.crawl.failures[0].message, /Timeout 1500ms exceeded/);
+        assert.equal(log.crawl.navMs.n, 1, 'only captured pages are samples');
+      });
+      if (alone) {
+        await checkAsync('e2e: without live-session.mjs (and --no-consent-dismiss: the consent pass needs it) the crawl keeps 45 s (the env is not read: the 4 s page is captured) and says so on ONE stderr line; navMs still recorded', () => {
+          assert.equal(bare.status, 0, bare.stderr);
+          const lines = bare.stderr.split('\n').filter((l) => /live-session\.mjs/.test(l));
+          assert.equal(lines.length, 1, bare.stderr); assert.match(lines[0], /no usable live-session\.mjs .* 45000 ms/);
+          assert.deepEqual(gotoLines(bare.stderr), [], 'that line is the only timeout report');
+          const { log, records } = readOut(join(work, 'bare'));
+          assert.deepEqual(log.crawl.failures, []); assert.equal(log.crawl.navMs.n, 2); assert.deepEqual(log.crawl.navTimeout, { ms: 45000, source: 'default' });
+          assert.ok(records.find((r) => r.slug === 'slow').navMs >= 3900, 'navMs times the goto: the 4 s answer is in it');
+        });
+      }
+    } finally {
+      server.close();
+      rmSync(work, { recursive: true, force: true });
     }
-  } finally {
-    server.close();
-    rmSync(work, { recursive: true, force: true });
   }
 }
+
+await checkAsync('consentTable(): live-session\'s CONSENT_CANDIDATES itself (identity, not a copy) — one consent list for every instrument', async () => {
+  const live = await import(pathToFileURL(LIVE_SESSION).href);
+  assert.ok(Array.isArray(live.CONSENT_CANDIDATES) && live.CONSENT_CANDIDATES.length > 0, 'live-session exports a non-empty CONSENT_CANDIDATES');
+  assert.equal(await consentTable(), live.CONSENT_CANDIDATES);
+});
+check('crawl.mjs keeps no consent selector list of its own', () => {
+  const src = readFileSync(SCRIPT, 'utf8');
+  for (const lit of [`'#onetrust-accept-btn-handler'`, `'.truste-button2'`, `'button[id*="accept" i]'`]) assert.ok(!src.includes(lit), `crawl.mjs still carries ${lit}`);
+});
+await checkAsync('project copies: consentTable() resolves live-session beside the extract scripts (scripts/extract ↔ scripts/diff, flat, scripts/ ↔ scripts/diff); without it the copy still imports and answers --help, and consentTable() rejects naming the four looked-in paths and the copy step; a stale copy without the export is refused', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'crawl-consent-'))); // the module URL is the real path
+  try {
+    const want = (await import(pathToFileURL(LIVE_SESSION).href)).CONSENT_CANDIDATES;
+    for (const [crawlRel, liveRel] of [['scripts/extract/crawl.mjs', 'scripts/diff/live-session.mjs'], ['flat/crawl.mjs', 'flat/live-session.mjs'],
+      ['stardust/scripts/crawl.mjs', 'stardust/scripts/diff/live-session.mjs']]) { // the last: replica's copy of the diff scripts
+      for (const [from, rel] of [[SCRIPT, crawlRel], [LIVE_SESSION, liveRel]]) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(from, join(root, rel)); }
+      const copy = await import(pathToFileURL(join(root, crawlRel)).href);
+      assert.deepEqual(await copy.consentTable(), want, `${crawlRel} reads ${liveRel}`);
+    }
+    const alone = join(root, 'a', 'b', 'extract', 'crawl.mjs');
+    mkdirSync(dirname(alone), { recursive: true }); copyFileSync(SCRIPT, alone);
+    const help = spawnSync(process.execPath, [alone, '--help'], { cwd: root, encoding: 'utf8' });
+    assert.equal(help.status, 0, help.stderr); assert.match(help.stdout, /Usage:/);
+    const copy = await import(pathToFileURL(alone).href);
+    await assert.rejects(copy.consentTable(), (e) => {
+      for (const p of [join(root, 'a', 'diff', 'scripts', 'live-session.mjs'), join(root, 'a', 'b', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'live-session.mjs')]) assert.ok(e.message.includes(p), `names ${p}: ${e.message}`);
+      assert.match(e.message, /copy live-session\.mjs beside the extract scripts \(extract\/SKILL\.md § Setup\)/);
+      assert.equal(e.message.split('\n').length, 1, 'one line');
+      return true;
+    });
+    mkdirSync(join(root, 'stale'), { recursive: true }); copyFileSync(SCRIPT, join(root, 'stale', 'crawl.mjs'));
+    writeFileSync(join(root, 'stale', 'live-session.mjs'), "export const REAL_CHROME_UA = 'x';\n");
+    const stale = await import(pathToFileURL(join(root, 'stale', 'crawl.mjs')).href);
+    await assert.rejects(stale.consentTable(), /stale\/live-session\.mjs exports no CONSENT_CANDIDATES — copy live-session\.mjs beside the extract scripts again \(extract\/SKILL\.md § Setup\)/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
 process.exit(failed ? 1 : 0);

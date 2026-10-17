@@ -380,15 +380,18 @@ what `skills/stardust/reference/stardust.gitignore` lists. The rule of
 thumb is cost to reproduce, not regenerability: an LLM-written artifact
 comes back different on a re-run, and a capture of the source site cannot
 come back at all once the site is replaced. Size alone never drops a
-file; screenshots and four rewritten-on-every-run folders are the
-exceptions (of `replica/gates/` only the renders and diffs: its JSON
-sidecars are tracked). The master skill installs the ignore file as
+file; screenshots, the gate images and three rewritten-on-every-run
+folders are the exceptions. The master skill installs the ignore file as
 `stardust/.gitignore` (Setup step 6); a project that wants one of the
 excluded folders tracked deletes that line or adds a negation below it.
+A project whose `stardust/.gitignore` still ignores all of `replica/gates/`
+replaces that line with the three `replica/gates` lines of
+`stardust.gitignore` to track the gate's JSON.
 
 | Path | Tracked | Owner | Notes |
 |---|---|---|---|
 | `state.json`, `status.jsonl`, `journal.md`, `learnings.md`, `direction.md` | yes | master / all | delivery state and decisions; a clone is dead without `state.json` |
+| `usage.md`, `usage.json` | yes | master (`token-ledger.mjs`) | tokens per phase and unit, written at rollout `H-report` and replica `handoff end` |
 | `dynamic-features.md`, `dynamic-features-plan.md`, `dynamics/parity.json`, `trees.json` | yes | dynamics | dispositions and parity checks |
 | `dynamics/` other (`*.generated-plan.*`, `sheets/_sync.json`) | yes | dynamics | small text; drafts superseded by the curated file |
 | `redirects.tsv`, `runtime-contract.json`, `eds-conversion-log.md`, `ai-readability-allowlist.json` | yes | rollout / deploy | |
@@ -400,8 +403,8 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
 | `replica/inconsistency-register.md`, `progress.json`, `motion/`, `capture/` | yes | replica | register, ledger, runtime CSS/DOM captures (2 MB) |
-| `replica/gates/**/*.json` | yes | replica | the gate's sidecars — `summary.json`, `runs/`, `rounds.json`, `triage.json`, gate keys: the evidence a verdict was read from |
-| `replica/gates/**` other files | **no** | replica | per-iteration renders and diffs; verdicts live in `progress.json`; `live.png` re-taken on first run |
+| `replica/gates/**/*.json` | yes | replica | the gate's row of record — summary, overrides, presence, rounds, triage, probes; a lost container keeps it |
+| `replica/gates/**` images | **no** | replica | per-iteration renders and diffs; `live.png` re-taken on first run |
 | `reskin/**` except `content-model/**/*.png`, `reports/*.png` | yes | reskin | tokens, model, renderers, pages, ledger |
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |

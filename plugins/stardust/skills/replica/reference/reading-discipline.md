@@ -14,7 +14,9 @@ print the part that matters, capped, and say what they left out:
 
 - **Reference docs**: `node stardust/scripts/replica/section.mjs <doc> --list`
   for the outline, then `section.mjs <doc> '<heading>'` for the one section
-  the current step needs — never the whole file. **One section per call**:
+  the current step needs — never the whole file (a heading the pattern
+  misses is retried by its words; a total miss prints the outline on stdout,
+  exit 2). **One section per call**:
   a recorded call for five sections returned 82 KB that stayed in context
   for 160 turns (`--all` over several sections is capped at 20 KB now).
 - **Phase 5 briefs**: a cluster or archetype brief names its read-set
@@ -44,10 +46,13 @@ print the part that matters, capped, and say what they left out:
   triplet — the diff crop of the first hot band (`crop-compare.mjs`) is the
   one image a round needs. Recorded: 21 image reads in one run, most of
   them full pages or triplets, for facts the verdict lines already held.
+  Look only at capped copies: `crop-compare.mjs` writes capped JPEGs,
+  `inspect-image.mjs <png> --y <band top> --height <band height>` makes one
+  of any other gate image's failing band, never of a whole page (gate doc
+  § Per-breakpoint procedure).
   Step 10's eyeball of the DEPLOYED page is the published `gate.sh --full`
-  round plus header/footer `crop-compare.mjs` bands (the two-band invocation
-  and where each band number comes from: gate doc § Pass bar, item 5), not a
-  full-page image.
+  round plus header/footer `crop-compare.mjs` bands (gate doc § Pass bar,
+  item 5), not a full-page image.
   The one exception is the brand-gestalt read at extract, which uses the
   shipped `thumb.mjs` (`skills/extract/scripts/thumb.mjs`, box-filtered to
   480 px or narrower under its size cap; a line with a crop share below

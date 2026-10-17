@@ -77,6 +77,19 @@ capture hardening changed); it is a bot-block control, not just a cost note
 (§ Iteration discipline, Hit minimization).
 The prototype capture is re-taken every iteration.
 
+**Look at a capped copy of the failing band — never a full-resolution PNG**
+(a recorded run read 65 of them, 17 MB, into context), **never a whole page
+downscaled** (1440 × 6000 fits the box as 240 × 1000). `crop-compare.mjs`
+writes its diff and strip as capped JPEGs (`--full-res` also keeps the PNG);
+any other gate image — `live.png`, `proto.png` / `build.png`,
+`diff-iter<N>.png`, a gate-all `origin.png` / `eds.png` / `diff.png` —
+through
+`node stardust/scripts/replica/inspect-image.mjs <png> --y <band top> --height <band height>`
+with the first hot band (§ Reading the band breakdown; gate-all's `hotBands`
+`y0-y1` → `--y y0 --height y1−y0`), cropped before the cap (→
+`<name>.y<y>-h<h>.inspect.jpg` beside it, at most 1400 × 1000, quality 80).
+The PNGs stay the measurement inputs, untouched.
+
 ## Pass bar (all five per breakpoint, plus the content-cap row)
 
 1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
@@ -119,10 +132,10 @@ The prototype capture is re-taken every iteration.
    NAV_H=<header bottom edge>  FOOTER_H=<footer height>
    LIVE_H=<live capture height>  PROTO_H=<prototype capture height>
    node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
-     --y 0 --height $NAV_H --threshold 2 --out "$GATE/chrome-header-diff.png"
+     --y 0 --height $NAV_H --threshold 2 --out "$GATE/chrome-header-diff.jpg"
    node stardust/scripts/replica/crop-compare.mjs "$GATE/live.png" "$B" \
      --y $((LIVE_H - FOOTER_H)) --y-b $((PROTO_H - FOOTER_H)) --height $FOOTER_H \
-     --threshold 2 --out "$GATE/chrome-footer-diff.png"
+     --threshold 2 --out "$GATE/chrome-footer-diff.jpg"
    ```
 
    Exit 2 = that band is over 2%. `--y-b` aligns the footer crop per side so
@@ -968,8 +981,9 @@ criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-block
 `stardust/replica/progress.json` is ONE file for the whole run: the map of every archetype under
 `types` (this section's record per archetype, keyed by its slug) beside the `siblings` and `migrate`
 blocks `gate-evidence.mjs` writes and the `_provenance` block every stardust JSON artifact carries.
-Extend YOUR archetype's entry in place — read, merge, write back (`gate-evidence.mjs` preserves every
-key it does not own). Never write one archetype's record as the file; `gate-evidence.mjs` wraps such
+Extend YOUR archetype's entry in place with `progress.mjs unit <start|done|failed> <archetype> --ledger
+replica --set <dotted key>=<json>` — a locked merge that keeps every other key, never a `node -e`
+read-merge-write. Never write one archetype's record as the file; `gate-evidence.mjs` wraps such
 a file under `types.<archetype>` and refuses only a record that names no archetype. Per archetype per
 breakpoint:
 

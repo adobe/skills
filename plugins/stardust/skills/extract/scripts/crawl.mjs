@@ -145,9 +145,10 @@ let chromium;
 
 // live-session.mjs (the diff skill) resolves the one navigation timeout every live instrument shares. Optional
 // here: extract may be copied alone, and the crawl must still run — main() keeps NAV_TIMEOUT_FALLBACK_MS then.
-// Layouts: the plugin tree, the project copy (scripts/extract ↔ scripts/diff) and a flat sibling copy.
+// Layouts: the plugin tree, the project copy (scripts/extract ↔ scripts/diff), a crawl.mjs in scripts/ beside
+// replica's scripts/diff copy, and a flat sibling copy — one list for this loader and consentTable() below.
 const NAV_TIMEOUT_FALLBACK_MS = 45000;
-const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './diff/live-session.mjs', './live-session.mjs'];
 async function loadLiveSession() {
   const found = LIVE_SESSION_CANDIDATES.map((p) => path.resolve(path.dirname(SELF), p)).find((p) => existsSync(p));
   return found ? import(pathToFileURL(found).href).catch(() => null) : null;
@@ -464,11 +465,32 @@ async function discover(args, page) {
   return withEntry(links);
 }
 
+// One consent table for every instrument: the diff skill's live-session.mjs exports CONSENT_CANDIDATES.
+// Layouts: the plugin tree (skills/extract/scripts ↔ skills/diff/scripts), the project copy
+// (scripts/extract ↔ scripts/diff), a crawl.mjs in scripts/ beside replica's scripts/diff copy, and a flat
+// copy (a sibling): LIVE_SESSION_CANDIDATES above. Resolved lazily — never on import, on --help or with
+// --no-consent-dismiss — so the pure helpers stay importable without it.
+let liveSession; // the module promise, once found
+/** live-session's CONSENT_CANDIDATES (the same array object); rejects in one line naming the looked-in paths. */
+export async function consentTable() {
+  if (!liveSession) {
+    const looked = LIVE_SESSION_CANDIDATES.map((p) => path.resolve(path.dirname(SELF), p));
+    const found = looked.find((p) => existsSync(p));
+    if (!found) throw new Error(`live-session.mjs not found (looked in ${looked.join(', ')}) — copy live-session.mjs beside the extract scripts (extract/SKILL.md § Setup)`);
+    liveSession = import(pathToFileURL(found).href).then((m) => {
+      if (!Array.isArray(m.CONSENT_CANDIDATES)) throw new Error(`${found} exports no CONSENT_CANDIDATES — copy live-session.mjs beside the extract scripts again (extract/SKILL.md § Setup)`);
+      return m;
+    });
+  }
+  return (await liveSession).CONSENT_CANDIDATES;
+}
+
 async function dismissConsent(page) {
-  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
-    'button[id*="accept" i]', 'button[class*="accept" i]'];
+  let table;
+  // No table, no consent pass: stop the crawl (exit 2) rather than capture every page under a banner.
+  try { table = await consentTable(); } catch (e) { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); }
   let matched = false;
-  for (const s of sels) {
+  for (const s of table) {
     const el = await page.$(s);
     if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
@@ -484,7 +506,7 @@ async function dismissConsent(page) {
   }).catch(() => false);
   // Text-match fallback, only when the selector pass matched NOTHING (two field
   // harvests, 2026-08: two different consent widgets — a custom
-  // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
+  // dialog, cookieconsent's a.cc-btn — were missed by the selector table; on
   // one of them the banner baked into the ground-truth screenshot AND repeated at
   // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
   // hitting an in-content link: exact match on a short consent label (≤25
@@ -1047,7 +1069,7 @@ async function main() {
     console.error(`[crawl] page goto timeout ${t.ms} ms (${t.source}) — ${t.detail}`);
   } else {
     args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS; args.navTimeoutSource = 'default';
-    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/, ./diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
   }
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });

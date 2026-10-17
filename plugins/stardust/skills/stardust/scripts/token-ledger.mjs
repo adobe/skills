@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 /**
- * skills/stardust/scripts/token-ledger.mjs — the optional usage ledger per phase / wave / recorded unit.
+ * skills/stardust/scripts/token-ledger.mjs — the usage ledger per phase / wave / recorded unit; a table is always written.
  *
  * Renders `stardust/usage.md` + `stardust/usage.json` from the harness's session
  * transcripts, windowed by `stardust/status.jsonl` (`start` → `end` per phase; a
  * rollout wave = the span between consecutive rollout `start` lines), so "what
  * did each phase cost" is a table, not a recollection. It is advisory: it never
- * blocks a run, exits 0 except usage errors (exit 2), and prints `usage: unknown (…)` when anything it
- * reads is missing — the transcript paths it consults are harness implementation
- * details, not a documented API. It only READS `status.jsonl` (append-only,
+ * blocks a run and exits 0 except usage errors (exit 2) — the transcript paths it consults are harness
+ * implementation details, not a documented API. It only READS `status.jsonl` (append-only,
  * harness-agnostic: no field is added there) and the two unit ledgers below; the
  * ledger is the artefact.
+ *
+ * Unreachable transcripts (no directory, a missing or unlistable one, no `*.jsonl` in it) still write the table: the
+ * phase windows and unit rows with from / to, wall min and pages (they come from the ledgers), every
+ * token / request cell `unknown` (JSON `null`, plus top-level `"usage": "unknown"` and `"unknownReason"`);
+ * an open window or unit keeps an unknown end (`—`). It prints `usage: unknown (<why>) → stardust/usage.md
+ * (windows without tokens)` (`--dry-run`: the bare `usage: unknown (<why>)`). With no window and no unit
+ * row either, the table is one `usage: unknown (<why>)` row and nothing else.
  *
  * Unit rows: every recorded unit with a `startedAt` in `stardust/rollout/progress.json` (C-deliver)
  * and `stardust/migrate/progress.json` (migrate) — `{ "units": { "<name>": { status, kind, pages,
@@ -47,7 +53,7 @@
  *     --windows <file>   override windows: [{ label, phase?, from, to }] (ISO timestamps)
  *     --prices f,w,r,o   four comma-separated numbers, USD per 1 M tokens (fresh, cache write,
  *                        cache read, output), supplied — never looked up; no price table ships
- *     --json             print usage.json on stdout too
+ *     --json             print usage.json on stdout too (the `usage:` lines go to stderr)
  *     --dry-run          print, write nothing
  *
  * Exit codes: 0 always (advisory) — `usage: unknown (…)` is a printed row, not a failure · 2 only for a
@@ -92,7 +98,6 @@ const sd = join(root, 'stardust');
 if (!opt('root') && !isProjectStardustDir(sd) && pluginTreeOf(root)) { console.error(`token-ledger: ${root} is inside the plugin tree ${pluginTreeOf(root)} — the plugin is not a project; run from the project root or pass --root <project>; nothing written`); process.exit(2); }
 if (isPluginDir(sd)) { console.error(`token-ledger: ${sd} is the stardust plugin, not a project's stardust/ dir — pass --root <project>; nothing written`); process.exit(2); }
 const readJsonl = (p) => { try { return readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean); } catch { return []; } };
-const unknown = (why) => { console.log(`usage: unknown (${why})`); process.exit(0); };
 const note = (s) => (flag('json') ? console.error : console.log)(s); // stderr under --json: stdout stays the record
 
 // --- discovery ------------------------------------------------------------------
@@ -108,8 +113,10 @@ export function discover(rootDir, { home = homedir() } = {}) {
 const envDir = process.env.STARDUST_TRANSCRIPTS || undefined;
 const tSource = opt('transcripts') ? 'transcripts-dir' : envDir ? 'env' : 'discovered';
 const tDir = opt('transcripts') ? resolve(opt('transcripts')) : envDir ? resolve(envDir) : discover(root);
-if (!tDir) unknown(`no transcript directory for ${root}; pass --transcripts <dir> or set STARDUST_TRANSCRIPTS`);
-if (!existsSync(tDir) || !statSync(tDir).isDirectory()) unknown(`transcript directory ${tDir} does not exist or is not a directory`);
+// Unreachable transcripts do not end the run: the windows still render, every token / request cell `unknown`.
+let unknownWhy = null;
+if (!tDir) unknownWhy = `no transcript directory for ${root}; pass --transcripts <dir> or set STARDUST_TRANSCRIPTS`;
+else if (!existsSync(tDir) || !statSync(tDir).isDirectory()) unknownWhy = `transcript directory ${tDir} does not exist or is not a directory`;
 
 // --- transcripts ----------------------------------------------------------------
 export function transcriptFiles(dir) {
@@ -180,11 +187,16 @@ const statusLines = readJsonl(join(sd, 'status.jsonl'));
 const windows = opt('windows') ? (readJson(resolve(opt('windows'))) ?? []).map((w) => ({ label: w.label ?? w.phase, phase: w.phase ?? null, from: w.from, to: w.to, detail: w.detail ?? null })) : windowsFromStatus(statusLines);
 
 // --- aggregate ------------------------------------------------------------------
-const { main, sub } = transcriptFiles(tDir);
-if (!main.length && !sub.length) unknown(`no *.jsonl under ${tDir}`);
+let main = []; let sub = []; let tRead = false;
+if (!unknownWhy) {
+  try { ({ main, sub } = transcriptFiles(tDir)); tRead = true; } catch (e) { unknownWhy = `transcript directory ${tDir} is not readable (${e.code ?? e.message})`; }
+}
+if (!unknownWhy && !main.length && !sub.length) unknownWhy = `no *.jsonl under ${tDir}`;
+const unknown = unknownWhy !== null;
 const M = readTranscripts(main); const S = readTranscripts(sub);
 const allTs = [...M.requests, ...S.requests].map((r) => r.ts).filter(Boolean).sort();
-for (const w of windows) if (!w.to) w.to = allTs.at(-1) ?? w.from;
+for (const w of windows) if (!w.to) w.to = unknown ? null : (allTs.at(-1) ?? w.from); // unknown: the last request is unknown too
+const endMs = (w) => (w.to ? Date.parse(w.to) : Infinity);
 const inWin = (ts, w) => ts && ts >= w.from && ts <= w.to;
 let prices = null; // four finite numbers per million tokens (fresh, cache write, cache read, output) — else the column is dropped, with a printed note
 if (opt('prices') !== undefined) {
@@ -233,9 +245,9 @@ for (const ledger of ['rollout', 'migrate']) {
 // Counted by instant, never through place(): the phase windows stay exclusive and the total is theirs.
 const msIn = (ts, a, b) => { const t = Date.parse(ts); return t >= a && t <= b; };
 const unitRows = unitDefs.map(({ ledger, name, u, from, to }) => {
-  const w = { label: `↳ ${ledger} ${name}`, ledger, name, kind: u.kind ?? null, status: u.status ?? null, from, to: to ?? utc(allTs.at(-1)) ?? from, parent: null, overlaps: [], ...zero() };
-  const a = Date.parse(w.from); const b = Date.parse(w.to);
-  const at = rows.findIndex((x) => Date.parse(x.from) <= a && a <= Date.parse(x.to)); // the phase row it renders under; rows.length = unwindowed
+  const w = { label: `↳ ${ledger} ${name}`, ledger, name, kind: u.kind ?? null, status: u.status ?? null, from, to: to ?? (unknown ? null : utc(allTs.at(-1)) ?? from), parent: null, overlaps: [], ...zero() };
+  const a = Date.parse(w.from); const b = endMs(w);
+  const at = rows.findIndex((x) => Date.parse(x.from) <= a && a <= endMs(x)); // the phase row it renders under; rows.length = unwindowed
   if (at >= 0) w.parent = rows[at].label;
   for (const r of M.requests) if (msIn(r.ts, a, b)) addMain(w, r);
   for (const r of S.requests) if (msIn(r.ts, a, b)) addSub(w, r);
@@ -246,16 +258,20 @@ for (const { w, a, b } of unitRows) w.overlaps = unitRows.filter((o) => o.w !== 
 
 const cost = (w) => (prices ? ((w.fresh * prices[0] + w.cacheWrite * prices[1] + w.cacheRead * prices[2] + w.output * prices[3]) / 1e6) : null);
 const pagesIn = (detail) => { const m = detail?.match(/(\d+)\s*(?:\/\s*\d+\s*)?(pages|documents|urls)/i); return m ? Number(m[1]) : null; };
+const TOKEN_KEYS = [...Object.keys(zero()), 'tokensPerPage', 'estCost'];
+const blank = (w) => (unknown ? { ...w, ...Object.fromEntries(TOKEN_KEYS.map((x) => [x, null])) } : w); // unknown, never a zero
 const finish = (w, pages = pagesIn(w.detail)) => {
   const total = w.fresh + w.cacheWrite + w.cacheRead + w.output;
   const wallMin = w.from && w.to ? Math.round((Date.parse(w.to) - Date.parse(w.from)) / 60_000) : null;
-  return { ...w, pages, tokensPerPage: pages && total ? Math.round(total / pages) : null, secondsPerPage: pages && wallMin !== null ? Math.round((wallMin * 60) / pages) : null, wallMin, estCost: cost(w) };
+  return blank({ ...w, pages, tokensPerPage: pages && total ? Math.round(total / pages) : null, secondsPerPage: pages && wallMin !== null ? Math.round((wallMin * 60) / pages) : null, wallMin, estCost: cost(w) });
 };
-const table = [...rows.map((w) => finish(w)), finish(unw)];
+const single = unknown && !rows.length && !unitRows.length; // nothing to window either: one `usage: unknown (…)` row
+const table = single ? [finish({ ...unw, label: `usage: unknown (${unknownWhy})` })] : [...rows.map((w) => finish(w)), finish(unw)];
 const unitList = unitRows.map(({ w, at, pages }) => ({ at, row: finish(w, pages) }));
 const units = unitList.map((x) => x.row);
-const total = table.reduce((a, w) => { for (const k of Object.keys(zero())) a[k] += w[k]; return a; }, zero());
-total.estCost = cost(total);
+const sum = table.reduce((a, w) => { for (const x of Object.keys(zero())) a[x] += w[x]; return a; }, zero());
+sum.estCost = cost(sum);
+const total = blank(sum);
 const harnessCost = [...M.costs, ...S.costs].length ? { totalCostUSD: [...M.costs, ...S.costs].reduce((a, c) => a + c.totalCostUSD, 0), sessions: [...M.costs, ...S.costs].length, models: Object.fromEntries([...M.costs, ...S.costs].flatMap((c) => Object.entries(c.modelUsage)).map(([k, v]) => [k, num(v?.costUSD)])) } : null;
 const firstStatus = statusLines[0]?.ts ?? null;
 const oldest = [M.oldest, S.oldest].filter(Boolean).sort()[0] ?? null;
@@ -266,29 +282,34 @@ const now = new Date().toISOString();
 const fmt = (n) => (n === null || n === undefined ? '—' : typeof n === 'number' && !Number.isInteger(n) ? n.toFixed(2) : String(n));
 const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)} M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} k` : String(n));
 const md = [];
-md.push('<!-- stardust:provenance', '  writtenBy: stardust:stardust token-ledger.mjs', `  writtenAt: ${now}`, `  readArtifacts:`, `    - stardust/status.jsonl`, ...unitFiles.map((f) => `    - ${f}`), `    - ${tDir}`, '  synthesizedInputs: []', '-->', '', `# Usage — ${basename(root)}`, '');
-md.push(`Advisory ledger from the harness transcripts (${main.length} main, ${sub.length} subagent); requests de-duplicated by requestId; windows from \`status.jsonl\`. Tokens are counts, not verdicts.`, '');
+md.push('<!-- stardust:provenance', '  writtenBy: stardust:stardust token-ledger.mjs', `  writtenAt: ${now}`, `  readArtifacts:`, `    - stardust/status.jsonl`, ...unitFiles.map((f) => `    - ${f}`), ...(tRead ? [`    - ${tDir}`] : []), '  synthesizedInputs: []', '-->', '', `# Usage — ${basename(root)}`, '');
+md.push(unknown
+  ? `Usage unknown (${unknownWhy}): the harness transcripts were not read, so every token and request cell reads \`unknown\`; windows, wall minutes and pages come from \`status.jsonl\` and the unit ledgers. Tokens are counts, not verdicts.`
+  : `Advisory ledger from the harness transcripts (${main.length} main, ${sub.length} subagent); requests de-duplicated by requestId; windows from \`status.jsonl\`. Tokens are counts, not verdicts.`, '');
 if (units.length) md.push('Unit rows (↳) break their phase down by the recorded units of the `progress.json` unit ledgers; they are not added to the total. A unit marked (overlaps n) ran beside n others on the same clock: a request inside both counts in both.', '');
 const head = ['window', 'from', 'to', 'wall min', 'turns', 'prompts', 'acks', 'fresh', 'cache write (1h / 5m)', 'cache read', 'output (thinking)', 'sub req / read / out', 'pages', 'tokens/page', ...(prices ? ['est. USD'] : [])];
 md.push(`| ${head.join(' | ')} |`, `|${head.map(() => '---').join('|')}|`);
-const line = (w) => `| ${[w.label, w.from ?? '—', w.to ?? '—', fmt(w.wallMin), w.turns, w.prompts, w.acks, k(w.fresh), `${k(w.cacheWrite)} (${k(w.cacheWrite1h)} / ${k(w.cacheWrite5m)})`, k(w.cacheRead), `${k(w.output)} (${k(w.thinking)})`, `${w.subRequests} / ${k(w.subRead)} / ${k(w.subOut)}`, fmt(w.pages), fmt(w.tokensPerPage), ...(prices ? [fmt(w.estCost)] : [])].join(' | ')} |`;
+const tokenCells = (w) => (unknown ? Array(8).fill('unknown') : [w.turns, w.prompts, w.acks, k(w.fresh), `${k(w.cacheWrite)} (${k(w.cacheWrite1h)} / ${k(w.cacheWrite5m)})`, k(w.cacheRead), `${k(w.output)} (${k(w.thinking)})`, `${w.subRequests} / ${k(w.subRead)} / ${k(w.subOut)}`]);
+const derived = (n) => (unknown ? 'unknown' : fmt(n));
+const line = (w) => `| ${[w.label, w.from ?? '—', w.to ?? '—', fmt(w.wallMin), ...tokenCells(w), fmt(w.pages), derived(w.tokensPerPage), ...(prices ? [derived(w.estCost)] : [])].join(' | ')} |`;
 table.forEach((w, i) => {
   md.push(line(w));
   for (const { at, row } of unitList) if (at === i) md.push(line({ ...row, label: row.overlaps.length ? `${row.label} (overlaps ${row.overlaps.length})` : row.label }));
 });
-md.push(line({ ...total, label: '**total**', from: table[0]?.from ?? null, to: table.at(-2)?.to ?? null, wallMin: null, pages: null, tokensPerPage: null }));
+if (!single) md.push(line({ ...total, label: '**total**', from: table[0]?.from ?? null, to: table.at(-2)?.to ?? null, wallMin: null, pages: null, tokensPerPage: null }));
 md.push('');
 if (harnessCost) md.push(`Harness-reported session cost (not per phase): USD ${harnessCost.totalCostUSD.toFixed(2)} over ${harnessCost.sessions} session line(s)${Object.keys(harnessCost.models).length ? ` — ${Object.entries(harnessCost.models).map(([m, c]) => `${m} ${c.toFixed(2)}`).join(', ')}` : ''}.`, '');
 if (retention) md.push(`Retention: ${retention}`, '');
-const json = { _provenance: { writtenBy: 'stardust:stardust token-ledger.mjs', writtenAt: now }, generatedAt: now, source: { harness: tSource, dir: tDir, main: main.length, sub: sub.length }, windows: table, units, total, harnessCost, retention, prices };
+const json = { _provenance: { writtenBy: 'stardust:stardust token-ledger.mjs', writtenAt: now }, generatedAt: now, ...(unknown ? { usage: 'unknown', unknownReason: unknownWhy } : {}), source: { harness: tSource, dir: tDir, main: main.length, sub: sub.length }, windows: table, units, total, harnessCost, retention, prices };
 
 if (!flag('dry-run')) {
   mkdirSync(sd, { recursive: true });
   writeFileSync(join(sd, 'usage.md'), `${md.join('\n')}\n`);
   writeFileSync(join(sd, 'usage.json'), `${JSON.stringify(json, null, 2)}\n`);
 }
+if (unknown) note(`usage: unknown (${unknownWhy})${flag('dry-run') ? '' : ' → stardust/usage.md (windows without tokens)'}`);
 if (flag('json')) console.log(JSON.stringify(json, null, 2));
-else {
+else if (!unknown) {
   console.log(`usage: ${table.length - 1} window(s) + unwindowed${units.length ? ` + ${units.length} unit row(s)` : ''} · ${total.turns} requests (${total.subRequests} subagent) · fresh ${k(total.fresh)} · cache write ${k(total.cacheWrite)} · cache read ${k(total.cacheRead)} · output ${k(total.output)}${prices ? ` · est. USD ${total.estCost.toFixed(2)}` : ''}${harnessCost ? ` · harness-reported USD ${harnessCost.totalCostUSD.toFixed(2)} (session, not per phase)` : ''} → ${flag('dry-run') ? '(dry run)' : join(sd, 'usage.md')}`);
   if (retention) console.log(`usage: ${retention}`);
 }

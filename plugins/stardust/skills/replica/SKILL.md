@@ -65,7 +65,9 @@ none" (198/198 nodes).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs, browser-lock.mjs, unit-commit.mjs) to `stardust/scripts/stardust/`, the migrate
+   (ledger.mjs, state.mjs, progress.mjs, browser-lock.mjs, unit-commit.mjs)
+   to `stardust/scripts/stardust/` (progress.mjs locks through deploy's
+   `file-lock.mjs`: copy that one to `stardust/scripts/deploy/` now), the migrate
    skill's whole `../migrate/scripts/` (migrate.mjs, encode.mjs and its
    `encode/` modules) to `stardust/scripts/migrate/`,
    AND the whole
@@ -449,10 +451,12 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
 
 - **Read the contract card first: `reference/handoff-contract.md`** — the
   distilled migrate/deploy/rollout rules this phase needs, the exact rollout
-  ledger phase strings (`A-inventory` … `I-dashboard`), one usage line per
-  deploy and rollout script, and the bookkeeping commands. Never read the
-  sibling SKILL.md files whole (one recorded session read 260k characters
-  of them, then re-read the overflow, before its first Phase 5 output);
+  ledger phase strings (`A-inventory` … `I-dashboard`, plus the unlettered
+  `gap-closure` after C-final when `done-check.mjs` lists failed pages),
+  one usage line per deploy and rollout script, and the bookkeeping
+  commands. Never read the sibling SKILL.md files whole (one recorded
+  session read 260k characters of them, then re-read the overflow, before
+  its first Phase 5 output);
   fetch a cited section with `section.mjs` only when a step needs depth.
 - **Pages beyond the archetypes** go through the stardust `migrate` skill at
   **sibling tier** (`../migrate/reference/fidelity-tiers.md`) — and only
@@ -483,10 +487,15 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   (`reference/handoff-contract.md`), so every deploy and rollout lint pass
   enforces it.
 - **C-deliver runs in units** (`reference/handoff-contract.md` § 3, row C +
-  Fan-out discipline): C0 — ONE foundation subagent authors AND deploys the
-  foundation; the main agent gates the shell on the published origin, the
-  header contract included (`chrome-compare` exit 0, `../diff/SKILL.md`
-  § The header contract), then `foundation-freeze.mjs freeze` + commit; C-archetype — per template, the
+  Fan-out discipline): C0 — three recorded sub-units, one after another:
+  `foundation-chrome`, `foundation-styles`, then `archetype-<template>` of
+  the shell template, each with its own `progress.json` entry, its own
+  subagent that authors AND deploys its part and returns, its own checkpoint
+  and boundary ask; when that archetype page flips to `deployed`, the main
+  agent runs the foundation-first gate ONCE on it against the published
+  origin, the header contract included (`chrome-compare` exit 0,
+  `../diff/SKILL.md` § The header contract), and the gate closes the
+  archetype; after the three, `foundation-freeze.mjs freeze` ONCE + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render or encode — an encoded template's map is drafted and round-tripped
@@ -501,8 +510,9 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   `gate-all --only` scope and `gate-triage.mjs --unit <sub-unit>`; the main
   agent only coordinates and records; C-final — `check`, the queued
   `foundation-requests.md` lines applied once, `C-deliver end`. Each unit is
-  recorded in `stardust/rollout/progress.json`, committed and closed by its
-  boundary ask — a safe resume point, never by itself a reason to end the
+  recorded in `stardust/rollout/progress.json` (`progress.mjs unit …`),
+  committed and closed by its boundary ask — a safe resume point, never by
+  itself a reason to end the
   session; no frozen file is edited mid-wave, and fan-out subagents honour
   `STARDUST_PAUSE_FILE` (`reference/handoff-contract.md` § Fan-out
   discipline).
@@ -553,8 +563,10 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
 page type, iterations used, per-breakpoint gate results, residuals, motion
-inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
-per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; written
+with `node stardust/scripts/stardust/progress.mjs unit <start|done|failed>
+<archetype> --ledger replica [--set <key>=<value>]`, never `node -e`),
+`motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
 The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
 page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
 `clip.json`, `units.json`, `probes.json`, `gate-key.json` — the reuse

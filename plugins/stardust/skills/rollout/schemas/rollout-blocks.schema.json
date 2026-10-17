@@ -56,7 +56,7 @@
         },
         "source": {
           "type": ["string", "null"],
-          "description": "Canon definition path when the block is canonized, e.g. stardust/canon/modules/<id>.html."
+          "description": "Canon definition path when the block is canonized, e.g. stardust/canon/modules/<id>.html; `blocks-dir` for a block blocks.mjs registered from blocks/<name>/ (holding <name>.js or <name>.css) that no page lists — no pages, 0 instances."
         },
         "usedByTemplates": { "type": "array", "items": { "type": "string" } },
         "usedByPages": { "type": "array", "items": { "type": "string" } },
@@ -68,15 +68,23 @@
           "properties": {
             "status": {
               "type": "string",
-              "enum": ["pending", "converted", "deployed", "verified", "failed"]
+              "enum": ["pending", "converted", "deployed", "verified", "failed", "not-delivered"],
+              "description": "`not-delivered` records a block intentionally left undelivered (update-coverage.mjs --block <name> --status not-delivered --reason \"<text>\"); counted apart in lastRun.blocks.notDelivered, never pending."
             },
             "edsBlockName": {
               "type": ["string", "null"],
               "description": "Canonical EDS block name this block was converted to (blocks/<name>/). The dedup target. `default-content` records a module mapped to EDS default content (no block needed); such a row is never counted pending, whatever its status."
             },
             "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
-            "convertedAt": { "type": ["string", "null"], "format": "date-time" }
-          }
+            "convertedAt": { "type": ["string", "null"], "format": "date-time" },
+            "reason": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Why the block is intentionally not delivered. Required with status `not-delivered`; any other status removes it."
+            }
+          },
+          "if": { "properties": { "status": { "const": "not-delivered" } }, "required": ["status"] },
+          "then": { "required": ["reason"] }
         },
         "optionClasses": {
           "type": "array",

@@ -1,56 +1,101 @@
 #!/usr/bin/env node
-// skills/stardust/scripts/test/stardust-gitignore.test.mjs — reference/stardust.gitignore installed as
-// stardust/.gitignore in a scratch git repo (what Setup step 6 does): the gate's JSON sidecars under
-// replica/gates/ are tracked at any depth, its renders and diffs are not, and the other heavy folders and
-// run residue stay ignored. Asks `git check-ignore`; no network. Run: node <this file>.
+// skills/stardust/scripts/test/stardust-gitignore.test.mjs — the stardust/.gitignore template
+// (reference/stardust.gitignore) keeps the gate's JSON under replica/gates/ tracked (summary, overrides,
+// presence, rounds, triage, probes: the row of record a lost container must not take with it) while the
+// gate's images stay ignored. Checked with real git ignore semantics in a temp repo (children get
+// HOME=<tmp>, GIT_CONFIG_NOSYSTEM=1 and a ceiling, so no user or system ignore rules leak in):
+// `git check-ignore --no-index -q` per path, and the untracked set `git ls-files --others --exclude-standard`
+// reports (what `git add` would pick up). The template text carries the three lines in order and no bare
+// `replica/gates/` line (git cannot re-include a file whose parent directory is excluded).
+// No git on PATH → `skipped: git not found`, exit 0. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const IGNORE = join(HERE, '..', '..', 'reference', 'stardust.gitignore');
-const root = mkdtempSync(join(tmpdir(), 'stardust-gitignore-'));
-const git = (...args) => spawnSync('git', ['-C', root, ...args], { encoding: 'utf8' });
-assert.equal(git('init', '-q').status, 0, 'git init');
-mkdirSync(join(root, 'stardust'), { recursive: true });
-copyFileSync(IGNORE, join(root, 'stardust', '.gitignore'));
+const TEMPLATE = join(HERE, '..', '..', 'reference', 'stardust.gitignore');
 
-const touch = (rel) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), 'x'); };
-const ignored = (rel) => { touch(rel); const r = git('check-ignore', '-q', '--', rel); assert.ok(r.status === 0 || r.status === 1, r.stderr); return r.status === 0; };
+const probe = spawnSync('git', ['--version'], { encoding: 'utf8' });
+if (probe.error || probe.status !== 0) { console.log('skipped: git not found'); process.exit(0); }
+
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
-check('the gate\'s JSON sidecars are tracked at every depth: summary, runs/, rounds, triage, gate keys, presence', () => {
-  for (const rel of [
-    'stardust/replica/gates/all-1440/summary.json',
-    'stardust/replica/gates/all-360/runs/20261017-home.json',
-    'stardust/replica/gates/all-1440/home/rounds.json',
-    'stardust/replica/gates/all-1440/triage.json',
-    'stardust/replica/gates/all-1440/home/gate-key.json',
-    'stardust/replica/gates/presence.json',
-  ]) assert.equal(ignored(rel), false, `${rel} must be tracked`);
-});
+const root = realpathSync(mkdtempSync(join(tmpdir(), 'stardust-gitignore-test-')));
+const home = join(root, 'home'); mkdirSync(home);
+const repo = join(root, 'repo'); mkdirSync(repo);
+const env = Object.fromEntries(Object.entries(process.env).filter(([k]) => !k.startsWith('GIT_')));
+Object.assign(env, { HOME: home, XDG_CONFIG_HOME: join(home, '.config'), GIT_CONFIG_NOSYSTEM: '1', GIT_CEILING_DIRECTORIES: root });
+const git = (...args) => spawnSync('git', ['-C', repo, ...args], { env, encoding: 'utf8' });
 
-check('the gate\'s renders and diffs stay untracked (PNG, HTML, triage.md, logs)', () => {
-  for (const rel of [
-    'stardust/replica/gates/all-1440/home/live.png',
-    'stardust/replica/gates/all-1440/home/crop-diff.png',
-    'stardust/replica/gates/all-1440/triage.md',
-    'stardust/replica/gates/all-1440/home/eds.html',
-    'stardust/replica/gates/all-1440/run.log',
-  ]) assert.equal(ignored(rel), true, `${rel} must stay ignored`);
-});
+const template = readFileSync(TEMPLATE, 'utf8');
+const GATE_JSON = [
+  'stardust/replica/gates/all-1440/summary.json',
+  'stardust/replica/gates/all-1440/overrides.json',
+  'stardust/replica/gates/all-1440/presence.json',
+  'stardust/replica/gates/all-1440/<slug>/probes.json',
+  'stardust/replica/gates/home-1440/rounds.json',
+  'stardust/replica/gates/all-360/triage.json',
+];
+const GATE_PNG = [
+  'stardust/replica/gates/all-1440/<slug>/diff.png',
+  'stardust/replica/gates/all-1440/<slug>/origin.png',
+  'stardust/replica/gates/home-1440/live.png',
+];
+const OTHER_IGNORED = ['stardust/current/assets/x.png', 'stardust/.work/x.json'];
+// `<slug>` is a placeholder; on disk it is a page slug directory.
+const onDisk = (p) => p.replace('<slug>', 'a-page');
 
-check('the other heavy folders, run residue and session state stay ignored; replica\'s own records stay tracked', () => {
-  for (const rel of ['stardust/current/assets/media/a.json', 'stardust/migrated/assets/x.json', 'stardust/rollout/qa/home.json', 'stardust/.work/x.json', 'stardust/_storage-state.json'])
-    assert.equal(ignored(rel), true, `${rel} must stay ignored`);
-  for (const rel of ['stardust/replica/progress.json', 'stardust/replica/presence.json', 'stardust/state.json'])
-    assert.equal(ignored(rel), false, `${rel} must be tracked`);
-});
+try {
+  const init = git('init', '-q');
+  assert.equal(init.status, 0, `git init failed: ${init.stderr}`);
+  mkdirSync(join(repo, 'stardust'), { recursive: true });
+  writeFileSync(join(repo, 'stardust', '.gitignore'), template);
+  for (const p of [...GATE_JSON, ...GATE_PNG, ...OTHER_IGNORED]) {
+    const abs = join(repo, onDisk(p));
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, p.endsWith('.json') ? '{}\n' : 'png');
+  }
+  // exit 0 = ignored, 1 = not ignored, anything else = git could not answer
+  const ignored = (p) => {
+    const r = git('check-ignore', '--no-index', '-q', onDisk(p));
+    assert.ok(r.status === 0 || r.status === 1, `git check-ignore ${p} exited ${r.status}: ${r.stderr}`);
+    return r.status === 0;
+  };
 
-rmSync(root, { recursive: true, force: true });
+  check('every gate JSON under replica/gates/ is NOT ignored (summary, overrides, presence, probes, rounds, triage)', () => {
+    for (const p of GATE_JSON) assert.equal(ignored(p), false, `${p} must be tracked`);
+  });
+
+  check('every gate image under replica/gates/ IS ignored', () => {
+    for (const p of GATE_PNG) assert.equal(ignored(p), true, `${p} must stay untracked`);
+  });
+
+  check('current/assets/x.png and .work/x.json stay ignored', () => {
+    for (const p of OTHER_IGNORED) assert.equal(ignored(p), true, `${p} must stay untracked`);
+  });
+
+  check('git add would pick up exactly .gitignore and the gate JSON (ls-files --others --exclude-standard)', () => {
+    const r = git('ls-files', '--others', '--exclude-standard');
+    assert.equal(r.status, 0, r.stderr);
+    const listed = r.stdout.split('\n').filter(Boolean).sort();
+    assert.deepEqual(listed, ['stardust/.gitignore', ...GATE_JSON.map(onDisk)].sort());
+  });
+
+  check('the template carries the three replica/gates lines in order and no bare replica/gates/ line', () => {
+    const lines = template.split('\n').map((l) => l.trim());
+    const at = lines.indexOf('replica/gates/**');
+    assert.ok(at >= 0, 'missing `replica/gates/**`');
+    assert.deepEqual(lines.slice(at, at + 3), ['replica/gates/**', '!replica/gates/**/', '!replica/gates/**/*.json']);
+    assert.ok(!lines.includes('replica/gates/'), 'a bare `replica/gates/` line excludes the directory, and git cannot re-include a file below it');
+    assert.ok(lines[at - 1].startsWith('#'), 'a one-line comment sits right above the three lines');
+  });
+} finally {
+  rmSync(root, { recursive: true, force: true });
+}
+
 console.log(failed ? `\n${failed} failing` : '\nstardust-gitignore: all checks passed');
 process.exit(failed ? 1 : 0);
