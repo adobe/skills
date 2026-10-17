@@ -3,7 +3,8 @@
 // header (brand image link, a nav with a dropdown sub-list and a button trigger, a utility list, a CTA, an icon-only
 // search link, a search button) and a footer (link columns with headings, a legal line with links, social icon links,
 // a newsletter form); entities (a prototype-key name stays literal); the empty-list nav; column-only nav items, with and
-// without their own label; the CLI (written, unchanged, --check, --prefix, a missing source).
+// without their own label; a Back or Close control at the top of a panel stays a skipped control; the CLI (written,
+// unchanged, --check, --prefix, a missing source).
 // Run: node plugins/stardust/skills/deploy/scripts/test/chrome-docs.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -289,7 +290,8 @@ check('nav: column wrappers beside the item\'s own link nest under it, each head
       </ul>`);
   assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 1 });
 });
-const navOf = (li) => sectionsOf(buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>${li}</ul></nav></header>`).doc)[1];
+const navFor = (li) => buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>${li}</ul></nav></header>`);
+const navOf = (li) => sectionsOf(navFor(li).doc)[1];
 const COL_W = '<div class="col"><h3>Widgets</h3><ul><li><a href="/w1">W1</a></li></ul></div>';
 const COL_G = '<div class="col"><h3>Gadgets</h3><ul><li><a href="/g1">G1</a></li></ul></div>';
 const W_G = `        <li>Widgets
@@ -332,6 +334,33 @@ check('nav: a link after the columns is the item\'s own label, never a column he
         </li>
       </ul>`);
   assert.equal(navOf(`<li><span class="chev"></span>${COL_W}<i class="icon"></i>${COL_G}</li>`), `      <ul>\n${W_G}\n      </ul>`);
+});
+check('nav: a Back or Close control at the top of a panel is skipped, never a label — inside a column a button or an href-less link is a control', () => {
+  const p12 = '<ul><li><a href="/p1">P1</a></li><li><a href="/p2">P2</a></li></ul>';
+  const under = (head) => `      <ul>
+        <li>${head}
+          <ul>
+            <li><a href="/p1">P1</a></li>
+            <li><a href="/p2">P2</a></li>
+          </ul>
+        </li>
+      </ul>`;
+  for (const [own, head, links] of [['<a href="/products">Products</a>', '<a href="/products">Products</a>', 3], ['<button>Products</button>', 'Products', 2]]) {
+    for (const back of ['<button class="back">Back</button>', '<a href="#">Back</a>']) {
+      const r = navFor(`<li>${own}<div class="submenu">${back}${p12}</div></li>`);
+      assert.equal(sectionsOf(r.doc)[1], under(head));
+      assert.deepEqual(r.counts, { brand: 1, links, tools: 0, skipped: 1 });
+    }
+  }
+  const r = navFor(`<li><a href="/products">Products</a><div class="mega"><button aria-label="Close">x</button>${COL_W}${COL_G}</div></li>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li><a href="/products">Products</a>
+          <ul>
+    ${W_G.replace(/\n/g, '\n    ')}
+          </ul>
+        </li>
+      </ul>`);
+  assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 1 });
 });
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');
