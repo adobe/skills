@@ -503,10 +503,12 @@ had one section for the whole run).
   Evidence and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
   without a row is ungated). Each cluster subagent runs `--only` over its own
-  pages inside the fan-out; cluster re-runs and C-final's roster run (unit
-  `gate-all`, after re-freezing the foundation the requests changed; then
-  `update-coverage.mjs --gate`) pass `--skip-existing` with the clusters'
-  `--eds-host`: a PASS row is reused only while its gate key (foundation,
+  pages inside the fan-out; cluster re-runs pass `--skip-existing` with the
+  clusters' (preview) `--eds-host`, C-final's roster run (unit `gate-all`, after
+  re-freezing the foundation the requests changed; then
+  `update-coverage.mjs --gate`) `--skip-existing --eds-host <rollout.json site.liveHost>`
+  — that host change re-gates every row, as the gate key hashes the build
+  origin. A PASS row is reused only while its gate key (foundation,
   blocks, content, criteria) is proven served and unchanged, probes only
   while the capture pair holds; an EDS capture not proven current (changed
   key, or unknown key whose `gate-key.json` record differs; without a local
