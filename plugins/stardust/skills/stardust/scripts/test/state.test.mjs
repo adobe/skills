@@ -6,8 +6,8 @@
 // place), --history-only, the value-flag swallow rule, summary counts and --slugs, usage errors and
 // the rejected --gate / --note flags; init (line list, JSON array, stdin, --types, --site-url, the
 // record index, provenance refusals, exists / --force, captureGaps), set (--representative /
-// --type, --clear-representative, refusals including representative cycles) and the summary
-// representative lines. Run: node <this file>.
+// --type, --clear-representative, refusals including representative cycles), the crawl's pre-cap
+// totalDiscovered and the summary representative lines. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -382,17 +382,24 @@ check('siteTotalDiscovered: the post-cap crawl count is a total only where the c
   assert.equal(siteTotalDiscovered({ count: 25, pageCap: null, inputCount: 2 }), 25, 'no --page-cap: the count as logged');
   assert.equal(siteTotalDiscovered({ count: null, pageCap: 25, inputCount: 2 }), 2, 'no logged count: the input count');
 });
-check('init --page-cap sets site.pageCap and decides totalDiscovered from _crawl-log.json#discovery.count; site key order with captureGaps', () => {
+check('siteTotalDiscovered: a logged pre-cap total (integer >= 0) wins over the cap rule; anything else falls back to it', () => {
+  assert.equal(siteTotalDiscovered({ count: 25, total: 140, pageCap: 25, inputCount: 2 }), 140, 'the cap bit, the total is known');
+  assert.equal(siteTotalDiscovered({ count: 18, total: 18, pageCap: 25, inputCount: 2 }), 18);
+  assert.equal(siteTotalDiscovered({ count: null, total: 0, pageCap: null, inputCount: 2 }), 0, 'zero is a total');
+  for (const total of [null, -1, 2.5, '140']) assert.equal(siteTotalDiscovered({ count: 25, total, pageCap: 25, inputCount: 2 }), null, `total ${JSON.stringify(total)}: today's rule`);
+});
+check('init --page-cap sets site.pageCap and decides totalDiscovered from _crawl-log.json#discovery (total, else count); site key order with captureGaps', () => {
   const pages = 'https://www.example.com/blog\nhttps://www.example.com/about-us\n';
-  const initWith = (count, cap, gaps = false) => {
+  const initWith = (count, cap, gaps = false, extra = {}) => {
     const p = project();
-    writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { fetchTechnique: 'sitemap', count }, ...(gaps ? { captureGaps: { roots: [{ root: '/de', slug: 'de', linked: 1, uncaptured: ['/de/a'] }], detail: '' } } : {}) }));
+    writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { fetchTechnique: 'sitemap', count, ...extra }, ...(gaps ? { captureGaps: { roots: [{ root: '/de', slug: 'de', linked: 1, uncaptured: ['/de/a'] }], detail: '' } } : {}) }));
     const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', pages), ...(cap === null ? [] : ['--page-cap', cap])]);
     assert.equal(r.code, 0, r.err); return readIn(p.d).site;
   };
   const bit = initWith(25, '25', true);
   assert.deepEqual(Object.keys(bit), ['originUrl', 'deployUrl', 'extractedAt', 'pageCap', 'totalDiscovered', 'crawled', 'captureGaps']);
   assert.equal(bit.pageCap, 25); assert.equal(bit.totalDiscovered, null, 'count >= --page-cap: the cap bit, no pre-cap total logged'); assert.equal(bit.crawled, 2);
+  const total = initWith(25, '25', false, { total: 140 }); assert.equal(total.pageCap, 25); assert.equal(total.totalDiscovered, 140, 'the cap bit, the logged pre-cap total is the total');
   const under = initWith(18, '25'); assert.equal(under.totalDiscovered, 18, 'count < --page-cap: the cap did not bite');
   const nocap = initWith(38, '0'); assert.equal(nocap.pageCap, 0, '0 = no cap, as crawl --max 0'); assert.equal(nocap.totalDiscovered, 38);
   const nopc = initWith(25, null); assert.equal(nopc.pageCap, null); assert.equal(nopc.totalDiscovered, 25, 'no --page-cap: the count as logged');
