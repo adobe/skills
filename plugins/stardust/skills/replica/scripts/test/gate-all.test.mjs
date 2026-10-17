@@ -27,6 +27,10 @@
 // non-empty list only; a sandbox whose stub instruments log their argv: "*" then the slug's list reaches both stitches,
 // content-presence and clip-probe, records and rows carry it, fix rounds / live.png / --skip-existing reuse only the
 // same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line.
+// --dismiss (like gate.sh / anchor.mjs): parseArgs (one comma list, the last wins, no value → exit 1), the reuse deciders,
+// probeInputs / gateKeyParts / skipCapture; the hide sandbox: both stitch argv carry it before --hide, the probes do not
+// (content-presence / clip-probe take no --dismiss), records / probes.json inputs / _provenance carry it, and a capture
+// taken with another list is never reused (fix rounds, live.png on both stages, --skip-existing on both sides).
 // Gate trust: capturePollution, an INCONCLUSIVE verdict / summary cell / head, rowReuse and the reuse deciders refusing a
 // capture without the overlay-left check or with an overlay left; every stitch stub writes the --json capture record
 // (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record, a failed
@@ -993,6 +997,52 @@ check('skipCapture: a capture ctx.unchecked names (a stitched record without an 
   assert.equal(skipCapture({}, 'origin', { ...cc, unchecked: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => true }), false);
   assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => false }), true); assert.equal(skipCapture({}, 'origin', cc), true);
 });
+// ---- --dismiss: the extra overlay-dismiss selectors both stitches get — recorded, compared like a hide list --------------
+const DL = ['.nl-close', '#promo-x'];
+check('dismiss: parseArgs — one comma list (trimmed, de-duplicated; the last --dismiss wins, like gate.sh / anchor.mjs), [] by default; no value → exit 1 before any I/O', () => {
+  assert.deepEqual(parseArgs(['node', 'x']).dismiss, []);
+  assert.deepEqual(parseArgs(['node', 'x', '--dismiss', ' .nl-close , #promo-x,,.nl-close']).dismiss, DL);
+  assert.deepEqual(parseArgs(['node', 'x', '--dismiss', '.a', '--dismiss', '.b']).dismiss, ['.b']);
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-dismiss-')));
+  for (const argv of [['--dismiss'], ['--dismiss', '--only', 'a'], ['--dismiss', ' , ']]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...argv], { cwd, encoding: 'utf8', env: { ...process.env, RUN_BG_DEADLINE_SEC: '' } });
+    assert.equal(r.status, 1, argv.join(' ')); assert.match(r.stderr, /^--dismiss takes a list of overlay-dismiss selectors, <sel,…> \(got /, argv.join(' ')); assert.equal(r.stdout, '');
+  }
+  assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true, force: true });
+});
+check('dismiss: originReusePlan / liveReusePlan refuse a capture taken with another --dismiss list (absent = none; another order is another list), accept the same; live.json dismiss.extra is gate.sh\'s list; a site consent selector is still refused', () => {
+  const kept = { ...prev, dismiss: DL };
+  assert.deepEqual(originReusePlan({ ...ask, dismiss: DL }, kept, fr(kept)), { reuse: true, why: 'same-run' });
+  assert.deepEqual(originReusePlan(ask, kept, fr(kept)), { reuse: false, why: 'dismiss list differs' }, 'taken with a list, this run has none');
+  assert.deepEqual(originReusePlan({ ...ask, dismiss: DL }, prev, fr(prev)), { reuse: false, why: 'dismiss list differs' }, 'a record without dismiss dismissed no extra');
+  assert.equal(originReusePlan({ ...ask, dismiss: [...DL].reverse() }, kept, fr(kept)).why, 'dismiss list differs');
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 }; const ex = (extra, consent = null) => ({ ...live, dismiss: { off: false, consent, extra } });
+  assert.deepEqual(liveReusePlan({ ...la, dismiss: DL }, ex('.nl-close,#promo-x'), fr(live)), { reuse: true, why: 'same-run' });
+  assert.deepEqual(liveReusePlan(la, ex('.nl-close'), fr(live)), { reuse: false, why: 'live.json dismiss list differs' });
+  assert.deepEqual(liveReusePlan({ ...la, dismiss: DL }, ex(null), fr(live)), { reuse: false, why: 'live.json dismiss list differs' });
+  assert.deepEqual(liveReusePlan({ ...la, dismiss: DL }, ex('.nl-close'), fr(live)), { reuse: false, why: 'live.json dismiss list differs' });
+  assert.deepEqual(liveReusePlan(la, ex(null), fr(live)), { reuse: true, why: 'same-run' }, 'no list either side');
+  assert.match(liveReusePlan({ ...la, dismiss: DL }, ex('.nl-close,#promo-x', '#accept'), fr(live)).why, /consent #accept/);
+});
+check('dismiss: probeInputs / gateKeyParts carry a non-empty list only (old probes.json replays and keys hold without one) — another list re-runs the probes and moves the key; skipCapture refuses a capture dismissChanged names', () => {
+  const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' }; const opts = parseArgs(['node', 'x']); const withList = parseArgs(['node', 'x', '--dismiss', DL.join(',')]);
+  const ctx = (o) => ({ opts: o, edsUrl: (x) => x.liveUrl, presence: {}, unitsOf: () => [] });
+  const legacy = probeInputs(page, ctx(opts)); assert.equal('dismiss' in legacy, false);
+  assert.deepEqual(probeInputs(page, ctx(withList)), { ...legacy, dismiss: DL });
+  const sidecar = (inputs) => ({ ...reuseArgs().sidecar, inputs });
+  assert.equal(probeReuse(reuseArgs({ sidecar: sidecar(legacy), inputs: probeInputs(page, ctx(opts)) })).reuse, true, 'a probes.json from before replays');
+  assert.match(probeReuse(reuseArgs({ sidecar: sidecar(legacy), inputs: probeInputs(page, ctx(withList)) })).why, /probe inputs changed/);
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-dismiss-key-'));
+  mkdirSync(join(root, 'content')); writeFileSync(join(root, 'content/index.html'), '<main></main>');
+  const parts = (o) => gateKeyParts(page, { root, opts: o, instruments: 'i' }).parts;
+  assert.equal('dismiss' in parts(opts).build.settings, false); assert.deepEqual(parts(withList).build.settings.dismiss, DL);
+  assert.notEqual(gateKeyOf(parts(withList)), gateKeyOf(parts(opts))); assert.notEqual(gateKeyOf(parts(withList)), gateKeyOf(parts(parseArgs(['node', 'x', '--dismiss', '.nl-close']))));
+  rmSync(root, { recursive: true, force: true });
+  const cc = { opts: { skip: true }, has: () => true, keyChanged: () => false };
+  assert.equal(skipCapture({}, 'origin', cc), true, 'no dismissChanged: as before');
+  assert.equal(skipCapture({}, 'origin', { ...cc, dismissChanged: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, dismissChanged: () => true }), false);
+});
 check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 without a machine browser slot, explicit flags win; inside one (STARDUST_BROWSER_SLOT) the pools are clamped to STARDUST_BROWSERS_PER_SLOT (unset → 1, sequential)', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
   const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc, plain.pools.perSlot], [2, 4, 2, null]);
@@ -1584,6 +1634,59 @@ check('hide 9: a diff scripts dir whose live-session.mjs lacks presenceHide → 
     assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal((r.stdout.match(/presence hide: not honoured/g) || []).length, 1, r.stdout);
     assert.ok(r.all.length && r.all.every((l) => !l.includes('--hide')), r.all.join('\n')); assert.equal('hide' in r.row('home'), false);
   } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); }
+});
+const argOf = (l, flag) => { const a = l.split(' '); const i = a.indexOf(flag); return i < 0 ? null : a[i + 1]; };
+const withDismiss = (url, extra, hide = []) => ({ ...liveJson(url, hide), dismiss: { off: false, consent: null, extra } });
+check('dismiss 1: --dismiss reaches both stitches (before --hide), not content-presence (it takes no --dismiss); origin.json / eds.json / probes.json inputs / _provenance record the list', () => {
+  setPresence({ '*': { hide: ['.geo-bar'] } });
+  const r = hgate(['--dismiss', '.nl-close,#promo-x']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const slug of ['home', 'about']) {
+    for (const name of ['ORIGIN', 'EDS']) { const l = r.by(name, slug); assert.equal(l.length, 1, `${name} ${slug}`); assert.match(l[0], / --dismiss \.nl-close,#promo-x --hide \.geo-bar( |$)/, l[0]); }
+    assert.equal(argOf(r.by('CONTENT', slug)[0], '--dismiss'), null, r.by('CONTENT', slug)[0]);
+    for (const f of ['origin.json', 'eds.json']) assert.deepEqual(hjson(slug, f).dismiss, DL, `${slug} ${f}`);
+    assert.deepEqual(hjson(slug, 'probes.json').inputs.dismiss, DL);
+  }
+  assert.deepEqual(JSON.parse(readFileSync(join(HOUT, 'summary.json'), 'utf8'))._provenance.dismiss, DL);
+});
+check('dismiss 2: a fix round with the same list keeps the origin, the EDS stitch dismisses it, clip-probe (--no-content) gets no --dismiss; a round without --dismiss re-stitches the origin (not reused: dismiss list differs) and records none', () => {
+  const same = hgate(['--only', 'home', '--dismiss', '.nl-close,#promo-x']);
+  assert.equal(same.status, 0, same.stderr + same.stdout); assert.equal(same.by('ORIGIN', 'home').length, 0); assert.equal(argOf(same.by('EDS', 'home')[0], '--dismiss'), '.nl-close,#promo-x');
+  const clipRun = hgate(['--only', 'home', '--no-content', '--dismiss', '.nl-close,#promo-x']);
+  assert.equal(clipRun.status, 0, clipRun.stderr + clipRun.stdout); assert.equal(clipRun.by('CLIP', 'home').length, 1); assert.equal(argOf(clipRun.by('CLIP', 'home')[0], '--dismiss'), null);
+  const none = hgate(['--only', 'home']);
+  assert.equal(none.status, 0, none.stderr + none.stdout); assert.equal(none.by('ORIGIN', 'home').length, 1); assert.match(hlog(), /origin home → not reused \(dismiss list differs\)/);
+  assert.ok(none.all.every((l) => !l.includes('--dismiss')), none.all.join('\n'));
+  for (const f of ['origin.json', 'eds.json']) assert.equal('dismiss' in hjson('home', f), false, f);
+  assert.equal('dismiss' in hjson('home', 'probes.json').inputs, false);
+});
+check('dismiss 3: the published stage takes the archetype round\'s live.png only when live.json dismissed the same list (gate.sh --dismiss → dismiss.extra)', () => {
+  setPresence({});
+  const g = join(hroot, 'stardust/replica/gates/about-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(withDismiss('https://www.example.com/about', '.nl-close')));
+  const a = hgate(['--dismiss', '.nl-close']);
+  assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.by('ORIGIN', 'about').length, 0);
+  assert.equal(a.row('about').originReused.from, 'stardust/replica/gates/about-1440/live.png'); assert.deepEqual(hjson('about', 'origin.json').dismiss, ['.nl-close']);
+  const b = hgate([]);
+  assert.equal(b.by('ORIGIN', 'about').length, 1); assert.match(hlog(), /origin about → live\.png not reused \(live\.json dismiss list differs\)/);
+  rmSync(g, { recursive: true, force: true });
+});
+check('dismiss 4: --stage prototype — the archetype live.png only with the same list (both stitches dismiss it); --skip-existing keeps both sides with the same list, re-shoots both with another (logged)', () => {
+  const args = ['--stage', 'prototype', '--proto-base', 'http://localhost:9', '--no-probes'];
+  setPresence({}, HPROTO);
+  const g = join(hroot, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
+  writeFileSync(join(g, 'live.json'), JSON.stringify(withDismiss('https://www.example.com/', '.nl-close,#promo-x')));
+  const a = hgate([...args, '--dismiss', '.nl-close,#promo-x']);
+  assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.by('ORIGIN', 'home').length, 0); assert.equal(a.row('home').originReused.policy, 'prototype-stage');
+  assert.deepEqual(hjson('home', 'origin.json', HPROTO).dismiss, DL); assert.equal(argOf(a.by('EDS', 'home')[0], '--dismiss'), '.nl-close,#promo-x', 'the served prototype dismisses the same list');
+  const b = hgate(args);
+  assert.equal(b.by('ORIGIN', 'home').length, 1); assert.match(hlog(HPROTO), /origin home → live\.png not reused \(live\.json dismiss list differs\)/);
+  const c = hgate([...args, '--skip-existing']);
+  assert.equal(c.status, 0, c.stderr + c.stdout); assert.equal(c.by('ORIGIN', 'home').length + c.by('EDS', 'home').length, 0, 'the same (no) list: both kept');
+  const d = hgate([...args, '--skip-existing', '--dismiss', '.nl-close']);
+  assert.equal(d.status, 0, d.stderr + d.stdout); assert.equal(argOf(d.by('ORIGIN', 'home')[0], '--dismiss'), '.nl-close'); assert.equal(argOf(d.by('EDS', 'home')[0], '--dismiss'), '.nl-close');
+  assert.match(hlog(HPROTO), /origin home → not reused \(--skip-existing: dismiss list differs\)/); assert.match(hlog(HPROTO), /eds home → not reused \(--skip-existing: dismiss list differs\)/);
+  rmSync(g, { recursive: true, force: true });
 });
 rmSync(hroot, { recursive: true, force: true });
 
