@@ -59,7 +59,7 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --
 # 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
 #    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
-node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
+node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W --settle
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
   --out "$GATE/diff-iter<N>.png" --threshold 10
 ```
@@ -286,7 +286,8 @@ Only when `DESIGN.json` `extensions.breakpoints.target` is set (replica
   defect separately (ledger `--detail`, progress.json). At the delivery gate
   a tier-shift page gets an `overrides.json` row — `{"<slug>": {"verdict":
   "tier-shift", "reason": "R-<nn>"}}` — only when clip and content pass; the
-  measured number stays beside it.
+  measured number stays beside it, and gate-all checks all three before it
+  counts the row (§ The all-pages published-origin gate, **Overrides**).
 - **Noise check:** a width outside every shifted band whose pass count
   moves by more than a few pages is re-captured before reporting (recorded:
   42 → 57 at an unaffected width was live retry noise).
@@ -463,7 +464,9 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `anchor.mjs --cache <gates-dir>/anchor-live.json` (live URL only), and in
   `gate.sh --full` content-diff and visual-diff (`--live-cache`) and
   content-presence (`--origin-cache`) — these three only within the run
-  (next item), and retaking `live.png` drops them. Recorded without it: a chrome-parity round
+  (next item), and retaking `live.png` drops them. gate.sh keeps `live.png` only while `live.json`
+  records the same hide list and a clean overlay check (`overlayLeft: null`); an older record is
+  retaken once. Recorded without it: a chrome-parity round
   on an AEM site cost 5½ minutes of live settle per iteration, ×3
   iterations ×4 archetypes. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
@@ -605,18 +608,28 @@ rather than erroring.
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
    carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
    its probes, `--no-dismiss` turns it off everywhere in the round):
-   (a) cookie consent (clicked accept; the flags above for a banner the
-   built-in candidates miss); (b) **timed marketing/newsletter interstitials** —
+   (a) cookie consent (clicked accept: OneTrust, Cookiebot, Usercentrics (in
+   its shadow root), TrustArc, Didomi and the cmp-prefixed managers
+   by id, then accept-like button text, then live-session's multilingual
+   label sweep — a short accept label inside a dialog, a consent container or
+   a fixed/sticky layer; the flags above for a banner all of them miss);
+   (b) **timed marketing/newsletter interstitials** —
    recorded (fashion retailer): an undismissed "Sign up, stay updated!"
    modal fired ~5–9s after load and baked a pixel-diff contributor into the
    LIVE capture, repeated at every chunk seam, that no prototype fidelity
    could null out. These fire on a timer, so the dismissal polls for late
    arrivals on live source sites (an EDS host gets one sweep after its
    delayed phase) and stitch-shot sweeps again after the settle pass.
-   Known limit: on an EDS host without `--settle` (the plain `gate.sh` build
-   capture) that one sweep runs after the delayed phase (load + ~3 s), so a
-   consent manager that renders later is not dismissed there — under
-   `--settle` it is, and `--consent` / `--dismiss` reach that sweep.
+   **What the sweep left is named, never measured.** `dismissOverlays`
+   reports `overlayLeft` — a banner-sized part of a known consent root still
+   visible, a fixed or sticky layer painting over ≥ 80 % of the viewport,
+   `html`/`body` `overflow:hidden`, or a sweep click that navigated away —
+   and stitch-shot prints `overlay-left: <sel>` (its
+   `--json` record keeps it). gate.sh gives no verdict on it (exit 1); a
+   gate-all row on such a capture, or on a `crawl-fullpage` origin, is
+   INCONCLUSIVE. Fix the capture, not the page: `--consent` / `--dismiss`
+   for an overlay; a full-viewport layer that is the page's own design reads
+   as left on both sides — hide it on both (`--hide` / presence.json).
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -683,6 +696,11 @@ rather than erroring.
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
     fallback type is the truthful capture (**capture-state** — log it).
+    In gate-all a face with status `error` on either side (stitch-shot's
+    `--json` record) is the row reason `font-not-loaded:<family>`, and the
+    row cannot PASS; a check that could not run is recorded as not checked
+    (`fontsFailed: null`) and reads `font-check-skipped:<side>` — no PASS
+    either.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
@@ -863,7 +881,22 @@ without any table the `gate.sh` logs stand in and `--check` names the missing ta
 eval requires both summaries with a row per page. The pixel-only verdict (1 + 2) is
 recorded beside the full one per page and in the totals: every run is calibration data. Sidecars in the gate dir, each entry documented: `masks.json` (printed
 on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the measured number,
-never replacing it), `clip-allow.json`, `presence.json`, `units.json`.
+never replacing it; counted only when valid, below), `clip-allow.json`, `presence.json`, `units.json`.
+
+**INCONCLUSIVE — the gate names what it could not measure.** A row whose origin is the
+`crawl-fullpage` fallback, or whose either capture left an overlay (§ Hardening rules, rule 6) or
+wrote no capture record, has no
+pixel or height verdict: `inconclusive: true`, reasons `origin capture polluted: <why>` (`build
+capture polluted: …` for the served side), INCONCLUSIVE in `summary.md` and `totals.inconclusive`;
+the run exits 2. gate-evidence reads it OPEN, update-coverage keeps the page's status and records
+`delivery.gate.inconclusive`, gate-triage lists it as a capture fix, and no later run reuses it.
+
+**Overrides are validated mechanically.** An `overrides.json` row counts (`passWithOverride`) only
+when its `verdict` is `tier-shift`, `instrument-artifact` or `source-volatile`, its `reason` names an
+`R-<nn>` that exists in `stardust/replica/inconsistency-register.md`, and the row's own clip and
+content checks PASS (n/a is no pass; the prototype stage has no content criterion). Otherwise the
+row stays FAIL with `override rejected: <rule>`. The summary prints counted / rejected overrides and
+their share of the roster; update-coverage copies `delivery.gate.override = {verdict, reason, valid}`.
 
 **Hide or mask.** An in-flow per-visitor region (a location-suggestion bar above the header) is
 hidden: removed before measuring, on both sides, via `--hide <sel,…>` or presence.json `hide`;

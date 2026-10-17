@@ -402,7 +402,10 @@ is the coverage: rows `deployed` / `verified` with a `deployedUrl`, and `failed`
 fix round re-gates them — no state file, no hand-built roster.
 `update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` feeds each row back into
 `delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
-gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
+gate fails — completion derives from one place, never from the pixel number alone. An INCONCLUSIVE
+row (a polluted capture) is no pass: `--gate` leaves the status alone and records
+`delivery.gate.inconclusive`, and `verify` reads it as not passed until a measured row replaces it; an
+override counts only when gate-all validated it (`delivery.gate.override.valid`). In C-deliver
 the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
 
 ### Phase E2 — Link-audit completeness
