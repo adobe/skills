@@ -13,8 +13,8 @@
 //   cap-probe      the reskin page's content caps captured to <deployed>/design.json, then compared with the
 //                  preview's: ✗ is a FAIL, caps within ±20px
 // A protected preview gets every row "n/a: protected preview": replica's capture instruments carry no site auth.
-// The reskin page is served by a small static server on 127.0.0.1 for the run (its own directory, so relative assets
-// resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
+// The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: its own directory, so
+// relative assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
 //   runParity({ dir, slug, preview, reskinPage, widths, tools, env })  writes parity.json ({ verdict, rows }) and
 //        returns { verdict: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', exit, rows }. A row is { check, width, value, bar,
 //        status: 'PASS' | 'FAIL' | 'ADVISORY' | 'ERROR' | 'n/a', artifact, detail }. An instrument that gives no verdict
@@ -25,16 +25,16 @@
 //   parityLines(result) the lines the CLI prints
 // Evidence: <deployed>/parity/ (the two captures and the diffs per width, chrome-parity-1440.json,
 // cap-probe-1440.json), <deployed>/design.json and <deployed>/parity.json.
-import { createReadStream, closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
-import { basename, dirname, extname, join, resolve, sep } from 'node:path';
+import { closeSync, existsSync, mkdirSync, openSync, readSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { loadChromium } from '../figma-gate/target.mjs';
-import { childEnv, coded, outputOf, runChild } from './child.mjs';
+import { callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
+import { serveReskinPage } from './serve.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Two layouts, one level deeper than the top-level scripts: the plugin tree (skills/reskin/scripts/deployed ↔
@@ -83,33 +83,6 @@ function checkTools(tools) {
   return tools;
 }
 
-const TYPES = {
-  '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.gif': 'image/gif',
-  '.webp': 'image/webp', '.avif': 'image/avif', '.ico': 'image/x-icon', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf', '.otf': 'font/otf', '.txt': 'text/plain; charset=utf-8',
-};
-
-// The reskin page's own directory over http on 127.0.0.1 → { url, close }.
-async function serveReskinPage(file) {
-  const root = dirname(resolve(file));
-  const server = createServer((req, res) => {
-    let target = null;
-    try { target = resolve(root, `.${decodeURIComponent(new URL(req.url, 'http://x').pathname)}`); } catch { /* an undecodable path is a 404 */ }
-    if (!target || !(target === root || target.startsWith(root + sep)) || !existsSync(target) || !statSync(target).isFile()) {
-      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
-      res.end('not found');
-      return;
-    }
-    res.writeHead(200, { 'content-type': TYPES[extname(target).toLowerCase()] ?? 'application/octet-stream', 'cache-control': 'no-store' });
-    createReadStream(target).on('error', () => res.destroy()).pipe(res);
-  });
-  await new Promise((done, fail) => { server.once('error', fail); server.listen(0, '127.0.0.1', done); });
-  return {
-    url: `http://127.0.0.1:${server.address().port}/${encodeURIComponent(basename(file))}`,
-    close: () => new Promise((done) => { server.close(done); server.closeAllConnections(); }),
-  };
-}
-
 // The pixel size of a PNG, from its IHDR chunk.
 function pngSize(file) {
   const head = Buffer.alloc(24);
@@ -152,19 +125,7 @@ async function measureChrome({ widths, urls }) {
 const row = (check, width, status, value, { artifact = null, detail = null } = {}) => ({ check, width, value, bar: BAR_OF[check], status, artifact, detail });
 const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}`);
 
-const firstLine = (text) => (text.split('\n').find((l) => l.trim()) ?? '').trim().slice(0, 300);
-const parseJson = (text) => { try { return JSON.parse(text); } catch { return null; } };
-const exitOf = (r) => r.status ?? r.signal;
 const errorRow = (check, width, name, r) => row(check, width, 'ERROR', `ERROR (exit ${exitOf(r)})`, { detail: firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message` });
-
-// An instrument as a child process: its result, a bot challenge (3) thrown. Whether any other exit is a verdict is
-// the caller's to say.
-async function call(name, script, args, env) {
-  let r;
-  try { r = await runChild(process.execPath, [script, ...args], { env }); } catch (e) { throw coded(124, `${name} did not start: ${e.message}`); }
-  if (r.status === 3) throw coded(3, outputOf(r, null) || `${name} exited 3: bot challenge`);
-  return r;
-}
 
 // The rows of one width that come from the two stitched captures: pixel, height, header crop, footer crop.
 async function captureRows({ width, urls, out, chrome, tools, env }) {

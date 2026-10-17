@@ -9,6 +9,8 @@
 //   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
 //   parity   A3: the preview held to the local reskin page with replica's instruments (stitch-shot, pixel-compare,
 //            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking; n/a on a protected preview.
+//   sanity   A4: the hard asserts on the preview at 1440 and 360 (overflow, decoration, broken images, page errors,
+//            clip-probe, content-presence). Blocking and never waivable; n/a on a protected preview.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
@@ -25,6 +27,7 @@ export const HELP = `Usage:
   node deployed-gate.mjs content --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview.
 
@@ -95,13 +98,39 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }] }), the captures and
          diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
          on a row in error (the rows measured stay in parity.json).
+sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: no delta file, no residual
+         accepts a failure here. Reads preview.json (no record, or one with problems, is exit 2; a skipped
+         leg prints "not run: skipped", exit 0) and needs the diff skill's scripts beside the reskin ones
+         (measure-live, live-session, clip-probe, content-presence). In one Chromium launch, at each width, the
+         preview is loaded, its decoration settled (--wait-eds semantics, 20 s) and read:
+           overflow       scrollWidth − clientWidth of the document at most 4px
+           decoration     body.appear, every data-section-status and every data-block-status "loaded";
+                          a stall is named ("decoration: block cards")
+           broken images  no <img> that is complete with no natural width, counted after one scroll pass
+                          (lazy images load), among those with a box or in the viewport; none at all
+           page errors    no uncaught error (pageerror) from the navigation until after the settle
+         then, once, at 1440, as shipped (bundled Chromium):
+           clip-probe         text or a control cut or hidden by an overflow ancestor of the preview: count 0
+           content-presence   the reskin page (--reskin, default <dir>/reskin/pages/<slug>.html, served by a
+                              local server for the run) against the preview: HIDDEN + MISSING headings and
+                              links 0
+         A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: the
+         instruments carry no site auth. Prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
+         failing row ("overflow 240px > 4px @360", the instrument's findings below it), one "n/a: <reason>
+         (<rows>)" line per reason; "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
+         error when a check gave no verdict (an instrument exiting 124, 1 or another, a page the browser could
+         not load: re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
+         status, artifact, detail }] }) and sanity/ (clip-probe-1440.json, content-presence-1440.json) beside
+         preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay
+         in sanity.json).
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
                only, never printed or recorded (preview.json says only auth: true). tokens hands it to
                donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
---reskin <f>   the local reskin page parity holds the preview to (default <dir>/reskin/pages/<slug>.html).
+--reskin <f>   the local reskin page parity holds the preview to and sanity's content-presence compares it with
+               (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
 
@@ -126,6 +155,11 @@ const SPEC = {
     positional: [],
   },
   parity: {
+    values: ['--page', '--reskin', '--dir'],
+    bools: [],
+    positional: [],
+  },
+  sanity: {
     values: ['--page', '--reskin', '--dir'],
     bools: [],
     positional: [],
@@ -275,13 +309,23 @@ async function parityStep(ctx) {
   return result.exit;
 }
 
+async function sanityStep(ctx) {
+  const { dir, opts, env, log } = ctx;
+  const preview = await pageRecord('sanity', ctx);
+  if (!preview) return 0;
+  const { runSanity, sanityLines } = await helper('sanity');
+  const result = await runSanity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  for (const line of sanityLines(result)) log(line);
+  return result.exit;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, ...steps };
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 

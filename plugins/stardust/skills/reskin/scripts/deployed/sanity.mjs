@@ -1,0 +1,254 @@
+// skills/reskin/scripts/deployed/sanity.mjs — A4 of the deployed leg, `sanity`: the hard asserts on the preview. Never
+// waivable (the ledger refuses an `accepted` residual for it): a page that fails here is broken, whatever it looks like.
+// One Chromium launch, each width (1440 and 360) in a fresh page that is navigated to the preview, settled on its EDS
+// decoration (edsSettle) and read:
+//   overflow       scrollWidth − clientWidth of the document ≤ 4px
+//   decoration     no stalled body.appear, [data-section-status] or [data-block-status] after the settle
+//   broken images  no <img> that is complete with no natural width, counted after one scroll pass through the page
+//                  (lazy images load), among those with a box or in the viewport; a display:none one is not
+//   page errors    no `pageerror` event from the navigation until after the settle
+// and, once, at 1440, as shipped (child processes of the diff skill, the bundled Chromium, a bot challenge is exit 3):
+//   clip-probe         the clipped or hidden text and controls of the preview: count 0
+//   content-presence   the reskin page against the preview: HIDDEN + MISSING headings and links 0
+// A protected preview gets every row "n/a: protected preview": the instruments carry no site auth. The reskin page is
+// served for content-presence by serve.mjs, never file://.
+//   runSanity({ dir, slug, preview, reskinPage, widths, tools, env, edsTimeoutMs })  writes sanity.json
+//        ({ verdict, hard: true, rows }) and returns { verdict: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', exit, hard, rows }.
+//        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', artifact, detail }. A check
+//        that gave no verdict (an instrument exiting 124, 1, 4 or any other unexpected exit or no number in its JSON,
+//        a page the browser could not load) makes its row "ERROR (exit N)", the verdict ERROR and the exit 124; a bot
+//        challenge throws an error with code 3. `tools` maps clip and presence to script paths (default: diffTools()),
+//        for tests; edsTimeoutMs bounds the settle (default 20000).
+//   diffTools(from)    the two instruments in either layout of the scripts, or a UsageError naming what is missing
+//   sanityLines(result)  the lines the CLI prints
+// Evidence: <deployed>/sanity/ (clip-probe-1440.json, content-presence-1440.json) and <deployed>/sanity.json.
+import { existsSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { UsageError } from '../figma/errors.mjs';
+import { writeJson } from '../figma/io.mjs';
+import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
+import { callTool as call, childEnv, coded, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
+import { edsSettle, loadLiveSession } from './eds.mjs';
+import { deployedDir } from './io.mjs';
+import { serveReskinPage } from './serve.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+// Two layouts, one level deeper than the top-level scripts: the plugin tree (skills/reskin/scripts/deployed ↔
+// skills/diff/scripts) and the project copy (stardust/scripts/reskin/deployed ↔ stardust/scripts/diff).
+const DIFF = ['../../../diff/scripts', '../../diff'];
+const TOOL_FILES = { clip: 'clip-probe.mjs', presence: 'content-presence.mjs' };
+
+const MAX_OVERFLOW_PX = 4;
+const BAR_OF = {
+  overflow: `≤ ${MAX_OVERFLOW_PX}px`,
+  decoration: 'all loaded',
+  'broken images': '0',
+  'page errors': '0',
+  'clip-probe': '0',
+  'content-presence': '0',
+};
+const BROWSER_CHECKS = ['overflow', 'decoration', 'broken images', 'page errors'];
+const WIDE = 1440;
+const VIEWPORT_HEIGHT = 900;
+const NAV_TIMEOUT_MS = 30000;
+const EDS_TIMEOUT_MS = 20000;
+const SCROLL_DWELL_MS = 150;
+const MAX_SCROLL_STEPS = 60;
+const IMAGES_TIMEOUT_MS = 3000;
+const MAX_LISTED = 10;
+const EXIT = { PASS: 0, 'n/a': 0, FAIL: 1, ERROR: 124 };
+
+function missingTools(names) {
+  return new UsageError(`${names.join(', ')} not found (looked in ../../../diff/scripts/ and ../../diff/): copy the diff skill's scripts beside the reskin scripts (stardust/scripts/diff/)`);
+}
+
+// The two instruments by role, from `from` (the directory of this file) in whichever layout holds them.
+export function diffTools(from = HERE) {
+  const dirs = DIFF.map((p) => resolve(from, p));
+  const tools = {};
+  const missing = [];
+  for (const [role, file] of Object.entries(TOOL_FILES)) {
+    const dir = dirs.find((d) => existsSync(join(d, file)));
+    if (dir) tools[role] = join(dir, file); else missing.push(file);
+  }
+  if (missing.length) throw missingTools(missing);
+  return tools;
+}
+
+function checkTools(tools) {
+  const missing = Object.entries(TOOL_FILES).filter(([role]) => !tools[role] || !existsSync(tools[role])).map(([, file]) => file);
+  if (missing.length) throw missingTools(missing);
+  return tools;
+}
+
+// ---- in the page ---------------------------------------------------------------------------------------------------
+
+const overflowIn = () => {
+  const el = document.documentElement;
+  return Math.max(0, el.scrollWidth - el.clientWidth);
+};
+
+// One pass down the page, a viewport at a time (at most maxSteps: a page that grows as it is scrolled has no bottom), so
+// lazy images start loading; back at the top afterwards.
+const scrollThrough = async ({ dwell, maxSteps }) => {
+  const step = Math.max(window.innerHeight, 300);
+  const height = () => Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0);
+  for (let i = 0, y = 0; i < maxSteps && y < height(); i += 1, y += step) {
+    window.scrollTo(0, y);
+    await new Promise((done) => { setTimeout(done, dwell); });
+  }
+  window.scrollTo(0, 0);
+};
+
+const imagesDone = () => [...document.images].every((im) => im.complete);
+
+// The sources of the images that are complete with no natural width: those that have a layout box (display:none has
+// none) and a size or a place in the viewport.
+const brokenImagesIn = () => [...document.images].filter((im) => {
+  if (!im.complete || im.naturalWidth !== 0 || im.getClientRects().length === 0) return false;
+  const r = im.getBoundingClientRect();
+  const inViewport = r.right >= 0 && r.bottom >= 0 && r.left <= window.innerWidth && r.top <= window.innerHeight;
+  return r.width > 0 || r.height > 0 || inViewport;
+}).map((im) => (im.currentSrc || im.src || '(no src)').slice(0, 300));
+
+// ---- rows ----------------------------------------------------------------------------------------------------------
+
+const row = (check, width, status, value, { artifact = null, detail = null } = {}) => ({ check, width, value, bar: BAR_OF[check], status, artifact, detail });
+const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}`);
+const errorRow = (check, width, code, detail) => row(check, width, 'ERROR', `ERROR (exit ${code})`, { detail });
+const toolError = (check, width, name, r) => errorRow(check, width, exitOf(r), firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message`);
+
+// At most MAX_LISTED of the items, one per line, then a count of the rest.
+const listed = (items) => {
+  if (!items.length) return null;
+  const shown = items.slice(0, MAX_LISTED);
+  if (items.length > shown.length) shown.push(`… ${items.length - shown.length} more`);
+  return shown.join('\n');
+};
+
+const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
+
+// The four rows of one width. A challenge is thrown (code 3); any other failure to load or read the page makes the
+// four rows "ERROR (exit 124)" with its first line.
+async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs }) {
+  const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT });
+  try {
+    const errors = [];
+    page.on('pageerror', (e) => errors.push(firstLine(String(e?.message ?? e)) || 'uncaught error'));
+    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: NAV_TIMEOUT_MS, settleMs: 0, httpError: 'measure' });
+    const eds = await edsSettle(page, { timeoutMs: edsTimeoutMs });
+    const pageErrors = [...errors];
+    const overflow = await page.evaluate(overflowIn);
+    await page.evaluate(scrollThrough, { dwell: SCROLL_DWELL_MS, maxSteps: MAX_SCROLL_STEPS });
+    await page.waitForFunction(imagesDone, null, { timeout: IMAGES_TIMEOUT_MS, polling: 100 }).catch(stallOnly);
+    const broken = await page.evaluate(brokenImagesIn);
+    return [
+      row('overflow', width, overflow > MAX_OVERFLOW_PX ? 'FAIL' : 'PASS', `${overflow}px`),
+      row('decoration', width, eds.stalled.length ? 'FAIL' : 'PASS', eds.stalled.length ? eds.stalled.join(', ') : 'loaded'),
+      row('broken images', width, broken.length ? 'FAIL' : 'PASS', String(broken.length), { detail: listed(broken) }),
+      row('page errors', width, pageErrors.length ? 'FAIL' : 'PASS', String(pageErrors.length), { detail: listed(pageErrors) }),
+    ];
+  } catch (e) {
+    if (e?.name === 'BotChallengeError') throw coded(3, e.message);
+    return BROWSER_CHECKS.map((check) => errorRow(check, width, EXIT.ERROR, firstLine(String(e?.message ?? e)) || 'the page could not be read'));
+  } finally { await ctx.close(); }
+}
+
+// { [width]: the four rows }, in one browser: the bundled Chromium, the preview is not bot-managed.
+async function browserRows({ widths, url, edsTimeoutMs }) {
+  const chromium = await loadChromium();
+  const { openBrowser, openPage } = await loadMeasureLive();
+  const { gotoLive } = await loadLiveSession();
+  const browser = await openBrowser(chromium, { tier: 'plain' });
+  const rows = {};
+  try {
+    for (const width of widths) rows[width] = await measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs });
+  } finally { await browser.close(); }
+  return rows;
+}
+
+const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8')); } catch { return null; } };
+const counted = (r) => r.status === 0 || r.status === 2;
+
+// clip-probe of the preview at 1440: its exit is the verdict, its count the value.
+async function clipRow({ urls, out, tools, env }) {
+  const file = join(out, `clip-probe-${WIDE}.json`);
+  const r = await call('clip-probe', tools.clip, [urls.preview, '--width', String(WIDE), '--plain', '--json', file], env);
+  const json = counted(r) ? readJsonFile(file) : null;
+  if (!Number.isFinite(json?.counts?.total)) return toolError('clip-probe', WIDE, 'clip-probe', r);
+  const found = (json.findings ?? []).filter((f) => !f.advisory).map((f) => `${f.kind} "${f.text}" in ${f.clipper ?? '(page)'}`);
+  return row('clip-probe', WIDE, r.status === 0 ? 'PASS' : 'FAIL', String(json.counts.total), { artifact: file, detail: r.status === 2 ? listed(found) : null });
+}
+
+// content-presence of the served reskin page against the preview at 1440: HIDDEN + MISSING headings and links.
+async function presenceRow({ urls, out, tools, env }) {
+  const file = join(out, `content-presence-${WIDE}.json`);
+  const r = await call('content-presence', tools.presence, [urls.reskin, urls.preview, '--width', String(WIDE), '--plain', '--json', file], env);
+  const json = counted(r) ? readJsonFile(file) : null;
+  const totals = json?.totals;
+  if (!Number.isFinite(totals?.missing) || !Number.isFinite(totals?.hidden)) return toolError('content-presence', WIDE, 'content-presence', r);
+  const lost = (json.findings ?? []).filter((f) => /^(MISSING|HIDDEN) (HEADING|LINK)$/.test(f.kind)).map((f) => `${f.kind}: ${f.msg}`);
+  const detail = r.status === 2 ? [`HIDDEN ${totals.hidden}, MISSING ${totals.missing}`, listed(lost)].filter(Boolean).join('\n') : null;
+  return row('content-presence', WIDE, r.status === 0 ? 'PASS' : 'FAIL', String(totals.missing + totals.hidden), { artifact: file, detail });
+}
+
+// The two instrument rows, with the reskin page served for the one that reads it.
+async function instrumentRows({ reskinPage, preview, out, tools, env }) {
+  const server = await serveReskinPage(reskinPage);
+  try {
+    const run = { urls: { reskin: server.url, preview }, out, tools, env: childEnv(env, null) };
+    return [await clipRow(run), await presenceRow(run)];
+  } finally { await server.close(); }
+}
+
+const plan = (widths) => widths.flatMap((width) => [...BROWSER_CHECKS, ...(width === WIDE ? ['clip-probe', 'content-presence'] : [])].map((check) => [check, width]));
+
+// preview is the record of `deployed-gate preview`; reskinPage the file of the local reskin page (default
+// <dir>/reskin/pages/<slug>.html).
+export async function runSanity({ dir, slug, preview, reskinPage = join(dir, 'reskin', 'pages', `${slug}.html`), widths = [1440, 360], tools = null, env = process.env, edsTimeoutMs = EDS_TIMEOUT_MS }) {
+  const deployed = deployedDir(dir, slug);
+  const out = join(deployed, 'sanity');
+  const record = join(deployed, 'sanity.json');
+  for (const stale of [record, out]) rmSync(stale, { recursive: true, force: true });
+  const seal = (rows, verdict = rows.some((r) => r.status === 'ERROR') ? 'ERROR' : rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS') => {
+    writeJson(record, { verdict, hard: true, rows });
+    return { verdict, exit: EXIT[verdict], hard: true, rows };
+  };
+
+  if (preview.auth) return seal(plan(widths).map(([check, width]) => naRow(check, width, 'protected preview')), 'n/a');
+  if (typeof preview.url !== 'string' || !preview.url) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
+  if (!existsSync(reskinPage)) throw new UsageError(`missing ${reskinPage}: the reskin page content-presence holds the preview to (deployed-gate sanity --reskin <file>)`);
+  const instruments = tools ? checkTools(tools) : diffTools();
+  mkdirSync(out, { recursive: true });
+
+  const measured = await browserRows({ widths, url: preview.url, edsTimeoutMs });
+  const wide = widths.includes(WIDE) ? await instrumentRows({ reskinPage, preview: preview.url, out, tools: instruments, env }) : [];
+  return seal(widths.flatMap((width) => [...measured[width], ...(width === WIDE ? wide : [])]));
+}
+
+const labelOf = (r) => `${r.check}${r.width ? ` @${r.width}` : ''}`;
+const detailLines = (r, indent) => (r.detail ? r.detail.split('\n').map((l) => `${indent}${l}`) : []);
+// What a failing row says: the value against its bar ("overflow 240px > 4px @360"), the stalled parts for decoration.
+const failure = (r) => (r.check === 'decoration' ? `decoration: ${r.value} @${r.width}` : `${r.check} ${r.value} > ${r.bar.replace(/^≤ /, '')} @${r.width}`);
+
+// The lines the CLI prints: a line for the checks that gave no verdict, the verdict line, one indented line per failing
+// row (its findings below), and one n/a line per distinct reason.
+export function sanityLines({ verdict, rows }) {
+  const errors = rows.filter((r) => r.status === 'ERROR');
+  const fails = rows.filter((r) => r.status === 'FAIL');
+  const lines = [];
+  if (errors.length) {
+    lines.push(`ERROR (exit ${EXIT.ERROR}) sanity: ${errors.length} check${errors.length === 1 ? '' : 's'} gave no verdict`);
+    for (const r of errors) lines.push(`  ${labelOf(r)}: ${r.value}`, ...detailLines(r, '    '));
+  }
+  if (fails.length) {
+    lines.push('FAIL sanity (hard)');
+    for (const r of fails) lines.push(`  ${failure(r)}`, ...detailLines(r, '    '));
+  }
+  if (verdict === 'PASS') lines.push('PASS sanity');
+  const reasons = new Map();
+  for (const r of rows.filter((x) => x.status === 'n/a')) reasons.set(r.value, [...(reasons.get(r.value) ?? []), labelOf(r)]);
+  for (const [value, labels] of reasons) lines.push(`${value} (${labels.join(', ')})`);
+  return lines;
+}
