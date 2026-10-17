@@ -277,12 +277,17 @@ const SPEC = {
 };
 
 const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
+// What a usage error may print of an argument it did not understand: the word of a command, never one that starts with
+// `-` or holds a space, `=` or `:` (`--auth-header=<token>`, `token <value>` typed ahead of the command), and of a flag
+// its name alone, cut at the first character that cannot be part of one (`--flag=<value>`, `--flag:<value>`).
+const plainWord = (s) => !/^-|[\s=:]/.test(s);
+const flagName = (a) => a.match(/^--[\w-]+/)?.[0] ?? null;
 
 export function parseArgs(argv, UsageError) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError(`no command\n${HELP}`);
   const spec = SPEC[cmd];
-  if (!spec) throw new UsageError(`unknown command "${cmd}"\n${HELP}`);
+  if (!spec) throw new UsageError(`${plainWord(cmd) ? `unknown command "${cmd}"` : 'unknown command (not echoed: it starts with - or holds a space, = or :, and may be part of a secret; a command comes first, its flags after it)'}\n${HELP}`);
   const opts = {};
   const positional = [];
   for (let i = 0; i < rest.length; i += 1) {
@@ -295,8 +300,9 @@ export function parseArgs(argv, UsageError) {
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
     else if (a.startsWith('--')) {
-      // An unknown --flag=value is named by its flag alone: the value may be a secret.
-      const name = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+      // An unknown --flag=value (or --flag:value) is named by its flag alone: the value may be a secret.
+      const name = flagName(a);
+      if (!name) throw new UsageError(`unknown flag for ${cmd} (not echoed: it is not a flag name)`);
       throw new UsageError(name === a ? `unknown flag ${a} for ${cmd}` : `unknown flag ${name} for ${cmd}: a flag and its value are separate arguments (${name} <value>)`);
     } else positional.push(a);
   }
@@ -305,7 +311,7 @@ export function parseArgs(argv, UsageError) {
     // Next to a site-token flag the stray argument may be the rest of an unquoted header value: it is not printed.
     throw new UsageError(rest.some((x) => AUTH_FLAGS.has(x.slice(2)))
       ? 'unexpected argument: quote the value of --auth-header ("token <value>"), it has a space; the argument is not shown, it may be part of the secret'
-      : `unexpected argument "${positional[spec.positional.length]}"`);
+      : plainWord(positional[spec.positional.length]) ? `unexpected argument "${positional[spec.positional.length]}"` : 'unexpected argument (not shown: it holds a space, = or :, and may be part of a secret)');
   }
   return { cmd, positional, opts };
 }

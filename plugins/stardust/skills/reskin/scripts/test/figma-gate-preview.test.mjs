@@ -849,6 +849,11 @@ await check('a mistyped secret flag is never echoed: --auth-header=<value>, an u
   await clean([...base, `--auth-header=token ${canary}`], /^figma-gate: unknown flag --auth-header for join: .*--auth-header <value>/m, '--auth-header=value');
   await clean([...base, `--auth-header=${canary}`], /unknown flag --auth-header for join/, '--auth-header=bare token');
   await clean([...base, `--token-env=${canary}`], /unknown flag --token-env for join: .*--token-env <value>/, '--token-env=value');
+  await clean([...base, `--auth-header:token ${canary}`], /unknown flag --auth-header for join: .*--auth-header <value>/, '--auth-header:value');
+  await clean([...base, `--token-env:${canary}`], /unknown flag --token-env for join: .*--token-env <value>/, '--token-env:value');
+  await clean([`--auth-header=token ${canary}`, ...base], /unknown command \(not echoed/, '--auth-header=value ahead of the step');
+  await clean([`--auth-header:token ${canary}`, ...base], /unknown command \(not echoed/, '--auth-header:value ahead of the step');
+  await clean([`token ${canary}`, ...base], /unknown command \(not echoed/, 'a header value ahead of the step');
   await clean([...base, '--auth-header', 'token', canary], /unexpected argument: quote the value/, 'unquoted --auth-header value');
   await clean([...base, '--token-env', 'NAME', canary], /unexpected argument: quote the value/, 'a stray argument after --token-env');
   await clean(['join', canary, ...base.slice(1), '--token-env', 'NAME'], /unexpected argument: quote the value/, 'a stray argument before --token-env');

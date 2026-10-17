@@ -71,13 +71,21 @@ await check('the new flags are validated: a value flag never takes a following -
   }
 });
 
-await check('the argument parser never echoes a token: --auth-header=<value> and an unquoted value split over arguments exit 2 without it', async () => {
+await check('the argument parser never echoes a token: --auth-header=<value>, --auth-header:<value> and an unquoted value split over arguments exit 2 without it', async () => {
   for (const gate of GATES) {
     const eq = await run(gate, [...BASE[gate], `--auth-header=${HEADER}`]);
     assert.equal(eq.status, 2, `${gate}: ${eq.all}`);
     noToken(eq.all);
     assert.match(eq.stderr, /unknown arg: --auth-header\b/, gate);
     assert.match(eq.stderr, /--auth-header <value>/, `${gate} says how to write it`);
+    // `--auth-header:<value>` has no `=` to split on: the flag is named by its prefix alone
+    for (const flag of ['--auth-header', '--token-env']) {
+      const colon = await run(gate, [...BASE[gate], `${flag}:${HEADER}`]);
+      assert.equal(colon.status, 2, `${gate} ${flag}:…: ${colon.all}`);
+      noToken(colon.all);
+      assert.match(colon.stderr, new RegExp(`unknown arg: ${flag}(?![:\\w-])`), `${gate} names ${flag}`);
+      assert.match(colon.stderr, new RegExp(`${flag} <value>`), `${gate} says how to write ${flag}`);
+    }
     // `--auth-header token canary-123` unquoted: the value is "token", and the secret is a stray word
     const split = await run(gate, [...BASE[gate], '--auth-header', 'token', TOKEN]);
     assert.equal(split.status, 2, `${gate}: ${split.all}`);

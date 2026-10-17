@@ -930,13 +930,21 @@ await check('all: setup errors are exit 2 and write nothing but the removal of t
   for (const text of ['all --page <slug> [--reskin <file>]', 'run-bg.mjs start --name deployed-<slug>', 'ledgerFragment', 'summary.json', 'first present of 2, 3, 124, 1, 0']) assert.ok(help.stdout.includes(text), `the help says ${text}`);
 });
 
-await check('a site token never echoes in a usage error: not as --flag=value, not as the stray rest of an unquoted header', async () => {
+await check('a site token never echoes in a usage error: not as --flag=value, not as --flag:value, not as the stray rest of an unquoted header, not as a "command" ahead of the real one', async () => {
   const root = allRoot('all-echo');
+  const header = `token ${ALL_TOKEN}`;
   const cases = [
     [['all', '--page', 'home', `--auth-header=${ALL_TOKEN}`], /unknown flag --auth-header for all: a flag and its value are separate arguments/],
     [['all', '--page', 'home', `--token-env=${ALL_TOKEN}`], /unknown flag --token-env for all/],
+    [['all', '--page', 'home', `--auth-header:${header}`], /unknown flag --auth-header for all: a flag and its value are separate arguments \(--auth-header <value>\)/],
+    [['all', '--page', 'home', `--token-env:${ALL_TOKEN}`], /unknown flag --token-env for all/],
     [['all', '--page', 'home', '--auth-header', 'token', ALL_TOKEN], /unexpected argument: quote the value of --auth-header/],
     [['content', '--page', 'home', '--auth-header', 'token', ALL_TOKEN], /unexpected argument: quote the value of --auth-header/],
+    [[`--auth-header=${header}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
+    [[`--auth-header:${header}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
+    [[`--token-env=${ALL_TOKEN}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
+    [[header, 'all', '--page', 'home'], /unknown command \(not echoed/],
+    [[`secret:${ALL_TOKEN}`, '--page', 'home'], /unknown command \(not echoed/],
   ];
   for (const [args, re] of cases) {
     const r = await run(args, { cwd: root, env: { SITE_TOKEN: '' } });
@@ -944,6 +952,8 @@ await check('a site token never echoes in a usage error: not as --flag=value, no
     assert.match(r.stderr, re);
     assert.equal(r.all.includes(ALL_TOKEN), false, `the token was echoed for ${args.join(' ')}`);
   }
+  const plain = await run(['frobnicate', '--page', 'home'], { cwd: root });
+  assert.match(plain.stderr, /unknown command "frobnicate"/, 'a plain word is still named');
 });
 
 await check('a token typed as the --token-env name is never echoed: not a name is exit 2 without the value, an unset name is reported without it, for every step that takes the flag', async () => {

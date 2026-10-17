@@ -102,8 +102,8 @@ function parseArgs(argv) {
       opts[a.slice(2)] = v; i += 1;
     }
     else {
-      // Never echo the whole element: `--auth-header=<token>`, or the stray half of an unquoted value, is a secret.
-      const name = a.startsWith('--') ? a.split('=')[0] : null;
+      // Never echo the whole element: `--auth-header=<token>`, `--auth-header:<token>` or the stray half of an unquoted value is a secret.
+      const name = a.match(/^--[\w-]+/)?.[0] ?? null;
       const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
       console.error(`[donor-probe] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
       process.exit(2);
