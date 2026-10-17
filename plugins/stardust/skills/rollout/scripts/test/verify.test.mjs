@@ -2,7 +2,8 @@
 // skills/rollout/scripts/test/verify.test.mjs — verify.mjs's <h1> rule against the source capture, offline (--root) in a
 // temp project: one <h1> verifies; none verifies only when <current>/pages/<slug>.json records headings without an h1
 // (a `note:` line and `· <n> note(s)` in the summary, never a failure); a capture with an h1, no capture, or more than
-// one <h1> fails as before; a failed delivery.gate is never rescued by the note; --current is honoured. --help writes nothing.
+// one <h1> fails as before; a failed delivery.gate is never rescued by the note; a gate failed at any recorded width
+// (delivery.gate.passByWidth) is never verified; --current is honoured. --help writes nothing.
 // --base (a local server): a page is fetched where it was deployed (delivery.deployedUrl), else at its path. Media and
 // text-track links are assets, never broken page links.
 // Run: node plugins/stardust/skills/rollout/scripts/test/verify.test.mjs
@@ -93,6 +94,24 @@ check('the note never rescues a failed gate: no <h1>, a capture without one, del
   assert.equal(r.status, 1, r.stdout);
   assert.equal(statusOf(proj).plain, 'failed');
   assert.match(r.stdout, /✗ plain \(page\): gate: pct 4\.20 > 2/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('a gate failed at any recorded width is never verified, though the width gated last passed; a width with no verdict (null) is no failure', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.find((p) => p.slug === 'one').delivery.gate = { pass: true, reasons: [], passByWidth: { 1440: false, 360: true } };
+  writeFileSync(file, JSON.stringify(doc));
+  const r = run(proj, ['--slug', 'one']);
+  assert.equal(r.status, 1, r.stdout);
+  assert.equal(statusOf(proj).one, 'failed');
+  assert.match(r.stdout, /✗ one \(page\): gate: FAIL at 1440$/m);
+  doc.pages.find((p) => p.slug === 'one').delivery.gate.passByWidth = { 1440: true, 360: null };
+  writeFileSync(file, JSON.stringify(doc));
+  const ok = run(proj, ['--slug', 'one']);
+  assert.equal(ok.status, 0, ok.stdout);
+  assert.equal(statusOf(proj).one, 'verified');
   rmSync(proj, { recursive: true, force: true });
 });
 

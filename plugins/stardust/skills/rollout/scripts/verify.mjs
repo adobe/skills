@@ -16,7 +16,8 @@
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
  * (#75 broken-image ingestion), a page renders exactly one <h1>, every internal href="/…"
  * resolves to a page in coverage, and `delivery.gate.pass` is not false (the pixel table's
- * verdict, written by `update-coverage.mjs --gate` — #125).
+ * verdict, written by `update-coverage.mjs --gate` — #125) nor any recorded width's verdict in
+ * `delivery.gate.passByWidth` (a failure at any width fails the page: `gate: FAIL at <width>`).
  * Media and text-track links are assets, not pages (`.vtt`, `.srt`, `.mp3`, `.m3u8`, … like
  * `.css` or `.pdf`): never a broken internal link.
  *
@@ -157,8 +158,13 @@ for (const p of target) {
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
   else { reason = renderCheck(type, r.body, p.slug); if (reason) status = 'failed'; }
-  // #125: a page the pixel table failed is not verified (update-coverage.mjs --gate wrote delivery.gate)
-  if (status === 'verified' && p.delivery && p.delivery.gate && p.delivery.gate.pass === false) { status = 'failed'; reason = `gate: ${(p.delivery.gate.reasons || []).join('; ') || 'FAIL'}`; }
+  // #125: a page the pixel table failed — at the width gated last (pass) or at any recorded width (passByWidth) —
+  // is not verified (update-coverage.mjs --gate wrote delivery.gate)
+  const gate = p.delivery && p.delivery.gate;
+  const failedWidths = gate && gate.passByWidth && typeof gate.passByWidth === 'object' && !Array.isArray(gate.passByWidth)
+    ? Object.keys(gate.passByWidth).filter((w) => gate.passByWidth[w] === false) : [];
+  if (status === 'verified' && gate && gate.pass === false) { status = 'failed'; reason = `gate: ${(gate.reasons || []).join('; ') || 'FAIL'}`; }
+  else if (status === 'verified' && failedWidths.length) { status = 'failed'; reason = `gate: FAIL at ${failedWidths.join(', ')}`; }
   p.delivery = p.delivery || {};
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }

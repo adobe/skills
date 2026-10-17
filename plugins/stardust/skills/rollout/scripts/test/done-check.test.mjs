@@ -11,8 +11,9 @@
 // on its last width's pass, counted as skipped); every delivered row has its schema, both gate widths (in a
 // flow with a gate table — replica, or any gated row; else skipped) and, when its path changed, a redirects line (in
 // the sheet or the redirects-cdn.tsv beside it); every ledger `end` is paired or re-recorded; the checks that did not
-// run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap. A gate
-// with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
+// run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap. A row
+// whose gate failed at any recorded width (passByWidth[w] === false) is pages_failed though its last width passed;
+// a gate with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
 // override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
 // header-parity.json in any project (its findings decide; counts.error − counts.decided without them).
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
@@ -104,6 +105,21 @@ check('gates_inconclusive: a gate with no verdict is named apart from pages_fail
   assert.equal(v.complete, false);
   const only = doneGaps({ pages: [...CLEAN_PAGES, inconclusive(proven(row('x', '/x', 'verified')))], ledgerLines: ENDED, notLive: [] });
   assert.deepEqual(only.gaps, ['gates_inconclusive:1: /x'], 'never complete, never failed');
+});
+
+check('pages_failed: any recorded width whose verdict is false fails the row, whichever width passed last; a null width (no verdict) does not', () => {
+  const widths = (r, passByWidth, extra = {}) => proven(r, { pass: true, passByWidth, ...extra });
+  const pages = [
+    ...CLEAN_PAGES,
+    widths(row('a', '/a', 'verified'), { 1440: false, 360: true }),
+    widths(row('b', '/b', 'failed'), { 1440: false, 360: true }),
+    widths(row('c', '/c', 'verified'), { 1440: true, 360: null }),
+    widths(row('d', '/d', 'verified'), { 1440: false, 360: null }, { inconclusive: 'capture polluted at 360' }),
+    widths(row('e', '/e', 'verified'), { 1440: true, 360: null }, { inconclusive: 'capture polluted at 360' }),
+    widths(row('f', '/f', 'verified'), 'no'),
+  ];
+  const v = doneGaps({ pages, ledgerLines: ENDED, notLive: [] });
+  assert.deepEqual(v.gaps, ['pages_failed:3: /a, /b, /d', 'gates_inconclusive:2: /d, /e']);
 });
 
 check('not-live lists the probe misses; an offline run neither reports it nor claims it checked', () => {

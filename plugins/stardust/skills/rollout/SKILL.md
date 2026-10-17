@@ -423,8 +423,9 @@ DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content pe
 `update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json`, run for both widths'
 tables, writes each row into `delivery.gate` — each width's own verdict in
 `delivery.gate.passByWidth`, so a unit is proven only when every width passed — and flips a
-failing page to `failed`; `verify` never marks it `verified` while the
-gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
+failing page to `failed`, back only when no width fails; while any width fails, `verify` never
+marks it `verified` and `done-check.mjs` lists it in `pages_failed` — completion derives from
+one place, never from the pixel number alone. In C-deliver
 the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); only when
 `done-check.mjs` lists `pages_failed` after C-final does one bounded `gap-closure` pass per
 template run, and what fails after it is reported as residuals, never looped again (handoff

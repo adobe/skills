@@ -9,7 +9,8 @@
 // paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
 // with no recorded time, or a record without the map, is applied; each width keeps its own verdict
-// (delivery.gate.passByWidth) whichever table came last. And `--block <name> --status
+// (delivery.gate.passByWidth) whichever table came last, and a page leaves a gate failure for deployed only
+// when no recorded width failed. And `--block <name> --status
 // not-delivered --reason <text>`: the reason is required (exit 2), recorded as delivery.reason, cleared by
 // any other status, the block found by id then by edsBlockName, and counted in lastRun.blocks.notDelivered.
 import assert from 'node:assert/strict';
@@ -370,8 +371,28 @@ for (const [a, b] of [[1440, 360], [360, 1440]]) {
     assert.deepEqual(d.gate.passByWidth, { 1440: true, 360: false });
     assert.deepEqual(Object.keys(d.gate.passByWidth).sort(), ['1440', '360'], 'keys are width strings, as atByWidth');
     assert.equal(d.gate.pass, b === 1440, 'pass keeps its meaning: the verdict of the row applied last');
+    assert.equal(d.status, 'failed', 'a recorded failing width keeps the page failed, whichever width came last');
+    assert.equal(d.error, 'gate: pixel 12% > 10%');
   });
 }
+
+await check('--gate: a page failing at 1440 stays failed when 360 passes last; it returns to deployed only once no recorded width fails', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'verified'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [failRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 status flip\(s\)/, r.out);
+  r = await run(['--gate', gateTable(proj, 'mob.json', T2, 360, [passRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /0 status flip\(s\)/, r.out);
+  let d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed', 'the 360 pass never flips back a page the 1440 table failed');
+  assert.equal(d.error, 'gate: pixel 12% > 10%');
+  assert.equal(d.gate.pass, true); assert.deepEqual(d.gate.passByWidth, { 1440: false, 360: true });
+  r = await run(['--gate', gateTable(proj, 'desk2.json', T3, 1440, [passRow('page-0')])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 status flip\(s\)/, r.out);
+  d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'deployed', 'every recorded width passes now'); assert.equal(d.error, null);
+  assert.deepEqual(d.gate.passByWidth, { 1440: true, 360: true });
+});
 
 await check('--gate passByWidth: an override passes its width; a width re-gated replaces only its own entry', async () => {
   const { proj, out } = fixture();

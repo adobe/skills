@@ -25,8 +25,9 @@
  *
  * Delivered rows are coverage rows `deployed` or `verified`. Gaps, one per line in this order; complete = none:
  *   pages_unfinished:N             coverage rows not yet verified (pending, content-pending, converting, deployed, stale)
- *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false; a row
- *                                  with an inconclusive gate only when it also failed for another reason
+ *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false, or
+ *                                  whose verdict at any recorded width (delivery.gate.passByWidth) is false; a row
+ *                                  with an inconclusive gate only when it also failed for another reason or at a width
  *   gates_inconclusive:N: <paths>  rows whose gate gave no verdict (delivery.gate.inconclusive: reasons, or true)
  *   pages_overridden:N: <why>      N delivered rows carry a gate override (delivery.gate.override: gate-all's
  *                                  {verdict, reason, valid}, or the older verdict string); a gap when an object
@@ -89,6 +90,8 @@ const isDelivered = (p) => DELIVERED.has(statusOf(p));
 const gateOf = (p) => (p && p.delivery && p.delivery.gate) || null;
 // a gate with no verdict (a polluted capture): its reasons as a non-empty string, or true
 const isInconclusive = (p) => { const i = (gateOf(p) || {}).inconclusive; return i === true || (typeof i === 'string' && i !== ''); };
+// a width whose recorded verdict is false failed, whichever width was gated last (a width without a verdict is null)
+const widthFailed = (p) => { const by = (gateOf(p) || {}).passByWidth; return isMap(by) && Object.values(by).some((v) => v === false); };
 const gatedAt = (gate, widths) => widths.every((w) => !!(gate && gate.atByWidth && gate.atByWidth[String(w)]));
 const contentLines = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 const decoded = (s) => { try { return decodeURI(s); } catch { return s; } };
@@ -291,7 +294,8 @@ export function ledgerGap(unpaired) {
  * not run (offline). `header`, `headerErrors`, `overridden`, `sidecars`, `ledger` are gap lines (or null), `units`
  * gap lines, from the functions above; `skipped` names the checks that did not run. A row whose gate is
  * inconclusive (delivery.gate.inconclusive: reasons, or true) has no verdict: gates_inconclusive, and in
- * pages_failed only when it failed for another reason (status failed with an error not from the gate).
+ * pages_failed only when it failed for another reason (status failed with an error not from the gate) or at a
+ * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  */
 export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, skipped = [] }) {
   const gaps = [];
@@ -299,8 +303,8 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
   const inconclusive = pages.filter(isInconclusive);
   const failedElsewhere = (p) => statusOf(p) === 'failed' && !/^gate: /.test(String(p.delivery.error || ''));
-  const failed = pages.filter((p) => (statusOf(p) === 'failed' || (p.delivery && p.delivery.gate && p.delivery.gate.pass === false))
-    && (!isInconclusive(p) || failedElsewhere(p)));
+  const failed = pages.filter((p) => widthFailed(p) || ((statusOf(p) === 'failed' || (p.delivery && p.delivery.gate && p.delivery.gate.pass === false))
+    && (!isInconclusive(p) || failedElsewhere(p))));
   if (failed.length) gaps.push(`pages_failed:${failed.length}: ${listed(failed.map(pathOf))}`);
   if (inconclusive.length) gaps.push(`gates_inconclusive:${inconclusive.length}: ${listed(inconclusive.map(pathOf))}`);
   if (overridden) gaps.push(overridden);
