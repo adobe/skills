@@ -28,7 +28,9 @@
  * and the verdict's `hide.site` names it.
  * Records explored with different hide lists (or not the expected one) are not the same page: one error
  * `hide-mismatch`; `hide: { source, build, expected, consistent, site? }` is printed and in the verdict when any is set.
- * Exit: 0 no undecided error · 2 errors · 1 usage. `compareDocs`, `compareHide`, `applyDecisions`, `findingKey` are exported.
+ * Exit: 0 no undecided error · 2 errors · 1 usage, or a malformed presence.json named on stderr (--presence's file, or the
+ * cwd's stardust/replica/presence.json — refused with no flag too). `compareDocs`, `compareHide`, `applyDecisions`,
+ * `findingKey` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
