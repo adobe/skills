@@ -3,11 +3,12 @@
 // aggregate (colour parsing + clustering, roles and sources, type families/sizes/levels, motifs, hover
 // deltas, the logo chain, icon font, order independence), argument parsing and the page list — no
 // browser. Part (b): end-to-end against a fixture site served from this process (two pages, known
-// colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo) — runs only where
+// colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo), and a project copy whose
+// live-session.mjs predates the shared consent table refused — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, realpathSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, realpathSync, symlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -222,6 +223,15 @@ if (playwrightOk) {
     assert.equal(all.code, 1); assert.match(all.out, /1 of 1 measurements failed/); const f = JSON.parse(readFileSync(join(root, 'fail.json'), 'utf8')); assert.equal(f.aggregate, null); assert.equal(f._provenance.failed[0].error, 'HTTP 404');
     const part = await runAsync(['--urls', `${origin}/about,${origin}/missing`, '--out', join(root, 'part.json')]);
     assert.equal(part.code, 0); assert.match(part.out, /1 pages × 1 widths .* \(1 of 2 measurements failed/); assert.match(part.err, /FAIL .*\/missing @1440 {2}HTTP 404/);
+  });
+  await check('e2e: a project copy whose live-session.mjs predates the shared consent table → exit 2 naming it, nothing written', () => {
+    const box = join(root, 'stale-copy'); mkdirSync(box);
+    writeFileSync(join(box, 'style-census.mjs'), readFileSync(SCRIPT));
+    writeFileSync(join(box, 'live-session.mjs'), 'export const isLiveHttpUrl = () => false;\n');
+    symlinkSync(dirname(dirname(fileURLToPath(import.meta.resolve('playwright')))), join(box, 'node_modules'));
+    const out = join(box, 'out.json');
+    const r = spawnSync(process.execPath, [join(box, 'style-census.mjs'), '--urls', `${origin}/`, '--out', out], { encoding: 'utf8', cwd: box, timeout: 60000 });
+    assert.equal(r.status, 2, r.stderr); assert.match(r.stderr, /live-session\.mjs predates the shared consent table — re-copy it/); assert.equal(existsSync(out), false);
   });
   server.close();
 }

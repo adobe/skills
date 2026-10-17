@@ -45,12 +45,13 @@
  * navigator.webdriver spoof, bot-challenge detection (an edge interstitial is never censused as
  * the site), then both overlay classes dismissed (cookie consent clicked, timed marketing
  * modals closed). A localhost URL is a plain page from the same browser. Then a bounded settle
- * (≤ 2.5 s, shorter once fonts are ready and the network is quiet), this script's generic
- * consent dismissal as a second pass (accept/agree/allow/got-it buttons inside dialog / cookie /
- * consent containers, open shadow roots included — multilingual labels the shared list lacks),
- * then the census. Any fixed/sticky element still covering > 40 % of the viewport is excluded
- * with its descendants, so an undismissed overlay never enters the palette. Hover states are
- * read after a real pointer hover (first 4 buttons, first 3 links) with transitions zeroed.
+ * (≤ 2.5 s, shorter once fonts are ready and the network is quiet), live-session's shared consent
+ * label sweep as a second pass (the multilingual accept labels of its one consent table, clicked
+ * only inside a dialog / cookie / consent / fixed or high-z container, open shadow roots included —
+ * on a localhost page the only consent pass), then the census. Any fixed/sticky element still
+ * covering > 40 % of the viewport is excluded with its descendants, so an undismissed overlay
+ * never enters the palette. Hover states are read after a real pointer hover (first 4 buttons,
+ * first 3 links) with transitions zeroed.
  *
  * Writes (nothing else):
  *   <out>   { _provenance: { writtenBy, writtenAt, readArtifacts[], widths[], synthesizedInputs: [],
@@ -66,7 +67,8 @@
  * (`style-census: N pages × W widths → <out>`, plus the failure count when any).
  * Exit codes: 0 done (partial evidence is evidence — failures are listed under
  * _provenance.failed[]), 1 every page failed, 2 usage error, playwright not importable or
- * live-session.mjs not found, 3 bot challenge — the live origin served an edge interstitial:
+ * live-session.mjs not found (or a copy that predates the shared consent table — re-copy it),
+ * 3 bot challenge — the live origin served an edge interstitial:
  * the pass stops scheduling pages, what was measured is still written, and the run fails loud
  * (escalate with --headed; if still blocked the site needs crawl.mjs-class capture).
  *
@@ -164,39 +166,6 @@ async function settle(page, maxMs) {
   const fonts = page.evaluate(() => (document.fonts ? document.fonts.ready.then(() => true) : true)).catch(() => true);
   const quiet = page.waitForLoadState('networkidle', { timeout: maxMs }).catch(() => true);
   await Promise.race([Promise.all([fonts, quiet]), sleep(maxMs)]);
-}
-
-// Generic consent dismissal: a short accept-like label on a button inside a dialog / cookie /
-// consent container (open shadow roots included), or inside any fixed/sticky container. Clicked
-// once; the label is recorded. Never removes DOM — the page settles as a real visit does.
-function dismissConsentInPage() {
-  const LABEL = /^(accept( all)?( cookies)?|accept and close|i accept|agree|i agree|allow( all)?( cookies)?|got it|ok(ay)?|understood|alle akzeptieren|akzeptieren|zustimmen|accepter|tout accepter|aceptar( todo)?|accetta( tutto)?)$/i;
-  const CONTAINER = /cookie|consent|gdpr|privacy|banner/i;
-  const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
-  const roots = [document];
-  for (const el of document.querySelectorAll('*')) if (el.shadowRoot) roots.push(el.shadowRoot);
-  const inContainer = (el) => {
-    for (let n = el; n && n.nodeType === 1; n = n.parentElement || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null)) {
-      if (n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') return true;
-      if (CONTAINER.test(`${n.id} ${n.className && n.className.baseVal === undefined ? n.className : ''}`)) return true;
-      const cs = getComputedStyle(n);
-      if (cs.position === 'fixed' || cs.position === 'sticky') return true;
-    }
-    return false;
-  };
-  for (const root of roots) {
-    for (const el of root.querySelectorAll('button, [role="button"], a, input[type="button"], input[type="submit"]')) {
-      const t = norm(el.tagName === 'INPUT' ? el.value : el.textContent || el.getAttribute('aria-label'));
-      if (!t || t.length > 32 || !LABEL.test(t)) continue;
-      const r = el.getBoundingClientRect();
-      const cs = getComputedStyle(el);
-      if (cs.display === 'none' || cs.visibility === 'hidden' || r.width < 2 || r.height < 2) continue;
-      if (!inContainer(el)) continue;
-      el.click();
-      return t;
-    }
-  }
-  return null;
 }
 
 // ---- the census, run in-page (generic selectors only — never a site's class names) -------------
@@ -415,7 +384,8 @@ async function hoverPass(page, rec) {
 // UA + standard headers + webdriver spoof) for any live origin, `local` (plain) for localhost.
 // A live page navigates through gotoLive — a bot challenge throws BotChallengeError (never
 // censused as the site; solveWindow only under --headed) — then dismissOverlays closes consent
-// and timed marketing modals before this script's own multilingual consent pass.
+// and timed marketing modals; live-session's shared label sweep then runs once more (on a
+// localhost page it is the only consent pass).
 async function measure(contexts, url, width, o, session) {
   const live = session.isLiveHttpUrl(url);
   const page = await (live ? contexts.live : contexts.local).newPage();
@@ -434,7 +404,7 @@ async function measure(contexts, url, width, o, session) {
     await settle(page, SETTLE_MS);
     let overlays = null;
     if (live) overlays = await session.dismissOverlays(page, { extra: o.dismiss, lateWindowMs: 6000 }).catch(() => null);
-    const consent = await page.evaluate(dismissConsentInPage).catch(() => null) || (overlays && overlays.consent) || null;
+    const consent = await page.evaluate(session.consentLabelSweepInPage, session.CONSENT_LABEL_SWEEP).catch(() => null) || (overlays && overlays.consent) || null;
     if (consent) await sleep(400);
     // a quick scroll pass so lazily revealed sections reach their final styles before the census
     for (const f of [0.25, 0.5, 0.75, 1]) { await page.evaluate((y) => window.scrollTo(0, document.documentElement.scrollHeight * y), f); await sleep(120); }
@@ -458,6 +428,7 @@ async function main(argv) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
   }
   const session = await loadLiveSession();
+  if (typeof session.consentLabelSweepInPage !== 'function' || !session.CONSENT_LABEL_SWEEP) throw new UsageError('live-session.mjs predates the shared consent table — re-copy it alongside this script (extract/SKILL.md § Setup)');
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};
