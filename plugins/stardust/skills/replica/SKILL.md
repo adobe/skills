@@ -465,10 +465,10 @@ had one section for the whole run).
   mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
-  first (`PUT → preview`, its coverage row recorded `deployed`); the
-  archetype's published row of record is the C-archetype unit's
-  `gate-all.mjs --only <archetype> --eds-host <preview host>` row — the
-  evidence the roster later reuses. `gate.sh <slug> "$LIVE"
+  first (`PUT → preview`, then `update-coverage.mjs <slug> --status deployed
+  --url <deployed URL>`); the archetype's published row of record is the
+  C-archetype unit's `gate-all.mjs --only <archetype> --eds-host <preview
+  host>` row — the evidence the roster later reuses. `gate.sh <slug> "$LIVE"
   "<preview-url>" <width> pub<N> --full --marker "<brand or domain string>"`
   through `run-bg.mjs` stays the fix-round instrument inside that unit, never
   a second verdict, in the ordinary `gates/<slug>-<width>/` dir (a new dir
