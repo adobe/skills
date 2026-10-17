@@ -14,10 +14,12 @@
  *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so
  *   --chrome     header contract and comparison dir (default stardust/chrome)
  *   --state      project state whose `flow` makes it a migration (default stardust/state.json)
- *   --widths     the gate widths every delivered page is proven at (default 1440,360)
+ *   --widths     the gate widths every delivered page is proven at (default 1440,360); judged for
+ *                sidecars_missing only when `flow` is replica or a coverage row carries delivery.gate
  *   --register   the inconsistency register an override cites (default stardust/replica/inconsistency-register.md)
  *   --schemas    per-page section schemas, <slug>.json (default stardust/eds-schema)
- *   --redirects  redirects sheet, one `source<TAB>destination` per line (default stardust/redirects.tsv)
+ *   --redirects  redirects sheet, one `source<TAB>destination` per line (default stardust/redirects.tsv); the
+ *                redirects-cdn.tsv beside it (seed-redirects.mjs: sources the sheet cannot match) counts too
  *   --json       print { complete, gaps[], liveChecked, skipped[] } instead of one line per gap
  * Writes nothing; the live probe sends one HEAD request per delivered page.
  *
@@ -31,11 +33,16 @@
  *                                  marked valid: false
  *   pages_not_live:N: <paths>      deployed or verified rows that do not answer 200 on the live host
  *   sidecars_missing:N: <counts>   delivered rows missing <schemas>/<slug>.json, a delivery.gate.atByWidth time at
- *                                  a --widths width, or — when the source path (source.sourceUrl) differs from
- *                                  the delivered URL — a redirects line for the source path
+ *                                  a --widths width (only in a flow with a published-origin gate table: state.json
+ *                                  `flow` replica, or any coverage row carrying delivery.gate; else skipped and the
+ *                                  count reads `-`), or — when the source path (source.sourceUrl) differs from the
+ *                                  delivered URL — a line for the source path in the redirects sheet or the
+ *                                  redirects-cdn.tsv beside it
  *   unit_unproven:<unit>: <why>    one per done unit of progress.json (kind not foundation or final, by name)
- *                                  whose units/<unit>.paths is missing, or lists a page without a passing gate
- *                                  recorded at every --widths width (pages matched by deploy's eds-path pathKey)
+ *                                  whose units/<unit>.paths is missing, or lists a page not proven: proven =
+ *                                  `delivery.gate.pass === true` as last recorded (update-coverage.mjs keeps the
+ *                                  verdict of the last width ingested) and a recorded gate time at every --widths
+ *                                  width (pages matched by deploy's eds-path pathKey)
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -49,7 +56,7 @@
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
  * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
- * of delivered rows without source.sourceUrl.
+ * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -160,7 +167,8 @@ export function overrideGap({ pages = [], register = '', readTable = () => null 
  * unit_unproven gaps, one per done unit (kind not foundation / final), units by name: `{ gaps[], skipped[] }`.
  * `progress` = progress.json (null when absent; skipped, as is a record without a `units` map), `unitPaths` =
  * { <unit>: .paths text, or null when the file is absent }, `pathKey` = deploy's eds-path key. A page is proven
- * when its coverage row passes the gate with a recorded time at every width. Pure.
+ * when its coverage row's `delivery.gate.pass === true` as last recorded and it carries a recorded gate time at
+ * every width. Pure.
  */
 export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths = DEFAULT_WIDTHS, pathKey, out = 'stardust/rollout' } = {}) {
   if (progress == null) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
@@ -190,13 +198,18 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
 /** The source paths of a redirects sheet (TSV `source<TAB>destination`, `#` comments, 2+ spaces tolerated). Pure. */
 export const redirectSources = (text) => contentLines(text).map((l) => l.split(/\t+|\s{2,}/)[0]);
 
+/** Does this flow have a published-origin gate table to prove widths against? Replica, or any row gated. Pure. */
+export const widthsJudged = ({ flow = null, pages = [] } = {}) => flow === 'replica' || pages.some((p) => !!gateOf(p));
+export const WIDTHS_SKIP = 'sidecars_missing gate widths: no published-origin gate table in this flow';
+
 /**
  * sidecars_missing, as `{ gap, skipped[] }`. Each delivered row needs `schemaExists(slug)`, a gate time at every
- * width, and — when the pathname of source.sourceUrl differs from its delivered URL (publicUrl) — a redirects
- * line whose source is that pathname (`redirects` = the sheet's text; decodeURI forms compared too). Rows without
+ * width (only when `judgeWidths`; else skipped and the count reads `-`), and — when the pathname of
+ * source.sourceUrl differs from its delivered URL (publicUrl) — a redirects line whose source is that pathname
+ * (`redirects` = the text of the sheet and of redirects-cdn.tsv; decodeURI forms compared too). Rows without
  * source.sourceUrl are not judged for redirects; their count is skipped. Pure.
  */
-export function sidecarGap({ pages = [], widths = DEFAULT_WIDTHS, schemaExists = () => false, redirects = '' } = {}) {
+export function sidecarGap({ pages = [], widths = DEFAULT_WIDTHS, schemaExists = () => false, redirects = '', judgeWidths = true } = {}) {
   const sources = redirectSources(redirects);
   const hasLine = (path) => sources.some((s) => s === path || decoded(s) === decoded(path));
   const count = { schema: 0, gate: 0, redirects: 0 };
@@ -204,7 +217,7 @@ export function sidecarGap({ pages = [], widths = DEFAULT_WIDTHS, schemaExists =
   let unjudged = 0;
   for (const p of pages.filter(isDelivered)) {
     const noSchema = !schemaExists(p.slug);
-    const noWidths = !gatedAt(gateOf(p), widths);
+    const noWidths = judgeWidths && !gatedAt(gateOf(p), widths);
     const src = p.source && p.source.sourceUrl;
     let noRedirect = false;
     if (typeof src !== 'string' || !src) unjudged += 1;
@@ -217,8 +230,8 @@ export function sidecarGap({ pages = [], widths = DEFAULT_WIDTHS, schemaExists =
     if (noSchema || noWidths || noRedirect) missing.push(pathOf(p));
   }
   return {
-    gap: missing.length ? `sidecars_missing:${missing.length}: schema ${count.schema}, gate widths ${count.gate}, redirects ${count.redirects}: ${listed(missing)}` : null,
-    skipped: unjudged ? [`sidecars_missing redirects: ${unjudged} delivered rows without source.sourceUrl`] : [],
+    gap: missing.length ? `sidecars_missing:${missing.length}: schema ${count.schema}, gate widths ${judgeWidths ? count.gate : '-'}, redirects ${count.redirects}: ${listed(missing)}` : null,
+    skipped: [...(judgeWidths || !pages.some(isDelivered) ? [] : [WIDTHS_SKIP]), ...(unjudged ? [`sidecars_missing redirects: ${unjudged} delivered rows without source.sourceUrl`] : [])],
   };
 }
 
@@ -328,12 +341,15 @@ async function main() {
     ? { gaps: [], skipped: [`unit_unproven: ${progressFile} is not JSON`] }
     // a file holding JSON null exists: a record without a units map, never "no progress.json"
     : unitGaps({ progress: progressExists && progress === null ? {} : progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT });
-  const sidecars = sidecarGap({ pages, widths: WIDTHS, schemaExists: (slug) => typeof slug === 'string' && slug !== '' && existsSync(join(SCHEMAS, `${slug}.json`)), redirects: textOf(REDIRECTS) });
+  const flow = (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null;
+  // seed-redirects.mjs routes the sources the sheet cannot match to redirects-cdn.tsv beside it: a line there counts
+  const redirects = [textOf(REDIRECTS), textOf(join(dirname(REDIRECTS), 'redirects-cdn.tsv'))].join('\n');
+  const sidecars = sidecarGap({ pages, widths: WIDTHS, schemaExists: (slug) => typeof slug === 'string' && slug !== '' && existsSync(join(SCHEMAS, `${slug}.json`)), redirects, judgeWidths: widthsJudged({ flow, pages }) });
 
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
-  const header = headerGap({ flow: (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
+  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
   const verdict = doneGaps({
     pages, findings, ledgerLines, notLive, header,
     overridden: overrideGap({ pages, register: textOf(REGISTER), readTable }),

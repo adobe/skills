@@ -7,8 +7,9 @@
 // profile by flow, widths, live host, undecided errors); the CLI exits 0 / 1 / 2 and --offline says the probe was skipped. Offline: the
 // probe runs against a stub fetch. --help writes nothing. Delivery is proven: override rows are capped at 10 % and
 // each cites a `## R-<nn>` register entry (either override shape, the recorded gate table for a bare verdict);
-// every done unit's pages pass the gate at both widths; every delivered row has its schema, both gate widths and,
-// when its path changed, a redirects line; every ledger `end` is paired or re-recorded; the checks that did not
+// every done unit's pages pass the gate at both widths; every delivered row has its schema, both gate widths (in a
+// flow with a gate table — replica, or any gated row; else skipped) and, when its path changed, a redirects line (in
+// the sheet or the redirects-cdn.tsv beside it); every ledger `end` is paired or re-recorded; the checks that did not
 // run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
@@ -230,6 +231,18 @@ check('sidecars_missing: delivered rows without source.sourceUrl are not judged 
   assert.deepEqual(sidecars(bare), { gap: null, skipped: ['sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
 });
 
+check('sidecars_missing: gate widths are judged only in a flow with a gate table (replica, or any gated row); otherwise skipped, never a gap', () => {
+  const ungated = SIDE_PAGES.map((p) => ({ ...p, delivery: { status: p.delivery.status } }));
+  assert.equal(widthsJudged({ flow: 'redesign', pages: ungated }), false);
+  assert.equal(widthsJudged({ flow: null, pages: ungated }), false);
+  assert.equal(widthsJudged({ flow: 'replica', pages: ungated }), true);
+  assert.equal(widthsJudged({ flow: 'redesign', pages: [...ungated, proven(row('g', '/g', 'pending'))] }), true);
+  assert.deepEqual(sidecars(ungated, { judgeWidths: false }), { gap: null, skipped: [WIDTHS_SKIP] });
+  assert.deepEqual(sidecars(ungated, { judgeWidths: false, schemaExists: (s) => s !== 'about' }), { gap: 'sidecars_missing:1: schema 1, gate widths -, redirects 0: /about', skipped: [WIDTHS_SKIP] });
+  assert.equal(sidecars(ungated).gap, 'sidecars_missing:3: schema 0, gate widths 3, redirects 0: /, /about, /news');
+  assert.deepEqual(sidecars([row('draft', '/draft', 'pending')], { judgeWidths: false }), { gap: null, skipped: [] }, 'nothing delivered, nothing skipped');
+});
+
 const LEDGER_END = { ts: '2026-10-09T11:00:00Z', skill: 'stardust:replica', phase: 'recreate', event: 'end' };
 check('ledger_unpaired: an end without an open start is a gap until a later start and end re-record the phase', () => {
   const lines = [...ENDED, LEDGER_END];
@@ -415,6 +428,32 @@ check('CLI: ledger.mjs resolves in the project copy (stardust/scripts/stardust/)
   const withLedger = runCopy();
   assert.equal(withLedger.status, 0, withLedger.stdout + withLedger.stderr);
   rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: a changed path whose line sits only in redirects-cdn.tsv beside the sheet is not a gap', () => {
+  const pages = [...CLEAN_PAGES, withSource(proven(row('glossary-a-b', '/glossary-a-b', 'verified')), 'https://example.com/Glossary:A%20B')];
+  const sidecarGaps = (proj) => JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((g) => g.startsWith('sidecars_missing'));
+  const without = project({ pages });
+  assert.deepEqual(sidecarGaps(without), ['sidecars_missing:1: schema 0, gate widths 0, redirects 1: /glossary-a-b']);
+  const withCdn = project({ pages, files: { 'stardust/redirects-cdn.tsv': '# sources the sheet never matches\n/Glossary:A%20B\t/glossary-a-b\n' } });
+  assert.deepEqual(sidecarGaps(withCdn), []);
+  [without, withCdn].forEach((p) => rmSync(p, { recursive: true, force: true }));
+});
+
+check('CLI: a redesign flow with no gate on any row skips the sidecar gate widths; a replica flow without gate rows still has the gap', () => {
+  const ungated = CLEAN_PAGES.map((p) => ({ ...p, delivery: { status: p.delivery.status } }));
+  const verdict = (flow) => {
+    const proj = project({ pages: ungated, files: { 'stardust/state.json': { flow } } });
+    const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+    rmSync(proj, { recursive: true, force: true });
+    return { sidecars: v.gaps.filter((g) => g.startsWith('sidecars_missing')), skipped: v.skipped };
+  };
+  const redesign = verdict('redesign');
+  assert.deepEqual(redesign.sidecars, []);
+  assert.ok(redesign.skipped.includes(WIDTHS_SKIP), JSON.stringify(redesign.skipped));
+  const replica = verdict('replica');
+  assert.deepEqual(replica.sidecars, ['sidecars_missing:2: schema 0, gate widths 2, redirects 0: /, /about']);
+  assert.ok(!replica.skipped.includes(WIDTHS_SKIP));
 });
 
 for (const [name, fn] of tests) {
