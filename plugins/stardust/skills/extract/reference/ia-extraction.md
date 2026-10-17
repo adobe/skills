@@ -435,6 +435,9 @@ pages or refresh existing ones.
 
 - Default behaviour: skip URLs whose slug is already in `state.json`
   with status `extracted` or beyond. Crawl only newly discovered URLs.
+- Adding pages to a run whose pages have moved past `extracted` is an
+  owner decision: `state.mjs init` refuses that state.json (even with
+  `--force`) and no append command ships — never a hand edit.
 - `--refresh <slug>` re-extracts a single named page even if already
   extracted. The new per-page JSON overwrites, but state.json
   preserves the page's full lifecycle history.

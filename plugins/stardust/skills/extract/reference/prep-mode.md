@@ -55,7 +55,8 @@ and content shape (LLM judgment). Catalog from
 `landing | article | listing | program | form | static | unique`.
 With a spec, take the type from `stardust/spec/knowledge/archetypes.json`.
 
-Write the inferred type to `state.json.pages[].type`. The user
+Record the inferred type with `state.mjs set <slug…> --type <type>`
+(it writes `state.json.pages[].type`; never a hand edit). The user
 confirms or refines during `direct --prep`. Discovery-mode runs
 leave `type` as `null`.
 

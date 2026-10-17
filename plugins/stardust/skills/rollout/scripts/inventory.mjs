@@ -43,6 +43,9 @@
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
  *   defaults: --migrated stardust/migrated  --out stardust/rollout
+ *
+ * Exit: 0 coverage written · 1 the migrated tree is not found (message on stderr, nothing written), or an
+ *   unexpected read/write failure.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
 import { createHash } from 'node:crypto';
