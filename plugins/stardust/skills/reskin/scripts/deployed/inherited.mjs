@@ -31,7 +31,9 @@ import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { authHint, callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson, tokenFlags } from './child.mjs';
 import { redact } from './eds.mjs';
+import { fetchOnce } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
+import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Two layouts, one level deeper than the top-level scripts: the plugin tree (skills/reskin/scripts/deployed ↔
@@ -41,7 +43,6 @@ const TOOL_FILES = { readability: 'ai-readability.mjs', qa: 'qa-gate.mjs' };
 
 const MIN_READABILITY = 98;
 const REQUEST_MS = 30000;
-const MAX_LISTED = 10;
 const MAX_BLOCKS = 3;
 const MAX_SRCS = 3;
 const BY_DEPLOY = ['localize-links --check', 'davids-model-lint', 'block-roundtrip --ew'];
@@ -51,7 +52,6 @@ const BAR_OF = {
   'qa-gate': '0 fail',
   ...Object.fromEntries(BY_DEPLOY.map((check) => [check, 'run by deploy before the DA push'])),
 };
-const EXIT = { PASS: 0, FAIL: 1, ERROR: 124 };
 
 function missingTools(names) {
   return new UsageError(`${names.join(', ')} not found (looked in ../../../deploy/scripts/ and ../../deploy/): copy the deploy skill's scripts beside the reskin scripts (stardust/scripts/deploy/)`);
@@ -122,24 +122,9 @@ const errorRow = (check, code, detail) => row(check, 'ERROR', `ERROR (exit ${cod
 const counted = (r) => r.status === 0 || r.status === 1;
 const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8')); } catch { return null; } };
 
-// The authored form, fetched with the header when there is one: { status, body? } or { status: 0, why }. A redirect is
-// a non-200 answer, so the header never follows one to another origin.
-async function fetchPlain(url, auth) {
-  try {
-    const res = await fetch(url, { headers: auth ? { authorization: auth } : {}, redirect: 'manual', signal: AbortSignal.timeout(REQUEST_MS) });
-    if (res.status !== 200) {
-      await res.body?.cancel();
-      return { status: res.status };
-    }
-    return { status: 200, body: await res.text() };
-  } catch (e) {
-    return { status: 0, why: `no response (${e.cause?.code || e.name})` };
-  }
-}
-
 async function plainRow({ preview, token }) {
-  const got = await fetchPlain(preview.plain, token);
-  if (got.status === 0) return errorRow('.plain.html', EXIT.ERROR, got.why);
+  const got = await fetchOnce(preview.plain, token, REQUEST_MS);
+  if (got.status === 0) return errorRow('.plain.html', EXIT.ERROR, got.last);
   if (got.status === 401 || got.status === 403) {
     throw new UsageError(`${preview.plain} answered HTTP ${got.status}: ${token ? 'the site token was not accepted' : 'the preview is protected: run deployed-gate preview again with --auth-header or --token-env'}`);
   }
@@ -185,9 +170,7 @@ async function qaRow({ preview, schema, design, out, tools, env }) {
   if (!counted(r) || !summary) return errorRow('qa-gate', exitOf(r), firstLine(outputOf(r, null)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`);
   if (r.status === 0) return row('qa-gate', 'PASS', summary);
   const fails = r.stdout.split('\n').filter((l) => /^\s*✗ /.test(l)).map((l) => l.replace(/^\s*✗ /, '').trim());
-  const shown = fails.slice(0, MAX_LISTED);
-  if (fails.length > shown.length) shown.push(`… ${fails.length - shown.length} more`);
-  return row('qa-gate', 'FAIL', summary, shown.join('\n') || null);
+  return row('qa-gate', 'FAIL', summary, listed(fails));
 }
 
 // preview is the record of `deployed-gate preview`; auth the Authorization header value, or null.
@@ -215,32 +198,14 @@ export async function runInherited({ dir, slug, preview, auth = null, tools = nu
     design: join(deployed, 'design.json'),
   };
   const rows = [await plainRow(run), await readabilityRow(run), await qaRow(run), ...BY_DEPLOY.map((check) => row(check, 'by deploy', 'by deploy'))];
-  const verdict = rows.some((r) => r.status === 'ERROR') ? 'ERROR' : rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS';
+  const verdict = verdictOf(rows);
   writeJson(record, { verdict, rows });
   return { verdict, exit: EXIT[verdict], rows };
 }
 
-const detailLines = (r, indent) => (r.detail ? r.detail.split('\n').map((l) => `${indent}${l}`) : []);
 // What a failing row says: ai-readability's score against its bar, any other row its value.
 const failure = (r) => (r.check === 'ai-readability' ? `ai-readability ${r.value} < ${MIN_READABILITY}` : `${r.check}: ${r.value}`);
 
 // The lines the CLI prints: a line for the checks that gave no verdict, the verdict line, one indented line per failing
 // row (its findings below), and one line per distinct reason a row was not run (n/a) and for deploy's own gates.
-export function inheritedLines({ verdict, rows }) {
-  const errors = rows.filter((r) => r.status === 'ERROR');
-  const fails = rows.filter((r) => r.status === 'FAIL');
-  const lines = [];
-  if (errors.length) {
-    lines.push(`ERROR (exit ${EXIT.ERROR}) inherited: ${errors.length} check${errors.length === 1 ? '' : 's'} gave no verdict`);
-    for (const r of errors) lines.push(`  ${r.check}: ${r.value}`, ...detailLines(r, '    '));
-  }
-  if (fails.length) {
-    lines.push('FAIL inherited');
-    for (const r of fails) lines.push(`  ${failure(r)}`, ...detailLines(r, '    '));
-  }
-  if (verdict === 'PASS') lines.push('PASS inherited');
-  const reasons = new Map();
-  for (const r of rows.filter((x) => x.status === 'n/a' || x.status === 'by deploy')) reasons.set(r.value, [...(reasons.get(r.value) ?? []), r.check]);
-  for (const [value, checks] of reasons) lines.push(`${value} (${checks.join(', ')})`);
-  return lines;
-}
+export const inheritedLines = (result) => stepLines('inherited', result, { failure, unrun: ['n/a', 'by deploy'] });

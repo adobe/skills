@@ -12,6 +12,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
+import { fetchOnce } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
 
 const REQUIRED = ['stardust/runtime-contract.json', 'head.html', 'scripts/aem.js'];
@@ -101,21 +102,8 @@ export function isolation({ path, meta = {}, origin = BASE, namespace, sandbox =
   return problems;
 }
 
-// One request, ended by REQUEST_MS or by `budgetMs`, the time left of --max-wait, whichever is first: its status
-// and body when 200, else why not. A redirect is a non-200 answer.
-async function fetchOnce(url, auth, budgetMs) {
-  try {
-    const signal = AbortSignal.timeout(Math.max(1, Math.min(REQUEST_MS, budgetMs)));
-    const res = await fetch(url, { headers: auth ? { authorization: auth } : {}, redirect: 'manual', signal });
-    if (res.status !== 200) {
-      await res.body?.cancel();
-      return { status: res.status, last: `HTTP ${res.status}` };
-    }
-    return { status: 200, body: await res.text() };
-  } catch (e) {
-    return { status: 0, last: `no response (${e.cause?.code || e.name})` };
-  }
-}
+// One request, ended by REQUEST_MS or by `budgetMs`, the time left of --max-wait, whichever is first (fetchOnce).
+const attemptOnce = (url, auth, budgetMs) => fetchOnce(url, auth, Math.max(1, Math.min(REQUEST_MS, budgetMs)));
 
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
@@ -159,7 +147,7 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
         err.last = last;
         throw err;
       }
-      const got = await fetchOnce(target, auth, deadline - Date.now());
+      const got = await attemptOnce(target, auth, deadline - Date.now());
       if (got.status === 200) return got.body;
       last = got.last;
       await sleep(Math.min(POLL_MS, Math.max(0, deadline - Date.now())));

@@ -31,6 +31,7 @@ import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
 import { callTool as call, childEnv, coded, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
+import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
 import { serveReskinPage } from './serve.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -56,8 +57,6 @@ const EDS_TIMEOUT_MS = 20000;
 const SCROLL_DWELL_MS = 150;
 const MAX_SCROLL_STEPS = 60;
 const IMAGES_TIMEOUT_MS = 3000;
-const MAX_LISTED = 10;
-const EXIT = { PASS: 0, 'n/a': 0, FAIL: 1, ERROR: 124 };
 
 function missingTools(names) {
   return new UsageError(`${names.join(', ')} not found (looked in ../../../diff/scripts/ and ../../diff/): copy the diff skill's scripts beside the reskin scripts (stardust/scripts/diff/)`);
@@ -118,14 +117,6 @@ const row = (check, width, status, value, { artifact = null, detail = null } = {
 const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}`);
 const errorRow = (check, width, code, detail) => row(check, width, 'ERROR', `ERROR (exit ${code})`, { detail });
 const toolError = (check, width, name, r) => errorRow(check, width, exitOf(r), firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message`);
-
-// At most MAX_LISTED of the items, one per line, then a count of the rest.
-const listed = (items) => {
-  if (!items.length) return null;
-  const shown = items.slice(0, MAX_LISTED);
-  if (items.length > shown.length) shown.push(`… ${items.length - shown.length} more`);
-  return shown.join('\n');
-};
 
 const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
 
@@ -211,7 +202,7 @@ export async function runSanity({ dir, slug, preview, reskinPage = join(dir, 're
   const out = join(deployed, 'sanity');
   const record = join(deployed, 'sanity.json');
   for (const stale of [record, out]) rmSync(stale, { recursive: true, force: true });
-  const seal = (rows, verdict = rows.some((r) => r.status === 'ERROR') ? 'ERROR' : rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS') => {
+  const seal = (rows, verdict = verdictOf(rows)) => {
     writeJson(record, { verdict, hard: true, rows });
     return { verdict, exit: EXIT[verdict], hard: true, rows };
   };
@@ -227,28 +218,9 @@ export async function runSanity({ dir, slug, preview, reskinPage = join(dir, 're
   return seal(widths.flatMap((width) => [...measured[width], ...(width === WIDE ? wide : [])]));
 }
 
-const labelOf = (r) => `${r.check}${r.width ? ` @${r.width}` : ''}`;
-const detailLines = (r, indent) => (r.detail ? r.detail.split('\n').map((l) => `${indent}${l}`) : []);
 // What a failing row says: the value against its bar ("overflow 240px > 4px @360"), the stalled parts for decoration.
 const failure = (r) => (r.check === 'decoration' ? `decoration: ${r.value} @${r.width}` : `${r.check} ${r.value} > ${r.bar.replace(/^≤ /, '')} @${r.width}`);
 
 // The lines the CLI prints: a line for the checks that gave no verdict, the verdict line, one indented line per failing
 // row (its findings below), and one n/a line per distinct reason.
-export function sanityLines({ verdict, rows }) {
-  const errors = rows.filter((r) => r.status === 'ERROR');
-  const fails = rows.filter((r) => r.status === 'FAIL');
-  const lines = [];
-  if (errors.length) {
-    lines.push(`ERROR (exit ${EXIT.ERROR}) sanity: ${errors.length} check${errors.length === 1 ? '' : 's'} gave no verdict`);
-    for (const r of errors) lines.push(`  ${labelOf(r)}: ${r.value}`, ...detailLines(r, '    '));
-  }
-  if (fails.length) {
-    lines.push('FAIL sanity (hard)');
-    for (const r of fails) lines.push(`  ${failure(r)}`, ...detailLines(r, '    '));
-  }
-  if (verdict === 'PASS') lines.push('PASS sanity');
-  const reasons = new Map();
-  for (const r of rows.filter((x) => x.status === 'n/a')) reasons.set(r.value, [...(reasons.get(r.value) ?? []), labelOf(r)]);
-  for (const [value, labels] of reasons) lines.push(`${value} (${labels.join(', ')})`);
-  return lines;
-}
+export const sanityLines = (result) => stepLines('sanity', result, { failHeading: 'FAIL sanity (hard)', failure });

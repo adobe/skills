@@ -34,6 +34,7 @@ import { loadChromium } from '../figma-gate/target.mjs';
 import { callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
+import { EXIT, stepLines, verdictOf } from './rows.mjs';
 import { serveReskinPage } from './serve.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -58,7 +59,6 @@ const NAV_TIMEOUT_MS = 30000;
 const EDS_TIMEOUT_MS = 20000;
 const MAX_ADVISORIES = 10;
 const NO_CHROME = 'reskin page renders no chrome';
-const EXIT = { PASS: 0, 'n/a': 0, FAIL: 1, ERROR: 124 };
 
 function missingTools(names) {
   return new UsageError(`${names.join(', ')} not found (looked in ../../../replica/scripts/ and ../../replica/): copy the replica skill's scripts beside the reskin scripts (stardust/scripts/replica/)`);
@@ -218,7 +218,7 @@ export async function runParity({ dir, slug, preview, reskinPage = join(dir, 're
   const out = join(deployed, 'parity');
   const record = join(deployed, 'parity.json');
   for (const stale of [record, out, join(deployed, 'design.json')]) rmSync(stale, { recursive: true, force: true });
-  const seal = (rows, verdict = rows.some((r) => r.status === 'ERROR') ? 'ERROR' : rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS') => {
+  const seal = (rows, verdict = verdictOf(rows)) => {
     writeJson(record, { verdict, rows });
     return { verdict, exit: EXIT[verdict], rows };
   };
@@ -243,27 +243,6 @@ export async function runParity({ dir, slug, preview, reskinPage = join(dir, 're
   } finally { await server.close(); }
 }
 
-const labelOf = (r) => `${r.check}${r.width ? ` @${r.width}` : ''}`;
-const detailLines = (r, indent) => (r.detail ? r.detail.split('\n').map((l) => `${indent}${l}`) : []);
-
 // The lines the CLI prints: the verdict line, one indented line per failing row (its findings below), the advisory
 // lines, and one n/a line per distinct reason.
-export function parityLines({ verdict, rows }) {
-  const errors = rows.filter((r) => r.status === 'ERROR');
-  const fails = rows.filter((r) => r.status === 'FAIL');
-  const lines = [];
-  if (errors.length) {
-    lines.push(`ERROR (exit ${EXIT.ERROR}) parity: ${errors.length} check${errors.length === 1 ? '' : 's'} gave no verdict`);
-    for (const r of errors) lines.push(`  ${labelOf(r)}: ${r.value}`, ...detailLines(r, '    '));
-  }
-  if (fails.length) {
-    lines.push('FAIL parity');
-    for (const r of fails) lines.push(`  ${labelOf(r)}: ${r.value} (bar ${r.bar})`, ...detailLines(r, '    '));
-  }
-  if (verdict === 'PASS') lines.push('PASS parity');
-  for (const r of rows.filter((x) => x.status === 'ADVISORY')) lines.push(`ADVISORY ${labelOf(r)}: ${r.value}`, ...detailLines(r, '  '));
-  const reasons = new Map();
-  for (const r of rows.filter((x) => x.status === 'n/a')) reasons.set(r.value, [...(reasons.get(r.value) ?? []), labelOf(r)]);
-  for (const [value, labels] of reasons) lines.push(`${value} (${labels.join(', ')})`);
-  return lines;
-}
+export const parityLines = (result) => stepLines('parity', result);
