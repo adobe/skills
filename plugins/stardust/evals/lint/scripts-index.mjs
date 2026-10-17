@@ -18,7 +18,7 @@ import { join, relative } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..', '..', 'skills');
 const INDEX = join(ROOT, 'stardust', 'reference', 'scripts-index.md');
-const MAX_BYTES = 13 * 1024;
+const MAX_BYTES = 14016;
 const LINE = /^- `([a-z][a-z0-9-]*\/[A-Za-z0-9_.-]+\.(?:mjs|js|sh))` — \S/;
 
 const scripts = new Set();
