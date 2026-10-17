@@ -50,9 +50,16 @@
  * passes or is lifted) only when validated (`checkOverride`): its verdict is tier-shift / instrument-artifact /
  * source-volatile, its reason names R-<nn> entries that head a section of stardust/replica/inconsistency-register.md
  * (read once per run, cwd-relative), clip PASS and — on the published stage — content PASS (n/a is not PASS), the row
- * has a pixel measurement (not a missing capture or a pixel error) and is not INCONCLUSIVE. The row's `override` is
- * { verdict, reason, valid[, rejected] }; every failed rule of a failing row is an `override rejected: <rule>` reason;
- * totals count overridePass, overrideRejected and overrideShare.
+ * has a pixel measurement (not a missing capture or a pixel error) and is not INCONCLUSIVE, and its magnitude is a
+ * deviation's — on the row's own measured numbers (the ones it prints): pixel % ≤ 2 × --threshold AND |Δh| ≤ 2 ×
+ * --height-tol × origin height, both inclusive (a reused row is re-checked). Larger is a capture to fix (an in-flow
+ * per-visitor bar: --hide / presence.json), not a deviation: the override is not valid, the row stays FAIL with the
+ * reason `override exceeds magnitude: use --hide / presence.json` (as is, no `override rejected:` prefix), the record
+ * carries `magnitude` { pct, maxPct, heightDelta, maxHeightDelta }, totals.overrideMagnitude counts it and summary.md
+ * names the rows in one line `Override exceeds magnitude (fix the capture / hide list, not a deviation): <path>, …`. The
+ * row's `override` is { verdict, reason, valid[, rejected][, magnitude] }; every other failed rule of a failing row is an
+ * `override rejected: <rule>` reason; totals count overridePass, overrideRejected (magnitude ones included),
+ * overrideMagnitude and overrideShare.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
  * (shown BESIDE the number, never replacing it; it counts only when validated — OVERRIDES above), clip-allow.json,
@@ -249,7 +256,10 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   overrides.json { "<slug>": { verdict, reason } } counts only when validated: verdict tier-shift / instrument-artifact /
   source-volatile, a reason naming an R-<nn> of stardust/replica/inconsistency-register.md, clip + content PASS (prototype
   stage: clip), a pixel measurement (not a missing capture / pixel error), the row not INCONCLUSIVE — else "override
-  rejected: <rule>" reasons and the row stays FAIL.
+  rejected: <rule>" reasons and the row stays FAIL. Magnitude, on the row's own numbers: pixel % ≤ 2 × --threshold and
+  |Δh| ≤ 2 × --height-tol × origin height (inclusive) — larger → not valid, the row stays FAIL with the reason "override
+  exceeds magnitude: use --hide / presence.json" (no prefix), totals.overrideMagnitude, and summary.md's line "Override
+  exceeds magnitude (fix the capture / hide list, not a deviation): <path>, …".
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
@@ -471,15 +481,23 @@ export function registerIds(text) {
   return [...new Set(ids)].sort();
 }
 const passWord = (v) => (v === true ? 'PASS' : v === false ? 'FAIL' : 'n/a');
+// An override too large for a deviation: the row's reason is this text as is (never `override rejected: …`) — it names the remedy.
+const OVERRIDE_MAGNITUDE = 'override exceeds magnitude: use --hide / presence.json';
+const exceedsMagnitude = (ov) => !!ov && ov.valid !== true && Array.isArray(ov.rejected) && ov.rejected.includes(OVERRIDE_MAGNITUDE);
 /**
- * checkOverride(raw, { inconclusive, compared, clipPass, contentPass, stage, register }) → { verdict, reason, valid[, rejected] }, or
- * null without an entry. `register` = { file, found, ids } (REGISTER_FILE, read once per run); `compared` = the row has a
- * pixel measurement (not a missing capture or a pixel error; absent = not compared). Each failing rule is one
- * `rejected` line: the verdict is one of OVERRIDE_VERDICTS; the reason names R-<nn> entries the register heads; clip PASS
- * and — except on the prototype stage, which has no content criterion — content PASS (n/a is not PASS); the row has a
- * pixel measurement; the row is not INCONCLUSIVE. `rejected` is present only when invalid.
+ * checkOverride(raw, { inconclusive, compared, clipPass, contentPass, stage, register, pct, heightDelta, originH, threshold,
+ * heightTol }) → { verdict, reason, valid[, rejected][, magnitude] }, or null without an entry. `register` = { file, found, ids }
+ * (REGISTER_FILE, read once per run); `compared` = the row has a pixel measurement (not a missing capture or a pixel error;
+ * absent = not compared); pct / heightDelta / originH = the row's own measured numbers (the ones the row prints),
+ * threshold / heightTol = the run's criteria. Each failing rule is one `rejected` line: the verdict is one of
+ * OVERRIDE_VERDICTS; the reason names R-<nn> entries the register heads; clip PASS and — except on the prototype stage,
+ * which has no content criterion — content PASS (n/a is not PASS); the row has a pixel measurement; the row is not
+ * INCONCLUSIVE; the magnitude is a deviation's — pixel % ≤ 2 × threshold AND |Δh| ≤ 2 × heightTol × originH (inclusive),
+ * else the line `override exceeds magnitude: use --hide / presence.json` and `magnitude` { pct, maxPct, heightDelta,
+ * maxHeightDelta } (a measured row without those numbers cannot be bounded: rejected too). `rejected` is present only
+ * when invalid.
  */
-export function checkOverride(raw, { inconclusive = false, compared = false, clipPass = null, contentPass = null, stage = 'published', register = null } = {}) {
+export function checkOverride(raw, { inconclusive = false, compared = false, clipPass = null, contentPass = null, stage = 'published', register = null, pct = null, heightDelta = null, originH = null, threshold = 10, heightTol = 0.05 } = {}) {
   if (raw == null) return null;
   const o = typeof raw === 'object' ? raw : { verdict: raw };
   const kind = o.verdict ?? null; const reason = o.reason ?? null; const file = (register && register.file) || REGISTER_FILE;
@@ -493,7 +511,16 @@ export function checkOverride(raw, { inconclusive = false, compared = false, cli
   if (clipPass !== true || (!proto && contentPass !== true)) rejected.push(`clip and content must pass (clip ${passWord(clipPass)}, content ${proto ? 'not a criterion' : passWord(contentPass)})`);
   if (!compared) rejected.push('no pixel measurement to override');
   if (inconclusive) rejected.push('the row is INCONCLUSIVE — no verdict to override');
-  return { verdict: kind, reason, valid: !rejected.length, ...(rejected.length ? { rejected } : {}) };
+  let magnitude = null;
+  if (compared && !inconclusive) {
+    const measured = [pct, heightDelta, originH].every((x) => typeof x === 'number' && Number.isFinite(x));
+    if (!measured) rejected.push('no measured pixel % / Δh / origin height to bound the override');
+    else if (pct > 2 * threshold || Math.abs(heightDelta) > 2 * heightTol * originH) {
+      rejected.push(OVERRIDE_MAGNITUDE);
+      magnitude = { pct, maxPct: 2 * threshold, heightDelta, maxHeightDelta: Math.round(2 * heightTol * originH * 100) / 100 };
+    }
+  }
+  return { verdict: kind, reason, valid: !rejected.length, ...(rejected.length ? { rejected } : {}), ...(magnitude ? { magnitude } : {}) };
 }
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
@@ -535,7 +562,8 @@ export function fontChecksSkipped(originMeta, edsMeta) {
  * could not run with one `font-check-skipped:<side>` (`fontChecksSkipped`); the pixel-only calibration
  * verdict unchanged. `override` (the overrides.json entry) is validated
  * with checkOverride against `register` and opts.stage → the row's `override`; only a valid one sets passWithOverride,
- * an invalid one on a failing row adds one `override rejected: <rule>` reason per rule.
+ * an invalid one on a failing row adds one `override rejected: <rule>` reason per rule — the magnitude rule's line as is:
+ * `override exceeds magnitude: use --hide / presence.json` (no prefix).
  */
 export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0, capture = { polluted: [], fonts: [], fontsSkipped: [] }, register = null }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true, stage = 'published' } = {}) {
   const polluted = (capture && capture.polluted) || []; const inconclusive = polluted.length > 0;
@@ -561,8 +589,8 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   reasons.push(...fontReasons);
   const pixelOnlyPass = !inconclusive && !!(pixelPass && heightPass);
   const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fontReasons.length;
-  const ov = checkOverride(override, { inconclusive, compared: !!compared, clipPass, contentPass, stage, register });
-  if (!inconclusive && !pass && ov && !ov.valid) reasons.push(...ov.rejected.map((x) => `override rejected: ${x}`));
+  const ov = checkOverride(override, { inconclusive, compared: !!compared, clipPass, contentPass, stage, register, pct: compared ? pixel.pct : null, heightDelta: compared ? pixel.heightDelta : null, originH, threshold, heightTol });
+  if (!inconclusive && !pass && ov && !ov.valid) reasons.push(...ov.rejected.map((x) => (x === OVERRIDE_MAGNITUDE ? x : `override rejected: ${x}`)));
   return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!(ov && ov.valid), inconclusive, fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons: inconclusive ? [...polluted, ...fontReasons] : reasons, override: ov };
 }
 
@@ -574,7 +602,9 @@ export function formatSummary(summary) {
   const ovClause = counted + rejected ? ` · overrides: ${counted} counted / ${rejected} rejected — override share ${counted} of ${t.pages} (${(t.pages ? (100 * counted) / t.pages : 0).toFixed(1)} %)` : '';
   // the faces that did not load, named once across the table (the calibration line)
   const fonts = [...new Set(summary.rows.flatMap((r) => r.fontsNotLoaded || []))].sort();
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
+  // the failing rows whose override is too large for a deviation (pixel % > 2 × threshold or |Δh| > 2 × the height bar), named once
+  const oversized = summary.rows.filter((r) => !r.pass && exceedsMagnitude(r.override)).map((r) => r.path);
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, '', ...(oversized.length ? [`Override exceeds magnitude (fix the capture / hide list, not a deviation): ${oversized.join(', ')}`, ''] : [])];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -890,14 +920,16 @@ const sameCriteria = (prov, opts) => !!prov && prov.stage === 'published' && pro
  * --skip-existing on the published stage without --recapture-*, with a known current key equal to the row's, a
  * PASS (not an override) from a table written under this run's criteria and the page's eds.png on disk — never an
  * INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin. `at` stays the time the row was measured;
- * the override it attaches (this run's overrides.json entry) is validated against `register` like a fresh row's.
+ * the override it attaches (this run's overrides.json entry) is validated against `register` like a fresh row's — its
+ * magnitude on the row's own pct / heightDelta / originH under this run's --threshold / --height-tol.
  */
 export function rowReuse({ prior, gateKey, edsPng, override = null, register = null, opts }) {
   if (!opts.skip || opts.stage !== 'published' || opts.recaptureEds || opts.recaptureOrigin || !gateKey || !prior || !edsPng) return null;
   const { row } = prior;
   if (row.gateKey !== gateKey || row.pass !== true || row.inconclusive || row.originAsymmetric || !sameCriteria(prior.prov, opts)) return null;
   const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
-  const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register });
+  // the override is re-checked on the reused row's own measured numbers, like a fresh row's
+  const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register, pct: row.pct, heightDelta: row.heightDelta, originH: row.originH, threshold: opts.threshold, heightTol: opts.heightTol });
   return { ...row, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
 }
 
@@ -1534,7 +1566,7 @@ async function main() {
   const n = (f) => rows.filter(f).length;
   // an INCONCLUSIVE row is neither a FAIL nor an error, and has no pixel / height verdict (null) to count; only a validated
   // override lifts a failing row (overridePass), an invalid one is counted as rejected
-  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && !!r.override && r.override.valid === true), overrideRejected: n((r) => !r.pass && !!r.override && r.override.valid !== true), fail: n((r) => !r.inconclusive && !r.pass && r.pct != null), error: n((r) => !r.inconclusive && r.pct == null), inconclusive: n((r) => r.inconclusive),
+  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && !!r.override && r.override.valid === true), overrideRejected: n((r) => !r.pass && !!r.override && r.override.valid !== true), overrideMagnitude: n((r) => !r.pass && exceedsMagnitude(r.override)), fail: n((r) => !r.inconclusive && !r.pass && r.pct != null), error: n((r) => !r.inconclusive && r.pct == null), inconclusive: n((r) => r.inconclusive),
     failPixel: n((r) => r.pct != null && r.pixelPass === false), failHeight: n((r) => r.pct != null && r.heightPass === false), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded && r.fontsNotLoaded.length > 0), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     reusedRows: n((r) => r.reused && r.reused.what === 'row'), reusedProbes: n((r) => r.reused && r.reused.what === 'probes') };
   totals.passWithOverrides = totals.pass + totals.overridePass;

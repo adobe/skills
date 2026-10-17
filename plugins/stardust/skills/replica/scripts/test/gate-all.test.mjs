@@ -31,7 +31,10 @@
 // (no overlayLeft key): skipCapture's `unchecked`, --skip-existing re-stitches it (logged), --compare-only → INCONCLUSIVE.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — a pixel measurement, not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
-// one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
+// one valid and three invalid overrides.json rows and a register file, then without the register. Override magnitude:
+// pixel % ≤ 2 × threshold and |Δh| ≤ 2 × height-tol × origin height on the row's own numbers (inclusive; 2× + ε rejected,
+// exactly 2× accepted, the height bar too, a reused row re-checked) — the unprefixed reason, override.magnitude,
+// totals.overrideMagnitude and the summary.md line; the trust sandbox at 30 % (rejected) and at 20 % (lifted). Fonts: fontsNotLoaded,
 // font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*. A font check
 // that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
 // the record, a live.json and a kept origin; the trust sandbox with STUB_FONTS_NULL_*.
@@ -118,7 +121,7 @@ check('registerIds: the R-<nn> IDs that head a section of the register — sorte
   assert.deepEqual(registerIds(''), []); assert.deepEqual([OVERRIDE_VERDICTS, REGISTER_FILE], [['tier-shift', 'instrument-artifact', 'source-volatile'], REG]);
 });
 check('checkOverride: a validated override (kind, register entry, clip + content PASS) is valid; each failing rule is one rejected line; the prototype stage needs clip only; an INCONCLUSIVE row has no verdict to override', () => {
-  const ok = { inconclusive: false, compared: true, clipPass: true, contentPass: true, stage: 'published', register };
+  const ok = { inconclusive: false, compared: true, clipPass: true, contentPass: true, stage: 'published', register, pct: 15, heightDelta: 0, originH: 3000 };
   assert.equal(checkOverride(null, ok), null);
   assert.deepEqual(checkOverride({ verdict: 'tier-shift', reason: 'R-01: the source serves another tier at this width' }, ok), { verdict: 'tier-shift', reason: 'R-01: the source serves another tier at this width', valid: true });
   const no = (raw, ctx) => { const o = checkOverride(raw, { ...ok, ...ctx }); assert.equal(o.valid, false, JSON.stringify(raw)); return o.rejected; };
@@ -145,25 +148,60 @@ check('verdict: a row without a pixel measurement (a pixel error, a missing capt
   assert.deepEqual(v.reasons, ['pixel error: stitch exit 1: scroll stall', 'override rejected: no pixel measurement to override']);
   const m = verdict({ pixel: {}, clip: clip(0), content: content(0, 0), override: ov, register: reg });
   assert.deepEqual([m.passWithOverride, m.reasons], [false, ['missing capture', 'override rejected: no pixel measurement to override']]);
-  assert.equal(verdict({ pixel: px(30, 0), clip: clip(0), content: content(0, 0), override: ov, register: reg }).passWithOverride, true, 'measured and failing: the override still lifts it');
+  assert.equal(verdict({ pixel: px(18, 0), clip: clip(0), content: content(0, 0), override: ov, register: reg }).passWithOverride, true, 'measured and failing: the override still lifts it');
 });
 check('verdict: a validated override lifts a font-not-loaded row — the override rules as written (kind, register entry, clip + content PASS, a pixel measurement)', () => {
   const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), register, override: { verdict: 'instrument-artifact', reason: 'R-12: the face is served from another host' }, capture: { polluted: [], fonts: ['Brand Sans'] } });
   assert.deepEqual([v.pass, v.passWithOverride, v.override.valid, v.fontsNotLoaded, v.reasons], [false, true, true, ['Brand Sans'], ['font-not-loaded:Brand Sans']]);
 });
 check('verdict: a FAIL row with an invalid override stays FAIL (passWithOverride false, one "override rejected:" reason per rule); a valid one lifts it beside the number; an INCONCLUSIVE row\'s override is rejected without reasons', () => {
-  const failing = { pixel: px(30, 0), clip: clip(0), content: content(0, 0), register };
+  const failing = { pixel: px(15, 0), clip: clip(0), content: content(0, 0), register };
   const bad = verdict({ ...failing, override: { verdict: 'PASS (source capture)', reason: 'R-01' } });
   assert.deepEqual([bad.pass, bad.passWithOverride, bad.override.valid], [false, false, false]);
-  assert.deepEqual(bad.reasons, ['pixel 30% > 10%', `override rejected: verdict "PASS (source capture)" ${KIND}`]);
+  assert.deepEqual(bad.reasons, ['pixel 15% > 10%', `override rejected: verdict "PASS (source capture)" ${KIND}`]);
   const good = verdict({ ...failing, override: { verdict: 'tier-shift', reason: 'R-01 another tier' } });
-  assert.deepEqual([good.pass, good.passWithOverride, good.override.valid], [false, true, true]); assert.deepEqual(good.reasons, ['pixel 30% > 10%']);
+  assert.deepEqual([good.pass, good.passWithOverride, good.override.valid], [false, true, true]); assert.deepEqual(good.reasons, ['pixel 15% > 10%']);
   assert.equal(verdict({ ...failing, override: { verdict: 'tier-shift', reason: 'R-01' } }, { stage: 'prototype', contentOn: false }).passWithOverride, true, 'prototype: clip only');
   assert.equal(verdict({ ...failing, override: { verdict: 'tier-shift', reason: 'R-01' } }, { contentOn: false }).passWithOverride, false, '--no-content cannot validate a published override (content n/a)');
   const passing = verdict({ pixel: px(2, 0), clip: clip(0), content: content(0, 0), register, override: { verdict: 'PASS', reason: 'x' } });
   assert.deepEqual([passing.pass, passing.passWithOverride, passing.override.valid], [true, true, false]); assert.deepEqual(passing.reasons, [], 'a passing row names no override rule');
   const inc = verdict({ ...failing, override: { verdict: 'tier-shift', reason: 'R-01' }, capture: { polluted: ['origin capture polluted: overlay left — X'] } });
   assert.deepEqual(inc.reasons, ['origin capture polluted: overlay left — X']); assert.deepEqual(inc.override.rejected, ['the row is INCONCLUSIVE — no verdict to override']);
+});
+const MAG = 'override exceeds magnitude: use --hide / presence.json';
+const tierShift = { verdict: 'tier-shift', reason: 'R-01: the source serves another tier' };
+check('checkOverride magnitude: on the row\'s own numbers, pixel % ≤ 2 × threshold and |Δh| ≤ 2 × height-tol × origin height — both inclusive; 2× + ε → not valid with the exact line and the record\'s magnitude; a measured row without the numbers cannot be bounded; INCONCLUSIVE / not compared add no magnitude line', () => {
+  const m = (ctx) => checkOverride(tierShift, { inconclusive: false, compared: true, clipPass: true, contentPass: true, register, threshold: 10, heightTol: 0.05, heightDelta: 0, originH: 3000, ...ctx });
+  assert.deepEqual(m({ pct: 20 }), { ...tierShift, valid: true }, 'exactly 2 × the threshold is allowed');
+  assert.deepEqual(m({ pct: 20.01 }), { ...tierShift, valid: false, rejected: [MAG], magnitude: { pct: 20.01, maxPct: 20, heightDelta: 0, maxHeightDelta: 300 } }, '2 × + ε');
+  assert.equal(m({ pct: 5, heightDelta: -300 }).valid, true, '|Δh| exactly 2 × 5 % of 3000');
+  for (const dh of [301, -301]) assert.deepEqual(m({ pct: 5, heightDelta: dh }).rejected, [MAG], `Δh ${dh} > 2 × 5 % of 3000`);
+  assert.deepEqual(m({ pct: 45, heightDelta: 268, originH: 2400 }).magnitude, { pct: 45, maxPct: 20, heightDelta: 268, maxHeightDelta: 240 }, 'the recorded in-flow bar: both bounds exceeded');
+  assert.deepEqual([m({ pct: 24, threshold: 12 }).valid, m({ pct: 24.5, threshold: 12 }).valid, m({ pct: 5, heightDelta: 600, heightTol: 0.1 }).valid], [true, false, true], 'the run\'s criteria');
+  assert.deepEqual(m({ pct: 45, clipPass: false }).rejected, ['clip and content must pass (clip FAIL, content PASS)', MAG], 'beside the other rules');
+  assert.deepEqual(m({ pct: 15, originH: null }).rejected, ['no measured pixel % / Δh / origin height to bound the override']);
+  assert.deepEqual(m({ pct: 15, heightDelta: undefined }).rejected, ['no measured pixel % / Δh / origin height to bound the override']);
+  assert.deepEqual(m({ pct: 45, inconclusive: true }).rejected, ['the row is INCONCLUSIVE — no verdict to override']);
+  assert.deepEqual(m({ pct: null, compared: false }).rejected, ['no pixel measurement to override']);
+});
+check('verdict magnitude: a row past 2 × the bar stays FAIL — the exact line as its reason (no "override rejected:" prefix), the other rules prefixed beside it; 2 × exactly is lifted; the height bar likewise (origin height = compared + the excess)', () => {
+  const at = (pixel, override = tierShift) => verdict({ pixel, clip: clip(0), content: content(0, 0), register, override });
+  const v = at(px(45, 0, 3000));
+  assert.deepEqual([v.pass, v.passWithOverride, v.override.valid, v.override.rejected, v.reasons], [false, false, false, [MAG], ['pixel 45% > 10%', MAG]]);
+  assert.deepEqual([at(px(20, 0, 3000)).passWithOverride, at(px(20, 0, 3000)).reasons], [true, ['pixel 20% > 10%']]);
+  const tall = at(px(5, 268, 2400)); // origin 2668 px: 268 > 266.8
+  assert.deepEqual([tall.passWithOverride, tall.reasons], [false, ['Δh 268px > 5% of 2668', MAG]]);
+  assert.equal(at(px(5, -300, 3000)).passWithOverride, true, '|Δh| 300 = 2 × 5 % of 3000');
+  assert.deepEqual(at(px(45, 0), { verdict: 'PASS', reason: 'R-01' }).reasons, ['pixel 45% > 10%', `override rejected: verdict "PASS" ${KIND}`, MAG]);
+  assert.deepEqual(at(px(2, 0)).reasons, [], 'a passing row names no override rule');
+});
+check('formatSummary: one line names the rows whose override exceeds the magnitude — only when there is one', () => {
+  const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
+  const r0 = { slug: 'a', path: '/a', pct: 45, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: false, pixelOnlyPass: false, reasons: ['pixel 45% > 10%', MAG], error: null, override: { ...tierShift, valid: false, rejected: [MAG] } };
+  const totals = { pages: 3, pass: 0, pixelOnlyPass: 0, overridePass: 0, overrideRejected: 2, overrideMagnitude: 2, fail: 3, error: 0, failPixel: 3, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0 };
+  const md = formatSummary({ _provenance: pv, totals, rows: [r0, { ...r0, slug: 'b', path: '/b', override: null }, { ...r0, slug: 'c', path: '/en/c' }] });
+  assert.match(md, /\n\nOverride exceeds magnitude \(fix the capture \/ hide list, not a deviation\): \/a, \/en\/c\n\| page \|/);
+  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, overrideMagnitude: 0 }, rows: [{ ...r0, override: { ...tierShift, valid: false, rejected: ['x'] } }] }), /Override exceeds magnitude/);
 });
 check('formatSummary: the override clause — counted / rejected and the override share — only when there is one; a rejected override is marked in the verdict cell', () => {
   const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
@@ -463,7 +501,7 @@ check('keyChanged / skipCapture / rowKey: an EDS capture is reused only while ga
 check('rowReuse: a PASS row under the same key and criteria is reused whole; never an INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin', () => {
   const opts = parseArgs(['node', 'x', '--skip-existing']);
   const prov = { stage: 'published', threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, criteria: { clip: true, content: true } };
-  const prior = (over = {}) => ({ row: { slug: 'a', gateKey: 'K', pct: 2, pass: true, passWithOverride: true, clipPass: true, contentPass: true, inconclusive: false, originAsymmetric: false, reasons: [], ...over }, from: 'summary.json', at: T(1), prov });
+  const prior = (over = {}) => ({ row: { slug: 'a', gateKey: 'K', pct: 2, heightDelta: 0, originH: 3000, pass: true, passWithOverride: true, clipPass: true, contentPass: true, inconclusive: false, originAsymmetric: false, reasons: [], ...over }, from: 'summary.json', at: T(1), prov });
   assert.deepEqual(rowReuse({ prior: prior(), gateKey: 'K', edsPng: true, opts }).reused, { what: 'row', from: 'summary.json', at: T(1), gateKey: 'K' });
   assert.equal(rowReuse({ prior: prior({ inconclusive: true, pass: false, passWithOverride: false }), gateKey: 'K', edsPng: true, opts }), null);
   assert.equal(rowReuse({ prior: prior({ inconclusive: true }), gateKey: 'K', edsPng: true, opts }), null, 'whatever else the row says');
@@ -471,6 +509,11 @@ check('rowReuse: a PASS row under the same key and criteria is reused whole; nev
   const withOv = (override) => rowReuse({ prior: prior(), gateKey: 'K', edsPng: true, override, register, opts });
   assert.deepEqual(withOv({ verdict: 'tier-shift', reason: 'R-01' }).override, { verdict: 'tier-shift', reason: 'R-01', valid: true }, 'the override it attaches is validated');
   assert.deepEqual([withOv({ verdict: 'PASS', reason: 'x' }).override.valid, withOv({ verdict: 'PASS', reason: 'x' }).passWithOverride], [false, true], 'a PASS row stays PASS');
+  // the magnitude is re-checked on the reused row's own numbers under this run's criteria
+  const reOv = (over) => rowReuse({ prior: prior(over), gateKey: 'K', edsPng: true, override: tierShift, register, opts }).override;
+  assert.deepEqual(reOv({ pct: 25 }), { ...tierShift, valid: false, rejected: [MAG], magnitude: { pct: 25, maxPct: 20, heightDelta: 0, maxHeightDelta: 300 } });
+  assert.deepEqual(reOv({ heightDelta: -301 }).rejected, [MAG]); assert.equal(reOv({ pct: 20, heightDelta: -300 }).valid, true, 'inclusive');
+  assert.deepEqual(reOv({ originH: undefined }).rejected, ['no measured pixel % / Δh / origin height to bound the override'], 'a row without its numbers cannot be bounded');
 });
 if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside the boxes only, masked rows skipped', () => {
   const w = 10; const h = 10; const data = Buffer.alloc(w * h * 4);
@@ -1523,7 +1566,7 @@ rmSync(hroot, { recursive: true, force: true });
 // ---- gate trust sandbox: a polluted capture → an INCONCLUSIVE row ----------------------------------------------------
 // Its own project (the hide sandbox pattern): stub instruments, the real live-session.mjs and foundation-freeze.mjs.
 // stitch-shot writes its --json record from STUB_OVERLAY_* / STUB_FONTS_* (STUB_NO_JSON: no record, an older copy) and
-// fails the origin with STUB_ORIGIN_RC; pixel-compare fails the slugs in STUB_FAIL; content-presence clips 3 on the build
+// fails the origin with STUB_ORIGIN_RC; pixel-compare fails the slugs in STUB_FAIL (at STUB_FAIL_PCT %, default 30); content-presence clips 3 on the build
 // side of the slugs in STUB_CLIP_FAIL.
 const troot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-trust-')));
 const TRS = join(troot, 'stardust/scripts/replica'); const TDS = join(troot, 'stardust/scripts/diff'); const TLOG = join(troot, 'stitch.log');
@@ -1537,7 +1580,7 @@ if (side === 'ORIGIN' && process.env.STUB_ORIGIN_RC) { console.error('stitch-sho
 writeFileSync(a[1], 'png');
 if (!process.env.STUB_NO_JSON) { ${SHOT_RECORD('side')} }`);
 stub(TRS, 'pixel-compare.mjs', `import { basename, dirname } from 'node:path';
-const pct = (process.env.STUB_FAIL || '').split(',').includes(basename(dirname(process.argv[2]))) ? 30 : 1.5;
+const pct = (process.env.STUB_FAIL || '').split(',').includes(basename(dirname(process.argv[2]))) ? Number(process.env.STUB_FAIL_PCT || 30) : 1.5;
 console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: pct <= 10 }));`);
 stub(TDS, 'content-presence.mjs', `import { writeFileSync } from 'node:fs'; import { basename, dirname } from 'node:path';
 const a = process.argv; const out = a[a.indexOf('--json') + 1]; const n = (process.env.STUB_CLIP_FAIL || '').split(',').includes(basename(dirname(out))) ? 3 : 0;
@@ -1597,17 +1640,18 @@ check('trust 5: a stitch-shot that writes no --json record (an older copy; the p
   assert.equal(existsSync(join(TOUT, 'a/eds-shot.json')), false, 'the last run\'s record was not read');
   assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed], [UNCHECKED, null]);
 });
-// overrides.json: v valid; k a free-text kind; u an R-<nn> the register lacks; c clip FAIL — all four pixel-FAIL rows.
+// overrides.json: v valid; k a free-text kind; u an R-<nn> the register lacks; c clip FAIL — all four pixel-FAIL rows (at 15 %,
+// inside the override magnitude: 2 × the 10 % threshold).
 const OV = { v: { verdict: 'tier-shift', reason: 'R-01: the source serves another tier at 1440' }, k: { verdict: 'PASS (source capture)', reason: 'R-01: live drifted since capture' },
   u: { verdict: 'source-volatile', reason: 'R-09: a rotating hero' }, c: { verdict: 'instrument-artifact', reason: 'R-01: lazy rail' } };
 const TREG = join(troot, REG);
 check('trust 6: overrides.json — one valid, three invalid (kind, unknown register entry, clip FAIL) → overridePass 1, overrideRejected 3, overrideShare 0.2, exit 2; the head names counted / rejected and the share; each rejected rule is a row reason', () => {
   tpages(['a', 'v', 'k', 'u', 'c']); mkdirSync(TOUT, { recursive: true }); writeFileSync(join(TOUT, 'overrides.json'), JSON.stringify(OV));
   mkdirSync(dirname(TREG), { recursive: true }); writeFileSync(TREG, '# Inconsistency register\n\n## R-01 — the source serves another tier at this width\n\nSeen on R-09-like pages too.\n');
-  const r = tgate([], { STUB_FAIL: 'v,k,u,c', STUB_CLIP_FAIL: 'c' });
+  const r = tgate([], { STUB_FAIL: 'v,k,u,c', STUB_FAIL_PCT: '15', STUB_CLIP_FAIL: 'c' });
   assert.equal(r.status, 2, r.stderr + r.stdout);
   const t = r.s.totals; assert.deepEqual([t.pass, t.fail, t.overridePass, t.overrideRejected, t.overrideShare, t.passWithOverrides], [1, 4, 1, 3, 0.2, 2]);
-  assert.deepEqual(r.row('v').override, { ...OV.v, valid: true }); assert.equal(r.row('v').passWithOverride, true); assert.deepEqual(r.row('v').reasons, ['pixel 30% > 10%']);
+  assert.deepEqual(r.row('v').override, { ...OV.v, valid: true }); assert.equal(r.row('v').passWithOverride, true); assert.deepEqual(r.row('v').reasons, ['pixel 15% > 10%']);
   const rejected = (slug) => { const row = r.row(slug); assert.equal(row.passWithOverride, false, slug); assert.equal(row.override.valid, false, slug); return [row.override.rejected, row.reasons.filter((x) => x.startsWith('override rejected: '))]; };
   assert.deepEqual(rejected('k'), [[`verdict "PASS (source capture)" ${KIND}`], [`override rejected: verdict "PASS (source capture)" ${KIND}`]]);
   assert.deepEqual(rejected('u'), [[`R-09 not in ${REG}`], [`override rejected: R-09 not in ${REG}`]]);
@@ -1617,13 +1661,27 @@ check('trust 6: overrides.json — one valid, three invalid (kind, unknown regis
 });
 check('trust 7: every failing row lifted by a validated override → exit 0; the same overrides without the register → rejected, exit 2', () => {
   tpages(['a', 'v']);
-  const r = tgate([], { STUB_FAIL: 'v' });
+  const r = tgate([], { STUB_FAIL: 'v', STUB_FAIL_PCT: '15' });
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.deepEqual([r.s.totals.pass, r.s.totals.overridePass, r.s.totals.overrideRejected], [1, 1, 0]);
   rmSync(TREG);
-  const g = tgate([], { STUB_FAIL: 'v' });
+  const g = tgate([], { STUB_FAIL: 'v', STUB_FAIL_PCT: '15' });
   assert.equal(g.status, 2, g.stderr + g.stdout); assert.deepEqual(g.row('v').override.rejected, [`no inconsistency register at ${REG}`]);
   assert.match(g.md, /overrides: 0 counted \/ 1 rejected — override share 0 of 2 \(0\.0 %\)/);
   tpages(['a']);
+});
+check('trust 7b: override magnitude — a pixel-FAIL row at 30 % (past 2 × the 10 % threshold) with an otherwise valid override stays FAIL: the reason as is, override.valid false with its magnitude, totals.overrideMagnitude 1, summary.md names the row, exit 2; at exactly 20 % the same override lifts it, exit 0', () => {
+  tpages(['a', 'v']); writeFileSync(TREG, '# Inconsistency register\n\n## R-01 — the source serves another tier at this width\n');
+  const r = tgate([], { STUB_FAIL: 'v' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  const row = r.row('v');
+  assert.deepEqual([row.pass, row.passWithOverride, row.override.valid, row.override.rejected, row.override.magnitude], [false, false, false, [MAG], { pct: 30, maxPct: 20, heightDelta: 0, maxHeightDelta: 300 }]);
+  assert.deepEqual(row.reasons, ['pixel 30% > 10%', MAG]);
+  const t = r.s.totals; assert.deepEqual([t.overridePass, t.overrideRejected, t.overrideMagnitude, t.fail], [0, 1, 1, 1]);
+  assert.match(r.md, /^Override exceeds magnitude \(fix the capture \/ hide list, not a deviation\): \/v$/m);
+  const e = tgate([], { STUB_FAIL: 'v', STUB_FAIL_PCT: '20' });
+  assert.equal(e.status, 0, e.stderr + e.stdout); assert.deepEqual([e.row('v').override.valid, e.row('v').passWithOverride, e.s.totals.overrideMagnitude], [true, true, 0]);
+  assert.doesNotMatch(e.md, /Override exceeds magnitude/);
+  rmSync(TREG); tpages(['a']);
 });
 check('trust 8: a declared face that did not load on the build side (the record\'s fontsFailed) → a FAIL row with font-not-loaded:<family>, totals.fontsNotLoaded 1, the calibration line names it, exit 2', () => {
   tpages(['a']);
