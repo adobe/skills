@@ -4,7 +4,8 @@
 // the routed request lines byte-for-byte under a real foundation freeze + idempotent re-runs, --dry-run
 // writes nothing, --help in an empty dir, P3/P4 row fields tolerated, runs/ merge (newest row per page),
 // parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass), the gate's presence.json and
-// a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host.
+// a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host,
+// INCONCLUSIVE rows listed as capture fixes (never failing, never errors) and only a validated override skipping a row.
 // Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
@@ -14,7 +15,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { blockOf, classifyRow, firstPass, parsePairMsg, requestLine } from '../gate-triage.mjs';
+import { blockOf, buildTriage, classifyRow, firstPass, formatTriage, parsePairMsg, requestLine } from '../gate-triage.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-triage.mjs');
@@ -154,7 +155,7 @@ check('(d) ordering: score, then kind rank, then cause; ids G1–G3; share over 
   const r = ok(run(root, ['--no-parity']));
   const t = readT(root);
   assert.deepEqual(t.groups.map((g) => [g.id, g.cause, g.score]), [['G1', 'block:cards', 6], ['G2', 'encoder:t2', 6], ['G3', 'layout:t3', 4]]);
-  assert.deepEqual(t.totals, { rows: 7, failing: 7, errors: 0, grouped: 6, share: 0.857, groups: 3, routed: 0 });
+  assert.deepEqual(t.totals, { rows: 7, failing: 7, errors: 0, inconclusive: 0, grouped: 6, share: 0.857, groups: 3, routed: 0 });
   const md = readFileSync(join(root, GATE, 'triage.md'), 'utf8');
   assert.match(md, /^# Gate triage — 7 failing rows, 6 in 3 shared-cause groups \(85\.7 %\)\n/);
   assert.match(md, /\| G1 \| `block:cards` \| 2 \| p1, p2 \| clip 2 \| cluster \|/);
@@ -421,6 +422,34 @@ check('classifyRow: a HIDDEN link resolves to its served block; unit deltas to t
   assert.match(cs[1].evidence[0], /family tile/);
   const lone = classifyRow(row('q2', { unitPass: false, pass: false }), {}, { width: 1440 }).causes;
   assert.deepEqual(lone.map((c) => [c.cause, c.criteria]), [['page:q2@1440', ['units']]], 'nothing attributable → page:<slug>@<w>, named by its failing criterion');
+});
+check('(s) an INCONCLUSIVE row is a capture fix — listed apart, never failing, never an error; an override skips a row only when gate-all validated it', () => {
+  const reasons = ['origin capture polluted: overlay left — div#consent (fixed, 92 % of the viewport)', 'font-not-loaded:Brand Sans'];
+  const fail37 = (slug, override) => row(slug, { pct: 37, pixelPass: false, pixelOnlyPass: false, pass: false, passWithOverride: !!(override && override.valid), reasons: ['pixel 37% > 10%'], override });
+  const rows = [
+    row('i1', { inconclusive: true, pct: null, pixelPass: null, heightPass: null, pixelOnlyPass: false, pass: false, passWithOverride: false, reasons, fontsNotLoaded: ['Brand Sans'] }),
+    fail37('v1', { verdict: 'source-volatile', reason: 'R-2 rotating hero', valid: true }),
+    fail37('x1', { verdict: 'source-volatile', reason: 'rotating hero', valid: false, rejected: ['reason names no R-<nn> of stardust/replica/inconsistency-register.md'] }),
+    fail37('x2', { verdict: 'PASS (source capture)', reason: 'live drifted' }), // a raw override from a table written before the check
+  ];
+  const src = { file: `${GATE}/summary.json`, writtenAt: T1, prov: { breakpoint: 1440 }, rows };
+  const t = buildTriage({ gate: GATE, sources: [src] });
+  assert.deepEqual(t.inconclusive, [{ row: 'i1@1440', reasons, source: `${GATE}/summary.json` }]);
+  assert.deepEqual(t.errors, [], 'a null pct on an inconclusive row is not a no-verdict error');
+  assert.equal(t.totals.inconclusive, 1); assert.equal(t.totals.failing, 2);
+  assert.deepEqual([...new Set(t.ungrouped.map((u) => u.row))], ['x1@1440', 'x2@1440'], 'a rejected or unvalidated override is triaged; a valid one is skipped');
+  const md = formatTriage(t);
+  assert.match(md, /^# Gate triage — 2 failing rows, 0 in 0 shared-cause groups \(0\.0 %\), 1 inconclusive\n/);
+  assert.ok(md.endsWith(`\n## No verdict (re-run)\n\nnone\n\n## Inconclusive — fix the capture, not the page\n\n- i1@1440 — ${reasons.join('; ')} → fix the capture — \`--hide\` / presence.json — not the page (${GATE}/summary.json)\n`), md);
+  const none = formatTriage(buildTriage({ gate: GATE, sources: [{ ...src, rows: rows.slice(1) }] }));
+  assert.ok(none.endsWith('\n## Inconclusive — fix the capture, not the page\n\nnone\n')); assert.doesNotMatch(none.split('\n')[0], /inconclusive/);
+  withProject({ rows, files: {}, pages: rows.map((r) => [r.slug, 't9']) }, {}, (root) => {
+    const r = ok(run(root, ['--no-parity']));
+    assert.deepEqual(readT(root).inconclusive.map((x) => x.row), ['i1@1440']);
+    assert.match(r.stdout, /^# Gate triage — 2 failing rows, .*, 1 inconclusive$/m);
+    assert.equal(r.stdout.trim().split('\n').pop(), '{"failing":2,"grouped":0,"share":0,"groups":0,"routed":0,"inconclusive":1}');
+    assert.match(ok(run(root, ['--help'])).stdout, /INCONCLUSIVE/);
+  });
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

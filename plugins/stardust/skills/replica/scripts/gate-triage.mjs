@@ -66,6 +66,8 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --json                    print {totals, triages[]} (each = triage.json) instead of the md head
   --help, -h                this text
 Advisory: the rows stay the verdict; fix by cause, re-gate the named scope; 3 fix rounds per page.
+INCONCLUSIVE rows (a polluted capture) are listed apart as capture fixes (--hide / presence.json), never as failing;
+an override skips a row only when gate-all validated it (valid: true) — a rejected one is triaged.
 Re-gate commands: one per eds host, --eds-host normalised to https://<host> (a bare host and its URL share one).
 Exit: 0 triage computed, 1 usage / no gate table / malformed JSON / output inside a frozen path.`;
 
@@ -438,10 +440,12 @@ export function buildTriage(input, runParity = null) {
   const templateOf = (r) => r.template ?? covOf(r).templateId ?? stOf(r).template ?? 'untyped';
   const itemsOf = (slug) => (((ev(slug, 'content') || {}).eds || {}).items || []);
   const clipGroupsOf = (r) => ((r.clipGroups && r.clipGroups.length ? r.clipGroups : ((ev(r.slug, 'clip') || {}).groups || [])).filter((g) => g && !g.advisory));
-  const failing = []; const errors = []; const byCause = new Map(); const rowCauses = new Map();
+  const failing = []; const errors = []; const inconclusive = []; const byCause = new Map(); const rowCauses = new Map();
   for (const r of tableRows) {
     const m = merged.get(r.slug); const id = `${r.slug}@${width}`;
-    if (r.override) continue;
+    // a polluted capture measured nothing: no verdict to triage or override — the capture is the fix
+    if (r.inconclusive) { inconclusive.push({ row: id, reasons: (r.reasons || []).map(String), source: m.src.file }); continue; }
+    if (r.override && r.override.valid === true) continue;
     if (r.pct == null) { errors.push({ row: id, error: r.error ? String(r.error) : 'no verdict — re-run', source: m.src.file }); continue; }
     if (r.pass) continue;
     failing.push(id);
@@ -505,8 +509,8 @@ export function buildTriage(input, runParity = null) {
   const grouped = new Set(out.flatMap((g) => g.rows.map((r) => r.row))).size;
   return {
     _provenance: { writtenBy: 'gate-triage.mjs', gate, width, inputs: sources.map((s) => ({ file: s.file, writtenAt: s.writtenAt ?? null, width: (s.prov && s.prov.breakpoint) ?? null, edsHost: (s.prov && s.prov.edsHostOverride) || null, rows: (s.rows || []).length })), coverage: coverageFiles, frozen: [...frozen], hot, parity: parity ? 'on' : 'off', presence: (parity && presence) || null },
-    totals: { rows: tableRows.length, failing: failing.length, errors: errors.length, grouped, share: failing.length ? Math.round((grouped / failing.length) * 1000) / 1000 : null, groups: out.length, routed: out.filter((g) => g.route === 'foundation-request').length },
-    groups: out, ungrouped, errors,
+    totals: { rows: tableRows.length, failing: failing.length, errors: errors.length, inconclusive: inconclusive.length, grouped, share: failing.length ? Math.round((grouped / failing.length) * 1000) / 1000 : null, groups: out.length, routed: out.filter((g) => g.route === 'foundation-request').length },
+    groups: out, ungrouped, errors, inconclusive,
   };
 }
 
@@ -550,7 +554,7 @@ export function formatTriage(t) {
   const share = tt.share == null ? 'n/a' : `${(tt.share * 100).toFixed(1)} %`;
   const nSummary = pv.inputs.filter((i) => basename(i.file) === 'summary.json').length; const nRuns = pv.inputs.length - nSummary;
   const newest = pv.inputs.map((i) => i.writtenAt || '').sort(cmp).pop() || '-';
-  const L = [`# Gate triage — ${tt.failing} failing rows, ${tt.grouped} in ${tt.groups} shared-cause groups (${share})`, '',
+  const L = [`# Gate triage — ${tt.failing} failing rows, ${tt.grouped} in ${tt.groups} shared-cause groups (${share})${tt.inconclusive ? `, ${tt.inconclusive} inconclusive` : ''}`, '',
     `Gate table \`${pv.gate}\` at ${pv.width} px · ${pv.inputs.length} table(s) (${nSummary} summary.json, ${nRuns} runs/*.json; newest ${newest}) · ${tt.rows} pages, ${tt.errors} without verdict · parity ${pv.parity} · hot band > ${pv.hot} % · frozen ${pv.frozen.join(' ')}`, '',
     'Advisory — the rows stay the verdict; act on causes with rows on your own pages: fix by cause, re-gate the named scope; 3 fix rounds per page, then the re-prototype decision. Foundation requests are re-gated at C-final, after the queue is applied.', '',
     '| # | cause | rows | pages | criteria | route | property deltas | re-gate scope |', '|---|---|---|---|---|---|---|---|'];
@@ -571,6 +575,9 @@ export function formatTriage(t) {
   else L.push('none');
   L.push('', '## No verdict (re-run)', '');
   if (t.errors.length) for (const e of t.errors) L.push(`- ${e.row} — ${cell(e.error)} (${e.source})`); else L.push('none');
+  L.push('', '## Inconclusive — fix the capture, not the page', '');
+  const inc = t.inconclusive || [];
+  if (inc.length) for (const x of inc) L.push(`- ${x.row} — ${cell(x.reasons.join('; ') || 'no verdict')} → fix the capture — \`--hide\` / presence.json — not the page (${x.source})`); else L.push('none');
   return `${L.join('\n')}\n`;
 }
 
@@ -694,7 +701,7 @@ function main(argv) {
   }
   for (const s of log) out(s);
   const sum = (k) => triages.reduce((a, x) => a + x.t.totals[k], 0);
-  const totals = { failing: sum('failing'), grouped: sum('grouped'), share: sum('failing') ? Math.round((sum('grouped') / sum('failing')) * 1000) / 1000 : null, groups: sum('groups'), routed: sum('routed') };
+  const totals = { failing: sum('failing'), grouped: sum('grouped'), share: sum('failing') ? Math.round((sum('grouped') / sum('failing')) * 1000) / 1000 : null, groups: sum('groups'), routed: sum('routed'), ...(sum('inconclusive') ? { inconclusive: sum('inconclusive') } : {}) };
   if (opts.json) console.log(JSON.stringify({ totals, triages: triages.map((x) => x.t) }, null, 2));
   else console.log(JSON.stringify(totals));
   return 0;
