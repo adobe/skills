@@ -291,7 +291,7 @@ resetArgs();
 r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
 check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
   && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --json stardust/replica/gates/consent1-1440/live-shot.json --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`
-  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --json stardust/replica/gates/consent1-1440/build-shot.json --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --settle --json stardust/replica/gates/consent1-1440/build-shot.json --consent ${CONSENT} --dismiss ${EXTRA} --locale en-US`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
 check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
 check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
 resetArgs(); resetArgv();
@@ -303,6 +303,8 @@ check('a default round dismisses with the built-in candidates: no overlay flag o
 check('without --hide and presence.json no capture or probe gets --hide', r.status === 0 && stitchArgv().length === 2 && stitchArgv().every((a) => hideArg(a) === undefined)
   && ['content-diff-c2.txt', 'visual-diff-c2.txt', 'clip-c2.txt', 'chrome-parity-c2.txt'].every((f) => { const a = argvIn(evidence('consent2', f)); return a && hideArg(a) === undefined; })
   && !/retaking/.test(r.stderr), `${JSON.stringify(stitchArgv())} ${r.stderr}`);
+check('the build capture settles like the live one: --settle on both stitches', stitchArgv().map((a) => a[0]).join(',') === 'LIVE,BUILD'
+  && stitchArgv().every((a) => a.filter((x) => x === '--settle').length === 1), JSON.stringify(stitchArgv()));
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c3', '--full', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGS: argsFile });
 check('--no-dismiss reaches both captures as stitch-shot --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2

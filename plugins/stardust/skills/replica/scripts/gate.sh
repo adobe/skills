@@ -1,15 +1,16 @@
 #!/bin/bash
 # skills/replica/scripts/gate.sh — one pixel-gate round in one command
 #
-# Stitches both sides (live capture CACHED across iterations — hit
-# minimization, source-fidelity-gate.md § Iteration discipline), reads the
-# horizontal-overflow assert from the build capture's own overflow line, runs
-# pixel-compare, and prints the verdict lines that drive the loop (size /
-# height delta / differing % / hot bands / overflow). The prototype/build side
-# is re-captured every round; the live side only when live.png is absent, was
-# taken hiding a different list (--hide) or has no live.json recording the
-# overlay-left check — delete it explicitly to re-take for anything else (site
-# changed, capture hardening changed, a new --consent / --dismiss selector).
+# Stitches both sides, each settled (--settle — one symmetric instrument; live
+# capture CACHED across iterations — hit minimization, source-fidelity-gate.md
+# § Iteration discipline), reads the horizontal-overflow assert from the build
+# capture's own overflow line, runs pixel-compare, and prints the verdict lines
+# that drive the loop (size / height delta / differing % / hot bands /
+# overflow). The prototype/build side is re-captured every round; the live side
+# only when live.png is absent, was taken hiding a different list (--hide) or
+# has no live.json recording the overlay-left check — delete it explicitly to
+# re-take for anything else (site changed, capture hardening changed, a new
+# --consent / --dismiss selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
@@ -324,9 +325,10 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
 fi
 
 # Live side: captured once per breakpoint per full gate run and reused
-# (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
-# round's overlay dismissal, header § Overlay dismissal). Never swallow the
-# output — exit 3 here means "blocked, escalate --headed", not "skip".
+# (--settle: live JS-heavy pages need the lazyload pass — the build side
+# settles the same way; STITCH_OPTS: the round's overlay dismissal, header
+# § Overlay dismissal). Never swallow the output — exit 3 here means
+# "blocked, escalate --headed", not "skip".
 # live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, overlayLeft, fontsFailed,
 # at) — gate-all reads it before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its
 # delete-to-retake rule), and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json
@@ -399,15 +401,15 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 fi
 
-# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
-# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there). Its stdout
-# is the overflow evidence (header § Horizontal-overflow assert): each attempt rewrites $OVF, so the last one decides;
-# its record goes to build-shot.json (deleted first). An overlay-left line there is no verdict (exit 1) — before
-# pixel-compare and the overflow verdict line.
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); settled like the live side
+# (--settle: the same lazyload pass and post-load wait) with the same overlay flags — a symmetric instrument (the build
+# has nothing to dismiss, so the flags are no-ops there). Its stdout is the overflow evidence (header § Horizontal-
+# overflow assert): each attempt rewrites $OVF, so the last one decides; its record goes to build-shot.json (deleted
+# first). An overlay-left line there is no verdict (exit 1) — before pixel-compare and the overflow verdict line.
 OVF="$DIR/overflow-$LBL.txt"
 capture_build() {
   rm -f "$DIR/build-shot.json"
-  capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --json "$DIR/build-shot.json" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$OVF"
+  capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --settle --json "$DIR/build-shot.json" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"} > "$OVF"
   local rc=$?
   cat "$OVF"
   return $rc
