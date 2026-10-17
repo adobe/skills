@@ -173,8 +173,8 @@ const ownText = (div) => (div.children || []).map((c) => (c.tag === '#text' ? c.
  * record's node array: h1–h6 → heading; p li dt dd blockquote figcaption td th pre → link when the
  * container's only content is a link (an `a`, or strong/em wrapping a lone `a`), else text — the outermost
  * container only; a div cell's own text (direct text and inline children) → text; img → image with its alt as
- * text. Empty containers and cells give none. `sel` is a path from the node (`div[1]/div[2]/p[1]`); `key` is
- * unit-geometry's keyed() (duplicates get ` #2`).
+ * text (for its key only: alignment and confidence skip images). Empty containers and cells give none. `sel` is
+ * a path from the node (`div[1]/div[2]/p[1]`); `key` is unit-geometry's keyed() (duplicates get ` #2`).
  */
 export function fragmentsOf(nodes) {
   const keyed = requireKeyed();
@@ -198,7 +198,9 @@ export function fragmentsOf(nodes) {
 }
 
 // --- text alignment ----------------------------------------------------------------------------------
-const textFragments = (fragments) => (fragments || []).map((f) => ({ key: f.key, s: squash(f.text) })).filter((f) => f.s);
+// Cell text only: an image's alt is an attribute and the source index holds text nodes only (R17).
+const textFragments = (fragments) => (fragments || []).filter((f) => f && f.role !== 'image')
+  .map((f) => ({ key: f.key, s: squash(f.text) })).filter((f) => f.s);
 const lengthOf = (frags) => frags.reduce((n, f) => n + f.s.length, 0);
 
 /** The deepest elements at or under `start` whose text contains `s`. */
@@ -213,11 +215,12 @@ function deepest(index, start, s) {
 }
 
 /**
- * alignBlock(index, fragments) → { anchor, confidence, covered, total, unmatched }. Text fragments are those
- * with a non-empty squashed text; total = the sum of their lengths. Each one covers (once) the deepest
- * elements under body containing it and all their ancestors up to body; the anchor is the element covering
- * the most, then the deepest, then the first in document order; confidence = covered / total (3 decimals);
- * unmatched = the keys of fragments found nowhere. No text fragment → anchor null and zeros.
+ * alignBlock(index, fragments) → { anchor, confidence, covered, total, unmatched }. Text fragments are the
+ * non-image fragments with a non-empty squashed text (an image's alt never counts); total = the sum of their
+ * lengths. Each one covers (once) the deepest elements under body containing it and all their ancestors up to
+ * body; the anchor is the element covering the most, then the deepest, then the first in document order;
+ * confidence = covered / total (3 decimals); unmatched = the keys of text fragments found nowhere. No text
+ * fragment (an image-only block included) → anchor null and zeros.
  */
 export function alignBlock(index, fragments) {
   const frags = textFragments(fragments);
@@ -252,7 +255,7 @@ export function lca(index, els) {
   return a;
 }
 
-/** Share (3 decimals) of the fragments' squashed text contained in `el`'s text; 0 without text or element. */
+/** Share (3 decimals) of the text fragments' squashed text (images skipped, as in alignBlock) contained in `el`'s text; 0 without text or element. */
 export function coveredShare(index, el, fragments) {
   const frags = textFragments(fragments);
   const total = lengthOf(frags);

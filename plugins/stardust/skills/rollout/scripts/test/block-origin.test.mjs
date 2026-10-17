@@ -291,6 +291,32 @@ check('alignBlock: a block without text has no anchor', () => {
   assert.deepEqual(bo.alignBlock(idx, []), { anchor: null, confidence: 0, covered: 0, total: 0, unmatched: [] });
 });
 
+// Image alt is an attribute, never source text: it neither aligns a block nor counts toward its confidence (R17).
+const WITH_ALT = blockNode('<div class="teaser"><div><div><picture><img src="a.jpg" alt="Smiling crew at the opening"></picture></div><div><h3>First teaser</h3><p>Opening card body.</p></div></div></div>');
+const ALT_ONLY = blockNode('<div class="hero"><div><div><picture><img src="hero.jpg" alt="Explore the teaser grid"></picture></div></div></div>');
+
+check('alignBlock: image alt text does not count — a perfect text match with an alt-carrying image scores 1', () => {
+  const idx = bo.indexSource(ALIGN_SRC);
+  const f = bo.fragmentsOf(WITH_ALT);
+  assert.deepEqual(f.map((x) => [x.role, x.text]), [['image', 'Smiling crew at the opening'], ['heading', 'First teaser'], ['text', 'Opening card body.']], 'fragmentsOf keeps the image');
+  const a = bo.alignBlock(idx, f);
+  assert.equal(a.anchor, idx.meta.get(el(idx, 'h3', 'First teaser')).parent);
+  assert.deepEqual({ ...a, anchor: undefined }, { anchor: undefined, confidence: 1, covered: 27, total: 27, unmatched: [] });
+});
+
+check('alignBlock: an image-only block whose alt equals a page heading has no anchor (position fallback)', () => {
+  const idx = bo.indexSource(ALIGN_SRC);
+  const f = bo.fragmentsOf(ALT_ONLY);
+  assert.deepEqual(f.map((x) => [x.role, x.text, x.key]), [['image', 'Explore the teaser grid', 'image:explore the teaser grid']]);
+  assert.deepEqual(bo.alignBlock(idx, f), { anchor: null, confidence: 0, covered: 0, total: 0, unmatched: [] });
+});
+
+check('coveredShare: image alt text does not count', () => {
+  const idx = bo.indexSource(ALIGN_SRC);
+  assert.equal(bo.coveredShare(idx, idx.meta.get(el(idx, 'h3', 'First teaser')).parent, bo.fragmentsOf(WITH_ALT)), 1);
+  assert.equal(bo.coveredShare(idx, el(idx, 'h2', 'Explore the teaser grid'), bo.fragmentsOf(ALT_ONLY)), 0);
+});
+
 check('lca: the lowest common ancestor element; the element itself for one; null for none', () => {
   const idx = bo.indexSource(ALIGN_SRC);
   const h3 = el(idx, 'h3', 'First teaser');
@@ -355,7 +381,6 @@ catch (e) { console.log(\`error: \${e.message}\`); }`;
   ok(r);
   assert.equal(r.stdout.trim(), 'text:hi there');
 });
-
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');
