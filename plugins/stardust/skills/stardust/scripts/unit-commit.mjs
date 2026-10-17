@@ -23,23 +23,31 @@
 //      stardust/deploy/media-ledger.json and the unit's own stardust/rollout/units/<unit>.paths.
 // The lock is a file, stardust/.work/git.lock, created with open(…, 'wx') and holding one JSON line
 // {pid, host, at, unit}. A waiter polls every 200 ms up to --wait-s. A lock whose pid is not running
-// on this host (kill -0 → ESRCH), or untouched for 300 s, is reaped by renaming it aside and checking
-// the renamed file is the very one judged stale (inode, mtime, content); a lock another process took
-// in between is put back, never removed. The holder touches the lock before every git step and
-// re-reads it: a lock that is no longer its own stops the run before the next stage, commit or push.
+// on this host (kill -0 → ESRCH), or untouched for 300 s (the holder touches it every 30 s and before
+// every git step, so only a frozen holder goes stale), is reaped by renaming it aside and checking the
+// renamed file is the very one judged stale (inode, mtime, content); a lock another process took in
+// between is put back, never removed. A lock that is no longer the holder's own stops its run before
+// the next stage, commit or push.
 // The commit takes the set's changed files only (`git commit -- <files>`); a failed commit unstages
-// the set. --push: `git pull --rebase --autostash` then `git push`, up to 3 retries each after a
-// backoff and a fresh pull; a rebase conflict is aborted (no rebase left in progress, the autostash
-// comes back) and the local commit kept; an autostash that rebased but did not re-apply cleanly (git
-// keeps it in the stash list, the work tree holds conflict markers) stops before the push. A merge or
-// rebase in progress, or unmerged index entries, refuse the run before anything is staged — staging
-// a file with conflict markers would commit them. Exactly one status line on stdout in every outcome;
+// the set. --push: `git fetch`; only when the upstream has commits HEAD lacks, `git pull --rebase
+// --autostash` (so other processes' uncommitted and staged edits are not sent through a stash when
+// nothing moved); then `git push` — up to 3 retries, each after a backoff and a fresh fetch. A rebase
+// conflict is aborted (no rebase left in progress, the autostash comes back) and the local commit
+// kept; an autostash that rebased but did not re-apply cleanly (git keeps it in the stash list, the
+// work tree holds conflict markers) stops before the push. The status line names the commit as it
+// was pushed (a rebase rewrites it). A merge or rebase in progress, or unmerged index entries, refuse
+// the run before anything is staged — staging a file with conflict markers would commit them.
+// Every git step is bounded (fetch, pull, push 60 s; local steps 300 s) and runs in its own process
+// group: a timed-out step's group is ended and the step failed (a timed-out rebase is aborted).
+// SIGINT / SIGTERM / SIGHUP are handled after the current git step (a terminal's Ctrl-C reaches this
+// script, not the step): the run stops at the next check with its exit-2 line and releases the lock;
+// a second signal ends the running git step. Exactly one status line on stdout in every outcome;
 // git's chatter is captured (a failing step's last git line goes to stderr, URL credentials redacted).
 // Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 everything else —
 // usage, not a git work tree, missing .paths, unreadable coverage, lock timeout, nothing to commit,
 // a merge/rebase in progress or unmerged files, commit failure, no upstream, rebase conflict, an
-// autostash that did not re-apply, push failure.
-import { spawnSync } from 'node:child_process';
+// autostash that did not re-apply, push failure, a timed-out step, a signal.
+import { spawn } from 'node:child_process';
 import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
@@ -56,8 +64,12 @@ export const STALE_MS = 300_000;
 export const POLL_MS = 200;
 export const DEFAULT_WAIT_S = 120;
 export const PUSH_RETRIES = 3;
+export const NET_TIMEOUT_MS = 60_000; // fetch, pull, push
+export const LOCAL_TIMEOUT_MS = 300_000; // add, commit (hooks), reset, …
+const HEARTBEAT_MS = 30_000;
 const BACKOFF_MS = 750;
 const GIT_LOCK_RETRIES = 20; // × 500 ms: another git command in the same work tree holding index.lock / a ref lock
+const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 const PAGES_REL = 'stardust/rollout/coverage/pages.json';
 const COVERAGE_DIR = 'stardust/rollout/coverage';
 const SHARED = ['stardust/rollout/progress.json', 'stardust/deploy/media-ledger.json'];
@@ -83,27 +95,35 @@ The stage set (only files that exist and are not git-ignored; deduped, sorted):
     stardust/rollout/units/<unit>.paths
 Lock: ${LOCK_REL} (one JSON line: pid, host, ISO time, unit), created atomically and waited
   for up to --wait-s seconds (default ${DEFAULT_WAIT_S}, polled every ${POLL_MS} ms). A lock whose pid is not
-  running on this host, or untouched for ${STALE_MS / 1000} s, is reaped (a lock another process just took is
-  never removed). Held from staging to the last push; released on every exit.
+  running on this host, or untouched for ${STALE_MS / 1000} s (the holder touches it every ${HEARTBEAT_MS / 1000} s), is reaped
+  (a lock another process just took is never removed). Held from staging to the last push;
+  released on every exit.
 Steps: git add -- <set>; nothing in the set differs from HEAD → exit 2 "nothing to commit" (with
   --push and the branch ahead of its upstream: push only, "nothing new; pushed"). Otherwise
   git commit -q -m <msg> -- <changed files of the set>: anything else staged stays staged and out
   of the commit; a failed commit (hook, identity) unstages the set. Default message
   "C-deliver unit <unit>: <p> pages, <f> files" (p = path lines, f = files committed).
-  --push: git pull --rebase --autostash, then git push; on failure up to ${PUSH_RETRIES} retries, each after a
-  backoff and a fresh pull. A rebase conflict is aborted (no rebase left in progress, the
-  autostash comes back) and the local commit kept; an autostash that does not re-apply cleanly
-  (git keeps it in the stash list) stops before the push.
+  --push: git fetch; git pull --rebase --autostash only when the upstream has commits HEAD lacks
+  (nothing moved → no stash round trip for other processes' edits); then git push. On failure up
+  to ${PUSH_RETRIES} retries, each after a backoff and a fresh fetch. A rebase conflict is aborted (no rebase
+  left in progress, the autostash comes back) and the local commit kept; an autostash that does
+  not re-apply cleanly (git keeps it in the stash list) stops before the push.
   Refused before staging: a merge or rebase in progress, unmerged files in the index.
+Time limits: fetch, pull and push ${NET_TIMEOUT_MS / 1000} s each, local git steps ${LOCAL_TIMEOUT_MS / 1000} s; a step over its limit
+  failed — its process group (git, hooks, transport) is ended; a timed-out rebase is aborted.
+Signals: SIGINT / SIGTERM / SIGHUP are handled after the current git step (each step runs in its
+  own process group, so a terminal's Ctrl-C does not cut it short) — the run stops at the next
+  check with its exit-2 line (the set unstaged, or the local commit kept and named) and releases
+  the lock; a second signal ends the running git step.
 Output: exactly one status line on stdout, e.g.
-  "unit-commit c1: committed 1a2b3c4 (5 files), pushed"
+  "unit-commit c1: committed 1a2b3c4 (5 files), pushed" (the commit as pushed, after any rebase)
   git's own output is captured; a failing git step's last line goes to stderr (credentials redacted).
 Writes: a git commit (and a push with --push); the lock file under stardust/.work/ while it runs.
 Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 usage, not a git
   work tree, missing units/<unit>.paths, unreadable coverage, lock timeout, nothing to commit, a
   merge or rebase in progress or unmerged files, commit failure, no upstream, rebase conflict, an
-  autostash that did not re-apply, push failure — nothing half-done (a commit that could not be
-  pushed is kept locally and named).`;
+  autostash that did not re-apply, push failure, a timed-out step, a signal — nothing half-done (a
+  commit that could not be pushed is kept locally and named).`;
 
 export class UsageError extends Error {}
 
@@ -184,7 +204,7 @@ export function judgeLock({ owner, ageMs, host, alive }) {
 export const describeOwner = (o) => (o ? `pid ${o.pid ?? '?'} on ${o.host ?? '?'}${o.at ? ` since ${o.at}` : ''}${o.unit ? ` (unit ${o.unit})` : ''}` : 'an owner that left no record');
 
 const byCodePoint = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
-const sleep = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code !== 'ESRCH'; } };
 const redact = (s) => String(s || '').replace(/([a-z][a-z0-9+.-]*:\/\/)[^/\s@]+@/gi, '$1***@');
 const lastLine = (s) => redact(s).trim().split('\n').map((l) => l.trim()).filter(Boolean).pop() || '';
@@ -223,13 +243,15 @@ function reapLock(lockAbs, seen) {
   }
 }
 
-/** Take the git lock: { ok: true, record } or { ok: false, owner } after waitMs. */
-export function acquireGitLock(lockAbs, { unit, waitMs, onWait = () => {}, onReap = () => {} }) {
+/** Take the git lock: { ok: true, record }, { ok: false, owner } after waitMs, or { ok: false, stopped } when `stopped()` says so. */
+export async function acquireGitLock(lockAbs, { unit, waitMs, onWait = () => {}, onReap = () => {}, stopped = () => null }) {
   mkdirSync(dirname(lockAbs), { recursive: true });
   const host = hostname();
   const deadline = Date.now() + waitMs;
   let told = false;
   for (;;) {
+    const why = stopped();
+    if (why) return { ok: false, stopped: why };
     const record = `${JSON.stringify({ pid: process.pid, host, at: new Date().toISOString(), unit })}\n`;
     let fd = null;
     try { fd = openSync(lockAbs, 'wx'); } catch (e) { if (e.code !== 'EEXIST') throw e; }
@@ -243,71 +265,125 @@ export function acquireGitLock(lockAbs, { unit, waitMs, onWait = () => {}, onRea
     }
     const seen = inspectLock(lockAbs);
     if (!seen) continue;
-    const why = judgeLock({ owner: seen.owner, ageMs: Date.now() - seen.mtimeMs, host, alive: pidAlive });
-    if (why) {
+    const stale = judgeLock({ owner: seen.owner, ageMs: Date.now() - seen.mtimeMs, host, alive: pidAlive });
+    if (stale) {
       const res = reapLock(lockAbs, seen);
-      if (res === 'reaped') { onReap(seen.owner, why); continue; }
+      if (res === 'reaped') { onReap(seen.owner, stale); continue; }
       if (res === 'gone') continue;
       // restored / lost the race: someone holds a live lock now — wait for it like any other
     }
     if (Date.now() >= deadline) return { ok: false, owner: seen.owner };
     if (!told) { told = true; onWait(seen.owner); }
-    sleep(POLL_MS);
+    await sleep(POLL_MS);
   }
 }
 
 // ---- git ---------------------------------------------------------------------------------------
 const GIT_ENV = { ...process.env, LC_ALL: 'C', GIT_TERMINAL_PROMPT: '0' };
-function git(args, { input, retryLocks = false } = {}) {
+const RUN = { child: null, signal: null }; // the running git step; the first signal received
+const LOCKED_RE = /index\.lock|cannot lock ref|unable to create '[^']*\.lock'/i;
+
+// One git step, bounded: past timeoutMs its whole process group (git, its hooks, its transport) gets
+// SIGTERM, SIGKILL 5 s later, and the step counts as failed. Each step runs in its own process group,
+// so a terminal's Ctrl-C reaches this script only — the step finishes unless a second signal stops it.
+const GROUPS = process.platform !== 'win32';
+function gitOnce(args, input, timeoutMs) {
+  return new Promise((done, fail) => {
+    const child = spawn('git', args, { env: GIT_ENV, stdio: ['pipe', 'pipe', 'pipe'], detached: GROUPS });
+    let out = ''; let err = ''; let killedBy = null; let settled = false;
+    const signalTree = (sig) => { try { if (GROUPS) process.kill(-child.pid, sig); else child.kill(sig); } catch { /* already gone */ } };
+    const stopStep = (why) => {
+      if (killedBy) return;
+      killedBy = why;
+      signalTree('SIGTERM');
+      setTimeout(() => { if (child.exitCode === null && child.signalCode === null) signalTree('SIGKILL'); }, 5000).unref();
+    };
+    RUN.child = { stop: stopStep };
+    child.stdout.setEncoding('utf8').on('data', (d) => { out += d; });
+    child.stderr.setEncoding('utf8').on('data', (d) => { err += d; });
+    child.stdin.on('error', () => { /* git exited before reading its input */ });
+    const timer = setTimeout(() => stopStep('timeout'), timeoutMs);
+    const settle = () => { settled = true; clearTimeout(timer); if (RUN.child && RUN.child.stop === stopStep) RUN.child = null; };
+    // a stopped step: do not wait for a straggler that still holds the output pipes
+    child.on('exit', () => { if (killedBy) { child.stdout.destroy(); child.stderr.destroy(); } });
+    child.on('error', (e) => {
+      if (settled) return; settle();
+      if (e.code === 'ENOENT') fail(new Error('git not found on PATH'));
+      else done({ code: -1, out, err: `${err}${e.message}\n`, killed: false });
+    });
+    child.on('close', (code, signal) => {
+      if (settled) return; settle();
+      const step = args.find((a) => !a.startsWith('-')) || 'step';
+      const why = killedBy === 'timeout' ? `git ${step} timed out after ${timeoutMs / 1000} s\n` : killedBy ? `git ${step} stopped by a second signal\n` : signal ? `git ${step} ended by ${signal}\n` : '';
+      done({ code: code ?? -1, out, err: `${err}${why}`, killed: !!killedBy || !!signal, timedOut: killedBy === 'timeout' });
+    });
+    child.stdin.end(input ?? '');
+  });
+}
+
+async function git(args, { input, retryLocks = false, timeoutMs = LOCAL_TIMEOUT_MS } = {}) {
   for (let i = 0; ; i += 1) {
-    const r = spawnSync('git', args, { encoding: 'utf8', env: GIT_ENV, input, maxBuffer: 256 * 1024 * 1024 });
-    if (r.error && r.error.code === 'ENOENT') throw new Error('git not found on PATH');
-    const res = { code: r.status ?? -1, out: r.stdout || '', err: `${r.stderr || ''}${r.error ? r.error.message : ''}` };
-    if (res.code !== 0 && retryLocks && i < GIT_LOCK_RETRIES && /index\.lock|cannot lock ref|unable to create '[^']*\.lock'/i.test(res.err)) { sleep(500); continue; }
+    const res = await gitOnce(args, input, timeoutMs);
+    if (res.code !== 0 && !res.killed && retryLocks && i < GIT_LOCK_RETRIES && LOCKED_RE.test(res.err)) { await sleep(500); continue; }
     return res;
   }
 }
 const L = ['--literal-pathspecs'];
-function inProgress() {
+async function inProgress() {
   const names = ['rebase-merge', 'rebase-apply', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'];
-  const r = git(['rev-parse', ...names.flatMap((n) => ['--git-path', n])]);
+  const r = await git(['rev-parse', ...names.flatMap((n) => ['--git-path', n])]);
   if (r.code !== 0) return [];
   const paths = r.out.split('\n').map((l) => l.trim()).filter(Boolean);
   return names.filter((n, i) => paths[i] && existsSync(paths[i]));
 }
-const sha7 = () => { const r = git(['rev-parse', '--short=7', 'HEAD']); return r.code === 0 ? r.out.trim() : '???????'; };
-const currentBranch = () => { const r = git(['symbolic-ref', '-q', '--short', 'HEAD']); return r.code === 0 && r.out.trim() ? r.out.trim() : 'HEAD (detached)'; };
-const upstreamOf = () => { const r = git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']); return r.code === 0 && r.out.trim() ? r.out.trim() : null; };
+const rebasing = async () => (await inProgress()).some((n) => n.startsWith('rebase-'));
+const sha7 = async () => { const r = await git(['rev-parse', '--short=7', 'HEAD']); return r.code === 0 ? r.out.trim() : '???????'; };
+const currentBranch = async () => { const r = await git(['symbolic-ref', '-q', '--short', 'HEAD']); return r.code === 0 && r.out.trim() ? r.out.trim() : 'HEAD (detached)'; };
+const upstreamOf = async () => { const r = await git(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']); return r.code === 0 && r.out.trim() ? r.out.trim() : null; };
 
-// pull --rebase --autostash, then push; up to PUSH_RETRIES retries. Returns { ok } or { fail, err }.
-function pullAndPush(guard) {
+// fetch; rebase (pull --rebase --autostash) only when the upstream moved; push. Up to PUSH_RETRIES
+// retries. Returns { ok, sha } (sha = the commit as pushed) or { fail, err, why }.
+async function pullAndPush(stop) {
   let err = '';
   for (let attempt = 0; attempt <= PUSH_RETRIES; attempt += 1) {
-    if (attempt) sleep(BACKOFF_MS * attempt + Math.floor(Math.random() * 250));
-    if (!guard()) return { fail: 'lost' };
-    const pull = git(['pull', '--rebase', '--autostash', '-q']);
-    if (inProgress().some((n) => n.startsWith('rebase-'))) {
-      const abort = git(['rebase', '--abort']);
-      return { fail: abort.code === 0 && !inProgress().some((n) => n.startsWith('rebase-')) ? 'conflict' : 'abort-failed', err: abort.code === 0 ? pull.err : abort.err };
+    if (attempt) await sleep(BACKOFF_MS * attempt + Math.floor(Math.random() * 250));
+    let why = stop();
+    if (why) return { fail: 'stopped', why };
+    const fetch = await git(['fetch', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+    if (fetch.code !== 0) { err = fetch.err; continue; }
+    const behind = await git(['rev-list', '--count', 'HEAD..@{u}']);
+    if (behind.code !== 0) { err = behind.err; continue; }
+    if (Number(behind.out.trim()) > 0) {
+      why = stop();
+      if (why) return { fail: 'stopped', why };
+      const pull = await git(['pull', '--rebase', '--autostash', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+      if (await rebasing()) {
+        const abort = await git(['rebase', '--abort']);
+        if (abort.code !== 0 || await rebasing()) return { fail: 'abort-failed', err: abort.err || pull.err };
+        if (pull.killed) { err = pull.err; continue; } // a timed-out or stopped rebase: aborted, then the next attempt
+        return { fail: 'conflict', err: pull.err };
+      }
+      if (/Applying autostash resulted in conflicts/i.test(pull.err)) return { fail: 'autostash', err: pull.err };
+      if (pull.code !== 0) { err = pull.err; continue; }
     }
-    if (/Applying autostash resulted in conflicts/i.test(pull.err)) return { fail: 'autostash', err: pull.err };
-    if (pull.code !== 0) { err = pull.err; continue; }
-    if (!guard()) return { fail: 'lost' };
-    const push = git(['push', '-q']);
-    if (push.code === 0) return { ok: true };
+    why = stop();
+    if (why) return { fail: 'stopped', why };
+    const sha = await sha7(); // the commit as it is pushed — after a rebase it is not the one committed
+    const push = await git(['push', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+    if (push.code === 0) return { ok: true, sha };
     err = push.err;
   }
   return { fail: 'push', err };
 }
 
-function pushOutcome(res, okLine) {
-  if (res.ok) return [0, okLine];
-  const sha = sha7();
+async function pushOutcome(res, okLine) {
+  if (res.ok) return [0, okLine(res.sha)];
+  const sha = await sha7();
   if (res.err) console.error(`unit-commit: git: ${lastLine(res.err)}`);
   if (res.fail === 'conflict') return [2, `rebase conflict: aborted; local commit ${sha} kept, not pushed`];
   if (res.fail === 'abort-failed') return [2, `rebase conflict: git rebase --abort failed — a rebase is still in progress; resolve it by hand; local commit ${sha} kept, not pushed`];
   if (res.fail === 'autostash') return [2, `rebased, but the autostash did not re-apply cleanly (kept in git stash list); local commit ${sha} kept, not pushed`];
-  if (res.fail === 'lost') return [2, `lock ${LOCK_REL} was taken over by another process; local commit ${sha} kept, not pushed`];
+  if (res.fail === 'stopped') return [2, `${res.why}; local commit ${sha} kept, not pushed`];
   return [2, `push failed after ${PUSH_RETRIES} retries; local commit ${sha} kept`];
 }
 
@@ -339,13 +415,13 @@ export function parseArgs(argv) {
 }
 
 // ---- the run (returns [exitCode, status]) ------------------------------------------------------
-function underLock(opts, lines, guard) {
+async function underLock(opts, lines, stop) {
   const { unit } = opts;
   const cwd = process.cwd();
-  const busy = inProgress();
+  const busy = await inProgress();
   if (busy.length) return [2, `a ${busy.join(' / ')} is in progress in this work tree — finish it first; nothing staged`];
   // unmerged entries (e.g. an autostash that did not re-apply): staging one would commit its conflict markers
-  const um = git(['ls-files', '-u', '-z']);
+  const um = await git(['ls-files', '-u', '-z']);
   const unmerged = [...new Set(um.out.split('\0').filter(Boolean).map((l) => l.split('\t')[1]).filter(Boolean))].sort(byCodePoint);
   if (unmerged.length) return [2, `unmerged files in the index (${unmerged.slice(0, 3).join(', ')}${unmerged.length > 3 ? ', …' : ''}) — resolve them first; nothing staged`];
 
@@ -367,7 +443,7 @@ function underLock(opts, lines, guard) {
   let set = present;
   if (set.length) {
     // check-ignore takes plain paths (it rejects pathspec magic, --literal-pathspecs included)
-    const ig = git(['check-ignore', '-z', '--stdin'], { input: `${set.join('\0')}\0` });
+    const ig = await git(['check-ignore', '-z', '--stdin'], { input: `${set.join('\0')}\0` });
     if (ig.code !== 0 && ig.code !== 1) { console.error(`unit-commit: git: ${lastLine(ig.err)}`); return [2, 'git check-ignore failed; nothing staged']; }
     const ignored = new Set(ig.code === 0 ? ig.out.split('\0').filter(Boolean) : []);
     set = set.filter((f) => !ignored.has(f));
@@ -376,12 +452,16 @@ function underLock(opts, lines, guard) {
 
   let changed = [];
   if (set.length) {
-    if (!guard()) return [2, `lock ${LOCK_REL} was taken over by another process; nothing staged`];
-    const add = git([...L, 'add', '--', ...set], { retryLocks: true });
-    if (add.code !== 0) { console.error(`unit-commit: git: ${lastLine(add.err)}`); return [2, 'git add failed; nothing committed']; }
-    const diff = git([...L, 'diff', '--cached', '--relative', '--no-renames', '--name-only', '-z', '--', ...set]);
+    const why = stop();
+    if (why) return [2, `${why}; nothing staged`];
+    const add = await git([...L, 'add', '--', ...set], { retryLocks: true });
+    if (add.code !== 0) {
+      console.error(`unit-commit: git: ${lastLine(add.err)}`);
+      return [2, 'git add failed; nothing committed'];
+    }
+    const diff = await git([...L, 'diff', '--cached', '--relative', '--no-renames', '--name-only', '-z', '--', ...set]);
     if (diff.code !== 0) {
-      git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
+      await git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
       console.error(`unit-commit: git: ${lastLine(diff.err)}`);
       return [2, 'git diff failed; the set was unstaged, nothing committed'];
     }
@@ -390,32 +470,31 @@ function underLock(opts, lines, guard) {
 
   if (!changed.length) {
     if (!opts.push) return [2, 'nothing to commit'];
-    const up = upstreamOf();
-    if (!up) return [2, `nothing to commit; no upstream for ${currentBranch()}`];
-    const ahead = git(['rev-list', '--count', '@{u}..HEAD']);
-    if (ahead.code !== 0 || !(Number(ahead.out.trim()) > 0)) return [2, `nothing to commit; ${currentBranch()} is not ahead of ${up}`];
-    return pushOutcome(pullAndPush(guard), 'nothing new; pushed');
+    const up = await upstreamOf();
+    if (!up) return [2, `nothing to commit; no upstream for ${await currentBranch()}`];
+    const ahead = await git(['rev-list', '--count', '@{u}..HEAD']);
+    if (ahead.code !== 0 || !(Number(ahead.out.trim()) > 0)) return [2, `nothing to commit; ${await currentBranch()} is not ahead of ${up}`];
+    return pushOutcome(await pullAndPush(stop), () => 'nothing new; pushed');
   }
 
   const message = opts.message ?? `C-deliver unit ${unit}: ${lines.length} pages, ${changed.length} files`;
-  if (!guard()) {
-    git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
-    return [2, `lock ${LOCK_REL} was taken over by another process; the set was unstaged, nothing committed`];
+  const why = stop();
+  if (why) {
+    await git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
+    return [2, `${why}; the set was unstaged, nothing committed`];
   }
-  const commit = git([...L, 'commit', '-q', '-m', message, '--', ...changed], { retryLocks: true });
+  const commit = await git([...L, 'commit', '-q', '-m', message, '--', ...changed], { retryLocks: true });
   if (commit.code !== 0) {
-    git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
+    await git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
     console.error(`unit-commit: git: ${lastLine(commit.err || commit.out)}`);
     return [2, 'commit failed; the set was unstaged, nothing committed'];
   }
-  const sha = sha7();
-  const done = `committed ${sha} (${changed.length} files)`;
-  if (!opts.push) return [0, done];
-  if (!upstreamOf()) return [2, `no upstream for ${currentBranch()}: committed ${sha}, not pushed`];
-  return pushOutcome(pullAndPush(guard), `${done}, pushed`);
+  if (!opts.push) return [0, `committed ${await sha7()} (${changed.length} files)`];
+  if (!(await upstreamOf())) return [2, `no upstream for ${await currentBranch()}: committed ${await sha7()}, not pushed`];
+  return pushOutcome(await pullAndPush(stop), (sha) => `committed ${sha} (${changed.length} files), pushed`);
 }
 
-export function main(argv) {
+export async function main(argv) {
   let printed = false;
   const emit = (unit, line) => { if (printed) return; printed = true; console.log(`unit-commit${unit ? ` ${unit}` : ''}: ${line}`); };
   if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
@@ -426,9 +505,14 @@ export function main(argv) {
     return 2;
   }
   const { unit } = opts;
+  // a signal is handled after the current git step (every step is bounded); a second one ends that step
+  const onSignal = (sig) => {
+    if (!RUN.signal) { RUN.signal = sig; console.error(`unit-commit ${unit}: ${sig} received — stopping after the current git step`); } else if (RUN.child) RUN.child.stop('signal');
+  };
+  for (const s of SIGNALS) process.on(s, onSignal);
   let release = () => {};
   try {
-    const top = git(['rev-parse', '--is-inside-work-tree']);
+    const top = await git(['rev-parse', '--is-inside-work-tree']);
     if (top.code !== 0 || top.out.trim() !== 'true') { emit(unit, 'not inside a git work tree — run from the project root; nothing staged'); return 2; }
     const pathsRel = `stardust/rollout/units/${unit}.paths`;
     let isFile = false;
@@ -437,31 +521,42 @@ export function main(argv) {
     const lines = parsePaths(readFileSync(pathsRel, 'utf8'));
 
     const lockAbs = resolve(LOCK_REL);
-    const got = acquireGitLock(lockAbs, {
+    const got = await acquireGitLock(lockAbs, {
       unit,
       waitMs: opts.waitS * 1000,
       onWait: (o) => console.error(`unit-commit ${unit}: waiting up to ${opts.waitS}s for ${LOCK_REL}, held by ${describeOwner(o)}`),
       onReap: (o, why) => console.error(`unit-commit ${unit}: reaped a stale ${LOCK_REL} (${describeOwner(o)}): ${why}`),
+      stopped: () => (RUN.signal ? `interrupted by ${RUN.signal}` : null),
     });
+    if (got.stopped) { emit(unit, `${got.stopped} while waiting for ${LOCK_REL}; nothing staged`); return 2; }
     if (!got.ok) { emit(unit, `lock ${LOCK_REL} held by ${describeOwner(got.owner)}; waited ${opts.waitS}s — nothing staged`); return 2; }
     const own = () => { try { return readFileSync(lockAbs, 'utf8') === got.record; } catch { return false; } };
+    const touch = () => { try { const t = new Date(); utimesSync(lockAbs, t, t); } catch { /* best effort */ } };
+    // the holder's heartbeat: a live holder never looks "untouched for 300 s", however long a git step runs
+    const beat = setInterval(() => { if (own()) touch(); }, HEARTBEAT_MS);
+    beat.unref();
     let released = false;
-    release = () => { if (released) return; released = true; try { if (own()) rmSync(lockAbs, { force: true }); } catch { /* gone */ } };
+    release = () => { if (released) return; released = true; clearInterval(beat); try { if (own()) rmSync(lockAbs, { force: true }); } catch { /* gone */ } };
     process.once('exit', release);
-    for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.once(sig, () => { release(); emit(unit, `interrupted by ${sig}; lock released`); process.exit(2); });
-    // the holder's heartbeat: still ours → touch (a long push is not "untouched for 300 s") and go on
-    const guard = () => { if (!own()) return false; try { const t = new Date(); utimesSync(lockAbs, t, t); } catch { /* best effort */ } return true; };
-    const [code, line] = underLock(opts, lines, guard);
-    emit(unit, line);
+    // before every git step that changes something: no signal received, and the lock is still ours
+    const stop = () => {
+      if (RUN.signal) return `interrupted by ${RUN.signal}`;
+      if (!own()) return `lock ${LOCK_REL} was taken over by another process`;
+      touch();
+      return null;
+    };
+    const [code, line] = await underLock(opts, lines, stop);
+    emit(unit, RUN.signal && !line.includes('interrupted') ? `${line} (${RUN.signal} received during the last git step)` : line);
     return code;
   } catch (e) {
     emit(unit, `error: ${redact(e.message).split('\n')[0]}`);
     return 2;
   } finally {
     release();
+    for (const s of SIGNALS) process.off(s, onSignal);
   }
 }
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
-if (process.argv[1] && SELF === safeRealpath(process.argv[1])) process.exit(main(process.argv.slice(2)));
+if (process.argv[1] && SELF === safeRealpath(process.argv[1])) process.exit(await main(process.argv.slice(2)));
