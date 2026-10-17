@@ -74,7 +74,13 @@
  *        wait: no slot within it ends the job with exit 124 — no verdict, the
  *        command never ran. The command and its
  *        children run inside the job's slot (env STARDUST_BROWSER_SLOTS=0,
- *        STARDUST_BROWSER_SLOT=<slot file>). Without browser-lock.mjs the job
+ *        STARDUST_BROWSER_SLOT=<slot file>) and STARDUST_BROWSERS_PER_SLOT =
+ *        max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
+ *        STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across
+ *        all jobs; a larger machine raises STARDUST_BROWSER_BUDGET. A budget
+ *        below the slots cannot be held (one browser per slot is the floor):
+ *        the job logs one `run-bg:` line saying so — set STARDUST_BROWSER_SLOTS
+ *        to the budget to hold it. Without browser-lock.mjs the job
  *        runs unlocked after one log line saying so.
  * wait   polls until the named jobs (default: every job unfinished when the
  *        wait began; if none, the latest batch — jobs ended within 10 min of the
@@ -238,7 +244,11 @@ const HELP = `Usage:
   browser-lock.mjs — STARDUST_BROWSER_SLOTS (default 3, 0 = off) across projects, slot files in ~/.stardust/locks/browser/
   (STARDUST_BROWSER_LOCK_DIR); the job waits for it queued, without a limit unless STARDUST_BROWSER_WAIT <s> is set (no
   slot within it = exit 124, no verdict). On a large machine raise STARDUST_BROWSER_SLOTS (the machine budget):
-  RUN_BG_SLOTS above it adds no browser jobs.`;
+  RUN_BG_SLOTS above it adds no browser jobs. The job runs inside its slot (STARDUST_BROWSER_SLOTS=0,
+  STARDUST_BROWSER_SLOT=<slot file>) and STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
+  STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger machine raises
+  STARDUST_BROWSER_BUDGET. A budget below the slots cannot be held (one browser per slot is the floor): one run-bg: line
+  says so — set STARDUST_BROWSER_SLOTS to the budget to hold it.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -341,6 +351,22 @@ export function lockWaitS(env = process.env) {
   return Number.isFinite(s) && s >= 0 ? s : Infinity;
 }
 
+// The browsers one machine-wide slot may run: the machine's browser budget shared by its slots. budget =
+// STARDUST_BROWSER_BUDGET (a positive number, else the default 3 — the contract's 3 browsers across all jobs); slots =
+// STARDUST_BROWSER_SLOTS as set before the wrapper zeroes it for the command (a positive integer, else the default 3 —
+// 0 = lock off and junk alike; run-bg exports the value only while it holds a slot, so 0 never reaches a reader).
+// perSlot = max(1, floor(budget / slots)): a budget below the slots cannot be held — one browser per slot is the floor.
+const DEFAULT_BROWSER_BUDGET = 3;
+const DEFAULT_MACHINE_SLOTS = 3; // browser-lock.mjs's default slot count
+const envNum = (v) => { const t = String(v ?? '').trim(); return t === '' ? NaN : Number(t); };
+function browserBudget(env) {
+  const b = envNum(env.STARDUST_BROWSER_BUDGET); const s = envNum(env.STARDUST_BROWSER_SLOTS);
+  const budget = Number.isFinite(b) && b > 0 ? b : DEFAULT_BROWSER_BUDGET;
+  const slots = Number.isInteger(s) && s > 0 ? s : DEFAULT_MACHINE_SLOTS;
+  return { budget, slots, perSlot: Math.max(1, Math.floor(budget / slots)) };
+}
+export function browsersPerSlot(env = process.env) { return browserBudget(env).perSlot; }
+
 // The machine-wide browser slot for a browser job (lock on, or auto and the argv names a browser instrument).
 // Resolves { st, slot } (slot null = unlocked: not a browser job, STARDUST_BROWSER_SLOTS=0, browser-lock.mjs absent or
 // failing) or { st, timedOut: true } when browser-lock gave up (exit 124 — only under a set STARDUST_BROWSER_WAIT).
@@ -381,8 +407,14 @@ async function runWrapper(dir, name) {
   const held = await machineSlot(dir, st);
   st = held.st;
   if (held.timedOut) { console.log(`run-bg: ${name} ended exit=${DEADLINE_EXIT} (no machine-wide browser slot)`); process.exitCode = DEADLINE_EXIT; return; }
-  // The command spawns with this env: its children run inside the job's slot and never take a second one.
-  if (held.slot) { process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file; }
+  // The command spawns with this env: its children run inside the job's slot and never take a second one, and run at most
+  // STARDUST_BROWSERS_PER_SLOT browsers — computed from the machine's slot count before it is zeroed here.
+  if (held.slot) {
+    const { budget, slots, perSlot } = browserBudget(process.env);
+    if (budget < slots) console.log(`run-bg: STARDUST_BROWSER_BUDGET ${budget} is below STARDUST_BROWSER_SLOTS ${slots} — one browser per slot, ${slots} at most; set STARDUST_BROWSER_SLOTS=${Math.max(1, Math.floor(budget))} to hold the budget`);
+    process.env.STARDUST_BROWSERS_PER_SLOT = String(perSlot);
+    process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file;
+  }
   // The deadline (it starts at launch) is the time the command has; gate-all refuses a roster it cannot finish in it.
   // 0 = no deadline: an inherited value stays.
   if (st.timeoutSec > 0) process.env.RUN_BG_DEADLINE_SEC = String(st.timeoutSec);
