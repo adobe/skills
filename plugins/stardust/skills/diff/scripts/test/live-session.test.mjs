@@ -99,7 +99,7 @@ check('navTimeout: env wins — trimmed, rounded, used as given (no clamp), over
   assert.equal(session.navTimeout({ env: { [NAV_ENV]: '5000' }, crawlLog: file }).ms, 5000, 'below the crawl clamp');
   assert.equal(session.resolveNavTimeoutMs({ env: { [NAV_ENV]: '7000' }, crawlLog: file, fallback: 90000 }), 7000);
 }));
-check('navTimeout: an empty env is unset (no warning); an invalid one falls through with ONE warning per process', () => withCrawlLog(({ file, write }) => {
+check('navTimeout: an empty env is unset (no warning); an invalid one falls through with ONE warning per process', () => withCrawlLog(({ dir, file, write }) => {
   write({ crawl: { navMs: { p95: 30000 } } });
   const quiet = captureStderr(() => {
     for (const v of ['', '   ', undefined]) assert.equal(session.navTimeout({ env: { [NAV_ENV]: v }, crawlLog: file }).source, 'crawl', JSON.stringify(v));
@@ -109,8 +109,10 @@ check('navTimeout: an empty env is unset (no warning); an invalid one falls thro
     assert.equal(session.navTimeout({ env: { [NAV_ENV]: 'abc' }, crawlLog: file }).ms, 60000, 'falls through to the crawl figure');
     for (const v of ['0', '-5', '0.3', 'Infinity', 'NaN', '12s']) {
       const t = session.navTimeout({ env: { [NAV_ENV]: v }, crawlLog: null, fallback: 45000 });
-      assert.deepEqual([t.ms, t.source], [45000, 'default'], v);
+      assert.deepEqual([t.ms, t.source, t.detail], [45000, 'default', `no valid ${NAV_ENV} (${v} ignored) and no crawl.navMs.p95 in (no crawl log)`], v);
     }
+    assert.equal(session.navTimeout({ env: { [NAV_ENV]: ' abc ' }, crawlLog: join(dir, 'absent.json') }).detail,
+      `no valid ${NAV_ENV} (abc ignored) and no crawl.navMs.p95 in ${join(dir, 'absent.json')}`, 'the default detail says the env was set but invalid');
   });
   assert.deepEqual(warned, [`[live-session] ${NAV_ENV}=abc is not a positive number of ms — ignored`], 'one warning, naming the first bad value');
 }));
@@ -214,9 +216,12 @@ await checkAsync('withDeadline: the abandoned promise rejecting after the deadli
     assert.deepEqual(unhandled.map((e) => e.message), []);
   } finally { process.off('unhandledRejection', onUnhandled); }
 });
-check('withDeadline: ms not a finite number > 0 returns the promise unchanged', () => {
-  const p = later(1, () => 1);
-  for (const ms of [0, undefined, null, -5, NaN, Infinity, '5000']) assert.equal(session.withDeadline(p, ms, 'x'), p, String(ms));
+await checkAsync('withDeadline: ms not a finite number > 0, or above setTimeout\'s 2^31 − 1 ms ceiling, returns the promise unchanged', async () => {
+  const p = later(5, () => 1);
+  for (const ms of [0, undefined, null, -5, NaN, Infinity, '5000', 2 ** 31, 3e9]) assert.equal(session.withDeadline(p, ms, 'x'), p, String(ms));
+  const atCeiling = session.withDeadline(p, 2 ** 31 - 1, 'x');
+  assert.notEqual(atCeiling, p, '2^31 − 1 ms is still a real deadline');
+  assert.equal(await atCeiling, 1, 'a fast promise beats it, and its timer is cleared');
 });
 check('isContextDestroyed: the three playwright navigation-teardown messages — not a timeout, an HTTP error, a deadline or a bot challenge', () => {
   for (const msg of ['page.evaluate: Execution context was destroyed, most likely because of a navigation',

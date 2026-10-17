@@ -317,7 +317,8 @@ export function navTimeout({ env = process.env, crawlLog = CRAWL_LOG, fallback =
       return { ms, source: 'crawl', detail: `crawl.navMs.p95 ${p95} ms × 2, clamped to ${NAV_TIMEOUT_MIN_MS}–${NAV_TIMEOUT_MAX_MS} ms (${crawlLog})` };
     }
   }
-  return { ms: fallback, source: 'default', detail: `no ${NAV_TIMEOUT_ENV} and no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'}` };
+  const envNote = raw ? `no valid ${NAV_TIMEOUT_ENV} (${raw} ignored)` : `no ${NAV_TIMEOUT_ENV}`;
+  return { ms: fallback, source: 'default', detail: `${envNote} and no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'}` };
 }
 
 /** navTimeout(opts).ms — the default every navigation helper takes when its caller passes no timeout. */
@@ -330,14 +331,17 @@ export function resolveNavTimeoutMs(opts = {}) {
 // navigates after load). Instruments race each width's whole read against a deadline and retry only a
 // destroyed context (isContextDestroyed), once, on a fresh page.
 
+// node fires a setTimeout longer than 2^31 − 1 ms after 1 ms: an (unclamped) env figure that large would fail every read at once
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
 /**
  * Race `promise` against `ms`: on expiry reject with an Error named 'DeadlineError', message
  * `${label}: deadline ${ms} ms exceeded`. The timer is cleared when the promise settles first; the abandoned
- * promise gets a no-op catch (its late rejection is not an unhandled rejection). `ms` not a finite number > 0
- * → `promise` itself, unchanged (no deadline).
+ * promise gets a no-op catch (its late rejection is not an unhandled rejection). `ms` not a finite number > 0,
+ * or above setTimeout's 2^31 − 1 ms ceiling → `promise` itself, unchanged (no deadline).
  */
 export function withDeadline(promise, ms, label = 'step') {
-  if (!(Number.isFinite(ms) && ms > 0)) return promise;
+  if (!(Number.isFinite(ms) && ms > 0 && ms <= MAX_TIMER_MS)) return promise;
   const work = Promise.resolve(promise);
   work.catch(() => {});
   let timer;
