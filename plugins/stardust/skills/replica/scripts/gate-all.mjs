@@ -183,6 +183,9 @@
  * --eds-host takes a bare host (https:// added) or an http(s) origin URL and is normalised to `<protocol>//<host>`
  * (`edsOrigin`; the summary's `edsHostOverride` records it); a path, query or hash → one stderr line and the usage
  * line, exit 2, before any I/O.
+ * Every flag that takes a value refuses a missing value (the flag last in argv) or one that starts with `-` (another
+ * flag, a negative number): one stderr line `gate-all: <flag> needs a value, got "<value>"` (`got nothing` when
+ * missing) and the usage line, exit 2, before any I/O — `--eds-host --only home` never gates `--only` as a host.
  * Two browser budgets, kept apart: the origin pool (2) is the source's bot budget; the EDS / probe pools (4 / 2) carry
  * no bot risk, but each of their slots is a Chromium — raising them raises this job's Chromium peak (measured: 6 / 4
  * took an 8-page job from 6 to 8 at once). The three flags take integers ≥ 1 (else exit 1). Without a machine-wide
@@ -198,8 +201,9 @@
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg deadline, a page
- * at the round cap, a round of the page in progress) or --eds-host, 1 error, a usage error (an unknown flag or a bad
- * value: --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset, --dismiss) or an empty selection.
+ * at the round cap, a round of the page in progress) or --eds-host or a value flag without its value, 1 error, a usage
+ * error (an unknown flag or a bad value: --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset,
+ * --dismiss) or an empty selection.
  * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
@@ -273,6 +277,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             (both sides headed real Chrome, live.png not reused); a side without one → the probes, logged
   --vh <px>                 stitch chunk height
   --help                    this text
+  A flag that takes a value refuses a missing one or one that starts with "-" (another flag, a negative number): one
+  stderr line — gate-all: <flag> needs a value, got "<value>" (or: got nothing) — and the usage line, exit 2, before any I/O.
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
   INCONCLUSIVE row (no pixel / height verdict, never PASS): a polluted capture — a crawl-fullpage origin fallback, or
   an overlay left after dismissal (or no record of the check) in the stitch's --json record <slug>/<side>-shot.json.
@@ -311,8 +317,8 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   (env, seconds: the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → refused before the
   out dir or any capture: one stderr line "no verdict" naming --timeout <estimate>; exit 2.
 Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg
-  deadline, a page at the round cap, a round of the page in progress) or --eds-host, 1 error, a usage error (an unknown
-  flag or a bad value) or an empty selection.`;
+  deadline, a page at the round cap, a round of the page in progress) or --eds-host or a value flag without its value,
+  1 error, a usage error (an unknown flag or a bad value) or an empty selection.`;
 const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
 
 /**
@@ -362,7 +368,9 @@ export function parseArgs(argv, env = process.env) {
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null, dismiss: [] };
   for (let i = 0; i < rest.length; i += 1) {
-    const a = rest[i]; const v = () => rest[++i];
+    const a = rest[i];
+    // a value flag's value: never missing, never another flag or a dash-led word — the usage line, exit 2, before any I/O
+    const v = () => { const x = rest[++i]; if (x == null || String(x).startsWith('-')) { console.error(`gate-all: ${a} needs a value, got ${x == null ? 'nothing' : JSON.stringify(x)}\n${USAGE}`); process.exit(2); } return x; };
     if (a === '--stage') { o.stage = v(); if (!['published', 'prototype'].includes(o.stage)) { console.error(`--stage must be published or prototype\n\n${HELP}`); process.exit(1); } }
     else if (a === '--proto-base') o.protoBase = v().replace(/\/$/, '');
     else if (a === '--coverage') o.coverage = v(); else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
@@ -377,16 +385,16 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a === '--max-rounds') {
       const raw = v(); const n = Number(raw);
-      if (raw == null || String(raw).trim() === '' || !Number.isInteger(n) || n < 1 || n > MAX_ROUNDS) { console.error(`--max-rounds must be an integer from 1 to ${MAX_ROUNDS} (got ${raw ?? 'nothing'}) — it may only lower the cap; a page at the cap gets another round only through the re-prototype decision: --only <slug> --round-reset "<reason>"\n\n${HELP}`); process.exit(1); }
+      if (String(raw).trim() === '' || !Number.isInteger(n) || n < 1 || n > MAX_ROUNDS) { console.error(`--max-rounds must be an integer from 1 to ${MAX_ROUNDS} (got ${raw}) — it may only lower the cap; a page at the cap gets another round only through the re-prototype decision: --only <slug> --round-reset "<reason>"\n\n${HELP}`); process.exit(1); }
       o.maxRounds = n;
     } else if (a === '--dismiss') {
       // like gate.sh / anchor.mjs / stitch-shot: one comma list (the last --dismiss wins), trimmed, empty entries dropped
-      const raw = v(); const list = raw == null || String(raw).startsWith('--') ? [] : hideRecord(raw);
-      if (!list.length) { console.error(`--dismiss takes a list of overlay-dismiss selectors, <sel,…> (got ${raw ?? 'nothing'})\n\n${HELP}`); process.exit(1); }
+      const raw = v(); const list = hideRecord(raw);
+      if (!list.length) { console.error(`--dismiss takes a list of overlay-dismiss selectors, <sel,…> (got ${raw})\n\n${HELP}`); process.exit(1); }
       o.dismiss = list;
     } else if (a === '--round-reset') {
       const raw = v();
-      if (raw == null || !String(raw).trim() || String(raw).startsWith('--')) { console.error(`--round-reset takes the re-prototype decision's reason, a non-empty text (got ${raw ?? 'nothing'})\n\n${HELP}`); process.exit(1); }
+      if (!String(raw).trim()) { console.error(`--round-reset takes the re-prototype decision's reason, a non-empty text (got ${raw})\n\n${HELP}`); process.exit(1); }
       o.roundReset = String(raw).trim();
     }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }

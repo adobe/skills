@@ -4,7 +4,8 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
 // defaults and --out derived from --width; --eds-host (edsOrigin table: a bare host or an origin URL, a path refused —
-// the CLI exits 2 writing nothing; a sandbox run stitches https://<host><path> and records the origin); --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
+// the CLI exits 2 writing nothing; a sandbox run stitches https://<host><path> and records the origin); a value flag without
+// its value (missing, or one that starts with "-": exit 2, the flag, the value and the usage line); --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
 // an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
 // rosterEstimate table — its pool factor (estimateFactor; run-bg's browsersPerSlot from the env, STARDUST_BROWSER_SLOTS=0,
 // an inherited slot, the argv's pool flags) —, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
@@ -334,6 +335,27 @@ check('edsOrigin / --eds-host: a bare host gets https://, an origin URL is norma
   const r = spawnSync(process.execPath, [SCRIPT, '--eds-host', 'main--site--org.aem.page/en/x'], { cwd, encoding: 'utf8', env: { ...process.env, RUN_BG_DEADLINE_SEC: '' } });
   assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, '');
   assert.deepEqual(r.stderr.trim().split('\n'), [`gate-all: ${EDS_ERR('main--site--org.aem.page/en/x')}`, 'Usage: node gate-all.mjs [options]   (from the project root)']);
+  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before); rmSync(cwd, { recursive: true, force: true });
+});
+check('a value flag never takes a missing value or one that starts with "-": --eds-host --only home, --out / --coverage / --state / --round-reset / --width / --dismiss / --max-rounds / --threshold — one line naming the flag and the value (got nothing at the end), then the usage line; exit 2, before any I/O', () => {
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-values-'))); mkdirSync(join(cwd, 'stardust'));
+  writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--site--org.aem.page/', status: 'deployed' }] }));
+  const before = readdirSync(cwd, { recursive: true }).sort();
+  for (const [argv, line] of [
+    [['--eds-host', '--only', 'home'], 'gate-all: --eds-host needs a value, got "--only"'],
+    [['--only', 'home', '--out'], 'gate-all: --out needs a value, got nothing'],
+    [['--coverage', '--state', 'stardust/state.json'], 'gate-all: --coverage needs a value, got "--state"'],
+    [['--state', '-x'], 'gate-all: --state needs a value, got "-x"'],
+    [['--only', 'home', '--round-reset', '--max-rounds', '2'], 'gate-all: --round-reset needs a value, got "--max-rounds"'],
+    [['--width', '--only', 'home'], 'gate-all: --width needs a value, got "--only"'],
+    [['--dismiss', '-q'], 'gate-all: --dismiss needs a value, got "-q"'],
+    [['--max-rounds', '-1'], 'gate-all: --max-rounds needs a value, got "-1"'],
+    [['--threshold', '-5'], 'gate-all: --threshold needs a value, got "-5"'],
+  ]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...argv], { cwd, encoding: 'utf8', env: { ...process.env, RUN_BG_DEADLINE_SEC: '' } });
+    assert.equal(r.status, 2, `${argv.join(' ')}: ${r.stderr}${r.stdout}`); assert.equal(r.stdout, '', argv.join(' '));
+    assert.deepEqual(r.stderr.trim().split('\n'), [line, 'Usage: node gate-all.mjs [options]   (from the project root)'], argv.join(' '));
+  }
   assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before); rmSync(cwd, { recursive: true, force: true });
 });
 check('formatSummary: the reused cell per row and the head clause only when something was reused', () => {
@@ -999,14 +1021,14 @@ check('skipCapture: a capture ctx.unchecked names (a stitched record without an 
 });
 // ---- --dismiss: the extra overlay-dismiss selectors both stitches get — recorded, compared like a hide list --------------
 const DL = ['.nl-close', '#promo-x'];
-check('dismiss: parseArgs — one comma list (trimmed, de-duplicated; the last --dismiss wins, like gate.sh / anchor.mjs), [] by default; no value → exit 1 before any I/O', () => {
+check('dismiss: parseArgs — one comma list (trimmed, de-duplicated; the last --dismiss wins, like gate.sh / anchor.mjs), [] by default; an empty list → exit 1, no value → exit 2 (a value flag without its value), before any I/O', () => {
   assert.deepEqual(parseArgs(['node', 'x']).dismiss, []);
   assert.deepEqual(parseArgs(['node', 'x', '--dismiss', ' .nl-close , #promo-x,,.nl-close']).dismiss, DL);
   assert.deepEqual(parseArgs(['node', 'x', '--dismiss', '.a', '--dismiss', '.b']).dismiss, ['.b']);
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-dismiss-')));
-  for (const argv of [['--dismiss'], ['--dismiss', '--only', 'a'], ['--dismiss', ' , ']]) {
+  for (const [argv, status, re] of [[['--dismiss'], 2, /^gate-all: --dismiss needs a value, got nothing$/m], [['--dismiss', '--only', 'a'], 2, /^gate-all: --dismiss needs a value, got "--only"$/m], [['--dismiss', ' , '], 1, /^--dismiss takes a list of overlay-dismiss selectors, <sel,…> \(got /]]) {
     const r = spawnSync(process.execPath, [SCRIPT, ...argv], { cwd, encoding: 'utf8', env: { ...process.env, RUN_BG_DEADLINE_SEC: '' } });
-    assert.equal(r.status, 1, argv.join(' ')); assert.match(r.stderr, /^--dismiss takes a list of overlay-dismiss selectors, <sel,…> \(got /, argv.join(' ')); assert.equal(r.stdout, '');
+    assert.equal(r.status, status, argv.join(' ')); assert.match(r.stderr, re, argv.join(' ')); assert.equal(r.stdout, '');
   }
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true, force: true });
 });
@@ -1054,15 +1076,21 @@ check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 without
   for (const bad of ['x', '-1']) {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-maxage-'));
     const r = spawnSync(process.execPath, [SCRIPT, '--origin-max-age', bad], { cwd, encoding: 'utf8' });
-    assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /--origin-max-age/); assert.deepEqual(readdirSync(cwd), []);
+    assert.equal(r.status, bad === '-1' ? 2 : 1, r.stderr); assert.match(r.stderr, /--origin-max-age/); assert.deepEqual(readdirSync(cwd), []);
     rmSync(cwd, { recursive: true, force: true });
   }
 });
-check('pool flags take integers >= 1: 0, -2, 1.5, x or no value → usage exit 1 naming the flag, nothing written', () => {
-  for (const [flag, bad] of [['--origin-concurrency', '0'], ['--eds-concurrency', '-2'], ['--probe-concurrency', '1.5'], ['--eds-concurrency', 'x'], ['--origin-concurrency', undefined]]) {
+check('pool flags take integers >= 1: 0, 1.5 or x → usage exit 1 naming the flag; -2 or no value → a value flag without its value, exit 2; nothing written', () => {
+  for (const [flag, bad] of [['--origin-concurrency', '0'], ['--probe-concurrency', '1.5'], ['--eds-concurrency', 'x']]) {
+    const cwd = mkdtempSync(join(tmpdir(), 'gate-all-pools-'));
+    const r = spawnSync(process.execPath, [SCRIPT, flag, bad], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 1, `${flag} ${bad}: ${r.stderr}`); assert.match(r.stderr, new RegExp(`^${flag} must be an integer >= 1 \\(got ${bad.replace('.', '\\.')}\\)`)); assert.deepEqual(readdirSync(cwd), []);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+  for (const [flag, bad] of [['--eds-concurrency', '-2'], ['--origin-concurrency', undefined]]) {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-pools-'));
     const r = spawnSync(process.execPath, [SCRIPT, flag, ...(bad === undefined ? [] : [bad])], { cwd, encoding: 'utf8' });
-    assert.equal(r.status, 1, `${flag} ${bad}: ${r.stderr}`); assert.match(r.stderr, new RegExp(`^${flag} must be an integer >= 1 \\(got ${bad === undefined ? 'nothing' : bad.replace('.', '\\.')}\\)`)); assert.deepEqual(readdirSync(cwd), []);
+    assert.equal(r.status, 2, `${flag} ${bad}: ${r.stderr}`); assert.match(r.stderr, new RegExp(`^gate-all: ${flag} needs a value, got ${bad === undefined ? 'nothing' : `"${bad}"`}$`, 'm')); assert.deepEqual(readdirSync(cwd), []);
     rmSync(cwd, { recursive: true, force: true });
   }
 });
@@ -1916,18 +1944,18 @@ check('rounds 2: a 4th --only round is refused before any write — exit 2, one 
   assert.equal(full.status, 0, full.stderr + full.stdout); assert.deepEqual([full.row('a').round, full.row('b').round], [3, 0]); assert.equal(full.doc._provenance.maxRounds, 3);
   assert.deepEqual(roundsJson('a'), { rounds: 3, max: 3, at: ROUND_ATS }); assert.equal(existsSync(roundsFile('b')), false, 'a full run writes no count');
 });
-check('rounds 3: --max-rounds takes 1..3 only (it may only lower the cap) — 4, 0, 2.5, x, nothing → usage exit 1 naming --round-reset; --round-reset needs --only and a reason → usage exit 1; nothing written', () => {
-  const usage = (args, re) => {
+check('rounds 3: --max-rounds takes 1..3 only (it may only lower the cap) — 4, 0, 2.5, x → usage exit 1 naming --round-reset; --round-reset needs --only and a reason → usage exit 1; either without its value → exit 2 (a value flag without its value); nothing written', () => {
+  const usage = (args, re, status = 1) => {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-rounds-usage-'));
     const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
-    assert.equal(r.status, 1, `${args.join(' ')}: ${r.stderr}`); assert.match(r.stderr, re, args.join(' ')); assert.deepEqual(readdirSync(cwd), []);
+    assert.equal(r.status, status, `${args.join(' ')}: ${r.stderr}`); assert.match(r.stderr, re, args.join(' ')); assert.deepEqual(readdirSync(cwd), []);
     rmSync(cwd, { recursive: true, force: true });
   };
   for (const bad of ['4', '0', '2.5', 'x']) usage(['--only', 'a', '--max-rounds', bad], new RegExp(`^--max-rounds must be an integer from 1 to 3 \\(got ${bad.replace('.', '\\.')}\\) — it may only lower the cap; .* --round-reset "<reason>"`));
-  usage(['--max-rounds'], /^--max-rounds must be an integer from 1 to 3 \(got nothing\)/);
+  usage(['--max-rounds'], /^gate-all: --max-rounds needs a value, got nothing$/m, 2);
   usage(['--round-reset', 're-prototyped'], /^--round-reset needs --only <slug,…>/);
   usage(['--only', 'a', '--round-reset', ' '], /^--round-reset takes the re-prototype decision's reason, a non-empty text/);
-  usage(['--only', 'a', '--round-reset'], /^--round-reset takes the re-prototype decision's reason, a non-empty text \(got nothing\)/);
+  usage(['--only', 'a', '--round-reset'], /^gate-all: --round-reset needs a value, got nothing$/m, 2);
 });
 const REASON = 're-prototyped the hero section';
 check('rounds 4: --round-reset "<reason>" — the selected page at the cap starts a new count (resets[{ at, reason, from 3, history }], the row\'s roundReset, round 1), a selected page below the cap is not reset; then no page at the cap → one log line, nothing reset', () => {
