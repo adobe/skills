@@ -321,12 +321,13 @@ with `errorClass: "ProvenanceMissing"` and continue.
 
 After the crawl one command writes `state.json`, never a hand-built
 file or `node -e`: `node stardust/scripts/stardust/state.mjs init
---pages <captured-urls> [--types <slug=type,…>] [--site-url <url>]`
-(`skills/stardust/scripts/state.mjs`) — one `extracted` page per URL,
-the check above applied at write time (a failing page: exit 2, nothing
-written — drop it from the list). Types and representatives change
-later via `state.mjs set`. If a page fails, record the error in
-`_crawl-log.json` and continue — extraction is best-effort per page.
+--pages <url-file|-> [--types <slug=type,…>] [--site-url <u>]
+[--page-cap <n>]` (`skills/stardust/scripts/state.mjs`; one captured
+URL per line) — one `extracted` page per URL, the check above applied
+at write time (a failing page: exit 2, nothing written — drop it from
+the list). Types and representatives change later via `state.mjs set`.
+If a page fails, record the error in `_crawl-log.json` and continue —
+extraction is best-effort per page.
 
 ### Phase 2.5 — Vision verification
 
@@ -553,11 +554,13 @@ is missing.
 
 After all Phase 2-5 writes succeed:
 
-1. `stardust/state.json` is `state.mjs init`'s (Phase 2; schema in
-   `skills/stardust/reference/state-machine.md`): `site` plus one
-   `extracted` page per crawled URL. `designSource` — only when
-   `--design-source` was used: `{ url, capturedAt, path }` per
-   § Cross-site brand sources.
+1. `stardust/state.json` is written by `state.mjs init` (Phase 2;
+   schema in `skills/stardust/reference/state-machine.md`):
+   `site.originUrl`, `extractedAt`, `pageCap`, `totalDiscovered`,
+   `crawled` (+ `captureGaps`), `direction: null` (unresolved until
+   `direct`) and one `extracted` page per crawled URL. `designSource` —
+   only when `--design-source` was used: `{ url, capturedAt, path }`
+   per § Cross-site brand sources.
 2. Print a one-screen summary:
    ```
    Extracted https://example.com (5/38 pages, sitemap.xml)

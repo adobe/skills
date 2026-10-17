@@ -112,5 +112,5 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `stardust/browser-lock.mjs` — machine-wide browser slots — `acquire|status|release|reap`; 124 = no slot
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`
-- `stardust/state.mjs` — page status writer — `init --pages <f> [--types s=t,…]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--type <t>`; `summary [--slugs]`
+- `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--type <t>`; `summary [--slugs]`
 - `stardust/token-ledger.mjs` — usage per phase/unit, advisory — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`

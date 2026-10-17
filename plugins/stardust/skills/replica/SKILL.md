@@ -119,9 +119,9 @@ replica consumes the full migration inventory, not the discovery cap:
 - `stardust/current/PRODUCT.md`, `DESIGN.md`, `DESIGN.json` — the descriptive
   current state (Phase 2 promotes these verbatim).
 - `state.json` — written after the crawl by `node stardust/scripts/stardust/state.mjs
-  init --pages <urls> [--types <slug=type,…>]`; page types (each becomes one
-  archetype) and `representative` (the archetype a sibling clones) change via
-  `state.mjs set`, never `node -e`.
+  init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`;
+  page types (each becomes one archetype) and `representative` (the archetype a
+  sibling clones) change via `state.mjs set`, never `node -e`.
 - `DESIGN.json.extensions.modules[]` — module candidates (become blocks).
 
 When extract's summary comes back, surface it with the flow line first —
