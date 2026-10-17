@@ -8,12 +8,19 @@
 // order, normalizeDenialText, denialMarker per signature / the 2 KB rule / the one-error-heading rule, and gotoLive on
 // stub pages: a denial throws BotChallengeError "origin blocked", a >= 400 is never probed, a failing probe is one
 // "skipped" stderr line, the solve window clears on a clean reload, the header-marker message unchanged), and the
-// dialog-pass constants (NATIVE_DIALOG, MODAL_DIALOGS, DIALOG_CLOSE_CANDIDATES — pinned, frozen). Then, where playwright
+// dialog-pass constants (NATIVE_DIALOG, MODAL_DIALOGS, DIALOG_CLOSE_CANDIDATES — pinned, frozen), and the client hints
+// (V4: uaMetadata per host, standardHeaders' sec-ch-ua as its brand list; hintScope — the default, the env, the option
+// over the env, an invalid option / env; browserBuild, hintRecord; applyUaMetadata on stub contexts — every page once,
+// native, a CDP failure; launchChromium and launchStealthHeaded on stub `chromium` objects; newLiveContext on a stub
+// browser). Then, where playwright
 // is importable (a skip line otherwise), a browser section against an in-process node:http origin: dismissOverlays'
 // dialog pass on fixture pages — a native <dialog> close()d and the body lock released, a dialog CSS keeps displayed
 // closed by its "Schließen" control, a non-native modal by its close control and an Escape-only panel (the html lock
 // released), a surviving modal that keeps the lock (R1), a lock class with no modal that stays, and the consent click
-// unchanged (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner).
+// unchanged (stitch-shot.test.mjs runs the EDS single sweep against a late consent banner); and the client hints on a
+// logging origin — the document, a same-origin script, a cross-origin (localhost) script and a CORS fetch all carry the
+// UA's sec-ch-ua with no preflight; hints native keeps the browser's own and the same Accept-Language; launchChromium
+// runs the full build with the UA metadata.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -30,10 +37,11 @@ check('the exported surface the instruments import', () => {
   for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'isEdsHost', 'lateWindowFor', 'waitEdsDelayedPhase', 'defaultWaitUntil', 'newLiveContext', 'gotoLive', 'dismissOverlays', 'launchStealthHeaded', 'browserTier',
     'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed',
     'DENIAL_TEXT_MAX_BYTES', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError',
-    'NATIVE_DIALOG', 'MODAL_DIALOGS', 'DIALOG_CLOSE_CANDIDATES', 'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs']) assert.ok(name in session, `${name} exported`);
+    'NATIVE_DIALOG', 'MODAL_DIALOGS', 'DIALOG_CLOSE_CANDIDATES', 'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs',
+    'HINTS_ENV', 'HINT_SCOPES', 'hintScope', 'uaMetadata', 'applyUaMetadata', 'browserBuild', 'launchChromium', 'hintRecord']) assert.ok(name in session, `${name} exported`);
   assert.equal(typeof session.dismissOverlays, 'function');
   for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError',
-    'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs']) assert.equal(typeof session[name], 'function', name);
+    'describeElementInPage', 'overlayLikeInPage', 'scrollLockInPage', 'releaseScrollLockInPage', 'closeDialogs', 'hintScope', 'uaMetadata', 'applyUaMetadata', 'browserBuild', 'launchChromium', 'hintRecord']) assert.equal(typeof session[name], 'function', name);
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
   assert.ok(session.DENIAL_ERROR_HEADING instanceof RegExp && session.DENIAL_ERROR_HEADING.flags.includes('i'), 'a case-insensitive RegExp');
   assert.equal(typeof session.waitEdsDelayedPhase, 'function');
@@ -553,6 +561,240 @@ check('side cache: write → hit; one key field changed → miss naming it; key 
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
+// Client hints (V4): the hint value, the UA metadata, applyUaMetadata on stub contexts, the build tags, the two
+// launchers on stub `chromium` objects and newLiveContext on a stub browser. Pure; stderr captured; process.env's
+// STARDUST_LIVE_HINTS cleared wherever a default reads it (an operator's own value must not decide a check).
+const HINTS = 'STARDUST_LIVE_HINTS';
+const withHintsEnv = async (value, fn) => {
+  const saved = process.env[HINTS];
+  if (value === undefined) delete process.env[HINTS]; else process.env[HINTS] = value;
+  try { return await fn(); } finally { if (saved === undefined) delete process.env[HINTS]; else process.env[HINTS] = saved; }
+};
+const BRANDS = [{ brand: 'Not/A)Brand', version: '8' }, { brand: 'Chromium', version: '143' }, { brand: 'Google Chrome', version: '143' }];
+check('uaMetadata: brands (GREASE first) and fullVersionList from the UA\'s Chrome version; platform, version and architecture from the host', () => {
+  assert.deepEqual(session.uaMetadata(session.REAL_CHROME_UA, { platform: 'darwin', release: '24.5.0', arch: 'arm64' }), {
+    brands: BRANDS,
+    fullVersionList: BRANDS.map((b) => ({ ...b, version: b.version === '8' ? '8.0.0.0' : '143.0.0.0' })),
+    fullVersion: '143.0.0.0',
+    platform: 'macOS',
+    platformVersion: '15.5.0',
+    architecture: 'arm',
+    bitness: '64',
+    model: '',
+    mobile: false,
+    wow64: false,
+  });
+  const linux = session.uaMetadata(session.REAL_CHROME_UA, { platform: 'linux', release: '6.8.0-45-generic', arch: 'x64' });
+  assert.deepEqual([linux.platform, linux.platformVersion, linux.architecture, linux.bitness], ['Linux', '6.8.0', 'x86', '64']);
+  assert.equal(session.uaMetadata(session.REAL_CHROME_UA, { platform: 'darwin', release: '25.0.0', arch: 'x64' }).platformVersion, '26.0.0', 'Darwin 25 → macOS 26');
+  assert.equal(session.uaMetadata('Mozilla/5.0 (Macintosh; Intel Mac OS X 14.5; rv:128.0) Gecko/20100101 Firefox/128.0'), null, 'no Chrome/ → null');
+});
+check('standardHeaders\' sec-ch-ua is uaMetadata\'s brand list, byte-identical to the field-proven value', () => {
+  const header = session.standardHeaders()['sec-ch-ua'];
+  assert.equal(header, session.uaMetadata().brands.map((b) => `"${b.brand}";v="${b.version}"`).join(', '));
+  assert.equal(header, '"Not/A)Brand";v="8", "Chromium";v="143", "Google Chrome";v="143"');
+});
+await checkAsync('hintScope: ua-metadata by default; the env when the option is null (trimmed, blank = unset; process.env by default); the option beats the env', async () => {
+  assert.deepEqual(session.HINT_SCOPES, ['ua-metadata', 'native']);
+  assert.ok(Object.isFrozen(session.HINT_SCOPES), 'frozen');
+  const quiet = captureStderr(() => {
+    assert.equal(session.hintScope({ env: {} }), 'ua-metadata');
+    assert.equal(session.hintScope({ env: { [HINTS]: ' native ' } }), 'native');
+    assert.equal(session.hintScope({ hints: null, env: { [HINTS]: 'ua-metadata' } }), 'ua-metadata');
+    for (const v of ['', '   ', undefined]) assert.equal(session.hintScope({ env: { [HINTS]: v } }), 'ua-metadata', JSON.stringify(v));
+    assert.equal(session.hintScope({ hints: 'ua-metadata', env: { [HINTS]: 'native' } }), 'ua-metadata', 'option over env');
+    assert.equal(session.hintScope({ hints: 'native', env: { [HINTS]: 'ua-metadata' } }), 'native', 'option over env');
+  });
+  assert.deepEqual(quiet, [], 'no warning for a valid or blank value');
+  assert.equal(await withHintsEnv('native', () => session.hintScope()), 'native', 'process.env is the default');
+  assert.equal(await withHintsEnv(undefined, () => session.hintScope()), 'ua-metadata', 'no option, no env');
+});
+check('hintScope: an invalid option throws naming the values; an invalid env is ua-metadata with ONE warning per process', () => {
+  for (const bad of ['none', 'same-origin', 'document-only', 'Native']) {
+    assert.throws(() => session.hintScope({ hints: bad, env: {} }), { message: `hints must be one of ua-metadata, native — got ${bad}` }, bad);
+  }
+  const warned = captureStderr(() => {
+    assert.equal(session.hintScope({ env: { [HINTS]: ' off ' } }), 'ua-metadata');
+    assert.equal(session.hintScope({ env: { [HINTS]: 'all' } }), 'ua-metadata');
+  });
+  assert.deepEqual(warned, [`[live-session] ${HINTS}=off is not one of ua-metadata, native — ignored`], 'one warning, naming the first bad value');
+});
+check('browserBuild and hintRecord: the launch tag, else unknown; the context\'s build and hints, else unknown / native', () => {
+  assert.equal(session.browserBuild({ stardustBuild: 'chromium-headless-shell', stardustTier: 'chromium' }), 'chromium-headless-shell');
+  for (const b of [{}, { stardustTier: 'chrome' }, null, undefined]) assert.equal(session.browserBuild(b), 'unknown', JSON.stringify(b));
+  assert.deepEqual(session.hintRecord({ stardustBuild: 'chrome', stardustHints: 'ua-metadata' }), { browserBuild: 'chrome', hints: 'ua-metadata' });
+  assert.deepEqual(session.hintRecord({}), { browserBuild: 'unknown', hints: 'native' });
+});
+
+// A stub browser context for applyUaMetadata: `pages` it already has; newPage() opens the next page and emits 'page'
+// (as playwright does) before it resolves; popup() emits 'page' only; newCDPSession records each page and send.
+const stubUaCtx = ({ pages = [], cdpError = null } = {}) => {
+  const listeners = []; const cdp = []; let n = pages.length;
+  const ctx = {
+    cdp,
+    pages: () => pages,
+    on: (event, fn) => { if (event === 'page') listeners.push(fn); },
+    newPage: async () => { const page = { id: (n += 1) }; pages.push(page); listeners.forEach((fn) => fn(page)); return page; },
+    popup: () => { const page = { id: (n += 1) }; pages.push(page); listeners.forEach((fn) => fn(page)); return page; },
+    newCDPSession: async (page) => {
+      if (cdpError) throw new Error(cdpError);
+      return { send: async (method, params) => { cdp.push({ page: page.id, method, params }); } };
+    },
+  };
+  return ctx;
+};
+await checkAsync('applyUaMetadata (stub): every page — those it has, each newPage (before it returns), each popup — gets ONE override with the UA, the locale and uaMetadata', async () => {
+  await withHintsEnv(undefined, async () => {
+    const ctx = stubUaCtx({ pages: [{ id: 1 }] });
+    await session.applyUaMetadata(ctx, { locale: 'de-CH' });
+    assert.equal(ctx.stardustHints, 'ua-metadata');
+    const opened = await ctx.newPage();
+    assert.deepEqual(ctx.cdp.map((c) => c.page), [1, 2], 'the page newPage returned already carries it');
+    ctx.popup();
+    await new Promise((r) => { setTimeout(r, 0); });
+    assert.deepEqual(ctx.cdp.map((c) => c.page), [1, 2, 3], 'a popup too; no page twice');
+    for (const c of ctx.cdp) {
+      assert.deepEqual(c, { page: c.page, method: 'Emulation.setUserAgentOverride', params: { userAgent: session.REAL_CHROME_UA, acceptLanguage: 'de-CH', userAgentMetadata: session.uaMetadata() } });
+    }
+    assert.equal(opened.id, 2);
+  });
+});
+await checkAsync('applyUaMetadata (stub): native, or a UA with no Chrome version → no CDP call, hints native; an invalid option throws first', async () => {
+  await withHintsEnv(undefined, async () => {
+    for (const opts of [{ hints: 'native' }, { ua: 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0' }]) {
+      const ctx = stubUaCtx({ pages: [{ id: 1 }] });
+      await session.applyUaMetadata(ctx, opts);
+      await ctx.newPage();
+      assert.deepEqual([ctx.stardustHints, ctx.cdp.length], ['native', 0], JSON.stringify(opts));
+    }
+    const env = stubUaCtx({ pages: [{ id: 1 }] });
+    await withHintsEnv('native', () => session.applyUaMetadata(env));
+    assert.deepEqual([env.stardustHints, env.cdp.length], ['native', 0], 'STARDUST_LIVE_HINTS=native');
+    const bad = stubUaCtx({ pages: [{ id: 1 }] });
+    await assert.rejects(session.applyUaMetadata(bad, { hints: 'same-origin' }), { message: 'hints must be one of ua-metadata, native — got same-origin' });
+    assert.equal(bad.stardustHints, undefined, 'no page work');
+  });
+});
+await checkAsync('applyUaMetadata (stub): a CDP failure → hints native and ONE stderr line per process naming it; the page still opens', async () => {
+  await withHintsEnv(undefined, async () => {
+    const ctx = stubUaCtx({ pages: [{ id: 1 }], cdpError: 'browserContext.newCDPSession: CDP session is only available in Chromium\n  at …' });
+    let page;
+    const lines = await stderrOf(async () => {
+      await session.applyUaMetadata(ctx);
+      page = await ctx.newPage();
+      await session.applyUaMetadata(stubUaCtx({ pages: [{ id: 1 }], cdpError: 'Target page, context or browser has been closed' }));
+    });
+    assert.equal(ctx.stardustHints, 'native');
+    assert.equal(page.id, 2);
+    assert.deepEqual(lines, ['[live-session] the UA client-hint metadata could not be set (browserContext.newCDPSession: CDP session is only available in Chromium) — the browser\'s own client hints ride this context (hints: native)']);
+  });
+});
+
+// A stub playwright `chromium`: launch(opts) records opts and throws for a channel in `fail` ('none' = no channel).
+const stubChromium = (fail = []) => {
+  const calls = [];
+  return {
+    calls,
+    launch: async (opts) => {
+      calls.push(opts);
+      const channel = opts.channel || 'none';
+      if (fail.includes(channel)) throw new Error(`browserType.launch: Executable doesn't exist at /ms-playwright/${channel}\n╔═ npx playwright install ═╗`);
+      return { launchedWith: opts };
+    },
+  };
+};
+await checkAsync('launchChromium: channel chromium launches → tier chromium, build chromium, no warning; the caller\'s options ride along', async () => {
+  const c = stubChromium();
+  let b;
+  const lines = await stderrOf(async () => { b = await session.launchChromium(c, { headless: true, args: ['--x'] }); });
+  assert.deepEqual(c.calls, [{ headless: true, args: ['--x'], channel: 'chromium' }]);
+  assert.deepEqual([session.browserTier(b), session.browserBuild(b)], ['chromium', 'chromium']);
+  assert.deepEqual(lines, []);
+  const d = stubChromium();
+  await session.launchChromium(d);
+  assert.deepEqual(d.calls, [{ channel: 'chromium' }], 'no options → just the channel');
+});
+await checkAsync('launchChromium: channel chromium throws → the same options without a channel, the shell tag (chromium headed), ONE warning per process', async () => {
+  const c = stubChromium(['chromium']);
+  let shell; let headed;
+  const lines = await stderrOf(async () => {
+    shell = await session.launchChromium(c, { args: ['--x'] });
+    headed = await session.launchChromium(c, { headless: false });
+  });
+  assert.deepEqual(c.calls, [{ args: ['--x'], channel: 'chromium' }, { args: ['--x'] }, { headless: false, channel: 'chromium' }, { headless: false }]);
+  assert.ok(!('channel' in c.calls[1]) && !('channel' in c.calls[3]), 'the second launch has no channel');
+  assert.deepEqual([session.browserTier(shell), session.browserBuild(shell)], ['chromium', 'chromium-headless-shell']);
+  assert.deepEqual([session.browserTier(headed), session.browserBuild(headed)], ['chromium', 'chromium'], 'a headed bundled launch is the full build');
+  assert.deepEqual(lines, ['[live-session] the full Chromium build is not installed (channel chromium: browserType.launch: Executable doesn\'t exist at /ms-playwright/chromium) — the headless shell runs; the UA client-hint metadata still applies (npx playwright install chromium)']);
+});
+await checkAsync('launchStealthHeaded: Chrome → build chrome; Chrome throws → channel chromium next (build chromium); both throw → no channel (the shell; chromium with a window) — the warning names the build', async () => {
+  const STEALTH = { args: ['--disable-blink-features=AutomationControlled'], ignoreDefaultArgs: ['--enable-automation'] };
+  const warn = (ran) => `[live-session] WARNING: real Chrome (channel: chrome) failed to launch (browserType.launch: Executable doesn't exist at /ms-playwright/chrome) — falling back to ${ran} with the stealth args; bot-managed origins may still block this tier`;
+  const saved = process.env.STARDUST_HEADED_WINDOW;
+  try {
+    delete process.env.STARDUST_HEADED_WINDOW;
+    const ok = stubChromium();
+    const chrome = await session.launchStealthHeaded(ok);
+    assert.deepEqual(ok.calls, [{ headless: true, channel: 'chrome', ...STEALTH }]);
+    assert.deepEqual([session.browserTier(chrome), session.browserBuild(chrome)], ['chrome', 'chrome']);
+    const noChrome = stubChromium(['chrome']); const neither = stubChromium(['chrome', 'chromium']);
+    let full; let shell;
+    const lines = await stderrOf(async () => { full = await session.launchStealthHeaded(noChrome); shell = await session.launchStealthHeaded(neither); });
+    assert.deepEqual(noChrome.calls, [{ headless: true, channel: 'chrome', ...STEALTH }, { headless: true, channel: 'chromium', ...STEALTH }], 'the chromium channel tried next');
+    assert.deepEqual([session.browserTier(full), session.browserBuild(full)], ['chromium-fallback', 'chromium']);
+    assert.deepEqual(neither.calls.map((o) => o.channel), ['chrome', 'chromium', undefined]);
+    assert.deepEqual(neither.calls[2], { headless: true, ...STEALTH }, 'the stealth options, no channel');
+    assert.deepEqual([session.browserTier(shell), session.browserBuild(shell)], ['chromium-fallback', 'chromium-headless-shell']);
+    assert.deepEqual(lines, [warn('the full Chromium build'), warn('the Chromium headless shell')]);
+    process.env.STARDUST_HEADED_WINDOW = '1';
+    const windowed = stubChromium(['chrome', 'chromium']);
+    let w;
+    await stderrOf(async () => { w = await session.launchStealthHeaded(windowed); });
+    assert.deepEqual([windowed.calls[2].headless, session.browserTier(w), session.browserBuild(w)], [false, 'chromium-fallback', 'chromium'], 'a visible bundled window is the full build');
+    const chromeWindow = await session.launchStealthHeaded(stubChromium());
+    assert.deepEqual([session.browserTier(chromeWindow), session.browserBuild(chromeWindow)], ['chrome-window', 'chrome']);
+  } finally { if (saved === undefined) delete process.env.STARDUST_HEADED_WINDOW; else process.env.STARDUST_HEADED_WINDOW = saved; }
+});
+
+// newLiveContext on a stub browser: the document route it installs (driven with stub routes) and the UA metadata it
+// applies (stubUaCtx records the CDP calls).
+const stubLive = async (tags, opts) => {
+  let handler = null; let contextOpts = null;
+  const ctx = { ...stubUaCtx(), route: async (pattern, fn) => { handler = fn; }, addInitScript: async () => {} };
+  const browser = { ...tags, newContext: async (o) => { contextOpts = o; return ctx; } };
+  await session.newLiveContext(browser, opts);
+  const send = (type) => {
+    const args = [];
+    const request = { resourceType: () => type, headers: () => ({ accept: '*/*' }) };
+    handler({ request: () => request, continue: (...a) => { args.push(a); } });
+    return args;
+  };
+  return { ctx, contextOpts, send };
+};
+await checkAsync('newLiveContext (stub): the document route unchanged; the UA metadata from the context\'s UA and locale; native by option or env; an invalid option throws before any context', async () => {
+  await withHintsEnv(undefined, async () => {
+    const { ctx, contextOpts, send } = await stubLive({ stardustBuild: 'chromium-headless-shell' }, { locale: 'en', reducedMotion: 'reduce' });
+    assert.ok(!('hints' in contextOpts) && !('extraHTTPHeaders' in contextOpts) && contextOpts.reducedMotion === 'reduce', JSON.stringify(contextOpts));
+    assert.deepEqual(send('document'), [[{ headers: { accept: '*/*', ...session.standardHeaders('en') } }]], 'the document: the full set');
+    for (const type of ['script', 'fetch', 'font']) assert.deepEqual(send(type), [[]], `${type}: continue() untouched`);
+    await ctx.newPage();
+    assert.deepEqual(ctx.cdp.map((c) => [c.params.userAgent, c.params.acceptLanguage]), [[session.REAL_CHROME_UA, 'en-US']]);
+    assert.deepEqual(session.hintRecord(ctx), { browserBuild: 'chromium-headless-shell', hints: 'ua-metadata' });
+    const ua = session.REAL_CHROME_UA.replace('Chrome/143.0.0.0', 'Chrome/150.0.0.0');
+    const custom = await stubLive({}, { ua });
+    await custom.ctx.newPage();
+    assert.deepEqual(custom.ctx.cdp.map((c) => [c.params.userAgent, c.params.acceptLanguage, c.params.userAgentMetadata.brands[2].version]), [[ua, undefined, '150']], '--ua, no locale');
+    const native = await stubLive({}, { hints: 'native' });
+    await native.ctx.newPage();
+    assert.deepEqual([session.hintRecord(native.ctx), native.ctx.cdp.length], [{ browserBuild: 'unknown', hints: 'native' }, 0]);
+    let opened = false;
+    await assert.rejects(session.newLiveContext({ newContext: async () => { opened = true; } }, { hints: 'none' }), { message: 'hints must be one of ua-metadata, native — got none' });
+    assert.equal(opened, false, 'no context opened');
+  });
+  const envOnly = await withHintsEnv('native', () => stubLive({}, {}));
+  assert.equal(envOnly.ctx.stardustHints, 'native', 'STARDUST_LIVE_HINTS=native reaches a context the caller did not configure');
+});
+
 // ---- browser (needs playwright importable): pages from an in-process node:http origin on 127.0.0.1 ----------------
 let chromium = null;
 try { ({ chromium } = await import('playwright')); } catch { chromium = null; console.log('skip  browser checks (playwright not importable here; run this test in an environment that has it)'); }
@@ -660,6 +902,79 @@ if (chromium) {
   } finally {
     if (browser) await browser.close();
     await origin.close();
+  }
+
+  // Client hints (V4): an origin that logs each request's method, host, path and headers. `/` loads a same-origin
+  // script, a script from http://localhost:<port> (the same server, another origin — it binds 127.0.0.1) and fetches
+  // a CORS resource from there; the fetched body becomes the title. Cross-origin responses allow any origin.
+  const DATA = 'hints-data';
+  const requests = [];
+  const logged = (type, body, cors = false) => (req, res) => {
+    requests.push({ method: req.method, host: req.headers.host, path: req.url, headers: req.headers });
+    res.writeHead(200, { 'content-type': type, ...(cors ? { 'access-control-allow-origin': '*' } : {}) }); res.end(typeof body === 'function' ? body(req) : body);
+  };
+  const hintsOrigin = await serveRoutes({
+    '/': logged('text/html; charset=utf-8', (req) => `<script src="/same.js"></script><script src="http://localhost:${req.socket.localPort}/cross.js"></script>`
+      + `<script>fetch('http://localhost:${req.socket.localPort}/data.json').then(r=>r.text()).then(t=>{document.title=t})</script>`),
+    '/same.js': logged('text/javascript', 'window.sameLoaded = true;'),
+    '/cross.js': logged('text/javascript', 'window.crossLoaded = true;', true),
+    '/data.json': logged('application/json', DATA, true),
+  });
+  const port = new URL(hintsOrigin.base).port;
+  const FORCED = session.standardHeaders()['sec-ch-ua'];
+  // one fresh context on `b`, one visit to `/` (until the fetch set the title) → { ctx, at(host, path), all } (ctx closed)
+  const visitHints = async (b, opts) => {
+    requests.length = 0;
+    const ctx = await session.newLiveContext(b, { locale: 'de-CH', ...opts });
+    try {
+      const page = await ctx.newPage();
+      await page.goto(`${hintsOrigin.base}/`, { waitUntil: 'load' });
+      await page.waitForFunction((t) => document.title === t, DATA, { timeout: 10000 });
+      assert.deepEqual(await page.evaluate(() => [window.sameLoaded, window.crossLoaded]), [true, true], 'both scripts ran');
+      const all = [...requests];
+      const at = (host, path) => all.find((r) => r.host === `${host}:${port}` && r.path === path && r.method !== 'OPTIONS');
+      return { ctx, at, all };
+    } finally { await ctx.close(); }
+  };
+  const launched = [];
+  const savedHints = process.env[HINTS];
+  let acceptLanguage = null;
+  try {
+    delete process.env[HINTS];
+    const plain = await chromium.launch();
+    launched.push(plain);
+    await checkAsync('client hints (1): the headless shell, newLiveContext defaults → the document, a same-origin script, a cross-origin script and a CORS fetch all carry the UA\'s sec-ch-ua; no preflight', async () => {
+      const { ctx, at, all } = await visitHints(plain);
+      assert.match(FORCED, /v="143"/, 'the UA\'s major');
+      for (const [host, path] of [['127.0.0.1', '/'], ['127.0.0.1', '/same.js'], ['localhost', '/cross.js'], ['localhost', '/data.json']]) {
+        const r = at(host, path);
+        assert.ok(r, `${host}${path} recorded: ${all.map((x) => `${x.method} ${x.host}${x.path}`).join(', ')}`);
+        assert.equal(r.headers['sec-ch-ua'], FORCED, `${host}${path}`);
+        assert.equal(r.headers['sec-ch-ua-mobile'], '?0', `${host}${path}`);
+      }
+      assert.deepEqual(all.filter((r) => r.method === 'OPTIONS').map((r) => `${r.host}${r.path}`), [], 'no CORS preflight');
+      assert.equal(session.hintRecord(ctx).hints, 'ua-metadata');
+      acceptLanguage = at('127.0.0.1', '/same.js').headers['accept-language'];
+    });
+    await checkAsync('client hints (2): hints native → the browser\'s own sec-ch-ua (not the UA\'s); the same Accept-Language as (1)', async () => {
+      const { ctx, at } = await visitHints(plain, { hints: 'native' });
+      const same = at('127.0.0.1', '/same.js');
+      assert.notEqual(same.headers['sec-ch-ua'], FORCED);
+      assert.equal(session.hintRecord(ctx).hints, 'native');
+      assert.ok(acceptLanguage && acceptLanguage.startsWith('de-CH'), `(1) recorded the locale: ${acceptLanguage}`);
+      assert.equal(same.headers['accept-language'], acceptLanguage, 'the override left Accept-Language unchanged');
+    });
+    await checkAsync('client hints (3): launchChromium runs the full Chromium build here → hintRecord { browserBuild: chromium, hints: ua-metadata }; its same-origin script carries the UA\'s sec-ch-ua', async () => {
+      const full = await session.launchChromium(chromium);
+      launched.push(full);
+      const { ctx, at } = await visitHints(full);
+      assert.deepEqual(session.hintRecord(ctx), { browserBuild: 'chromium', hints: 'ua-metadata' });
+      assert.equal(at('127.0.0.1', '/same.js').headers['sec-ch-ua'], FORCED);
+    });
+  } finally {
+    if (savedHints === undefined) delete process.env[HINTS]; else process.env[HINTS] = savedHints;
+    await Promise.all(launched.map((b) => b.close()));
+    await hintsOrigin.close();
   }
 }
 
