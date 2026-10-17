@@ -79,11 +79,12 @@ const variant = (name, ...pairs) => {
 };
 
 const LABELS = ['page bg', 'body fg', 'font-family token string', 'body font size', 'display weight', 'heading color', 'primary button bg', 'primary button fg', 'primary button radius', 'primary button padding (±2px)', 'primary button font size'];
+const SECTION_LABELS = ['section rhythm (±16px)', 'section rhythm bottom (±16px)'];
 
-await check('edsSpec on the fixture tokens: body, heading and primary-button entries on the EDS selectors, then the :root block verbatim', () => {
+await check('edsSpec on the fixture tokens: body, heading and primary-button entries on the EDS selectors, the section padding on every section, then the :root block verbatim', () => {
   const t = sheet();
   const spec = edsSpec({ tokens: t, runtimeContract: contract() });
-  assert.deepEqual(spec.filter((e) => e.selector !== ':root').map((e) => e.label), LABELS);
+  assert.deepEqual(spec.filter((e) => e.selector !== ':root').map((e) => e.label), [...LABELS, ...SECTION_LABELS]);
   const by = (label) => spec.find((e) => e.label === label);
   assert.deepEqual(by('page bg'), { label: 'page bg', selector: 'body', property: 'backgroundColor', value: 'rgb(255, 255, 255)' });
   assert.deepEqual(by('body fg'), { label: 'body fg', selector: 'body', property: 'color', value: 'rgb(26, 26, 26)' });
@@ -103,14 +104,38 @@ await check('edsSpec on the fixture tokens: body, heading and primary-button ent
   assert.deepEqual(spec.filter((e) => e.selector === ':root'), root.map((e) => ({ label: `:root ${e.name}`, selector: ':root', property: e.name, value: e.value })));
   assert.deepEqual(by(':root --max-width'), { label: ':root --max-width', selector: ':root', property: '--max-width', value: '1200px' });
   assert.deepEqual(by(':root --section-padding'), { label: ':root --section-padding', selector: ':root', property: '--section-padding', value: '80px' });
-  assert.equal(spec.length, LABELS.length + root.length, 'nothing else');
-  assert.deepEqual(spec.slice(0, LABELS.length).map((e) => e.label), LABELS, 'the assertions on the page come before the :root block');
+  assert.equal(spec.length, LABELS.length + SECTION_LABELS.length + root.length, 'nothing else');
+  assert.deepEqual(spec.slice(0, LABELS.length + SECTION_LABELS.length).map((e) => e.label), [...LABELS, ...SECTION_LABELS], 'the assertions on the page come before the :root block');
 });
 
-await check('edsSpec leaves out layout.containerMaxWidth and layout.sectionPaddingY (A3\'s cap-probe and the real run measure them): no maxWidth, paddingTop or "container"/"rhythm" entry', () => {
+await check('edsSpec: layout.sectionPaddingY becomes top and bottom padding assertions on every non-empty main > .section (±16px, match "all"); layout.containerMaxWidth stays out', () => {
   const spec = edsSpec({ tokens: sheet(), runtimeContract: contract() });
-  assert.ok(!spec.some((e) => e.property === 'maxWidth' || e.property === 'paddingTop' || /container|rhythm/i.test(e.label)), JSON.stringify(spec.map((e) => e.label)));
-  assert.ok(!spec.some((e) => e.selector === 'main .container' || e.selector === 'main section'));
+  const SECTIONS = 'main > .section:not(:empty)';
+  assert.deepEqual(spec.filter((e) => e.selector === SECTIONS), [
+    { label: 'section rhythm (±16px)', selector: SECTIONS, property: 'paddingTop', value: '80px', tolerancePx: 16, match: 'all' },
+    { label: 'section rhythm bottom (±16px)', selector: SECTIONS, property: 'paddingBottom', value: '80px', tolerancePx: 16, match: 'all' },
+  ]);
+  assert.ok(!spec.some((e) => e.property === 'maxWidth' || /container/i.test(e.label) || e.selector === 'main .container'), 'the container measure is parity\'s cap-probe');
+  assert.ok(spec.filter((e) => e.selector !== SECTIONS).every((e) => e.match === undefined), 'the other entries assert the first match, as before');
+  assert.ok(spec.findIndex((e) => e.selector === ':root') > spec.findLastIndex((e) => e.selector === SECTIONS), 'the section entries come before the :root block');
+  const t = sheet();
+  t.layout.sectionPaddingY = ' 64px ';
+  assert.ok(edsSpec({ tokens: t, runtimeContract: contract() }).filter((e) => e.selector === SECTIONS).every((e) => e.value === '64px'), 'the value is trimmed');
+  t.layout.sectionPaddingY = '0';
+  assert.ok(edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS && e.value === '0'), 'a zero padding is a px length');
+  delete t.layout.sectionPaddingY;
+  assert.ok(!edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS), 'a sheet without the token has no section entry');
+});
+
+await check('edsSpec: a layout.sectionPaddingY that is not a px length cannot be asserted: a UsageError (exit 2) naming the path and the value', () => {
+  for (const bad of ['4rem', '5%', '80px 0', 'var(--space)', '80', 'calc(2 * 40px)', 80, ['80px']]) {
+    const t = sheet();
+    t.layout.sectionPaddingY = bad;
+    assert.throws(() => edsSpec({ tokens: t, runtimeContract: contract() }), (e) => e instanceof UsageError && e.code === 2 && /layout\.sectionPaddingY/.test(e.message), JSON.stringify(bad));
+  }
+  const t = sheet();
+  t.layout.sectionPaddingY = '4rem';
+  assert.throws(() => edsSpec({ tokens: t, runtimeContract: contract() }), /must be a px length such as "64px".*got "4rem"/);
 });
 
 await check('edsSpec omits what the sheet does not carry, and an empty sheet gives no entries', () => {
@@ -122,6 +147,7 @@ await check('edsSpec omits what the sheet does not carry, and an empty sheet giv
   assert.ok(!labels.includes('heading color') && !labels.includes('primary button padding (±2px)'));
   assert.ok(labels.includes('page bg') && labels.includes('primary button bg'));
   assert.ok(!labels.includes(':root --max-width') && !labels.includes(':root --section-padding'), 'the :root block follows the sheet too');
+  assert.ok(!labels.some((l) => SECTION_LABELS.includes(l)), 'and so do the section entries');
   assert.deepEqual(edsSpec({ tokens: {}, runtimeContract: contract() }), []);
   assert.deepEqual(edsSpec({ tokens: { palette: { pageBg: '  ' } }, runtimeContract: contract() }), [], 'a blank value is absent');
 });
@@ -149,7 +175,7 @@ await check('edsSpec: a token that is no string, or no value a :root block can h
 await check('edsSpec labels are donor-probe\'s DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5', () => {
   const probe = readFileSync(join(SCRIPTS, 'donor-probe.mjs'), 'utf8');
   const defaults = new Set([...probe.matchAll(/label: '([^']+)'/g)].map((m) => m[1]));
-  for (const label of LABELS) assert.ok(defaults.has(label), `donor-probe's default spec has no "${label}"`);
+  for (const label of [...LABELS, SECTION_LABELS[0]]) assert.ok(defaults.has(label), `donor-probe's default spec has no "${label}"`);
 });
 
 // ---- runTokens against stub probes ----------------------------------------------------------------------------
@@ -326,7 +352,8 @@ await check('--help documents tokens beside preview; the usage errors of tokens 
   assert.equal(r.status, 0, r.all);
   assert.match(r.stdout, /deployed-gate\.mjs tokens --page <slug> \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
   assert.match(r.stdout, /layout\.containerMaxWidth/);
-  assert.match(r.stdout, /layout\.sectionPaddingY/);
+  assert.match(r.stdout, /layout\.sectionPaddingY, when the sheet carries it \(a px length, else exit\s+2\), is asserted as the top and bottom padding of every non-empty main > \.section/);
+  assert.ok(!/layout\.sectionPaddingY \(EDS section rhythm/.test(r.stdout), 'no longer said to be skipped');
   assert.match(r.stdout, /not run: skipped/);
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
@@ -384,9 +411,9 @@ try { await import('playwright'); playwrightOk = true; } catch { console.log('sk
 
 if (playwrightOk) {
   const total = edsSpec({ tokens: sheet(), runtimeContract: contract() }).length;
-  const SKIPS = [/^SKIP layout\.containerMaxWidth: measured by parity cap-probe$/m, /^SKIP layout\.sectionPaddingY: EDS section rhythm, measured in the real run$/m];
+  const SKIPS = [/^SKIP layout\.containerMaxWidth: measured by parity cap-probe$/m];
 
-  await check('preview then tokens on the fake preview: PASS tokens n/n, the two SKIP lines, exit 0; the files and the record are written', async () => {
+  await check('preview then tokens on the fake preview: PASS tokens n/n, the one SKIP line (the container measure), exit 0; the files and the record are written', async () => {
     const server = await startPreviewServer();
     try {
       const root = project('cli-pass', { preview: false });
@@ -403,7 +430,8 @@ if (playwrightOk) {
       const rec = recordOf(root);
       assert.equal(rec.verdict, 'PASS');
       assert.equal(rec.exit, 0);
-      assert.deepEqual(rec.skipped, ['layout.containerMaxWidth: measured by parity cap-probe', 'layout.sectionPaddingY: EDS section rhythm, measured in the real run']);
+      assert.deepEqual(rec.skipped, ['layout.containerMaxWidth: measured by parity cap-probe']);
+      assert.ok(!r.stdout.includes('sectionPaddingY'), 'the section padding is asserted, not skipped');
       assert.ok(existsSync(rec.report) && existsSync(rec.json), 'the probe\'s report and JSON are where the record says');
       assert.deepEqual(Object.keys(rec), ['verdict', 'exit', 'report', 'json', 'skipped']);
       assert.deepEqual(readJson(join(out, 'tokens-spec.json')), edsSpec({ tokens: sheet(), runtimeContract: contract() }));
@@ -427,6 +455,30 @@ if (playwrightOk) {
       assert.ok(!/^PASS/m.test(r.stdout));
       assert.equal(recordOf(root).verdict, 'FAIL');
       assert.equal(recordOf(root).exit, 1);
+    } finally { await server.close(); }
+  });
+
+  await check('every non-empty main > .section is held to layout.sectionPaddingY: the empty metadata section is skipped, and a last section 60px over the token fails by its match where the first section alone would pass', async () => {
+    const skipEmpty = variant('page-empty-section', ['main .section:empty { display: none; }', 'main .section:empty { display: none; padding: 0; }']);
+    const off = variant('page-section-off', ['main .section.cards-container { padding: 80px 120px;', 'main .section.cards-container { padding: 140px 120px;']);
+    const server = await startPreviewServer({ pages: { '/ns/home': skipEmpty, '/ns/off': off } });
+    try {
+      const root = project('cli-sections', { origin: server.origin });
+      const pass = await tokens(root);
+      assert.equal(pass.status, 0, pass.all);
+      assert.match(pass.stdout, new RegExp(`^PASS tokens ${total}/${total}$`, 'm'), 'the empty section (padding 0) is not a match');
+      const sectionRows = readJson(join(outOf(root), 'tokens-probe.json')).results.filter((x) => SECTION_LABELS.includes(x.label));
+      assert.deepEqual(sectionRows.map((x) => [x.label, x.status, x.detail]), [['section rhythm (±16px)', 'PASS', 'all 2 matches: 96px, 80px'], ['section rhythm bottom (±16px)', 'PASS', 'all 2 matches: 96px, 80px']]);
+
+      const record = readJson(join(outOf(root), 'preview.json'));
+      writeFileSync(join(outOf(root), 'preview.json'), `${JSON.stringify({ ...record, url: `${server.origin}/ns/off`, plain: `${server.origin}/ns/off.plain.html`, path: '/ns/off' }, null, 2)}\n`);
+      const fail = await tokens(root);
+      assert.equal(fail.status, 1, fail.all);
+      assert.match(fail.stdout, new RegExp(`^FAIL tokens 2/${total}$`, 'm'));
+      assert.deepEqual(fail.stdout.split('\n').filter((l) => l.startsWith('  ')), [
+        '  section rhythm (±16px): got match 2 of 2: 140px, want 80px',
+        '  section rhythm bottom (±16px): got match 2 of 2: 140px, want 80px',
+      ]);
     } finally { await server.close(); }
   });
 

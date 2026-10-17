@@ -1,10 +1,13 @@
 // skills/reskin/scripts/deployed/eds-spec.mjs — A2 of the deployed leg, `tokens`: the donor tokens asserted on the
 // EDS DOM of the preview, through donor-probe.mjs.
 //   edsSpec({ tokens, runtimeContract })  the probe entries: palette, type and the primary button on the selectors
-//                                         EDS markup has, then each :root token verbatim. A token the sheet does not
-//                                         carry has no entry. layout.containerMaxWidth (A3's cap-probe measures it:
-//                                         EDS wrappers are full-width by design) and layout.sectionPaddingY (EDS section
-//                                         rhythm, measured in the real run) are not asserted here.
+//                                         EDS markup has, then, when the sheet carries layout.sectionPaddingY, its
+//                                         top and bottom padding on every non-empty `main > .section` (donor-probe
+//                                         match "all", ±16px: the empty metadata section the pipeline leaves is
+//                                         skipped; the token must be a px length, else a UsageError), then each :root
+//                                         token verbatim. A token the sheet does not carry has no entry.
+//                                         layout.containerMaxWidth is not asserted here (A3's cap-probe measures it:
+//                                         EDS wrappers are full-width by design).
 //   runTokens({ dir, slug, preview, auth, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
 //                                         writes tokens.json and returns { verdict, exit, report, json, total, failures,
 //                                         skipped }. A probe that cannot give a verdict throws: a UsageError (exit 2),
@@ -29,8 +32,13 @@ const PRIMARY_CLASS = /\.button\.primary(?![\w-])/;
 
 const SKIPPED = [
   'layout.containerMaxWidth: measured by parity cap-probe',
-  'layout.sectionPaddingY: EDS section rhythm, measured in the real run',
 ];
+
+// layout.sectionPaddingY: every section with content, top and bottom (EDS leaves an empty metadata section that
+// computes the same padding but is no section on the page). The top row keeps donor-probe's DEFAULT_SPEC label.
+const SECTIONS = 'main > .section:not(:empty)';
+const SECTION_PADDING = [['section rhythm (±16px)', 'paddingTop'], ['section rhythm bottom (±16px)', 'paddingBottom']];
+const PX_LENGTH = /^(-?\d+(\.\d+)?px|0)$/;
 
 const ROWS = [
   { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
@@ -63,6 +71,13 @@ export function edsSpec({ tokens, runtimeContract }) {
   }
   let root;
   try { root = rootTokens(tokens).entries; } catch (e) { throw new UsageError(`donor-tokens.json: ${e.message}`); }
+  const padding = lookup(tokens, 'layout.sectionPaddingY');
+  if (present(padding)) {
+    if (typeof padding !== 'string' || !PX_LENGTH.test(padding.trim())) {
+      throw new UsageError(`donor-tokens.json: layout.sectionPaddingY must be a px length such as "64px" to be asserted on every section of the preview, got ${JSON.stringify(padding)}: write it in px, or leave it out of the sheet`);
+    }
+    for (const [label, property] of SECTION_PADDING) rows.push({ label, selector: SECTIONS, property, value: padding.trim(), tolerancePx: 16, match: 'all' });
+  }
   return [...rows, ...root.map((e) => ({ label: `:root ${e.name}`, selector: ':root', property: e.name, value: e.value }))];
 }
 

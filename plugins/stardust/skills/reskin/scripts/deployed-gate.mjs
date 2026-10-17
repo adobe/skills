@@ -96,9 +96,11 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          :root token of the block the reskin renders from the sheet, verbatim. Reads preview.json (no record, or
          one with problems, is exit 2; a skipped leg prints "not run: skipped", exit 0), the donor token sheet
          <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
-         root (missing either is exit 2). layout.containerMaxWidth (measured by parity's cap-probe) and
-         layout.sectionPaddingY (EDS section rhythm, measured in the real run) are not asserted: each prints
-         a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n assertions failing) plus one
+         root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
+         2), is asserted as the top and bottom padding of every non-empty main > .section, each within 16px (a
+         failure names the match: "match 4 of 7: 80px"). layout.containerMaxWidth (measured by parity's
+         cap-probe) is not asserted: it prints a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n
+         assertions failing) plus one
          indented line per failing assertion (exit 1). Writes tokens-spec.json, tokens-probe.md,
          tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. The
          token reaches donor-probe by environment, never argv. A probe that cannot run is exit 2 (a stalled

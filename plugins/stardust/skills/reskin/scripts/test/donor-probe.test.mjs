@@ -137,6 +137,69 @@ h1 { font-size: 56px } @media (max-width: 600px) { h1 { font-size: 32px } }
       }
       assert.equal(run(...base, '--viewport').status, 2);
     });
+
+    // match "all": five sections with 64px padding-top except the third, at `middle`; an empty one first, with none.
+    const sections = (name, middle) => {
+      const file = join(dir, `${name}.html`);
+      const rows = [1, 2, 3, 4, 5].map((i) => `<div class="section${i === 3 ? ' mid' : ''}"><p>Section ${i}</p></div>`).join('');
+      writeFileSync(file, `<!doctype html><html><head><style>body{margin:0}main>.section{padding:64px 0}main>.section:empty{padding:0}main>.mid{padding-top:${middle}}</style></head><body><main><div class="section"></div>${rows}</main></body></html>`);
+      return file;
+    };
+    const entry = (extra = {}) => ({ label: 'rhythm', selector: 'main > .section:not(:empty)', property: 'paddingTop', value: '64px', tolerancePx: 16, ...extra });
+    const probe = (page2, entries, ...more) => {
+      const s = join(dir, `spec-${Math.random().toString(36).slice(2)}.json`);
+      writeFileSync(s, JSON.stringify(entries));
+      return run('--tokens', tokens, '--rendered', page2, '--spec', s, '--no-sanity', ...more);
+    };
+
+    await check('match "all": every match within tolerance passes; the detail says how many matches there were', () => {
+      const out = join(dir, 'all-pass.json');
+      const r = probe(sections('all-pass', '72px'), [entry({ match: 'all' })], '--json', out);
+      assert.equal(r.status, 0, r.stdout + r.stderr);
+      const [result] = JSON.parse(readFileSync(out, 'utf8')).results;
+      assert.deepEqual({ label: result.label, status: result.status, detail: result.detail }, { label: 'rhythm', status: 'PASS', detail: 'all 5 matches: 64px, 72px' });
+      assert.equal(result.check, 'rhythm = 64px');
+    });
+
+    await check('match "all": one middle match off is a FAIL naming it (index of count, and its value); the others are not named', () => {
+      const r = probe(sections('all-fail', '96px'), [entry({ match: 'all' })]);
+      assert.equal(r.status, 1, r.stdout + r.stderr);
+      assert.match(r.stdout, /^  FAIL rhythm = 64px — match 3 of 5: 96px$/m);
+      assert.ok(!/match [1245] of/.test(r.stdout), r.stdout);
+      const json = join(dir, 'all-fail.json');
+      probe(sections('all-fail', '96px'), [entry({ match: 'all' })], '--json', json);
+      assert.equal(JSON.parse(readFileSync(json, 'utf8')).results[0].detail, 'match 3 of 5: 96px');
+    });
+
+    await check('match "all": a failure past the cap names the first five failing matches and counts the rest; no match at all is "matched nothing"', () => {
+      const page2 = join(dir, 'all-many.html');
+      writeFileSync(page2, `<!doctype html><html><head><style>body{margin:0}.row{padding-top:200px}.row:first-child{padding-top:64px}</style></head><body>${'<p class="row">x</p>'.repeat(8)}</body></html>`);
+      const r = probe(page2, [{ label: 'many', selector: '.row', property: 'paddingTop', value: '64px', tolerancePx: 16, match: 'all' }, entry({ match: 'all', label: 'none', selector: '.no-such' })]);
+      assert.equal(r.status, 1);
+      assert.match(r.stdout, /^  FAIL many = 64px — match 2 of 8: 200px; match 3 of 8: 200px; match 4 of 8: 200px; match 5 of 8: 200px; match 6 of 8: 200px; … 2 more$/m, r.stdout);
+      assert.match(r.stdout, /^  FAIL none — selector "\.no-such" matched nothing$/m);
+    });
+
+    await check('without "match" (or with "first") only the first match is asserted, as before: the same page with a middle match off passes', () => {
+      const page2 = sections('first-only', '96px');
+      for (const extra of [{}, { match: 'first' }]) {
+        const r = probe(page2, [entry(extra)]);
+        assert.equal(r.status, 0, r.stdout + r.stderr);
+      }
+      const bad = probe(page2, [entry({ value: '200px' })]);
+      assert.equal(bad.status, 1);
+      assert.match(bad.stdout, /^  FAIL rhythm = 200px — 64px$/m, 'the failure still reads as the computed value of the first match');
+    });
+
+    await check('a match that is neither "all" nor "first" is a setup error, exit 2 naming the entry, before any page is opened', () => {
+      const r = probe(sections('bad-match', '64px'), [entry({ match: 'every' })]);
+      assert.equal(r.status, 2);
+      assert.match(r.stderr, /spec entry "rhythm": match must be "all" \(every match\) or "first" \(the default\), got "every"/);
+    });
+
+    await check('--help names the spec key', () => {
+      assert.match(run('--help').stdout, /"match": "all"/);
+    });
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 

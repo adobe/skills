@@ -22,6 +22,10 @@
  *   - tolerancePx: componentwise numeric comparison (each px component of
  *     the computed value within ±tolerancePx of the token's component) —
  *     for paddings (±2), container width (±20), section rhythm (±16)
+ *   - match "all": the entry is asserted on EVERY element the selector
+ *     matches (default: the first match only). One result per entry; it
+ *     passes when all matches do, and a failure names each failing match
+ *     as "match <i> of <n>: <computed value>" (1-based, document order)
  *
  * The DEFAULT SPEC assumes the rendered-page conventions the reskin
  * renderer must follow (reference/gates.md § Rendered-page conventions):
@@ -38,7 +42,8 @@
  *              { "label": "...", "selector": "...", "property": "backgroundColor",
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
  *                "tolerancePx": 2,         (property in camelCase, or a --custom-property)
- *                "compare": "firstFamily" }
+ *                "compare": "firstFamily",
+ *                "match": "all" }          (every match of the selector, not the first)
  *       [--report <path>]            markdown report
  *       [--shot <path>]              full-page screenshot at 1440 for the
  *                                    side-by-side eyeball vs donor screenshots
@@ -121,6 +126,8 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
+  console.log('A --spec entry takes "match": "all" to assert every element its selector matches (default: the first);');
+  console.log('a failure names each failing match as "match <i> of <n>: <computed value>".');
   console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
   console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
   console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and probes nothing. --auth-header /');
@@ -193,6 +200,9 @@ const DEFAULT_SPEC = [
   { label: 'section rhythm (±16px)', selector: 'main section', property: 'paddingTop', token: 'layout.sectionPaddingY', tolerancePx: 16 },
 ];
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
+for (const entry of spec) {
+  if (entry.match !== undefined && entry.match !== 'all' && entry.match !== 'first') die(`spec entry "${entry.label}": match must be "all" (every match) or "first" (the default), got ${JSON.stringify(entry.match)}`);
+}
 
 const normFamily = (s) => (s || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
 const firstFamily = (s) => normFamily(String(s || '').split(',')[0]);
@@ -258,25 +268,38 @@ if (waitEds) {
 await page.waitForTimeout(1500);
 
 const results = []; // { check, label, status: 'PASS'|'FAIL'|'SKIP', detail }
+const MAX_NAMED = 5; // failing matches an "all" entry names; the rest are counted
 for (const entry of spec) {
   const want = entry.value !== undefined ? entry.value : get(tokens, entry.token);
   if (want === undefined) {
     results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `token path "${entry.token}" absent from ${args.tokens}` });
     continue;
   }
-  const got = await page.evaluate(([sel, prop]) => {
-    const el = document.querySelector(sel);
-    if (!el) return null;
-    return String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
-  }, [entry.selector, entry.property]);
-  if (got === null) {
+  const every = entry.match === 'all';
+  const gots = await page.evaluate(([sel, prop, all]) => {
+    const els = all ? [...document.querySelectorAll(sel)] : [document.querySelector(sel)].filter(Boolean);
+    if (!els.length) return null;
+    return els.map((el) => (String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop]));
+  }, [entry.selector, entry.property, every]);
+  if (gots === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.
     results.push({ check: entry.label, label: entry.label, status: 'FAIL', detail: `selector "${entry.selector}" matched nothing` });
     continue;
   }
-  const ok = compare(entry, got, want);
-  results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: ok ? 'PASS' : 'FAIL', detail: got });
+  if (!every) {
+    results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: compare(entry, gots[0], want) ? 'PASS' : 'FAIL', detail: gots[0] });
+    continue;
+  }
+  const off = gots.map((got, i) => ({ got, at: i + 1 })).filter(({ got }) => !compare(entry, got, want));
+  const shown = off.slice(0, MAX_NAMED).map(({ got, at }) => `match ${at} of ${gots.length}: ${got}`);
+  if (off.length > shown.length) shown.push(`… ${off.length - shown.length} more`);
+  results.push({
+    check: `${entry.label} = ${want}`,
+    label: entry.label,
+    status: off.length ? 'FAIL' : 'PASS',
+    detail: off.length ? shown.join('; ') : `all ${gots.length} matches: ${[...new Set(gots)].join(', ')}`,
+  });
 }
 
 // ---- overflow sanity ---------------------------------------------------------

@@ -366,9 +366,7 @@ node stardust/scripts/reskin/donor-probe.mjs \
 
 Computed-style assertions of donor token values on the rendered page —
 bg/fg, font-family token string, display weight, button spec,
-container width, band palette, section rhythm. Tolerances (exact for
-colors/radius/family; ±2px button padding; ±20px container; ±16px
-section rhythm) documented in `reference/gates.md` § Tolerances.
+container width, band palette, section rhythm. Tolerances: `reference/gates.md` § Tolerances.
 Then the **side-by-side judgment**: open the rendered page next to the
 donor reference-page screenshots (`canon-source/assets/screenshots/`)
 and judge adoption with your eyes — the probe proves tokens, the
