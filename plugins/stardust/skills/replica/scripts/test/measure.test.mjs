@@ -217,7 +217,7 @@ const fakePages = (outcomes = {}, { reopen } = {}) => {
         if (out instanceof Error) return Promise.reject(out);
         return Promise.resolve({ width, attempt: n[width] });
       },
-      reopen: async (width) => { log.push(`reopen ${width}`); if (reopen) await reopen(width); },
+      reopen: async (width, bound) => { log.push(`reopen ${width}`); if (reopen) await reopen(width, bound); },
       deadlineMs: 40, withDeadline, isContextDestroyed, label: (width) => `u @${width}`,
     },
   };
@@ -245,8 +245,8 @@ await check('readWidths: a read past the deadline is recorded at once and never 
   assert.deepEqual(r.retried, []); assert.deepEqual(Object.keys(r.byWidth), ['1024', '1440']);
   assert.deepEqual(f.log, ['read 1440', 'read 360', 'reopen 768', 'read 768', 'reopen 1024', 'read 1024']);
 });
-await check('readWidths: a fresh page that never opens is bounded by reopenDeadlineMs and recorded; a BotChallengeError from a fresh page is rethrown, never recorded', async () => {
-  const hung = fakePages({ 360: [destroyed()] }, { reopen: () => new Promise(() => {}) });
+await check('readWidths: a fresh-page step that never settles is bounded by reopenDeadlineMs and recorded; a BotChallengeError from a fresh page is rethrown, never recorded', async () => {
+  const hung = fakePages({ 360: [destroyed()] }, { reopen: (width, bound) => bound(new Promise(() => {})) });
   const r = await readWidths([360, 1440], { ...hung.deps, reopenDeadlineMs: 30 });
   assert.deepEqual(r.failed, [{ width: 360, error: 'u @360 fresh page: deadline 30 ms exceeded' }, { width: 1440, error: 'u @1440 fresh page: deadline 30 ms exceeded' }]);
   const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
@@ -254,6 +254,19 @@ await check('readWidths: a fresh page that never opens is bounded by reopenDeadl
   await assert.rejects(readWidths([1440, 360], bot.deps), (e) => e === challenge);
   const botAfterDeadline = fakePages({ 360: ['hang'] }, { reopen: async () => { throw challenge; } });
   await assert.rejects(readWidths([360, 1440], botAfterDeadline.deps), (e) => e === challenge, 'the next width\'s fresh page meets the challenge');
+});
+await check('readWidths: a fresh page\'s navigation is never raced — a slow one (a headed challenge-solve window) is measured, and a BotChallengeError it throws past every deadline still propagates, never recorded as a deadline', async () => {
+  const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
+  // bound steps settle at once; the navigation between them takes 150 ms — past deadlineMs (40) and reopenDeadlineMs (30)
+  const slow = (outcome) => async (width, bound) => { await bound(Promise.resolve()); await sleep(150); if (outcome) throw outcome; await bound(Promise.resolve()); };
+  const solved = fakePages({ 360: [destroyed()] }, { reopen: slow() });
+  const r = await readWidths([1440, 360], { ...solved.deps, reopenDeadlineMs: 30 });
+  assert.deepEqual(r.failed, []); assert.deepEqual(r.retried, [360]); assert.deepEqual(r.byWidth[360], { width: 360, attempt: 1 });
+  for (const outcomes of [{ 360: [destroyed()] }, { 360: ['hang'] }]) {
+    const late = fakePages(outcomes, { reopen: slow(challenge) });
+    await assert.rejects(readWidths([360, 1440], { ...late.deps, reopenDeadlineMs: 30 }), (e) => e === challenge, JSON.stringify(Object.keys(outcomes)));
+  }
 });
 const done = (pages, failed = []) => ({ _provenance: { urls: Object.keys(pages), failed }, pages });
 await check('exitCodeFor: 0 complete or partial, 124 every attempted width read failed, 1 a page failed to load (before 124)', () => {

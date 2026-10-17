@@ -157,9 +157,10 @@ export const DEFAULT_TIMEOUT_MS = 20000;
 const VIEWPORT_H = 900;
 // Closing an abandoned page is bounded: a page wedged by a busy loop can stall its close.
 const CLOSE_DEADLINE_MS = 5000;
-// A fresh page's open is a navigation (bounded by the navigation timeout) plus the open path's fixed waits — the
-// settle, the overlay late window, dismissal clicks — so its deadline is the navigation timeout plus this margin.
-const REOPEN_SLACK_MS = 30000;
+// Each fresh-page step around the navigation — the new page, its resize, the overlay sweep (late window 6 s, dismissal
+// clicks ≤ 3 s each) — is raced against this. The navigation itself is not: goto / gotoLive carry --timeout-ms (and
+// under --headed the challenge-solve window), and a BotChallengeError from them must always reach exit 3.
+const FRESH_PAGE_STEP_MS = 30000;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 
@@ -288,24 +289,28 @@ async function measurePage(browser, url, o, session) {
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
   // Errors ignored: the page is abandoned either way, and browser.close() kills what is left.
   const closeBounded = (p) => session.withDeadline(p.close(), CLOSE_DEADLINE_MS, `${url} page close`).catch(() => {});
-  const open = async (p) => {
+  // The open path in two parts: the navigation (bounded by its own timeouts; never raced — a late BotChallengeError
+  // would be swallowed), then what follows it (the overlay sweep live, a short rest local).
+  const navigate = async (p) => {
+    if (live) await session.gotoLive(p, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
+    else {
+      const resp = await p.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+      if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
+    }
+  };
+  const afterNavigate = async (p) => {
     if (live) {
-      await session.gotoLive(p, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
       const d = await session.dismissOverlays(p, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
       if (d.consent) console.error(`measure: consent dismissed via ${d.consent}`);
       for (const sel of d.extra) console.error(`measure: overlay dismissed via extra selector ${sel}`);
       for (const sel of d.marketing) console.error(`measure: marketing modal dismissed via ${sel}`);
-    } else {
-      const resp = await p.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
-      if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
-      await p.waitForTimeout(300);
-    }
+    } else await p.waitForTimeout(300);
   };
   let page = await context.newPage();
-  let opens = 0; // a fresh page whose open was abandoned on its deadline must never become the page a later read uses
   try {
     // The first open failing is "a page failed to load" (the caller's { url, error }, exit 1).
-    await open(page);
+    await navigate(page);
+    await afterNavigate(page);
     return await readWidths(o.widths, {
       read: async (width) => {
         // The page this read started on: a late step of an abandoned read never touches a newer page.
@@ -314,18 +319,19 @@ async function measurePage(browser, url, o, session) {
         await settle(p);
         return p.evaluate(measureInPage, { selectors: o.selectors, props: o.props, allMatches: o.allMatches, cap: MATCH_CAP, textMax: TEXT_MAX });
       },
-      reopen: async (width) => {
-        const mine = ++opens;
+      // `bound` races a step against FRESH_PAGE_STEP_MS. A new page that arrives after its deadline is never assigned
+      // (the context close takes it), so no later read can use a page whose open was abandoned.
+      reopen: async (width, bound) => {
         const old = page; page = null;
         if (old) await closeBounded(old);
-        const p = await context.newPage();
-        if (mine !== opens) { await closeBounded(p); throw new Error('fresh page superseded'); }
+        const p = await bound(context.newPage());
         page = p;
-        await p.setViewportSize({ width, height: VIEWPORT_H });
-        await open(p);
+        await bound(p.setViewportSize({ width, height: VIEWPORT_H }));
+        await navigate(p);
+        await bound(afterNavigate(p));
       },
       deadlineMs: o.timeoutMs,
-      reopenDeadlineMs: o.timeoutMs + REOPEN_SLACK_MS,
+      reopenDeadlineMs: FRESH_PAGE_STEP_MS,
       withDeadline: session.withDeadline,
       isContextDestroyed: session.isContextDestroyed,
       label: (width) => `${url} @${width}`,
@@ -339,7 +345,9 @@ async function measurePage(browser, url, o, session) {
  * One page's width reads, browser-free (read / reopen carry the page) → { byWidth, failed: [{ width, error }], retried: [width] }.
  *   - each read(width) races `deadlineMs` (label `label(width)`);
  *   - a destroyed execution context (the page navigated under the read — after a resize or a consent click) is
- *     re-read ONCE: reopen(width) (a fresh page, raced against `reopenDeadlineMs`) then read(width);
+ *     re-read ONCE: reopen(width, bound) opens a fresh page, then read(width). reopen itself is NOT raced — its
+ *     navigation carries its own timeouts, and a BotChallengeError it throws, however late, must propagate — it
+ *     passes every other step through bound(promise), raced against `reopenDeadlineMs` (label `<label> fresh page`);
  *   - a deadline is never retried (a second one would double the wait) — recorded at once, like a second failure
  *     or any other error (first line of its message);
  *   - after any failed width the next width starts on a fresh page (the old one navigated away or is wedged);
@@ -348,7 +356,7 @@ async function measurePage(browser, url, o, session) {
 export async function readWidths(widths, { read, reopen, deadlineMs, reopenDeadlineMs = deadlineMs, withDeadline, isContextDestroyed, label = (width) => `@${width}` }) {
   const byWidth = {}; const failed = []; const retried = [];
   const attempt = async (width, fresh) => {
-    if (fresh) await withDeadline(reopen(width), reopenDeadlineMs, `${label(width)} fresh page`);
+    if (fresh) await reopen(width, (step) => withDeadline(step, reopenDeadlineMs, `${label(width)} fresh page`));
     return withDeadline(read(width), deadlineMs, label(width));
   };
   const rethrowChallenge = (e) => { if (e && e.name === 'BotChallengeError') throw e; };
