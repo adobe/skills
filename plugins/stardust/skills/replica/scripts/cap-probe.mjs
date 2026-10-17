@@ -113,6 +113,11 @@ export const DEFAULT_TIMEOUT_MS = 30000; // the navigation timeout / per-read de
 const VIEWPORT_H = 900;
 const EDGE = 8; // px: a box this close to the viewport is full width
 const CLOSE_MS = 5000; // closing a page wedged by a busy loop can hang too — bounded, the final browser.close() kills the rest
+// The re-probe's fresh page: each step around its navigation — the new page, the overlay sweep (late window 6 s,
+// dismissal clicks ≤ 3 s each) — is raced against this, as measure.mjs races its fresh-page steps (its
+// FRESH_PAGE_STEP_MS: same name, same value). The navigation itself is not: gotoLive / goto carry --timeout-ms (and
+// under --headed the challenge-solve window), and a BotChallengeError from them must always reach exit 3.
+const FRESH_PAGE_STEP_MS = 30000;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 125; } }
 
@@ -534,15 +539,17 @@ function navigatedError() { return Object.assign(new Error('the page navigated a
 // kept). Anything else — a deadline (a second would double the wait), a second failure — leaves at
 // once with the read's `width`. The first open failing is "a page failed to load" (no width); a
 // re-open failing is the retried read's failure; a BotChallengeError always leaves as itself.
+// The re-open gets open(bound): bound(step) races a step around its navigation against `reopenDeadlineMs`
+// (label `fresh-page step`) — measure's fresh-page bound; a deadline there is that re-open's failure, never retried.
 // `onRetry(e)` runs before the re-probe, `onRecovered(e)` only once it succeeded. Every page opened is closed.
-export async function probeWithRetry({ open, probe, close, isContextDestroyed, onRetry = () => {}, onRecovered = () => {} }) {
+export async function probeWithRetry({ open, probe, close, isContextDestroyed, reopenDeadlineMs, withDeadline, onRetry = () => {}, onRecovered = () => {} }) {
   let page = await open();
   try {
     try { return await probe(page); } catch (e) {
       if (!(e && (e.name === 'PageNavigatedError' || isContextDestroyed(e)))) throw e;
       onRetry(e);
       const old = page; page = null; await close(old);
-      try { page = await open(); } catch (re) {
+      try { page = await open((step) => withDeadline(step, reopenDeadlineMs, 'fresh-page step')); } catch (re) {
         if (re && re.name === 'BotChallengeError') throw re;
         throw Object.assign(new Error(`re-open on a fresh page failed — ${firstLine(re)}`), { width: e.width, probeWidth: e.probeWidth });
       }
@@ -563,13 +570,15 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
   const bounded = (p) => session.withDeadline(p, CLOSE_MS, 'close').catch(() => {});
-  // A page at the base width (the context's viewport), opened the one way this URL is opened.
-  const open = async () => {
-    const page = await context.newPage();
+  // A page at the base width (the context's viewport), opened the one way this URL is opened. `bound` (the re-probe's
+  // fresh page only) races each step around the navigation against FRESH_PAGE_STEP_MS; a new page that arrives after
+  // its deadline is never assigned (the context close takes it).
+  const open = async (bound = (step) => step) => {
+    const page = await bound(context.newPage());
     try {
       if (live) {
         await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
-        const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
+        const d = await bound(session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 }));
         for (const sel of [d.consent, ...d.extra, ...d.marketing].filter(Boolean)) console.error(`cap-probe: overlay dismissed via ${sel}`);
       } else {
         const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
@@ -584,6 +593,8 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
       probe: (page) => probePage(page, { rootSel, baseWidth: o.width, probeWidth, deadlineMs: o.timeoutMs }),
       close: (page) => bounded(page.close()),
       isContextDestroyed: session.isContextDestroyed,
+      reopenDeadlineMs: FRESH_PAGE_STEP_MS,
+      withDeadline: session.withDeadline,
       onRetry: (e) => { console.error(`cap-probe: ${url} @${e.width}: execution context destroyed (the page navigated) — re-probe attempted on a fresh page`); },
       onRecovered: (e) => { warnings.push(`${url} @${e.width}: execution context destroyed (the page navigated) — re-probed on a fresh page`); },
     });

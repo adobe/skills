@@ -2,7 +2,7 @@
 // skills/replica/scripts/test/cap-probe.test.mjs — the cap-probe.mjs contract. Part (a): the pure
 // classification (capped vs fluid, cap origins, kinds, the content cap, the derived probe width, the
 // cross-archetype aggregate and register items, the live-vs-build rows), argument parsing, the
-// DESIGN.json merge, the one re-probe (fakes), the exit code and the status line — no browser. Part
+// DESIGN.json merge, the one re-probe and its bounded fresh page (fakes), the exit code and the status line — no browser. Part
 // (b): end-to-end against fixture pages served from this process (a live-like page with a 1920 shell
 // + 1600 article + 1180 module, a fluid build, a fixed build, a page that navigates on its first
 // resize, a page that wedges on the resize to the probe width) — runs only where playwright is
@@ -201,13 +201,15 @@ await check('parseArgs: --timeout-ms stays null unless given — main resolves e
 
 // ---- the re-probe (fakes: pages are numbers, a probe throws what the script says) ------------------------
 const destroyed = (width) => Object.assign(new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation'), { width, probeWidth: 2560 });
-const fakeRun = async (script, { openFails = [] } = {}) => {
+const fakeRun = async (script, { openFails = [], onOpen = async () => {}, reopenDeadlineMs } = {}) => {
   const log = { opened: [], closed: [], probed: [], retried: [], recovered: [] }; let n = 0; const steps = [...script];
   const outcome = await probeWithRetry({
-    open: async () => { n += 1; const f = openFails[n - 1]; if (f) throw f; log.opened.push(n); return n; },
+    open: async (bound) => { n += 1; const f = openFails[n - 1]; if (f) throw f; await onOpen(n, bound); log.opened.push(n); return n; },
     probe: async (page) => { log.probed.push(page); const s = steps.shift(); if (s instanceof Error) throw s; return { page, ...s }; },
     close: async (page) => { log.closed.push(page); },
     isContextDestroyed,
+    reopenDeadlineMs,
+    withDeadline,
     onRetry: (e) => { log.retried.push(e.width); },
     onRecovered: (e) => { log.recovered.push(e.width); },
   }).then((model) => ({ model }), (error) => ({ error }));
@@ -236,6 +238,24 @@ await check('probeWithRetry: the first open failing is a load failure (no width)
   assert.equal(load.error.message, 'HTTP 500'); assert.equal(load.error.width, undefined); assert.deepEqual(load.log.probed, []);
   const bot = await fakeRun([destroyed(2560)], { openFails: [null, Object.assign(new Error('challenge'), { name: 'BotChallengeError' })] });
   assert.equal(bot.error.name, 'BotChallengeError'); assert.equal(bot.error.width, undefined);
+});
+await check('probeWithRetry: a fresh-page step that never settles is bounded by reopenDeadlineMs (measure\'s fresh-page bound) — the retried read\'s failure with its width, never recovered, never retried; the first open is not bounded', async () => {
+  const bounds = [];
+  const t0 = Date.now();
+  const hung = await fakeRun([destroyed(2560), {}], { reopenDeadlineMs: 30, onOpen: async (n, bound) => { bounds.push(typeof bound); if (n === 2) await bound(new Promise(() => {})); } });
+  assert.ok(Date.now() - t0 < 2000, 'the hung step cost its deadline, not more');
+  assert.equal(hung.error.width, 2560); assert.equal(hung.error.message, 're-open on a fresh page failed — fresh-page step: deadline 30 ms exceeded');
+  assert.deepEqual([bounds, hung.log.opened, hung.log.closed, hung.log.probed, hung.log.retried, hung.log.recovered], [['undefined', 'function'], [1], [1], [1], [2560], []]);
+});
+await check('probeWithRetry: a fresh page\'s navigation is never raced — a slow one (a headed challenge-solve window) is re-probed, and a BotChallengeError it throws past every deadline leaves as itself', async () => {
+  const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
+  // the re-open's bound steps settle at once; its navigation between them takes 150 ms — past reopenDeadlineMs (30)
+  const slow = (outcome) => async (n, bound) => { if (n < 2) return; await bound(Promise.resolve()); await sleep(150); if (outcome) throw outcome; await bound(Promise.resolve()); };
+  const solved = await fakeRun([destroyed(2560), { contentMaxWidth: 1600 }], { reopenDeadlineMs: 30, onOpen: slow() });
+  assert.equal(solved.error, undefined); assert.deepEqual(solved.model, { page: 2, contentMaxWidth: 1600 }); assert.deepEqual(solved.log.recovered, [2560]);
+  const late = await fakeRun([destroyed(2560)], { reopenDeadlineMs: 30, onOpen: slow(challenge) });
+  assert.equal(late.error, challenge);
 });
 
 // ---- verdict and status line ---------------------------------------------------------------------------
