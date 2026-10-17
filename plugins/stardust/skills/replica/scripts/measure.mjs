@@ -54,8 +54,9 @@
  *     --json               the full structure on stdout instead of the table
  *     --out <file>         also write that JSON to <file> (directories created)
  *     --timeout-ms <ms>    per-page navigation timeout AND per-width deadline (default:
- *                          STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
- *                          crawl.navMs.p95 × 2 clamped to 20–180 s, else 20000)
+ *                          max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from
+ *                          stardust/current/_crawl-log.json) clamped to 20000–180000, else
+ *                          20000; the flag always wins)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA)
  *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
@@ -406,7 +407,8 @@ async function main(argv) {
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
   const session = await loadLiveSession();
-  // One navigation timeout across the instruments: the flag, else env, else the crawl's p95 × 2, else 20000.
+  // One navigation timeout across the instruments: the flag, else max(env, the crawl's p95 × 2) clamped to
+  // 20000–180000, else 20000.
   const nav = o.timeoutMs === null ? sessionNavTimeout(session) : { ms: o.timeoutMs, source: 'flag' };
   o.timeoutMs ??= nav.ms;
   const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, partial: false, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };

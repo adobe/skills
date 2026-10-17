@@ -78,8 +78,8 @@
  *     --concurrency <n>       parallel browser contexts (default 4)
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
- *   Each page's goto timeout: env STARDUST_NAV_TIMEOUT_MS (ms, as given), else the crawl figure —
- *   2 × crawl.navMs.p95 from the previous <out>/_crawl-log.json, clamped to 20000–180000 — else 45000;
+ *   Each page's goto timeout: max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from the previous
+ *   <out>/_crawl-log.json) clamped to 20000–180000, else 45000 — the env is a floor, never a cut;
  *   resolved once through the diff skill's live-session.mjs (../../diff/scripts/, ../diff/ or ./ — when
  *   none is there the crawl keeps 45000 and says so once on stderr). One stderr line names the value
  *   and its source (`[crawl] page goto timeout <ms> ms (env|crawl|default) — <detail>`). The entry
@@ -106,7 +106,7 @@
  *                                  existing log, never replaced
  *                                  `crawl.navMs` { n, p50, p95, max }: the captured pages' navMs
  *                                  (nearest-rank, integer ms; nulls when n is 0) — the crawl figure:
- *                                  2 × p95, clamped, is the navigation timeout live-session gives the
+ *                                  max(2 × p95, env), clamped, is the navigation timeout live-session gives the
  *                                  live instruments (from stardust/current/) and the next crawl into
  *                                  this --out; `crawl.navTimeout` { ms, source }: the page goto
  *                                  timeout this crawl used (source env | crawl | default)
@@ -893,7 +893,7 @@ async function capturePage(context, url, slug, args) {
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
   // navMs: this page's own goto, to domcontentloaded — the crawl figure's sample (crawl.navMs in the log).
-  // The timeout is the shared one main() resolved (env → the previous crawl's figure → 45 s).
+  // The timeout is the shared one main() resolved (max(env, the previous crawl's figure) clamped, else 45 s).
   const navStart = Date.now();
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: args.navTimeoutMs || NAV_TIMEOUT_FALLBACK_MS });
   let navMs = Date.now() - navStart;
@@ -1020,9 +1020,10 @@ async function capturePage(context, url, slug, args) {
 async function main() {
   const args = parseArgs(process.argv);
   ({ chromium } = await import('playwright'));
-  // One goto timeout for every page, resolved once — env, else the previous crawl's figure in this --out (its
-  // _crawl-log.json, read before this crawl rewrites it), else 45 s. Printed and logged (crawl.navTimeout): a fast
-  // previous figure lowers it to as little as 20 s, and a page that then times out must say where that came from.
+  // One goto timeout for every page, resolved once — max(env, the previous crawl's figure in this --out: its
+  // _crawl-log.json, read before this crawl rewrites it) clamped 20–180 s, else 45 s. Printed and logged
+  // (crawl.navTimeout): a fast previous figure lowers it to as little as 20 s, and a page that then times out must
+  // say where that came from.
   const session = await loadLiveSession();
   // the 2xx denial-page check (denialAt) reads live-session's table; off without it, and said so on stderr below
   args.pageDenial = session && typeof session.pageDenial === 'function' ? session.pageDenial : null;

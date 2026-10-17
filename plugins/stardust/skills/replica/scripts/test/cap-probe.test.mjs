@@ -194,7 +194,7 @@ await check('CLI: --help answers without a browser; a usage error exits 125', ()
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /--probe-width/);
   const u = run([]); assert.equal(u.code, 125); assert.match(u.err, /need <url>/);
 });
-await check('parseArgs: --timeout-ms stays null unless given — main resolves env → crawl p95 × 2 → DEFAULT_TIMEOUT_MS (30000)', () => {
+await check('parseArgs: --timeout-ms stays null unless given — main resolves max(env, crawl p95 × 2) clamped, else DEFAULT_TIMEOUT_MS (30000)', () => {
   assert.equal(DEFAULT_TIMEOUT_MS, 30000);
   assert.equal(parseArgs(['https://s/']).timeoutMs, null);
   assert.equal(parseArgs(['https://s/', '--timeout-ms', '5000']).timeoutMs, 5000);

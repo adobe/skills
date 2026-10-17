@@ -105,7 +105,7 @@ check('navMsSummary: nearest-rank p50/p95 (the value at rank ⌈p/100 × n⌉), 
 check('--help names the goto timeout\'s env and crawl figure, its stderr line, navMs on the page record (the slash retry\'s after a rescue), crawl.navMs and crawl.navTimeout in the log', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /goto timeout: env STARDUST_NAV_TIMEOUT_MS/); assert.match(r.stdout, /2 × crawl\.navMs\.p95 from the previous <out>\/_crawl-log\.json/);
+  assert.match(r.stdout, /goto timeout: max\(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl\.navMs\.p95 from the previous\s+<out>\/_crawl-log\.json\) clamped to 20000–180000, else 45000 — the env is a floor/);
   assert.match(r.stdout, /`\[crawl\] page goto timeout <ms> ms \(env\|crawl\|default\) — <detail>`/);
   assert.match(r.stdout, /navMs \(ms the page's own goto took/); assert.match(r.stdout, /after a\s+slash-retry rescue, the retry's — capped by its 15 s timeout/);
   assert.match(r.stdout, /`crawl\.navMs` \{ n, p50, p95, max \}/); assert.match(r.stdout, /`crawl\.navTimeout` \{ ms, source \}/);

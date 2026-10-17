@@ -157,7 +157,7 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
-  assert.match(h.out, /--timeout-ms <ms> .*STARDUST_NAV_TIMEOUT_MS/, 'the env is named on the --timeout-ms line'); assert.match(h.out, /crawl\.navMs\.p95 from\s+stardust\/current\/_crawl-log\.json/, 'the crawl figure is named');
+  assert.match(h.out, /--timeout-ms <ms> .*\(default: max\(env STARDUST_NAV_TIMEOUT_MS,\s+2 × crawl\.navMs\.p95 from stardust\/current\/_crawl-log\.json\) clamped to\s+20000–180000, else 20000; the flag always wins\)/, 'the floor precedence on the --timeout-ms line');
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
 });

@@ -327,7 +327,7 @@ await check('--help and -h: exit 0, the usage header on stdout, nothing written 
     assert.equal(r.status, 0, `${flag} exit ${r.status}: ${r.stderr}`);
     assert.match(r.stdout, /Usage:/); assert.match(r.stdout, /--against <url2>/); assert.match(r.stdout, /Writes: nothing/);
     assert.match(r.stdout, /root: \{ \[url\]: \{ \[width\]: \{ viewport, clientWidth, scrollWidth,/); assert.match(r.stdout, /◄◄ OVERFLOW \+<n>px/); assert.match(r.stdout, /img\?: \{ naturalWidth,/); assert.match(r.stdout, /boxSizing, width,/);
-    assert.match(r.stdout, /--timeout-ms <ms> +per-page navigation timeout AND per-width deadline \(default:\s+STARDUST_NAV_TIMEOUT_MS/); assert.match(r.stdout, /124 every width\s+read failed/); assert.match(r.stdout, /failed: \[ \{ url, width\?, error \} \]/);
+    assert.match(r.stdout, /--timeout-ms <ms> +per-page navigation timeout AND per-width deadline \(default:\s+max\(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl\.navMs\.p95 from\s+stardust\/current\/_crawl-log\.json\) clamped to 20000–180000, else\s+20000; the flag always wins\)/); assert.match(r.stdout, /124 every width\s+read failed/); assert.match(r.stdout, /failed: \[ \{ url, width\?, error \} \]/);
     assert.deepEqual(wrote, []);
   }
 });

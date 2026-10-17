@@ -47,8 +47,9 @@
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
  *     --timeout-ms <ms>      per-page navigation timeout AND per-width deadline (default:
- *                            STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
- *                            crawl.navMs.p95 × 2 clamped to 20–180 s, else 30000)
+ *                            max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from
+ *                            stardust/current/_crawl-log.json) clamped to 20000–180000, else
+ *                            30000; the flag always wins)
  *     --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
  *
  * Output (capture): per URL the probe width and its derivation, one line per cap origin (kind, px,
@@ -645,7 +646,8 @@ async function main(argv) {
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
   const session = await loadLiveSession();
-  // An explicit --timeout-ms wins; else session.resolveNavTimeoutMs's chain (env → crawl p95 × 2 → 30000), with its source.
+  // An explicit --timeout-ms wins; else live-session's navTimeout (max(env, crawl p95 × 2) clamped to
+  // 20000–180000, else 30000), with its source.
   const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : sessionNavTimeout(session);
   o.timeoutMs = nav.ms;
   const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width, navTimeout: { ms: nav.ms, source: nav.source } };

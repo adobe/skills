@@ -67,8 +67,8 @@ export async function settle(page, { passes = 4, step = 400, dwell = 250, emptyS
 /**
  * Navigate (fail-loud live-session contract: a challenge throws BotChallengeError, a 404 build is measured
  * with a warning), dismiss overlays, settle. `warmup` visits another URL first in the same context.
- * `timeoutMs` (each navigation) defaults to resolveNavTimeoutMs({ fallback: 90000 }) per call: env
- * STARDUST_NAV_TIMEOUT_MS, then the crawl's p95 × 2, then this routine's own 90 s.
+ * `timeoutMs` (each navigation) defaults to resolveNavTimeoutMs({ fallback: 90000 }) per call: max(env
+ * STARDUST_NAV_TIMEOUT_MS, the crawl's p95 × 2) clamped to 20000–180000, else this routine's own 90 s.
  */
 export async function visit(page, url, { warmup = null, settle: settleOpts = {}, dismiss = true, solveWindow = true, timeoutMs = resolveNavTimeoutMs({ fallback: 90000 }), httpError = 'measure' } = {}) {
   if (warmup) {
