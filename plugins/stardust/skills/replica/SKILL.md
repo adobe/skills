@@ -26,8 +26,7 @@ Two properties make this a different animal from the redesign pipeline:
 
 Validated end-to-end (a typographic retail home page, 2026-07-03): 8.31% → 2.93% → **1.31%**
 pixel diff in 3 measured iterations, height Δ 0, content-diff "findings:
-none" (198/198 nodes). Every fix came off the instruments, never off
-eyeballing.
+none" (198/198 nodes).
 
 ## Inputs
 
@@ -270,6 +269,7 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
+# Exit 3 (BLOCKED): a challenge OR a 2xx denial page ("origin blocked") → re-run that round's live captures with --headed (gate doc rule 12).
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
@@ -336,39 +336,35 @@ in ≤ 100-second slices), main agent and subagents alike — a long instrument
 in the foreground, or two as parallel tool calls in one turn, is the same
 blocked step (reference doc § Iteration discipline).
 
-**Hardening (each is a recorded false-measurement trap — see the reference
-doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture; a challenge/blocked
-interstitial **fails loud (exit 3)**, never measured — escalate with
-`--headed`, and a site that still blocks needs crawl.mjs-class capture;
-`domcontentloaded` on live targets, never `networkidle`;
-symmetric `--main` scoping on both sides (`--main body` is never valid);
-both overlay classes dismissed via `--dismiss` (consent AND timed marketing
-modals); animations frozen for capture; the pointer parked after any
-dismissal click; fixed/sticky chrome replicated fixed, with its
-scroll-state morph, so seam repeats stay symmetric
+**Hardening (each a recorded false-measurement trap — gate doc § Hardening
+rules):** real-Chrome UA **plus the standard request headers** on every
+capture, the client hints on same-origin subresources too (native in the
+full Chromium build stitch-shot prefers, else added; `--hints document-only`
+opts out); a challenge, blocked interstitial or 2xx denial page (a vendor
+signature, a tiny page under one error heading) **fails loud (exit 3)**,
+never measured — escalate with `--headed`, and a site that still blocks
+needs crawl.mjs-class capture; `domcontentloaded` on live targets, never
+`networkidle`; symmetric `--main` scoping on both sides (`--main body` is
+never valid); consent banners, timed marketing modals and open dialogs
+dismissed (a closed dialog's scroll lock released for the capture, a
+survivor's kept); animations frozen; the pointer parked after any
+dismissal click; fixed/sticky chrome replicated with its scroll-state morph
 (`reference/recreation-procedure.md` § Fixed and sticky chrome);
-granularity-parity policy for JOIN/SPLIT false-reds (#87); capture-state
-policy for CDN-403 images and hydration placeholders (replicate as captured
-+ log). Two defect classes only the gate catches — DOM/style capture misses
-them: rendered-face font forks on inner spans (width probe) and overlay
-scrims invisible to computed styles (recover by per-row luminance fitting).
-
-The live-target hardening ships as flags on the diff scripts (`--ua`,
-`--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
-backed by `live-session.mjs` — copy the scripts and pass flags; a project
-copy carrying hand-edits is a defect
-(`reference/source-fidelity-gate.md` § Script adaptations).
+granularity parity for JOIN/SPLIT false-reds (#87); the capture-state
+policy; font forks on inner spans and overlay scrims, which only the gate
+catches. It ships as flags (`--ua`, `--wait-until`, `--dismiss`,
+`--headed`, `--locale`, visual-diff `--main`) backed by `live-session.mjs`
+— a hand-edited project copy is a defect (gate doc § Script adaptations).
 `measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs` and the probes on
 live-session's `gotoLive`/`visit()` defaults (e.g. anchor, chrome-parity,
 sibling-variance, clip-probe, content-presence, unit-geometry) navigate
-under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else 2 × the crawl's
-`crawl.navMs.p95` (20–180 s), else their own default, a flag winning;
-measure and cap-probe race each width read against it, re-read once on a
-fresh page when the page navigated under a read, and exit 124 (no verdict)
-only when every width read failed (cap-probe capture: every page's probe
-failed a read; compare: any), else 0 with `_provenance.partial` and a
-`PARTIAL` first line.
+under one timeout — max(`STARDUST_NAV_TIMEOUT_MS`, 2 × the crawl's
+`crawl.navMs.p95`) clamped to 20–180 s (the env a floor: gate doc rule 2),
+else their own default, a flag winning; measure and cap-probe race each
+width read against it, re-read once on a fresh page when the page
+navigated under a read, and exit 124 (no verdict) only when every width
+read failed (cap-probe capture: every page's probe failed a read; compare:
+any), else 0 with `_provenance.partial` and a `PARTIAL` first line.
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**

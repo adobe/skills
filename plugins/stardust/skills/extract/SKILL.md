@@ -389,8 +389,9 @@ records each page's goto time (`navMs`, in its page record) and
 `crawl.navMs` {n, p50, p95, max} in `_crawl-log.json`; style-census, the
 next crawl's page goto, replica's measure, cap-probe and stitch-shot, and
 the probes on live-session's `gotoLive`/`visit()` defaults then navigate
-under `STARDUST_NAV_TIMEOUT_MS`, else that p95 × 2 clamped to 20–180 s,
-else their own default (a flag wins). Read the
+under max(`STARDUST_NAV_TIMEOUT_MS`, that p95 × 2) clamped to 20–180 s —
+the env is a floor: a runner sets it from a discovery sample, the crawl
+measured the real pages — else their own default (a flag wins). Read the
 palette, type, motif and hover values from the file's `aggregate` and
 cite each from its `sources[]` (`url`, `selector`, `prop`); the
 per-page detail sits under `pages[url][width]`.
