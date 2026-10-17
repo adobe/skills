@@ -4,6 +4,30 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.0 — local integration for the next recorded run (not a release)
+
+A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,
+never released. Each merged branch keeps its own entry below in version order, under its provisional
+version; numbers marked "local" are integration-only and renumbered by the maintainer at merge.
+
+- Base `stardust/gate-economics` — 0.35.6 (#141, #142 local), carrying `stardust/gate-trust` 0.35.5,
+  `stardust/gate-all-coverage-roster` 0.35.1, `stardust/replica-fidelity-run14` 0.34.5 (#138 local),
+  `stardust/replica-retro-pack` 0.34.4, `stardust/replica-gate-triage` 0.34.3,
+  `stardust/replica-source-oracle` 0.34.2, `stardust/replica-speed-instruments` 0.34.1 and
+  `stardust/replica-consent-and-progress-shape` 0.33.1.
+- `stardust/replica-cluster-subunits` — 0.35.0 (#134).
+- `stardust/replica-instrument-deadlines` — 0.35.2 (#135).
+- `stardust/rollout-bookkeeping-proof` — 0.35.3 (#140 local).
+- `stardust/handover-tools` — 0.35.4 (#137).
+- `stardust/migrate-shipped-encoder` — 0.35.0 (#139 local).
+- `stardust/rollout-workspace-export` — 0.34.0 (#133, PR #443).
+- `stardust/rollout-block-origin` — 0.34.1 (#136 local).
+- Local-only commits: the scripts-index lint cap at 16 KiB; an encoded page's sidecar feeds its
+  delivered `lang` in the rollout inventory; `stardust.gitignore` tracks the gate's JSON sidecars under
+  `replica/gates/` (renders and diffs stay untracked); the renumbering above.
+- Not in this image: `stardust/rollout-run-followups` (0.35.7) and `stardust/capture-dialogs-and-denials`
+  (0.35.8, still in progress).
+
 ## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
 
 Retrospectives of recorded hands-off runs found the gate's economics kept in prose: the 3-round fix cap was a
