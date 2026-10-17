@@ -132,6 +132,7 @@ export const PHASES = {
     'B-block': [], // ### Phase B — Block dedup plan
     'B2-dynamic': [], // ### Phase B2 — Dynamic surface
     'C-deliver': [], // ### Phase C — Deliver the site
+    'gap-closure': [], // Phase C — Gap closure (after C-final, once, bounded; not a lettered phase)
     'D-site': [], // ### Phase D — Site assembly
     'D2-dynamic': [], // ### Phase D2 — Dynamic features
     'D3-multilingual': [], // ### Phase D3 — Multilingual

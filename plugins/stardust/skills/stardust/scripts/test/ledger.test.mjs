@@ -59,9 +59,10 @@ check('checkPhase: canonical and alias forms pass case-insensitively; unknown sk
   assert.match(checkPhase('stardust:migrate', 'paint'), /unknown phase "paint" for stardust:migrate \(known: plan, render, assets, state-and-report\)/);
   assert.match(checkPhase('stardust:nope', 'x'), /unknown skill stardust:nope \(known: stardust, extract/);
 });
-check('PHASES: every requested skill is present, rollout uses the <Letter>-<word> form, no duplicate alias collides with a canonical name', () => {
+check('PHASES: every requested skill is present, rollout uses the <Letter>-<word> form (but gap-closure: it runs once after C-final, not a lettered phase), no duplicate alias collides with a canonical name', () => {
   for (const s of ['stardust', 'replica', 'rollout', 'dynamics', 'extract', 'migrate', 'deploy', 'prototype']) assert.ok(PHASES[s], `missing ${s}`);
-  for (const k of Object.keys(PHASES.rollout)) assert.match(k, /^[A-I]\d?-[a-z][a-z-]*$/, k);
+  for (const k of Object.keys(PHASES.rollout)) assert.match(k, /^(?:[A-I]\d?-[a-z][a-z-]*|gap-closure)$/, k);
+  assert.ok(Object.hasOwn(PHASES.rollout, 'gap-closure'), 'the rollout gap-closure phase is known');
   for (const [skill, table] of Object.entries(PHASES)) {
     const canon = new Set(Object.keys(table).map((k) => k.toLowerCase()));
     for (const [k, aliases] of Object.entries(table)) for (const a of aliases) assert.ok(!canon.has(a.toLowerCase()), `${skill}: alias ${a} of ${k} shadows a canonical phase`);
@@ -254,6 +255,15 @@ check('start then end passes --strict; a second end of the same phase is refused
   assert.equal(runIn(gdir, 'migrate', 'plan', 'start', '--strict').code, 0);
   const other = runIn(gdir, 'prototype', 'plan', 'end', '--strict', '--detail', 'x'); assert.equal(other.code, 2); assert.match(other.err, /end for stardust:prototype plan has no matching start/);
   assert.ok(runIn(gdir, '--help').out.includes('An end needs an open start'), '--help names the guard');
+});
+check('rollout gap-closure: start and end pass --strict, written in the table\'s own form; --help lists it', () => {
+  const kdir = join(root, 'gap-closure'); mkdirSync(kdir);
+  const s = runIn(kdir, 'rollout', 'gap-closure', 'start', '--strict', '--detail', 'article: 2 pages; product: 1 page');
+  assert.equal(s.code, 0, s.err); assert.equal(s.err, '');
+  const e = runIn(kdir, 'rollout', 'Gap-Closure', 'end', '--strict', '--detail', 'residual: /a, /b');
+  assert.equal(e.code, 0, e.err);
+  assert.deepEqual(linesIn(kdir).map((l) => [l.skill, l.phase, l.event]), [['stardust:rollout', 'gap-closure', 'start'], ['stardust:rollout', 'gap-closure', 'end']]);
+  assert.match(runIn(kdir, '--help').out, /rollout: .*\bgap-closure\b/);
 });
 check('journal check on end: no journal → silent; "## " headings that do not name the phase → one warning, exit unchanged even under --strict, line still written; a heading naming it (any case, dash or space, anywhere in the heading) → silent; ### headings and body text do not count; start is never checked', () => {
   const jdir = join(root, 'journal'); mkdirSync(jdir);
