@@ -9,8 +9,10 @@ git history only (plus the branch-scoped notes in
 Retrospectives of recorded hands-off runs found the gate's economics kept in prose: the 3-round fix cap was a
 sentence a new brief could reset, while gate-triage counted the tables on disk; the same page could PASS at
 gate-all's 5 % height bar and FAIL at gate-evidence's 8 px; a browser slot bounded jobs, not browsers, so one
-gate-all job opened up to six Chromiums inside it; and `update-coverage --gate` refused an `--only` run's table as
-`not a gate-all summary (no rows[])`. Numbered 0.35.6 provisionally, stacked on 0.35.5.
+gate-all job opened up to six Chromiums inside it; and after an `--only` run, which never writes the roster
+`summary.json`, an agent pointed `update-coverage --gate` at that file and was told
+`not a gate-all summary (no rows[])` — a missing file reported as an empty one. Numbered 0.35.6 provisionally,
+stacked on 0.35.5.
 
 - **Fix rounds are counted by the instrument (#134, extends #126).** Every `gate-all --only` run that yields a
   verdict counts one round per page in `<out>/<slug>/rounds.json` (an INCONCLUSIVE row does not count, a reused row
@@ -36,10 +38,14 @@ gate-all job opened up to six Chromiums inside it; and `update-coverage --gate` 
   a time, so a bounded round takes the sum of their times; one stderr line names the bound and, when it holds probes
   back, the remedy (start the round through run-bg with `--timeout 1800`, or raise `STARDUST_BROWSER_BUDGET`). Run
   without a slot, nothing changes.
-- **update-coverage ingests every gate-all table.** `--gate <table | dir>` takes the roster `summary.json`, an
-  `--only` run's `runs/<ts>-<slug>.json`, or the gate dir `all-<w>/` (summary.json, then runs/*.json; the newest row
-  per page and width wins). A `summary.json` absent beside `runs/` tables ingests those with one note; `<path> not
-  found`, an unparsable file (its JSON error) and `not a gate-all summary (no rows[])` are distinct refusals.
+- **update-coverage ingests every gate-all table.** New: `--gate` takes the gate dir `all-<w>/` (its summary.json,
+  then runs/*.json in name order; the newest row per page and width wins), beside the roster `summary.json` and an
+  `--only` run's `runs/<ts>-<slug>.json` it already took. A `summary.json` absent beside `runs/` tables ingests those
+  with one stdout note,
+  `summary.json absent — an --only run writes runs/<ts>-<slug>.json; ingested <n> table(s) from <dir>/runs/`.
+  The refusals are distinct (exit 1, nothing written): `<path> not found`, `<path> cannot be read (<code>)`,
+  `<path> does not parse as JSON (<error>)`, `<path> is not a gate-all summary (no rows[])` — now only a parsed
+  file without rows — and `<dir> holds no gate-all table (no summary.json, no runs/*.json)`.
 
 ## 0.35.5 — a gate names what it could not measure; an override must earn its row
 
