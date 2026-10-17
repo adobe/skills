@@ -8,7 +8,9 @@
  * archetype prototype's <main> is found in the archetype's capture under the innermost anchor holding it (by its text,
  * whitespace removed, case kept; an image by its file name; a link by its text), and its recipe { anchor, path, kind }
  * records that selector and the child path (tag + nth-of-type steps) from the anchor's element to it. The same selector
- * and path on the sibling's capture give the sibling's value, so no per-sibling slot data is written by hand.
+ * and path on the sibling's capture give the sibling's value, so no per-sibling slot data is written by hand. A text found
+ * in separate places of the mapped capture (not one inside the other), or a file name on more than one image, is
+ * ambiguous: that slot gets no recipe, never the first place's.
  *
  * Exports: UnsupportedSelector, parseSelector, querySelectorAll, indexHtml, readMapping, anchorsFor, slotRecipes,
  * slotValues. The element model is migrate.mjs elementsOf: comments and raw-text contents skipped, a close tag pops to
@@ -330,8 +332,10 @@ function locate(proto, cap, e, kind, ctx) {
     for (const u of imageUrls(proto, img)) { const s = stemOf(u); if (s) { want.add(s); want.add(s.replace(/-[0-9a-f]{8}$/, '')); } } // a harvested file carries -<hash8>
     want.delete('');
     if (!want.size) return none('the archetype image has no file name to find it by');
-    source = ctx.within.find((el) => el.tag === 'img' && imageUrls(cap, el).some((u) => want.has(stemOf(u))));
-    if (!source) return none('its image file name is inside no mapped element of the archetype capture');
+    const found = ctx.within.filter((el) => el.tag === 'img' && imageUrls(cap, el).some((u) => want.has(stemOf(u))));
+    if (!found.length) return none('its image file name is inside no mapped element of the archetype capture');
+    if (found.length > 1) return none(`ambiguous: its image file name matches ${found.length} images of the mapped archetype capture`);
+    [source] = found;
   } else {
     const target = kind === 'link' && e.tag !== 'a' ? descendants(proto, e).find((d) => d.tag === 'a') : e;
     const t = squash(textOf(proto, target));
@@ -339,8 +343,13 @@ function locate(proto, cap, e, kind, ctx) {
     const hits = ctx.within.filter((el) => (kind !== 'link' || el.tag === 'a') && squash(textOf(cap, el)) === t);
     if (!hits.length) return none(`its ${kind === 'link' ? 'link text' : 'text'} is inside no mapped element of the archetype capture`);
     // Equal text nests: the first hit and the hits inside it are one chain; the deepest of the slot's tag, else (html)
-    // the deepest holding a block child, else the deepest.
+    // the deepest holding a block child, else the deepest. A hit outside that chain is another place with the same text,
+    // and which place is the slot's cannot be told.
     const chain = hits.filter((el) => inside(el, hits[0]));
+    if (chain.length < hits.length) {
+      const places = hits.filter((el) => !hits.some((o) => o !== el && inside(el, o))).length;
+      return none(`ambiguous: its ${kind === 'link' ? 'link text' : 'text'} is in ${places} separate places of the mapped archetype capture`);
+    }
     const same = chain.filter((el) => el.tag === target.tag);
     const pick = same.length ? same : kind === 'html' ? chain.filter((el) => (cap.kids.get(el) || []).some((k) => !PHRASING.has(k.tag))) : [];
     source = (pick.length ? pick : chain).at(-1);
@@ -355,8 +364,9 @@ function locate(proto, cap, e, kind, ctx) {
  * document order; a name on several elements → one recipe per element. recipe = { anchor, path: [{ tag, n }], kind } —
  * anchor the selector (of `anchors`: strings or { selector }) whose single element in the capture is the innermost holding
  * the slot's source element, path the nth-of-type steps from it to that element — or { anchor: null, path: null, kind,
- * reason } when none is found. An anchor that is outside the grammar or does not match exactly one element of the
- * capture is not used.
+ * reason } when none is found, or when the source is ambiguous (its text in separate places of the mapped capture, its
+ * file name on more than one image; reason "ambiguous: …"). An anchor that is outside the grammar or does not match
+ * exactly one element of the capture is not used.
  */
 export function slotRecipes(archetypeProtoHtml, archetypeCaptureHtml, anchors) {
   const proto = indexHtml(archetypeProtoHtml); const cap = indexHtml(archetypeCaptureHtml);

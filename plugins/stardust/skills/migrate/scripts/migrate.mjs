@@ -135,9 +135,10 @@
  *   children html, else text). A name in the page JSON slots keeps that value (explicit beats derived); the page JSON is
  *   never written. Refused (strict slots, nothing written): with an explicit --slots mapping, the mapping unusable (the
  *   reason; re-run block-origin.mjs --verify, or --slots page-json), no verified selector for the archetype or a missing
- *   capture; in mapping mode, a slot without a mapped source, or whose anchor does not match exactly one element of this
- *   page's capture, whose path leads nowhere, whose link has no text, or a repeated slot with more items than the
- *   archetype's, and no page JSON value for it. sourceForked names the mapping and the capture.
+ *   capture; in mapping mode, a slot without a mapped source (or with an ambiguous one: its text in separate places of
+ *   the archetype's mapped capture, its image file name on more than one image there), or whose anchor does not match
+ *   exactly one element of this page's capture, whose path leads nowhere, whose link has no text, or a repeated slot
+ *   with more items than the archetype's, and no page JSON value for it. sourceForked names the mapping and the capture.
  *
  * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
  *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).

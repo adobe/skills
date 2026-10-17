@@ -1,7 +1,8 @@
 // Unit test for slot-map.mjs — the A′ fork's slot values located through the rollout block mapping: the selector
-// grammar over migrate.mjs's element model, readMapping's reasons (absent, not hash-listed, stale), the archetype's
-// anchors, the recipes of a fixture archetype (prototype + capture) and the values they read on sibling captures
-// (one whose anchor matches twice). Static fixtures only: test/fixtures/slot-map/.
+// grammar over migrate.mjs's element model, readMapping's reasons (absent, not hash-listed, stale, another formatVersion,
+// no templates[], no manifest), the archetype's anchors, the recipes of a fixture archetype (prototype + capture) and the
+// values they read on sibling captures (one whose anchor matches twice), and an ambiguous source (no recipe).
+// Static fixtures only: test/fixtures/slot-map/.
 // Run: node skills/migrate/scripts/test/slot-map.test.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -95,6 +96,12 @@ check('stale (generatedAt differs from pages.json) → null with both stamps', (
   const r = readMapping(join(FIX, 'rollout-stale'));
   assert.equal(r.mapping, null);
   assert.match(r.reason, /rollout-stale\/workspace\/mapping\.json is stale: generatedAt 2026-10-01T08:00:00\.000Z, .*rollout-stale\/coverage\/pages\.json generatedAt 2026-10-02T09:30:00\.000Z/);
+});
+check('another formatVersion, no templates[] or no manifest → null with the reason', () => {
+  const reason = (dir) => { const r = readMapping(join(FIX, dir)); assert.equal(r.mapping, null); return r.reason; };
+  assert.match(reason('rollout-version'), /rollout-version\/workspace\/mapping\.json is formatVersion "0\.2\.0"; this reader takes 0\.1\.x$/);
+  assert.match(reason('rollout-notemplates'), /rollout-notemplates\/workspace\/mapping\.json has no templates\[\]$/);
+  assert.match(reason('rollout-nomanifest'), /rollout-nomanifest\/workspace\/manifest\.json is absent, so nothing lists the mapping's sha256$/);
 });
 
 // ---- anchors, recipes, values -----------------------------------------------------------------
@@ -232,6 +239,25 @@ check('a repeated slot whose items are not the first same-tag elements where the
   const at = (...steps) => ({ anchor: 'section.s', path: steps.map(([tag, n]) => ({ tag, n })), kind: 'text' });
   assert.deepEqual(slotValues({ t: [at(['div', 1], ['h3', 1]), at(['p', 1])] }, grid('A', 'B')).unresolved, [{ slot: 't', reason: 'its items part at different tags (div, p) under "section.s", so the sibling\'s item count cannot be checked' }]);
   assert.deepEqual(slotValues({ t: [at(['div', 1]), at(['div', 1], ['h3', 1])] }, grid('A', 'B')).unresolved, [{ slot: 't', reason: 'its items are not side by side (one is or holds another at div[1] under "section.s"), so the sibling\'s item count cannot be checked' }]);
+});
+// The same text (or image file name) in two places of the archetype capture that are not one inside the other: the
+// mapping cannot tell which place is the slot's, so neither is used — never the first place for every such slot.
+check('a text, link or image found in separate places of the archetype capture → no anchor, "ambiguous" (each slot); a single place still resolves', () => {
+  const proto = (b) => `<html><body><main><section><div><a data-slot="cta-a" href="/a">Book now</a></div><div><a data-slot="cta-b" href="/b">${b}</a></div><p data-slot="note">Book now</p></section></main></body></html>`;
+  const cap = (b) => `<html><body><main><div id="s1"><a href="/x">Book now</a></div><div id="s2"><a href="/y">${b}</a></div></main></body></html>`;
+  const r = slotRecipes(proto('Book now'), cap('Book now'), ['#s1', '#s2']);
+  assert.deepEqual(r, {
+    'cta-a': { anchor: null, path: null, kind: 'link', reason: 'ambiguous: its link text is in 2 separate places of the mapped archetype capture' },
+    'cta-b': { anchor: null, path: null, kind: 'link', reason: 'ambiguous: its link text is in 2 separate places of the mapped archetype capture' },
+    note: { anchor: null, path: null, kind: 'text', reason: 'ambiguous: its text is in 2 separate places of the mapped archetype capture' },
+  });
+  assert.deepEqual(slotValues(r, cap('Book now')), { slots: {}, unresolved: [] }, 'no recipe: left to the caller (the page JSON value, else strict slots)');
+  const unique = slotRecipes(proto('Book later'), cap('Book later'), ['#s1', '#s2']);
+  assert.deepEqual(unique['cta-a'], { anchor: '#s1', path: [{ tag: 'a', n: 1 }], kind: 'link' });
+  assert.deepEqual(unique['cta-b'], { anchor: '#s2', path: [{ tag: 'a', n: 1 }], kind: 'link' });
+  assert.deepEqual(slotValues({ 'cta-a': unique['cta-a'], 'cta-b': unique['cta-b'] }, cap('Book later')).slots, { 'cta-a': { href: '/x', text: 'Book now' }, 'cta-b': { href: '/y', text: 'Book later' } });
+  const twice = CAPTURE.replace('<p>Deck <i>text</i></p>', '<p>Deck <i>text</i><img src="/m/pic.png" alt="Again"></p>');
+  assert.deepEqual(slotRecipes(PROTO, twice, ['section.s']).pic, { anchor: null, path: null, kind: 'image', reason: 'ambiguous: its image file name matches 2 images of the mapped archetype capture' });
 });
 check('a data: placeholder is never the image source or srcset (a data: URL with its comma is one srcset candidate)', () => {
   const lazy = '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1w" data-srcset="https://cdn.example.test/m/sib.png?w=800 800w, https://cdn.example.test/m/sib.png?w=1600 1600w" alt="Lazy">';
