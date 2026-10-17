@@ -2,7 +2,8 @@
 // canon; every subcommand is driven through the CLI (execFileSync/spawnSync); foldPath is imported for
 // the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
 // block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule, the A′ fork
-// from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate and the fork's
+// from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate (an earlier acceptance holds
+// while the probe row is unchanged; sidecar, else the coverage row) and the fork's
 // slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/).
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
@@ -553,14 +554,14 @@ check('verdict same → recorded (the changed variance record re-renders the pag
   assert.deepEqual(json(`${OUT}/guides/alpha/_meta.json`).variance, { verdict: 'same', file: VAR, at: '2026-10-01T00:00:00Z', missing: [], extra: [], deltas: 0, accepted: null });
   assert.deepEqual(json(`${OUT}/howto/one/_meta.json`).variance, { status: 'skipped', reason: `${VAR} has no row for howto-one` });
 });
-check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted', () => {
+check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted; a plain re-run holds it (unchanged)', () => {
   const before = read(`${OUT}/guides/beta/_meta.json`);
   const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
   assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
   const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
   assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', missing: ['hero'], extra: ['card'], deltas: 2, accepted: 'the hero is a page-level promo' });
-  const again = run(['render', 'guide-beta']); assert.equal(again.status, 2); assert.match(again.err, /--accept-variance "<reason>" \(an earlier render accepted it: "the hero is a page-level promo"\)/);
+  const again = run(['render', 'guide-beta']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged guide-beta → /m);
   const empty = run(['render', 'guide-beta', '--accept-variance', '']); assert.equal(empty.status, 1); assert.match(empty.err, /^usage error: --accept-variance needs a non-empty reason/);
 });
 check('more than half of the current clones differ → strict variance refusal even with --accept-variance (re-typing named); --variance-dir is honoured', () => {
@@ -570,6 +571,30 @@ check('more than half of the current clones differ → strict variance refusal e
   assert.ok(!/a recorded deviation/.test(r.err), 'a recorded deviation is never offered as a way to unlock the page');
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
+});
+check('an earlier acceptance holds while the probe row is unchanged (sidecar, else the coverage row; lists in any order); a changed row is refused quoting it; --accept-variance sets a new reason', () => {
+  const BETA = `${OUT}/guides/beta/_meta.json`; const COVERAGE = 'stardust/rollout/coverage/pages.json';
+  const reprobe = (at, missing, extra) => write(VAR, `${JSON.stringify({ template: 'guides', archetype: 'https://example.test/guides/', at, siblings: [sib('guide-alpha', 'same'), sib('guide-beta', 'differs', missing, extra), sib('guide-gamma', 'same')] }, null, 2)}\n`);
+  reprobe('2026-10-05T00:00:00Z', ['hero'], ['card']);
+  const held = run(['render', 'guide-beta']); assert.equal(held.status, 0, held.err); assert.match(held.out, /^A' guide-beta → /m);
+  assert.match(held.out, /^variance: 1 A′ page\(s\) rendered on an earlier acceptance of an unchanged variance \(guide-beta\)$/m);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-05T00:00:00Z', missing: ['hero'], extra: ['card'], deltas: 2, accepted: 'the hero is a page-level promo' });
+  // no sidecar any more: the coverage row (the rollout inventory's verbatim copy) carries the acceptance
+  reprobe('2026-10-06T00:00:00Z', ['hero', 'map'], ['card']); rmSync(join(tmp, BETA));
+  write(COVERAGE, `${JSON.stringify({ formatVersion: '0.1.0', pages: [{ slug: 'guide-alpha', source: {} }, { slug: 'guide-beta', source: { variance: { verdict: 'differs', file: VAR, at: '2026-10-04T00:00:00Z', missing: ['map', 'hero'], extra: ['card'], deltas: 3, accepted: 'the hero and the map are page-level promos', acceptedAt: '2026-10-04T09:00:00Z' } } }] }, null, 2)}\n`);
+  const viaCoverage = run(['render', 'guide-beta']); assert.equal(viaCoverage.status, 0, viaCoverage.err); assert.match(viaCoverage.out, /^A' guide-beta → /m);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-06T00:00:00Z', missing: ['hero', 'map'], extra: ['card'], deltas: 3, accepted: 'the hero and the map are page-level promos', acceptedAt: '2026-10-04T09:00:00Z' });
+  // the sidecar's record shadows the coverage row (here a stale one that would match); a changed row is refused, naming what
+  // changed and quoting the earlier reason
+  reprobe('2026-10-07T00:00:00Z', ['hero'], ['card', 'quote']); const before = read(BETA);
+  write(COVERAGE, `${JSON.stringify({ formatVersion: '0.1.0', pages: [{ slug: 'guide-beta', source: { variance: { verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', missing: ['hero'], extra: ['quote', 'card'], deltas: 3, accepted: 'a stale coverage acceptance' } } }] }, null, 2)}\n`);
+  const changed = run(['render', 'guide-beta']); assert.equal(changed.status, 2);
+  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.equal(read(BETA), before, 'nothing written');
+  const fresh = run(['render', 'guide-beta', '--accept-variance', 'the quote is a page-level promo']); assert.equal(fresh.status, 0, fresh.err);
+  assert.doesNotMatch(fresh.out, /earlier acceptance/);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', missing: ['hero'], extra: ['card', 'quote'], deltas: 3, accepted: 'the quote is a page-level promo' });
+  rmSync(join(tmp, COVERAGE));
 });
 // Rows left behind by siblings that moved to a sub-archetype (and by slugs not in the state) are not current clones.
 const s4 = json(STATE);

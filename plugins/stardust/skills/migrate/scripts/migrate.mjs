@@ -116,9 +116,16 @@
  *   No file, or no row for the page → sidecar variance { status: skipped, reason } and one run
  *   summary line `variance: <n> A′ page(s) rendered without a variance probe row — recorded as
  *   skipped (…)`; verdict same → recorded; differs → refused (strict variance) unless
- *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted); more
- *   than half of the archetype's current clones differ → refused even with --accept-variance
- *   (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
+ *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted; a new
+ *   reason replaces an earlier one) or an earlier acceptance of the same row holds: the page's
+ *   previous sidecar `variance` (else, with no sidecar record, its row's source.variance in
+ *   <dirname(state)>/rollout/coverage/pages.json, read once per run) carries `accepted` and equals
+ *   the row on verdict, missing, extra and deltas (lists in any order) → rendered without the flag,
+ *   `accepted` (and `acceptedAt` when the earlier record has one) kept, one run summary line
+ *   `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged variance (…)`; a
+ *   changed row is refused naming each changed field and quoting the earlier reason. More than half
+ *   of the archetype's current clones differ → refused even with --accept-variance or an earlier
+ *   acceptance (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
  *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
  *   else (none) the archetype's type and not the archetype itself; rows of other slugs (moved to a
  *   sub-archetype, not in the state) count on neither side. Re-type the template: sub-archetypes by
@@ -779,7 +786,7 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped', varianceHeld: variance?.verdict === 'differs' && !run.acceptVariance };
 }
 // The fork's slot source for a page → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
 // explicit mapping refuses in mappedSlots when unusable); by default the page JSON when there is no mapping file, the mapping
@@ -838,8 +845,9 @@ function mediaResolver(run, slug, capture) {
   return (ref) => mediaRefFor(ref, { base, map: mediaSource(run, 'map', slug), ledger: mediaSource(run, 'ledger', slug), protoDir: run.protoDir, bundles });
 }
 // The variance gate (replica/sibling-variance.mjs record, <variance-dir>/<archetype-slug>.json) → the sidecar `variance` record:
-// { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted }. Throws Refusal (strict variance) on a
-// differing page without --accept-variance, on any page of a template whose current clones mostly differ, and on a malformed file.
+// { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted[, acceptedAt] }. Throws Refusal (strict
+// variance) on a differing page without --accept-variance or an earlier acceptance of the unchanged row, on any page of a template
+// whose current clones mostly differ, and on a malformed file.
 export function varianceGate(run, page, archetype, old = null) {
   const file = join(run.varianceDir, `${archetype.slug}.json`); const rel = toPosix(file);
   if (!run.varianceCache.has(file)) run.varianceCache.set(file, isFile(file) ? readJson(file) : undefined);
@@ -863,11 +871,28 @@ export function varianceGate(run, page, archetype, old = null) {
   const differ = clones.filter((s) => s.verdict === 'differs').length;
   const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica/sibling-variance.mjs); the re-typing is recorded as a deviation (migrate.mjs decision <slug> --kind re-type …, or deviation), never a mechanical clone`;
   if (differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
-  if (!run.acceptVariance) {
-    const prior = old?.variance?.accepted ? ` (an earlier render accepted it: "${old.variance.accepted}")` : '';
-    throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)`, `check the clone against the archetype and re-run with --accept-variance "<reason>"${prior}, or re-type it: ${retype}`);
+  if (run.acceptVariance) return { ...rec, accepted: run.acceptVariance };
+  const prior = priorVariance(run, page.slug, old);
+  const reason = prior && typeof prior.accepted === 'string' && prior.accepted.trim() ? prior.accepted : null;
+  const changed = reason ? VARIANCE_FIELDS.filter((k) => varianceKey(prior[k]) !== varianceKey(rec[k])) : [];
+  if (reason && !changed.length) return { ...rec, accepted: reason, ...(prior.acceptedAt != null ? { acceptedAt: prior.acceptedAt } : {}) };
+  const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : String(v ?? 'none'));
+  const since = reason ? `; changed since an earlier render accepted it ("${reason}"): ${changed.map((k) => `${k} ${shown(prior[k])} → ${shown(rec[k])}`).join('; ')}` : '';
+  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
+}
+// An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order).
+const VARIANCE_FIELDS = ['verdict', 'missing', 'extra', 'deltas'];
+const varianceKey = (v) => JSON.stringify(Array.isArray(v) ? v.map((x) => JSON.stringify(x)).sort() : v ?? null);
+// The variance record an earlier render left: the page's previous sidecar `variance`, else (no sidecar record) its row's
+// source.variance in <dirname(state)>/rollout/coverage/pages.json — the rollout inventory's verbatim copy, read once per run.
+function priorVariance(run, slug, old) {
+  const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (isRecord(old?.variance)) return old.variance;
+  if (!run.coverageVariance) {
+    const doc = readJson(join(run.rolloutDir || join(dirname(run.stateFile), 'rollout'), 'coverage', 'pages.json'));
+    run.coverageVariance = new Map((Array.isArray(doc?.pages) ? doc.pages : []).filter((p) => p && typeof p.slug === 'string' && isRecord(p.source?.variance)).map((p) => [p.slug, p.source.variance]));
   }
-  return { ...rec, accepted: run.acceptVariance };
+  return run.coverageVariance.get(slug) || null;
 }
 
 // ---- the run -----------------------------------------------------------------------------------
@@ -931,7 +956,7 @@ export function renderRun(o) {
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
     slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
-  const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = [];
+  const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = []; const varianceHeld = [];
   for (const slug of set) {
     const page = bySlug.get(slug); const entry = pageMap.bySlug.get(slug);
     if (entry.passthrough) { console.log(`passthrough ${slug}: ${entry.outputPath} (non-HTML leaf; no render, no sidecar)`); counts.passthrough.push(slug); continue; }
@@ -942,6 +967,7 @@ export function renderRun(o) {
     for (const m of r.missing) missing.push({ slug, ...m });
     if (r.modulesEmpty) modulesEmpty.push(slug);
     if (r.varianceSkipped) varianceSkipped.push(slug);
+    if (r.varianceHeld) varianceHeld.push(slug);
     console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}${r.mapped ? ' via the block mapping' : ''}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
@@ -954,6 +980,7 @@ export function renderRun(o) {
   if (missing.length) console.log(`missing assets: ${missing.length} reference(s) left as is — ${[...new Set(missing.map((m) => m.subpath))].slice(0, 6).join(', ')}`);
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
+  if (varianceHeld.length) console.log(`variance: ${varianceHeld.length} A′ page(s) rendered on an earlier acceptance of an unchanged variance (${varianceHeld.slice(0, 6).join(', ')}${varianceHeld.length > 6 ? ', …' : ''})`);
   const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
   for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
