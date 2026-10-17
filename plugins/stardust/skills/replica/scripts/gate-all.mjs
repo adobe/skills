@@ -223,10 +223,10 @@
  * missing) and the usage line, exit 2, before any I/O — `--eds-host --only home` never gates `--only` as a host.
  * Two browser budgets, kept apart: the origin pool (2) is the source's bot budget; the EDS / probe pools (4 / 2) carry
  * no bot risk, but each of their slots is a Chromium — raising them raises this job's Chromium peak (measured: 6 / 4
- * took an 8-page job from 6 to 8 at once). The three flags take integers ≥ 1 (else exit 1). Without a machine-wide
- * browser slot they hold as given. Inside one (run-bg sets STARDUST_BROWSER_SLOT) the slot bounds browsers, not just
- * jobs: run-bg exports STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
- * STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger machine raises
+ * took an 8-page job from 6 to 8 at once). The three flags take integers ≥ 1 (else exit 1; a missing or dash-led value →
+ * exit 2). Without a machine-wide browser slot they hold as given. Inside one (run-bg sets STARDUST_BROWSER_SLOT) the
+ * slot bounds browsers, not just jobs: run-bg exports STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET
+ * (default 3) / STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger machine raises
  * STARDUST_BROWSER_BUDGET. With N per slot (`browserPools`): N = 1 → origin 1 / EDS 1 / probe 1 and the two capture
  * pools run one after the other (every origin capture, then every EDS capture); N ≥ 2 → when origin + EDS exceed N,
  * origin min(oc, ceil(N/2)) and EDS min(ec, N − origin), and probe min(pc, N) (N 3, the defaults: 2 / 1 / 2) — a
@@ -290,7 +290,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
   --origin-concurrency <n>  2 — the source's bot budget
   --eds-concurrency <n>     4      --probe-concurrency <n>  2 — no bot risk, but each is a Chromium:
-                            raising them raises this job's Chromium peak; integers >= 1 (else exit 1)
+                            raising them raises this job's Chromium peak; integers >= 1 (else exit 1; a missing or
+                            dash-led value → exit 2)
                             Inside a machine browser slot (env STARDUST_BROWSER_SLOT, set by run-bg) the pools are
                             clamped to STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
                             STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger
@@ -305,8 +306,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --warmup <url>            origin warm-up for the probes
   --dismiss <sel,…>         extra overlay-dismiss selectors (a marketing modal with a non-standard closer), like gate.sh /
                             anchor.mjs: both stitches get --dismiss <list>, dismissed before the hide list on both sides
-                            (the last --dismiss wins; no value → exit 1). gate-all's probes (content-presence, clip-probe,
-                            unit-geometry) take no --dismiss: the built-in candidates only (--one-load: the stitches'
+                            (the last --dismiss wins; an empty list → exit 1; no value → exit 2). gate-all's probes
+                            (content-presence, clip-probe, unit-geometry) take no --dismiss: the built-in candidates only (--one-load: the stitches'
                             inventories). Recorded in origin.json / eds.json "dismiss", probes.json inputs and the gate
                             key (a non-empty list only); a capture taken with another list is not reused (fix rounds,
                             live.png — live.json dismiss.extra —, --skip-existing), logged "dismiss list differs"

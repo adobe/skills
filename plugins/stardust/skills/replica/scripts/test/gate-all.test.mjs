@@ -582,10 +582,13 @@ if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside
   masked[1] = 1;
   assert.equal(textBoxPct({ data }, [{ x: 0, y: 0, w: 4, h: 4 }], w, h, masked).pct, 0);
 });
-check('--help exits 0 in an empty cwd and writes nothing', () => {
+check('--help exits 0 in an empty cwd and writes nothing; its exit codes agree with the Exit line (a bad value → 1, a missing or dash-led value → 2)', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node gate-all\.mjs/); assert.deepEqual(readdirSync(cwd), []);
+  const flat = r.stdout.replace(/\s+/g, ' ');
+  assert.match(flat, /\(the last --dismiss wins; an empty list → exit 1; no value → exit 2\)/); assert.doesNotMatch(flat, /no value → exit 1/);
+  assert.match(flat, /integers >= 1 \(else exit 1; a missing or dash-led value → exit 2\)/);
   rmSync(cwd, { recursive: true, force: true });
 });
 // ---- an empty selection names its cause: both roster files read (published), their counts, the source, --only --------
