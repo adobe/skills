@@ -506,6 +506,17 @@ if (playwrightOk) {
     assert.match(r.stdout, /\n@ 360px\n {2}✗ [^\n]*hang\.html @360 not measured — [^\n]*\n {2}root\n {4}B {2}[^\n]*\n {2}Δ not computed at 360 — a side was not measured\n {2}\.hero\n {4}B {2}x/);
     assert.doesNotMatch(r.stdout, /MISSING/);
   });
+  await check('e2e: --json with a page that hangs on resize — stdout stays pure JSON, the PARTIAL line goes to stderr; 768 after 360\'s deadline is measured on a fresh page; bounded runtime', async () => {
+    const r = await run([hang, '--selectors', '.hero', '--width', '1440,360,768', '--props', 'display', '--timeout-ms', '3000', '--json'], work, process.env, 60000);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.ms < 30000, `took ${r.ms} ms`);
+    const j = JSON.parse(r.stdout);
+    assert.match(r.stderr, /^measure: PARTIAL — 1 of 3 width read\(s\) failed: http:\/\/127\.0\.0\.1:\d+\/hang\.html @360 \([^\n]*deadline 3000 ms exceeded\)$/m);
+    assert.doesNotMatch(r.stdout, /PARTIAL/);
+    assert.deepEqual(j._provenance.failed, [{ url: hang, width: 360, error: `${hang} @360: deadline 3000 ms exceeded` }]); assert.equal(j._provenance.partial, true);
+    assert.deepEqual(Object.keys(j.pages[hang]), ['768', '1440']);
+    assert.equal(j.pages[hang][768]['.hero'][0].rect.w, 768); assert.equal(j.root[hang][768].viewport, 768);
+  });
   server.close();
   assert.equal(existsSync(join(work, 'deep', 'a.json')), true);
   rmSync(work, { recursive: true, force: true });
