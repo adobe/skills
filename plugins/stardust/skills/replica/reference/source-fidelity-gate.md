@@ -621,8 +621,9 @@ rather than erroring.
    arrivals on live source sites (an EDS host gets one sweep after its
    delayed phase) and stitch-shot sweeps again after the settle pass.
    **What the sweep left is named, never measured.** `dismissOverlays`
-   reports `overlayLeft` — a banner-sized part of a known consent root still
-   visible, a fixed or sticky layer painting over ≥ 80 % of the viewport,
+   reports `overlayLeft` — an open modal dialog, a banner-sized part of a
+   known consent root still visible, a fixed or sticky layer painting over
+   ≥ 80 % of the viewport,
    `html`/`body` `overflow:hidden`, or a sweep click that navigated away —
    and stitch-shot prints `overlay-left: <sel>` (its
    `--json` record keeps it). gate.sh gives no verdict on it (exit 1); a
@@ -889,12 +890,15 @@ wrote no capture record, has no
 pixel or height verdict: `inconclusive: true`, reasons `origin capture polluted: <why>` (`build
 capture polluted: …` for the served side), INCONCLUSIVE in `summary.md` and `totals.inconclusive`;
 the run exits 2. gate-evidence reads it OPEN, update-coverage keeps the page's status and records
-`delivery.gate.inconclusive`, gate-triage lists it as a capture fix, and no later run reuses it.
+`delivery.gate.inconclusive`, gate-triage lists it as a capture fix, and no later run reuses it. A
+capture whose record predates the overlay check is re-shot under `--skip-existing` and reads unchecked
+(INCONCLUSIVE) under `--compare-only`.
 
 **Overrides are validated mechanically.** An `overrides.json` row counts (`passWithOverride`) only
 when its `verdict` is `tier-shift`, `instrument-artifact` or `source-volatile`, its `reason` names an
 `R-<nn>` that exists in `stardust/replica/inconsistency-register.md`, and the row's own clip and
-content checks PASS (n/a is no pass; the prototype stage has no content criterion). Otherwise the
+content checks PASS (n/a is no pass; the prototype stage has no content criterion) — on a row that was
+measured: an override never stands in for a missing pixel comparison. Otherwise the
 row stays FAIL with `override rejected: <rule>`. The summary prints counted / rejected overrides and
 their share of the roster; update-coverage copies `delivery.gate.override = {verdict, reason, valid}`.
 
