@@ -179,6 +179,53 @@ check('nav without a list: section 2 is an empty <div></div>; a class-named bran
   assert.match(r.doc, /<main>\n {4}<div>\n {6}<p><a href="\/">Example<\/a><\/p>\n {4}<\/div>\n {4}<div><\/div>\n {4}<div>\n {6}<p><a href="\/login">Sign in<\/a><\/p>\n {4}<\/div>\n/);
   assert.deepEqual(r.counts, { brand: 1, links: 0, tools: 1, skipped: 2 });
 });
+// The <main> sections of a built document, by index: 0 brand, 1 links, 2 tools (an empty section is '').
+const sectionsOf = (doc) => {
+  const out = []; let cur = null;
+  for (const line of doc.split('\n')) {
+    if (line === '    <div></div>') out.push('');
+    else if (line === '    <div>') cur = [];
+    else if (line === '    </div>') { out.push(cur.join('\n')); cur = null; } else if (cur) cur.push(line);
+  }
+  return out;
+};
+check('nav nesting comes only from source lists: a description and a badge stay inline; a column heading heads its list', () => {
+  const r = buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
+    <li><button>Products</button>
+      <div class="mega"><div class="col"><h3>Widgets</h3><ul><li><a href="/p1">P1</a><p>Fast widgets</p></li></ul></div></div>
+    </li>
+    <li><a href="/x">X</a> <span class="badge">New</span></li>
+    <li><a href="/y">Y</a><span class="badge">Sale</span><ul><li><a href="/y/1">Y1</a></li></ul></li>
+  </ul></nav></header>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li>Products
+          <ul>
+            <li>Widgets
+              <ul>
+                <li><a href="/p1">P1</a> Fast widgets</li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+        <li><a href="/x">X</a> New</li>
+        <li><a href="/y">Y</a> Sale
+          <ul>
+            <li><a href="/y/1">Y1</a></li>
+          </ul>
+        </li>
+      </ul>`);
+});
+check('brand: an icon link before the logo stays a tool; a logo signal, then a named link, then "/", then any image link', () => {
+  const r = buildNav('<header><a href="/stores"><svg><path d="M0 0"/></svg>Find a store</a><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul><li><a href="/a">A</a></li></ul></nav></header>');
+  assert.equal(sectionsOf(r.doc)[0], '      <p><a href="/"><img src="/media/logo.svg" alt="Example"></a></p>');
+  assert.equal(sectionsOf(r.doc)[2], '      <p><a href="/stores">Find a store</a></p>');
+  assert.deepEqual(r.counts, { brand: 1, links: 1, tools: 1, skipped: 0 });
+  const brandOf = (h) => sectionsOf(buildNav(`<header>${h}</header>`).doc)[0];
+  assert.equal(brandOf('<a href="/stores"><svg></svg>Stores</a><a href="/start"><img src="/m.svg" alt="Example logo"></a>'), '      <p><a href="/start"><img src="/m.svg" alt="Example logo"></a></p>');
+  assert.equal(brandOf('<a href="/stores"><svg></svg>Stores</a><a class="brand-name" href="/start">Example</a><a href="/">Home</a>'), '      <p><a href="/start">Example</a></p>');
+  assert.equal(brandOf('<a href="/stores"><svg></svg>Stores</a><a href="/">Home</a>'), '      <p><a href="/">Home</a></p>');
+  assert.equal(brandOf('<a href="/about">About</a><a href="/stores"><svg></svg>Stores</a>'), '      <p><a href="/stores">Stores</a></p>');
+});
 check('--prefix: slashes stripped, EDS segments only; a value flag without a value names the flag', () => {
   assert.equal(normalizePrefix('fr'), 'fr');
   assert.equal(normalizePrefix('/ca/en/'), 'ca/en');
