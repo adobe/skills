@@ -56,6 +56,12 @@
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
+ *   - a SCROLL STALL fails loud (exit 1, `scroll stall at chunk target …`):
+ *     on an inner-scroller / scroll-jacked page window.scrollTo is a no-op
+ *     and the rows below would stitch as black. A shortfall the document's
+ *     own shrink explains is not a stall but a MORPH — a header that
+ *     shrinks on scroll: the stitch continues from where the window
+ *     stopped, at the shrunk height, and records `headerMorph` (px).
  *   - the OVERFLOW root line: one `overflow: scrollWidth=<n> viewport=<n>
  *     delta=<n>` line right before the `stitched` line — the document's
  *     scrollWidth, the viewport (window.innerWidth) and delta = scrollWidth
@@ -100,6 +106,14 @@
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *
+ * Output: <out.png> and, beside it, <stem>.capture.json (build.png →
+ * build.capture.json — never <stem>.json, which gate.sh / gate-all write
+ * after the capture): { writtenBy, url, width, vh, height (the PNG's),
+ * chunks, headerMorph (px, 0 when none), overflow: { scrollWidth, viewport,
+ * delta }, at }. Removed when a capture starts, written with the PNG — a
+ * failed capture leaves none. stdout ends with the overflow line, then
+ * `stitched <out>: <w>x<h> from <n> chunks` (+ ` — header morph <px> px`).
+ *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
  *     stardust/replica/gates/home-1440/live.png --width 1440 --settle
@@ -113,8 +127,8 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
+import { writeFileSync, mkdirSync, existsSync, realpathSync, rmSync } from 'fs';
+import { basename, dirname, extname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 // live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
@@ -152,6 +166,12 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
 vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop, back at the top with
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
+Writes <out.png> and <stem>.capture.json beside it (build.png → build.capture.json; removed when a capture starts, so a
+failed one leaves none): { writtenBy, url, width, vh, height, chunks, headerMorph, overflow: { scrollWidth, viewport,
+delta }, at }. A scroll that stops short of its chunk target while the height stays put is a scroll stall (an inner
+scroller / scroll-jacked page): exit 1. A shortfall the document's own shrink explains (a header that shrinks on
+scroll) is a morph, not a stall: the stitch continues at the shrunk height, headerMorph records the px and the
+stitched line ends " — header morph <px> px".
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
 Run the SAME command shape against the live page and the served prototype.
@@ -205,13 +225,38 @@ async function dismissAndLog(page, url, opts) {
 }
 
 // The root line gate.sh's horizontal-overflow assert reads (measure.mjs root-line semantics: viewport =
-// window.innerWidth, delta = scrollWidth − the root's clientWidth, never below 0).
-export function overflowLine({ scrollWidth, innerWidth, clientWidth }) {
-  return `overflow: scrollWidth=${scrollWidth} viewport=${innerWidth} delta=${Math.max(0, scrollWidth - clientWidth)}`;
+// window.innerWidth, delta = scrollWidth − the root's clientWidth, never below 0); the sidecar records the same read.
+function overflowRead({ scrollWidth, innerWidth, clientWidth }) {
+  return { scrollWidth, viewport: innerWidth, delta: Math.max(0, scrollWidth - clientWidth) };
+}
+export function overflowLine(root) {
+  const { scrollWidth, viewport, delta } = overflowRead(root);
+  return `overflow: scrollWidth=${scrollWidth} viewport=${viewport} delta=${delta}`;
+}
+
+// <stem>.capture.json beside the PNG (build.png → build.capture.json) — never <stem>.json: gate.sh / gate-all write
+// live.json, origin.json and eds.json AFTER the capture returns, and gate-all reads live.json to reuse live.png.
+function captureSidecarPath(out) {
+  return join(dirname(out), `${basename(out, extname(out))}.capture.json`);
+}
+
+// Fractional-scroll tolerance of the chunk loop (px): a smaller miss is scroll rounding, not a shortfall.
+const SCROLL_SLACK = 4;
+// A morph, not a scroll stall: the chunk's scroll fell short of its target and the document shrank under it (h2 =
+// the re-read height, smaller than totalH) — by the shortfall (the browser's scroll anchoring moves scrollY up by
+// exactly a header's loss above the viewport), or far enough that the scroll reached the target clamped to the
+// shrunk height (the last chunk). A grown or unchanged document is never a morph.
+export function isHeaderMorph({ y, target, actualY, totalH, h2, vh }) {
+  const shortfall = target - actualY; const shrink = totalH - h2;
+  if (shortfall <= SCROLL_SLACK || shrink <= SCROLL_SLACK) return false;
+  return Math.abs(shortfall - shrink) <= SCROLL_SLACK || Math.abs(Math.max(0, Math.min(y, h2 - vh)) - actualY) <= SCROLL_SLACK;
 }
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  // Before anything can fail: a failed capture never leaves a stale sidecar beside an older PNG.
+  const sidecar = captureSidecarPath(out);
+  rmSync(sidecar, { force: true });
   // Lazy: --help (inside parseArgs) answers without playwright / pngjs installed.
   const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
@@ -332,12 +377,14 @@ async function main() {
     // translate3d entrance transforms extend the document; recorded: 3183px
     // pre-settle vs 3093px settled). Pre-settle height is fake — mirror this
     // ordering in any ad-hoc probe that reads document height.
-    const totalH = await page.evaluate(() => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+    const docHeight = () => Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+    let totalH = await page.evaluate(docHeight);
     if (!totalH || totalH < 10) throw new Error(`page height ${totalH}px — blank render? (bot challenge / hidden body)`);
 
     const chunks = [];
     let y = 0;
     let prevActualY = null;
+    let headerMorph = 0;
     while (y < totalH) {
       const target = Math.max(0, Math.min(y, totalH - opts.vh));
       await page.evaluate((ty) => window.scrollTo(0, ty), target);
@@ -357,20 +404,40 @@ async function main() {
       // but window.scrollTo is a NO-OP — window.scrollY stays put, every chunk
       // captures the top viewport, and the rows below stitch as zero-filled
       // black: a silently fictitious pixel diff. Fail loud instead.
-      // Threshold is a small fractional-scroll tolerance (4px), NOT a material
-      // shortfall (vh/2): a jacked page with settled height between vh+1 and
-      // 1.5*vh puts chunk 2's clamped target at <= vh/2, which a vh/2 bar can
-      // never catch — those pages emitted silent black bands. On a legit page
-      // actualY reaches the clamped target (the last chunk's totalH - vh is
-      // reachable by construction), so the no-advance condition stays false;
-      // the 4px slack absorbs fractional-pixel scroll rounding.
-      if (prevActualY !== null && actualY <= prevActualY && target - actualY > 4) {
-        throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+      // Threshold is a small fractional-scroll tolerance (SCROLL_SLACK, 4px), NOT
+      // a material shortfall (vh/2): a jacked page with settled height between
+      // vh+1 and 1.5*vh puts chunk 2's clamped target at <= vh/2, which a vh/2
+      // bar can never catch — those pages emitted silent black bands. On a legit
+      // page actualY reaches the clamped target (the last chunk's totalH - vh is
+      // reachable by construction), so the no-advance condition stays false —
+      // unless the page shrinks under the scroll.
+      // A shortfall the document's own shrink explains is a MORPH, not a stall:
+      // a header that shrinks on scroll takes its loss out of the page mid-stitch
+      // (recorded: a hands-off run's in-flow header lost 20 px, window.scrollY
+      // stuck 20 px short of a chunk target, and the run's workaround was a
+      // different --vh). So a short scroll re-reads the height; when the shrink
+      // equals the shortfall or the scroll reached the target clamped to the new
+      // height (isHeaderMorph), headerMorph records it, the loop and the PNG take
+      // the new height, this chunk lands where the window stopped and the next
+      // one starts a viewport below it. The second form also catches a shrink
+      // that left the scroll short without a stall (the old guard let that
+      // through with a black band at the bottom: the PNG kept the pre-morph
+      // height). Only a no-op scroll with the height unchanged still throws.
+      let next = y + opts.vh;
+      if (target - actualY > SCROLL_SLACK) {
+        const h2 = await page.evaluate(docHeight);
+        if (isHeaderMorph({ y, target, actualY, totalH, h2, vh: opts.vh })) {
+          headerMorph += totalH - h2;
+          console.error(`stitch-shot: header morph ${totalH - h2} px — the document shrank ${totalH} → ${h2}px under the scroll to ${target}px (window.scrollY ${actualY}px): not a scroll stall, the stitch continues from there`);
+          totalH = h2; next = actualY + opts.vh;
+        } else if (prevActualY !== null && actualY <= prevActualY) {
+          throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
+        }
       }
       prevActualY = actualY;
       const buf = await page.screenshot();
       chunks.push({ y: actualY, buf });
-      y += opts.vh;
+      y = next;
     }
     // Overflow root line (header): ONE read, after the chunk loop — every box below the fold has been scrolled into
     // view, so a scroll-reveal slide-in no longer sits off to the side (read earlier, it is a false overflow). The
@@ -401,8 +468,10 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
+    writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowRead(root), at: new Date().toISOString() }, null, 2)}\n`);
     console.log(overflowLine(root));
-    console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
+    // Last stdout line, no line after it: gate-all keeps the last two (overflow + stitched) in origin.json's log.
+    console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks${headerMorph > 0 ? ` — header morph ${headerMorph} px` : ''}`);
   } finally {
     await browser.close();
   }
