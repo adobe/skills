@@ -13,7 +13,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath, forkFromArchetype, forkHead } from '../migrate.mjs';
+import { composeHead, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -529,6 +529,14 @@ check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); 
   const arch = '<html lang="en"><head><title>Arch</title>\n<meta name="description" content="Arch desc.">\n<link rel="alternate" hreflang="de" href="https://example.test/de/guides/">\n<link rel="alternate" hreflang="x-default" href="https://example.test/guides/">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head><body><main></main></body></html>';
   const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });
   assert.equal(h.slice(h.indexOf('<head>'), h.indexOf('</head>') + 7), '<head><title>Save $$ and $&amp; more</title>\n<meta name="description" content="From $\' on">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head>');
+});
+check('composeHead / rewriteLinks (pure): $ sequences in a capture title, a deploy canonical and an internal href stay literal', () => {
+  const src = '<html><head><title></title><link rel="canonical" href="https://example.test/old/"><meta property="og:url" content="https://example.test/old/"></head><body><main></main></body></html>';
+  const h = composeHead(src, { prov: '<!-- p -->', rootBlock: ':root{}', capture: { title: 'Save $& $1 $$' }, deployHost: 'www.example-live.test', outputPath: 'deals/$&-$1/index.html', pageUrl: 'https://example.test/deals/', type: 'page' });
+  assert.equal(h.metadata.title, 'Save $& $1 $$'); assert.match(h.html, /<title>Save \$&amp; \$1 \$\$<\/title>/);
+  assert.match(h.html, /<link rel="canonical" href="https:\/\/www\.example-live\.test\/deals\/\$&-\$1\/">/); assert.match(h.html, /<meta property="og:url" content="https:\/\/www\.example-live\.test\/deals\/\$&-\$1\/">/);
+  const l = rewriteLinks('<a href="/deals/?q=$&x=$1">Deals</a>', { base: 'https://example.test/', originHosts: new Set(['example.test']), origin: 'https://example.test', byPath: new Map([['/deals/', { slug: 'deals', outputPath: 'deals/index.html' }]]), depth: 0, available: () => true });
+  assert.equal(l.html, '<a href="./deals/index.html?q=$&x=$1">Deals</a>');
 });
 check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal', () => {
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),

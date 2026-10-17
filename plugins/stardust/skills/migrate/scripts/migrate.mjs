@@ -265,7 +265,7 @@ export function rewriteLinks(html, ctx) {
     else if (entry) { next = `${ctx.origin}${c.pathname}${c.search}${c.hash}`; reason = 'in-inventory-not-migrated'; } // partial-inventory carve-out
     else { next = `${prefix}${outputPathFor(c.pathname).outputPath}${c.search}${c.hash}`; reason = 'not-in-inventory'; }
     if (reason) broken.push({ href, reason });
-    let a = attrs.replace(hm[0], `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
+    let a = attrs.replace(hm[0], () => `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
     if (reason && !/(?<![\w-])data-broken-link=/.test(a)) a += ' data-broken-link="true"';
     return `<${tag}${a}>`;
   });
@@ -409,22 +409,23 @@ export function provenanceComment(f) {
   return `<!-- stardust:migrate\n${rows.join('\n')}\n-->`;
 }
 // Resolves title / description / canonical / lang / JSON-LD against the capture, rewrites canonical +
-// og:url to the deploy host when set, and inserts the provenance + :root <style> (+ defaults) first.
+// og:url to the deploy host when set, and inserts the provenance + :root <style> (+ defaults) first. Capture text and URLs reach
+// the HTML through function replacers only, so a `$&` / `$1` / `$$` in a title stays verbatim.
 export function composeHead(html, h) {
   const headOpen = html.match(/<head\b[^>]*>/i);
   if (!headOpen) return null;
   const tm = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   let title = tm ? tm[1].trim() : '';
   const inserts = [];
-  if (!title && h.capture?.title) { title = String(h.capture.title).trim(); if (tm) html = html.replace(tm[0], `<title>${esc(title)}</title>`); else inserts.push(`<title>${esc(title)}</title>`); }
+  if (!title && h.capture?.title) { title = String(h.capture.title).trim(); if (tm) html = html.replace(tm[0], () => `<title>${esc(title)}</title>`); else inserts.push(`<title>${esc(title)}</title>`); }
   const descTag = tagWith(html, 'meta', /(?<![\w-])name\s*=\s*["']description["']/i);
   let description = attrOf(descTag, 'content');
   if (description == null && h.capture?.metaDescription) { description = String(h.capture.metaDescription); inserts.push(`<meta name="description" content="${esc(description)}">`); }
   let canonical = attrOf(tagWith(html, 'link', /(?<![\w-])rel\s*=\s*["']canonical["']/i), 'href');
   if (h.deployHost) {
     canonical = `https://${h.deployHost}/${urlFormOf(h.outputPath)}`;
-    html = html.replace(/<link\b[^>]*>/gi, (m) => (/(?<![\w-])rel\s*=\s*["']canonical["']/i.test(m) ? m.replace(/((?<![\w-])href\s*=\s*["'])[^"']*/i, `$1${canonical}`) : m));
-    html = html.replace(/<meta\b[^>]*>/gi, (m) => (/(?<![\w-])property\s*=\s*["']og:url["']/i.test(m) ? m.replace(/((?<![\w-])content\s*=\s*["'])[^"']*/i, `$1${canonical}`) : m));
+    html = html.replace(/<link\b[^>]*>/gi, (m) => (/(?<![\w-])rel\s*=\s*["']canonical["']/i.test(m) ? m.replace(/((?<![\w-])href\s*=\s*["'])[^"']*/i, (x, pre) => `${pre}${canonical}`) : m));
+    html = html.replace(/<meta\b[^>]*>/gi, (m) => (/(?<![\w-])property\s*=\s*["']og:url["']/i.test(m) ? m.replace(/((?<![\w-])content\s*=\s*["'])[^"']*/i, (x, pre) => `${pre}${canonical}`) : m));
     if (!tagWith(html, 'link', /(?<![\w-])rel\s*=\s*["']canonical["']/i)) inserts.push(`<link rel="canonical" href="${canonical}">`);
     if (!tagWith(html, 'meta', /(?<![\w-])property\s*=\s*["']og:url["']/i)) inserts.push(`<meta property="og:url" content="${canonical}">`);
   }
