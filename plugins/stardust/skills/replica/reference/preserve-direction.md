@@ -228,7 +228,7 @@ before Phase 3 and C0 author any CSS, so `deploy` only converts target steps:
 4. **Seed ONE register entry**, status `applied`: "Layout tiers switch at the
    target breakpoints <list> instead of the source's <list>". Evidence = the
    map + one strip at a shifted-band width from the gate's own captures:
-   `crop-compare.mjs <source.png> <build.png> --strip <out.jpg> --full-res`
+   `crop-compare.mjs <source.png> <build.png> --y <band top> --height <band height> --strip <out.jpg> --full-res`
    (`--c` adds the after column on a retrofit: source | before | after;
    `--full-res` also writes `<out>.png` — the capped JPEG leaves a
    3-column strip about 455 px per column). The customer approves the
