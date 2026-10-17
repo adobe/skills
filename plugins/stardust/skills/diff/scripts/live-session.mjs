@@ -47,7 +47,8 @@
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
  *     What no sweep removed (a consent banner still shown, a full-viewport
- *     backdrop, a scroll lock) is reported as `overlayLeft`, never captured silently.
+ *     backdrop, a scroll lock) is reported as `overlayLeft`, never captured silently —
+ *     so is a label-sweep click that navigated away from the page.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
@@ -422,7 +423,8 @@ export const CONSENT_CANDIDATES = [
 // The label sweep when no candidate matched (a custom banner, a consent manager the list lacks): exact short labels,
 // in PRIORITY order — accept-like first, 'decline' the last resort (a banner without an accept control still goes).
 // A control counts only inside an overlay container (`containerPattern` id/class, a dialog, fixed/sticky, or
-// positioned with z-index ≥ `zIndex`), so an in-content "Accept" link is never clicked.
+// positioned with z-index ≥ `zIndex`), so an in-content "Accept" link is never clicked; one that would leave the page
+// (a form submit, a link off the document) needs more than a sticky / high-z container — a site header is one.
 export const CONSENT_LABEL_SWEEP = Object.freeze({
   labels: Object.freeze([
     'accept all cookies', 'accept all', 'accept cookies', 'accept and close', 'i accept', 'accept',
@@ -443,7 +445,9 @@ export const CONSENT_LABEL_SWEEP = Object.freeze({
  * text is its whitespace-collapsed `value` (inputs), else textContent, else aria-label. For each label in order, the
  * first control whose lower-cased text IS that label (≤ maxLength), that is displayed (display, visibility, a 2×2
  * box) and that sits in an overlay container (itself or an ancestor below <body>, crossing shadow hosts) is clicked —
- * never removed. → its text in the page's own case, or null.
+ * never removed. A control that would leave the page (a form submit, a link off this document) counts only under a
+ * dialog / aria-modal / consent-pattern / fixed container — a sticky or high-z one alone is a site header's search.
+ * → its text in the page's own case, or null.
  */
 export function consentLabelSweepInPage(table) {
   const norm = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -465,16 +469,30 @@ export function consentLabelSweepInPage(table) {
     return cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 2 && r.height >= 2;
   };
   const up = (n) => n.parentElement || (n.getRootNode() instanceof ShadowRoot ? n.getRootNode().host : null);
-  // <body> and <html> contain every control — a scroll-lock class or position on them guards nothing
-  const inOverlay = (el) => {
+  // the overlay kind around a control: 'strong' (a dialog, aria-modal, a consent-pattern id/class, position:fixed),
+  // else 'weak' (sticky, or positioned with a high z-index — a site header is one too), else null. <body> and <html>
+  // contain every control — a scroll-lock class or position on them guards nothing
+  const overlayKind = (el) => {
+    let weak = false;
     for (let n = el; n && n !== document.body && n !== document.documentElement; n = up(n)) {
-      if (n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') return true;
-      if (container.test(`${n.id} ${typeof n.className === 'string' ? n.className : n.getAttribute('class') || ''}`)) return true;
+      if (n.getAttribute('role') === 'dialog' || n.getAttribute('aria-modal') === 'true') return 'strong';
+      if (container.test(`${n.id} ${typeof n.className === 'string' ? n.className : n.getAttribute('class') || ''}`)) return 'strong';
       const cs = getComputedStyle(n);
-      if (cs.position === 'fixed' || cs.position === 'sticky') return true;
-      if (cs.position !== 'static' && Number(cs.zIndex) >= table.zIndex) return true;
+      if (cs.position === 'fixed') return 'strong';
+      if (cs.position === 'sticky' || (cs.position !== 'static' && Number(cs.zIndex) >= table.zIndex)) weak = true;
     }
+    return weak ? 'weak' : null;
+  };
+  // a control that leaves the page: a form submit, or a link off this document (not "#…", not javascript:)
+  const leaves = (el) => {
+    if (el.tagName === 'INPUT') return el.type === 'submit';
+    if (el.tagName === 'BUTTON') return el.type === 'submit' && Boolean(el.form);
+    if (el.tagName === 'A' && el.hasAttribute('href')) { const h = el.getAttribute('href').trim(); return !h.startsWith('#') && !/^javascript:/i.test(h); }
     return false;
+  };
+  const inOverlay = (el) => {
+    const kind = overlayKind(el);
+    return kind === 'strong' || (kind === 'weak' && !leaves(el));
   };
   for (const label of table.labels) {
     const hit = found.find((c) => c.label === label && displayed(c.el) && inOverlay(c.el));
@@ -622,7 +640,9 @@ const MODAL_CLOSE_CANDIDATES = [
  *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
  * Then detectOverlayLeft names what the capture would still carry (null when
- * clean) — reported, never removed. Parks the mouse afterwards (bottom-left —
+ * clean) — reported, never removed; when a label-sweep click left the page (the
+ * URL differs, fragment aside), overlayLeft is `(consent sweep navigated to <url>)`
+ * instead. Parks the mouse afterwards (bottom-left —
  * dead space on virtually every layout) so no :hover-styled element under the
  * cursor captures hovered.
  * Returns { extra: [...], consent: <sel|label "<text>"|null>, marketing: [...], overlayLeft: <descriptor|null> }.
@@ -652,10 +672,15 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
       }
     } catch { /* candidate absent — try next */ }
   }
+  // a sweep click can leave the page (a consent link to another path, a form post): the URL before it, fragment aside
+  const sansHash = (u) => u.split('#')[0];
+  let sweptFrom = null;
   if (!dismissed.consent) {
+    const before = page.url();
     const hit = await page.evaluate(consentLabelSweepInPage, CONSENT_LABEL_SWEEP).catch(() => null);
     if (hit) {
       dismissed.consent = `label "${hit}"`;
+      sweptFrom = before;
       await page.waitForTimeout(1500);
     }
   }
@@ -696,8 +721,12 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
     acted = await closeVisibleDialogs();
   }
 
-  // what the capture would still carry (a banner no sweep reached, a backdrop, a scroll lock) — reported, never fixed
-  dismissed.overlayLeft = await detectOverlayLeft(page);
+  // what the capture would still carry (a banner no sweep reached, a backdrop, a scroll lock) — reported, never fixed;
+  // a page the sweep navigated away from is never clean, whatever the new page shows
+  const now = page.url();
+  dismissed.overlayLeft = sweptFrom !== null && sansHash(now) !== sansHash(sweptFrom)
+    ? `(consent sweep navigated to ${now})`
+    : await detectOverlayLeft(page);
 
   // park the mouse (rule 10): a dismissal click leaves the virtual cursor at
   // the button's coordinates; anything :hover-styled under it captures hovered.

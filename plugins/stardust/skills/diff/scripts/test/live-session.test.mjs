@@ -9,7 +9,9 @@
 // this process — an 88 px in-flow bar above the header, a bar inserted 400 ms after load (hidden by the style rule),
 // an invalid selector, a second call, and a late bar under a CSP that blocks inline <style> (hidden by the adopted
 // sheet) — and dismissOverlays' consent pass on fixture banners: each consent manager's own accept button, a plain
-// label (by priority, never "Decline" first), a label two shadow roots deep, and an in-content "Accept" link left alone;
+// label (by priority, never "Decline" first), a label two shadow roots deep, a consent form's submit and a "#" link
+// in a fixed banner, and the controls left alone — an in-content "Accept" link, a sticky header's search submit "OK";
+// a sweep click that navigates away is named in overlayLeft;
 // then detectOverlayLeft (also a stub page: an evaluate error is a failed check, never clean) on what a capture would
 // still carry — a banner-sized consent root (or its shadow content) shown, a painting full-viewport backdrop or blur,
 // an html / body scroll lock — and on the look-alikes that are none: a consent manager's persistent 48 px privacy
@@ -340,6 +342,14 @@ else {
       <script>const outer = document.querySelector('consent-shell').attachShadow({ mode: 'open' }); outer.innerHTML = '<consent-panel></consent-panel>'; const inner = outer.querySelector('consent-panel').attachShadow({ mode: 'open' }); inner.innerHTML = '<span role="button" tabindex="0">Zustimmen</span>'; inner.querySelector('span').onclick = () => { document.querySelector('consent-shell').style.display = 'none'; };</script>`),
     '/consent/in-content': doc(`<main><p>Read the terms, then <a href="#" id="terms">Accept</a> them.</p></main>
       <script>document.getElementById('terms').onclick = (e) => { e.preventDefault(); window.termsClicked = true; };</script>`),
+    // a sweep click must not leave the page: a sticky header's search submit is skipped; a consent form's submit in
+    // a fixed banner still counts, so does a "#" link (a fragment is no navigation); a link that does navigate is named
+    '/consent/sticky-search': doc(`<div class="site-header" style="position:sticky;top:0;background:#fff;z-index:10"><form action="/consent/results"><input name="q" value="shoes"> <button>OK</button></form></div>${MAIN}`),
+    '/consent/form-accept': doc(`${MAIN}<div class="notice" style="${BANNER}"><form action="/consent/accepted" onsubmit="event.preventDefault(); this.closest('.notice').remove();"><p>We use cookies.</p><input type="submit" value="Accept"></form></div>`),
+    '/consent/hash-link': doc(`${MAIN}<div class="notice" style="${BANNER}"><a href="#" id="ok">Accept</a></div>
+      <script>document.getElementById('ok').onclick = () => { document.querySelector('.notice').style.display = 'none'; };</script>`),
+    '/consent/nav-link': doc(`${MAIN}<div class="notice" style="${BANNER}"><a href="/consent/accepted">Accept</a></div>`),
+    '/consent/accepted': doc(MAIN),
   });
   // overlay-left fixtures: what a capture would still show after the sweeps — and the look-alikes that are no overlay
   Object.assign(PAGES, {
@@ -438,18 +448,28 @@ else {
       ['/consent/didomi', '#didomi-notice-agree-button', () => !document.getElementById('didomi-notice')],
       ['/consent/label', 'label "Alle akzeptieren"', () => getComputedStyle(document.querySelector('.hinweis')).display === 'none' && !window.declined],
       ['/consent/shadow-label', 'label "Zustimmen"', () => getComputedStyle(document.querySelector('consent-shell')).display === 'none'],
-      ['/consent/in-content', null, () => !window.termsClicked],
+      ['/consent/form-accept', 'label "Accept"', () => !document.querySelector('.notice') && location.pathname === '/consent/form-accept'],
+      ['/consent/hash-link', 'label "Accept"', () => getComputedStyle(document.querySelector('.notice')).display === 'none' && location.href.endsWith('/consent/hash-link#')],
+      ['/consent/in-content', null, () => !window.termsClicked, 'an in-content "Accept" link is no consent control'],
+      ['/consent/sticky-search', null, () => location.pathname === '/consent/sticky-search', 'a sticky header\'s search submit "OK" is no consent control'],
     ];
-    for (const [path, want, gone] of CONSENT) {
-      await checkAsync(`e2e consent: ${path} → ${want === null ? 'nothing clicked (an in-content "Accept" link is no consent control)' : want}`, async () => {
+    for (const [path, want, gone, why] of CONSENT) {
+      await checkAsync(`e2e consent: ${path} → ${want === null ? `nothing clicked (${why})` : want}`, async () => {
         const page = await open(path);
         const d = await session.dismissOverlays(page, { lateWindowMs: 0 });
         assert.equal(d.consent, want);
-        assert.equal(await page.evaluate(gone), true, want === null ? 'the in-content link was clicked' : 'the banner is still up (or the decline control was clicked)');
+        assert.equal(await page.evaluate(gone), true, want === null ? 'a control outside any consent overlay was clicked' : 'the banner is still up (or the decline control was clicked)');
         assert.equal(d.overlayLeft, null, 'nothing left behind');
         await page.close();
       });
     }
+    await checkAsync('e2e consent: a label-sweep click that navigates away → overlayLeft names the navigation (never clean)', async () => {
+      const page = await open('/consent/nav-link');
+      const d = await session.dismissOverlays(page, { lateWindowMs: 0 });
+      assert.equal(d.consent, 'label "Accept"');
+      assert.equal(d.overlayLeft, `(consent sweep navigated to ${base}/consent/accepted)`);
+      await page.close();
+    });
     const OVERLAY = [
       ['/overlay/clean', null],
       ['/overlay/onetrust', '#onetrust-banner-sdk (consent root visible)'],
