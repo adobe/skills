@@ -221,16 +221,22 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          a browser):
            node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
            node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
+         On a protected preview add --token-env <NAME> to the command after the --, and never --auth-header: run-bg
+         saves the command it runs, argument values included, in its state file and prints it, so a header value would
+         be written to disk and to the log.
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
-               variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
-               only (ai-readability, which would send it to every origin the page loads, is not run on a
-               protected preview), never printed or recorded (preview.json says only auth: true). tokens hands it
+               variable (or .env entry) that holds the token; neither may be empty. Under run-bg use --token-env only
+               (run-bg saves the command's arguments, so a header value would be saved with it). Sent to the preview
+               origin only (ai-readability, which would send it to every origin the page loads, is not run on a
+               protected preview), never printed or recorded (preview.json says only whether the preview refused an
+               anonymous request: auth). tokens hands it
                to donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
                inherited sends it with the .plain.html request only. all hands it to those three and to the
                figma-gate child (by that variable and --token-env). Write a flag and its value as two arguments,
-               the value quoted when it has a space: an unknown --flag=value or a stray argument is never echoed.
+               the value quoted when it has a space: an unknown --flag=value or --flag:value, a command that starts
+               with - or holds a space, = or :, and a stray argument holding a space, = or : are never echoed.
                The --token-env NAME must be a variable name (letters, digits, underscores) and is never printed,
                set or not, so a token typed in its place is refused without being shown.
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and

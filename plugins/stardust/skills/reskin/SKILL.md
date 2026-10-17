@@ -424,6 +424,10 @@ node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
 node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
 
+On a protected preview add `--token-env <NAME>` to the `all` command, never
+`--auth-header`: `run-bg` saves the command it runs, argument values included,
+in its state file and prints it, so a header value would be written to disk.
+
 `all` prints one verdict line per step and writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exit
 124 (no verdict), exit 3 (bot challenge, token halt) and the fix budget:

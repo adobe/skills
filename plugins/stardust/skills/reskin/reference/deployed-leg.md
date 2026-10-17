@@ -41,12 +41,18 @@ segment.
 5. **The delta file.** Run `deployed-gate content` with none, then write `reskin/deltas/<slug>.json` from what fails,
    one entry per real difference with its why, starting with `"blocking": false`: the text check stays advisory until
    the page's differences are measured.
-6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger.
+6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. On a protected preview
+   give the command `--token-env <NAME>`, never `--auth-header`: `run-bg` saves the command it runs, argument values
+   included, in its state file and prints it.
 
-A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on `preview`, `content`, `tokens`,
-`inherited` and `all`; a value starting with neither `token ` nor `bearer ` gets `token ` put in front. It reaches the
-preview origin only, child processes by environment, and never argv, output, records or the ledger. A sandbox repo's
-preview is public by default.
+A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
+`auth: true`). A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on `preview`, `content`,
+`tokens`, `inherited` and `all`; a value starting with neither `token ` nor `bearer ` gets `token ` put in front. Without
+one, `preview`, `content` and `all` stop with exit 2 (`the preview needs a site token`) rather than poll or crawl the
+source first. A token a public preview never asked for is not sent (`tokenUnused: true`) and changes nothing: `parity`,
+`sanity` and the rest run as on any public preview. The token reaches the preview origin only, child processes by
+environment, and never argv, output, records or the ledger; under `run-bg` use `--token-env` only, as the header value
+would be in the saved command. A sandbox repo's preview is public by default.
 
 ## The delta file
 

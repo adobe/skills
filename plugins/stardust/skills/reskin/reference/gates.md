@@ -286,15 +286,19 @@ header and footer band measure settles), and `inherited` fetches
 | `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, every `:root` token verbatim | exact, first font family only (a font not served fails nothing); container width is `parity`'s cap row, `layout.sectionPaddingY` a SKIP |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10%; Δh ≤ 5% of the reskin page's height; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
-| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0 |
+| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
-- **Protected preview.** `parity`, `sanity` and the `qa-gate` and
-  `ai-readability` rows are `n/a: protected preview`: their instruments
+- **Protected preview.** A preview is protected when it refuses the first,
+  anonymous request `preview` makes (`preview.json` `auth: true`); a token
+  given for a public preview is recorded `tokenUnused` and changes nothing.
+  `parity`, `sanity` and the `qa-gate` and `ai-readability` rows are
+  `n/a: protected preview`: their instruments
   carry no site auth, and `ai-readability` sets its header on its whole
   browser context, so the token would reach every origin the page loads.
-  `content`, `tokens`, the `.plain.html` row and `figma` authenticate.
+  `content`, `tokens`, the `.plain.html` row and `figma` authenticate, and
+  `content`, `inherited` and `all` stop with exit 2 when given no token.
 - **Figma on a preview.** B0 finds each slot in the preview's
   `.plain.html`, then in the decorated page: the section is
   `main > div:nth-child(k)` of the decorated div, since decoration can
