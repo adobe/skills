@@ -8,7 +8,10 @@
 // an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
 // rosterEstimate table — its pool factor (estimateFactor; run-bg's browsersPerSlot from the env, STARDUST_BROWSER_SLOTS=0,
 // an inherited slot, the argv's pool flags) —, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
-// state, --coverage, a coverage-only project's CLI run, missing / malformed files), else the state.
+// state, --coverage, a coverage-only project's CLI run, missing / malformed files), else the state. The build host: buildHost
+// (--eds-host, coverage deployedUrl, state liveUrl, --proto-base), the first status line naming it for each roster, every
+// row's `host` (a reused row keeps its own; a legacy one takes the current host its equal gate key proves), and no
+// rollout.json moving the default (the coverage deployedUrl as recorded).
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
@@ -53,7 +56,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -514,6 +517,11 @@ check('rowReuse: a PASS row under the same key and criteria is reused whole; nev
   assert.deepEqual(reOv({ pct: 25 }), { ...tierShift, valid: false, rejected: [MAG], magnitude: { pct: 25, maxPct: 20, heightDelta: 0, maxHeightDelta: 300 } });
   assert.deepEqual(reOv({ heightDelta: -301 }).rejected, [MAG]); assert.equal(reOv({ pct: 20, heightDelta: -300 }).valid, true, 'inclusive');
   assert.deepEqual(reOv({ originH: undefined }).rejected, ['no measured pixel % / Δh / origin height to bound the override'], 'a row without its numbers cannot be bounded');
+  // host: a reused row keeps its own; one from a table written before the field takes this run's (the equal key proves it)
+  const reHost = (over, host = 'https://main--site--org.aem.live') => rowReuse({ prior: prior(over), gateKey: 'K', edsPng: true, opts, host }).host;
+  assert.equal(reHost({}), 'https://main--site--org.aem.live', 'a legacy row (no host field)');
+  assert.equal(reHost({ host: 'https://main--site--org.aem.page' }), 'https://main--site--org.aem.page', 'its own host kept');
+  assert.equal(reHost({ host: null }), null, 'a recorded null stays null'); assert.equal(reHost({}, null), null, 'no current host given');
 });
 if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside the boxes only, masked rows skipped', () => {
   const w = 10; const h = 10; const data = Buffer.alloc(w * h * 4);
@@ -638,6 +646,14 @@ check('coverage roster: deployed / verified / gate-failed rows with a deployedUr
   assert.deepEqual(slugs(selectPages(st, { stage: 'prototype', coverage: COV })), ['a'], 'the prototype stage reads the state');
   const moved = coveragePages({ pages: [crow('p', 'deployed', { url: 'https://main--site--org.aem.page/en/products/p', path: '/products/p' }), { ...crow('q', 'verified'), path: undefined, templateId: undefined }] });
   assert.equal(moved[0].deployedPath, '/products/p', 'the row path, not the deployedUrl pathname'); assert.equal('deployedPath' in moved[1], false); assert.equal(moved[1].template, null);
+});
+check('buildHost: the build origin(s) measured and where they come from — --eds-host first, the prototype stage\'s --proto-base, else the roster\'s own URLs (coverage deployedUrl / state liveUrl); unique, sorted', () => {
+  const ps = [{ liveUrl: 'https://main--site--org.aem.page/b' }, { liveUrl: 'https://main--site--org.aem.page/a' }, { liveUrl: 'https://fix--site--org.aem.page/c' }, { liveUrl: 'not a url' }];
+  assert.deepEqual(buildHost(ps, { source: 'coverage' }), { origins: ['https://fix--site--org.aem.page', 'https://main--site--org.aem.page'], from: 'coverage deployedUrl' });
+  assert.deepEqual(buildHost(ps.slice(0, 2), { source: 'state' }), { origins: ['https://main--site--org.aem.page'], from: 'state liveUrl' });
+  assert.deepEqual(buildHost(ps, { source: 'coverage', edsHost: 'https://main--site--org.aem.live' }), { origins: ['https://main--site--org.aem.live'], from: '--eds-host' });
+  assert.deepEqual(buildHost([{ liveUrl: 'http://localhost:9/a.html' }], { stage: 'prototype', protoBase: 'http://localhost:9' }), { origins: ['http://localhost:9'], from: '--proto-base' });
+  assert.equal(buildHost([{ liveUrl: 'http://localhost:8791/a.html' }], { stage: 'prototype' }).from, '--proto-base default');
 });
 check('rosterEstimate over the coverage: the default file beside a state wins (source coverage), --coverage names another; --stage prototype reads the state (a missing / malformed --coverage ignored); a missing or malformed --coverage → error; a malformed state beside a coverage is ignored', () => {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-covroster-'))); mkdirSync(join(cwd, 'stardust/rollout/coverage'), { recursive: true });
@@ -772,7 +788,10 @@ check('run 1 (fresh): per page 2 stitches, 1 content probe, 1 compare; probes.js
   assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 2, eds: 2, probes: 2, compares: 2 });
   for (const slug of ['home', 'about']) { assert.ok(existsSync(pageFile(slug, 'probes.json')), slug); assert.match(storedKey(slug), HEX); assert.equal(row(run1, slug).gateKey, storedKey(slug)); assert.equal(row(run1, slug).reused, null); }
   assert.equal(row(run1, 'about').pass, false); assert.deepEqual(run1._provenance.reuse, { rows: 0, probes: 0 });
+  for (const slug of ['home', 'about']) assert.equal(row(run1, slug).host, 'https://main--site--org.aem.page', slug);
 });
+// a table written before rows carried `host`: the reused PASS row takes the current host (its equal gate key proves it)
+if (run1) { const legacy = JSON.parse(readFileSync(join(REUSE_OUT, 'summary.json'), 'utf8')); for (const x of legacy.rows) delete x.host; writeFileSync(join(REUSE_OUT, 'summary.json'), JSON.stringify(legacy, null, 2)); }
 check('probes.json records the capture pair it was taken against (origin.json / eds.json at)', () => {
   const at = (slug, side) => JSON.parse(readFileSync(pageFile(slug, `${side}.json`), 'utf8')).at;
   for (const slug of ['home', 'about']) assert.deepEqual(JSON.parse(readFileSync(pageFile(slug, 'probes.json'), 'utf8')).pair, { origin: at(slug, 'origin'), eds: at(slug, 'eds') }, slug);
@@ -782,6 +801,7 @@ check('run 2 --skip-existing: the PASS row reused whole, the FAIL page re-compar
   assert.equal(r.status, 2, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 0, probes: 0, compares: 1 });
   const s = summary();
   assert.deepEqual(row(s, 'home').reused, { what: 'row', from: 'summary.json', at: run1._provenance.writtenAt, gateKey: row(run1, 'home').gateKey });
+  assert.equal(row(s, 'home').host, 'https://main--site--org.aem.page', 'a reused row from a table without host: the host its key proves');
   assert.equal(row(s, 'about').reused.what, 'probes'); assert.equal(s.totals.reusedRows, 1); assert.equal(s.totals.reusedProbes, 1);
   // the kept origin is a recorded reuse too (originReused, policy skip-existing) — the one other field that differs
   assert.equal(row(s, 'about').originReused.policy, 'skip-existing'); assert.equal(s.totals.originReused, 1);
@@ -1085,24 +1105,27 @@ check('sandbox 1: a full round captures both sides of every page; origin.json re
   assert.match(runLog(), /origin reuse: same run since .*; pools origin 2 \/ eds 4 \/ probe 2/);
   assert.ok(r.cp.every((c) => !c.had), 'a fresh origin capture is paired with a fresh presence inventory');
 });
-check('roster estimate: the run\'s first status line — stdout and _run.log — is the roster with its estimate (2 pages → 50 s), the run-bg deadline and its source (a state-only project: the state, 2 of 2 pages qualified); a deadline equal to the estimate starts', () => {
-  const want = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 50 s \(25 s per page per width\); run-bg deadline 50 s; source: state stardust\/state\.json \(2 of 2 page\(s\) qualified\)$/;
+check('roster estimate: the run\'s first status line — stdout and _run.log — is the roster with its estimate (2 pages → 50 s), the run-bg deadline, its source (a state-only project: the state, 2 of 2 pages qualified) and the build host it measured (state liveUrl); a deadline equal to the estimate starts; every row carries host', () => {
+  const want = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 50 s \(25 s per page per width\); run-bg deadline 50 s; source: state stardust\/state\.json \(2 of 2 page\(s\) qualified\); build host https:\/\/main--site--org\.aem\.live \(state liveUrl\)$/;
   assert.equal(first.status, 0); assert.match(first.stdout.split('\n')[0], want); assert.match(runLog().split('\n')[0], want);
   assert.match(runLog().split('\n')[1], / origin reuse: /);
+  assert.deepEqual(['home', 'about'].map((slug) => first.row(slug).host), ['https://main--site--org.aem.live', 'https://main--site--org.aem.live']);
 });
-check('coverage-only project (no state.json): the rollout coverage is the roster — the first status line names it and its qualified rows (before --only), a gate-failed row is re-gated against its deployedUrl, the row path / template from the coverage; a state.json that does not parse beside it → one stderr note, the run goes on', () => {
+check('coverage-only project (no state.json): the rollout coverage is the roster — the first status line names it and its qualified rows (before --only) and the build host (coverage deployedUrl — a rollout.json site.liveHost does not move it), a gate-failed row is re-gated against its deployedUrl, the row path / template / host from the coverage; a state.json that does not parse beside it → one stderr note, the run goes on', () => {
   const croot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-cov-'))); mkdirSync(join(croot, 'stardust/rollout/coverage'), { recursive: true });
   writeFileSync(join(croot, COV_PATH), JSON.stringify(COV));
+  // a rollout.json naming a live host does not move the default: the build is the coverage deployedUrl as recorded
+  writeFileSync(join(croot, 'stardust/rollout/rollout.json'), JSON.stringify({ site: { liveHost: 'main--site--org.aem.live' } }));
   const cgate = () => {
     rmSync(STITCH_LOG, { force: true }); const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
     const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--only', 'c'], { cwd: croot, env: e, encoding: 'utf8', timeout: 60e3 });
     return { ...r, run: JSON.parse(readFileSync(join(croot, r.stdout.match(/run → (.*)/)[1]), 'utf8')), log: readFileSync(join(croot, 'stardust/replica/gates/all-1440/_run.log'), 'utf8').trim().split('\n') };
   };
-  const want = /^\S+ roster: 1 page\(s\) × 1 width @1440 \(published\) — estimated 25 s \(25 s per page per width\); source: coverage stardust\/rollout\/coverage\/pages\.json \(3 of 6 row\(s\) qualified\)$/;
+  const want = /^\S+ roster: 1 page\(s\) × 1 width @1440 \(published\) — estimated 25 s \(25 s per page per width\); source: coverage stardust\/rollout\/coverage\/pages\.json \(3 of 6 row\(s\) qualified\); build host https:\/\/main--site--org\.aem\.page \(coverage deployedUrl\)$/;
   const r = cgate();
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.match(r.stdout.split('\n')[0], want); assert.match(r.log[0], want);
   assert.deepEqual(lines(STITCH_LOG).map((l) => l.split(' ').slice(0, 2).join(' ')).sort(), ['EDS https://main--site--org.aem.page/c', 'ORIGIN https://www.example.com/c']);
-  const row = r.run.rows.find((x) => x.slug === 'c'); assert.deepEqual([r.run.rows.length, row.path, row.template, row.pass], [1, '/c', 'page', true]);
+  const row = r.run.rows.find((x) => x.slug === 'c'); assert.deepEqual([r.run.rows.length, row.path, row.template, row.pass, row.host], [1, '/c', 'page', true, 'https://main--site--org.aem.page']);
   assert.equal(existsSync(join(croot, 'stardust/state.json')), false);
   writeFileSync(join(croot, 'stardust/state.json'), '{');
   const m = cgate();
@@ -1111,7 +1134,7 @@ check('coverage-only project (no state.json): the rollout coverage is the roster
   assert.match(m.stderr, /^gate-all: stardust\/state\.json unreadable \(.+\) — roster from coverage without state enrichment$/m);
   rmSync(croot, { recursive: true, force: true });
 });
-check('--eds-host in the sandbox: a bare host and its https://<host>/ form both stitch and probe https://<host><path> and record the origin as _provenance.edsHostOverride', () => {
+check('--eds-host in the sandbox: a bare host and its https://<host>/ form both stitch and probe https://<host><path> and record the origin as _provenance.edsHostOverride and the row host; the first status line names it (--eds-host)', () => {
   const eroot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-eds-'))); mkdirSync(join(eroot, 'stardust'));
   writeFileSync(join(eroot, 'stardust/state.json'), JSON.stringify({ pages: [pages[1]] }));
   const host = 'fix-x--site--org.aem.page';
@@ -1122,8 +1145,9 @@ check('--eds-host in the sandbox: a bare host and its https://<host>/ form both 
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.deepEqual(lines(STITCH_LOG).filter((l) => l.startsWith('EDS ')).map((l) => l.split(' ')[1]), [`https://${host}/about`], flag);
     assert.deepEqual(lines(CP_LOG).map((l) => JSON.parse(l).argv[1]), [`https://${host}/about`], flag);
-    const { _provenance: pv } = JSON.parse(readFileSync(join(eroot, 'stardust/replica/gates/all-1440/summary.json'), 'utf8'));
-    assert.deepEqual([pv.edsHostOverride, pv.eds], [`https://${host}`, `https://${host}`], flag);
+    const { _provenance: pv, rows } = JSON.parse(readFileSync(join(eroot, 'stardust/replica/gates/all-1440/summary.json'), 'utf8'));
+    assert.deepEqual([pv.edsHostOverride, pv.eds, rows[0].host], [`https://${host}`, `https://${host}`, `https://${host}`], flag);
+    assert.match(r.stdout.split('\n')[0], new RegExp(`; source: state stardust/state\\.json \\(1 of 1 page\\(s\\) qualified\\); build host https://${host.replace(/\./g, '\\.')} \\(--eds-host\\)$`), flag);
   }
   rmSync(eroot, { recursive: true, force: true });
 });

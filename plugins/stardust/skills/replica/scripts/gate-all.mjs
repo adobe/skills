@@ -110,6 +110,10 @@
  * delivery.deployedUrl (the build; --eds-host rewrites its host) and a source.sourceUrl; template / fidelityTier (units,
  * gate key) and deployedPath come from the state page of the same slug when state.json has one, else templateId / null /
  * the row's path. Beside a coverage, state.json is optional; one that does not parse is one stderr note, not an error.
+ * The build is that deployedUrl as recorded (the preview host the delivery records) — no other file moves it; gate another
+ * host (the live one) with --eds-host <host>. Every row carries `host`: the build origin (`<protocol>//<host>`) it was
+ * measured against — a reused row keeps its own; one from a table written before the field takes this run's, which its
+ * equal gate key (it hashes the build origin) proves. The first status line names the origin(s) and their source.
  * Not found: an explicit --coverage, or neither file (published), or --state (prototype); a coverage that does not
  * parse → exit 1, nothing written.
  *
@@ -131,8 +135,10 @@
  * pools the job would run with: an inherited STARDUST_BROWSER_SLOT as is, STARDUST_BROWSER_SLOTS=0 (lock off) → no slot,
  * else run-bg's own `browsersPerSlot` (run-bg.mjs beside this file; absent → 1), with the argv's pool flags. Then
  * `; run-bg deadline <d> s` when one is known, then `; source: coverage <path> (<q> of <N> row(s) qualified)` or
- * `; source: state <path> (<q> of <M> page(s) qualified)` (<q> before --only) — a recorded 99-page roster at one width
- * needed 2152 s and was killed by run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds —
+ * `; source: state <path> (<q> of <M> page(s) qualified)` (<q> before --only), then `; build host <origin>[, <origin>…]
+ * (<from>)` — the build origin(s) this run measures (sorted, unique) and where they come from (`buildHost`): `--eds-host`;
+ * on the prototype stage `--proto-base` (`--proto-base default` without the flag); else `coverage deployedUrl` or `state
+ * liveUrl` — a recorded 99-page roster at one width needed 2152 s and was killed by run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds —
  * the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → gate-all refuses to start, before
  * the out dir and any capture, probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate,
  * the deadline and the remedy `--timeout <estimate>`), exit 2.
@@ -187,7 +193,7 @@
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
- * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools`, `estimateFactor` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools`, `estimateFactor`, `buildHost` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
  * `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
@@ -224,7 +230,9 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --origin-max-age <h>      also reuse origin captures from earlier runs up to <h> hours old (env
                             STARDUST_ORIGIN_MAX_AGE_H; default: this run's captures only)
   --eds-host <host>         gate a code branch host against the same content: a bare host or https://<host>
-                            (https:// added when no scheme); a path, query or hash is refused (exit 2)
+                            (https:// added when no scheme); a path, query or hash is refused (exit 2). Without it
+                            the build is the roster's URL as recorded (coverage deployedUrl: the preview host); gate
+                            the live host with --eds-host <live host>. Every row records its build origin as host
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -276,10 +284,12 @@ Empty selection → one stderr line: published — the coverage and state paths 
   (roster from coverage: coverage wins — record deployed pages with update-coverage.mjs, or pass --coverage); exit 1.
 First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n·f> s (25 s per
   page per width[ × f: <why>])[; run-bg deadline <d> s]; source: coverage|state <path> (<q> of <N> row(s) / page(s)
-  qualified, before --only). f = ceil((2 / origin pool) × (2 when the capture pools run sequentially)), at least 1:
-  1 browser per slot → × 4, 2 → × 2, ≥ 3 or no slot → × 1 (25 s was measured with the default pools; it errs high).
-  run-bg sizes a gate-all job's deadline with the same estimate (rosterEstimate, from run-bg's env: the slot it will
-  take — run-bg's browsersPerSlot — unless STARDUST_BROWSER_SLOTS=0; the argv's pool flags). RUN_BG_DEADLINE_SEC
+  qualified, before --only); build host <origin>[, …] (--eds-host | coverage deployedUrl | state liveUrl | --proto-base
+  [default]) — the build origin(s) measured and where they come from. f = ceil((2 / origin pool) × (2 when the capture
+  pools run sequentially)), at least 1: 1 browser per slot → × 4, 2 → × 2, ≥ 3 or no slot → × 1 (25 s was measured
+  with the default pools; it errs high). run-bg sizes a gate-all job's deadline with the same estimate (rosterEstimate,
+  from run-bg's env: the slot it will take — run-bg's browsersPerSlot — unless STARDUST_BROWSER_SLOTS=0; the argv's
+  pool flags). RUN_BG_DEADLINE_SEC
   (env, seconds: the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → refused before the
   out dir or any capture: one stderr line "no verdict" naming --timeout <estimate>; exit 2.
 Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg
@@ -421,6 +431,19 @@ const roster = (pages, { width, stage }, { factor = 1, why = null } = {}) => { c
 const rosterText = (r) => `${r.pages} page(s) × ${r.widths} width${r.widths === 1 ? '' : 's'} @${r.width} (${r.stage})`;
 // `(25 s per page per width[ × <factor>: <why>])` — byte-identical to the unfactored text at × 1.
 const estimateText = (r) => `${ESTIMATE_SEC_PER_PAGE} s per page per width${r.factor > 1 ? ` × ${r.factor}: ${r.factorWhy}` : ''}`;
+/**
+ * buildHost(pages, { edsHost, stage, protoBase, source }) → { origins, from }: the build (EDS) origin(s) this run measures
+ * and where they come from — `--eds-host` (edsOrigin's normalised value; it rewrites every page's host); else, on the
+ * prototype stage, `--proto-base` (`--proto-base default` when not given); else the roster's own URLs: `coverage
+ * deployedUrl` or `state liveUrl`. origins = the unique `<protocol>//<host>` of the pages' build URLs, sorted. Pure.
+ */
+export function buildHost(pages, { edsHost = null, stage = 'published', protoBase = null, source = 'state' } = {}) {
+  const from = edsHost ? '--eds-host' : stage === 'prototype' ? (protoBase ? '--proto-base' : '--proto-base default') : source === 'coverage' ? 'coverage deployedUrl' : 'state liveUrl';
+  const origins = edsHost ? [edsHost] : [...new Set((pages || []).map((p) => { try { return new URL(p.liveUrl).origin; } catch { return null; } }).filter(Boolean))].sort();
+  return { origins, from };
+}
+// `build host <origin>[, <origin>…] (<from>)` — the first status line's last clause.
+const buildHostText = (b) => `build host ${b.origins.join(', ') || 'none'} (${b.from})`;
 /**
  * The pools a job started by run-bg will run with, from run-bg's env before the job holds a slot: an inherited
  * STARDUST_BROWSER_SLOT → exactly what main() will see; STARDUST_BROWSER_SLOTS 0 (the lock off) → no slot; else the slot
@@ -916,21 +939,24 @@ export function latestRows(out, width) {
 // The table's own record of what it evaluated equals this run's criteria (the key carries them too; this is the table's word).
 const sameCriteria = (prov, opts) => !!prov && prov.stage === 'published' && prov.threshold === opts.threshold && prov.heightTolerance === opts.heightTol && prov.clipMax === opts.clipMax && prov.unitTol === opts.unitTol && !!prov.criteria && prov.criteria.clip === opts.clip && prov.criteria.content === opts.content;
 /**
- * rowReuse({ prior, gateKey, edsPng, override, register, opts }) → the prior row again, marked `reused`, or null. Only under
+ * rowReuse({ prior, gateKey, edsPng, override, register, opts, host }) → the prior row again, marked `reused`, or null. Only under
  * --skip-existing on the published stage without --recapture-*, with a known current key equal to the row's, a
  * PASS (not an override) from a table written under this run's criteria and the page's eds.png on disk — never an
  * INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin. `at` stays the time the row was measured;
  * the override it attaches (this run's overrides.json entry) is validated against `register` like a fresh row's — its
- * magnitude on the row's own pct / heightDelta / originH under this run's --threshold / --height-tol.
+ * magnitude on the row's own pct / heightDelta / originH under this run's --threshold / --height-tol. `host` = this run's
+ * build origin for the page: the reused row keeps its own `host`; one written before that field takes `host` (the equal
+ * gate key hashes the build origin, so it proves the same host).
  */
-export function rowReuse({ prior, gateKey, edsPng, override = null, register = null, opts }) {
+export function rowReuse({ prior, gateKey, edsPng, override = null, register = null, opts, host = null }) {
   if (!opts.skip || opts.stage !== 'published' || opts.recaptureEds || opts.recaptureOrigin || !gateKey || !prior || !edsPng) return null;
   const { row } = prior;
   if (row.gateKey !== gateKey || row.pass !== true || row.inconclusive || row.originAsymmetric || !sameCriteria(prior.prov, opts)) return null;
   const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
   // the override is re-checked on the reused row's own measured numbers, like a fresh row's
   const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register, pct: row.pct, heightDelta: row.heightDelta, originH: row.originH, threshold: opts.threshold, heightTol: opts.heightTol });
-  return { ...row, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
+  // a row from a table written before `host` takes this run's host only because its equal gate key (it hashes the build origin) proves it
+  return { ...row, host: 'host' in row ? row.host : row.gateKey === gateKey ? host : null, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
 }
 
 // ---- fix rounds: <out>/<slug>/rounds.json counts the --only runs that yielded a verdict — the cap is mechanical ----------
@@ -1199,7 +1225,7 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
-  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${estimateText(R)})${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}`);
+  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${estimateText(R)})${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}; ${buildHostText(buildHost(pages, { edsHost: opts.edsHost, stage: opts.stage, protoBase: opts.protoBase, source: cov ? 'coverage' : 'state' }))}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;
@@ -1227,6 +1253,7 @@ async function main() {
   if (!HIDE_OK && Object.values(PRESENCE || {}).some((e) => e && typeof e === 'object' && e.hide != null)) log('presence hide: not honoured — the diff scripts dir has no live-session.mjs with presenceHide; captures and probes run without hides');
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
+  const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // the row's `host`
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
   const stitchArgs = (url, out, { inventory, hide = [], json } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(inventory ? ['--inventory', inventory] : [])];
@@ -1512,7 +1539,7 @@ async function main() {
   const REUSED = {};
   const prior = opts.skip && opts.stage === 'published' ? latestRows(opts.out, opts.width) : {};
   for (const p of pages) {
-    const row = rowReuse({ prior: prior[p.slug], gateKey: currentKey(p), edsPng: existsSync(join(dir(p), 'eds.png')), override: OVERRIDES[p.slug] ?? null, register: REGISTER, opts });
+    const row = rowReuse({ prior: prior[p.slug], gateKey: currentKey(p), edsPng: existsSync(join(dir(p), 'eds.png')), override: OVERRIDES[p.slug] ?? null, register: REGISTER, opts, host: hostOf(p) });
     if (row) { REUSED[p.slug] = row; log(`row ${p.slug} → reused (gate key ${row.gateKey.slice(0, 12)} unchanged; measured ${row.reused.at}, ${row.reused.from})`); }
   }
   const todo = pages.filter((p) => !REUSED[p.slug]);
@@ -1537,7 +1564,7 @@ async function main() {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
-    return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
+    return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: hostOf(p),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
