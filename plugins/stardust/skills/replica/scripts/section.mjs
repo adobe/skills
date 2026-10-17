@@ -20,18 +20,31 @@
  *                          sections that fit print, one final NOTE names the omitted ones with
  *                          their sizes — request those one at a time. One section is never cut.
  *
+ * The pattern is a case-insensitive regex. When it does not compile or hits no
+ * heading (after --level), the heading is matched by its words instead: case,
+ * accents and punctuation ignored, every word of the pattern in order, a word
+ * may be the start of a longer one — `Phase C (Deliver` and `phase c deliver`
+ * both hit "Phase C — Deliver the site (drive `deploy`)", `§ 5. Lean on` hits
+ * "5. Lean on …". A citation copied with its punctuation therefore lands; one
+ * stderr line says the words matched, not the regex.
+ *
  * The body runs to the next heading of the same or a higher level. Headings
  * inside fenced code blocks are ignored. Exit 0 = printed, 2 = no match
- * (the outline is printed so the next call can hit), 125 = usage (unknown
- * flag, or a value flag — --level, --max-lines — followed by nothing or by
- * another --flag: the flag is named, never swallowed as the value).
+ * (stdout: one line naming the pattern, then the outline, so the next call
+ * can hit — a caller that keeps only stdout still sees the headings),
+ * 125 = usage (unknown flag, or a value flag — --level, --max-lines — followed
+ * by nothing or by another --flag: the flag is named, never swallowed as the
+ * value), 1 = the file cannot be read. A bad regex is not a usage error: it
+ * goes to the word match.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const HELP = 'Usage: node section.mjs <file.md> (--list | "<heading regex>") [--level <n>] [--max-lines <n>] [--all]  (--all: 20 KB cap over more than one section; a NOTE names the rest)';
+const HELP = 'Usage: node section.mjs <file.md> (--list | "<heading regex>") [--level <n>] [--max-lines <n>] [--all]  (--all: 20 KB cap over more than one section; a NOTE names the rest)\n'
+  + 'A pattern that does not compile or hits no heading is matched by its words (case, accents, punctuation ignored; words in order; a word may start a longer one) — one stderr line says so.\n'
+  + 'Exit codes: 0 printed, 2 no match — outline on stdout, 125 usage, 1 unreadable file.';
 const MULTI_CAP = 20 * 1024; // printed characters when --all shows more than one section
 
 export function outline(text) {
@@ -53,8 +66,10 @@ export function outline(text) {
   return out;
 }
 
+// `headingRe` is a RegExp or a predicate over the heading title.
 export function section(text, headingRe, { level = null, maxLines = 400 } = {}) {
-  const heads = outline(text).filter((h) => (level ? h.level === level : true) && headingRe.test(h.title));
+  const hit = typeof headingRe === 'function' ? headingRe : (title) => headingRe.test(title);
+  const heads = outline(text).filter((h) => (level ? h.level === level : true) && hit(h.title));
   if (!heads.length) return null;
   const lines = text.split('\n');
   return heads.map((h) => {
@@ -68,6 +83,25 @@ export function section(text, headingRe, { level = null, maxLines = 400 } = {}) 
 export function formatOutline(heads, file) {
   const rows = heads.map((h) => `L${String(h.line).padStart(4)} ${'  '.repeat(h.level - 1)}${'#'.repeat(h.level)} ${h.title}  (${h.length} lines)`);
   return [`${file}: ${heads.length} headings`, ...rows].join('\n');
+}
+
+// Lower-case, NFKD with combining marks removed, every run outside [a-z0-9] → one space.
+const words = (s) => String(s).toLowerCase().normalize('NFKD').replace(/\p{M}+/gu, '').toLowerCase()
+  .replace(/[^a-z0-9]+/g, ' ').trim().split(' ').filter(Boolean);
+
+// True when every word of the pattern starts a title word, in order, each after the previous
+// one's title word ("deliver" hits "delivery", not "redeliver"). An empty pattern never matches.
+export function wordsMatch(title, pattern) {
+  const want = words(pattern);
+  if (!want.length) return false;
+  const have = words(title);
+  let k = 0;
+  for (const w of want) {
+    while (k < have.length && !have[k].startsWith(w)) k += 1;
+    if (k === have.length) return false;
+    k += 1;
+  }
+  return true;
 }
 
 function cli(argv) {
@@ -93,9 +127,13 @@ function cli(argv) {
   let text; try { text = readFileSync(file, 'utf8'); } catch (e) { console.error(`section: cannot read ${file}: ${e.message}`); return 1; }
   const heads = outline(text);
   if (list) { console.log(formatOutline(heads, file)); return 0; }
-  let re; try { re = new RegExp(pattern, 'i'); } catch (e) { console.error(`section: bad regex ${pattern}: ${e.message}`); return 125; }
-  const found = section(text, re, { level, maxLines });
-  if (!found) { console.error(`section: no heading matches /${pattern}/i in ${file} — outline:\n${formatOutline(heads, file)}`); return 2; }
+  let re = null; try { re = new RegExp(pattern, 'i'); } catch { re = null; }
+  let found = re ? section(text, re, { level, maxLines }) : null;
+  if (!found) {
+    found = section(text, (title) => wordsMatch(title, pattern), { level, maxLines });
+    if (found) console.error(`section: no heading matches /${pattern}/i — matched by its words (case and punctuation ignored)`);
+  }
+  if (!found) { console.log(`section: no heading matches "${pattern}" in ${file} — its headings:\n${formatOutline(heads, file)}`); return 2; }
   const show = all ? found : found.slice(0, 1);
   // More than one section: cap the printed total. A recorded session asked for five sections in one
   // call and carried 82 KB in its context for 160 turns. The sections that fit print in document
