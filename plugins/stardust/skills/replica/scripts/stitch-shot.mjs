@@ -168,10 +168,10 @@ vs the viewport at --width (delta = px over, 0 when it fits), read after the chu
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 Writes <out.png> and <stem>.capture.json beside it (build.png → build.capture.json; removed when a capture starts, so a
 failed one leaves none): { writtenBy, url, width, vh, height, chunks, headerMorph, overflow: { scrollWidth, viewport,
-delta }, at }. A scroll that stops short of its chunk target while the height stays put is a scroll stall (an inner
-scroller / scroll-jacked page): exit 1. A shortfall the document's own shrink explains (a header that shrinks on
-scroll) is a morph, not a stall: the stitch continues at the shrunk height, headerMorph records the px and the
-stitched line ends " — header morph <px> px".
+delta }, at }. A scroll that does not move (window.scrollY stays put) short of its chunk target, the height unchanged,
+is a scroll stall (an inner scroller / scroll-jacked page): exit 1. A shortfall the document's own shrink explains (a
+header that shrinks on scroll) is a morph, not a stall: the stitch continues at the shrunk height, headerMorph records
+the px and the stitched line ends " — header morph <px> px".
 EDS build/preview hosts (*.aem.page|live, *.hlx.page|live) get no timed late-modal poll: one dismissal sweep,
 after the EDS delayed phase (live source sites keep the 6 s poll, local targets have none).
 Run the SAME command shape against the live page and the served prototype.
