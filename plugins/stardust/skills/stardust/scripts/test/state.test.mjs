@@ -6,7 +6,8 @@
 // place), --history-only, the value-flag swallow rule, summary counts and --slugs, usage errors and
 // the rejected --gate / --note flags; init (line list, JSON array, stdin, --types, --site-url, the
 // record index, provenance refusals, exists / --force, captureGaps), set (--representative /
-// --type, refusals) and the summary representative lines. Run: node <this file>.
+// --type, --clear-representative, refusals including representative cycles) and the summary
+// representative lines. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -455,6 +456,47 @@ check('set refuses an unknown slug, an unknown representative, a self-representa
   for (const [args, re] of cases) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
   assert.equal(readFileSync(p.stateFile, 'utf8'), before);
 });
+check('set refuses a representative cycle (self, two-step, three-step, one of several slugs) in one line naming the chain, nothing written; a chain without a cycle is accepted', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'about/us', 'blog', 'de/produkte'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
+  assert.equal(runIn(p.d, ['set', 'blog', '--representative', 'about-us']).code, 0);
+  const chain = runIn(p.d, ['set', 'about-us', '--representative', 'index']);
+  assert.equal(chain.code, 0, chain.err); assert.equal(readIn(p.d).pages.find((x) => x.slug === 'about-us').representative, 'index', 'blog → about-us → index has no cycle');
+  const before = readFileSync(p.stateFile, 'utf8');
+  for (const [args, ch] of [
+    [['set', 'index', '--representative', 'index'], 'index → index'],
+    [['set', 'about-us', '--representative', 'blog'], 'about-us → blog → about-us'],
+    [['set', 'index', '--representative', 'blog'], 'index → blog → about-us → index'],
+    [['set', 'de-produkte', 'index', '--representative', 'blog'], 'index → blog → about-us → index'],
+  ]) {
+    const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, '');
+    assert.equal(r.err.trim().split('\n').length, 1, r.err); assert.ok(r.err.includes(ch), `${args.join(' ')} names ${ch}: ${r.err}`);
+  }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+  const s = readIn(p.d); s.pages.find((x) => x.slug === 'index').representative = 'about-us'; writeFileSync(p.stateFile, JSON.stringify(s, null, 2));
+  const loop = runIn(p.d, ['set', 'de-produkte', '--representative', 'blog']);
+  assert.equal(loop.code, 0, `a hand-made loop the named pages are not on ends the walk: ${loop.err}`);
+});
+check('set --clear-representative nulls representative on every named page (key kept after type); with --representative it is a usage error; advance and init refuse it', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'blog'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
+  assert.equal(runIn(p.d, ['set', 'blog', 'index', '--representative', 'about-us']).code, 0);
+  const r = runIn(p.d, ['set', 'blog', 'about-us', '--clear-representative']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: 2 page(s) set representative=null: blog, about-us · written by stardust:direct\n');
+  const s = readIn(p.d); const pg = (slug) => s.pages.find((x) => x.slug === slug);
+  assert.deepEqual(Object.keys(pg('blog')).slice(0, 6), ['slug', 'url', 'title', 'type', 'representative', 'status']); assert.equal(pg('blog').representative, null);
+  assert.ok('representative' in pg('about-us') && pg('about-us').representative === null, 'a page that had none gets the key, null');
+  assert.equal(pg('index').representative, 'about-us', 'a page not named keeps its link');
+  assert.equal(runIn(p.d, ['summary']).out.split('\n')[1], '  representative about-us 1  index');
+  const t = runIn(p.d, ['set', 'index', '--clear-representative', '--type', 'landing']);
+  assert.equal(t.code, 0, t.err); assert.equal(t.out, 'state: 1 page(s) set representative=null, type=landing: index · written by stardust:direct\n');
+  const before = readFileSync(p.stateFile, 'utf8');
+  const both = runIn(p.d, ['set', 'blog', '--clear-representative', '--representative', 'about-us']);
+  assert.equal(both.code, 2); assert.equal(both.out, ''); assert.match(both.err, /^state: --clear-representative and --representative contradict/);
+  const adv = runIn(p.d, ['advance', 'blog', '--to', 'directed', '--clear-representative']); assert.equal(adv.code, 2); assert.match(adv.err, /^state: unknown option --clear-representative$/m);
+  const ini = runIn(p.d, ['init', '--pages', 'x', '--clear-representative']); assert.equal(ini.code, 2); assert.match(ini.err, /--clear-representative does not apply to init/);
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
 check('summary prints one representative line per archetype (sorted), with and without --slugs, before the --slugs rows', () => {
   const p = project();
   assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'about/us', 'blog', 'de/produkte'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
@@ -469,7 +511,7 @@ check('summary prints one representative line per archetype (sorted), with and w
 check('--help lists init and set, from an empty cwd, exit 0', () => {
   const empty = mkdtempSync(join(tmpdir(), 'state-help-'));
   const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: empty });
-  assert.equal(h.status, 0); assert.match(h.stdout, /node state\.mjs init --pages <file\|->/); assert.match(h.stdout, /node state\.mjs set <slug…> \(--representative <archetype-slug> \| --type <type>\)/);
+  assert.equal(h.status, 0); assert.match(h.stdout, /node state\.mjs init --pages <file\|->/); assert.match(h.stdout, /node state\.mjs set <slug…> \(--representative <archetype-slug> \| --clear-representative \| --type <type>\)/);
   assert.match(h.stdout, /representative <archetype> <n>/); assert.match(h.stdout, /Exit codes: 0 ok, 2 usage/);
   assert.deepEqual(readdirSync(empty), [], 'nothing written'); rmSync(empty, { recursive: true, force: true });
 });

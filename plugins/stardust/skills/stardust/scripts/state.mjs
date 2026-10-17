@@ -11,8 +11,8 @@
 //                  [--force] [--dir <stardust dir>] [--current <dir>]
 //   node state.mjs advance <slug…> --to <status> [--by <who>] [--prototype <path>] [--migrated <path>]
 //                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
-//   node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>]
-//                  [--dir <stardust dir>]
+//   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
+//                  [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
 // init (after the crawl): one page per listed URL, in input order, every one `extracted`. A URL is
@@ -28,7 +28,9 @@
 // The written shape follows state-machine.md § File: `direction: null` unless the file has one;
 // site { originUrl, deployUrl, extractedAt, pageCap (--page-cap or null), totalDiscovered (see
 // siteTotalDiscovered: the crawl log's count only where the cap did not cut it), crawled, captureGaps? }.
-// set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing.
+// set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing; a
+// representative whose chain of representative links leads back to a named page (a cycle) is
+// refused; --clear-representative writes representative: null.
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
 // approved → migrated. Forward moves are legal, including jumps (a `directed` page can be migrated
@@ -72,10 +74,10 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--type'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
-  set: ['--representative', '--type', '--skill', '--dir'],
+  set: ['--representative', '--clear-representative', '--type', '--skill', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -86,7 +88,8 @@ const HELP = `Usage:
                  [--force] [--dir <d>] [--current <dir>]
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
-  node state.mjs set <slug…> (--representative <archetype-slug> | --type <type>) [--skill <name>] [--dir <d>]
+  node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
+                 [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set and
   summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
@@ -131,9 +134,11 @@ advance  moves every named page to <status>: appends { status, at[, approvedBy] 
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
          stale untouched, paths still set. Not combinable with --force.
 set      sets page.representative (the archetype slug the named pages clone) and/or page.type on
-         every named page; at least one of the two. Re-stamps _provenance (writtenBy
+         every named page; at least one of the two. --clear-representative sets representative
+         to null instead (not with --representative). Re-stamps _provenance (writtenBy
          stardust:direct unless --skill). All-or-nothing: an unknown slug, an unknown
-         representative or a page named as its own representative exits 2, nothing written.
+         representative, or a representative whose representative links lead back to a named
+         page (a cycle: itself, a → b → a, …; the line names the chain) exits 2, nothing written.
 summary  prints page counts by status, then one line per archetype when any page has a
          representative ("  representative <archetype> <n>  <slug, …>", sorted by archetype),
          then the slugs per status with --slugs.
@@ -143,7 +148,7 @@ Writes: init writes <dir>/${FILE_NAME}; advance and set rewrite it in place (ato
 rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
 parse, a page record is missing or lacks live-render evidence; set: unknown slug or
-representative) — nothing written.`;
+representative, a representative cycle) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -280,12 +285,28 @@ function withKey(obj, key, value, after) {
   return out;
 }
 
-// Sets page.type and/or page.representative on every slug in memory; throws before touching
-// anything when a slug or the representative is unknown, or a page would represent itself.
-// Returns the (de-duplicated) slugs set.
-export function setPages(state, slugs, { representative = null, type = null } = {}) {
+// The cycle a set would close: following representative links from `archetype`, the first named
+// slug reached, as [slug, archetype, …, slug] (a self-representative is [slug, slug]); null when
+// the walk ends first — a page without a representative, a dangling slug, or a loop the named
+// slugs are not on (the visited set ends it).
+export function representativeCycle(bySlug, slugs, archetype) {
+  const path = [];
+  const seen = new Set();
+  for (let at = archetype; typeof at === 'string' && bySlug.has(at) && !seen.has(at); at = bySlug.get(at).representative) {
+    path.push(at);
+    if (slugs.includes(at)) return [at, ...path];
+    seen.add(at);
+  }
+  return null;
+}
+
+// Sets page.type and/or page.representative (or clears it to null) on every slug in memory;
+// throws before touching anything when a slug or the representative is unknown, or the
+// representative would close a cycle. Returns the (de-duplicated) slugs set.
+export function setPages(state, slugs, { representative = null, type = null, clearRepresentative = false } = {}) {
+  if (clearRepresentative && representative !== null) throw new UsageError('--clear-representative and --representative contradict — pass one (clear writes representative: null)');
   if (!slugs.length) throw new UsageError('set needs at least one <slug>');
-  if (representative === null && type === null) throw new UsageError('set needs --representative <archetype-slug> and/or --type <type>');
+  if (representative === null && type === null && !clearRepresentative) throw new UsageError('set needs --representative <archetype-slug> and/or --type <type>, or --clear-representative');
   if (type !== null && !TYPE_RE.test(type)) throw new UsageError(`--type "${type}" is not a page type (${TYPE_RE.source})`);
   const unique = [...new Set(slugs)];
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
@@ -293,13 +314,15 @@ export function setPages(state, slugs, { representative = null, type = null } = 
   if (missing.length) throw new UsageError(`unknown slug(s): ${missing.join(', ')} — ${state.pages.length} page(s) in state.json; set changes existing entries only`);
   if (representative !== null) {
     if (!bySlug.has(representative)) throw new UsageError(`unknown representative "${representative}" — it must be a page in state.json (the archetype the named pages clone)`);
-    if (unique.includes(representative)) throw new UsageError(`${representative} cannot be its own representative — name the archetype's siblings, not the archetype`);
+    const cycle = representativeCycle(bySlug, unique, representative);
+    if (cycle && cycle.length === 2) throw new UsageError(`${representative} cannot be its own representative (${cycle.join(' → ')}) — name the archetype's siblings, not the archetype`);
+    if (cycle) throw new UsageError(`--representative ${representative} closes a cycle (${cycle.join(' → ')}): its representative links lead back to ${cycle[0]} — a chain must end at an archetype without one; clear a link first (set <slug> --clear-representative)`);
   }
   state.pages = state.pages.map((p) => {
     if (!unique.includes(p.slug)) return p;
     let next = p;
     if (type !== null) next = withKey(next, 'type', type, 'title');
-    if (representative !== null) next = withKey(next, 'representative', representative, 'type');
+    if (representative !== null || clearRepresentative) next = withKey(next, 'representative', representative, 'type');
     return next;
   });
   return unique;
@@ -519,7 +542,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, type: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -546,6 +569,7 @@ function parseArgs(argv) {
     else if (a === '--current') opts.current = need();
     else if (a === '--page-cap') opts.pageCap = need();
     else if (a === '--representative') opts.representative = need();
+    else if (a === '--clear-representative') opts.clearRepresentative = true;
     else if (a === '--type') opts.type = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
@@ -611,11 +635,11 @@ function runInit(opts, rest) {
 
 function runSet(opts, rest) {
   const { state, file } = readState(opts.dir);
-  const done = setPages(state, rest, { representative: opts.representative, type: opts.type });
+  const done = setPages(state, rest, { representative: opts.representative, type: opts.type, clearRepresentative: opts.clearRepresentative });
   const writtenBy = normaliseSkill(opts.skill || 'direct');
   state._provenance = stampProvenance(state._provenance, writtenBy, nowIso());
   writeState(file, state);
-  const what = [opts.representative !== null ? `representative=${opts.representative}` : null, opts.type !== null ? `type=${opts.type}` : null].filter(Boolean).join(', ');
+  const what = [opts.representative !== null ? `representative=${opts.representative}` : opts.clearRepresentative ? 'representative=null' : null, opts.type !== null ? `type=${opts.type}` : null].filter(Boolean).join(', ');
   console.log(`state: ${done.length} page(s) set ${what}: ${done.join(', ')} · written by ${writtenBy}`);
   return 0;
 }
