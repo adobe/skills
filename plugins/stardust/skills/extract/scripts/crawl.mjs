@@ -153,7 +153,8 @@ if (IS_MAIN && (process.argv.includes('--help') || process.argv.includes('-h')))
 let chromium;
 
 // live-session.mjs (the diff skill) resolves the one navigation timeout every live instrument shares. Optional
-// here: extract may be copied alone, and the crawl must still run — main() keeps NAV_TIMEOUT_FALLBACK_MS then.
+// for the timeout: extract copied alone still crawls with --no-consent-dismiss (the consent pass needs
+// live-session's table, consentTable() below, and exits 2 without it) — main() keeps NAV_TIMEOUT_FALLBACK_MS then.
 // Layouts: the plugin tree, the project copy (scripts/extract ↔ scripts/diff), a crawl.mjs in scripts/ beside
 // replica's scripts/diff copy, and a flat sibling copy — one list for this loader and consentTable() below.
 const NAV_TIMEOUT_FALLBACK_MS = 45000;
