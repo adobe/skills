@@ -128,9 +128,14 @@
 #                       together with --consent / --dismiss: they contradict)
 #   --hide <sel,…>      in-flow per-visitor regions (a location-suggestion strip above the header; --dismiss is
 #                       for overlays and cannot remove one) hidden on both captures and every --full probe but
-#                       unit-geometry, the same list live and build; repeatable. gate-all's presence.json
-#                       (gates/all-<w>/ or prototypes-<w>/, this regime's first; malformed = exit 1) adds its "*"
-#                       then <slug> `hide` after it; chrome-parity reads that file itself (--presence). live.json
+#                       unit-geometry, the same list live and build; repeatable. The presence files add their "*"
+#                       then <slug> `hide` after it: gate-all's gate-dir presence.json (gates/all-<w>/ or
+#                       prototypes-<w>/, this regime's first) merged over the site-wide stardust/replica/presence.json
+#                       (one hide list for every page and round) — per top-level key, per field, the gate dir's value
+#                       wins (a gate-dir "*".hide replaces the site's "*".hide, it does not add to it); keys and
+#                       fields only one file has are kept; either file malformed = exit 1 naming it, nothing captured.
+#                       chrome-parity reads the presence itself: --presence <gate-dir file> --slug <slug>, or
+#                       --presence stardust/replica/presence.json --slug <slug> when only the site file exists. live.json
 #                       records the list; a round with a different list (or with hides and no live.json) retakes
 #                       live.png and says so — as it does a live.png with no live.json, or one whose live.json
 #                       predates the overlay-left check (no overlayLeft) or records an overlay left: one line, once.
@@ -147,8 +152,9 @@
 # aborts the round — a missing/blocked side must never be compared. Exit
 # codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
 # the build side), 3 bot challenge, 1 capture/compare error (after the one
-# retry — re-queue, not a verdict), a malformed presence.json (fix the
-# file; re-queuing won't help), an overlay left on either capture (no
+# retry — re-queue, not a verdict), a malformed presence.json — the gate
+# dir's or the site-wide stardust/replica/presence.json (fix the file;
+# re-queuing won't help), an overlay left on either capture (no
 # verdict: fix the capture — --consent / --dismiss / --hide — not the page)
 # or a project stitch-shot.mjs that predates --json (re-copy it; no capture),
 # 4 build-side identity assertion failed
@@ -247,27 +253,37 @@ case "${GATE_REGIME:-auto}" in
   *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
 esac
 # gate-all's presence.json: this regime's sidecar first (published → gates/all-<w>/, prototype → gates/prototypes-<w>/),
-# then the other stage's at the same width. chrome-parity reads it itself (variable regions and `hide`).
+# then the other stage's at the same width; under it the site-wide stardust/replica/presence.json (project root = cwd).
+# chrome-parity reads the presence itself (variable regions and `hide`): --presence <gate-dir file>, else the site file.
 PRES=""
 if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
 for st in $STAGES; do
   [ -f "stardust/replica/gates/$st-$W/presence.json" ] && { PRES="stardust/replica/gates/$st-$W/presence.json"; break; }
 done
-[ -n "$PRES" ] && CHROME_OPTS+=(--presence "$PRES" --slug "$SLUG")
-# The effective hide list (header § --hide): the --hide list, then presence.json's "*".hide and <slug>.hide; comma lists
-# split, trimmed, empty dropped, de-duplicated in order, joined with ','. hideList restates live-session.mjs's
-# parseHideList / presenceHide on purpose — node -e here imports nothing (a pixel round needs no diff skill); keep the
-# two in step. A malformed presence.json is exit 1 before any capture. Captures and probes get one --hide "$EFF_HIDE".
+SITE_PRES=""
+[ -f "stardust/replica/presence.json" ] && SITE_PRES="stardust/replica/presence.json"
+if [ -n "$PRES" ]; then CHROME_OPTS+=(--presence "$PRES" --slug "$SLUG")
+elif [ -n "$SITE_PRES" ]; then CHROME_OPTS+=(--presence "$SITE_PRES" --slug "$SLUG"); fi
+# The effective hide list (header § --hide): the --hide list, then the merged presence's "*".hide and <slug>.hide; comma
+# lists split, trimmed, empty dropped, de-duplicated in order, joined with ','. The merge: the site file under the gate
+# dir's — per top-level key { ...site[k], ...gate[k] } (the gate dir's field wins; keys / fields only one file has are
+# kept; a missing file = {}). hideList / mergePresence restate live-session.mjs's parseHideList / presenceHide /
+# mergePresence on purpose — node -e here imports nothing (a pixel round needs no diff skill); keep them in step. Either
+# file malformed is exit 1 before any capture, naming it. Captures and probes get one --hide "$EFF_HIDE".
 HIDE_JS='const hideList = (...v) => { const out = []; const add = (x) => { if (Array.isArray(x)) { x.forEach(add); return; }
   if (typeof x !== "string") return; for (const p of x.split(",")) { const s = p.trim(); if (s && !out.includes(s)) out.push(s); } };
   v.forEach(add); return out; };'
 EFF_HIDE=""
-if [ -n "$HIDE" ] || [ -n "$PRES" ]; then
-  EFF_HIDE=$(node -e "$HIDE_JS"'const fs = require("fs"); const [f, slug, flag] = process.argv.slice(1); let j = null;
-    if (f) { try { j = JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {
-      fs.writeSync(2, `gate.sh: presence.json ${f} unreadable (${String(e.message).replace(/\s+/g, " ")}) — fix or delete it; nothing captured\n`); process.exit(1); } }
-    const of = (k) => (j && typeof j === "object" && j[k] && typeof j[k] === "object" ? j[k].hide : null);
-    process.stdout.write(hideList(flag, of("*"), of(slug)).join(","));' -- "$PRES" "$SLUG" "$HIDE") || exit 1
+if [ -n "$HIDE" ] || [ -n "$PRES" ] || [ -n "$SITE_PRES" ]; then
+  EFF_HIDE=$(node -e "$HIDE_JS"'const fs = require("fs"); const [gateFile, siteFile, slug, flag] = process.argv.slice(1);
+    const read = (f) => { if (!f) return {}; try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {
+      fs.writeSync(2, `gate.sh: presence.json ${f} unreadable (${String(e.message).replace(/\s+/g, " ")}) — fix or delete it; nothing captured\n`); process.exit(1); } };
+    const obj = (x) => (x && typeof x === "object" ? x : {});
+    const mergePresence = (site, gate) => { const s = obj(site); const g = obj(gate); const out = {};
+      for (const k of new Set([...Object.keys(s), ...Object.keys(g)])) out[k] = { ...s[k], ...g[k] }; return out; };
+    const gate = read(gateFile); const j = mergePresence(read(siteFile), gate);
+    const of = (k) => (j[k] && typeof j[k] === "object" ? j[k].hide : null);
+    process.stdout.write(hideList(flag, of("*"), of(slug)).join(","));' -- "$PRES" "$SITE_PRES" "$SLUG" "$HIDE") || exit 1
 fi
 HIDE_OPTS=()
 [ -n "$EFF_HIDE" ] && { STITCH_OPTS+=(--hide "$EFF_HIDE"); HIDE_OPTS=(--hide "$EFF_HIDE"); }
