@@ -12,7 +12,8 @@
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
 // --inventory (gate-all --one-load): named in --help; an unreadable spec still writes the PNG, exit 0, one warning.
-// The --timeout default: an explicit flag wins, else env STARDUST_NAV_TIMEOUT_MS, else the crawl figure, else 60000;
+// The --timeout default: an explicit flag wins, else max(env STARDUST_NAV_TIMEOUT_MS, the crawl figure) clamped to
+// 20000–180000 — the env a floor, both orders and the clamp — else 60000;
 // a live-session.mjs older than navTimeout keeps 60000 and says so once (sessionNavTimeout, a stub session).
 // The header morph: isHeaderMorph (pure) and, end to end, an in-flow header that shrinks 20 px after the first scroll
 // — at 1810 px with the browser clamping (the old guard threw a scroll stall; also under --settle), at 2710 px with its
@@ -61,7 +62,7 @@ await check('overflowLine: delta clamps at 0; a scrollbar gutter (clientWidth < 
   assert.equal(overflowLine({ scrollWidth: 1400, innerWidth: 1440, clientWidth: 1440 }), 'overflow: scrollWidth=1400 viewport=1440 delta=0');
   assert.equal(overflowLine({ scrollWidth: 1440, innerWidth: 1440, clientWidth: 1425 }), 'overflow: scrollWidth=1440 viewport=1440 delta=15');
 });
-await check('--timeout default: env STARDUST_NAV_TIMEOUT_MS, else 2 × the crawl\'s navMs p95 (clamped), else 60000 — an explicit --timeout always wins', () => {
+await check('--timeout default: max(env STARDUST_NAV_TIMEOUT_MS, 2 × the crawl\'s navMs p95) clamped to 20000–180000, else 60000 — the env a floor in both orders; an explicit --timeout always wins', () => {
   const dir = mkdtempSync(join(tmpdir(), 'stitch-nav-'));
   try {
     const crawlLog = join(dir, '_crawl-log.json');
@@ -70,9 +71,13 @@ await check('--timeout default: env STARDUST_NAV_TIMEOUT_MS, else 2 × the crawl
     assert.equal(timeout([], { env: {}, crawlLog: null }), 60000, 'neither env nor crawl figure: the current default');
     assert.equal(timeout([], { env: {}, crawlLog: join(dir, 'missing.json') }), 60000, 'a missing crawl log is skipped');
     assert.equal(timeout([], { env: {}, crawlLog }), 84000, 'the crawl figure: p95 42000 × 2');
-    assert.equal(timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 90000, 'env beats the crawl figure');
+    assert.equal(timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 90000, 'env above 2 × the crawl figure → the env');
+    assert.equal(timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '30000' }, crawlLog }), 84000, 'env below 2 × the crawl figure → the crawl figure (the env is a floor)');
+    assert.deepEqual([timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '1500' }, crawlLog: null }), timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '250000' }, crawlLog })], [20000, 180000], 'the env is clamped to 20000–180000 too');
     assert.equal(timeout(['--timeout', '5000'], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 5000, 'the flag beats both');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+  const help = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', timeout: 15000 }).stdout.replace(/\s+/g, ' ');
+  assert.ok(help.includes('default: max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from stardust/current/_crawl-log.json) clamped to 20000–180000, else 60000; the flag always wins'), 'the --help sentence');
 });
 await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 60000, the test seam passed on); one without navTimeout (an older project copy) — no throw, the old default 60000, ONE stderr line per process', () => {
   const asked = [];

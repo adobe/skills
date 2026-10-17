@@ -131,10 +131,10 @@
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
- *     --timeout <ms>      goto timeout (default: env STARDUST_NAV_TIMEOUT_MS
- *                         as given, else the crawl figure — 2 × crawl.navMs.p95
- *                         from stardust/current/_crawl-log.json, clamped to
- *                         20000–180000 — else 60000; the flag always wins)
+ *     --timeout <ms>      goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+ *                         2 × crawl.navMs.p95 from
+ *                         stardust/current/_crawl-log.json) clamped to
+ *                         20000–180000, else 60000; the flag always wins)
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *
@@ -201,9 +201,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
-  --timeout <ms>    goto timeout (default: env STARDUST_NAV_TIMEOUT_MS as given, else the crawl figure —
-                    2 × crawl.navMs.p95 from stardust/current/_crawl-log.json, clamped to 20000–180000 —
-                    else 60000; the flag always wins)
+  --timeout <ms>    goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+                    2 × crawl.navMs.p95 from stardust/current/_crawl-log.json) clamped to 20000–180000, else 60000;
+                    the flag always wins)
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --help            this text
 
