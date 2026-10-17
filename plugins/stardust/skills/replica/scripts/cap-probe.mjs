@@ -47,8 +47,9 @@
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
  *     --timeout-ms <ms>      per-page navigation timeout AND per-width deadline (default:
- *                            STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
- *                            crawl.navMs.p95 × 2 clamped to 20–180 s, else 30000)
+ *                            max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from
+ *                            stardust/current/_crawl-log.json) clamped to 20000–180000, else
+ *                            30000; the flag always wins)
  *     --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
  *
  * Output (capture): per URL the probe width and its derivation, one line per cap origin (kind, px,
@@ -85,12 +86,18 @@
  * when no page (in compare: not both sides) was probed.
  *
  * Exit codes: 0 pass / INCONCLUSIVE / measured (a capture may be partial — _provenance.partial),
- * 2 compare FAIL, 1 a page failed to load or playwright missing, 3 bot challenge on the live side
- * (escalate --headed), 124 no verdict — every page's probe failed a read (capture) or a side's did
- * (compare), the run-capped "deadline, no verdict" convention —, 125 usage. probePage,
- * probeWithRetry (the re-probe, browser-free) and the pure functions (classifyCaps,
- * deriveProbeWidth, aggregateCaps, pairPlausible, compareCaps, formatCapture, formatCompare,
- * statusLine, exitCodeFor, parseArgs) are exported — the contract test runs them without a browser.
+ * 2 compare FAIL, 1 a page failed to load or playwright missing, 3 bot challenge — the live side
+ * served an edge interstitial or a 2xx denial page (gotoLive refuses it; escalate --headed), 124
+ * no verdict — every page's probe failed a read (capture) or a side's did (compare), the
+ * run-capped "deadline, no verdict" convention —, 125 usage, live-session.mjs not found or a copy
+ * that predates withDeadline (refused before any browser launch). Precedence: 125 and a missing
+ * playwright (1) are decided before any browser launch; then 3 > 1 > 124 > 2 > 0 — a bot
+ * challenge or denial page ends the run whatever was measured, half a measurement is 124 (never a
+ * PASS, a FAIL or an INCONCLUSIVE), and an INCONCLUSIVE is 0 only while no wrapper/content-cap row
+ * fails. probePage, probeWithRetry (the re-probe, browser-free) and the pure functions
+ * (classifyCaps, deriveProbeWidth, aggregateCaps, pairPlausible, compareCaps, formatCapture,
+ * formatCompare, statusLine, exitCodeFor, parseArgs, requireDeadlines, sessionNavTimeout) are
+ * exported — the contract test runs them without a browser.
  * Requires playwright importable from this file's location and the diff skill's live-session.mjs
  * (../../diff/scripts/ or ../diff/ — replica SKILL.md § Setup copies both dirs as siblings).
  */
@@ -117,6 +124,11 @@ export const DEFAULT_TIMEOUT_MS = 30000; // the navigation timeout / per-read de
 const VIEWPORT_H = 900;
 const EDGE = 8; // px: a box this close to the viewport is full width
 const CLOSE_MS = 5000; // closing a page wedged by a busy loop can hang too — bounded, the final browser.close() kills the rest
+// The re-probe's fresh page: each step around its navigation — the new page, the overlay sweep (late window 6 s,
+// dismissal clicks ≤ 3 s each) — is raced against this, as measure.mjs races its fresh-page steps (its
+// FRESH_PAGE_STEP_MS: same name, same value). The navigation itself is not: gotoLive / goto carry --timeout-ms (and
+// under --headed the challenge-solve window), and a BotChallengeError from them must always reach exit 3.
+const FRESH_PAGE_STEP_MS = 30000;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 125; } }
 
@@ -126,6 +138,29 @@ async function loadLiveSession() {
   const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
   if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   return import(pathToFileURL(found).href);
+}
+
+// A project copy of live-session.mjs older than withDeadline / isContextDestroyed is refused before any browser
+// launch (exit 125, as for a missing copy): probing without the per-read deadlines would re-open the 900 s hang.
+export function requireDeadlines(session) {
+  if (!(session && typeof session.withDeadline === 'function' && typeof session.isContextDestroyed === 'function')) {
+    throw new UsageError('live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside');
+  }
+  return session;
+}
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a copy older than navTimeout answers this tool's old
+// default with one stderr line — never a TypeError. main() never gets here with one: such a copy predates withDeadline
+// too and requireDeadlines refused it first. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`cap-probe: live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -426,9 +461,10 @@ export function compareCaps(live, build, tol = CAP_TOLERANCE) {
 const widthFailures = (result) => (((result && result._provenance) || {}).failed || []).filter((f) => Number.isFinite(f.width));
 const isCapture = (result) => !!result && Object.prototype.hasOwnProperty.call(result, 'pages');
 
-// Exit code of a finished run (the bot challenge, 3, leaves by throw): 1 a page failed to load (as
-// before) > 124 no verdict — capture: every URL's probe failed a read; compare: either side's did,
-// half a measurement is never a PASS (0) or a FAIL (2) > 0 / 2.
+// Exit code of a finished run (a bot challenge or 2xx denial page, 3, leaves by throw; 125 refuses
+// before the run): 1 a page failed to load (as before) > 124 no verdict — capture: every URL's probe
+// failed a read; compare: either side's did, half a measurement is never a PASS or an INCONCLUSIVE
+// (0) or a FAIL (2) > 2 compare FAIL > 0 PASS / INCONCLUSIVE (compare.pass) / measured.
 export function exitCodeFor(result) {
   const prov = result._provenance || {};
   if ((prov.failed || []).some((f) => !Number.isFinite(f.width))) return 1;
@@ -560,15 +596,17 @@ function navigatedError() { return Object.assign(new Error('the page navigated a
 // kept). Anything else — a deadline (a second would double the wait), a second failure — leaves at
 // once with the read's `width`. The first open failing is "a page failed to load" (no width); a
 // re-open failing is the retried read's failure; a BotChallengeError always leaves as itself.
+// The re-open gets open(bound): bound(step) races a step around its navigation against `reopenDeadlineMs`
+// (label `fresh-page step`) — measure's fresh-page bound; a deadline there is that re-open's failure, never retried.
 // `onRetry(e)` runs before the re-probe, `onRecovered(e)` only once it succeeded. Every page opened is closed.
-export async function probeWithRetry({ open, probe, close, isContextDestroyed, onRetry = () => {}, onRecovered = () => {} }) {
+export async function probeWithRetry({ open, probe, close, isContextDestroyed, reopenDeadlineMs, withDeadline, onRetry = () => {}, onRecovered = () => {} }) {
   let page = await open();
   try {
     try { return await probe(page); } catch (e) {
       if (!(e && (e.name === 'PageNavigatedError' || isContextDestroyed(e)))) throw e;
       onRetry(e);
       const old = page; page = null; await close(old);
-      try { page = await open(); } catch (re) {
+      try { page = await open((step) => withDeadline(step, reopenDeadlineMs, 'fresh-page step')); } catch (re) {
         if (re && re.name === 'BotChallengeError') throw re;
         throw Object.assign(new Error(`re-open on a fresh page failed — ${firstLine(re)}`), { width: e.width, probeWidth: e.probeWidth });
       }
@@ -588,14 +626,18 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+  // The live side's UA client-hint metadata on the local side too (symmetric); a stale live-session copy has neither.
+  if (!live && typeof session.applyUaMetadata === 'function') await session.applyUaMetadata(context, { ua: o.ua || session.REAL_CHROME_UA, locale: 'en-US' });
   const bounded = (p) => session.withDeadline(p, CLOSE_MS, 'close').catch(() => {});
-  // A page at the base width (the context's viewport), opened the one way this URL is opened.
-  const open = async () => {
-    const page = await context.newPage();
+  // A page at the base width (the context's viewport), opened the one way this URL is opened. `bound` (the re-probe's
+  // fresh page only) races each step around the navigation against FRESH_PAGE_STEP_MS; a new page that arrives after
+  // its deadline is never assigned (the context close takes it).
+  const open = async (bound = (step) => step) => {
+    const page = await bound(context.newPage());
     try {
       if (live) {
         await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
-        const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
+        const d = await bound(session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 }));
         for (const sel of [d.consent, ...d.extra, ...d.marketing].filter(Boolean)) console.error(`cap-probe: overlay dismissed via ${sel}`);
       } else {
         const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
@@ -610,6 +652,8 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
       probe: (page) => probePage(page, { rootSel, baseWidth: o.width, probeWidth, deadlineMs: o.timeoutMs }),
       close: (page) => bounded(page.close()),
       isContextDestroyed: session.isContextDestroyed,
+      reopenDeadlineMs: FRESH_PAGE_STEP_MS,
+      withDeadline: session.withDeadline,
       onRetry: (e) => { console.error(`cap-probe: ${url} @${e.width}: execution context destroyed (the page navigated) — re-probe attempted on a fresh page`); },
       onRecovered: (e) => { warnings.push(`${url} @${e.width}: execution context destroyed (the page navigated) — re-probed on a fresh page`); },
     });
@@ -644,9 +688,10 @@ async function main(argv) {
   const o = parseArgs(argv);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
-  const session = await loadLiveSession();
-  // An explicit --timeout-ms wins; else session.resolveNavTimeoutMs's chain (env → crawl p95 × 2 → 30000), with its source.
-  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS });
+  const session = requireDeadlines(await loadLiveSession());
+  // An explicit --timeout-ms wins; else live-session's navTimeout (max(env, crawl p95 × 2) clamped to
+  // 20000–180000, else 30000), with its source.
+  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : sessionNavTimeout(session);
   o.timeoutMs = nav.ms;
   const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width, navTimeout: { ms: nav.ms, source: nav.source } };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });

@@ -17,6 +17,15 @@
  * response validation) plus the finding-#7 hardening below. The recipe remains
  * the authoritative field spec; extend the in-page capture() to match it fully.
  *
+ * Bot challenge: a 2xx DENIAL PAGE counts as one, like an edge interstitial — a
+ * vendor signature or a tiny page under one error heading (live-session.mjs's
+ * pageDenial table; without it the check is off and stderr says so): at the
+ * entry it escalates to headed real Chrome + stealth (_crawl-log.json
+ * discovery.botBlock 'denial'; still denied → fatal, exit 2), and every other
+ * page is read at domcontentloaded and again before the record — a denied one
+ * is listed in crawl.failures (errorClass BotChallengeError) and never
+ * captured — no page record, no screenshot.
+ *
  * Hardening (#7), all applied inside the page context:
  *   - VISIBILITY FILTER: headings/body/CTAs skip nodes that are display:none,
  *     visibility:hidden, aria-hidden, [hidden], or off-screen / zero-area.
@@ -85,9 +94,9 @@
  *     --concurrency <n>       parallel browser contexts (default 4)
  *     --dynamics              also record each page's dynamic surface (network endpoints, forms,
  *                             hydration hints) — set by the calling skill, off by default
- *   Each page's goto timeout: env STARDUST_NAV_TIMEOUT_MS (ms, as given), else the crawl figure —
- *   2 × crawl.navMs.p95 from the previous <out>/_crawl-log.json, clamped to 20000–180000 — else 45000;
- *   resolved once through the diff skill's live-session.mjs (../../diff/scripts/, ../diff/ or ./ — when
+ *   Each page's goto timeout: max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from the previous
+ *   <out>/_crawl-log.json) clamped to 20000–180000, else 45000 — the env is a floor, never a cut;
+ *   resolved once through the diff skill's live-session.mjs (../../diff/scripts/, ../diff/, ./diff/ or ./ — when
  *   none is there the crawl keeps 45000 and says so once on stderr). One stderr line names the value
  *   and its source (`[crawl] page goto timeout <ms> ms (env|crawl|default) — <detail>`). The entry
  *   probe, the challenge reload and the slash retry keep their own timeouts.
@@ -114,7 +123,7 @@
  *                                  --dynamics); merged into an existing log, never replaced
  *                                  `crawl.navMs` { n, p50, p95, max }: the captured pages' navMs
  *                                  (nearest-rank, integer ms; nulls when n is 0) — the crawl figure:
- *                                  2 × p95, clamped, is the navigation timeout live-session gives the
+ *                                  max(2 × p95, env), clamped, is the navigation timeout live-session gives the
  *                                  live instruments (from stardust/current/) and the next crawl into
  *                                  this --out; `crawl.navTimeout` { ms, source }: the page goto
  *                                  timeout this crawl used (source env | crawl | default)
@@ -154,7 +163,8 @@ let chromium;
 
 // live-session.mjs (the diff skill) resolves the one navigation timeout every live instrument shares. Optional
 // for the timeout: extract copied alone still crawls with --no-consent-dismiss (the consent pass needs
-// live-session's table, consentTable() below, and exits 2 without it) — main() keeps NAV_TIMEOUT_FALLBACK_MS then.
+// live-session's table, consentTable() below, and exits 2 without it) — main() keeps NAV_TIMEOUT_FALLBACK_MS then,
+// and the 2xx denial-page check (pageDenial) is off, said once on stderr.
 // Layouts: the plugin tree, the project copy (scripts/extract ↔ scripts/diff), a crawl.mjs in scripts/ beside
 // replica's scripts/diff copy, and a flat sibling copy — one list for this loader and consentTable() below.
 const NAV_TIMEOUT_FALLBACK_MS = 45000;
@@ -312,6 +322,19 @@ async function clearChallenge(page, resp) {
   }
   return resp;
 }
+// A vendor wall can also answer 200 with its denial text ("Access Denied … Reference #", "System Down") —
+// no header to classify, so the PAGE is read: live-session's pageDenial (its signature table and the tiny-page /
+// one-error-heading rule; never a copy here). → the marker, or null. A response >= 400 keeps its HTTP path; a
+// check that cannot run (no live-session.mjs is said once in main(); an unreadable page here) never passes silently.
+async function denialAt(args, page, resp, url) {
+  if (!args.pageDenial || (resp && resp.status() >= 400)) return null;
+  const d = await args.pageDenial(page);
+  if (d.skipped) console.error(`[crawl] denial-page check skipped at ${url}: ${d.skipped}`);
+  return d.marker || null;
+}
+// A page's denial marker → the failure crawl.failures lists. The crawl has no --headed flag: it escalates headed at its
+// entry only (main()'s entry probe), so the message names that and leaves --headed to the live instruments.
+const denialError = (status, marker) => Object.assign(new Error(`bot challenge: HTTP ${status} ${marker} — not the page; not captured (the crawl escalates headed at its entry only; the live instruments escalate with --headed)`), { errorClass: 'BotChallengeError' });
 
 // ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
 // resolve against base, strip hash, keep query, normalize trailing slash
@@ -990,7 +1013,7 @@ async function capturePage(context, url, slug, args) {
   const recorder = args.dynamics ? attachDynamicRecorder(page) : null; // opt-in; must precede goto — load-time fetches are the evidence
   try {
   // navMs: this page's own goto, to domcontentloaded — the crawl figure's sample (crawl.navMs in the log).
-  // The timeout is the shared one main() resolved (env → the previous crawl's figure → 45 s).
+  // The timeout is the shared one main() resolved (max(env, the previous crawl's figure) clamped, else 45 s).
   const navStart = Date.now();
   let resp = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: args.navTimeoutMs || NAV_TIMEOUT_FALLBACK_MS });
   let navMs = Date.now() - navStart;
@@ -1025,6 +1048,10 @@ async function capturePage(context, url, slug, args) {
   if (status >= 400) throw Object.assign(new Error(`HTTP ${status}`), { errorClass: 'HTTPError' });
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
+  // a 2xx denial page is a bot challenge, not content: fail it HERE, before consent, scroll, record and screenshot,
+  // so crawl.failures names it and no page record or screenshot of it exists (gate-all's crawl-shot fallback included).
+  const denial = await denialAt(args, page, resp, resolvedUrl);
+  if (denial) throw denialError(status, denial);
 
   if (args.consent) await dismissConsent(page);
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
@@ -1042,6 +1069,11 @@ async function capturePage(context, url, slug, args) {
   // JS-delayed reveal has no running animation at check time, so the gate
   // resolves before the reveal even starts. The 800ms floor is load-bearing.
   await page.waitForTimeout(800);
+
+  // a denial page a script rendered after domcontentloaded: read again before the record, so it too is a failure
+  // with no page record and no screenshot
+  const late = await denialAt(args, page, resp, resolvedUrl);
+  if (late) throw denialError(status, late);
 
   const rec = await page.evaluate(capture);
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section
@@ -1113,17 +1145,22 @@ async function capturePage(context, url, slug, args) {
 async function main() {
   const args = parseArgs(process.argv);
   ({ chromium } = await import('playwright'));
-  // One goto timeout for every page, resolved once — env, else the previous crawl's figure in this --out (its
-  // _crawl-log.json, read before this crawl rewrites it), else 45 s. Printed and logged (crawl.navTimeout): a fast
-  // previous figure lowers it to as little as 20 s, and a page that then times out must say where that came from.
+  // One goto timeout for every page, resolved once — max(env, the previous crawl's figure in this --out: its
+  // _crawl-log.json, read before this crawl rewrites it) clamped 20–180 s, else 45 s. Printed and logged
+  // (crawl.navTimeout): a fast previous figure lowers it to as little as 20 s, and a page that then times out must
+  // say where that came from.
   const session = await loadLiveSession();
+  // the 2xx denial-page check (denialAt) reads live-session's table; off without it, and said so on stderr below
+  args.pageDenial = session && typeof session.pageDenial === 'function' ? session.pageDenial : null;
   if (session && typeof session.navTimeout === 'function') {
     const t = session.navTimeout({ crawlLog: path.join(args.out, '_crawl-log.json'), fallback: NAV_TIMEOUT_FALLBACK_MS });
     args.navTimeoutMs = t.ms; args.navTimeoutSource = t.source;
     console.error(`[crawl] page goto timeout ${t.ms} ms (${t.source}) — ${t.detail}`);
+    // an older live-session copy (navTimeout, no pageDenial): the skipped check is still said
+    if (!args.pageDenial) console.error('[crawl] live-session.mjs has no pageDenial (an older copy) — the 2xx denial-page check is off');
   } else {
     args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS; args.navTimeoutSource = 'default';
-    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/, ./diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/, ./diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)${args.pageDenial ? '' : ' — and the 2xx denial-page check is off'}`);
   }
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
@@ -1134,15 +1171,25 @@ async function main() {
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
-  // Two distinct reject modes must both trigger the fallback:
+  // Three distinct reject modes must all trigger the fallback:
   //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
   //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
   //      interstitial (isChallengeResponse). This one previously slipped through
   //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
-  let botBlock = null; // 'fingerprint' | 'challenge'
+  //   3. a 2xx denial page — the goto succeeds with a status under 400 and the
+  //      page IS the vendor's denial text (denialAt); headed real Chrome + stealth
+  //      is the escalation, as for 2.
+  let botBlock = null; // 'fingerprint' | 'challenge' | 'denial'
   try {
     const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     if (isChallengeResponse(probeResp)) botBlock = 'challenge';
+    else {
+      const denial = await denialAt(args, probe, probeResp, args.url);
+      if (denial) {
+        botBlock = 'denial';
+        console.error(`[crawl] entry probe: HTTP ${probeResp ? probeResp.status() : 'n/a'} ${denial} — a denial page, not the page`);
+      }
+    }
   } catch (err) {
     if (isFingerprintBlock(err)) botBlock = 'fingerprint';
     else throw err;
@@ -1164,6 +1211,15 @@ async function main() {
       await browser.close();
       throw Object.assign(
         new Error(`bot-management challenge not cleared after headed real-Chrome + stealth fallback (entry status ${probeResp ? probeResp.status() : 'n/a'}) — the site requires an interactive challenge solve; run against it in a headed session you can complete by hand`),
+        { errorClass: 'BotChallengeError' },
+      );
+    }
+    // the same 2xx denial-page check on the headed page: still the vendor's denial text → nothing to capture
+    const denial = await denialAt(args, probe, probeResp, args.url);
+    if (denial) {
+      await browser.close();
+      throw Object.assign(
+        new Error(`bot challenge not cleared after headed real-Chrome + stealth fallback: entry HTTP ${probeResp ? probeResp.status() : 'n/a'} ${denial} — a denial page, not the page; origin blocked, nothing captured`),
         { errorClass: 'BotChallengeError' },
       );
     }

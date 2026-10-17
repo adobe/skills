@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // skills/extract/scripts/test/style-census.test.mjs — the style-census.mjs contract. Part (a): the pure
 // aggregate (colour parsing + clustering, roles and sources, type families/sizes/levels, motifs, hover
-// deltas, the logo chain, icon font, order independence), argument parsing and the page list — no
-// browser. Part (b): end-to-end against a fixture site served from this process (two pages, known
+// deltas, the logo chain, icon font, order independence), argument parsing, the page list and the guarded
+// navigation timeout (a live-session.mjs older than navTimeout keeps 20000) — no browser. Part (b): end-to-end
+// against a fixture site served from this process (two pages, known
 // colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page for the shared
-// navigation timeout — env STARDUST_NAV_TIMEOUT_MS when --timeout-ms is not given), and a project copy whose
-// live-session.mjs predates the shared consent table refused — runs only where
+// navigation timeout — --timeout-ms bounds it; env STARDUST_NAV_TIMEOUT_MS alone is a floor), and a project copy
+// whose live-session.mjs predates the shared consent table refused — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
@@ -14,7 +15,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
+import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, sessionNavTimeout, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -131,6 +132,19 @@ await check('parseArgs: a value flag followed by nothing or by another --flag is
   const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
   assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
 });
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 20000); one without navTimeout (an older project copy) — no throw, the old default 20000 with source default, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ fallback: 20000 }]]);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 20000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 20000, source: 'default', detail }, { ms: 20000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^\[style-census\] live-session\.mjs predates navTimeout — navigation timeout 20000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
+});
 await check('listUrls: finalUrl over url, non-records skipped, deduped in file order, --max-pages, missing dir and bad URL are usage errors', () => {
   const dir = join(root, 'pages'); mkdirSync(dir);
   writeFileSync(join(dir, 'b.json'), JSON.stringify({ url: 'https://x.test/b', finalUrl: 'https://x.test/b/' }));
@@ -144,7 +158,7 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
-  assert.match(h.out, /--timeout-ms <ms> .*STARDUST_NAV_TIMEOUT_MS/, 'the env is named on the --timeout-ms line'); assert.match(h.out, /crawl\.navMs\.p95 from\s+stardust\/current\/_crawl-log\.json/, 'the crawl figure is named');
+  assert.match(h.out, /--timeout-ms <ms> .*\(default: max\(env STARDUST_NAV_TIMEOUT_MS,\s+2 × crawl\.navMs\.p95 from stardust\/current\/_crawl-log\.json\) clamped to\s+20000–180000, else 20000; the flag always wins\)/, 'the floor precedence on the --timeout-ms line');
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
 });
@@ -237,14 +251,13 @@ if (playwrightOk) {
     const r = spawnSync(process.execPath, [join(box, 'style-census.mjs'), '--urls', `${origin}/`, '--out', out], { encoding: 'utf8', cwd: box, timeout: 60000 });
     assert.equal(r.status, 2, r.stderr); assert.match(r.stderr, /live-session\.mjs predates the shared consent table — re-copy it/); assert.equal(existsSync(out), false);
   });
-  await check('e2e navigation timeout: without --timeout-ms, env STARDUST_NAV_TIMEOUT_MS bounds the goto (a 2.5 s page fails at 1000 ms); an explicit --timeout-ms wins over the env', async () => {
-    const env = { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' };
-    const [byEnv, byFlag] = await Promise.all([
-      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], env),
-      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '10000'], env),
+  await check('e2e navigation timeout: an explicit --timeout-ms bounds the goto and wins over a larger env (a 2.5 s page fails at 1000 ms); without it env STARDUST_NAV_TIMEOUT_MS 1000 is only a floor, clamped to 20000 (the page is measured)', async () => {
+    const [byFlag, byEnv] = await Promise.all([
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '1000'], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '45000' }),
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' }),
     ]);
-    assert.equal(byEnv.code, 1, byEnv.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-env.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
-    assert.equal(byFlag.code, 0, byFlag.err); assert.match(byFlag.out, /^style-census: 1 pages × 1 widths → /);
+    assert.equal(byFlag.code, 1, byFlag.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-flag.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
+    assert.equal(byEnv.code, 0, byEnv.err); assert.match(byEnv.out, /^style-census: 1 pages × 1 widths → /);
   });
   server.close();
 }

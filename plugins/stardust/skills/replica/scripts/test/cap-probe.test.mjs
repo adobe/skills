@@ -2,22 +2,24 @@
 // skills/replica/scripts/test/cap-probe.test.mjs — the cap-probe.mjs contract. Part (a): the pure
 // classification (capped vs fluid, cap origins, kinds, the content cap, the derived probe width, the
 // cross-archetype aggregate and register items, the live-vs-build rows, module pairing and the
-// verdict), argument parsing, the DESIGN.json merge, the one re-probe (fakes), the exit code and the
-// status line — no browser. Part (b): end-to-end against fixture pages served from this process (a
-// live-like page with a 1920 shell + 1600 article + 1180 module, a fluid build, a fixed build, a
-// build ending in a pagination list, a page that navigates on its first resize, a page that wedges
-// on the resize to the probe width) — runs only where playwright is importable, prints a skip line
-// otherwise. Run: node <this file>.
+// verdict), argument parsing, the DESIGN.json merge, the one re-probe and its bounded fresh page
+// (fakes), the guarded navigation timeout (a live-session.mjs older than navTimeout keeps 30000),
+// the refusal of a copy older than withDeadline (exit 125), the exit code and the status line — no
+// browser. Part (b): end-to-end against fixture pages served from this process (a live-like page
+// with a 1920 shell + 1600 article + 1180 module, a fluid build, a fixed build, a build ending in a
+// pagination list, a page that navigates on its first resize, a page that wedges on the resize to
+// the probe width) — runs only where playwright is importable, prints a skip line otherwise.
+// Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
-  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, pairPlausible, DEFAULT_TIMEOUT_MS, exitCodeFor, statusLine, probeWithRetry,
+  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, pairPlausible, DEFAULT_TIMEOUT_MS, exitCodeFor, statusLine, probeWithRetry, requireDeadlines, sessionNavTimeout,
 } from '../cap-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -253,21 +255,43 @@ await check('CLI: --help answers without a browser; a usage error exits 125', ()
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /--probe-width/);
   const u = run([]); assert.equal(u.code, 125); assert.match(u.err, /need <url>/);
 });
-await check('parseArgs: --timeout-ms stays null unless given — main resolves env → crawl p95 × 2 → DEFAULT_TIMEOUT_MS (30000)', () => {
+await check('parseArgs: --timeout-ms stays null unless given — main resolves max(env, crawl p95 × 2) clamped, else DEFAULT_TIMEOUT_MS (30000)', () => {
   assert.equal(DEFAULT_TIMEOUT_MS, 30000);
   assert.equal(parseArgs(['https://s/']).timeoutMs, null);
   assert.equal(parseArgs(['https://s/', '--timeout-ms', '5000']).timeoutMs, 5000);
 });
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 30000); one without navTimeout (an older project copy) — no throw, the old default 30000, _provenance source default, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ fallback: 30000 }]]);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 30000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 30000, source: 'default', detail }, { ms: 30000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^cap-probe: live-session\.mjs predates navTimeout — navigation timeout 30000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
+});
+await check('requireDeadlines: a live-session copy without withDeadline or isContextDestroyed is refused — a UsageError (exit 125, as for a missing copy) with the one-line reason; a current one passes through', () => {
+  const current = { withDeadline() {}, isContextDestroyed() {} };
+  assert.equal(requireDeadlines(current), current);
+  for (const stale of [{}, { withDeadline() {} }, { isContextDestroyed() {} }, { navTimeout() {}, gotoLive() {} }, null]) {
+    assert.throws(() => requireDeadlines(stale), (e) => e instanceof UsageError && e.code === 125 && e.message === 'live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside', JSON.stringify(stale && Object.keys(stale)));
+  }
+});
 
 // ---- the re-probe (fakes: pages are numbers, a probe throws what the script says) ------------------------
 const destroyed = (width) => Object.assign(new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation'), { width, probeWidth: 2560 });
-const fakeRun = async (script, { openFails = [] } = {}) => {
+const fakeRun = async (script, { openFails = [], onOpen = async () => {}, reopenDeadlineMs } = {}) => {
   const log = { opened: [], closed: [], probed: [], retried: [], recovered: [] }; let n = 0; const steps = [...script];
   const outcome = await probeWithRetry({
-    open: async () => { n += 1; const f = openFails[n - 1]; if (f) throw f; log.opened.push(n); return n; },
+    open: async (bound) => { n += 1; const f = openFails[n - 1]; if (f) throw f; await onOpen(n, bound); log.opened.push(n); return n; },
     probe: async (page) => { log.probed.push(page); const s = steps.shift(); if (s instanceof Error) throw s; return { page, ...s }; },
     close: async (page) => { log.closed.push(page); },
     isContextDestroyed,
+    reopenDeadlineMs,
+    withDeadline,
     onRetry: (e) => { log.retried.push(e.width); },
     onRecovered: (e) => { log.recovered.push(e.width); },
   }).then((model) => ({ model }), (error) => ({ error }));
@@ -297,13 +321,34 @@ await check('probeWithRetry: the first open failing is a load failure (no width)
   const bot = await fakeRun([destroyed(2560)], { openFails: [null, Object.assign(new Error('challenge'), { name: 'BotChallengeError' })] });
   assert.equal(bot.error.name, 'BotChallengeError'); assert.equal(bot.error.width, undefined);
 });
+await check('probeWithRetry: a fresh-page step that never settles is bounded by reopenDeadlineMs (measure\'s fresh-page bound) — the retried read\'s failure with its width, never recovered, never retried; the first open is not bounded', async () => {
+  const bounds = [];
+  const t0 = Date.now();
+  const hung = await fakeRun([destroyed(2560), {}], { reopenDeadlineMs: 30, onOpen: async (n, bound) => { bounds.push(typeof bound); if (n === 2) await bound(new Promise(() => {})); } });
+  assert.ok(Date.now() - t0 < 2000, 'the hung step cost its deadline, not more');
+  assert.equal(hung.error.width, 2560); assert.equal(hung.error.message, 're-open on a fresh page failed — fresh-page step: deadline 30 ms exceeded');
+  assert.deepEqual([bounds, hung.log.opened, hung.log.closed, hung.log.probed, hung.log.retried, hung.log.recovered], [['undefined', 'function'], [1], [1], [1], [2560], []]);
+});
+await check('probeWithRetry: a fresh page\'s navigation is never raced — a slow one (a headed challenge-solve window) is re-probed, and a BotChallengeError it throws past every deadline leaves as itself', async () => {
+  const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
+  // the re-open's bound steps settle at once; its navigation between them takes 150 ms — past reopenDeadlineMs (30)
+  const slow = (outcome) => async (n, bound) => { if (n < 2) return; await bound(Promise.resolve()); await sleep(150); if (outcome) throw outcome; await bound(Promise.resolve()); };
+  const solved = await fakeRun([destroyed(2560), { contentMaxWidth: 1600 }], { reopenDeadlineMs: 30, onOpen: slow() });
+  assert.equal(solved.error, undefined); assert.deepEqual(solved.model, { page: 2, contentMaxWidth: 1600 }); assert.deepEqual(solved.log.recovered, [2560]);
+  const late = await fakeRun([destroyed(2560)], { reopenDeadlineMs: 30, onOpen: slow(challenge) });
+  assert.equal(late.error, challenge);
+});
 
 // ---- verdict and status line ---------------------------------------------------------------------------
 // A capture result: every URL without a failure entry was probed.
 const cap = (failedList, urls = ['https://s/a', 'https://s/b']) => ({ _provenance: { urls, failed: failedList, partial: failedList.some((f) => f.width) }, pages: Object.fromEntries(urls.filter((u) => !failedList.some((f) => f.url === u)).map((u) => [u, {}])), aggregate: null });
 const cmp = (failedList, compare) => ({ _provenance: { urls: ['https://s/', 'http://localhost:1/'], failed: failedList, partial: failedList.length > 0, baseWidth: 1440, probeWidth: 2560 }, urls: ['https://s/', 'http://localhost:1/'], probeNote: 'derived', live: null, build: null, ...(compare ? { compare } : {}) });
 const hangA = { url: 'https://s/a', width: 2560, error: 'probe read: deadline 5000 ms exceeded' };
-await check('exitCodeFor: 1 load failure > 124 no verdict > 0 (a partial capture) / 2 compare FAIL', () => {
+await check('exitCodeFor: 1 load failure > 124 no verdict > 2 compare FAIL > 0 (a partial capture, an INCONCLUSIVE compare)', () => {
+  const inconclusive = compareCaps(capModel([[1180, 'div'], [552, 'ul'], [552, 'ul']]), capModel([[1180, 'div'], [280, 'div'], [280, 'div']]));
+  assert.equal(inconclusive.verdict, 'INCONCLUSIVE'); assert.equal(exitCodeFor(cmp([], inconclusive)), 0, 'an INCONCLUSIVE is 0');
+  assert.equal(exitCodeFor(cmp([{ ...hangA, url: 'http://localhost:1/' }], inconclusive)), 124, 'a failed read never exits as an INCONCLUSIVE');
   assert.equal(exitCodeFor(cap([])), 0);
   assert.equal(exitCodeFor(cap([hangA])), 0, 'one of two pages probed: partial, exit 0');
   assert.equal(exitCodeFor(cap([hangA, { ...hangA, url: 'https://s/b', width: 1440 }])), 124, 'every page\'s probe failed a read');
@@ -328,7 +373,7 @@ await check('formatCompare / formatCapture with a failed read: the status line f
   assert.match(lines[0], /^cap-probe: NO VERDICT — a side's probe failed/); assert.match(lines[1], /^cap-probe {2}base 1440 → probe 2560/);
   assert.ok(lines.includes('  ✗ not probed @2560 — probe read: deadline 5000 ms exceeded'), lines.join('\n'));
   assert.equal(lines.at(-1), 'cap-probe: NO VERDICT at 2560 — no rows compared, a side was not probed (exit 124) (evidence stardust/replica/gates/home-2560/cap-iter.json)');
-  assert.ok(!lines.some((l) => /^cap-probe: (PASS|FAIL)/.test(l)));
+  assert.ok(!lines.some((l) => /^cap-probe: (PASS|FAIL|INCONCLUSIVE)/.test(l)));
   const liveFailed = cmp([{ ...hangA, url: 'https://s/' }]);
   const skippedBuild = formatCompare({ ...liveFailed, _provenance: { ...liveFailed._provenance, skipped: [{ url: 'http://localhost:1/', reason: 'the live side was not probed' }] } });
   assert.match(skippedBuild, /live {3}https:\/\/s\/\n {2}✗ not probed @2560 — .*\nbuild {2}http:\/\/localhost:1\/\n {2}- not probed — the live side was not probed/);
@@ -373,6 +418,15 @@ if (pwProbe.status !== 0) {
       const r = await runAsync([`${base}/percent`]);
       assert.equal(r.code, 0, r.err);
       assert.match(r.out, /modules {2}3 sections: none capped · full-bleed ×3/); assert.match(r.out, /contentMaxWidth fluid · shellMaxWidth fluid/);
+    });
+    await check('e2e capture: one navigation timeout — no flag: max(env, the crawl log\'s p95 × 2) clamped, both orders; _provenance.navTimeout names the source', async () => {
+      const proj = mkdtempSync(join(tmpdir(), 'cap-probe-nav-'));
+      mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
+      writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
+      try {
+        const nav = async (envMs) => { const r = await runAsync([`${base}/percent`, '--json'], { cwd: proj, env: { STARDUST_NAV_TIMEOUT_MS: envMs } }); assert.equal(r.code, 0, r.err); return JSON.parse(r.out)._provenance.navTimeout; };
+        assert.deepEqual(await Promise.all([nav('45000'), nav('25000')]), [{ ms: 45000, source: 'env' }, { ms: 30000, source: 'crawl' }], 'env over 30000, then 30000 over env');
+      } finally { rmSync(proj, { recursive: true, force: true }); }
     });
     await check('e2e capture pinned at 1920: the 1920 shell is invisible (a probe at the cap width cannot see the cap)', async () => {
       const r = await runAsync([`${base}/live`, '--probe-width', '1920']);
@@ -425,11 +479,11 @@ if (pwProbe.status !== 0) {
     await check('e2e capture: a hanging page beside a good one — the next URL goes on, exit 0, partial, the aggregate from the good one, DESIGN.json left as it was', async () => {
       const design = join(root, 'DESIGN-partial.json'); const before = '{\n  "extensions": { "breakpoints": { "containerMaxWidth": "1280px", "probeWidth": 2560 } }\n}\n';
       writeFileSync(design, before);
-      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json', '--write-design', design], { env: { STARDUST_NAV_TIMEOUT_MS: '5000' } });
+      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json', '--timeout-ms', '5000', '--write-design', design], { env: { STARDUST_NAV_TIMEOUT_MS: '45000' } });
       assert.equal(r.code, 0, r.out + r.err);
       const j = JSON.parse(r.out);
       assert.match(r.err, new RegExp(`cap-probe: PARTIAL — 1 of 2 page probe\\(s\\) failed: ${base}/hang @2560 \\(probe read: deadline 5000 ms`), 'with --json the status line goes to stderr');
-      assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'env' }, 'no flag: the env figure is the navigation timeout and the deadline');
+      assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'flag' }, 'the flag wins over a larger env: it is the navigation timeout and the deadline');
       assert.equal(j._provenance.partial, true); assert.deepEqual(Object.keys(j.pages), [`${base}/live`]);
       assert.deepEqual([j.aggregate.containerMaxWidth, j.aggregate.shellMaxWidth], ['1600px', 1920]);
       assert.equal(readFileSync(design, 'utf8'), before, 'a partial model never reaches DESIGN.json — qa-gate and compare --design read it as complete');
@@ -442,11 +496,11 @@ if (pwProbe.status !== 0) {
       const lines = r.out.trim().split('\n');
       assert.match(lines[0], new RegExp(`^cap-probe: NO VERDICT — a side's probe failed, compare needs both \\(exit 124\\): ${base}/hang @2560 \\(probe read: deadline 5000 ms exceeded\\)$`));
       assert.match(lines.at(-1), /^cap-probe: NO VERDICT at 2560 — .*\(evidence stardust\/replica\/gates\/hang-2560\/cap-iter1.json\)$/);
-      assert.doesNotMatch(r.out, /^cap-probe: (PASS|FAIL)/m);
+      assert.doesNotMatch(r.out, /^cap-probe: (PASS|FAIL|INCONCLUSIVE)/m);
       const ev = JSON.parse(readFileSync(join(root, 'stardust/replica/gates/hang-2560/cap-iter1.json'), 'utf8'));
       assert.equal(ev._provenance.partial, true); assert.equal('compare' in ev, false); assert.equal(ev.build, null); assert.equal(ev.live.contentMaxWidth, 1600);
       assert.deepEqual(ev._provenance.failed.map((f) => [f.url, f.width]), [[`${base}/hang`, 2560]]);
-      assert.doesNotMatch(readFileSync(join(root, 'stardust/replica/gates/hang-2560/cap-iter1.txt'), 'utf8'), /^cap-probe: (PASS|FAIL)/m);
+      assert.doesNotMatch(readFileSync(join(root, 'stardust/replica/gates/hang-2560/cap-iter1.txt'), 'utf8'), /^cap-probe: (PASS|FAIL|INCONCLUSIVE)/m);
     });
   } finally {
     server.close();

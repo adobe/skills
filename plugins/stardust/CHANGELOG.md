@@ -126,6 +126,73 @@ re-renders once; each earlier variance acceptance is refused once, quoting its r
 Provisional version, renumbered at merge; stacks on 0.35.4 (the handover-tools branch); 0.35.7 and 0.35.8 are other
 branches.
 
+## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#138)
+
+Pre-run probes: a large logistics site served the headless browser a 900 px denial page with status 200, and
+`stitch-shot.mjs` wrote it as a capture with exit 0. In headed stealth Chrome the page rendered fully, but an open modal
+dialog locked scrolling and the stitch died on the lock. A controlled test: the vendor wall answered 200 "System Down"
+when the client-hint headers were inconsistent.
+
+- **The overlay sweep closes dialogs (`diff/scripts/live-session.mjs` `dismissOverlays`).** A third pass, after
+  consent and the timed marketing interstitials: every visible `dialog[open]` gets `close()`, then its first visible
+  close control (`[aria-label*=close i]`, `[aria-label*=schließen i]`, `[data-dismiss]`, `button.close`,
+  `.modal__close`, `[class*="close"]`), then `Escape`; a visible, overlay-like non-native modal
+  (`[role=dialog][aria-modal=true]`, `.modal.show`, `[class*="modal"][class*="open"]`) its close control, then
+  `Escape`. The scroll lock a closed dialog leaves on html/body is released for the capture (overflow-y visible, a
+  hidden overflow-x clipped), only when the pass closed one and none survives (re-read after the pass, so a dialog a
+  close opened or remounted counts). `dismissOverlays` returns `dialogs`, `dialogsLeft` (the survivors) and
+  `scrollLockReleased`; stitch-shot logs each (`dialog closed: …`, `dialog still open: …`, `scroll lock released …`).
+- **A 2xx denial page is a bot challenge.** A vendor wall answering 200 leaves no header to classify, so the page is
+  read after the settle: a vendor signature — "can't process your request" + "Incident Number" or "Access Denied" +
+  "Reference #" anywhere in the title and text; "Just a moment…", "Press & Hold", "Incapsula", "DataDome", "Request
+  unsuccessful" or "System Down" in the title, or in the text or an iframe src on a page under 2 KB of text — or a
+  page under 2 KB of text under one error heading. `gotoLive` throws `BotChallengeError` (marker
+  `HTTP <status> denial page — …`; the message says "origin blocked" and names the `--headed` escalation). stitch-shot
+  reads the page once more after its dismissal sweeps (a denial page a script renders late) and exits 3 with no PNG
+  and no capture.json; measure, cap-probe and every other instrument that navigates through `gotoLive`/`visit()` (the
+  diff probes, chrome-explore, chrome-parity, anchor, sibling-variance, motion-observe, style-census, the reskin
+  probes) exit 3 instead of measuring; the crawl treats it as a bot challenge — at the entry it escalates to headed
+  real Chrome + stealth (`discovery.botBlock: 'denial'`; still denied → fatal), and every other page is read at
+  domcontentloaded and again before the record: a denied one is listed in `crawl.failures` and never captured (no page
+  record, no screenshot). Each probe read races a 10 s deadline (a wedged renderer never answers), so the navigation
+  stays bounded; a check that cannot read the page is one stderr line (`denial-page check skipped`), never a pass.
+- **Client hints back the UA.** live-session sets the browser's UA metadata from the UA string (CDP
+  `Emulation.setUserAgentOverride` with `userAgentMetadata`: the UA's brands and version, the host's platform) on
+  every page of every live context — measure and cap-probe on their local contexts too — so every request, documents
+  and subresources, same- and cross-origin, carries `sec-ch-ua*` with the UA's brands and version and the host's
+  platform, with no CORS preflight (browser-set hints are not author headers). Why not the route: Playwright drops
+  route overrides of `sec-*` headers as forbidden, so the document route's hints never arrived. Out-of-process iframes
+  and service workers keep the browser's own. stitch-shot prefers the full Chromium build (`launchChromium`; the
+  headless shell, with one stderr line, when it is not installed) and prints
+  `browser: <build>, client hints: <hints>`. The escape hatch is `native`: `--hints native` in stitch-shot,
+  `STARDUST_LIVE_HINTS=native` in every instrument and gate round. `<stem>.capture.json` gains `browserBuild`,
+  `hints`, `denialCheck` (`ok`, or `skipped: <reason>` when the post-sweep denial-page read could not run — on the
+  record, not only stderr) and `dismissed` (the sweeps merged; null under `--no-dismiss`).
+- **`STARDUST_NAV_TIMEOUT_MS` is a floor.** The navigation timeout is max(env, 2 × `crawl.navMs.p95`) clamped to
+  20–180 s — the env is clamped too — else the instrument's default; an explicit flag always wins, and the recorded
+  `source` names the input that set the max (`env` on a tie). A runner sets the env from its discovery sample while
+  the crawl measured the real pages, so a smaller env no longer cuts a slow origin short. This supersedes 0.35.2's
+  "used as given"; that entry, unreleased in the same stack, now says floor too.
+- **Older copies, the remaining probes, the reopen sweep.** A project copy of `live-session.mjs` older than
+  `navTimeout` no longer throws: measure, cap-probe, stitch-shot and style-census keep their old default (20 / 30 /
+  60 / 20 s) with one stderr line; measure and cap-probe refuse a copy older than `withDeadline` before any browser
+  launch (exit 2 / 125). motion-observe, content-diff, visual-diff and the reskin probes (capture-content,
+  dom-equality, slot-coverage, donor-probe) take the shared timeout instead of a hard-coded 60 s (60 s still, with
+  neither input). cap-probe's fresh-page retry bounds its reopen sweep: the new page and the overlay sweep each race
+  `FRESH_PAGE_STEP_MS` (30 s), as measure's do; a deadline there is that read's failure, never retried.
+- **Docs:** the scripts index rows; source-fidelity gate hardening rules 1 (client hints), 2 (the floor and its
+  instruments), 6 (dialogs), 12 (2xx denial pages, `--headed`) and 13 (a released lock is no stall); replica
+  SKILL.md's hardening paragraph and capture recipe (exit 3 → `--headed`); extract SKILL.md's nav-timeout sentence
+  and the crawl's denial page; the `--help`s of stitch-shot, measure, cap-probe, style-census, motion-observe and
+  crawl.
+
+Patch: no verdict, threshold, criterion, gate-row or pairing change; the new states only add caution. The scroll lock
+is released only after the dialog pass closed a dialog and none survives — a lock with no closed dialog is the page's
+own layout and a lock over a survivor stays, so the scroll stall still fails loud on both. A denial page gives no
+verdict, never a false pass: every live instrument exits 3, and the crawl captures none. gate-all is untouched: a
+stitch exit 3 takes its existing blocked path, and the INCONCLUSIVE `origin blocked` row arrives with the gate-trust
+merge; provisional: version and #138 renumbered at merge.
+
 ## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#143)
 
 A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,
@@ -537,9 +604,9 @@ navigation defaults ranged from 20 to 90 s with no shared value. A bare `run-bg.
 other agent's jobs, and `--timeout` on `wait` was silently ignored. A stitched capture of a page whose in-flow header
 shrinks on scroll stopped as a scroll stall; the workaround was a different `--vh`.
 
-- **One navigation timeout.** `diff/scripts/live-session.mjs` resolves it: env `STARDUST_NAV_TIMEOUT_MS` (ms, used as
-  given; an invalid value is ignored with one stderr warning), else 2 × `crawl.navMs.p95` from
-  `stardust/current/_crawl-log.json` clamped to 20–180 s, else the instrument's current default. `gotoLive` (60 s) and
+- **One navigation timeout.** `diff/scripts/live-session.mjs` resolves it: max(env `STARDUST_NAV_TIMEOUT_MS` (ms, a
+  floor; an invalid value is ignored with one stderr warning), 2 × `crawl.navMs.p95` from
+  `stardust/current/_crawl-log.json`) clamped to 20–180 s, else the instrument's current default. `gotoLive` (60 s) and
   `measure-live.mjs` `visit()` (90 s) default to it (e.g. anchor, chrome-parity, sibling-variance, clip-probe,
   content-presence, unit-geometry rely on those defaults); `measure.mjs` (20 s), `cap-probe.mjs` (30 s),
   `style-census.mjs` (20 s) and `stitch-shot.mjs` (60 s) take it when their flag is not given — an explicit flag

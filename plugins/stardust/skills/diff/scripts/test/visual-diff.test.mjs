@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // skills/diff/scripts/test/visual-diff.test.mjs — visual-diff.mjs: --help in an empty cwd (no playwright needed, nothing
-// written), importing the module starts no probe, liveCacheKey (the --live-cache key); then end-to-end against two fixture
+// written), importing the module starts no probe, liveCacheKey (the --live-cache key), gotoTimeoutMs (the shared goto
+// timeout; an older live-session.mjs keeps 60000); then end-to-end against two fixture
 // pages served from a temp dir: --live-cache writes the source side's metrics + screenshots once, a second run with another
 // --out makes no source request, copies the source screenshots and prints the same red flags; a missing cached screenshot
 // is named; a blank source render is never cached. --hide: parseArgs (repeatable comma lists; a missing value is a usage
@@ -14,7 +15,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { liveCacheKey, parseArgs } from '../visual-diff.mjs';
+import { gotoTimeoutMs, liveCacheKey, parseArgs } from '../visual-diff.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'visual-diff.mjs');
@@ -60,6 +61,21 @@ await check('--hide: repeatable comma lists, trimmed, de-duplicated (default non
     assert.equal(r.status, 1, tail.join(' ')); assert.match(r.stderr, /^visual-diff: --hide needs a selector list\nusage:/);
   }
   assert.match(spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' }).stdout, /^ {2}--hide <sel,…> /m);
+});
+
+// ---- pure: the goto timeout ---------------------------------------------------------------------------
+await check('gotoTimeoutMs: by default live-session\'s resolveNavTimeoutMs with fallback 60000; a live-session.mjs without it (an older copy) — no throw, 60000, ONE stderr line per process', async () => {
+  const live = await import('../live-session.mjs');
+  assert.equal(gotoTimeoutMs(), live.resolveNavTimeoutMs({ fallback: 60000 }), 'the default session is the sibling live-session.mjs');
+  const asked = [];
+  assert.equal(gotoTimeoutMs({ resolveNavTimeoutMs: (o) => { asked.push(o); return 84000; } }), 84000); assert.deepEqual(asked, [{ fallback: 60000 }]);
+  const lines = []; const { write } = process.stderr;
+  process.stderr.write = (s) => { lines.push(String(s)); return true; };
+  let stale;
+  try { stale = [gotoTimeoutMs({ gotoLive() {} }), gotoTimeoutMs({})]; } finally { process.stderr.write = write; }
+  assert.deepEqual(stale, [60000, 60000]);
+  assert.equal(lines.length, 1, lines.join(''));
+  assert.match(lines[0], /^visual-diff: live-session\.mjs predates navTimeout — goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
 });
 
 // ---- end-to-end against two fixture pages (needs playwright) -------------------------------------------

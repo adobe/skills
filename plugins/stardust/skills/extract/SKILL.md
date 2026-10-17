@@ -148,13 +148,9 @@ Additional checks for this sub-command:
    the worker's first page, or clone the probe context's
    `storageState`). Record the resolved method in
    `_crawl-log.json#consent.method`.
-4. **Bot-management probe.** When the first navigation in the run
-   returns `ERR_HTTP2_PROTOCOL_ERROR` or `ERR_QUIC_PROTOCOL_ERROR`,
-   or hangs through the entire hard-cap on what should be a fast
-   origin, **do not retry headless** — switch to headed Chrome per
-   § Failure modes → Bot-management block and record the switch in
-   `_crawl-log.json#discovery.fetchTechnique` so re-runs start in
-   headed mode without rediscovering the issue.
+4. **Bot-management probe.** A fingerprint block at the first navigation
+   (§ Failure modes → Bot-management block): headed Chrome, recorded in
+   `_crawl-log.json#discovery.fetchTechnique` so re-runs start headed.
 
 ## Procedure
 
@@ -407,13 +403,14 @@ ONCE, after the crawl, in the background; it opens the live side
 through `live-session.mjs` like every other live instrument. The crawl
 records each page's goto time (`navMs`, in its page record) and
 `crawl.navMs` {n, p50, p95, max} in `_crawl-log.json`; style-census, the
-next crawl's page goto, replica's measure, cap-probe and stitch-shot, and
-the probes on live-session's `gotoLive`/`visit()` defaults then navigate
-under `STARDUST_NAV_TIMEOUT_MS`, else that p95 × 2 clamped to 20–180 s,
-else their own default (a flag wins). Read the
-palette, type, motif and hover values from the file's `aggregate` and
-cite each from its `sources[]` (`url`, `selector`, `prop`); the
-per-page detail sits under `pages[url][width]`.
+next crawl's page goto, replica's measure, cap-probe, stitch-shot and
+motion-observe, content-diff, visual-diff, the reskin probes and the
+`gotoLive`/`visit()` probes navigate under max(`STARDUST_NAV_TIMEOUT_MS`,
+p95 × 2) clamped to 20–180 s (the env a floor: a runner's discovery sample;
+the crawl measured the real pages), else their own default (a flag wins).
+Read the palette, type, motif and hover values from the file's
+`aggregate` and cite each from its `sources[]` (`url`, `selector`,
+`prop`); the per-page detail sits under `pages[url][width]`.
 
 **Content-cap model — run the shipped probe; author no lift (#124).**
 `node stardust/scripts/replica/cap-probe.mjs <archetype-url>… --write-design
@@ -750,7 +747,11 @@ this in the user report; do not engineer around it.
   hatch for the residual cases. The headed window pops visibly,
   which is acceptable for interactive runs and unacceptable for
   unattended pipelines — surface this to the user when first
-  triggered. Note for asset harvest: a page-level bot wall usually
+  triggered. A 2xx denial page (live-session's signatures, or a tiny
+  page under one error heading) counts as a challenge: at the entry the
+  crawl escalates to its headed fallback; any other such page lands in
+  `crawl.failures` as `BotChallengeError`, with no record or screenshot.
+  Note for asset harvest: a page-level bot wall usually
   does NOT gate assets — media, CSS and font URLs commonly answer
   200 to a plain browser-UA fetch (what `media-harvest.mjs` sends)
   while every page navigation is challenged; in-page fetch is the

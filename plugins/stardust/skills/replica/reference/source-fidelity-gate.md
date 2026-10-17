@@ -69,7 +69,7 @@ On a geo-redirecting site add `--locale <tag>` to all three (a live side that
 redirects to a different locale per run is a nondeterministic source); an
 in-flow per-visitor bar takes the same `--hide <sel>` on all three, both
 stitches included (§ The all-pages published-origin gate, *Hide or mask*); on a
-bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 1).
+bot-managed site that exits 3, escalate with `--headed` (§ Hardening rule 12).
 
 The live capture is taken ONCE per breakpoint per full gate run and reused
 across iterations — re-take it only if it is genuinely stale (site changed,
@@ -488,15 +488,13 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   records the same hide list and a clean overlay check (`overlayLeft: null`); an older record is
   retaken once. Recorded without it: a chrome-parity round
   on an AEM site cost 5½ minutes of live settle per iteration, ×3
-  iterations ×4 archetypes. On hard-CDN sites
-  (Akamai-class), take the live captures with `--headed` and treat further
-  live hits as spent budget — the recorded failure mode (luggage retailer) was an
-  IP-level block escalating within ~3–4 automated requests, after which
-  iteration 2's numbers measure the block, not the site. A challenged
-  headless run costs exactly **1** hit: `gotoLive` throws
-  `BotChallengeError` on the first challenge-classified response (the
-  wait+reload solve window runs only under `--headed`, where clearance can
-  actually land) — so the block budget is still intact when you escalate.
+  iterations ×4 archetypes. On hard-CDN sites (Akamai-class), take the
+  live captures with `--headed` and treat further live hits as spent
+  budget — the recorded failure mode (luggage retailer) was an IP-level
+  block within ~3–4 automated requests. A challenged headless run costs
+  exactly **1** hit: `gotoLive` throws `BotChallengeError` on the first
+  challenge-classified response or denial page (the solve window runs
+  only under `--headed`), so the block budget is intact when you escalate.
 - **Evidence freshness: a run measures against its own source captures.**
   Source-side evidence is reused only while it was captured in this run — at
   or after the last rollout `A-inventory` or replica `extract` start in
@@ -554,24 +552,22 @@ Each of these was hit live; skipping one silently corrupts the measurement
 rather than erroring.
 
 1. **Real-Chrome UA + the standard request headers on every capture and
-   probe.** The default HeadlessChrome UA can receive a Cloudflare managed
-   challenge, and the probe then **measures the challenge page as the
-   source** (3 headings, "Performing security verification" — it diffs
-   cleanly, wrongly). And the UA alone is NOT sufficient: field-proven
-   (F-R1, a nonprofit site), a real-Chrome UA with Playwright's minimal default
-   headers still got HTTP 403 from Akamai; adding the standard set every
-   real Chrome sends (`Accept`, `Accept-Language`,
-   `Upgrade-Insecure-Requests`, `sec-ch-ua*`) produced HTTP 200 — Akamai
-   bot-manager fingerprints on the *absence* of those headers, not just the
-   UA. All three instruments now send both by default via the shared
-   `diff/scripts/live-session.mjs`; `--ua` overrides the UA string only.
-   The header set rides **document requests only** (F-B2, financial-services site):
-   forcing it on every request makes cross-origin CORS-mode webfont fetches
-   non-simple and kills them with `net::ERR_FAILED` — the capture then
-   silently renders fallback type (see rule 14); bot managers fingerprint
-   the navigation request, which still carries the full set. Sanity check
-   when numbers shift inexplicably between runs: grep the content-diff
-   inventory for challenge-page strings.
+   probe.** The UA alone is NOT sufficient: field-proven (F-R1, a nonprofit
+   site), a real-Chrome UA with Playwright's minimal default headers got
+   HTTP 403 from Akamai, the standard set every real Chrome sends (`Accept`,
+   `Accept-Language`, `Upgrade-Insecure-Requests`, `sec-ch-ua*`) HTTP 200 — bot
+   managers fingerprint the *absence* of those headers. Every instrument sends
+   both via the shared `diff/scripts/live-session.mjs` (`--ua` overrides the UA
+   string only): `Accept`, `Accept-Language` and `Upgrade-Insecure-Requests` on
+   **document requests only** (F-B2: forced on subresources, CORS-mode webfont
+   fetches die — rule 14); **a page's requests carry `sec-ch-ua*` with the UA's
+   brands and version, the host's platform** — documents and subresources,
+   cross-origin too, no preflight; out-of-process iframes and service workers
+   keep the browser's own — from the UA metadata set from the UA string (a site
+   behind a vendor wall served a 200 "System Down" page without them).
+   stitch-shot prefers the full Chromium build. Escape hatch: `--hints native`
+   (stitch-shot) or `STARDUST_LIVE_HINTS=native` (every instrument, gate rounds
+   included); `<stem>.capture.json` records `browserBuild` and `hints`.
 2. **`domcontentloaded`, never `networkidle`, on live targets.** Live sites
    with analytics beacons never reach networkidle — hard timeout. Built in:
    the diff scripts default `domcontentloaded` for non-localhost http(s)
@@ -579,7 +575,12 @@ rather than erroring.
    `*.aem.live`, `*.hlx.page`, `*.hlx.live` — are the exception and get
    `networkidle`, they decorate async) and keep `networkidle` for local
    prototypes; `--wait-until` overrides. stitch-shot is always
-   `domcontentloaded`.
+   `domcontentloaded`. stitch-shot, measure, cap-probe, style-census, the
+   crawl's page gotos, content-diff, visual-diff, motion-observe, the reskin
+   probes and the probes on `gotoLive` / `visit()` defaults navigate under
+   max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95`) clamped to 20–180 s
+   (the env is only a floor: the crawl measured the real pages), else their
+   own default; a flag wins.
 3. **Symmetric `--main` scoping — and never `body`.** Live `<main>` often
    contains header nav + hidden mega-menu; unscoped, those diff as ~dozens
    of missing CTAs (UC1-E1 iteration 1: 41 of 50 reds were scoping
@@ -607,8 +608,8 @@ rather than erroring.
 5. **Freeze animations for capture, injected AFTER lazyload settle.**
    Injection before the settle breaks some lazy loaders' swaps (recorded
    failure mode). stitch-shot.mjs orders this correctly.
-6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
-   layout settles as a real visit does). Two classes, one shared
+6. **Overlays dismissed — THREE classes, by clicking or closing, never
+   DOM removal** (so layout settles as a real visit does). One shared
    `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
    carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
    its probes, `--no-dismiss` turns it off everywhere in the round):
@@ -618,12 +619,11 @@ rather than erroring.
    label sweep — a short accept label inside a dialog, a consent container or
    a fixed/sticky layer; the flags above for a banner all of them miss);
    (b) **timed marketing/newsletter interstitials** —
-   recorded (fashion retailer): an undismissed "Sign up, stay updated!"
-   modal fired ~5–9s after load and baked a pixel-diff contributor into the
-   LIVE capture, repeated at every chunk seam, that no prototype fidelity
-   could null out. These fire on a timer, so the dismissal polls for late
-   arrivals on live source sites (an EDS host gets one sweep after its
-   delayed phase) and stitch-shot sweeps again after the settle pass.
+   recorded (fashion retailer): a "Sign up, stay updated!" modal fired
+   ~5–9 s after load and baked into the LIVE capture at every chunk seam.
+   These fire on a timer, so the dismissal polls for late arrivals on live
+   source sites (an EDS host gets one sweep after its delayed phase) and
+   stitch-shot sweeps again after the settle pass.
    **What the sweep left is named, never measured.** `dismissOverlays`
    reports `overlayLeft` — an open modal dialog, a banner-sized part of a
    known consent root still visible, a fixed or sticky layer painting over
@@ -635,6 +635,15 @@ rather than erroring.
    INCONCLUSIVE. Fix the capture, not the page: `--consent` / `--dismiss`
    for an overlay; a full-viewport layer that is the page's own design reads
    as left on both sides — hide it on both (`--hide` / presence.json).
+   (c) **open dialogs** (`closeDialogs`, last in every sweep) — recorded
+   (a large logistics site, headed): an open modal dialog locked scrolling
+   and the stitch died on the lock. `dialog[open]`: `close()`, then a close
+   control, then Escape; a non-native modal (`[role=dialog][aria-modal=true]`,
+   `.modal.show`, `[class*=modal][class*=open]`): the close control, then
+   Escape. Only when the pass closed one and left none open is the html/body
+   scroll lock released for the capture (overflow-y visible; a hidden overflow-x
+   becomes clip, so the page never widens); `<stem>.capture.json` `dismissed`
+   records `dialogs`, `dialogsLeft` (the lock stays: rule 13), `scrollLockReleased`.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -646,34 +655,44 @@ rather than erroring.
    scrims (recover by per-row luminance fitting). Both in
    `recreation-procedure.md`.
 10. **Pointer parked after any dismissal click.** A consent/modal click
-    leaves the virtual cursor at the button's coordinates; a
-    `:hover`-styled element under the resting cursor is silently captured
-    in HOVER state (recorded: a hero's `a.box-hover:hover img{opacity:.4}`
-    shipped the live capture dimmed — measured 0.4 in capture, 1.0 in
-    reality). The shared `dismissOverlays` parks the mouse (bottom-left)
-    after every dismissal pass — all three instruments inherit it; mirror
-    it in any ad-hoc capture that clicks anything.
+    leaves the virtual cursor at the button's coordinates, and a
+    `:hover`-styled element under it is captured in HOVER state (recorded:
+    a hero's `a.box-hover:hover img{opacity:.4}` shipped the live capture
+    dimmed). The shared `dismissOverlays` parks the mouse (bottom-left)
+    after every pass; mirror it in any ad-hoc capture that clicks anything.
 11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
-    with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
-    `recreation-procedure.md` § Fixed and sticky chrome.
-12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
+    every chunk seam, occlude content and can morph with scroll state; the
+    prototype replicates the chrome with its scroll-state trigger or the
+    seams diff as ghost bands — `recreation-procedure.md` § Fixed and
+    sticky chrome.
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
+    live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker.
-    Recorded (luggage retailer): Akamai served "Access Denied" to the headless
-    instruments — which, without this rule, would have silently measured
-    the block page as the source and diffed it cleanly, wrongly. The
-    escalation ladder: default (UA + standard headers) → `--headed`
-    (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
-    blocked, the site needs crawl.mjs-class capture and **the gate must
-    not silently degrade** — record the breakpoint as gate-blocked in the
-    ledger and surface it to the user; a gate that can't read the live
-    source has no pass to report.
+    exits **3** with a `BotChallengeError` naming the URL and the marker —
+    and so does a **2xx denial page** (recorded: a large logistics site
+    served a 200 denial page that stitch-shot wrote as a 900 px capture,
+    exit 0). After every navigation under 400 settles (either side),
+    `gotoLive` reads its title and visible text (`pageDenial`; stitch-shot
+    again after its dismissal sweeps) for a `DENIAL_SIGNATURES` phrase —
+    "can't process your request" + "Incident Number", "Access Denied" +
+    "Reference #", "Just a moment…", "Press & Hold", "Incapsula",
+    "DataDome", "Request unsuccessful", "System Down": a pair anywhere, a
+    single phrase in the title or, under 2 KB of text, in the text or an
+    iframe src (an article mentioning "press & hold" passes) — or for
+    under 2 KB of text beneath exactly one error heading. The message names
+    the signature, `origin blocked` and `--headed`; a check that cannot run
+    says so on stderr. stitch-shot (no PNG, no sidecar), the diff probes,
+    measure, cap-probe and the chrome tools exit 3; the crawl escalates
+    headed at its entry and lists a denied page in `crawl.failures`
+    (`BotChallengeError`, never captured); gate-all's row takes its blocked
+    path (the crawl screenshot, flagged asymmetric, or `instrument: none`
+    naming `origin blocked`). The escalation ladder: default (UA + standard
+    headers) → `--headed` (stealth real Chrome, same tier as crawl.mjs's
+    fallback) → if STILL blocked, the site needs crawl.mjs-class capture
+    and **the gate must not silently degrade** — record the breakpoint as
+    gate-blocked in the ledger and surface it to the user; a gate that
+    can't read the live source has no pass to report.
 13. **Inner-scroller / scroll-jacked pages fail loud — stitched capture
     cannot measure them.** On pages where `html`/`body` are
     `overflow:hidden` and an inner container scrolls, the document reports
@@ -684,13 +703,13 @@ rather than erroring.
     pixel probe and rely on content-diff/visual-diff (capturing the inner
     scroller is future work). A shortfall the document's own shrink explains
     (a header that shrinks on scroll) is no stall: `headerMorph` in
-    `<stem>.capture.json` records it and the stitch continues.
+    `<stem>.capture.json` records it and the stitch continues; nor is a
+    lock the dialog pass released (rule 6) — any other lock fails loud.
 14. **Captures assert fonts loaded — a silent font fork is a false
     measurement.** A webfont that fails to fetch renders the ENTIRE live
     capture in fallback type: wrong wraps, wrong line counts, wrong section
-    heights, wrong doc height — with no error anywhere. It is the same
-    defect class as silently measuring a Cloudflare interstitial, and it
-    poisons every number the gate reports (recorded, F-B2: an
+    heights, wrong doc height — with no error anywhere, poisoning every
+    number the gate reports (recorded, F-B2: an
     instrument-forced header set killed the live side's Typekit fetch; live
     doc height moved 6669→6518 once fixed, and a whole class of
     "one-line-off" defects vanished). stitch-shot now checks after
@@ -709,41 +728,26 @@ rather than erroring.
 
 ### Script adaptations (built-in flags first — but fail-loud outranks script immutability)
 
-The four manual adaptations this section used to prescribe are upstreamed
-into the shipped scripts. All live-target hardening lives in one shared
-module — `diff/scripts/live-session.mjs` (UA + standard headers, challenge
-fail-loud, overlay dismissal, headed-stealth escalation) — and the diff
-scripts expose it as flags:
-
-```bash
-# content-diff against a live source: no source edits, flags only (the header and
-# footer roots are compared beside --main by default — no extra flag; --no-chrome opts out)
-node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic \
-  --width 1440 --main "<content-root>" --dismiss
-
-# visual-diff: --main is a real flag (rule 3), same live hardening
-node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
-  --width 1440 --main "<content-root>" --dismiss
-
-# non-standard overlay closer / pinned locale / bot-managed site:
-#   --dismiss "#custom-close"    --locale en-GB    --headed
-```
-
-Defaults without flags: rules 1, 2 and 12 as written; the diff probes
-dismiss no overlay unless passed `--dismiss` (gate.sh passes it for you).
+All live-target hardening lives in one shared module —
+`diff/scripts/live-session.mjs` (UA, standard headers and client hints,
+challenge and denial-page fail-loud, overlay and dialog dismissal,
+headed-stealth escalation) — and the instruments expose it as flags: the
+§ Per-breakpoint procedure commands are the whole adaptation, plus
+`--dismiss "#custom-close"`, `--locale en-GB` or `--headed` for a
+non-standard closer, a pinned locale or a bot-managed site. Defaults
+without flags: rules 1, 2 and 12 as written; the diff probes dismiss no
+overlay unless passed `--dismiss` (gate.sh passes it for you).
 
 **A project copy re-implementing retired adaptations is a defect**, not
-diligence: the edits were 10 distinct changes across 2 files, and a partial
-application silently mis-measured (e.g. one `main`-scoped selector left
-hardcoded in visual-diff). If you find `// replica ADAPTATION:` copies from
-an older run, re-copy the shipped scripts and pass flags instead.
+diligence (a partial one silently mis-measured: a `main`-scoped selector
+left hardcoded in visual-diff) — if you find `// replica ADAPTATION:`
+copies from an older run, re-copy the shipped scripts and pass flags.
 
 The narrow exception: **a documented instrument-bug fix is the correct
 move when the shipped instrument measures falsely** — fail-loud outranks
 script immutability. The rule above exists to kill stale re-implementations
 of upstreamed flags, not to force gating on an instrument known to lie
-(recorded, F-B2: the shipped header delivery silently killed live webfont
-loads; the session's most important fix was a hand-edit to the project's
+(recorded: rule 14's F-B2 font fork was fixed by a hand-edit to the project's
 live-session.mjs). A legitimate instrument fix is (a) commented in the
 script with the defect it corrects, (b) recorded in the ledger with the
 runs it invalidates, and (c) flagged for upstreaming into the plugin. An

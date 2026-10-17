@@ -18,23 +18,55 @@
  *   - real-Chrome UA + the STANDARD REQUEST HEADERS by default: the default
  *     HeadlessChrome UA gets a Cloudflare managed challenge on many live
  *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
- *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
+ *     (Accept / Accept-Language; sec-ch-ua* through the UA metadata below) are
+ *     the other half of the fix.
+ *   - CLIENT HINTS from the UA (--hints, default ua-metadata): a vendor wall
+ *     answered a headless capture 200 "System Down" when the UA claimed Chrome
+ *     but the requests' sec-ch-ua* did not back it. live-session sets the
+ *     browser's UA metadata from the UA string, so a page's requests carry
+ *     sec-ch-ua* with the UA's brands and version, the host's platform —
+ *     documents and subresources, cross-origin too; out-of-process iframes and
+ *     service workers keep the browser's own. Escape hatch: `--hints native` or
+ *     env STARDUST_LIVE_HINTS=native (gate rounds included). The BROWSER BUILD:
+ *     the full Chromium build when installed (the headless shell's own hints
+ *     name a HeadlessChrome brand), otherwise the headless shell (one stderr
+ *     line); --headed runs real Chrome. stdout (`browser: <build>, client
+ *     hints: <hints>`) and capture.json (browserBuild, hints) record both.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
- *     never captured as if it were the source (the Access-Denied trap). Escalate
- *     with --headed (stealth real Chrome).
+ *     never captured as if it were the source (the Access-Denied trap). So
+ *     does a 2xx DENIAL PAGE — a vendor signature ("can't process your
+ *     request" + "Incident Number", "Access Denied" + "Reference #", "Just a
+ *     moment…", "System Down", …) or a page under 2 KB of text under one
+ *     error heading: gotoLive reads the entry, and the page is read once more
+ *     after the dismissal sweep(s), before --hide (a hide list could cover
+ *     its text) and --inventory (a denial page a script renders after
+ *     domcontentloaded). The message names the signature and says "origin
+ *     blocked"; a re-check that cannot read the page is one stderr line
+ *     (`denial-page check skipped`), never a pass. Escalate with --headed
+ *     (stealth real Chrome).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
- *   - TWO overlay classes dismissed: cookie consent (CLICKED accept, not DOM
- *     removal, so consent-gated layout settles the way a real visit does)
- *     AND timed marketing/newsletter interstitials (CH-1: an undismissed
+ *   - THREE overlay classes dismissed: cookie consent (CLICKED accept, not DOM
+ *     removal, so consent-gated layout settles the way a real visit does),
+ *     timed marketing/newsletter interstitials (CH-1: an undismissed
  *     "Sign up!" modal bakes a pixel-diff contributor into the live capture
- *     that no prototype fidelity can null out). The mouse is PARKED
- *     afterwards (bottom-left): a dismissal click leaves the cursor over the
- *     page, and any :hover-styled element under it would be silently
- *     captured in hover state. --consent / --dismiss add a site's own
- *     selectors; --no-dismiss turns both classes off (gate.sh passes all
- *     three through to BOTH captures, so the live side is dismissed exactly
- *     like the build side).
+ *     that no prototype fidelity can null out) AND open DIALOGS — live-session's
+ *     dialog pass: a native <dialog> gets close(), then its close control,
+ *     then Escape; an aria-modal / .modal.show panel its close control, then
+ *     Escape. The html/body SCROLL LOCK a closed dialog leaves is released for
+ *     the capture (overflow-y visible, a hidden overflow-x clipped — clip, not
+ *     hidden, so body never becomes an inner scroller) only when the pass
+ *     closed one and none survives: a lock with no closed dialog is the page's
+ *     own layout, and a lock over a survivor stays — the scroll stall below
+ *     fails loud on either. Each sweep logs `dialog closed: …`, `dialog still
+ *     open: …` and `scroll lock released …`; capture.json's `dismissed` merges
+ *     the sweeps.
+ *     The mouse is PARKED afterwards (bottom-left): a dismissal click leaves
+ *     the cursor over the page, and any :hover-styled element under it would
+ *     be silently captured in hover state. --consent / --dismiss add a site's
+ *     own selectors; --no-dismiss turns all three classes off (gate.sh passes
+ *     all three flags through to BOTH captures, so the live side is dismissed
+ *     exactly like the build side).
  *   - --locale pins Accept-Language + context locale: geo-redirecting sites
  *     (recorded: a car brand → /ch-de/, a fashion brand → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
@@ -89,8 +121,9 @@
  *     shared live-session hideRegions measures each selector, hides every
  *     match inline and adds a `<style data-stardust-hide>` rule (a bar
  *     re-rendered later is hidden too) AFTER the last dismissal sweep (after
- *     --settle's) and BEFORE --inventory, the freeze and the height read: the
- *     inventories, the page height and every chunk see the same page. One
+ *     --settle's) and the denial-page re-check, and BEFORE --inventory, the
+ *     freeze and the height read: the inventories, the page height and every
+ *     chunk see the same page. One
  *     `hidden: <sel> ×<n> (<h>px) [--hide]; …` line (×0: nothing matched at
  *     the hide pass). gate.sh / gate-all pass the SAME list to the live and
  *     build captures — symmetric, like overlay dismissal: the build has
@@ -137,13 +170,16 @@
  *     --hide <sel,...>    in-flow per-visitor regions to remove before the
  *                         capture (repeatable; see above)
  *     --headed            escalation: headed stealth real Chrome
+ *     --hints <v>         client hints: ua-metadata (sec-ch-ua* brands and
+ *                         version from the UA) | native (the browser's own);
+ *                         no flag → env STARDUST_LIVE_HINTS, else ua-metadata
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
- *     --timeout <ms>      goto timeout (default: env STARDUST_NAV_TIMEOUT_MS
- *                         as given, else the crawl figure — 2 × crawl.navMs.p95
- *                         from stardust/current/_crawl-log.json, clamped to
- *                         20000–180000 — else 60000; the flag always wins)
+ *     --timeout <ms>      goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+ *                         2 × crawl.navMs.p95 from
+ *                         stardust/current/_crawl-log.json) clamped to
+ *                         20000–180000, else 60000; the flag always wins)
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *     --json <file>       after the PNG, write the capture record (gate.sh /
@@ -153,8 +189,14 @@
  * build.capture.json — never <stem>.json, which gate.sh / gate-all write
  * after the capture): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, headerMorph (px, 0 when none), overflow: { scrollWidth, viewport,
- * delta }, at }. Removed when a capture starts, written with the PNG — a
- * failed capture leaves none. stdout ends with the overflow line, then
+ * delta }, browserBuild ('chromium' | 'chromium-headless-shell' | 'chrome' |
+ * 'unknown'), hints ('ua-metadata' | 'native' | 'unknown'), denialCheck ('ok'
+ * | 'skipped: <reason>' — the post-sweep denial-page read), dismissed: {
+ * extra, consent, marketing, dialogs, dialogsLeft, scrollLockReleased } — the
+ * sweeps merged (arrays de-duplicated in order, the first consent, released by
+ * any sweep, dialogsLeft from the last) — or null under --no-dismiss, at }.
+ * Removed when a capture starts, written with the PNG — a failed capture
+ * leaves none. stdout ends with the overflow line, then
  * `stitched <out>: <w>x<h> from <n> chunks` (+ ` — header morph <px> px`).
  *
  * Example:
@@ -164,8 +206,10 @@
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
  * --help needs neither), and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written (an overlay left included), 1 error, 3 bot challenge
- * (live side blocked — fail loud, never captured).
+ * Exit codes: 0 written (an overlay left included), 1 error (a scroll stall
+ * included), 3 bot challenge (live side blocked — an edge interstitial or a
+ * 2xx denial page; fail loud, never captured, no PNG, no capture.json and no
+ * --json record; escalate with --headed).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -185,7 +229,10 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, detectOverlayLeft, parseHideList, hideRegions, formatHidden, recountHides, hideMisses, inFlowRegionsAboveHeader, resolveNavTimeoutMs } = await import(pathToFileURL(LIVE_SESSION).href);
+const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, newLiveContext, gotoLive, dismissOverlays, detectOverlayLeft, parseHideList, hideRegions, formatHidden, recountHides, hideMisses, inFlowRegionsAboveHeader } = liveSession;
+// --hints values (live-session's HINT_SCOPES; a copy older than the UA metadata has none — the same two values).
+const HINT_VALUES = Array.isArray(liveSession.HINT_SCOPES) ? liveSession.HINT_SCOPES : ['ua-metadata', 'native'];
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -199,12 +246,15 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --hide <sel,…>    remove in-flow per-visitor regions (a location bar above the header — dismissal can't)
                     after dismissal + settle, before --inventory and the capture (repeatable)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
+  --hints <v>       client hints: ua-metadata (sec-ch-ua* with the UA's brands and version, the host's platform;
+                    out-of-process iframes and service workers keep the browser's own) | native (escape hatch: the
+                    browser's own); no flag → env STARDUST_LIVE_HINTS, else ua-metadata
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
-  --timeout <ms>    goto timeout (default: env STARDUST_NAV_TIMEOUT_MS as given, else the crawl figure —
-                    2 × crawl.navMs.p95 from stardust/current/_crawl-log.json, clamped to 20000–180000 —
-                    else 60000; the flag always wins)
+  --timeout <ms>    goto timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+                    2 × crawl.navMs.p95 from stardust/current/_crawl-log.json) clamped to 20000–180000, else 60000;
+                    the flag always wins)
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle, dismissed
                     ({ consent, extra, marketing } over the sweeps; null under --no-dismiss), overlayLeft (null when
@@ -215,6 +265,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
                     { tag, id, classes, top, height, selector }; null when none), height, overflow
   --help            this text
 
+Prints \`browser: <build>, client hints: <hints>\` once the page exists: the full Chromium build when installed, else the
+headless shell (--headed: real Chrome).
 Prints \`overlay-left: <sel> (<why>)\` once — after the last dismissal sweep and --hide, before the capture, also under
 --no-dismiss — when the capture would still carry an overlay: a consent root still visible, a fixed / sticky layer
 painting ≥ 80 % of the viewport, or a scroll lock (html / body overflow:hidden); a consent-sweep click that left the
@@ -226,7 +278,14 @@ vs the viewport at --width (delta = px over, 0 when it fits), read after the chu
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 Writes <out.png> and <stem>.capture.json beside it (build.png → build.capture.json; removed when a capture starts, so a
 failed one leaves none): { writtenBy, url, width, vh, height, chunks, headerMorph, overflow: { scrollWidth, viewport,
-delta }, at }. A scroll that does not move (window.scrollY stays put) short of its chunk target, the height unchanged,
+delta }, browserBuild, hints, denialCheck, dismissed, at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page
+read after the sweeps); dismissed = { extra, consent, marketing, dialogs, dialogsLeft, scrollLockReleased } over every
+sweep (dialogsLeft from the last), null under --no-dismiss.
+Overlays: consent, timed marketing modals, then open dialogs (close(), a close control, Escape — logged as
+\`dialog closed: …\` / \`dialog still open: …\`). The html/body scroll lock is released
+(overflow-y visible, a hidden overflow-x clipped) only when the pass closed a dialog and none is still open; any other
+lock stays, and a scroll it stalls fails loud.
+A scroll that does not move (window.scrollY stays put) short of its chunk target, the height unchanged,
 is a scroll stall (an inner scroller / scroll-jacked page): exit 1. A shortfall the document's own shrink explains (a
 header that shrinks on scroll) is a morph, not a stall: the stitch continues at the shrunk height, headerMorph records
 the px and the stitched line ends " — header morph <px> px".
@@ -240,14 +299,29 @@ candidatesCheck "failed: <msg>" and a WARNING). stitch-shot prints no line for a
 gate.sh / gate-all warn from the live capture's record.
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written (an overlay left included), 1 error (also --hide / --json without a value), 3 bot challenge
-(live side blocked — fail loud).`;
+(live side blocked — fail loud): an edge interstitial, or a 2xx denial page (a vendor signature, or a page under 2 KB
+of text under one error heading — the message names it and says "origin blocked"), read at the entry and again after
+the dismissal sweeps (before --hide); no PNG, no capture.json, no --json record. Escalate with --headed.`;
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps the old 60000 and says so once on stderr — never a TypeError. An explicit --timeout never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = 60000, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`stitch-shot: live-session.mjs predates navTimeout — goto timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
+}
 
 // `nav` reaches live-session's navTimeout ({ env, crawlLog }) — the test seam; the CLI passes none.
 export function parseArgs(argv, nav = {}) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, hints: null, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -262,6 +336,11 @@ export function parseArgs(argv, nav = {}) {
       opts.hide = parseHideList(opts.hide, v);
     }
     else if (a === '--headed') { opts.headed = true; }
+    else if (a === '--hints') {
+      // null (no flag) passes through: live-session then reads env STARDUST_LIVE_HINTS, else ua-metadata
+      opts.hints = rest[i += 1];
+      if (!HINT_VALUES.includes(opts.hints)) { console.error(`hints must be one of ${HINT_VALUES.join(', ')} — got ${opts.hints}\n\n${HELP}`); process.exit(1); }
+    }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
@@ -280,11 +359,11 @@ export function parseArgs(argv, nav = {}) {
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   // Resolved only without --timeout: one navigation timeout shared by every live instrument (a slow origin's
   // measured p95 sets it once, for all of them); an explicit flag is never second-guessed.
-  if (opts.timeout == null) opts.timeout = resolveNavTimeoutMs({ fallback: 60000, ...nav });
+  if (opts.timeout == null) opts.timeout = sessionNavTimeout(liveSession, nav).ms;
   return { url, out, opts };
 }
 
-// Dismiss both overlay classes (consent + timed marketing modals) via
+// Dismiss the overlay classes (consent, timed marketing modals, dialogs) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
 async function dismissAndLog(page, url, opts) {
@@ -296,7 +375,52 @@ async function dismissAndLog(page, url, opts) {
   if (d.consent) console.log(`consent dismissed via ${d.consent}`);
   for (const sel of d.extra) console.log(`overlay dismissed via extra selector ${sel}`);
   for (const sel of d.marketing) console.log(`marketing modal dismissed via ${sel}`);
+  // the dialog pass (a live-session copy older than it returns none of these fields)
+  for (const entry of d.dialogs || []) console.log(`dialog closed: ${entry}`);
+  for (const name of d.dialogsLeft || []) console.log(`dialog still open: ${name}`);
+  if (d.scrollLockReleased) console.log('scroll lock released for the capture (overflow-y visible, a hidden overflow-x clipped)');
   return d;
+}
+
+// The sweeps (the first; the post-settle one under --settle) as ONE capture record: arrays concatenated and
+// de-duplicated in order, the first consent, released when any sweep released — and dialogsLeft from the LAST sweep,
+// the page state the capture carries (a dialog the second sweep closed is no longer open).
+export function mergeDismissed(sweeps) {
+  const all = (key) => [...new Set(sweeps.flatMap((d) => d[key] || []))];
+  return {
+    extra: all('extra'),
+    consent: sweeps.map((d) => d.consent).find((c) => c != null) ?? null,
+    marketing: all('marketing'),
+    dialogs: all('dialogs'),
+    dialogsLeft: [...((sweeps.at(-1) || {}).dialogsLeft || [])],
+    scrollLockReleased: sweeps.some((d) => d.scrollLockReleased === true),
+  };
+}
+
+// A project copy of live-session.mjs older than these exports never throws (as sessionNavTimeout above): no
+// launchChromium → chromium.launch() (an untagged browser — build 'unknown'); no hintRecord → both 'unknown'.
+export function launchCaptureBrowser(session, chromium, { headed = false } = {}) {
+  if (headed) return session.launchStealthHeaded(chromium);
+  return typeof session.launchChromium === 'function' ? session.launchChromium(chromium) : chromium.launch();
+}
+export function captureHintRecord(session, ctx) {
+  return typeof session.hintRecord === 'function' ? session.hintRecord(ctx) : { browserBuild: 'unknown', hints: 'unknown' };
+}
+
+// R4: gotoLive reads the entry for a 2xx denial page; this reads the page once more after the dismissal sweep(s) — a
+// denial page a script renders after domcontentloaded. A marker → BotChallengeError (exit 3), with the entry's status.
+// A page the probe cannot read, or a copy without pageDenial / botChallengeError, is one stderr line — skipped, never
+// a silent pass. → capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' — on the record, since
+// gate-all keeps only stdout's last two lines and a skip on stderr alone would leave no trace in a gate round.
+export async function recheckDenial(session, page, url, status) {
+  if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
+    console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
+    return 'skipped: live-session.mjs predates pageDenial';
+  }
+  const { marker, skipped } = await session.pageDenial(page);
+  if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
+  if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
+  return skipped ? `skipped: ${skipped}` : 'ok';
 }
 
 // The root line gate.sh's horizontal-overflow assert reads (measure.mjs root-line semantics: viewport =
@@ -361,27 +485,34 @@ async function main() {
   rmSync(sidecar, { force: true });
   // Lazy: --help (inside parseArgs) answers without playwright / pngjs installed.
   const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
-  const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
+  const browser = await launchCaptureBrowser(liveSession, chromium, opts);
   try {
-    // UA + standard headers + webdriver spoof on the context (live-session).
+    // UA + standard headers + webdriver spoof + the UA's client-hint metadata on the context (live-session).
     const ctx = await newLiveContext(browser, {
-      ua: opts.ua, locale: opts.locale,
+      ua: opts.ua, locale: opts.locale, hints: opts.hints,
       viewport: { width: opts.width, height: opts.vh },
     });
     const page = await ctx.newPage();
+    // Read once the page exists: the UA metadata is set per page, and a page it could not be set on runs 'native'.
+    const { browserBuild, hints } = captureHintRecord(liveSession, ctx);
+    console.log(`browser: ${browserBuild}, client hints: ${hints}`);
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
     // challenge page must never be stitched as if it were the source.
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    const entry = await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
-    // The record's dismissed: consent = the last non-null one over the sweeps, extra / marketing = every sweep's, unique.
+    // The sweeps' results, kept twice: `sweeps` (each as returned) → capture.json's dismissed (mergeDismissed, the
+    // first consent, the dialog pass); `dismissed` → the --json record's: consent = the last non-null one over the
+    // sweeps, extra / marketing = every sweep's, unique.
     // A sweep whose consent click left the page (dismissOverlays' overlayLeft `(consent sweep navigated to <url>)`)
     // is kept for the overlay-left check below: the capture is of another page, whatever that page shows.
+    const sweeps = [];
     const dismissed = opts.noDismiss ? null : { consent: null, extra: [], marketing: [] };
     let navigated = null;
     const sweep = async () => {
       const d = await dismissAndLog(page, url, opts);
+      sweeps.push(d);
       if (d.consent) dismissed.consent = d.consent;
       for (const k of ['extra', 'marketing']) for (const s of d[k]) if (!dismissed[k].includes(s)) dismissed[k].push(s);
       if (!navigated && typeof d.overlayLeft === 'string' && d.overlayLeft.startsWith('(consent sweep navigated to ')) navigated = d.overlayLeft;
@@ -417,8 +548,13 @@ async function main() {
       if (!opts.noDismiss) await sweep();
     }
 
-    // --hide: after the last dismissal sweep, before --inventory, the freeze and the height read — the inventories,
-    // the page height and every chunk see the page without the in-flow regions (header, the --hide bullet).
+    // A denial page a script rendered after domcontentloaded (gotoLive read the entry): exit 3, no PNG, no sidecar, no
+    // --json record. Read before --hide: a hide list over the denial text would leave the probe nothing to read.
+    const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
+
+    // --hide: after the last dismissal sweep and the denial re-check, before --inventory, the freeze and the height
+    // read — the inventories, the page height and every chunk see the page without the in-flow regions (header, the
+    // --hide bullet).
     const hidden = opts.hide.length ? await hideRegions(page, opts.hide) : [];
     if (opts.hide.length) console.log(`hidden: ${formatHidden(hidden)}`);
 
@@ -609,7 +745,7 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
-    writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowOf(root), at: new Date().toISOString() }, null, 2)}\n`);
+    writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowOf(root), browserBuild, hints, denialCheck, dismissed: opts.noDismiss ? null : mergeDismissed(sweeps), at: new Date().toISOString() }, null, 2)}\n`);
     // --json: the capture record, only once the PNG is written (a failed capture leaves none).
     if (opts.json) {
       mkdirSync(dirname(opts.json), { recursive: true });

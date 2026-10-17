@@ -3,7 +3,8 @@
 // placeholder / aria-label / title pairing by value, icons pairing by anchor then by identity + order (ICON MOVED), 🔴 on
 // interactive elements and 🟡 otherwise, title / EXTRA / ICON KIND / ICON MOVED advisory, glyph labels), the roots layer
 // (parseRoots — --main lists + the chrome roots; diffRoot / formatFinding — per-root findings tagged with their root),
-// liveCacheKey (the --live-cache key), --help in an empty cwd, importing the module runs no probe;
+// liveCacheKey (the --live-cache key), gotoTimeoutMs (the shared goto timeout; an older live-session.mjs keeps 60000),
+// --help in an empty cwd, importing the module runs no probe;
 // then end-to-end against two small fixture pages served from a temp dir — a source with a localized search
 // placeholder, a flag image inside a locale link and an icon-font glyph inside a social link, against a build that
 // dropped the placeholder, swapped the flag and left the social box empty (the three defects a recorded hands-off
@@ -22,7 +23,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
-import { ATTRIBUTE_HINTS, INVENTORY_VERSION, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, liveCacheKey, parseArgs, parseRoots } from '../content-diff.mjs';
+import { ATTRIBUTE_HINTS, INVENTORY_VERSION, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, gotoTimeoutMs, liveCacheKey, parseArgs, parseRoots } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -245,6 +246,21 @@ await check('parseArgs --hide: comma lists, repeatable, trimmed, empties dropped
   assert.deepEqual(opts.hide, ['.geo-bar', '.location-bar', '#promo-strip']);
   assert.throws(() => parseArgs(argv('--hide')), /--hide needs a selector list/);
   assert.throws(() => parseArgs(argv('--hide', '--json')), /--hide needs a selector list/);
+});
+
+// ---- pure: the goto timeout ---------------------------------------------------------------------------
+await check('gotoTimeoutMs: by default live-session\'s resolveNavTimeoutMs with fallback 60000; a live-session.mjs without it (an older copy) — no throw, 60000, ONE stderr line per process', async () => {
+  const live = await import('../live-session.mjs');
+  assert.equal(gotoTimeoutMs(), live.resolveNavTimeoutMs({ fallback: 60000 }), 'the default session is the sibling live-session.mjs');
+  const asked = [];
+  assert.equal(gotoTimeoutMs({ resolveNavTimeoutMs: (o) => { asked.push(o); return 84000; } }), 84000); assert.deepEqual(asked, [{ fallback: 60000 }]);
+  const lines = []; const { write } = process.stderr;
+  process.stderr.write = (s) => { lines.push(String(s)); return true; };
+  let stale;
+  try { stale = [gotoTimeoutMs({ gotoLive() {} }), gotoTimeoutMs({})]; } finally { process.stderr.write = write; }
+  assert.deepEqual(stale, [60000, 60000]);
+  assert.equal(lines.length, 1, lines.join(''));
+  assert.match(lines[0], /^content-diff: live-session\.mjs predates navTimeout — goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
 });
 
 // ---- cli -----------------------------------------------------------------------------------------

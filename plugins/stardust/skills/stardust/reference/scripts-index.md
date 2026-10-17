@@ -1,6 +1,6 @@
 # Scripts index — `<skill>/<script>` — what — key flags
 
-Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate calls: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else their default.
+Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate calls: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, motion-observe, content-diff, visual-diff, the reskin probes, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json`) clamped to 20–180 s (the env a floor), else their default.
 
 - `deploy/ai-readability.mjs` — readability — `--origin <o> [--paths <f>]`
 - `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b] --ew`
@@ -33,7 +33,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `diff/content-presence.mjs` — visible content per band + control state — `<origin> <served> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
-- `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome), no CLI
+- `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome; a 2xx denial page = bot challenge; `dismissOverlays` closes open dialogs — the scroll lock a closed dialog leaves is released (overflow-y visible, a hidden overflow-x clipped), only when the pass closed one and none survives; client hints from the browser's UA metadata (CDP, set from the UA string) on every live page, `STARDUST_LIVE_HINTS=native` opts out; `launchChromium` prefers the full Chromium build; the nav-timeout floor above), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
 - `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`; images are capped JPEGs, `--full-res` keeps the PNG
 - `diff/unit-geometry.mjs` — repeated-unit Δ — `<origin> <served> (--unit <selO>=<selE> | --families <f> --slug <s>) [--n 1] [--tol 4]`; exit 2 = required unit off/hidden/missing
@@ -46,7 +46,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`
+- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`; a 2xx denial page = bot challenge (escalates headed at the entry; never captured)
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
@@ -82,7 +82,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline; a miss retries by words — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`; exit 2 = no match, outline on stdout
 - `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`
-- `replica/stitch-shot.mjs` — stitched full-page capture + `<stem>.capture.json` (`headerMorph`: a header shrinking on scroll, not a stall); prints `overlay-left:`; --json: `hideMiss` — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>] [--json <f>]`
+- `replica/stitch-shot.mjs` — stitched full-page capture + `<stem>.capture.json` (`headerMorph`: a header shrinking on scroll, not a stall; `browserBuild`, `hints`, `denialCheck`, `dismissed`); prints `overlay-left:`; --json: `hideMiss` — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>] [--json <f>] [--hints <ua-metadata|native>]`; exit 3 = bot challenge or 2xx denial page (no PNG, no sidecar; escalate `--headed`)
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`

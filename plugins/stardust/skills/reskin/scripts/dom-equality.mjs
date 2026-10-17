@@ -67,7 +67,22 @@ if (!LIVE_SESSION) {
   console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
   process.exit(2);
 }
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = liveSession;
+
+// The live goto timeout: the navigation timeout every live instrument shares (max(env STARDUST_NAV_TIMEOUT_MS,
+// 2 × crawl.navMs.p95) clamped to 20000–180000, else 60000), resolved once for both sides. A live-session.mjs copy
+// older than resolveNavTimeoutMs keeps the old 60000 and says so once — never a TypeError.
+let liveGotoMs = null;
+function liveGotoTimeoutMs() {
+  if (liveGotoMs !== null) return liveGotoMs;
+  if (typeof liveSession.resolveNavTimeoutMs === 'function') liveGotoMs = liveSession.resolveNavTimeoutMs({ fallback: 60000 });
+  else {
+    liveGotoMs = 60000;
+    console.error('[dom-equality] live-session.mjs predates navTimeout — live goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill\'s live-session.mjs alongside to use them)');
+  }
+  return liveGotoMs;
+}
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
@@ -126,7 +141,7 @@ async function capture(url, scopeList, normalize) {
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     try {
-      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
+      await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: liveGotoTimeoutMs(), settleMs: 0, solveWindow: !!args.headed });
     } catch (e) {
       console.error(`[dom-equality] ${e.message}`);
       await browser.close();

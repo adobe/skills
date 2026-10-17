@@ -54,8 +54,9 @@
  *     --json               the full structure on stdout instead of the table
  *     --out <file>         also write that JSON to <file> (directories created)
  *     --timeout-ms <ms>    per-page navigation timeout AND per-width deadline (default:
- *                          STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
- *                          crawl.navMs.p95 × 2 clamped to 20–180 s, else 20000)
+ *                          max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95 from
+ *                          stardust/current/_crawl-log.json) clamped to 20000–180000, else
+ *                          20000; the flag always wins)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA)
  *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
@@ -118,10 +119,12 @@
  *
  * Exit codes: 0 measured — possibly partial (`_provenance.partial`, the status
  * line), 1 a page failed to load (named on stderr; what was measured is still
- * printed), 2 usage error, playwright not importable or live-session.mjs not
- * found, 3 bot challenge — the live side served an edge interstitial (fail
- * loud; nothing is printed as measured; escalate --headed), 124 every width
- * read failed — no verdict (the run-capped "deadline, no verdict" convention).
+ * printed), 2 usage error, playwright not importable, live-session.mjs not
+ * found or a copy that predates withDeadline (refused before any browser
+ * launch), 3 bot challenge — the live side served an edge interstitial or a
+ * 2xx denial page (fail loud; nothing is printed as measured; escalate
+ * --headed), 124 every width read failed — no verdict (the run-capped
+ * "deadline, no verdict" convention).
  * Precedence 3 > 1 > 124 > 0.
  * A delta or an overflow never changes the exit code — this is a measurement,
  * not a gate; gate.sh's overflow verdict comes from stitch-shot's `overflow:` line.
@@ -174,6 +177,29 @@ async function loadLiveSession() {
   const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
   if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   return import(pathToFileURL(found).href);
+}
+
+// A project copy of live-session.mjs older than withDeadline / isContextDestroyed is refused before any browser
+// launch (exit 2, as for a missing copy): running without the per-width deadlines would re-open the 900 s hang.
+export function requireDeadlines(session) {
+  if (!(session && typeof session.withDeadline === 'function' && typeof session.isContextDestroyed === 'function')) {
+    throw new UsageError('live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside');
+  }
+  return session;
+}
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a copy older than navTimeout answers this tool's old
+// default with one stderr line — never a TypeError. main() never gets here with one: such a copy predates withDeadline
+// too and requireDeadlines refused it first. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`measure: live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -287,6 +313,8 @@ async function measurePage(browser, url, o, session) {
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+  // The live side's UA client-hint metadata on the local side too (symmetric); a stale live-session copy has neither.
+  if (!live && typeof session.applyUaMetadata === 'function') await session.applyUaMetadata(context, { ua: o.ua || session.REAL_CHROME_UA, locale: 'en-US' });
   // Errors ignored: the page is abandoned either way, and browser.close() kills what is left.
   const closeBounded = (p) => session.withDeadline(p.close(), CLOSE_DEADLINE_MS, `${url} page close`).catch(() => {});
   // The open path in two parts: the navigation (bounded by its own timeouts; never raced — a late BotChallengeError
@@ -390,9 +418,10 @@ async function main(argv) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`);
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
-  const session = await loadLiveSession();
-  // One navigation timeout across the instruments: the flag, else env, else the crawl's p95 × 2, else 20000.
-  const nav = o.timeoutMs === null ? session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS }) : { ms: o.timeoutMs, source: 'flag' };
+  const session = requireDeadlines(await loadLiveSession());
+  // One navigation timeout across the instruments: the flag, else max(env, the crawl's p95 × 2) clamped to
+  // 20000–180000, else 20000.
+  const nav = o.timeoutMs === null ? sessionNavTimeout(session) : { ms: o.timeoutMs, source: 'flag' };
   o.timeoutMs ??= nav.ms;
   const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, partial: false, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.

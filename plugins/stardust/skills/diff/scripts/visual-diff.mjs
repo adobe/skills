@@ -88,6 +88,8 @@ import { dirname, join, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, LEDGER, runStartAt, readSideCache, writeSideCache, parseHideList, hideRegions, formatHidden } from './live-session.mjs';
+// The namespace, for the one export an older copy lacks: a named import of it would fail the whole module at link time.
+import * as liveSession from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buildURL> [options]
   --profile eds|generic  stack profile (default eds)
@@ -155,6 +157,19 @@ export const liveCacheKey = (src, opts) => ({
   ...(opts.hide && opts.hide.length ? { hide: opts.hide } : {}),
 });
 const sectionShot = (tag, sel) => `${tag}-${sel.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '')}.png`;
+
+// The goto timeout both sides navigate under: the navigation timeout every live instrument shares (live-session's
+// resolveNavTimeoutMs — max(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl.navMs.p95) clamped to 20000–180000, else 60000).
+// A live-session.mjs copy older than it keeps the old 60000 and says so once — never a TypeError. `session`: the test seam.
+let staleNavWarned = false;
+export function gotoTimeoutMs(session = liveSession) {
+  if (typeof session.resolveNavTimeoutMs === 'function') return session.resolveNavTimeoutMs({ fallback: 60000 });
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    process.stderr.write('visual-diff: live-session.mjs predates navTimeout — goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill\'s live-session.mjs alongside to use them)\n');
+  }
+  return 60000;
+}
 
 // Runs IN the page. Returns the structured metric set + intra-page red flags.
 // mainSel = --main content-root override (live sites often have no <main>;
@@ -287,7 +302,7 @@ async function capture(browser, url, tag, opts, rec = {}) {
   // aem.page before preview propagation — the flags carry the signal, exit 0.
   // solveWindow only under --headed: headless clearance never lands, and the
   // solve loop would spend the Akamai block budget (1 hit vs up to 4).
-  const resp = await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: 60000, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
+  const resp = await gotoLive(page, url, { waitUntil: opts.waitUntil || defaultWaitUntil(url), timeoutMs: opts.timeoutMs, settleMs: 0, httpError: 'measure', solveWindow: opts.headed });
   rec.status = resp ? resp.status() : null; // eslint-disable-line no-param-reassign
   await page.waitForTimeout(2000);
   // late-modal poll window only on live targets — local prototypes' overlays
@@ -410,6 +425,7 @@ async function main() {
   try { ({ chromium } = await import('playwright')); } catch (e) {
     throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
   }
+  opts.timeoutMs = gotoTimeoutMs(); // resolved once: both sides navigate under the same figure
   mkdirSync(resolve(opts.out), { recursive: true });
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let report; let liveCache = null; const cacheLines = []; let hidden = null;

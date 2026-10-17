@@ -33,10 +33,9 @@
  *     --concurrency <n>    parallel browser contexts (default 1 — one live page at a time; raise
  *                          it only on an origin known to have no bot management)
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
- *     --timeout-ms <ms>    per-page navigation timeout (default: env STARDUST_NAV_TIMEOUT_MS as given,
- *                          else the crawl figure — 2 × crawl.navMs.p95 from
- *                          stardust/current/_crawl-log.json, clamped to 20000–180000 — else 20000;
- *                          the flag always wins)
+ *     --timeout-ms <ms>    per-page navigation timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
+ *                          2 × crawl.navMs.p95 from stardust/current/_crawl-log.json) clamped to
+ *                          20000–180000, else 20000; the flag always wins)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
  *                          configuration calls for — the same value the live-session helper uses)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
@@ -71,9 +70,9 @@
  * Exit codes: 0 done (partial evidence is evidence — failures are listed under
  * _provenance.failed[]), 1 every page failed, 2 usage error, playwright not importable or
  * live-session.mjs not found (or a copy that predates the shared consent table — re-copy it),
- * 3 bot challenge — the live origin served an edge interstitial:
- * the pass stops scheduling pages, what was measured is still written, and the run fails loud
- * (escalate with --headed; if still blocked the site needs crawl.mjs-class capture).
+ * 3 bot challenge — the live origin served an edge interstitial or a 2xx denial page: the pass
+ * stops scheduling pages, what was measured is still written, and the run fails loud (escalate
+ * with --headed; if still blocked the site needs crawl.mjs-class capture).
  *
  * Needs playwright importable from the script's location and the diff skill's
  * live-session.mjs in one of the known layouts — the plugin tree (../../diff/scripts/
@@ -97,8 +96,9 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
 export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-// timeoutMs null = not given: main() resolves the shared navigation timeout (live-session navTimeout — env, then
-// the crawl figure, then DEFAULT_TIMEOUT_MS), so a slow origin's measured p95 reaches this pass too.
+// timeoutMs null = not given: main() resolves the shared navigation timeout (live-session navTimeout — max(env, the
+// crawl figure) clamped to 20000–180000, else DEFAULT_TIMEOUT_MS), so a slow origin's measured p95 reaches this pass
+// too.
 export const DEFAULT_TIMEOUT_MS = 20000;
 export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: null, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
 const SETTLE_MS = 2500;
@@ -117,6 +117,19 @@ async function loadLiveSession() {
   const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
   if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/, ../diff/ and ./). Copy the diff skill\'s live-session.mjs alongside this script (extract/SKILL.md § Setup).');
   return import(pathToFileURL(found).href);
+}
+
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps this pass's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`[style-census] live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
 }
 
 export function parseArgs(argv) {
@@ -435,7 +448,7 @@ async function main(argv) {
   }
   const session = await loadLiveSession();
   if (typeof session.consentLabelSweepInPage !== 'function' || !session.CONSENT_LABEL_SWEEP) throw new UsageError('live-session.mjs predates the shared consent table — re-copy it alongside this script (extract/SKILL.md § Setup)');
-  if (o.timeoutMs == null) o.timeoutMs = session.resolveNavTimeoutMs({ fallback: DEFAULT_TIMEOUT_MS });
+  if (o.timeoutMs == null) o.timeoutMs = sessionNavTimeout(session).ms;
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};

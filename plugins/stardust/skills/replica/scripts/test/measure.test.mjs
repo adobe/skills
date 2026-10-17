@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/measure.test.mjs — the measure.mjs contract: argument parsing and
-// its usage errors, delta computation (exact px, prop diffs, a side with no match, an image pair's
+// its usage errors, the guarded navigation timeout (a live-session.mjs older than navTimeout keeps 20000), the refusal
+// of a copy older than withDeadline (exit 2), the timeout's precedence end to end (both orders of env vs crawl figure),
+// delta computation (exact px, prop diffs, a side with no match, an image pair's
 // rendition), the root line (scrollWidth beside scrollHeight and the viewport, ◄◄ OVERFLOW when the
 // document is wider) and its deltas, table and delta formatting (a backgroundImage url() shortened
 // to its file name, an image match's rendition), --help in an empty cwd; then end-to-end against two
@@ -20,7 +22,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, shortValue, statusLine } from '../measure.mjs';
+import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, requireDeadlines, sessionNavTimeout, shortValue, statusLine } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
@@ -76,6 +78,26 @@ await check('parseArgs: live-side flags — --consent, --dismiss (comma list, re
   assert.equal(o.consent, '#ok'); assert.deepEqual(o.dismiss, ['.close', '.later', '.x']); assert.equal(o.headed, true); assert.equal(o.locale, 'en-GB');
   const d = parseArgs(['http://a/', '--selectors', 'h1']); assert.equal(d.consent, null); assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
   assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+});
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 20000); one without navTimeout (an older project copy) — no throw, the old default 20000, _provenance source default, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ fallback: DEFAULT_TIMEOUT_MS }]]); assert.equal(DEFAULT_TIMEOUT_MS, 20000);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 20000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 20000, source: 'default', detail }, { ms: 20000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^measure: live-session\.mjs predates navTimeout — navigation timeout 20000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
+});
+await check('requireDeadlines: a live-session copy without withDeadline or isContextDestroyed is refused — a UsageError (exit 2, as for a missing copy) with the one-line reason; a current one passes through', () => {
+  const current = { withDeadline() {}, isContextDestroyed() {} };
+  assert.equal(requireDeadlines(current), current);
+  for (const stale of [{}, { withDeadline() {} }, { isContextDestroyed() {} }, { navTimeout() {}, gotoLive() {} }, null]) {
+    assert.throws(() => requireDeadlines(stale), (e) => e instanceof UsageError && e.code === 2 && e.message === 'live-session.mjs predates withDeadline — copy the diff skill\'s live-session.mjs alongside', JSON.stringify(stale && Object.keys(stale)));
+  }
 });
 await check('isLiveHttpUrl: live origins yes; localhost, loopback and file no', () => {
   assert.equal(isLiveHttpUrl('https://www.example.org/x'), true);
@@ -313,7 +335,7 @@ await check('--help and -h: exit 0, the usage header on stdout, nothing written 
     assert.equal(r.status, 0, `${flag} exit ${r.status}: ${r.stderr}`);
     assert.match(r.stdout, /Usage:/); assert.match(r.stdout, /--against <url2>/); assert.match(r.stdout, /Writes: nothing/);
     assert.match(r.stdout, /root: \{ \[url\]: \{ \[width\]: \{ viewport, clientWidth, scrollWidth,/); assert.match(r.stdout, /◄◄ OVERFLOW \+<n>px/); assert.match(r.stdout, /img\?: \{ naturalWidth,/); assert.match(r.stdout, /boxSizing, width,/);
-    assert.match(r.stdout, /--timeout-ms <ms> +per-page navigation timeout AND per-width deadline \(default:\s+STARDUST_NAV_TIMEOUT_MS/); assert.match(r.stdout, /124 every width\s+read failed/); assert.match(r.stdout, /failed: \[ \{ url, width\?, error \} \]/);
+    assert.match(r.stdout, /--timeout-ms <ms> +per-page navigation timeout AND per-width deadline \(default:\s+max\(env STARDUST_NAV_TIMEOUT_MS, 2 × crawl\.navMs\.p95 from\s+stardust\/current\/_crawl-log\.json\) clamped to 20000–180000, else\s+20000; the flag always wins\)/); assert.match(r.stdout, /124 every width\s+read failed/); assert.match(r.stdout, /failed: \[ \{ url, width\?, error \} \]/);
     assert.deepEqual(wrote, []);
   }
 });
@@ -454,7 +476,7 @@ if (playwrightOk) {
     assert.match(r.stderr, /measure: [^\n]*selector "!bad"/);
     assert.deepEqual(j.pages[urlA][1440]['!bad'], []); assert.equal(j.pages[urlA][1440]['.hero'].length, 1);
   });
-  await check('e2e: one navigation timeout — no flag: the crawl log\'s p95 × 2 (clamped), else the env; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
+  await check('e2e: one navigation timeout — no flag: max(env, the crawl log\'s p95 × 2) clamped, both orders; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
     const proj = mkdtempSync(join(tmpdir(), 'measure-nav-'));
     mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
     writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
@@ -462,7 +484,8 @@ if (playwrightOk) {
     try {
       const nav = async (args, env) => { const r = await run([urlA, '--selectors', '.hero', '--props', 'display', '--json', ...args], proj, env); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)._provenance.navTimeout; };
       assert.deepEqual(await nav([], noEnv), { ms: 30000, source: 'crawl' });
-      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' });
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' }, 'env over the crawl figure');
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '25000' }), { ms: 30000, source: 'crawl' }, 'the crawl figure over the env');
       assert.deepEqual(await nav(['--timeout-ms', '7000'], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 7000, source: 'flag' });
     } finally { rmSync(proj, { recursive: true, force: true }); }
   });
