@@ -117,7 +117,9 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
          A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: replica's
-         capture instruments carry no site auth. Prints "PASS parity", or "FAIL parity" and one indented line per
+         capture instruments carry no site auth. The step then prints only the one line "n/a: protected preview
+         (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL), and inside all the row reads "ADVISORY parity n/a:
+         protected preview". Otherwise it prints "PASS parity", or "FAIL parity" and one indented line per
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
@@ -141,7 +143,9 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
                               local server for the run) against the preview: HIDDEN + MISSING headings and
                               links 0
          A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: the
-         instruments carry no site auth. Prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
+         instruments carry no site auth. The step then prints only the one line "n/a: protected preview (<rows>)"
+         (verdict "n/a", exit 0, no PASS or FAIL), and inside all the row reads "ADVISORY sanity n/a: protected
+         preview". Otherwise it prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
          failing row ("overflow 240px > 4px @360", the instrument's findings below it), one "n/a: <reason>
          (<rows>)" line per reason; "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
          error when a check gave no verdict (an instrument exiting 124, 1 or another, a page the browser could

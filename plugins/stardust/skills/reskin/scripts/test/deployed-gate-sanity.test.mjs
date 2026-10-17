@@ -152,6 +152,9 @@ await check('--help documents sanity; its usage errors exit 2 and write nothing;
   assert.equal(r.status, 0, r.all);
   assert.match(r.stdout, /deployed-gate\.mjs sanity --page <slug> \[--reskin <file>\] \[--dir stardust\]/);
   for (const re of [/overflow/, /4px/, /decoration/, /broken images/, /page errors/, /clip-probe/, /content-presence/, /1440 and 360/, /never waivable/i, /FAIL sanity \(hard\)/, /protected preview/, /not run: skipped/]) assert.match(r.stdout, re);
+  const help = r.stdout.replace(/\s+/g, ' ');
+  assert.ok(help.includes('prints only the one line "n/a: protected preview (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL)'), 'the help says what a protected preview prints');
+  assert.ok(help.includes('inside all the row reads "ADVISORY sanity n/a: protected preview"'), 'and what all prints');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
   const root = project('sanity-usage', { preview: false });
