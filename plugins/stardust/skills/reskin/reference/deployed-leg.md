@@ -101,7 +101,7 @@ A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; th
 measured nothing: the step fails and the run goes on, `sanity` records its own hard decoration FAIL),
 `ADVISORY <gates> (deltas.blocking false)`, `n/a: <why>`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
-`invocation` is the exact argument list, a token flag's value `[redacted]`. A residual's `class` is
+`invocation` is the exact argument list, `--auth-header`'s value `[redacted]` (`--token-env`'s is a variable name, kept). A residual's `class` is
 `deployed.content`, `.tokens`, `.parity`, `.sanity` or `.inherited` (M2b's are `figma.*`); a `deployed.sanity`
 residual is never `accepted`.
 

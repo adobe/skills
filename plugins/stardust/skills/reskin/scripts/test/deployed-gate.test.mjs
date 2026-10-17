@@ -1002,8 +1002,28 @@ await check('all: the site token reaches the figma-gate child by environment and
   try {
     const viaEnv = await runAll(root, { figmaGate: stubFigma().file, extra: ['--token-env', 'STARDUST_T12_TOKEN'] });
     assert.equal(viaEnv.code, 0, viaEnv.lines.join('\n'));
-    assert.equal(summaryAt(root).invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)} --token-env [redacted]`);
+    assert.equal(summaryAt(root).invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)} --token-env STARDUST_T12_TOKEN`);
   } finally { delete process.env.STARDUST_T12_TOKEN; }
+});
+
+await check('all: the recorded invocation redacts --auth-header\'s value and keeps --token-env\'s variable name, so it can be run again; summary.json and the ledger fragment agree and hold no token', async () => {
+  const root = allRoot('all-invocation', { checks: true, record: { auth: true } });
+  const dir = dirOf(root);
+  process.env.STARDUST_T14_TOKEN = ALL_TOKEN;
+  try {
+    for (const [extra, want] of [
+      [['--token-env', 'STARDUST_T14_TOKEN'], `deployed-gate.mjs all --page home --dir ${dir} --token-env STARDUST_T14_TOKEN`],
+      [['--auth-header', `token ${ALL_TOKEN}`], `deployed-gate.mjs all --page home --dir ${dir} --auth-header [redacted]`],
+      [['--auth-header', `token ${ALL_TOKEN}`, '--token-env', 'STARDUST_T14_TOKEN'], `deployed-gate.mjs all --page home --dir ${dir} --auth-header [redacted] --token-env STARDUST_T14_TOKEN`],
+    ]) {
+      const r = await runAll(root, { figmaGate: stubFigma().file, extra });
+      assert.equal(r.code, 0, r.lines.join('\n'));
+      const s = summaryAt(root);
+      assert.equal(s.invocation, want);
+      assert.equal(s.ledgerFragment.invocation, want, 'the ledger fragment carries the same line');
+      assert.equal(JSON.stringify([s, r.lines]).includes(ALL_TOKEN), false, `${extra.join(' ')}: no token in the summary or the lines`);
+    }
+  } finally { delete process.env.STARDUST_T14_TOKEN; }
 });
 
 await check('all: setup errors are exit 2 and write nothing but the removal of the old summary: no --page, no record, a record with problems; --help documents all', async () => {
@@ -1260,7 +1280,7 @@ if (playwrightOk) {
         assert.equal(s.ledgerFragment.figma.regime, 'preview');
         assert.equal(s.ledgerFragment.figma.join, 'PASS');
         assert.equal(s.invocation.includes(CANARY), false);
-        assert.match(s.invocation, /--(auth-header|token-env) \[redacted\]/);
+        assert.ok(s.invocation.endsWith(label === '--auth-header' ? '--auth-header [redacted]' : '--token-env STARDUST_T12_PREVIEW_TOKEN'), s.invocation);
         // Scanned after each run: the next one rewrites the files, so a leak of the first would be gone by then.
         assert.deepEqual(scanFiles(), [], `${label}: a file holds the token`);
         assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], `${label}: stdout or stderr holds the token`);

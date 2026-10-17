@@ -215,8 +215,9 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          for content, assertions for tokens, rows for the rest), "FAIL stalled decoration: <what>", "ADVISORY <gates>
          (deltas.blocking false)", "n/a: <why>", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
          ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
-         and no residual accepts its failure. invocation is the exact argument list, the value of a site token flag
-         replaced by [redacted]. No step record, line or summary holds the site token.
+         and no residual accepts its failure. invocation is the exact argument list, the value of --auth-header
+         replaced by [redacted]; --token-env's value is a variable name and stays, so the line can be run again. No step
+         record, line or summary holds the site token.
          Run it under run-bg when it may exceed a shell's limit (parity, sanity and the figma-gate child each drive
          a browser):
            node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
@@ -498,7 +499,8 @@ const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'figma'
 const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json'];
 const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
 const ERROR_LINE = /^ERROR \(exit \d+\) /;
-const SECRET_FLAGS = ['--auth-header', '--token-env'];
+// --token-env's value is a variable name, not a secret (siteToken refuses a name that is not one), so it stays replayable.
+const SECRET_FLAGS = ['--auth-header'];
 const MAX_WHY = 300;
 const MAX_WHY_LINES = 10;
 
@@ -613,7 +615,7 @@ async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, 
 }
 
 const shellWord = (a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`);
-// The argument list as it was given, the value of a site token flag replaced.
+// The argument list as it was given, the value of --auth-header replaced.
 const invocationOf = (argv) => ['deployed-gate.mjs', ...argv.map((a, i) => (SECRET_FLAGS.includes(argv[i - 1]) ? '[redacted]' : shellWord(a)))].join(' ');
 
 // runners and figmaGate let a test replace a step's run function and the figma-gate script.
