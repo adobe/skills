@@ -597,8 +597,8 @@ function parse(argv) {
     if (a === '--dir') o.dir = value();
     else if (a === '--name') o.name = value();
     else if (a === '--timeout') {
-      // wait/status once ignored it silently; their bound is --max.
-      if (sub === 'wait' || sub === 'status') throw new UsageError(`run-bg: --timeout is a start flag — wait and status take --max <s> (default ${DEFAULT_MAX_SEC}, at most ${MAX_CEILING_SEC})\n${HELP}`);
+      // wait/status once ignored it silently; wait's bound is --max, status never waits.
+      if (sub === 'wait' || sub === 'status') throw new UsageError(`run-bg: --timeout is a start flag — wait takes --max <s> (default ${DEFAULT_MAX_SEC}, at most ${MAX_CEILING_SEC}); status reports at once\n${HELP}`);
       o.timeoutSec = num(a, value()); o.timeoutGiven = true;
     }
     else if (a === '--slots') o.slots = num(a, value());

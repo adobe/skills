@@ -125,7 +125,7 @@ await check('--timeout is a start flag: on wait or status it is a usage error na
   for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
     const r = bg(...args);
     assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
-    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait and status take --max <s> (default 100, at most 110)', args.join(' '));
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 100, at most 110); status reports at once', args.join(' '));
   }
 });
 await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
