@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 // skills/extract/scripts/test/style-census.test.mjs — the style-census.mjs contract. Part (a): the pure
 // aggregate (colour parsing + clustering, roles and sources, type families/sizes/levels, motifs, hover
-// deltas, the logo chain, icon font, order independence), argument parsing and the page list — no
-// browser. Part (b): end-to-end against a fixture site served from this process (two pages, known
+// deltas, the logo chain, icon font, order independence), argument parsing, the page list and the guarded
+// navigation timeout (a live-session.mjs older than navTimeout keeps 20000) — no browser. Part (b): end-to-end
+// against a fixture site served from this process (two pages, known
 // colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page for the shared
 // navigation timeout — env STARDUST_NAV_TIMEOUT_MS when --timeout-ms is not given) — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
@@ -13,7 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
+import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, sessionNavTimeout, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -129,6 +130,19 @@ await check('parseArgs: a value flag followed by nothing or by another --flag is
   }
   const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
   assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+});
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 20000); one without navTimeout (an older project copy) — no throw, the old default 20000 with source default, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ fallback: 20000 }]]);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 20000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 20000, source: 'default', detail }, { ms: 20000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^\[style-census\] live-session\.mjs predates navTimeout — navigation timeout 20000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
 });
 await check('listUrls: finalUrl over url, non-records skipped, deduped in file order, --max-pages, missing dir and bad URL are usage errors', () => {
   const dir = join(root, 'pages'); mkdirSync(dir);

@@ -117,6 +117,19 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps this pass's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`[style-census] live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
+}
+
 export function parseArgs(argv) {
   const o = { ...DEFAULTS, widths: [], dismiss: [], urls: null, pagesGiven: false };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
@@ -464,7 +477,7 @@ async function main(argv) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
   }
   const session = await loadLiveSession();
-  if (o.timeoutMs == null) o.timeoutMs = session.resolveNavTimeoutMs({ fallback: DEFAULT_TIMEOUT_MS });
+  if (o.timeoutMs == null) o.timeoutMs = sessionNavTimeout(session).ms;
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};

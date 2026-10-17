@@ -12,7 +12,8 @@
 // (lateWindowFor → 0) but one dismissOverlays pass after waitEdsDelayedPhase still clicks a consent banner that
 // appears 3 s after `load` (the EDS delayed phase), which an immediate sweep misses. Prints a skip line otherwise.
 // --inventory (gate-all --one-load): named in --help; an unreadable spec still writes the PNG, exit 0, one warning.
-// The --timeout default: an explicit flag wins, else env STARDUST_NAV_TIMEOUT_MS, else the crawl figure, else 60000.
+// The --timeout default: an explicit flag wins, else env STARDUST_NAV_TIMEOUT_MS, else the crawl figure, else 60000;
+// a live-session.mjs older than navTimeout keeps 60000 and says so once (sessionNavTimeout, a stub session).
 // The header morph: isHeaderMorph (pure) and, end to end, an in-flow header that shrinks 20 px after the first scroll
 // — at 1810 px with the browser clamping (the old guard threw a scroll stall; also under --settle), at 2710 px with its
 // scroll anchoring (the shortfall equals the shrink; the old guard stalled at the last chunk) and at 1800 px (the old
@@ -27,7 +28,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { isHeaderMorph, overflowLine, parseArgs } from '../stitch-shot.mjs';
+import { isHeaderMorph, overflowLine, parseArgs, sessionNavTimeout } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -57,6 +58,19 @@ await check('--timeout default: env STARDUST_NAV_TIMEOUT_MS, else 2 × the crawl
     assert.equal(timeout([], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 90000, 'env beats the crawl figure');
     assert.equal(timeout(['--timeout', '5000'], { env: { STARDUST_NAV_TIMEOUT_MS: '90000' }, crawlLog }), 5000, 'the flag beats both');
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 60000, the test seam passed on); one without navTimeout (an older project copy) — no throw, the old default 60000, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } }, { env: {}, crawlLog: null });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ env: {}, crawlLog: null, fallback: 60000 }]]);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 60000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 60000, source: 'default', detail }, { ms: 60000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^stitch-shot: live-session\.mjs predates navTimeout — goto timeout 60000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
 });
 await check('isHeaderMorph: a shortfall the document\'s shrink explains — equal to the shrink, or the target clamped to the shrunk height; a no-op scroll, a grown page or an unexplained shrink is not', () => {
   const vh = 900;

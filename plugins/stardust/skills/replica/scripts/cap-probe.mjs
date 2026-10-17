@@ -129,6 +129,19 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps this tool's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`cap-probe: live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
+}
+
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 const firstLine = (e) => String((e && e.message) || e).split('\n')[0];
 
@@ -631,7 +644,7 @@ async function main(argv) {
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
   const session = await loadLiveSession();
   // An explicit --timeout-ms wins; else session.resolveNavTimeoutMs's chain (env → crawl p95 × 2 → 30000), with its source.
-  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS });
+  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : sessionNavTimeout(session);
   o.timeoutMs = nav.ms;
   const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width, navTimeout: { ms: nav.ms, source: nav.source } };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });

@@ -142,7 +142,8 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, resolveNavTimeoutMs } = await import(pathToFileURL(LIVE_SESSION).href);
+const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = liveSession;
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -177,6 +178,19 @@ after the EDS delayed phase (live source sites keep the 6 s poll, local targets 
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
 
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps the old 60000 and says so once on stderr — never a TypeError. An explicit --timeout never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = 60000, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`stitch-shot: live-session.mjs predates navTimeout — goto timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
+}
+
 // `nav` reaches live-session's navTimeout ({ env, crawlLog }) — the test seam; the CLI passes none.
 export function parseArgs(argv, nav = {}) {
   const rest = argv.slice(2);
@@ -205,7 +219,7 @@ export function parseArgs(argv, nav = {}) {
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   // Resolved only without --timeout: one navigation timeout shared by every live instrument (a slow origin's
   // measured p95 sets it once, for all of them); an explicit flag is never second-guessed.
-  if (opts.timeout == null) opts.timeout = resolveNavTimeoutMs({ fallback: 60000, ...nav });
+  if (opts.timeout == null) opts.timeout = sessionNavTimeout(liveSession, nav).ms;
   return { url, out, opts };
 }
 

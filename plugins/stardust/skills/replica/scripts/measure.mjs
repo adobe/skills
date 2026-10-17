@@ -176,6 +176,19 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
+// live-session's navTimeout, guarded as crawl.mjs guards it: a project copy of live-session.mjs older than navTimeout
+// keeps this tool's old default and says so once on stderr — never a TypeError. An explicit --timeout-ms never asks.
+let staleNavWarned = false;
+export function sessionNavTimeout(session, { fallback = DEFAULT_TIMEOUT_MS, ...nav } = {}) {
+  if (session && typeof session.navTimeout === 'function') return session.navTimeout({ ...nav, fallback });
+  const detail = `live-session.mjs predates navTimeout — ${fallback} ms (copy the diff skill's live-session.mjs alongside)`;
+  if (!staleNavWarned) {
+    staleNavWarned = true;
+    console.error(`measure: live-session.mjs predates navTimeout — navigation timeout ${fallback} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+  }
+  return { ms: fallback, source: 'default', detail };
+}
+
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
@@ -392,7 +405,7 @@ async function main(argv) {
   const urls = o.against ? [o.url, o.against] : [o.url];
   const session = await loadLiveSession();
   // One navigation timeout across the instruments: the flag, else env, else the crawl's p95 × 2, else 20000.
-  const nav = o.timeoutMs === null ? session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS }) : { ms: o.timeoutMs, source: 'flag' };
+  const nav = o.timeoutMs === null ? sessionNavTimeout(session) : { ms: o.timeoutMs, source: 'flag' };
   o.timeoutMs ??= nav.ms;
   const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, partial: false, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.

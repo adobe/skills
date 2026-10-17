@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/measure.test.mjs — the measure.mjs contract: argument parsing and
-// its usage errors, delta computation (exact px, prop diffs, a side with no match, an image pair's
+// its usage errors, the guarded navigation timeout (a live-session.mjs older than navTimeout keeps 20000),
+// delta computation (exact px, prop diffs, a side with no match, an image pair's
 // rendition), the root line (scrollWidth beside scrollHeight and the viewport, ◄◄ OVERFLOW when the
 // document is wider) and its deltas, table and delta formatting (a backgroundImage url() shortened
 // to its file name, an image match's rendition), --help in an empty cwd; then end-to-end against two
@@ -20,7 +21,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, shortValue, statusLine } from '../measure.mjs';
+import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, sessionNavTimeout, shortValue, statusLine } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
@@ -76,6 +77,19 @@ await check('parseArgs: live-side flags — --consent, --dismiss (comma list, re
   assert.equal(o.consent, '#ok'); assert.deepEqual(o.dismiss, ['.close', '.later', '.x']); assert.equal(o.headed, true); assert.equal(o.locale, 'en-GB');
   const d = parseArgs(['http://a/', '--selectors', 'h1']); assert.equal(d.consent, null); assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
   assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+});
+await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 20000); one without navTimeout (an older project copy) — no throw, the old default 20000, _provenance source default, ONE stderr line per process', () => {
+  const asked = [];
+  const current = sessionNavTimeout({ navTimeout: (opts) => { asked.push(opts); return { ms: 84000, source: 'crawl', detail: 'p95 × 2' }; } });
+  assert.deepEqual([current, asked], [{ ms: 84000, source: 'crawl', detail: 'p95 × 2' }, [{ fallback: DEFAULT_TIMEOUT_MS }]]); assert.equal(DEFAULT_TIMEOUT_MS, 20000);
+  const lines = []; const { error } = console;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  let stale;
+  try { stale = [sessionNavTimeout({ gotoLive() {} }), sessionNavTimeout({})]; } finally { console.error = error; }
+  const detail = 'live-session.mjs predates navTimeout — 20000 ms (copy the diff skill\'s live-session.mjs alongside)';
+  assert.deepEqual(stale, [{ ms: 20000, source: 'default', detail }, { ms: 20000, source: 'default', detail }]);
+  assert.equal(lines.length, 1, lines.join('\n'));
+  assert.match(lines[0], /^measure: live-session\.mjs predates navTimeout — navigation timeout 20000 ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read/);
 });
 await check('isLiveHttpUrl: live origins yes; localhost, loopback and file no', () => {
   assert.equal(isLiveHttpUrl('https://www.example.org/x'), true);
