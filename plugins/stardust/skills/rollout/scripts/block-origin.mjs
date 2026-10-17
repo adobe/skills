@@ -57,13 +57,15 @@ block:<name>: the k-th block of that name takes the marker's k-th match under th
 1; without one, confidence 0 and the raw selector — the root before each of the marker's alternatives —
 only when it matches nothing on the page, else no selector: never another block's element), else by its
 text (the element covering most of it, the deepest on ties; confidence = the share covered), else by its
-position among its anchored neighbours (confidence 0). A section takes the lowest common ancestor of its
-records (confidence = the share of their text it holds, the lowest over the pages). A template's sections
-are aligned across its pages by style and block names; a section's selector is the generalisation that
-resolves to exactly one element on the most of its pages (its pages lists them). Text is compared
-normalised (NFKC, lower case, typographic quotes and dashes folded) with whitespace removed; selectors
-follow lib.mjs parseHtml's tree (no inserted tbody, no auto-closed p). Without --verify every instance
-records verified null (skipped).
+position among its anchored neighbours (confidence 0; never an element another record already has). A
+section takes the lowest common ancestor of its records (confidence = the share of their text it holds,
+the lowest over the pages); its default-content roles are the page's eds-schema roles of its text (an
+equal text, else the shorter of the two, 8+ characters, inside the other), else its delivered default
+parts. A template's sections are aligned across its pages by style and block names; a section's selector
+is the generalisation that resolves to exactly one element on the most of its pages (its pages lists
+them). Text is compared normalised (NFKC, lower case, typographic quotes and dashes folded) with
+whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no auto-closed p).
+Without --verify every instance records verified null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
@@ -570,12 +572,14 @@ function edsItems(dir, slug) {
     .map((it) => ({ role: it.role, s: squash(it.text) })).filter((it) => it.s);
 }
 
-/** A section's default-content roles: eds-schema roles of its default text (first seen), else its delivered default parts (R5). */
+/** A section's default-content roles (R5): the eds-schema roles of its default text, first seen, else its delivered default parts. */
 function defaultRoles(recs, eds) {
   const roles = [];
+  // an item matches a fragment on an equal text; else the shorter text, 8+ characters, inside the other
+  const inside = (a, b) => { const [s, l] = a.length <= b.length ? [a, b] : [b, a]; return s.length >= 8 && l.includes(s); };
   if (eds && eds.length) {
     for (const f of recs.flatMap((r) => textFragments(r.frags))) {
-      const hit = eds.find((it) => it.s === f.s) || eds.find((it) => it.s.includes(f.s) || f.s.includes(it.s));
+      const hit = eds.find((it) => it.s === f.s) || eds.find((it) => inside(it.s, f.s));
       if (hit && !roles.includes(hit.role)) roles.push(hit.role);
     }
   }
@@ -590,12 +594,15 @@ function defaultRoles(recs, eds) {
  * the first free child after the one holding the previous record (same section), else the last free one
  * before the one holding the next, else the first free one, else S. Otherwise: the previous record's next
  * element sibling, else the next record's previous element sibling — each walking up the ancestors (up to,
- * not past, body) until one exists — else null.
+ * not past, body) until one exists. An element another record already has (its anchor, or an earlier
+ * fallback's choice) is never chosen: the next option is tried, and when none is left, null.
  */
 function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
   const near = (list) => list.find((x) => sec && sectionOf.get(x) === sec && anchorOf(x)) || list.find((x) => anchorOf(x)) || null;
   const prev = near(recs.slice(0, i).reverse());
   const next = near(recs.slice(i + 1));
+  const taken = new Set(recs.filter((x, j) => j !== i).map(anchorOf).filter(Boolean));
+  const pick = (...els) => els.find((el) => el && !taken.has(el)) || null;
   const S = sec && sec.anchor && !sec.own.some((x) => x.anchor === sec.anchor) ? sec.anchor : null;
   if (S) {
     const kids = elements(S);
@@ -603,10 +610,12 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
     const claimed = new Set(sec.own.map(childOf).filter((k) => k >= 0));
     const free = (j) => !claimed.has(j);
     const [p, n] = [childOf(prev), childOf(next)];
-    let k = p >= 0 ? kids.findIndex((c, j) => j > p && free(j)) : -1;
-    if (k < 0 && n >= 0) k = kids.findLastIndex((c, j) => j < n && free(j));
-    if (k < 0) k = kids.findIndex((c, j) => free(j));
-    return k >= 0 ? kids[k] : S;
+    return pick(
+      p >= 0 ? kids.find((c, j) => j > p && free(j)) : null,
+      n >= 0 ? kids.findLast((c, j) => j < n && free(j)) : null,
+      kids.find((c, j) => free(j)),
+      S,
+    );
   }
   const sibling = (from, step) => {
     for (let a = from; a && a !== index.body; a = parentEl(index, a)) {
@@ -615,7 +624,7 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
     }
     return null;
   };
-  return sibling(prev && anchorOf(prev), 1) || sibling(next && anchorOf(next), -1);
+  return pick(sibling(prev && anchorOf(prev), 1), sibling(next && anchorOf(next), -1));
 }
 
 /**

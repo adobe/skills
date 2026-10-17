@@ -673,6 +673,37 @@ check('mapping: an image-only first block — the next anchor\'s previous elemen
   assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', null, 0, 'position')]);
 });
 
+check('mapping: a position fallback never takes an element another record already has (selector null when none is left)', () => {
+  // the heading+text anchors on section.a, the cards on section.b, its next sibling: nothing in between is free
+  const dir = project('map-taken', [{
+    slug: 'adjacent', path: '/adjacent', templateId: 'adjacent',
+    content: `<main><div><h1>Adjacent title</h1><p>Adjacent intro text.</p></div>
+<div><div class="media"><div><div><picture><img src="m.jpg" alt=""></picture></div></div></div></div>
+<div><div class="cards"><div><div><p>First adjacent card.</p><p>Second adjacent card.</p></div></div></div></div></main>`,
+    capture: '<html><body><main><section class="a"><h1>Adjacent title</h1><p>Adjacent intro text.</p></section><section class="b"><p>First adjacent card.</p><p>Second adjacent card.</p></section></main></body></html>',
+  }]);
+  ok(runMap(dir));
+  assert.deepEqual(readMapping(dir).templates[0].blocks.map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
+    ['media', [[null, 0, 'position']]],
+    ['cards', [['section.b', 1, 'text-alignment']]],
+  ]);
+});
+
+check('mapping: default-content roles — an equal text wins; containment needs the shorter text to be 8+ characters', () => {
+  const eds = { sections: [{ items: [
+    { role: 'eyebrow', text: 'Hub' },
+    { role: 'eyebrow', text: 'Gal' },
+    { role: 'body', text: 'Welcome to the hub and more' },
+    { role: 'heading', text: 'Welcome to the hub' },
+    { role: 'body', text: 'Intro paragraph for the hub. Read on.' },
+  ] }] };
+  const dir = hubProject('map-eds', { eds: { hub: eds } });
+  ok(runMap(dir));
+  // s1: equal → heading (not the longer body containing it); contained in a longer item → body; `hub` (3) never
+  // matches. s3: `gal` (3) does not match "Gallery heading": no role → the delivered default parts.
+  assert.deepEqual(readMapping(dir).templates[0].sections.map((s) => [s.id, s.defaultContent]), [['s1', ['heading', 'body']], ['s2', []], ['s3', ['heading']], ['s4', []]]);
+});
+
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
 const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
 
