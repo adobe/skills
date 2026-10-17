@@ -14,14 +14,20 @@
 //   inherited  A5: deploy's delivered-page gates on the preview: the .plain.html asserts, ai-readability, qa-gate; the
 //            pre-delivery gates are recorded as run by deploy. Blocking; ai-readability and qa-gate are n/a on a
 //            protected preview.
-// Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
+//   all      The whole leg in one run: content, tokens, parity, sanity, inherited in this process, then figma-gate
+//            all --target preview as a child process when the page has a figma-checks file. One verdict line per
+//            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
+// Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/ (and, for the figma-gate child, its own figma/).
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
-// halt · 124 no verdict (re-run once, never a fix iteration).
-import { realpathSync } from 'node:fs';
+// halt · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
+import { existsSync, realpathSync, rmSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
+// figma-gate.mjs sits beside this script in both layouts (plugin tree and project copy).
+const FIGMA_GATE = join(dirname(SELF), 'figma-gate.mjs');
 
 export const HELP = `Usage:
   node deployed-gate.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path </ns/slug>
@@ -32,8 +38,10 @@ export const HELP = `Usage:
   node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
   node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--dir stardust]
   node deployed-gate.mjs inherited --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
+  node deployed-gate.mjs all --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
 
-Checks of a deployed reskin page on its aem.page branch preview.
+Checks of a deployed reskin page on its aem.page branch preview. Run preview first, then the checks one by one or all
+at once; every step reads the record preview wrote and writes under <dir>/.work/reskin/gates/<slug>/deployed/.
 
 preview  A0. Finds the preview and refuses a page that touches shared documents.
          Runs only in an aem-boilerplate project: stardust/runtime-contract.json (deploy's runtime probe),
@@ -161,6 +169,40 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
          ({ verdict, rows: [{ check, value, bar, status, detail? }] }) and inherited/ (ai-readability.json,
          qa-gate.txt) beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the
          rows measured stay in inherited.json).
+all      The whole leg: content, tokens, parity, sanity and inherited in turn, each as above and in this process,
+         then figma-gate.mjs all --target preview as a child process (the one beside this script) when
+         <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
+         preview.json once: no record, or one with problems, is exit 2; a skipped leg is one "ADVISORY <step> not
+         run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
+         tokens.json, parity.json, sanity.json, inherited.json and summary.json, so a stale file never feeds the
+         ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json.
+         A step that throws anything else is "ERROR (exit 124) <step>: <message>" and the run goes on; a bot
+         challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge".
+         The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir, and the site
+         token as the variable DEPLOYED_GATE_SITE_TOKEN named by --token-env, never in argv. Its exit maps the
+         same way: 2 a setup error (exit 2, no summary.json), 3 and 124 an ERROR line, 1 FAIL, 0 PASS; an exit
+         0 or 1 that left no summary.json of the preview regime, or any other exit, is ERROR (exit 124).
+         Prints one verdict line per step, in the order content, tokens, parity, sanity, inherited, figma, each
+         matching run-bg's default verdict filter, with the step's findings indented below it:
+           PASS <step>            FAIL <step> <k/n, or the failing gates or steps>      ERROR (exit N) <step>: <why>
+           ADVISORY <step> …      an advisory content gate; n/a: protected preview; not run: skipped, no figma checks
+         then "summary written: <path>". Exit: the first present of 2, 3, 124, 1, 0.
+         Writes <deployed>/summary.json:
+           { _provenance, page, url, regime: "preview", steps: { <step>: { verdict, exit, detail } },
+             ledgerFragment, invocation }
+         ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
+           { regime: "preview", url, content, tokens, parity, sanity: { verdict, hard: true }, inherited, figma,
+             invocation }
+         Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "FAIL k/n" (k of the n measured
+         failing: gates for content, assertions for tokens, rows for the rest), "ADVISORY <gates> (deltas.blocking
+         false)", "n/a: <why>", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
+         ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
+         and no residual accepts its failure. invocation is the exact argument list, the value of a site token flag
+         replaced by [redacted]. No step record, line or summary holds the site token.
+         Run it under run-bg when it may exceed a shell's limit (parity, sanity and the figma-gate child each drive
+         a browser):
+           node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
+           node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
@@ -168,15 +210,23 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
                protected preview), never printed or recorded (preview.json says only auth: true). tokens hands it
                to donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
-               inherited sends it with the .plain.html request only.
---reskin <f>   the local reskin page parity holds the preview to and sanity's content-presence compares it with
-               (default <dir>/reskin/pages/<slug>.html).
+               inherited sends it with the .plain.html request only. all hands it to those three and to the
+               figma-gate child (by that variable and --token-env). Write a flag and its value as two arguments,
+               the value quoted when it has a space: an unknown --flag=value or a stray argument is never echoed.
+--reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
+               all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
 
+Evidence, all under <dir>/.work/reskin/gates/<slug>/deployed/: preview.json (preview); content.json,
+content-dom-equality.md, content-slot-coverage.md; tokens.json, tokens-spec.json, tokens-probe.md,
+tokens-probe.json; parity.json, parity/, design.json; sanity.json, sanity/; inherited.json, inherited/;
+summary.json (all). The figma-gate child writes its own files under <dir>/.work/reskin/gates/<slug>/figma/.
+The tracked input is <dir>/reskin/deltas/<slug>.json.
+
 Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or
             token halt · 124 no verdict: the preview never answered; re-run once, the same 124 twice is a
-            residual (needs-owner), never a fix iteration.`;
+            residual (needs-owner), never a fix iteration. all reports the first present of 2, 3, 124, 1, 0.`;
 
 const SPEC = {
   preview: {
@@ -209,6 +259,11 @@ const SPEC = {
     bools: [],
     positional: [],
   },
+  all: {
+    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
+    bools: [],
+    positional: [],
+  },
 };
 
 const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
@@ -229,11 +284,19 @@ export function parseArgs(argv, UsageError) {
       opts[a.slice(2)] = val;
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
-    else if (a.startsWith('--')) throw new UsageError(`unknown flag ${a} for ${cmd}`);
-    else positional.push(a);
+    else if (a.startsWith('--')) {
+      // An unknown --flag=value is named by its flag alone: the value may be a secret.
+      const name = a.includes('=') ? a.slice(0, a.indexOf('=')) : a;
+      throw new UsageError(name === a ? `unknown flag ${a} for ${cmd}` : `unknown flag ${name} for ${cmd}: a flag and its value are separate arguments (${name} <value>)`);
+    } else positional.push(a);
   }
   if (positional.length < spec.positional.length) throw new UsageError(`${cmd} needs ${spec.positional.join(' ')}`);
-  if (positional.length > spec.positional.length) throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
+  if (positional.length > spec.positional.length) {
+    // Next to a site-token flag the stray argument may be the rest of an unquoted header value: it is not printed.
+    throw new UsageError(rest.some((x) => AUTH_FLAGS.has(x.slice(2)))
+      ? 'unexpected argument: quote the value of --auth-header ("token <value>"), it has a space; the argument is not shown, it may be part of the secret'
+      : `unexpected argument "${positional[spec.positional.length]}"`);
+  }
   return { cmd, positional, opts };
 }
 
@@ -249,16 +312,17 @@ async function helper(name, sub = 'deployed') {
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
-// The site token the gate was given (--auth-header or --token-env), or null. `say` prints through redact and
-// `scrub` takes the token out of an error text, so no line the gate prints can carry it.
+// The site token the gate was given (--auth-header or --token-env), or null. `say` prints through redact, `redact` takes
+// the token out of a text and `scrub` out of an error's message, so no line the gate prints or records can carry it.
 async function siteToken(opts, log, UsageError) {
-  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return { auth: null, say: log, scrub: (e) => e };
+  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return { auth: null, redact: (m) => m, say: log, scrub: (e) => e };
   const eds = await helper('eds');
   await eds.loadLiveSession();
   const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
   if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
   return {
     auth,
+    redact: (m) => eds.redact(m, auth),
     say: (m) => log(eds.redact(m, auth)),
     scrub: (e) => { if (e?.message) e.message = eds.redact(e.message, auth); return e; },
   };
@@ -295,15 +359,28 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
   }
 }
 
-// The record of `deployed-gate preview` for --page, or null once the leg is skipped (`not run: skipped`). Every step after
-// preview starts here.
-async function pageRecord(step, { dir, opts, log, UsageError }) {
+// The slug of --page, a setup error when it is missing or not a slug (it becomes a directory name).
+function pageSlug(step, opts, UsageError) {
   if (!opts.page) throw new UsageError(`${step} needs --page <slug>`);
   if (!NAME.test(opts.page)) throw new UsageError(`--page must be a slug (letters, digits, . _ -), got "${opts.page}"`);
+  return opts.page;
+}
+
+// The record of `deployed-gate preview` for --page: the skipped one as it is (its .skipped is true), a ready one, never
+// one with problems (a setup error).
+async function readRecord(step, { dir, opts, UsageError }) {
+  const slug = pageSlug(step, opts, UsageError);
   const { readPreview } = await helper('io');
-  const preview = readPreview(dir, opts.page);
-  if (preview.skipped) { log('not run: skipped'); return null; }
-  if (preview.problems?.length) throw new UsageError(`preview has problems: run deployed-gate preview again (${preview.problems.length} recorded in preview.json)`);
+  const preview = readPreview(dir, slug);
+  if (!preview.skipped && preview.problems?.length) throw new UsageError(`preview has problems: run deployed-gate preview again (${preview.problems.length} recorded in preview.json)`);
+  return preview;
+}
+
+// The record of `deployed-gate preview` for --page, or null once the leg is skipped (`not run: skipped`). Every step after
+// preview starts here.
+async function pageRecord(step, ctx) {
+  const preview = await readRecord(step, ctx);
+  if (preview.skipped) { ctx.log('not run: skipped'); return null; }
   return preview;
 }
 
@@ -379,14 +456,186 @@ async function inheritedStep(ctx) {
   }
 }
 
-// steps lets a test replace a step function.
-export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
+// ---- all: the whole leg in one run ---------------------------------------------------------------------------------------
+
+const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'figma'];
+// What a previous run left: the step records and the summary built from them (each step deletes its own evidence).
+const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json'];
+const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
+const ERROR_LINE = /^ERROR \(exit \d+\) /;
+const SECRET_FLAGS = ['--auth-header', '--token-env'];
+const MAX_WHY = 300;
+const MAX_WHY_LINES = 10;
+
+// What one step contributes to the run: `line` (its one verdict line), `detail` (the indented lines below it), `ledger` (its
+// value in the ledger fragment), and `verdict` and `exit` (null: not run) for summary.json.
+const outcome = (verdict, exit, line, ledger, detail = []) => ({ verdict, exit, line, ledger, detail });
+const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+// run-bg's default verdict filter matches a lowercase "advisory", not ADVISORY, so the line carries both.
+const advisoryLine = (text) => `ADVISORY ${text} — advisory, exit 0`;
+
+function notRun(step, why, { challenge = false } = {}) {
+  const ledger = `not run: ${why}`;
+  return challenge ? outcome(ledger, null, `ERROR (exit 3) ${step} ${ledger}`, ledger) : outcome(ledger, null, advisoryLine(`${step} ${ledger}`), ledger);
+}
+
+// A step that threw: a bot challenge (code 3) or no verdict (anything else but a setup error).
+function thrown(step, code, message) {
+  const exit = code === 3 ? 3 : 124;
+  const lines = message.split('\n').map((l) => l.trim()).filter(Boolean);
+  const why = (lines[0] ?? 'no message').slice(0, MAX_WHY);
+  return outcome('ERROR', exit, `ERROR (exit ${exit}) ${step}: ${why}`, `ERROR (exit ${exit}): ${why}`, lines.slice(1, MAX_WHY_LINES).map((l) => `  ${l}`));
+}
+
+function contentOutcome(result) {
+  const names = (gates) => gates.map((g) => g.name).join(', ');
+  const failed = result.gates.filter((g) => g.exit === 1);
+  const soft = result.gates.filter((g) => g.advisory);
+  const detail = [
+    ...[...failed, ...soft].flatMap((g) => [`  ${g.name} — report ${g.report}`, ...g.lines.map((l) => `    ${l.trim()}`)]),
+    ...result.unusedDeltas.map((id) => `  WARNING unused delta ${id}`),
+  ];
+  if (failed.length) return outcome('FAIL', 1, `FAIL content: ${names(failed)}`, `FAIL ${failed.length}/${result.gates.length}`, detail);
+  if (soft.length) return outcome('ADVISORY', 0, advisoryLine(`content: ${names(soft)} failed, deltas.blocking is false`), `ADVISORY ${names(soft)} (deltas.blocking false)`, detail);
+  return outcome('PASS', 0, 'PASS content', 'PASS', detail);
+}
+
+function tokensOutcome(result) {
+  const detail = [...result.failures.map((f) => `  ${f}`), ...result.skipped.map((s) => `  SKIP ${s}`)];
+  if (result.verdict === 'FAIL') {
+    const fraction = `${result.failures.length}/${result.total}`;
+    return outcome('FAIL', 1, `FAIL tokens ${fraction}`, `FAIL ${fraction}`, detail);
+  }
+  return outcome('PASS', 0, `PASS tokens ${result.total}/${result.total}`, 'PASS', detail);
+}
+
+// parity, sanity and inherited: the step's own lines, less their headline (the verdict line stands for it), indented.
+function rowsOutcome(step, result, lines, heading = step) {
+  const detail = lines.filter((l) => !HEADLINE.test(l)).map((l) => (l.startsWith(' ') ? l : `  ${l}`));
+  const scored = result.rows.filter((r) => r.status === 'PASS' || r.status === 'FAIL');
+  const fraction = `${scored.filter((r) => r.status === 'FAIL').length}/${scored.length}`;
+  if (result.verdict === 'ERROR') {
+    const why = `${plural(result.rows.filter((r) => r.status === 'ERROR').length, 'check')} gave no verdict`;
+    return outcome('ERROR', 124, `ERROR (exit 124) ${step}: ${why}`, `ERROR (exit 124): ${why}`, detail);
+  }
+  if (result.verdict === 'FAIL') return outcome('FAIL', 1, `FAIL ${heading} ${fraction}`, `FAIL ${fraction}`, detail);
+  if (result.verdict === 'n/a') {
+    const why = [...new Set(result.rows.map((r) => r.value))].join('; ');
+    return outcome('n/a', 0, advisoryLine(`${step} ${why}`), why, detail);
+  }
+  return outcome('PASS', 0, `PASS ${step}`, 'PASS', detail);
+}
+
+// figma-gate all --target preview as a child process, its exit mapped as the other steps' are. Its ledgerFragment (the
+// summary.json of the preview regime it wrote) is the step's ledger value; a setup error (its exit 2) stops the run.
+async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, redact, UsageError }) {
+  const [{ childEnv, coded, firstLine, runChild, tokenFlags }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
+  const summaryPath = join(workDir(dir, slug), 'summary.json');
+  rmSync(summaryPath, { force: true });
+  const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, ...tokenFlags(auth), '--dir', dir];
+  let r;
+  try { r = await runChild(process.execPath, args, { env: childEnv(env, auth) }); } catch (e) { throw coded(124, `figma-gate did not start: ${e.message}`); }
+  const out = redact(r.stdout);
+  const err = redact(r.stderr);
+  const exit = r.status ?? r.signal;
+  // figma-gate all names the step that ended without a verdict on an "ERROR (exit N) <step> …" line of stdout.
+  const because = (out.split('\n').find((l) => ERROR_LINE.test(l))?.replace(ERROR_LINE, '') || firstLine(err) || firstLine(out)).trim();
+  if (exit === 2) throw new UsageError(err.trim() || out.trim() || 'figma-gate exited 2');
+  if (exit === 3) throw coded(3, because || 'figma-gate exited 3: bot challenge');
+  if (exit === 124) throw coded(124, because || 'figma-gate exited 124: no verdict');
+  if (exit !== 0 && exit !== 1) throw coded(124, `figma-gate exited ${exit}${because ? `: ${because}` : ''}`);
+  let summary = null;
+  try { summary = readJsonIf(summaryPath); } catch { /* unreadable: no verdict, below */ }
+  if (summary?.regime !== 'preview' || !summary.ledgerFragment) throw coded(124, `figma-gate exited ${exit} but wrote no summary.json for the preview run`);
+  const fragment = summary.ledgerFragment;
+  const detail = [...['join', 'geometry', 'ramp', 'pixel', 'register'].map((k) => `  ${k}: ${fragment[k]}`), `  report: ${join(workDir(dir, slug), 'register.md')}`];
+  if (exit === 0) return outcome('PASS', 0, 'PASS figma', fragment, detail);
+  const failing = ['join', 'geometry', 'ramp'].filter((k) => /^FAIL/.test(fragment[k])).map((k) => `${k} ${fragment[k]}`);
+  return outcome('FAIL', 1, `FAIL figma${failing.length ? `: ${failing.join(', ')}` : ''}`, fragment, detail);
+}
+
+const shellWord = (a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`);
+// The argument list as it was given, the value of a site token flag replaced.
+const invocationOf = (argv) => ['deployed-gate.mjs', ...argv.map((a, i) => (SECRET_FLAGS.includes(argv[i - 1]) ? '[redacted]' : shellWord(a)))].join(' ');
+
+// runners and figmaGate let a test replace a step's run function and the figma-gate script.
+async function allStep(ctx) {
+  const { dir, opts, env, log, UsageError, argv, runners = {}, figmaGate = FIGMA_GATE } = ctx;
+  const slug = pageSlug('all', opts, UsageError);
+  const [{ deployedDir }, { provenance, writeJson }] = await Promise.all([helper('io'), helper('io', 'figma')]);
+  const deployed = deployedDir(dir, slug);
+  for (const f of STALE_RECORDS) rmSync(join(deployed, f), { force: true });
+
+  const preview = await readRecord('all', ctx);
+  if (!preview.skipped && (typeof preview.url !== 'string' || !preview.url)) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
+  const { auth, redact, say, scrub } = await siteToken(opts, log, UsageError);
+  const reskin = opts.reskin ?? join(dir, 'reskin', 'pages', `${slug}.html`);
+
+  let run = {};
+  if (!preview.skipped) {
+    const [{ runContent }, { runTokens }, { runParity, parityLines }, { runSanity, sanityLines }, { runInherited, inheritedLines }] = await Promise.all([
+      helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'),
+    ]);
+    const base = { dir, slug, preview, env };
+    const withToken = { ...base, auth };
+    const withPage = { ...base, reskinPage: opts.reskin };
+    run = {
+      content: async () => contentOutcome(await (runners.content ?? runContent)(withToken)),
+      tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(withToken)),
+      parity: async () => { const r = await (runners.parity ?? runParity)(withPage); return rowsOutcome('parity', r, parityLines(r)); },
+      sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
+      inherited: async () => { const r = await (runners.inherited ?? runInherited)(withToken); return rowsOutcome('inherited', r, inheritedLines(r)); },
+      figma: () => figmaOutcome({ ...base, reskin, auth, figmaGate, redact, UsageError }),
+    };
+  } else say(`SKIPPED deployed leg: ${preview.reason}`);
+
+  const recorded = {};
+  const ledger = {};
+  const exits = [];
+  let challenged = false;
+  for (const step of ALL_STEPS) {
+    let result;
+    if (preview.skipped) result = notRun(step, 'skipped');
+    else if (challenged) result = notRun(step, 'bot challenge', { challenge: true });
+    else if (step === 'figma' && !existsSync(join(dir, 'reskin', 'figma-checks', `${slug}.json`))) result = notRun(step, 'no figma checks');
+    else {
+      try { result = await run[step](); } catch (e) {
+        if (e instanceof UsageError || e?.code === 2) throw scrub(e);
+        result = thrown(step, e?.code, redact(String(e?.message ?? e)));
+        challenged = result.exit === 3;
+      }
+    }
+    const detail = result.detail.map(redact);
+    recorded[step] = { verdict: result.verdict, exit: result.exit, detail };
+    ledger[step] = result.ledger;
+    if (result.exit !== null) exits.push(result.exit);
+    say(result.line);
+    for (const line of detail) say(line);
+  }
+
+  const invocation = invocationOf(argv);
+  const url = preview.url ?? null;
+  const ledgerFragment = { regime: 'preview', url, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, figma: ledger.figma, invocation };
+  const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json'].filter((f) => existsSync(join(deployed, f)));
+  const summary = {
+    _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
+    page: slug, url, regime: 'preview', steps: recorded, ledgerFragment, invocation,
+  };
+  // The text of every step went through redact already; the whole record does once more, whatever a child put in its fragment.
+  writeJson(join(deployed, 'summary.json'), JSON.parse(redact(JSON.stringify(summary))));
+  say(`summary written: ${join(deployed, 'summary.json')} (its ledgerFragment is pages.${slug}.gates.deployed in ledger.json)`);
+  // A setup error (exit 2) stopped the run above; of the rest the first present wins.
+  return [3, 124, 1].find((c) => exits.includes(c)) ?? 0;
+}
+
+// steps lets a test replace a step function; runners and figmaGate, `all`'s run functions and figma-gate script.
+export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {}, runners = {}, figmaGate = FIGMA_GATE } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, inherited: inheritedStep, ...steps };
-  return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, inherited: inheritedStep, all: allStep, ...steps };
+  return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table, argv, runners, figmaGate });
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
