@@ -11,7 +11,8 @@
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
-// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the pool defaults a browser slot keeps) and a sandbox
+// Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the pool flags — integers >= 1 — and their clamp
+// inside a machine browser slot: browserPools, per slot 1 → every origin capture before any EDS one) and a sandbox
 // runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
 // is in the row, origin.json and _run.log. --one-load (C8): inventoryWhy / oneLoadKeep tables, then the sandbox with a
 // stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
@@ -40,7 +41,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { OVERRIDE_VERDICTS, REGISTER_FILE, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -854,16 +855,41 @@ check('skipCapture: a capture ctx.unchecked names (a stitched record without an 
   assert.equal(skipCapture({}, 'origin', { ...cc, unchecked: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => true }), false);
   assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => false }), true); assert.equal(skipCapture({}, 'origin', cc), true);
 });
-check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 with or without a machine browser slot (STARDUST_BROWSER_SLOT — it bounds jobs, not browsers), explicit flags win', () => {
+check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 without a machine browser slot, explicit flags win; inside one (STARDUST_BROWSER_SLOT) the pools are clamped to STARDUST_BROWSERS_PER_SLOT (unset → 1, sequential)', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
-  const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc], [2, 4, 2]);
-  const held = parseArgs(['node', 'x'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([held.oc, held.ec, held.pc], [2, 4, 2]); assert.equal(held.browserSlot, true);
-  const own = parseArgs(['node', 'x', '--eds-concurrency', '6', '--probe-concurrency', '4', '--origin-concurrency', '1'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([own.oc, own.ec, own.pc], [1, 6, 4]);
+  const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc, plain.pools.perSlot], [2, 4, 2, null]);
+  const held = parseArgs(['node', 'x'], { STARDUST_BROWSER_SLOT: '/locks/slot-1' }); assert.deepEqual([held.oc, held.ec, held.pc], [1, 1, 1]); assert.equal(held.browserSlot, true);
+  assert.deepEqual([held.pools.sequential, held.pools.clampedFrom, held.pools.fallback], [true, { oc: 2, ec: 4, pc: 2 }, 'STARDUST_BROWSERS_PER_SLOT unset (an older run-bg) — 1 assumed']);
+  const own = parseArgs(['node', 'x', '--eds-concurrency', '6', '--probe-concurrency', '4', '--origin-concurrency', '1'], {}); assert.deepEqual([own.oc, own.ec, own.pc], [1, 6, 4]);
+  const ownHeld = parseArgs(['node', 'x', '--eds-concurrency', '6', '--probe-concurrency', '4', '--origin-concurrency', '1'], { STARDUST_BROWSER_SLOT: '/locks/slot-1', STARDUST_BROWSERS_PER_SLOT: '3' });
+  assert.deepEqual([ownHeld.oc, ownHeld.ec, ownHeld.pc], [1, 2, 3], 'the lower origin flag stays, EDS takes the rest of 3, probe ≤ 3');
   for (const bad of ['x', '-1']) {
     const cwd = mkdtempSync(join(tmpdir(), 'gate-all-maxage-'));
     const r = spawnSync(process.execPath, [SCRIPT, '--origin-max-age', bad], { cwd, encoding: 'utf8' });
     assert.equal(r.status, 1, r.stderr); assert.match(r.stderr, /--origin-max-age/); assert.deepEqual(readdirSync(cwd), []);
     rmSync(cwd, { recursive: true, force: true });
+  }
+});
+check('pool flags take integers >= 1: 0, -2, 1.5, x or no value → usage exit 1 naming the flag, nothing written', () => {
+  for (const [flag, bad] of [['--origin-concurrency', '0'], ['--eds-concurrency', '-2'], ['--probe-concurrency', '1.5'], ['--eds-concurrency', 'x'], ['--origin-concurrency', undefined]]) {
+    const cwd = mkdtempSync(join(tmpdir(), 'gate-all-pools-'));
+    const r = spawnSync(process.execPath, [SCRIPT, flag, ...(bad === undefined ? [] : [bad])], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 1, `${flag} ${bad}: ${r.stderr}`); assert.match(r.stderr, new RegExp(`^${flag} must be an integer >= 1 \\(got ${bad === undefined ? 'nothing' : bad.replace('.', '\\.')}\\)`)); assert.deepEqual(readdirSync(cwd), []);
+    rmSync(cwd, { recursive: true, force: true });
+  }
+});
+check('browserPools: no slot → the flags as given; per slot 1 → 1 / 1 / 1 sequential; 3 → 2 / 1 / 2; 2 → 1 / 1 / 2; 6 → 2 / 4 / 2 unchanged; a lower flag stays; junk → 1, named', () => {
+  const D = { oc: 2, ec: 4, pc: 2 }; const slot = (n) => ({ STARDUST_BROWSER_SLOT: '/locks/slot-1', ...(n === undefined ? {} : { STARDUST_BROWSERS_PER_SLOT: n }) });
+  assert.deepEqual(browserPools(D, {}), { ...D, perSlot: null, sequential: false, clampedFrom: null, fallback: null });
+  assert.deepEqual(browserPools(D, { STARDUST_BROWSERS_PER_SLOT: '1' }), { ...D, perSlot: null, sequential: false, clampedFrom: null, fallback: null }, 'no slot env: the per-slot value is not read');
+  assert.deepEqual(browserPools(D, slot('1')), { oc: 1, ec: 1, pc: 1, perSlot: 1, sequential: true, clampedFrom: D, fallback: null });
+  assert.deepEqual(browserPools(D, slot('3')), { oc: 2, ec: 1, pc: 2, perSlot: 3, sequential: false, clampedFrom: D, fallback: null });
+  assert.deepEqual(browserPools(D, slot('2')), { oc: 1, ec: 1, pc: 2, perSlot: 2, sequential: false, clampedFrom: D, fallback: null });
+  assert.deepEqual(browserPools(D, slot('6')), { ...D, perSlot: 6, sequential: false, clampedFrom: null, fallback: null });
+  assert.deepEqual(browserPools({ oc: 1, ec: 1, pc: 1 }, slot('3')), { oc: 1, ec: 1, pc: 1, perSlot: 3, sequential: false, clampedFrom: null, fallback: null }, 'lower flags stay');
+  assert.deepEqual(browserPools({ oc: 1, ec: 6, pc: 4 }, slot('4')), { oc: 1, ec: 3, pc: 4, perSlot: 4, sequential: false, clampedFrom: { oc: 1, ec: 6, pc: 4 }, fallback: null });
+  for (const [n, why] of [[undefined, 'STARDUST_BROWSERS_PER_SLOT unset (an older run-bg) — 1 assumed'], ['', 'STARDUST_BROWSERS_PER_SLOT unset (an older run-bg) — 1 assumed'], ['0', 'STARDUST_BROWSERS_PER_SLOT "0" is not a positive integer — 1 assumed'], ['2.5', 'STARDUST_BROWSERS_PER_SLOT "2.5" is not a positive integer — 1 assumed'], ['x', 'STARDUST_BROWSERS_PER_SLOT "x" is not a positive integer — 1 assumed']]) {
+    assert.deepEqual(browserPools(D, slot(n)), { oc: 1, ec: 1, pc: 1, perSlot: 1, sequential: true, clampedFrom: D, fallback: why }, String(n));
   }
 });
 
@@ -904,7 +930,7 @@ const read = (p) => JSON.parse(readFileSync(join(root, p), 'utf8'));
 const lines = (f) => (existsSync(f) ? readFileSync(f, 'utf8').trim().split('\n').filter(Boolean) : []);
 const gate = (args, env = {}) => {
   for (const f of [STITCH_LOG, CP_LOG]) rmSync(f, { force: true });
-  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: root, env: e, encoding: 'utf8', timeout: 60e3 });
   const st = lines(STITCH_LOG); const run = (r.stdout.match(/run → (.*)/) || [])[1];
   return { ...r, origin: st.filter((l) => l.startsWith('ORIGIN')).length, eds: st.filter((l) => l.startsWith('EDS')).length, cp: lines(CP_LOG).map((l) => JSON.parse(l)), row: (slug) => (run ? read(run) : read('stardust/replica/gates/all-1440/summary.json')).rows.find((x) => x.slug === slug) };
@@ -939,7 +965,7 @@ check('coverage-only project (no state.json): the rollout coverage is the roster
   const croot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-cov-'))); mkdirSync(join(croot, 'stardust/rollout/coverage'), { recursive: true });
   writeFileSync(join(croot, COV_PATH), JSON.stringify(COV));
   const cgate = () => {
-    rmSync(STITCH_LOG, { force: true }); const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+    rmSync(STITCH_LOG, { force: true }); const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
     const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--only', 'c'], { cwd: croot, env: e, encoding: 'utf8', timeout: 60e3 });
     return { ...r, run: JSON.parse(readFileSync(join(croot, r.stdout.match(/run → (.*)/)[1]), 'utf8')), log: readFileSync(join(croot, 'stardust/replica/gates/all-1440/_run.log'), 'utf8').trim().split('\n') };
   };
@@ -962,7 +988,7 @@ check('--eds-host in the sandbox: a bare host and its https://<host>/ form both 
   const host = 'fix-x--site--org.aem.page';
   for (const flag of [host, `https://${host}/`]) {
     for (const f of [STITCH_LOG, CP_LOG]) rmSync(f, { force: true });
-    const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+    const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
     const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--eds-host', flag], { cwd: eroot, env: e, encoding: 'utf8', timeout: 60e3 });
     assert.equal(r.status, 0, r.stderr + r.stdout);
     assert.deepEqual(lines(STITCH_LOG).filter((l) => l.startsWith('EDS ')).map((l) => l.split(' ')[1]), [`https://${host}/about`], flag);
@@ -972,10 +998,22 @@ check('--eds-host in the sandbox: a bare host and its https://<host>/ form both 
   }
   rmSync(eroot, { recursive: true, force: true });
 });
-check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot leaves the pools at 2 / 4 / 2', () => {
+check('pools inside a machine browser slot: per slot 1 → _run.log names 1 / 1 / 1 clamped from 2/4/2, sequential, and every ORIGIN capture precedes every EDS one; per slot 3 → 2 / 1 / 2, not sequential', () => {
+  const slot = { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') };
+  const one = gate(['--out', 'stardust/replica/gates/pools1-1440'], { ...slot, STARDUST_BROWSERS_PER_SLOT: '1' });
+  assert.equal(one.status, 0, one.stderr + one.stdout); assert.equal(one.origin, 2); assert.equal(one.eds, 2);
+  assert.deepEqual(lines(STITCH_LOG).map((l) => l.split(' ')[0]), ['ORIGIN', 'ORIGIN', 'EDS', 'EDS'], 'the origin pool, then the EDS pool');
+  const log1 = readFileSync(join(root, 'stardust/replica/gates/pools1-1440/_run.log'), 'utf8');
+  assert.match(log1, /; pools origin 1 \/ eds 1 \/ probe 1 \(machine browser slot held; 1 browser\(s\) per slot — clamped from 2\/4\/2; capture pools sequential\)$/m);
+  const three = gate(['--out', 'stardust/replica/gates/pools3-1440'], { ...slot, STARDUST_BROWSERS_PER_SLOT: '3' });
+  assert.equal(three.status, 0, three.stderr + three.stdout); assert.equal(three.origin + three.eds, 4);
+  assert.match(readFileSync(join(root, 'stardust/replica/gates/pools3-1440/_run.log'), 'utf8'), /; pools origin 2 \/ eds 1 \/ probe 2 \(machine browser slot held; 3 browser\(s\) per slot — clamped from 2\/4\/2\)$/m);
+  for (const d of ['pools1-1440', 'pools3-1440']) rmSync(join(root, 'stardust/replica/gates', d), { recursive: true, force: true });
+});
+check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot without a per-slot value (an older run-bg) → pools 1 / 1 / 1, named', () => {
   const r = gate(['--only', 'home'], { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') });
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1);
-  assert.match(runLog(), /; pools origin 2 \/ eds 4 \/ probe 2 \(machine browser slot held\)/);
+  assert.match(runLog(), /; pools origin 1 \/ eds 1 \/ probe 1 \(machine browser slot held; 1 browser\(s\) per slot \(STARDUST_BROWSERS_PER_SLOT unset \(an older run-bg\) — 1 assumed\) — clamped from 2\/4\/2; capture pools sequential\)$/m);
   assert.deepEqual(r.row('home').originReused, { from: 'stardust/replica/gates/all-1440/home/origin.png', at: homeAt, policy: 'same-run', stale: null });
   const m = read('stardust/replica/gates/all-1440/home/origin.json');
   assert.equal(m.at, homeAt, 'the capture time is kept'); assert.ok(m.reusedAt >= homeAt); assert.equal(m.reused, true); assert.equal(m.policy, 'same-run');
@@ -1281,7 +1319,7 @@ appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new
 const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
 const hgate = (args) => {
   rmSync(HLOG, { force: true });
-  const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+  const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
   const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
   const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
   return { ...r, all, by: (name, slug) => all.filter((l) => l.startsWith(`${name} `) && l.includes(`-1440/${slug}/`)), row: (slug) => JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')).rows.find((x) => x.slug === slug) };
@@ -1415,7 +1453,7 @@ appendFileSync(join(troot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new
 const tpages = (slugs) => writeFileSync(join(troot, 'stardust/state.json'), JSON.stringify({ pages: slugs.map((slug) => ({ slug, url: `https://www.example.com/${slug}`, liveUrl: `https://main--site--org.aem.live/${slug}`, status: 'deployed', template: 'page' })) }));
 const tgate = (args, env = {}) => {
   rmSync(TLOG, { force: true });
-  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(TRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: troot, env: e, encoding: 'utf8', timeout: 60e3 });
   const run = (r.stdout.match(/run → (.*)/) || [])[1]; const s = JSON.parse(readFileSync(run ? join(troot, run) : join(TOUT, 'summary.json'), 'utf8'));
   return { ...r, s, row: (slug) => s.rows.find((x) => x.slug === slug), md: run ? r.stdout : readFileSync(join(TOUT, 'summary.md'), 'utf8'), stitches: (side) => lines(TLOG).filter((l) => l.startsWith(`${side} `)) };

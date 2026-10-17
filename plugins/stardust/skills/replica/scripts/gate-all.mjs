@@ -133,17 +133,25 @@
  * line, exit 2, before any I/O.
  * Two browser budgets, kept apart: the origin pool (2) is the source's bot budget; the EDS / probe pools (4 / 2) carry
  * no bot risk, but each of their slots is a Chromium — raising them raises this job's Chromium peak (measured: 6 / 4
- * took an 8-page job from 6 to 8 at once). A machine-wide browser slot (run-bg) bounds jobs, not browsers, so the
- * defaults hold with or without one; the flags raise them.
+ * took an 8-page job from 6 to 8 at once). The three flags take integers ≥ 1 (else exit 1). Without a machine-wide
+ * browser slot they hold as given. Inside one (run-bg sets STARDUST_BROWSER_SLOT) the slot bounds browsers, not just
+ * jobs: run-bg exports STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
+ * STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger machine raises
+ * STARDUST_BROWSER_BUDGET. With N per slot (`browserPools`): N = 1 → origin 1 / EDS 1 / probe 1 and the two capture
+ * pools run one after the other (every origin capture, then every EDS capture); N ≥ 2 → when origin + EDS exceed N,
+ * origin min(oc, ceil(N/2)) and EDS min(ec, N − origin), and probe min(pc, N) (N 3, the defaults: 2 / 1 / 2) — a
+ * lower flag stays. A per-slot value that is not a positive integer (an older run-bg) reads as 1, logged. The compare
+ * pool (no browser) is unchanged. The status line keeps `pools origin X / eds Y / probe Z` and names the clamp, e.g.
+ * `(machine browser slot held; 1 browser(s) per slot — clamped from 2/4/2; capture pools sequential)`.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or --eds-host, 1 error
- * or an empty selection.
+ * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or --eds-host, 1 error,
+ * a usage error (an unknown flag or a bad value: --stage, --origin-max-age, the pool flags) or an empty selection.
  * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
- * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) are exported.
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`) and `browserPools` are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -181,7 +189,13 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
   --origin-concurrency <n>  2 — the source's bot budget
   --eds-concurrency <n>     4      --probe-concurrency <n>  2 — no bot risk, but each is a Chromium:
-                            raising them raises this job's Chromium peak (a browser slot bounds jobs)
+                            raising them raises this job's Chromium peak; integers >= 1 (else exit 1)
+                            Inside a machine browser slot (env STARDUST_BROWSER_SLOT, set by run-bg) the pools are
+                            clamped to STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
+                            STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across all jobs; a larger
+                            machine raises STARDUST_BROWSER_BUDGET. N per slot: 1 → 1 / 1 / 1, the origin pool then
+                            the EDS pool (sequential); N >= 2 → origin + EDS <= N (origin min(oc, ceil(N/2)), EDS
+                            the rest), probe <= N (N 3: 2 / 1 / 2); a lower flag stays; not a positive integer → 1
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
@@ -214,7 +228,7 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
   "no verdict" naming --timeout <estimate>; exit 2.
 Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or
-  --eds-host, 1 error or an empty selection.`;
+  --eds-host, 1 error, a usage error (an unknown flag or a bad value) or an empty selection.`;
 const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
 
 /**
@@ -227,6 +241,36 @@ export function edsOrigin(value) {
   let u; try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return { error }; }
   if (!/^https?:$/.test(u.protocol) || u.pathname !== '/' || /[?#]/.test(raw) || u.username || u.password) return { error };
   return { origin: `${u.protocol}//${u.host}` };
+}
+
+/**
+ * browserPools({ oc, ec, pc }, env) → { oc, ec, pc, perSlot, sequential, clampedFrom, fallback }: the capture / probe
+ * pools this job may run. No machine browser slot (env STARDUST_BROWSER_SLOT empty) → the flags as given, perSlot null.
+ * Inside one, N = STARDUST_BROWSERS_PER_SLOT (run-bg: max(1, floor(budget / slots))); not a positive integer (an older
+ * run-bg) → 1 and `fallback` says why. N = 1 → 1 / 1 / 1 and `sequential` (the origin pool, then the EDS pool); N ≥ 2 →
+ * when oc + ec > N: oc' = min(oc, ceil(N/2)), ec' = min(ec, N − oc'); pc' = min(pc, N) — a lower flag stays. `clampedFrom`
+ * = the flags ({ oc, ec, pc }) when any pool changed, else null. Pure.
+ */
+export function browserPools({ oc, ec, pc }, env = process.env) {
+  const flags = { oc, ec, pc };
+  if (!env || !env.STARDUST_BROWSER_SLOT) return { ...flags, perSlot: null, sequential: false, clampedFrom: null, fallback: null };
+  const raw = env.STARDUST_BROWSERS_PER_SLOT; const n = Number(raw);
+  const given = raw != null && String(raw).trim() !== '';
+  const valid = given && Number.isInteger(n) && n >= 1;
+  const perSlot = valid ? n : 1;
+  const fallback = valid ? null : given ? `STARDUST_BROWSERS_PER_SLOT "${raw}" is not a positive integer — 1 assumed` : 'STARDUST_BROWSERS_PER_SLOT unset (an older run-bg) — 1 assumed';
+  let o = oc; let e = ec;
+  if (perSlot === 1) { o = 1; e = 1; } else if (oc + ec > perSlot) { o = Math.min(oc, Math.ceil(perSlot / 2)); e = Math.min(ec, perSlot - o); }
+  const p = Math.min(pc, perSlot);
+  return { oc: o, ec: e, pc: p, perSlot, sequential: perSlot === 1, clampedFrom: o !== oc || e !== ec || p !== pc ? flags : null, fallback };
+}
+/** The status line's clause for the pools: what the machine browser slot did to them ('' without a slot). */
+const poolsNote = (b) => (b.perSlot == null ? '' : ` (machine browser slot held; ${b.perSlot} browser(s) per slot${b.fallback ? ` (${b.fallback})` : ''}${b.clampedFrom ? ` — clamped from ${b.clampedFrom.oc}/${b.clampedFrom.ec}/${b.clampedFrom.pc}` : ''}${b.sequential ? '; capture pools sequential' : ''})`);
+// A pool flag's value: an integer ≥ 1, else the usage error (exit 1).
+function poolFlag(flag, raw) {
+  const n = Number(raw);
+  if (raw == null || String(raw).trim() === '' || !Number.isInteger(n) || n < 1) { console.error(`${flag} must be an integer >= 1 (got ${raw ?? 'nothing'})\n\n${HELP}`); process.exit(1); }
+  return n;
 }
 
 export function parseArgs(argv, env = process.env) {
@@ -242,14 +286,15 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') { const e = edsOrigin(v()); if (e.error) { console.error(`gate-all: ${e.error}\n${USAGE}`); process.exit(2); } o.edsHost = e.origin; } else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
     else if (a === '--origin-max-age') { o.originMaxAge = Number(v()); if (!(o.originMaxAge >= 0)) { console.error(`--origin-max-age must be a number of hours >= 0\n\n${HELP}`); process.exit(1); } }
-    else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
+    else if (a === '--origin-concurrency') o.oc = poolFlag(a, v()); else if (a === '--eds-concurrency') o.ec = poolFlag(a, v()); else if (a === '--probe-concurrency') o.pc = poolFlag(a, v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());
     else if (a === '--no-clip') o.clip = false; else if (a === '--no-content') o.content = false; else if (a === '--no-probes') { o.clip = false; o.content = false; }
     else if (a === '--one-load') o.oneLoad = true;
     else if (a === '--units') o.units = v(); else if (a === '--compare-only') o.compareOnly = true; else if (a === '--warmup') o.warmup = v(); else if (a === '--vh') o.vh = Number(v());
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
-  o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged; pools unchanged)
+  o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged)
+  o.pools = browserPools({ oc: o.oc, ec: o.ec, pc: o.pc }, env); o.oc = o.pools.oc; o.ec = o.pools.ec; o.pc = o.pools.pc;
   const deadline = Number(env.RUN_BG_DEADLINE_SEC); o.deadlineSec = deadline > 0 ? deadline : null; // run-bg exports the job's --timeout (s); absent / ≤ 0 = none
   if (o.stage === 'prototype' && o.content) o.content = false; // content-diff already reconciles the prototype's text
   if (!o.out) o.out = `stardust/replica/gates/${o.stage === 'prototype' ? 'prototypes' : 'all'}-${o.width}`;
@@ -914,7 +959,7 @@ async function main() {
   const fresh = (m) => (FRESH ? FRESH.freshness(m, { runStart, maxAgeH, ledger }) : { fresh: false, policy: null, reason: 'no freshness policy (diff scripts dir not found)' });
   const reuseOf = (from, m, policy) => ({ ...(FRESH ? FRESH.reuseRecord(from, m, { policy }) : { reused: true, from, at: m.at, policy }), reusedAt: new Date().toISOString() });
   const tryJson = (f) => { try { return readJson(f); } catch { return null; } };
-  log(`origin reuse: ${!FRESH ? 'off (live-session.mjs not found in the diff scripts dir)' : runStart ? `same run since ${runStart}` : `no run anchor in ${ledger} (reuse only with --origin-max-age)`}${FRESH && maxAgeH ? `; captures up to ${maxAgeH}h old` : ''}; pools origin ${opts.oc} / eds ${opts.ec} / probe ${opts.pc}${opts.browserSlot ? ' (machine browser slot held)' : ''}`);
+  log(`origin reuse: ${!FRESH ? 'off (live-session.mjs not found in the diff scripts dir)' : runStart ? `same run since ${runStart}` : `no run anchor in ${ledger} (reuse only with --origin-max-age)`}${FRESH && maxAgeH ? `; captures up to ${maxAgeH}h old` : ''}; pools origin ${opts.oc} / eds ${opts.ec} / probe ${opts.pc}${poolsNote(opts.pools)}`);
   // presence.json `hide` → the page's one list (live-session presenceHide: "*" then the slug's) for both stitches and the probes
   const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
   const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
@@ -1218,7 +1263,9 @@ async function main() {
   }
   const todo = pages.filter((p) => !REUSED[p.slug]);
   if (!opts.compareOnly) {
-    await Promise.all([pool(todo, opts.oc, captureOrigin), pool(todo, opts.ec, captureEds)]);
+    // one browser per machine slot: the two capture pools run one after the other, never side by side
+    if (opts.pools.sequential) { await pool(todo, opts.oc, captureOrigin); await pool(todo, opts.ec, captureEds); }
+    else await Promise.all([pool(todo, opts.oc, captureOrigin), pool(todo, opts.ec, captureEds)]);
     // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
     for (const p of todo) {
       const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
