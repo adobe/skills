@@ -26,7 +26,7 @@ let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const freshDir = (name) => { const d = join(root, name); mkdirSync(d, { recursive: true }); return d; };
 const run = (args, cwd) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd }); return { code: r.status, out: r.stdout, err: r.stderr }; };
-const ADVICE = (t, d, n) => `more than half of ${t}'s siblings differ (${d} of ${n}): re-type the template — sub-archetypes by locale family or composition, a recorded deviation; never a mechanical clone`;
+const ADVICE = (t, d, n) => `more than half of ${t}'s siblings differ (${d} of ${n}): re-type the template — sub-archetypes by locale family or composition (state.mjs set --representative, then probe the new template), the re-typing recorded as a deviation; never a mechanical clone`;
 
 // ---- (a) no browser ------------------------------------------------------------------------------------
 
@@ -138,6 +138,12 @@ await check('mergeSidecar: the same archetype URL merges by slug (other slugs ke
   const other = sidecarOf({ template: 'tours-bali', archetype: 'https://example.test/tours/java/', at: '2026-03-03T00:00:00Z', rows: rowsOf([['zion', []]]) });
   assert.equal(mergeSidecar(prev, other), other);
   assert.equal(mergeSidecar(null, next), next); assert.equal(mergeSidecar({ archetype: ARCH }, next), next, 'a file without siblings[] is replaced');
+});
+
+await check('mergeSidecar: an earlier row whose URL a new row probes again (a slug change) is dropped; the URL compares by roster key', () => {
+  const prev = sidecarOf({ template: 'tours-bali', archetype: ARCH, at: '2026-01-01T00:00:00Z', rows: [{ slug: 'old-utah', url: 'https://www.example.test/tours/utah/', findings: differs }, ...rowsOf([['crete', []]])] });
+  const next = sidecarOf({ template: 'tours-bali', archetype: ARCH, at: '2026-02-02T00:00:00Z', rows: [{ slug: 'utah', url: 'https://example.test/tours/utah', findings: [] }] });
+  assert.deepEqual(mergeSidecar(prev, next).siblings.map((r) => `${r.slug}:${r.verdict}`), ['crete:same', 'utah:same']);
 });
 
 await check('retypeAdvice: more than half of the siblings differ → the re-type advice verbatim; exactly half or none → null', () => {

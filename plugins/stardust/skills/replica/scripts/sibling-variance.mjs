@@ -26,11 +26,14 @@
  *     missing: [<probe>…], extra: [<probe>…], deltas: [{ kind, probe?, msg }] }] }
  * siblings sorted by slug. MISSING findings name `missing`, EXTRA `extra`;
  * every other finding (SECTIONS, SECTION HEIGHTS, COUNT, CLUSTERS, PROBE) is a
- * delta. An existing file for the same archetype URL is merged by sibling slug
- * (rows of other slugs kept, `at` = now); a different archetype URL replaces
- * it. When more than half of the file's siblings differ, the run says so: the
- * template is re-typed (sub-archetypes by locale family or composition, a
- * recorded deviation) — never cloned mechanically.
+ * delta. An existing file for the same archetype URL is merged: an earlier row
+ * is dropped when this run probed its slug or its URL (roster key — a row left
+ * behind by a slug change), the others are kept, `at` = now; a different
+ * archetype URL replaces it. When more than half of the file's siblings
+ * differ, the run says so: the template is re-typed (sub-archetypes by locale
+ * family or composition via state.mjs set --representative, then the new
+ * template probed) — the re-typing recorded as a deviation, never cloned
+ * mechanically.
  *
  * Usage:
  *   node skills/replica/scripts/sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [options]
@@ -116,8 +119,9 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
 Writes: <variance-dir>/<template>.json (atomic) once every page was probed (exit 0 or 2, never
   1 or 3): { template, archetype, at, siblings: [{ slug, url, verdict same|differs, missing[],
   extra[], deltas[{ kind, probe?, msg }] }] }, siblings sorted by slug. MISSING → missing, EXTRA →
-  extra, every other finding → deltas. Same archetype URL as the existing file → merged by sibling
-  slug (other slugs kept, at = now); a different archetype URL → replaced.
+  extra, every other finding → deltas. Same archetype URL as the existing file → merged (an earlier
+  row whose slug or URL this run probed is dropped, others kept, at = now); a different archetype
+  URL → replaced.
 Prints after the report: variance → <file> (<s> same, <d> differ) — and, when more than half of the
   file's siblings differ, the advice to re-type the template (never a mechanical clone).
 
@@ -337,18 +341,21 @@ export function sidecarOf({ template, archetype, at, rows }) {
 
 const sameUrl = (a, b) => { const ka = urlKey(a); return ka !== null ? ka === urlKey(b) : a === b; };
 
-// Same archetype URL → the previous rows of other slugs are kept; anything else → next replaces prev.
+// Same archetype URL → the previous rows are kept unless the new run has their slug or their URL (urlKey — a row left behind by
+// a slug change); anything else → next replaces prev.
 export function mergeSidecar(prev, next) {
   if (!prev || typeof prev !== 'object' || !Array.isArray(prev.siblings) || !sameUrl(prev.archetype, next.archetype)) return next;
   const fresh = new Set(next.siblings.map((s) => s.slug));
-  return { ...next, siblings: sortRows([...prev.siblings.filter((s) => s && typeof s === 'object' && !fresh.has(s.slug)), ...next.siblings]) };
+  const freshUrls = new Set(next.siblings.map((s) => urlKey(s.url)).filter((k) => k !== null));
+  const kept = prev.siblings.filter((s) => s && typeof s === 'object' && !fresh.has(s.slug) && !freshUrls.has(urlKey(s.url)));
+  return { ...next, siblings: sortRows([...kept, ...next.siblings]) };
 }
 
 export function retypeAdvice(rows, template) {
   const total = rows.length;
   const differ = rows.filter((r) => r.verdict !== 'same').length;
   return differ > total / 2
-    ? `more than half of ${template}'s siblings differ (${differ} of ${total}): re-type the template — sub-archetypes by locale family or composition, a recorded deviation; never a mechanical clone`
+    ? `more than half of ${template}'s siblings differ (${differ} of ${total}): re-type the template — sub-archetypes by locale family or composition (state.mjs set --representative, then probe the new template), the re-typing recorded as a deviation; never a mechanical clone`
     : null;
 }
 
