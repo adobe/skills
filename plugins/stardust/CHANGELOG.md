@@ -4,6 +4,43 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.4 — extract and migrate hand over what the agent otherwise rebuilds (#137)
+
+Recorded hands-off runs wrote throwaway helpers wherever nothing shipped did the job: `state.json` built by hand and
+representatives set with `node -e`, two media harvesters, a canon-chrome → nav/footer document converter, a
+hand-written A′ sibling clone with a hard-coded media host, and five ad-hoc browser scripts (screenshot, side-by-side,
+eval/probe, interact, menu check) that skipped consent dismissal. Another run assigned page types by URL pattern; the
+variance probe exited 2 on all five templates and the siblings were cloned anyway. A run entered at a `/de/` URL while
+its site plan captured nine English pages, and nothing flagged it before Phase 2.
+
+- **`state.mjs init` builds `state.json` from a URL file** (`--pages <file|->`, `--types`, `--site-url`,
+  `--page-cap`): every page record must pass provenance validation; a file holding pages is refused (`--force` only
+  while all are still extracted), one holding only flow keys is filled, its keys kept. `state.mjs set <slug…>
+  --representative <archetype> | --type <type>` replaces `node -e` edits; `summary` lists representatives.
+- **`extract/scripts/media-harvest.mjs`** downloads every media file the captured pages reference once, into
+  `stardust/current/assets/media/<base>-<hash8>.<ext>`, and writes `media-map.json` (source URL → local file);
+  idempotent, each failure recorded in the map (`http-<code>`, `too-large`, `error`), never fatal.
+- **`deploy/scripts/chrome-docs.mjs`** builds `content/nav.html` and `content/footer.html` from
+  `stardust/canon/{header,footer}.html`, each ending in `Robots | noindex`; `--prefix <locale>` per locale, `--check`
+  compares a fresh build with the files on disk (exit 2 on a difference).
+- **`migrate.mjs render` forks the archetype for a directed sibling without its own proposed file** (`--from-archetype`
+  forces it): each `data-slot` takes `pages/<slug>.json#slots`, the head comes from the capture, media resolve via the
+  media map, then the media ledger, else stay with a `media-unmapped` decision. Refused only when the archetype has no
+  proposed HTML, or `strict slots` (no slot marks, a missing value).
+- **The variance probe gates cloning:** `sibling-variance.mjs` writes `stardust/rollout/variance/<template>.json`;
+  `render` refuses an A′ sibling whose verdict is `differs` unless `--accept-variance "<reason>"` (sidecar `variance`,
+  coverage `source.variance` via `inventory.mjs`); more than half of a template's siblings differing is refused even
+  then — re-type the template. A sibling with no variance row renders, recorded `skipped`.
+- **`diff/scripts/page-probe.mjs` is the one ad-hoc browser probe:** live-session navigation, consent and overlays
+  dismissed, `--hide`, `--nav-timeout`, console errors printed; `--shot`, `--eval`, `--click`, `--sbs`. For looking,
+  never gate evidence.
+- **Entry-locale scope:** when fewer than half of the captured pages lie under the entry URL's locale prefix,
+  `crawl.mjs` adds `captureGaps.scope` and a `detail` note — an owner decision before Phase 2.
+
+The extract, migrate, deploy, replica and rollout docs, handoff contract rows 1–2, `state-machine.md` and
+`scripts-index.md` name the new tools; touches #126. No gate changed: no verdict, threshold or criterion moved; the
+variance refusal and the scope note only add caution, and a sibling rendered without a probe row is recorded skipped.
+
 ## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
