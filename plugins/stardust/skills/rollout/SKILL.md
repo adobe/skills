@@ -243,14 +243,14 @@ against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
 icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
 the foundation is three recorded units run one after another — `foundation-chrome`
-(header + footer blocks, the chrome documents, per-locale nav/footer),
-`foundation-styles` (styles, fonts, favicon, scripts, `stardust/runtime-contract.json`),
+(header + footer blocks, the chrome documents), `foundation-styles` (styles, fonts,
+favicon, scripts, `stardust/runtime-contract.json`),
 then `archetype-<template>` of the shell template — each its own `progress.json`
 entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
-ask; this gate's chrome checks close `foundation-styles`, where the chrome first renders with
-the site's styles and fonts (`foundation-chrome` closes on its lint and `.plain.html` checks),
-its pixel row the archetype, and `foundation-freeze.mjs freeze` runs once, after the three
-(handoff contract § 3, row C). **Archetype first, per template (#126):** the
+ask; the foundation sub-units close on their own lint and `.plain.html` checks, this
+gate runs once, on that archetype page (a failing check reopens the sub-unit owning its files:
+`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze` runs once it
+passes (handoff contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
@@ -448,11 +448,11 @@ link **targets** a roster-driven batch misses
   source-host href whose path exists in the content tree (header/footer/home
   included) to the canonical root-relative form and lists the ones it kept
   absolute (no local page — a bounce beats a 404). Inside a C-deliver unit
-  pass `--unit <unit>` to the plain pass and to `--check` (only the unit's
-  documents are written; the map still spans the whole tree). **The whole-tree
-  pass runs where no unit runs** (C-final and this phase): earlier units' pages gain
-  newly valid targets only when a later unit ships them. `--check` is the
-  gate (exit 2 = localizable links remain).
+  with pages pass `--unit <unit>` to the plain pass and to `--check` (only the
+  unit's documents are written; the map still spans the whole tree). **The
+  whole-tree pass runs elsewhere** (C0's foundation sub-units, C-final, this
+  phase): earlier units' pages gain newly valid targets only when a later unit
+  ships them. `--check` is the gate (exit 2 = localizable links remain).
 - **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
   no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
   slash 404 while `.plain.html` passes. Repoint `.html` links with no local
