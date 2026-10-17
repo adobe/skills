@@ -291,31 +291,36 @@ check('--help exits 0 in an empty cwd and writes nothing', () => {
 const crow = (slug, status, { url = `https://main--site--org.aem.page/${slug}`, error = null, source = `https://www.example.com/${slug}`, ...rest } = {}) => ({ slug, path: `/${slug}`, title: slug, templateId: 'page', source: source ? { sourceUrl: source } : {}, blocks: [], delivery: { status, deployedUrl: url, deployedAt: null, verifiedAt: null, error }, ...rest });
 const COV = { pages: [crow('a', 'deployed'), crow('b', 'verified'), crow('c', 'failed', { error: 'gate: pixel 12%' }), crow('d', 'pending', { url: null }), crow('e', 'failed', { error: 'deploy: 502' }), crow('f', 'deployed', { url: null })] };
 const COV_PATH = 'stardust/rollout/coverage/pages.json';
-const HINT = `pass --coverage ${COV_PATH} or --state stardust/state.json from the project root, or deploy first`;
+const STATE_HINT = `pass --coverage ${COV_PATH} or --state stardust/state.json from the project root, or deploy first`;
+// Roster from coverage: --state cannot change the published roster, so the hint does not name it.
+const COV_HINT = 'coverage wins for the published stage — record deployed pages with update-coverage.mjs <slug> --status deployed --url <deployedUrl>, or pass --coverage <file> from the project root';
 const PROTO_HINT = 'pass --state stardust/state.json (or the gate state file) from the project root, or deploy first';
-check('emptySelection: published — both sources (absolute) with their counts, a missing one not found, the roster\'s source; prototype — the state file; the source-url and --only exclusions, the hint last', () => {
+check('emptySelection: published — both sources (absolute) with their counts, a missing one not found, the roster\'s source; prototype — the state file; the source-url and --only exclusions, the source\'s hint last', () => {
   const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending', prototypePath: 'p/a.html' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' },
     { slug: 'c', status: 'deployed', liveUrl: 'https://e.test/c', prototypePath: 'p/c.html' }] };
   const at = '/p/stardust/state.json'; const cp = `/p/${COV_PATH}`; const pub = { stage: 'published', statePath: at, coveragePath: cp }; const noCov = `coverage ${cp} not found`;
-  assert.equal(emptySelection({ pages: st.pages.slice(0, 2) }, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${HINT}`);
-  assert.equal(emptySelection(st, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${HINT}`);
+  assert.equal(emptySelection({ pages: st.pages.slice(0, 2) }, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${STATE_HINT}`);
+  assert.equal(emptySelection(st, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${STATE_HINT}`);
   assert.equal(emptySelection(st, { stage: 'prototype', only: ['x', 'y'], statePath: at, coverage: COV, coveragePath: cp }), `gate-all: no pages selected — ${at} has 3 page(s), 2 with a prototypePath (1 without a source url) (prototype stage); --only x,y matched none of the 1 page(s) the stage selects; ${PROTO_HINT}`);
-  assert.equal(emptySelection(st, { ...pub, only: ['c'] }), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${HINT}`, '--only is named only when the stage selected pages');
-  assert.equal(emptySelection({}, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 0 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${HINT}`);
+  assert.equal(emptySelection(st, { ...pub, only: ['c'] }), `gate-all: no pages selected — ${noCov}; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from state); ${STATE_HINT}`, '--only is named only when the stage selected pages');
+  assert.equal(emptySelection({}, pub), `gate-all: no pages selected — ${noCov}; state ${at} has 0 page(s), 0 deployed with a liveUrl (published stage, roster from state); ${STATE_HINT}`);
   const pending = { pages: [crow('a', 'pending', { url: null }), crow('b', 'failed', { error: 'deploy: 502' })] };
-  assert.equal(emptySelection(st, { ...pub, coverage: pending }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from coverage); ${HINT}`);
+  assert.equal(emptySelection(st, { ...pub, coverage: pending }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} has 3 page(s), 1 deployed with a liveUrl (1 without a source url) (published stage, roster from coverage); ${COV_HINT}`);
   const noSrc = { pages: [...COV.pages, crow('g', 'deployed', { source: null })] };
-  assert.equal(emptySelection(null, { ...pub, coverage: noSrc, only: ['z'] }), `gate-all: no pages selected — coverage ${cp} has 7 row(s), 4 deployed / verified / gate-failed with a deployedUrl (1 without a source url); state ${at} not found (published stage, roster from coverage); --only z matched none of the 3 page(s) the stage selects; ${HINT}`);
-  assert.equal(emptySelection(null, { ...pub, coverage: pending, stateError: 'Unexpected end of JSON input' }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} unreadable (published stage, roster from coverage); ${HINT}`);
+  assert.equal(emptySelection(null, { ...pub, coverage: noSrc, only: ['z'] }), `gate-all: no pages selected — coverage ${cp} has 7 row(s), 4 deployed / verified / gate-failed with a deployedUrl (1 without a source url); state ${at} not found (published stage, roster from coverage); --only z matched none of the 3 page(s) the stage selects; ${COV_HINT}`);
+  assert.equal(emptySelection(null, { ...pub, coverage: pending, stateError: 'Unexpected end of JSON input' }), `gate-all: no pages selected — coverage ${cp} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${at} unreadable (published stage, roster from coverage); ${COV_HINT}`);
 });
-check('CLI: coverage rows all pending and a state without a liveUrl → exit 1, one stderr line naming both files (absolute), their counts, the source and the hint; nothing written', () => {
+check('CLI: coverage rows all pending and a state without a liveUrl → exit 1, one stderr line naming both files (absolute), their counts, the source and the coverage hint (also with an explicit --state, which cannot change the roster); nothing written', () => {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-empty-'))); mkdirSync(join(cwd, 'stardust/rollout/coverage'), { recursive: true });
   writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'a', url: 'https://o.test/a', status: 'pending' }, { slug: 'b', url: 'https://o.test/b', status: 'deployed' }] }));
   writeFileSync(join(cwd, COV_PATH), JSON.stringify({ pages: [crow('a', 'pending', { url: null }), crow('b', 'pending', { url: null })] }));
   const before = readdirSync(cwd, { recursive: true }).sort();
-  const r = spawnSync(process.execPath, [SCRIPT], { cwd, encoding: 'utf8' });
-  assert.equal(r.status, 1, r.stderr); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
-  assert.equal(r.stderr.trim(), `gate-all: no pages selected — coverage ${join(cwd, COV_PATH)} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${join(cwd, 'stardust/state.json')} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from coverage); ${HINT}`);
+  for (const args of [[], ['--state', 'stardust/state.json']]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 1, r.stderr); assert.equal(r.stdout, ''); assert.equal(r.stderr.trim().split('\n').length, 1, r.stderr);
+    assert.equal(r.stderr.trim(), `gate-all: no pages selected — coverage ${join(cwd, COV_PATH)} has 2 row(s), 0 deployed / verified / gate-failed with a deployedUrl; state ${join(cwd, 'stardust/state.json')} has 2 page(s), 0 deployed with a liveUrl (published stage, roster from coverage); ${COV_HINT}`, args.join(' '));
+    assert.ok(!r.stderr.includes('pass --coverage stardust/rollout/coverage/pages.json or --state'), r.stderr);
+  }
   assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before);
   rmSync(cwd, { recursive: true, force: true });
 });

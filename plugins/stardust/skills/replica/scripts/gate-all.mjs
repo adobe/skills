@@ -85,7 +85,9 @@
  * with their counts — coverage rows / deployed, verified or gate-failed with a deployedUrl, state pages / deployed with
  * a liveUrl, each with how many lack the source url, or `not found` — and which one the roster came from; prototype: the
  * state file, its page count and pages with a prototypePath (and how many lack the source url); then what --only matched
- * and the hint to pass --coverage / --state from the project root or deploy first; exit 1, nothing written.
+ * and the hint — roster from coverage: coverage wins for the published stage (--state cannot change it), so record
+ * deployed pages with update-coverage.mjs <slug> --status deployed --url <deployedUrl> or pass --coverage <file>; roster
+ * from state: pass --coverage / --state from the project root or deploy first; exit 1, nothing written.
  *
  * Roster estimate: each run's first status line (stdout and _run.log) is `roster: <n> page(s) × 1 width @<w> (<stage>) —
  * estimated <s> s (25 s per page per width)` (`ESTIMATE_SEC_PER_PAGE` × pages × widths; one width per process) plus
@@ -165,7 +167,8 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
-  the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint; exit 1.
+  the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
+  (roster from coverage: coverage wins — record deployed pages with update-coverage.mjs, or pass --coverage); exit 1.
 First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n> s (25 s per
   page per width)[; run-bg deadline <d> s]; source: coverage|state <path> (<q> of <N> row(s) / page(s) qualified,
   before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
@@ -258,7 +261,8 @@ export function rosterEstimate(argv, { cwd = process.cwd() } = {}) {
 /**
  * emptySelection(state, { stage, only, statePath, coverage, coveragePath, source, stateError }) → the one stderr line naming
  * why no page was selected. Published: both sources (state / coverage null = not found; stateError: it did not parse) with
- * their counts and the roster's source; prototype: the state file.
+ * their counts and the roster's source, then the hint for that source (coverage wins for the published stage, so its hint
+ * records deployed pages in the coverage instead of naming --state); prototype: the state file.
  */
 export function emptySelection(state, { stage = 'published', only = null, statePath, coverage = null, coveragePath = DEFAULT_COVERAGE, source = coverage ? 'coverage' : 'state', stateError = null }) {
   const all = pagesOf(state); const proto = stage === 'prototype';
@@ -268,7 +272,8 @@ export function emptySelection(state, { stage = 'published', only = null, stateP
   const rows = pagesOf(coverage).filter(delivered); const noSrc = rows.filter((r) => !(r.source && r.source.sourceUrl)).length;
   const covPart = coverage ? `coverage ${coveragePath} has ${pagesOf(coverage).length} row(s), ${rows.length} deployed / verified / gate-failed with a deployedUrl${noSrc ? ` (${noSrc} without a source url)` : ''}` : `coverage ${coveragePath} not found`;
   const statePart = state ? `state ${statePath} has ${all.length} page(s), ${counted.length} deployed with a liveUrl${noUrl ? ` (${noUrl} without a source url)` : ''}` : `state ${statePath} ${stateError ? 'unreadable' : 'not found'}`;
-  return `gate-all: no pages selected — ${covPart}; ${statePart} (published stage, roster from ${source})${onlyPart(source === 'coverage' ? rows.length - noSrc : counted.length - noUrl)}; pass --coverage ${DEFAULT_COVERAGE} or --state stardust/state.json from the project root, or deploy first`;
+  const hint = source === 'coverage' ? 'coverage wins for the published stage — record deployed pages with update-coverage.mjs <slug> --status deployed --url <deployedUrl>, or pass --coverage <file> from the project root' : `pass --coverage ${DEFAULT_COVERAGE} or --state stardust/state.json from the project root, or deploy first`;
+  return `gate-all: no pages selected — ${covPart}; ${statePart} (published stage, roster from ${source})${onlyPart(source === 'coverage' ? rows.length - noSrc : counted.length - noUrl)}; ${hint}`;
 }
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
