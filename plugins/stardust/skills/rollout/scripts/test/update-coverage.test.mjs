@@ -9,7 +9,8 @@
 // paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
 // with no recorded time, or a record without the map, is applied; an INCONCLUSIVE row is recorded pass false with its
-// reasons and never flips the status; only gate-all's validated override (`valid: true`) passes a failing row.
+// reasons and never flips the status; only gate-all's validated override (`valid: true`) passes a failing row; a row's
+// fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map.
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -231,7 +232,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   const table = join(proj, 'summary.json');
   writeFileSync(table, JSON.stringify({ rows: [
     { slug: 'page-0', pct: 6.7, heightDelta: 69, clipped: 379, content: { missing: 0, hidden: 284 }, pass: false, reasons: ['clipped 379', 'content MISSING 0 / HIDDEN 284'] },
-    { slug: 'page-1', pct: 1.2, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [] },
+    { slug: 'page-1', pct: 1.2, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, pass: true, reasons: [], round: 2 },
     { slug: 'page-2', pct: 2.0, heightDelta: 1, clipped: 0, content: null, pass: true, reasons: [] },
     { slug: 'page-3', pct: 37, heightDelta: 3, clipped: 0, pass: false, reasons: ['pixel 37% > 10%'], override: { verdict: 'source-volatile', reason: 'R-1 live drifted', valid: true } },
     { slug: 'not-in-coverage', pct: 1, pass: true, reasons: [] },
@@ -244,6 +245,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-2'].status, 'deployed', 'a gate failure that now passes goes back to deployed'); assert.equal(by['page-2'].error, null);
   assert.equal(by['page-3'].status, 'verified', 'a valid documented override keeps the page'); assert.deepEqual(by['page-3'].gate.override, { verdict: 'source-volatile', reason: 'R-1 live drifted', valid: true });
   assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
+  assert.deepEqual(by['page-1'].gate.rounds, {}, 'a round without a width has no map entry');
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });
@@ -333,7 +335,7 @@ await check('--gate records an INCONCLUSIVE row as pass false with its reasons a
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'verified', 'no verdict: the status stays'); assert.equal(d.error, null);
   assert.equal(d.gate.pass, false); assert.equal(d.gate.inconclusive, reasons.join('; ')); assert.equal(d.gate.pct, null); assert.deepEqual(d.gate.atByWidth, { 1440: T2 });
-  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth']);
+  assert.deepEqual(Object.keys(d.gate), ['pass', 'pct', 'heightDelta', 'clipped', 'content', 'reasons', 'inconclusive', 'override', 'table', 'at', 'width', 'atByWidth', 'rounds']);
   assert.equal(gateOf(out, 'page-2').gate.inconclusive, null, 'a measured row records inconclusive null');
   const clean = await run(['--gate', gateTable(proj, 'clean.json', T3, 1440, [passRow('page-2')])], proj);
   assert.equal(clean.code, 0, clean.err); assert.match(clean.out, /0 older row\(s\) skipped$/m, 'no inconclusive row, no suffix');
@@ -364,6 +366,33 @@ await check('--gate copies the validated override {verdict, reason, valid}; only
   const legacy = gateOf(out, 'page-2');
   assert.equal(legacy.status, 'failed', 'an override from a table without the check has not earned the row'); assert.equal(legacy.gate.pass, false);
   assert.deepEqual(legacy.gate.override, { verdict: 'PASS (source capture)', reason: 'live drifted', valid: false });
+});
+
+await check('--gate merges each row\'s fix-round count into delivery.gate.rounds per width; the newest row of a width sets it (also lower after a reset), a skipped older row does not', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desktop.json', T1, 1440, [passRow('page-0', { round: 2 })])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'mobile.json', T2, 360, [passRow('page-0', { round: 1 })])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.rounds, { 1440: 2, 360: 1 });
+  r = await run(['--gate', gateTable(proj, 'desktop-reset.json', T3, 1440, [passRow('page-0', { round: 0, roundReset: { reason: 'template rebuilt', at: T3 } })])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.rounds, { 1440: 0, 360: 1 });
+  r = await run(['--gate', gateTable(proj, 'desktop-old.json', T0, 1440, [passRow('page-0', { round: 5 })])], proj);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /1 older row\(s\) skipped/, r.out);
+  assert.deepEqual(gateOf(out, 'page-0').gate.rounds, { 1440: 0, 360: 1 }, 'a skipped older row never changes the count');
+  assert.match((await run(['--help'], proj)).out, /delivery\.gate\.rounds/);
+});
+
+await check('--gate keeps the recorded rounds map for a row without a valid round (a table before rounds were counted)', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'counted.json', T1, 1440, [passRow('page-0', { round: 3 })])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'legacy.json', T2, 1440, [failRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  let d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'failed', 'the newer verdict is applied'); assert.deepEqual(d.gate.atByWidth, { 1440: T2 }); assert.deepEqual(d.gate.rounds, { 1440: 3 });
+  r = await run(['--gate', gateTable(proj, 'odd.json', T3, 1440, [passRow('page-0', { round: '4' }), passRow('page-1', { round: 1.5 })])], proj); assert.equal(r.code, 0, r.err);
+  d = gateOf(out, 'page-0');
+  assert.equal(d.gate.pass, true); assert.deepEqual(d.gate.rounds, { 1440: 3 }, 'a non-integer round is no count');
+  assert.deepEqual(gateOf(out, 'page-1').gate.rounds, {});
 });
 
 await check('--help says the newest row per page and width wins and names the runs/ table', async () => {

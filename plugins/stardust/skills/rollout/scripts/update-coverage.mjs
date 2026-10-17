@@ -10,8 +10,8 @@
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
  * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
  *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, inconclusive, override, table, at, width, atByWidth} and flips a failing page (no valid override) from
- *   deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
+ *   reasons, inconclusive, override, table, at, width, atByWidth, rounds} and flips a failing page (no valid
+ *   override) from deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
  *   `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
  *   completion derives from one place: a page the pixel table failed cannot read as verified).
  *   `override` = gate-all's validated {verdict, reason, valid}; only `valid: true` passes a failing row (a table
@@ -23,6 +23,10 @@
  *   gate recorded without `atByWidth` (before 0.34.4), is applied. Row time (`at`) = `reused.at` of a whole-row
  *   reuse (when the row was measured), else the table's `_provenance.writtenAt`, else null (never skipped, no map
  *   entry); `width` = the table's `_provenance.breakpoint`.
+ *   `delivery.gate.rounds` ({"<width>": n}) = the row's fix-round count (`round`, a non-negative integer) per
+ *   width, merged across ingests like `atByWidth` (the newest applied row of a width sets it, also a lower count
+ *   after a round reset); a row without a valid `round` (a table written before gate-all counted rounds), a
+ *   table without a width, or a skipped older row leaves the map unchanged.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed
@@ -214,11 +218,13 @@ if (gateFile) {
     if (at && recAt && Date.parse(at) < Date.parse(recAt)) { skipped += 1; continue; }
     const atByWidth = { ...((rec && rec.atByWidth) || {}) };
     if (at && width != null) atByWidth[width] = at;
+    const rounds = { ...((rec && rec.rounds) || {}) };
+    if (Number.isInteger(r.round) && r.round >= 0 && width != null) rounds[width] = r.round;
     p.delivery = p.delivery || {};
     // gate-all's validated override; a table written before the check carries none with `valid` — not earned
     const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
     const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth };
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds };
     if (r.inconclusive) inconclusive += 1;
     else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
     else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
