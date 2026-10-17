@@ -133,7 +133,7 @@ const buildUrl = `http://127.0.0.1:${server.address().port}/home-proposed.html`;
 // set it themselves).
 const BASH = existsSync('/bin/bash') ? '/bin/bash' : 'bash';
 const inherited = { ...process.env };
-delete inherited.STARDUST_BROWSER_SLOT; delete inherited.STARDUST_BROWSERS_PER_SLOT;
+delete inherited.STARDUST_BROWSER_SLOT; delete inherited.STARDUST_BROWSERS_PER_SLOT; delete inherited.RUN_BG_DEADLINE_SEC;
 function gate(args, env = {}) {
   return new Promise((resolve) => {
     const child = spawn(BASH, [join(replica, 'gate.sh'), ...args], {
@@ -279,6 +279,8 @@ check('pixel rc 1 skips the probes and exits 1', r.status === 1 && /probes skipp
 // non-empty) the probes run at most STARDUST_BROWSERS_PER_SLOT at a time (unset / not a positive integer → 1), launched
 // in order, the OLDEST waited before the next launch; without a slot every probe starts at once. Verdict lines, each
 // probe's rc and the round's exit code are those of the unbounded round. Published regime + a families file = all six.
+// When the bound holds back some of the round's probes the bound line names the remedy (run-bg --timeout 1800, or a
+// larger STARDUST_BROWSER_BUDGET) and, under a run-bg deadline (RUN_BG_DEADLINE_SEC) below 1800 s, that deadline — a note.
 const SIX = ['content-diff', 'visual-diff', 'chrome-parity', 'clip-probe', 'content-presence', 'unit-geometry'];
 const tlFile = join(root, 'probe-timeline.txt');
 const SLOT = join(root, 'locks/slot-1.json');
@@ -295,32 +297,39 @@ const timed = async (lbl, env, regime = 'published') => {
   const res = await gate(['home', 'https://live.example/', buildUrl, '1440', lbl, '--full'], { ...(regime ? { GATE_REGIME: regime } : {}), STUB_TIMELINE: tlFile, ...env });
   return { ...res, tl: readTimeline() };
 };
+const LINE = (n, why) => `gate.sh: browser slot held — the --full probes run at most ${n} at a time (${why})`;
+const SUM = (n) => `; this round's ${n} probes take the sum of their times — start a --full round through run-bg with --timeout 1800 (or raise STARDUST_BROWSER_BUDGET)`;
+const DEADLINE = (d) => `; the job's deadline ${d} s may end the round with no verdict (exit 124)`;
 const show = (x) => `status ${x.status} peak ${peak(x.tl)} starts ${startOrder(x.tl)} | ${x.stderr.slice(0, 400)}`;
 mkdirSync(join(root, 'stardust/replica'), { recursive: true });
 writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', pages: ['home'] } }));
-const free = await timed('bnd', { STUB_PROBE_MS: '1500', STARDUST_BROWSERS_PER_SLOT: '1' });
-check('no slot: all six probes start at once (a per-slot value alone bounds nothing) and no bound line', free.status === 0 && startOrder(free.tl).split(',').sort().join(',') === [...SIX].sort().join(',')
-  && peak(free.tl) === 6 && boundLines(free.stderr).length === 0, show(free));
+const free = await timed('bnd', { STUB_PROBE_MS: '1500', STARDUST_BROWSERS_PER_SLOT: '1', RUN_BG_DEADLINE_SEC: '900' });
+check('no slot: all six probes start at once (a per-slot value alone bounds nothing); no bound line, no deadline note under a 900 s deadline', free.status === 0
+  && startOrder(free.tl).split(',').sort().join(',') === [...SIX].sort().join(',') && peak(free.tl) === 6 && boundLines(free.stderr).length === 0
+  && !/--timeout 1800|may end the round/.test(free.stderr), show(free));
 let b = await timed('bnd-empty', { STUB_PROBE_MS: '1500', STARDUST_BROWSER_SLOT: '', STARDUST_BROWSERS_PER_SLOT: '1' });
 check('an empty STARDUST_BROWSER_SLOT is no slot: all six at once, no bound line', b.status === 0 && peak(b.tl) === 6 && boundLines(b.stderr).length === 0, show(b));
-b = await timed('bnd', { STUB_PROBE_MS: '300', ...bounded('1') });
+b = await timed('bnd', { STUB_PROBE_MS: '300', ...bounded('1'), RUN_BG_DEADLINE_SEC: '900' });
 check('slot held, STARDUST_BROWSERS_PER_SLOT=1: never two probes at once, launched in order', b.status === 0 && b.tl.length === 12 && peak(b.tl) === 1 && startOrder(b.tl) === SIX.join(','), show(b));
-check('… one stderr line names the bound', boundLines(b.stderr).join('\n') === 'gate.sh: browser slot held — the --full probes run at most 1 at a time (STARDUST_BROWSERS_PER_SLOT=1)', b.stderr);
+check('… one stderr line names the bound, the remedy and the job\'s 900 s deadline (a note only)', boundLines(b.stderr).join('\n') === LINE(1, 'STARDUST_BROWSERS_PER_SLOT=1') + SUM(6) + DEADLINE(900)
+  && (b.stderr.match(/--timeout 1800/g) || []).length === 1, b.stderr);
 check('… stdout (every verdict line) and the exit code are byte-for-byte the unbounded round\'s; every pid waited once', b.stdout === free.stdout && b.status === free.status && !/not a child|wait:/.test(b.stderr), `${b.stdout}\n---\n${free.stdout}`);
-b = await timed('bnd', { STUB_PROBE_MS: '1500', ...bounded('3') });
+b = await timed('bnd', { STUB_PROBE_MS: '1500', ...bounded('3'), RUN_BG_DEADLINE_SEC: '1800' });
 check('STARDUST_BROWSERS_PER_SLOT=3: at most three at once (three reached), the oldest waited before each next launch', b.status === 0 && peak(b.tl) === 3
   && tAt(b.tl, 'start', 'clip-probe') >= tAt(b.tl, 'end', 'content-diff') && tAt(b.tl, 'start', 'content-presence') >= tAt(b.tl, 'end', 'visual-diff')
   && tAt(b.tl, 'start', 'unit-geometry') >= tAt(b.tl, 'end', 'chrome-parity'), show(b));
-check('… its bound line, and stdout + exit code those of the unbounded round', boundLines(b.stderr).join('\n') === 'gate.sh: browser slot held — the --full probes run at most 3 at a time (STARDUST_BROWSERS_PER_SLOT=3)'
+check('… its bound line with the remedy (a 1800 s deadline gets no note), and stdout + exit code those of the unbounded round', boundLines(b.stderr).join('\n') === LINE(3, 'STARDUST_BROWSERS_PER_SLOT=3') + SUM(6)
   && b.stdout === free.stdout && b.status === free.status, `${b.stderr}\n${b.stdout}`);
 for (const [per, why] of [[undefined, 'STARDUST_BROWSERS_PER_SLOT unset — an older run-bg'], ['abc', "STARDUST_BROWSERS_PER_SLOT='abc' is not a positive integer"], ['0', "STARDUST_BROWSERS_PER_SLOT='0' is not a positive integer"]]) {
-  b = await timed(`bnd-${per}`, { STUB_PROBE_MS: '150', ...bounded(per) });
+  b = await timed(`bnd-${per}`, { STUB_PROBE_MS: '150', ...bounded(per), RUN_BG_DEADLINE_SEC: '0' });
   check(`slot held, STARDUST_BROWSERS_PER_SLOT ${per === undefined ? 'unset' : `'${per}'`}: 1 at a time, the line says why`, b.status === 0 && peak(b.tl) === 1 && startOrder(b.tl) === SIX.join(',')
-    && boundLines(b.stderr).join('\n') === `gate.sh: browser slot held — the --full probes run at most 1 at a time (${why}; 1 is the conservative bound)`, show(b));
+    && boundLines(b.stderr).join('\n') === LINE(1, `${why}; 1 is the conservative bound`) + SUM(6), show(b));
 }
 b = await timed('bnd-proto', { STUB_PROBE_MS: '150', ...bounded('1') }, null);
-check('bounded in the prototype regime: content-presence never launched (rc 0 as before), the other five one at a time, exit 0', b.status === 0 && startOrder(b.tl) === SIX.filter((n) => n !== 'content-presence').join(',')
-  && peak(b.tl) === 1 && !/^content-presence:/m.test(b.stdout) && /^unit-geometry: /m.test(b.stdout), show(b));
+check('bounded in the prototype regime: content-presence never launched (rc 0 as before), the other five one at a time, exit 0; the line counts five', b.status === 0 && startOrder(b.tl) === SIX.filter((n) => n !== 'content-presence').join(',')
+  && peak(b.tl) === 1 && !/^content-presence:/m.test(b.stdout) && /^unit-geometry: /m.test(b.stdout) && boundLines(b.stderr).join('\n') === LINE(1, 'STARDUST_BROWSERS_PER_SLOT=1') + SUM(5), show(b));
+b = await timed('bnd-6', { ...bounded('6'), RUN_BG_DEADLINE_SEC: '900' });
+check('a bound that holds nothing back (6 per slot, six probes): the bare bound line — no remedy, no deadline note', b.status === 0 && boundLines(b.stderr).join('\n') === LINE(6, 'STARDUST_BROWSERS_PER_SLOT=6'), show(b));
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'bnd-pix'], bounded('1'));
 check('slot held, no --full: no bound line (it bounds the probes only)', r.status === 0 && boundLines(r.stderr).length === 0, r.stderr);
 // rc precedence under the bound: the same scenario unbounded and with one probe at a time — identical stdout and exit.

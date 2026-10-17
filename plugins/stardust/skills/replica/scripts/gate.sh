@@ -109,11 +109,17 @@
 #            it to max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BROWSER_SLOTS)) (budget
 #            3, slots 3 by default → 1), so S slots × that many probes stay within the
 #            budget B whenever B ≥ S (one probe per slot is the floor); unset or not a
-#            positive integer (an older run-bg) → 1. One stderr line names the bound. Each
-#            probe keeps its own deadline, exit code and verdict line, and the round's exit
-#            rule is unchanged; a bounded round costs the sum of its probes, not the slowest.
-#            RUN_BG_SLOTS lowers the job count on a small machine. Start the rounds all at
-#            once and let the slots pace them — no sleep staggering.
+#            positive integer (an older run-bg) → 1. Each probe keeps its own deadline, exit
+#            code and verdict line, and the round's exit rule is unchanged. A bounded round
+#            takes the SUM of its probes' times, not the slowest: run-bg's default job
+#            deadline (900 s) can end it with exit 124, no verdict (a recorded round with
+#            three probes in sequence took 15 minutes) — start a --full round through run-bg
+#            with --timeout 1800 (or raise STARDUST_BROWSER_BUDGET). One stderr line names
+#            the bound and, when it holds back some of this round's probes, that remedy —
+#            plus the job's deadline (RUN_BG_DEADLINE_SEC) when it is below 1800 s: a note,
+#            never a refusal or a verdict. RUN_BG_SLOTS lowers the job count on a small
+#            machine. Start the rounds all at once and let the slots pace them — no sleep
+#            staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
 #                       reaches both captures, the diff probes and chrome-parity
@@ -492,17 +498,32 @@ UNITS_FILE="stardust/replica/units.json"
 # launched pids queue in launch order (Q_PID, with the name of each probe's RC_* variable in Q_RC); before a launch,
 # while PROBE_MAX or more are unwaited, the OLDEST is waited and its exit code stored in its RC_* (printf -v); after the
 # last launch the rest are waited in the same order. Every pid is waited exactly once; a probe never launched keeps 0.
+# The bound line (header § --full, Concurrency) adds the remedy when the bound holds back some of this round's probes
+# (N_PROBES: the four always launched, content-presence, unit-geometry), and the job's deadline when run-bg exported
+# one (RUN_BG_DEADLINE_SEC; 0 = none) below 1800 s — one line, a note only.
+RUN_PR=0; [ "$REGIME" = published ] && RUN_PR=1
+RUN_UG=0; [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ] && RUN_UG=1
+N_PROBES=$((4 + RUN_PR + RUN_UG))
 PROBE_MAX=0
 if [ -n "${STARDUST_BROWSER_SLOT:-}" ]; then
   PER=${STARDUST_BROWSERS_PER_SLOT:-}
   case "$PER" in ''|*[!0-9]*) PROBE_MAX=0 ;; *) PROBE_MAX=$((10#$PER)) ;; esac
   if [ "$PROBE_MAX" -ge 1 ]; then
-    echo "gate.sh: browser slot held — the --full probes run at most $PROBE_MAX at a time (STARDUST_BROWSERS_PER_SLOT=$PER)" >&2
+    WHY="STARDUST_BROWSERS_PER_SLOT=$PER"
   else
     PROBE_MAX=1
     if [ -z "$PER" ]; then WHY="STARDUST_BROWSERS_PER_SLOT unset — an older run-bg"; else WHY="STARDUST_BROWSERS_PER_SLOT='$PER' is not a positive integer"; fi
-    echo "gate.sh: browser slot held — the --full probes run at most 1 at a time ($WHY; 1 is the conservative bound)" >&2
+    WHY="$WHY; 1 is the conservative bound"
   fi
+  NOTE=""
+  if [ "$PROBE_MAX" -lt "$N_PROBES" ]; then
+    NOTE="; this round's $N_PROBES probes take the sum of their times — start a --full round through run-bg with --timeout 1800 (or raise STARDUST_BROWSER_BUDGET)"
+    DL=${RUN_BG_DEADLINE_SEC:-}; DLI=${DL%%.*}
+    case "$DLI" in ''|*[!0-9]*) ;; *)
+      if [ "$((10#$DLI))" -gt 0 ] && [ "$((10#$DLI))" -lt 1800 ]; then NOTE="$NOTE; the job's deadline $DL s may end the round with no verdict (exit 124)"; fi ;;
+    esac
+  fi
+  echo "gate.sh: browser slot held — the --full probes run at most $PROBE_MAX at a time ($WHY)$NOTE" >&2
 fi
 RC_CD=0; RC_VD=0; RC_CP=0; RC_CL=0; RC_PR=0; RC_UG=0
 Q_PID=(); Q_RC=(); Q_HEAD=0
@@ -532,13 +553,13 @@ capped "$PROBE_TIMEOUT" "clip-probe $SLUG@$W" node "$DIFF/clip-probe.mjs" "$BUIL
   ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$CL" 2>&1 &
 probe_started $! RC_CL
 P_PR=""; P_UG=""
-if [ "$REGIME" = published ]; then
+if [ "$RUN_PR" = 1 ]; then
   probe_slot
   capped "$PROBE_TIMEOUT" "content-presence $SLUG@$W" node "$DIFF/content-presence.mjs" "$LIVE_URL" "$BUILD_URL" --width "$W" --json "$DIR/content-presence-$LBL.json" \
     --origin-cache "$DIR/presence-live.json" ${HIDE_OPTS[@]+"${HIDE_OPTS[@]}"} > "$PR" 2>&1 &
   P_PR=$!; probe_started "$P_PR" RC_PR
 fi
-if [ -f "$UNITS_FILE" ] && [ -f "$DIFF/unit-geometry.mjs" ]; then
+if [ "$RUN_UG" = 1 ]; then
   probe_slot
   capped "$PROBE_TIMEOUT" "unit-geometry $SLUG@$W" node "$DIFF/unit-geometry.mjs" "$LIVE_URL" "$BUILD_URL" --families "$UNITS_FILE" --slug "$SLUG" --width "$W" --json "$DIR/units-$LBL.json" > "$UG" 2>&1 &
   P_UG=$!; probe_started "$P_UG" RC_UG
