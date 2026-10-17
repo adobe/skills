@@ -344,7 +344,7 @@ const config = {
     da: (priorConfig && priorConfig.site && priorConfig.site.da) || { org: '', site: '', ref: 'main' },
     liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
   },
-  lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
+  lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, notDelivered: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 

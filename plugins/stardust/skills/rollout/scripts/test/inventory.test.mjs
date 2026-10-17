@@ -55,6 +55,7 @@ check('an archetype with template null groups under its own slug, together with 
   assert.equal(t['tours-bali'].pageCount, 3); assert.deepEqual(t['tours-bali'].pages, ['tours-alps', 'tours-bali', 'tours-utah']);
   assert.equal(t.home.pageCount, 1); assert.equal(t.unique.pages[0], 'faq');
   assert.match(first.stdout, /Templates {3}3 \(home:1, tours-bali:3, unique:1\)/);
+  assert.deepEqual(json('rollout.json').lastRun.blocks, { total: 0, converted: 0, notDelivered: 0, pending: 0 }, 'the block roll-up has blockCounts\' shape before blocks.mjs runs');
 });
 check('the representative of a template is its archetype, not the first slug', () => {
   const t = Object.fromEntries(json('coverage/templates.json').templates.map((x) => [x.id, x]));
