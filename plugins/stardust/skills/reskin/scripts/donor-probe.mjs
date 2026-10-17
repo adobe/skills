@@ -58,42 +58,42 @@
  *       [--headed]                   headed stealth real Chrome (escalation
  *                                    for bot-managed sites)
  *       [--locale <tag>]             pin Accept-Language + locale
+ *       [--wait-eds]                 settle the rendered page's EDS decoration
+ *                                    (body.appear, every data-section-status /
+ *                                    data-block-status "loaded") before probing;
+ *                                    on by default when --rendered is an EDS host
+ *                                    (aem.page/live, hlx.page/live,
+ *                                    DEPLOY_VERIFY_ORIGIN). A stall exits 2
+ *                                    "stalled decoration: …", nothing probed
+ *       [--eds-timeout <ms>]         settle bound (default 20000)
+ *       [--auth-header <value>]      Authorization header for the rendered origin
+ *                                    only (a protected preview); never printed
+ *       [--token-env <NAME>]         the same, read from the variable NAME
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
  * navigate via the shared diff live-session module (F-G/F-R1): a bot
  * challenge FAILS LOUD (exit 3) — probing an interstitial's computed styles
  * is a false measurement. Local/file targets keep legacy networkidle.
  *
- * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error,
- *       3 bot challenge / blocked live target (fail loud, never probed).
+ * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error (incl. a stalled
+ *       decoration), 3 bot challenge / blocked live target (fail loud, never
+ *       probed).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[donor-probe] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
-  process.exit(2);
-}
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json', 'eds-timeout', 'auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
     else if (a === '--no-sanity') opts.noSanity = true;
+    else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
       if (v === undefined || v.startsWith('--')) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
@@ -110,9 +110,13 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--viewport <w>] [--no-sanity] [--json <path>]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
   console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
+  console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
+  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and probes nothing. --auth-header /');
+  console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never probed).');
   process.exit(args.help ? 0 : 2);
 }
@@ -121,16 +125,45 @@ if (Object.hasOwn(args, 'viewport') && !/^[1-9]\d*$/.test(args.viewport ?? '')) 
   process.exit(2);
 }
 const viewportWidth = args.viewport ? Number(args.viewport) : 1440;
+if (Object.hasOwn(args, 'eds-timeout') && !/^[1-9]\d*$/.test(args['eds-timeout'])) {
+  console.error(`[donor-probe] --eds-timeout needs a positive integer (milliseconds), got "${args['eds-timeout']}"`);
+  process.exit(2);
+}
+
+// Siblings are imported here, after the --help guard: --help answers from a directory holding only this script.
+// live-session.mjs lives in the diff skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
+// the documented project copy stardust/scripts/reskin ↔ stardust/scripts/diff).
+let eds; let live;
+try {
+  eds = await import('./deployed/eds.mjs');
+  live = await eds.loadLiveSession();
+} catch (e) {
+  if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+  console.error(`[donor-probe] ${e.message.split('\n')[0]}`);
+  console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
+  process.exit(2);
+}
+const { edsSettle, isEdsHost, siteAuth, authContextOptions, redact } = eds;
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[donor-probe] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
   process.exit(2);
 }
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
+const renderedUrl = toUrl(args.rendered);
+// The preview's token: only when asked for (--auth-header / --token-env) and only for an http(s) rendered target.
+const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undefined || args['token-env'] !== undefined);
+const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
+// Anything printed passes through here, so the token cannot reach stderr by way of an error text.
+const die = (m, c = 2) => { console.error(`[donor-probe] ${redact(m, auth)}`); process.exit(c); };
+if (wantsAuth && !auth) die(`no site token: ${args['token-env'] ? `--token-env ${args['token-env']} is not set in the environment or .env` : '--auth-header is empty'}`);
+const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
+const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
@@ -191,9 +224,9 @@ const browser = args.headed ? await launchStealthHeaded(chromium) : await chromi
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: viewportWidth, height: 900 },
+  ...authContextOptions(renderedUrl, auth),
 });
 const page = await ctx.newPage();
-const renderedUrl = toUrl(args.rendered);
 if (isLiveHttpUrl(renderedUrl)) {
   // A challenge/blocked interstitial must fail loud — its computed styles
   // are not the rendered page's.
@@ -202,12 +235,16 @@ if (isLiveHttpUrl(renderedUrl)) {
   try {
     await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
   } catch (e) {
-    console.error(`[donor-probe] ${e.message}`);
+    console.error(`[donor-probe] ${redact(e.message, auth)}`);
     await browser.close();
     process.exit(e.name === 'BotChallengeError' ? 3 : 2);
   }
 } else {
   await page.goto(renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+}
+if (waitEds) {
+  const { stalled } = await edsSettle(page, { timeoutMs: edsTimeoutMs });
+  if (stalled.length) { await browser.close(); die(`stalled decoration: ${stalled.join(', ')}`); }
 }
 await page.waitForTimeout(1500);
 
@@ -263,11 +300,11 @@ md += `> Complete the gate with the side-by-side eyeball vs the donor screenshot
 md += `> (stardust/canon-source/assets/screenshots/) per reference/gates.md.\n`;
 if (args.report) {
   mkdirSync(dirname(resolve(args.report)), { recursive: true });
-  writeFileSync(args.report, md);
+  writeFileSync(args.report, redact(md, auth));
 }
 if (args.json) {
   mkdirSync(dirname(resolve(args.json)), { recursive: true });
-  writeFileSync(args.json, `${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`);
+  writeFileSync(args.json, redact(`${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`, auth));
 }
 console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
 for (const f of fails.slice(0, 15)) console.log(`  FAIL ${f.check} — ${f.detail}`);

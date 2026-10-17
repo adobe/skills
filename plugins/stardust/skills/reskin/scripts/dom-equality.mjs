@@ -44,41 +44,41 @@
  *     [--headed]                     headed stealth real Chrome (escalation
  *                                    for bot-managed sites)
  *     [--locale <tag>]               pin Accept-Language + locale
+ *     [--wait-eds]                   settle the RENDERED page's EDS decoration (body.appear,
+ *                                    every data-section-status / data-block-status "loaded")
+ *                                    before measuring; on by default when --rendered is an EDS
+ *                                    host (aem.page/live, hlx.page/live, DEPLOY_VERIFY_ORIGIN).
+ *                                    A stall exits 2 "stalled decoration: …" and measures nothing
+ *     [--eds-timeout <ms>]           settle bound (default 20000)
+ *     [--auth-header <value>]        Authorization header for the RENDERED origin only
+ *                                    (a protected preview); never printed
+ *     [--token-env <NAME>]           the same, read from the environment variable NAME
  *
  * Writes: the markdown report to --report <path> (parent directories are created);
  * nothing else. The PASS/FAIL line goes to stderr.
  *
- * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error,
+ * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error (incl. a stalled decoration),
  *       3 bot challenge / blocked live source (fail loud, never measured).
  */
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { loadNormalize, IMG_VISIBLE } from './source-normalize.mjs';
-
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[dom-equality] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
-  process.exit(2);
-}
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale']);
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
-    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) opts[a.slice(2)] = argv[++i];
+    else if (a === '--wait-eds') opts.waitEds = true;
+    else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
+      const v = argv[i + 1];
+      if (v === undefined || v.startsWith('--')) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
+      opts[a.slice(2)] = v; i += 1;
+    }
     else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
   }
   return opts;
@@ -89,33 +89,70 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
   console.log('domcontentloaded, challenge detection); escalate bot-managed sites with --headed.');
+  console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
+  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing. --auth-header /');
+  console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live source (never measured).');
   process.exit(args.help ? 0 : 2);
 }
+if (Object.hasOwn(args, 'eds-timeout') && !/^[1-9]\d*$/.test(args['eds-timeout'])) {
+  console.error(`[dom-equality] --eds-timeout needs a positive integer (milliseconds), got "${args['eds-timeout']}"`);
+  process.exit(2);
+}
+
+// Siblings are imported here, after the --help guard: --help answers from a directory holding only this script.
+// live-session.mjs lives in the diff skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
+// the documented project copy stardust/scripts/reskin ↔ stardust/scripts/diff).
+let eds; let live; let normalizeLib;
+try {
+  eds = await import('./deployed/eds.mjs');
+  live = await eds.loadLiveSession();
+  normalizeLib = await import('./source-normalize.mjs');
+} catch (e) {
+  if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+  console.error(`[dom-equality] ${e.message.split('\n')[0]}`);
+  console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
+  process.exit(2);
+}
+const { edsSettle, isEdsHost, siteAuth, authContextOptions, redact } = eds;
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
+const { loadNormalize, IMG_VISIBLE } = normalizeLib;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[dom-equality] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
   process.exit(2);
 }
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
-const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c); };
+const renderedUrl = toUrl(args.rendered);
+// The preview's token: only when asked for (--auth-header / --token-env) and only for an http(s) rendered
+// target. The source side never gets it.
+const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undefined || args['token-env'] !== undefined);
+const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
+// Anything printed passes through here, so the token cannot reach stderr by way of an error text.
+const die = (m, c = 2) => { console.error(`[dom-equality] ${redact(m, auth)}`); process.exit(c); };
+if (wantsAuth && !auth) die(`no site token: ${args['token-env'] ? `--token-env ${args['token-env']} is not set in the environment or .env` : '--auth-header is empty'}`);
+const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
+const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
 
-async function capture(url, scopeList, normalize) {
+async function capture(url, scopeList, normalize, rendered = false) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
-  // local/file targets, mandatory on live ones (F-G/F-R1).
+  // local/file targets, mandatory on live ones (F-G/F-R1). Site auth rides
+  // the rendered origin only.
   const ctx = await newLiveContext(browser, {
     ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
+    ...(rendered ? authContextOptions(url, auth) : {}),
   });
   const page = await ctx.newPage();
   let navErr = null;
@@ -128,13 +165,17 @@ async function capture(url, scopeList, normalize) {
     try {
       await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
     } catch (e) {
-      console.error(`[dom-equality] ${e.message}`);
+      console.error(`[dom-equality] ${redact(e.message, auth)}`);
       await browser.close();
       process.exit(e.name === 'BotChallengeError' ? 3 : 2);
     }
   } else {
     // local/file target (rendered page, saved source snapshot) — legacy path.
     navErr = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).then(() => null, (e) => e);
+  }
+  if (rendered && waitEds) {
+    const { stalled } = await edsSettle(page, { timeoutMs: edsTimeoutMs });
+    if (stalled.length) { await browser.close(); die(`stalled decoration: ${stalled.join(', ')}`); }
   }
   await page.waitForTimeout(2000);
   await page.evaluate(async () => {
@@ -168,8 +209,8 @@ async function capture(url, scopeList, normalize) {
 
 console.error(`[dom-equality] capturing source ${args.source} scope=${args['source-scope']} normalize=${normalizeSource}`);
 const src = await capture(toUrl(args.source), args['source-scope'], true);
-console.error(`[dom-equality] capturing rendered ${args.rendered} scope=${args['rendered-scope']}`);
-const rnd = await capture(toUrl(args.rendered), args['rendered-scope'], false);
+console.error(redact(`[dom-equality] capturing rendered ${args.rendered} scope=${args['rendered-scope']}`, auth));
+const rnd = await capture(renderedUrl, args['rendered-scope'], false, true);
 await browser.close();
 
 // --- PRIMARY: visible text (byte-identical after whitespace normalization) ---
@@ -232,7 +273,7 @@ md += `- Element count: source=${src.elementCount} rendered=${rnd.elementCount} 
 md += `- Tag+class sequence: ${firstTagDivergence === -1 && src.tagSequence.length === rnd.tagSequence.length ? 'identical' : `diverges at position ${firstTagDivergence === -1 ? minT : firstTagDivergence} of ${minT}`}\n`;
 
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
-writeFileSync(args.report, md);
+writeFileSync(args.report, redact(md, auth));
 console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
 if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
 process.exit(pass ? 0 : 1);
