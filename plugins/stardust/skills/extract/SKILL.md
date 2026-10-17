@@ -293,8 +293,14 @@ sibling generator iterates its extraction against this artifact —
 free, reproducible, and provenance — instead of re-running live
 probes per selector guess (recorded: 4+ live round-trips per page
 family before the switch). Live probes stay for what the static DOM
-cannot answer: geometry and computed styles. Save referenced media to `stardust/current/assets/media/`
-preserving basename plus a short content hash.
+cannot answer: geometry and computed styles. Referenced media: run
+`node <plugin>/skills/extract/scripts/media-harvest.mjs` after the
+crawl (offline over `pages/*.html`; `--max-bytes <n>` caps video) — every
+`src`/`srcset`/`data-src*`/poster/CSS `url()` once into
+`stardust/current/assets/media/<base>-<hash8>.<ext>`, plus
+`assets/media-map.json` (source URL → local file + status), the map
+later phases rewrite references with. Re-runs reuse it; never a
+hand-written harvester.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
 a page `extracted` in `state.json` unless its `_provenance`
@@ -677,7 +683,7 @@ capture (≤ 3 pages). It must never balloon the crawl.
 | `stardust/current/pages/<slug>.html`        | Settled rendered DOM (crawler sidecar; parse offline, never re-scrape) |
 | `stardust/current/assets/logo.<ext>`        | Extracted logo                                      |
 | `stardust/current/assets/favicon.<ext>`     | Site favicon (first-class asset; prototype head + deploy consume it) |
-| `stardust/current/assets/media/`            | Extracted media referenced by pages                 |
+| `stardust/current/assets/media/`            | Media referenced by pages (`media-harvest.mjs`; map in `assets/media-map.json`) |
 | `stardust/current/assets/screenshots/`      | Per-page full-page screenshots, script-captured by `crawl.mjs` (Phase 2.5 vision gate + brand-review) |
 | `stardust/current/_brand-extraction.json`   | Consolidated brand surface (palette, type, motifs, voice, system components) |
 | `stardust/current/_crawl-log.json`          | Discovery + crawl audit trail (incl. `visionCheck[]`, `siblingCandidates[]`; `dynamicSurface` reach roll-up only with `--dynamics`) |
@@ -732,11 +738,10 @@ this in the user report; do not engineer around it.
   which is acceptable for interactive runs and unacceptable for
   unattended pipelines — surface this to the user when first
   triggered. Note for asset harvest: a page-level bot wall usually
-  does NOT gate assets — media/CSS/font URLs commonly return 200 to
-  a plain browser-UA curl even while every page navigation is
-  challenged (Cloudflare challenge, field-confirmed). Probe one
-  asset with curl BEFORE reaching for in-page-fetch machinery; the
-  in-page harvest is the fallback, not the default.
+  does NOT gate assets — media, CSS and font URLs commonly answer
+  200 to a plain browser-UA fetch (what `media-harvest.mjs` sends)
+  while every page navigation is challenged; in-page fetch is the
+  fallback for what that fails, not the default.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
