@@ -39,8 +39,9 @@
  *                        page re-renders later too (live-session's hideRegions); per
  *                        side and selector its match count and summed height are
  *                        recorded (×0 = a stale selector, an invalid one is an error entry)
- *     --presence <file> --slug <slug>
- *                        the same from gate-all's presence.json
+ *     --slug <slug>      the page's key in presence.json: its "variable" regions and
+ *                        "hide" list too, after "*"'s (without it only "*" is read)
+ *     --presence <file>  the same from gate-all's presence.json (needs --slug)
  *                        (stardust/replica/gates/{all,prototypes}-<w>/):
  *                        { "*": { "hide": [<sel>, …] }, "<slug>": { "variable":
  *                        ["<sel>[=<buildSel>]", …], "hide": [<sel>, …] } } — "hide"
@@ -58,15 +59,25 @@
  *                        the file to re-probe. Convention:
  *                        stardust/replica/gates/<slug>-<w>/chrome-live.json
  *
+ * Site-wide presence file: stardust/replica/presence.json (cwd-relative = the project
+ * root) is read by default, with no flag — its "*" entry, plus the --slug entry when
+ * given (--slug no longer needs --presence); a --presence file is merged over it
+ * (live-session's readPresenceFile / mergePresence: the gate dir's field wins per key).
+ * Its selectors are attributed `site presence.json`, the gate dir's `presence.json`. A
+ * malformed file (either) is an error naming it, exit 1 before any navigation.
+ *
  * Example:
  *   node stardust/scripts/replica/chrome-parity.mjs "https://<site>/" "http://localhost:8791/home-proposed.html" \
  *     --region header=header --region strip=".quick-links|.quicklinks" --region footer=footer
  *
  * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
- * (`<sel> ×<n> (<h>px) [--hide|presence.json]`) when a hide list is set, and
- * one `presence:` line (variable and hide counts) with --presence; --json carries
- * `hidden: { live, build }` (entries { sel, source, n, h, error? }) and `presence:
- * { file, slug, regions, hide?, note } | null` (hide only when the file has entries for the slug). Per region: the
+ * (`<sel> ×<n> (<h>px) [--hide|presence.json|site presence.json]`) when a hide list is set,
+ * one `presence:` line (variable and hide counts, the file(s) read) with --presence or a
+ * site file. --json carries
+ * `hidden: { live, build }` (entries { sel, source, n, h, error? }), `presence:
+ * { file, slug, regions, hide?, note, site?, hideSources?, variableSource? } | null` (hide only when the file has
+ * entries for the slug; site / hideSources / variableSource only when the site file was read — file is null without
+ * --presence; null when neither file is in play). Per region: the
  * region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
  * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
@@ -109,17 +120,22 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --hide <sel,…>     hide in-flow per-visitor regions (a location-suggestion bar above the header) on
                      BOTH sides after the settle, before measuring (repeatable; count + height printed);
                      a style rule hides a bar the page re-renders later too
-  --presence <file> --slug <slug>
-                     hide the slug's "variable" regions ("<sel>=<buildSel>" halves) and its "hide" list
+  --slug <slug>      the page's key in presence.json: its "variable" regions and "hide" list too
+  --presence <file>  hide the slug's "variable" regions ("<sel>=<buildSel>" halves) and its "hide" list
                      ("*" applies to every slug) from gate-all's presence.json the same way
-                     (stardust/replica/gates/{all,prototypes}-<w>/)
+                     (stardust/replica/gates/{all,prototypes}-<w>/; needs --slug), merged over the site file
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
-Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
+The site-wide stardust/replica/presence.json (cwd-relative) is read by default, no flag needed: its "*"
+entry, plus the --slug entry when given; its selectors print as [site presence.json]. A malformed
+presence.json (either file) is an error naming it, before any navigation.
+
+Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (also a malformed presence.json),
+3 bot challenge (live side).`;
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 const need = (v, msg) => { if (!v || v.startsWith('--')) throw new UsageError(msg); return v; };
@@ -166,26 +182,38 @@ export function parseArgs(rest) {
 // ------------------------------------------------- in-flow per-visitor regions
 
 /**
- * gate-all's presence.json for one slug, read by live-session's readPresenceFile → { file, slug, regions, hide?, note }:
- * `regions` = the "variable" { live, build } halves, `hide` = "*".hide then <slug>.hide (both sides; the key only when
- * non-empty, so the JSON of a file without hide entries stays as it was). A missing file or slug hides nothing (the
- * note says so); malformed JSON rejects with `presence.json <file> unreadable (…)`.
+ * The presence record for one run, read by live-session's readPresenceFile → { file, slug, regions, hide?, note,
+ * site?, hideSources?, variableSource? } | null: `regions` = the "variable" { live, build } halves, `hide` = "*".hide
+ * then <slug>.hide (both sides; the key only when non-empty, so the JSON of a file without hide entries stays as it
+ * was). The site-wide file (`site`, default live-session's SITE_PRESENCE, cwd-relative; null = gate file only) is
+ * merged under `file` — `file` may be null (the site file alone: its "*", plus the slug's entry when a slug is given);
+ * when it was read the record adds `site` (its path), `hideSources` ([{ sel, source }], source `presence.json` or
+ * `site presence.json`; with hide) and `variableSource` (with regions). Neither file in play (`file` null and no site
+ * file) → null. A missing `file` or slug hides nothing (the note says so); malformed JSON (either file) rejects with
+ * `presence.json <file> unreadable (…)`.
  */
-export async function readPresence(file, slug) {
-  const { readPresenceFile } = await loadLiveSession();
-  const p = readPresenceFile(file, slug);
-  return { file: p.file, slug: p.slug, regions: p.variable, ...(p.hide.length ? { hide: p.hide } : {}), note: p.note };
+export async function readPresence(file, slug, { site } = {}) {
+  const { readPresenceFile, SITE_PRESENCE } = await loadLiveSession();
+  const siteFile = site === undefined ? SITE_PRESENCE : site;
+  if (!file && !(siteFile && existsSync(siteFile))) return null;
+  const p = readPresenceFile(file, slug, { site: siteFile });
+  const merged = p.site ? { site: p.site, ...(p.hide.length ? { hideSources: p.hideSources } : {}), ...(p.variable.length ? { variableSource: p.variableSource } : {}) } : {};
+  return { file: p.file, slug: p.slug, regions: p.variable, ...(p.hide.length ? { hide: p.hide } : {}), note: p.note, ...merged };
 }
 
 /** Per-side hide lists: --hide on both sides, then the presence "variable" regions (live / build half), then the
- * presence "hide" list (both sides); a repeated selector keeps its first source. */
+ * presence "hide" list (both sides); a repeated selector keeps its first source. A presence selector's source is the
+ * file it came from — `presence.json` (a gate dir's) or `site presence.json` (hideSources / variableSource when the
+ * site file was read). */
 export function hideLists(hide, presence) {
+  const p = presence || {};
+  const hideFrom = p.hideSources || (p.hide || []).map((sel) => ({ sel, source: 'presence.json' }));
   const side = (k) => {
     const out = [];
     const add = (sel, source) => { if (sel && !out.some((x) => x.sel === sel)) out.push({ sel, source }); };
     hide.forEach((sel) => add(sel, '--hide'));
-    ((presence && presence.regions) || []).forEach((r) => add(r[k], 'presence.json'));
-    ((presence && presence.hide) || []).forEach((sel) => add(sel, 'presence.json'));
+    (p.regions || []).forEach((r) => add(r[k], p.variableSource || 'presence.json'));
+    hideFrom.forEach((x) => add(x.sel, x.source));
     return out;
   };
   return { live: side('live'), build: side('build') };
@@ -347,7 +375,7 @@ function readLiveCache(file, live, opts, hideLive) {
 async function main(args) {
   if (args.includes('--help') || args.includes('-h')) { console.log(HELP); return 0; }
   const { live, build, opts } = parseArgs(args);
-  const presence = opts.presence ? await readPresence(opts.presence, opts.slug) : null;
+  const presence = await readPresence(opts.presence, opts.slug);
   const hides = hideLists(opts.hide, presence);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
