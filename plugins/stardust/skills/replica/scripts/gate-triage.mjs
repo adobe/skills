@@ -17,7 +17,10 @@
  * per-page pixel / clip / content / units / origin / eds JSON; optional coverage blocks.json +
  * pages.json (share map, templates), state.json, replica units.json (families), capture pages, the
  * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent), the gate's presence.json (passed to
- * chrome-parity as --presence --slug <rep>, with the rep row's `hide` list as --hide). Causes: block:<name>,
+ * chrome-parity as --presence --slug <rep>, with the rep row's `hide` list as --hide), each failing page's
+ * fix-round count (gate-all's roundsOf: <gate>/<slug>/rounds.json, else seeded from runs/*.json verdict rows;
+ * group rows carry rounds / maxRounds / roundsFrom beside gateRuns, and a layout group with a row at its cap is the
+ * re-prototype decision now). Causes: block:<name>,
  * selector:<sel>, encoder:<template>, layout:<template> (re-prototype candidate), capture:<slug>,
  * page:<slug>@<w>, and token:<prop>:<from>→<to> from the property diff. Same inputs ⇒ byte-identical
  * outputs and no new request line; run-dependent status goes to stdout only, as does the unit view (--unit with
@@ -30,7 +33,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realp
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PATHS } from './foundation-freeze.mjs';
-import { edsOrigin } from './gate-all.mjs';
+import { edsOrigin, MAX_ROUNDS, roundsOf, runTables } from './gate-all.mjs';
 
 const HELP = `gate-triage — failing gate rows grouped by shared cause, re-gate scope per cause (advisory)
 
@@ -66,6 +69,10 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --json                    print {totals, triages[]} (each = triage.json) instead of the md head
   --help, -h                this text
 Advisory: the rows stay the verdict; fix by cause, re-gate the named scope; 3 fix rounds per page.
+Fix rounds: each group row carries the page's mechanical count — rounds/maxRounds/roundsFrom in triage.json,
+\`rounds n/max\` in triage.md — read as gate-all reads it: <gate>/<slug>/rounds.json, else seeded from the
+runs/*.json tables with a verdict row for the page (roundsFrom "runs"; also under --no-runs); gateRuns still counts
+the merged tables' rows. A layout group with a row at rounds >= maxRounds reads "cap reached": the re-prototype decision.
 INCONCLUSIVE rows (a polluted capture) are listed apart as capture fixes (--hide / presence.json), never as failing;
 an override skips a row only when gate-all validated it (valid: true) — a rejected one is triaged; a row without a pixel
 measurement is listed under "No verdict (re-run)" whatever its override says.
@@ -361,7 +368,10 @@ function routeOf(g) {
   if (g.kind === 'block') return ['cluster', `fix blocks/${g.name}/ (CSS or encoder) once, re-gate the scope`];
   if (g.kind === 'selector') return ['cluster', `fix the block holding ${g.name} (CSS or encoder) once, re-gate the scope`];
   if (g.kind === 'encoder') return ['cluster', 'fix the template\'s encoder, re-render its siblings, re-gate'];
-  return ['re-prototype', g.rows.some((r) => r.gateRuns - 1 >= 3) ? 'cap reached: re-prototype decision now' : 're-prototype candidate — the variance probe decides; cap: 3 fix rounds per page'];
+  // the cap is mechanical: the page's fix-round count (rounds.json, else the legacy runs/ seed), never the table count
+  const capped = g.rows.filter((r) => r.rounds != null && r.rounds >= r.maxRounds);
+  const cap = Math.min(...g.rows.map((r) => r.maxRounds ?? MAX_ROUNDS));
+  return ['re-prototype', capped.length ? `cap reached (${capped.map((r) => `${r.row} ${r.rounds}/${r.maxRounds}`).join(', ')}): re-prototype decision now` : `re-prototype candidate — the variance probe decides; cap: ${cap} fix rounds per page`];
 }
 
 function tokenGroups(groups) {
@@ -418,14 +428,17 @@ function regateCommands(pages, rows, { width, hostOf, hasRow }) {
  * sources [{ file, writtenAt, prov, rows }] in read order, ev(slug, kind) → parsed JSON | null (kind: pixel,
  * clip, content, units, origin, eds), capture(slug) → normalized text | null, blocks, covPages, statePages,
  * families, frozen, hot, regions {cause: spec}, parity (bool), unit, coverageFiles, presence (root-relative
- * <gate>/presence.json | null) }.
+ * <gate>/presence.json | null), rounds(slug) → gate-all's roundsOf(<gate dir>, slug) ({ rounds, max, from }) | null }.
+ * A failing row carries rounds, maxRounds (max ?? MAX_ROUNDS) and roundsFrom ('rounds.json' | 'runs'; no accessor or
+ * null → rounds null, roundsFrom null) beside gateRuns (the merged tables' rows for the page).
  * runParity({ slug, width, live, build, regions, rowAt, hide, presence }) → { file, exit, result } | { error } | { skipped }
  * (it owns the --parity-max budget, one per run; hide = the rep row's list, presence = the file or null). Re-gate commands
  * keep each page's own --eds-host (its newest row's table), normalised by gate-all's edsOrigin to https://<host> (a value
  * it refuses stays raw); _provenance.inputs keep the recorded value.
  */
 export function buildTriage(input, runParity = null) {
-  const { gate, sources = [], ev = () => null, capture = () => null, blocks = [], covPages = [], statePages = [], families = null, frozen = DEFAULT_PATHS, hot = 15, regions = {}, parity = false, unit = 'gate-triage', coverageFiles = { blocks: null, pages: null }, presence = null } = input;
+  const { gate, sources = [], ev = () => null, capture = () => null, blocks = [], covPages = [], statePages = [], families = null, frozen = DEFAULT_PATHS, hot = 15, regions = {}, parity = false, unit = 'gate-triage', coverageFiles = { blocks: null, pages: null }, presence = null, rounds = () => null } = input;
+  const roundsAt = (slug) => { const x = rounds(slug); return x && Number.isInteger(x.rounds) ? { rounds: x.rounds, maxRounds: x.max ?? MAX_ROUNDS, roundsFrom: x.from ?? null } : { rounds: null, maxRounds: MAX_ROUNDS, roundsFrom: null }; };
   const merged = mergeRows(sources);
   const newest = [...sources].map((s, i) => ({ s, i })).sort((a, b) => cmp(String(a.s.writtenAt || ''), String(b.s.writtenAt || '')) || a.i - b.i).map((x) => x.s).pop();
   const width = (newest && newest.prov && newest.prov.breakpoint) ?? (Number((String(gate).match(/-(\d+)\/?$/) || [])[1]) || null);
@@ -454,9 +467,10 @@ export function buildTriage(input, runParity = null) {
     const template = templateOf(r); const heightTol = (m.src.prov && m.src.prov.heightTolerance) ?? 0.05;
     const { causes } = classifyRow(r, { pixel: ev(r.slug, 'pixel'), clip: ev(r.slug, 'clip'), content: ev(r.slug, 'content'), units: ev(r.slug, 'units') }, { names, template, width, heightTol, hot, capture: capture(r.slug), families });
     rowCauses.set(id, causes.map((c) => ({ ...c, criteria: CRITERIA.filter((x) => c.criteria.includes(x)), source: m.src.file })));
+    const rnd = roundsAt(r.slug);
     for (const c of rowCauses.get(id)) {
       if (!byCause.has(c.cause)) byCause.set(c.cause, []);
-      byCause.get(c.cause).push({ row: id, slug: r.slug, width, template, pct: r.pct, heightDelta: r.heightDelta ?? null, criteria: c.criteria, evidence: c.evidence, gateRuns: m.gateRuns, source: m.src.file });
+      byCause.get(c.cause).push({ row: id, slug: r.slug, width, template, pct: r.pct, heightDelta: r.heightDelta ?? null, criteria: c.criteria, evidence: c.evidence, gateRuns: m.gateRuns, ...rnd, source: m.src.file });
     }
   }
   let groups = [];
@@ -499,7 +513,7 @@ export function buildTriage(input, runParity = null) {
     const [route, action] = routeOf(g);
     const scope = scopeOf(g, { blocks, covPages, tableRows, roster, names, itemsOf, mapSlug, templateOf });
     const res = { id: `G${i + 1}`, cause: g.cause, kind: g.kind, name: g.name, frozen: g.frozen, severity: g.severity, score: g.score,
-      rows: g.rows.map((r) => ({ row: r.row, slug: r.slug, width: r.width, template: r.template, pct: r.pct, heightDelta: r.heightDelta, criteria: r.criteria, evidence: r.evidence, gateRuns: r.gateRuns, source: r.source })),
+      rows: g.rows.map((r) => ({ row: r.row, slug: r.slug, width: r.width, template: r.template, pct: r.pct, heightDelta: r.heightDelta, criteria: r.criteria, evidence: r.evidence, gateRuns: r.gateRuns, rounds: r.rounds, maxRounds: r.maxRounds, roundsFrom: r.roundsFrom, source: r.source })),
       pages: uniqSorted(g.rows.map((r) => r.slug)), templates: uniqSorted(g.rows.map((r) => r.template)), criteria: criteriaCounts(g.rows),
       ...(g.tokens ? { tokens: g.tokens } : {}), parity: g.parity, route, action, requestLine: null,
       scope: { pages: scope.pages, sources: scope.sources, ...regateCommands(scope.pages, g.rows, { width, hostOf, hasRow: (s) => merged.has(s) }), ...(route === 'foundation-request' ? { when: 'C-final, after the queue is applied' } : {}) } };
@@ -563,7 +577,7 @@ export function formatTriage(t) {
   for (const g of t.groups) L.push(`| ${g.id} | \`${cell(g.cause)}\` | ${g.rows.length} | ${cell(listSome(g.pages))} | ${fmtCrit(g.criteria)} | ${g.route}${g.frozen ? ' (frozen)' : ''} | ${cell(deltaCell(g.parity))} | ${g.scope.when ? 'C-final: ' : ''}${g.scope.pages.length} pages |`);
   if (!t.groups.length) L.push('| - | no shared cause | 0 | - | - | - | - | - |');
   for (const g of t.groups) {
-    L.push('', `## ${g.id} \`${g.cause}\` — ${g.action}`, '', `- rows (${g.rows.length}, severity ${g.severity}, score ${g.score}): ${g.rows.map((r) => `${r.row} ${r.pct ?? 'n/a'} % Δh ${r.heightDelta ?? 'n/a'} (${r.criteria.join('+')}; ${r.template}; gate runs ${r.gateRuns})`).join(', ')}`);
+    L.push('', `## ${g.id} \`${g.cause}\` — ${g.action}`, '', `- rows (${g.rows.length}, severity ${g.severity}, score ${g.score}): ${g.rows.map((r) => `${r.row} ${r.pct ?? 'n/a'} % Δh ${r.heightDelta ?? 'n/a'} (${r.criteria.join('+')}; ${r.template}; rounds ${r.rounds == null ? 'n/a' : `${r.rounds}/${r.maxRounds}`})`).join(', ')}`);
     L.push('- evidence:', ...g.rows.map((r) => `  - ${r.row}: ${r.evidence.join('; ')}`));
     if (g.tokens) L.push(`- shared tokens: ${g.tokens.map((k) => `\`${k}\``).join(', ')}`);
     const pt = parityText(g.parity); if (pt) L.push(`- property diff: ${pt}`);
@@ -664,7 +678,9 @@ function main(argv) {
     const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
     const gateLog = [];
     const presAbs = join(g, 'presence.json'); const presence = existsSync(presAbs) && statSync(presAbs).isFile() ? rel(presAbs) : null;
-    const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence },
+    // fix rounds as gate-all counts them (one rule): rounds.json, else the runs/ seed — whatever --no-runs says
+    let tables = null; const rounds = (slug) => roundsOf(g, String(slug), tables || (tables = runTables(g)));
+    const t = buildTriage({ gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence, rounds },
       parityRunner({ rootAbs, gateAbs: g, rel, opts, say: (s) => gateLog.push(s), budget }));
     // the unit view (stdout only — concurrent clusters share triage.{json,md}): groups with a row on the unit's pages,
     // then the unit's first pass at this width (the cluster verdict's `first pass 360: x/y`)

@@ -6,7 +6,8 @@
 // parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass), the gate's presence.json and
 // a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host,
 // INCONCLUSIVE rows listed as capture fixes (never failing, never errors), a row without a pixel measurement a no-verdict
-// row whatever its override says, and only a validated override skipping a row.
+// row whatever its override says, and only a validated override skipping a row; the fix-round count per group row
+// (gate-all's roundsOf: rounds.json over the table count, else the runs/ seed) and the layout cap read from it.
 // Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
@@ -462,6 +463,43 @@ check('(t) a row without a pixel measurement (pct null) is a no-verdict row even
   assert.deepEqual(t.errors, [{ row: 'n1@1440', error: 'stitch exit 1: scroll stall', source: `${GATE}/summary.json` }]);
   assert.deepEqual(t.inconclusive.map((x) => x.row), ['i2@1440']);
   assert.match(formatTriage(t), /\n## No verdict \(re-run\)\n\n- n1@1440 — stitch exit 1: scroll stall \(stardust\/replica\/gates\/all-1440\/summary\.json\)\n/);
+});
+check('(u) fix rounds: rounds.json wins over the table count; without it the runs/ verdict rows seed it (error / INCONCLUSIVE rows not counted); the layout cap reads it', () => {
+  const p8 = C.rows[0]; const at = (d) => `2026-10-0${d}T00:00:00.000Z`;
+  const runAt = (d, r) => ({ name: `${at(d).replace(/[:.]/g, '-')}-p8.json`, writtenAt: at(d), rows: [r] });
+  const legacy = [runAt(2, p8), runAt(3, { ...p8, pct: null, error: 'stitch exit 1: scroll stall' }), runAt(4, { ...p8, inconclusive: true, pixelPass: null, heightPass: null, reasons: ['origin capture polluted: overlay left — X'] }), runAt(5, p8)];
+  const pick = (g, slug) => { const r = g.rows.find((x) => x.slug === slug); return { gateRuns: r.gateRuns, rounds: r.rounds, maxRounds: r.maxRounds, roundsFrom: r.roundsFrom }; };
+  const layout = (root) => readT(root).groups.find((g) => g.cause === 'layout:t3');
+  const md = (root) => readFileSync(join(root, GATE, 'triage.md'), 'utf8');
+  withProject(C, { runs: legacy }, (root) => {
+    ok(run(root, ['--no-parity'])); let g = layout(root);
+    assert.deepEqual(pick(g, 'p8'), { gateRuns: 5, rounds: 2, maxRounds: 3, roundsFrom: 'runs' }, 'two tables with a verdict row; the error and INCONCLUSIVE rows are no round');
+    assert.deepEqual(pick(g, 'p9'), { gateRuns: 1, rounds: 0, maxRounds: 3, roundsFrom: 'runs' });
+    assert.equal(g.action, 're-prototype candidate — the variance probe decides; cap: 3 fix rounds per page', 'five tables, two rounds: under the cap');
+    assert.match(md(root), /- rows \(2, [^)]*\): p9@1440 20 % Δh 0 \(pixel; t3; rounds 0\/3\), p8@1440 12 % Δh 1200 \(height; t3; rounds 2\/3\)\n/);
+    ok(run(root, ['--no-parity', '--no-runs'])); g = layout(root);
+    assert.deepEqual(pick(g, 'p8'), { gateRuns: 1, rounds: 2, maxRounds: 3, roundsFrom: 'runs' }, '--no-runs narrows the rows, not the count');
+    put(root, `${GATE}/runs/${runAt(6, p8).name}`, { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: at(6), breakpoint: 1440, heightTolerance: 0.05, only: ['p8'] }, totals: {}, rows: [p8] });
+    ok(run(root, ['--no-parity'])); g = layout(root);
+    assert.deepEqual(pick(g, 'p8'), { gateRuns: 6, rounds: 3, maxRounds: 3, roundsFrom: 'runs' });
+    assert.equal(g.action, 'cap reached (p8@1440 3/3): re-prototype decision now');
+    assert.match(md(root), /^## G1 `layout:t3` — cap reached \(p8@1440 3\/3\): re-prototype decision now$/m);
+  });
+  withProject(C, { runs: legacy }, (root) => {
+    put(root, `${GATE}/p8/rounds.json`, { rounds: 1, max: 3, at: [at(5)], resets: [{ at: at(5), reason: 'new archetype', from: 3, history: [at(2), at(3), at(4)] }] });
+    ok(run(root, ['--no-parity'])); let g = layout(root);
+    assert.deepEqual(pick(g, 'p8'), { gateRuns: 5, rounds: 1, maxRounds: 3, roundsFrom: 'rounds.json' }, 'rounds.json wins over five tables');
+    assert.match(g.action, /^re-prototype candidate/, 'one round since the reset: under the cap however many tables');
+    put(root, `${GATE}/p9/rounds.json`, { rounds: 2, max: 2, at: [at(2), at(3)] });
+    ok(run(root, ['--no-parity'])); g = layout(root);
+    assert.deepEqual(pick(g, 'p9'), { gateRuns: 1, rounds: 2, maxRounds: 2, roundsFrom: 'rounds.json' }, 'one table, two rounds at a lowered cap');
+    assert.equal(g.action, 'cap reached (p9@1440 2/2): re-prototype decision now');
+    assert.match(md(root), /\(height; t3; rounds 1\/3\)/);
+    assert.equal(readT(root).groups[0].rows[0].gateRuns, 1, 'gateRuns kept beside rounds');
+  });
+  const pure = buildTriage({ gate: GATE, sources: [{ file: `${GATE}/summary.json`, writtenAt: T1, prov: { breakpoint: 1440 }, rows: A.rows }] });
+  assert.deepEqual(pure.groups[0].rows.map((r) => [r.rounds, r.maxRounds, r.roundsFrom]), [[null, 3, null], [null, 3, null]], 'no rounds accessor: unknown, never a cap');
+  assert.match(formatTriage(pure), /\(clip; untyped; rounds n\/a\)/);
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
