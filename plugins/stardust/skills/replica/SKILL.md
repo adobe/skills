@@ -257,7 +257,7 @@ Impeccable's redesign gates (critique, anti-template, divergence) do not
 apply; the source-fidelity gate (Phase 4) replaces them entirely. A
 "tastefully improved" section is a failing section.
 
-**Fonts (#133, extends deploy #80):** self-host the source's own brand faces
+**Fonts (#138, extends deploy #80):** self-host the source's own brand faces
 as-is — extract's `stardust/current/assets/fonts/`, same weights and styles,
 `@font-face` in the shared canon CSS. The brand family stays first in every
 stack; a metric-matched substitute is only the fallback entry after it, never

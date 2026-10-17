@@ -308,7 +308,7 @@ un-floating override.
 
 ## Fonts policy
 
-Deploy § 4 principle 2 (#80) applies from the first archetype on (#133):
+Deploy § 4 principle 2 (#80) applies from the first archetype on (#138):
 
 - **Self-host the source's own brand faces as-is** (that is how UC1-E1's
   type matched exactly). Extract saves every font response under

@@ -157,7 +157,7 @@ No entries — pure replica. Everything not listed here is frozen; any design
 delta found by the gate is a defect, not an improvement.
 ```
 
-**The one non-design entry (#133):** self-hosted proprietary brand faces
+**The one non-design entry (#138):** self-hosted proprietary brand faces
 (`recreation-procedure.md` § Fonts policy) seed ONE `deferred` entry for all
 of them, `R-<nn> — proprietary brand face self-hosted; license to be
 confirmed by the owner before launch`; it exempts no gate zone and the run

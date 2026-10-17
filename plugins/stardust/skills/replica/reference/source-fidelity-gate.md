@@ -84,7 +84,7 @@ The prototype capture is re-taken every iteration.
    page; each finding line names its root.** 🟡 (body/EXTRA, a missing
    `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
    text-less accordion button) confirmed intended. A 🟠 font fork is a
-   defect to fix — the brand faces are self-hosted (#133), so it is usually
+   defect to fix — the brand faces are self-hosted (#138), so it is usually
    a face that did not load (Hardening rule 14), never a justified
    substitute. A hidden lazy-image placeholder (≤ 64 px, with a data: URI,
    small intrinsic size, aria-hidden or a loaded sibling of the same alt or
@@ -896,7 +896,7 @@ and 2 × the height bar on the measured row; beyond that the row stays FAIL with
 deviation. The summary prints counted / rejected overrides and
 their share of the roster; update-coverage copies `delivery.gate.override = {verdict, reason, valid}`.
 
-**Hide or mask (#135).** An in-flow per-visitor region (a location-suggestion bar above the header)
+**Hide or mask (#142).** An in-flow per-visitor region (a location-suggestion bar above the header)
 is hidden: removed before measuring, on both sides. Its list is the site-wide
 `stardust/replica/presence.json` (`"*"` and per-slug `hide`, written by `presence.mjs`), merged UNDER
 a gate dir's presence.json — the gate dir wins per key and field; gate.sh adds its `--hide`. gate-all,
@@ -952,7 +952,7 @@ other pages decides a new archetype (two or more share the composition: craft, g
 its siblings) or a standalone prototype (an archetype of one); tier and template change in
 `state.json`, the redirect row stays. Cap: 3 fix rounds per page at the published origin — a fix
 round is a measured `--only` verdict of a page that already has one; the first gating and a row
-reused whole are not rounds — then this decision, mechanical (#134): gate-all counts them in
+reused whole are not rounds — then this decision, mechanical (#141): gate-all counts them in
 `<out>/<slug>/rounds.json` and refuses a fourth (exit 2, `cap reached — re-prototype decision`) until
 `--round-reset "<reason>"` records the decision — a brief cannot reset it. `gate-triage.mjs` applies
 this paragraph across the rows: `triage.md` lists the groups (each row's `rounds n/max`) and the

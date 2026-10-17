@@ -17,7 +17,7 @@ register to the file; probed later, the recorded selector matched nothing on eit
 in-flow block above the header), and chrome-parity had printed `hidden live: … ×0` and carried on. Numbered 0.35.6
 provisionally, stacked on 0.35.5.
 
-- **Fix rounds are counted by the instrument (#134, extends #126).** gate-all counts 3 fix rounds per page in
+- **Fix rounds are counted by the instrument (#141, extends #126).** gate-all counts 3 fix rounds per page in
   `<out>/<slug>/rounds.json` — a fix round is a measured `--only` verdict of a page that already has one; the first
   gating and a row reused whole are not rounds (nor is an INCONCLUSIVE row); a fourth round is refused before any
   capture — `gate-all: refused to start, no verdict — cap reached — re-prototype decision: <slug> 3/3 @<w> …`, exit
@@ -71,7 +71,7 @@ provisionally, stacked on 0.35.5.
   probes.json inputs and the gate key; a capture taken with another list is not reused (`dismiss list differs`), and
   a kept origin taken with another dismiss / hide list makes the row INCONCLUSIVE —
   `origin capture polluted: kept origin taken with another dismiss/hide list`.
-- **One hide list per site (#135, extends #125).** `stardust/replica/presence.json` — a gate dir's presence.json
+- **One hide list per site (#142, extends #125).** `stardust/replica/presence.json` — a gate dir's presence.json
   shape, `"*"` and per slug — lists the in-flow per-visitor regions once; live-session's `mergePresence` puts it under
   a gate dir's file (the gate dir's value wins per key and field). gate-all, gate.sh, chrome-parity, chrome-explore
   and chrome-compare read it with no flag (`--slug` no longer needs `--presence`); gate-triage passes it to
@@ -195,7 +195,7 @@ The extract, migrate, deploy, replica and rollout docs, handoff contract rows 1�
 `scripts-index.md` name the new tools; touches #126. No gate changed: no verdict, threshold or criterion moved; the
 variance refusal and the scope note only add caution, and a sibling rendered without a probe row is recorded skipped.
 
-## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
+## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#140)
 
 A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
 coverage rows and gate captures went with it. Parallel subagents collided in one worktree (`git add content`,
@@ -351,7 +351,7 @@ Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally �
 No threshold, criterion, capture or reuse change; a page that was already selectable keeps its template, tier and
 units, and its gate key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`.
 
-## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
+## 0.35.0 (stardust/replica-cluster-subunits) — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
 and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
@@ -381,7 +381,7 @@ Contract change: handoff contract § 3 row C, the `progress.json` unit names, §
 order and the 90-minute unit target; touches #125, #126; no script, verdict, threshold, criterion or gate-row change.
 Minor: a changed contract is a minor release (plugin `AGENTS.md`), hence 0.35.0 rather than a 0.34.x patch.
 
-## 0.35.0 — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#NNN)
+## 0.35.0 (stardust/migrate-shipped-encoder) — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#139)
 
 Minor: the row-2 and encoder contract change. A recorded hands-off run showed the clone is not needed: every sibling
 encodes from its committed capture and the site's ledgers, while the clone was each sibling's heaviest copy and the
@@ -434,7 +434,7 @@ entries and most residual pixels came from one cause — the substituted brand f
 every live measurement; and two probes misbehaved: cap-probe failed a module pair that compared two different
 things, and content-diff read hidden image placeholders as missing icons.
 
-- **replica follows deploy § 4 principle 2 from the archetype on (#133, extends #80).** The source's brand faces
+- **replica follows deploy § 4 principle 2 from the archetype on (#138, extends #80).** The source's brand faces
   are self-hosted as-is (the files the live site serves, same weights and styles); the brand family stays first in
   every stack and a metric-matched substitute is only the fallback entry; proprietary faces raise deploy's
   licensing alert (banner, `fonts/LICENSING.md` at delivery, the hand-off message) plus ONE deferred register entry
@@ -598,7 +598,7 @@ only queues jobs (gate-all's pools unchanged); `--one-load` and cross-run reuse 
 fields are additive (`originReused`, `presenceReused`, `unitsReused`, `oneLoad`, `liveCache`, `originCache`,
 `pair`, `live.json`).
 
-## 0.34.1 — replica speed instruments: measure the run, stop paying for the same evidence twice
+## 0.34.1 (stardust/replica-speed-instruments) — replica speed instruments: measure the run, stop paying for the same evidence twice
 
 One new instrument shows where a run's tokens go; the gate, the deploy batch and the B2 dynamics probe stop
 re-measuring evidence they already hold, and skip it only while it is provably unchanged.
@@ -640,7 +640,7 @@ the C-final roster gate. No threshold, criterion or pairing rule changes; the ne
 fields stay additive (`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`);
 every skip is recorded where it happened.
 
-## 0.34.1 — block provenance: the export carries the source selector of every delivered block (#NNN)
+## 0.34.1 (stardust/rollout-block-origin) — block provenance: the export carries the source selector of every delivered block (#136)
 
 Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
 from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
