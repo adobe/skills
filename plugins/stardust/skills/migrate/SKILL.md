@@ -87,8 +87,7 @@ inline, or run an impeccable command) and re-invoke migrate.
    **Canon auto-bootstrap (when steps 3–4 find no canon).** The
    documented `prototype → migrate → deploy` happy path does not
    run `prepare-migration`, so a first migrate legitimately arrives
-   with no canon (observed on 4 of 6 e2e sites, where every run had
-   to derive canon by hand to proceed — this is the fix). When
+   with no canon (observed on 4 of 6 e2e sites). When
    canon is absent **and** at least one `approved` prototype exists,
    do not stop: run the canon write-back inline from the first
    approved prototype (the canon-author, default `home`) per
@@ -297,8 +296,12 @@ advances `pages[].status`.
 own source HTML (or with `--from-archetype`) is forked in-process from
 the archetype's proposed HTML (`--archetype`, else the page's
 `representative`, else the single approved page of its type): every
-`data-slot` in its `<main>` takes the value from
-`stardust/current/pages/<slug>.json#slots`, slot media through
+`data-slot` in its `<main>` takes its value from the rollout block
+mapping when that covers the archetype, else from
+`stardust/current/pages/<slug>.json#slots` (a page-JSON value always
+wins; `--slots mapping|page-json` forces one — the rules, the fallback
+line and the refusals: `reference/template-and-module-rendering.md`
+§ Path A′ Step 2), slot media through
 `stardust/current/assets/media-map.json`, then the deploy media
 ledger. The one source refusal is an archetype with no proposed HTML;
 an archetype without `data-slot` marks, or a slot with no value, is

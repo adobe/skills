@@ -3,12 +3,8 @@
 How `migrate` renders a page when the page is not itself approved
 but its type has an approved sibling (Path A′), or when a page
 matches no template and must be rendered as a one-off (Path B —
-`unique` rendering).
-
-This is the substantive new behavior introduced by the migrate-
-template-canon refactor. Path A (page is itself `approved`) is
-unchanged — the proposed.html is used verbatim, with `:root`
-refreshed from latest DESIGN.md.
+`unique` rendering). Path A (page is itself `approved`) uses the
+proposed.html verbatim, with `:root` refreshed from latest DESIGN.md.
 
 ## Render path selection
 
@@ -38,21 +34,39 @@ target page.
 
 ### Step 2 — inject this page's content into slots
 
-Read the target page's typed slots from
-`stardust/current/pages/<slug>.json § slots`. The slots were
-captured during `extract --prep`.
-
 For each slot in the archetype (identified by `data-slot="..."`
-within `data-template="<type>"`), inject this page's value:
+within `data-template="<type>"`), inject this page's value; the
+injection preserves the archetype's structural elements (wrapping
+divs, classes, data-attributes) and replaces the inner content.
+`migrate.mjs render --slots mapping|page-json` picks the source:
 
-- `data-slot="article-headline"` ← target page's `headline` slot
-- `data-slot="article-byline"`   ← target page's `byline` slot
-- `data-slot="article-body"`     ← target page's `body` slot
-- ... and so on for every slot the archetype defines
+- **page-json** — the page's typed slots in
+  `stardust/current/pages/<slug>.json § slots`, captured during
+  `extract --prep` (`data-slot="article-headline"` ← its
+  `headline` slot).
+- **mapping** — the rollout block mapping
+  (`stardust/rollout/workspace/mapping.json`), trusted only while the
+  rollout workspace manifest lists its sha256 and its `generatedAt`
+  equals `stardust/rollout/coverage/pages.json`'s. Each slot is found
+  in the archetype's capture inside an anchor — a verified block
+  instance or a section that resolved on the archetype — by its text
+  (an image by its file name, a link by its text); the same anchor
+  and child path on this page's capture give its value. A page-JSON
+  value wins for its name.
 
-The injection preserves the archetype's structural elements
-(wrapping divs, classes, data-attributes) and replaces the inner
-content with the target page's slot value.
+Default: page-json without a mapping file; mapping when it is
+usable, has a verified selector for the archetype and both captures
+exist; otherwise page-json, never silently — a run line per
+archetype and reason (`slots: archetype <a> — mapping not used
+(<reason>); page JSON slots`) and the sidecar's `slotMapSkipped`.
+An explicit `--slots mapping` refuses those cases instead (strict
+slots, nothing written). In mapping mode a slot without a page-JSON
+value is refused when it has no mapped source, its anchor does not
+match exactly one element of this page's capture, its path leads
+nowhere, its link has no text, or it repeats more items than the
+archetype's. Fix: re-run the rollout's block-origin `--verify` for a
+current mapping, or pass `--slots page-json`. The sidecar records
+`slotSource`, `slotMap` and `slotMapSkipped`.
 
 ### Step 3 — adapt where content doesn't fit
 
@@ -72,8 +86,7 @@ requires. The LLM judges:
   doesn't anticipate) → render as a bespoke slot marked
   `data-bespoke`; log a `module-bespoke-slot` decision.
 
-The LLM has full discretion on adaptation. Each adaptation is
-logged so the user can audit.
+The LLM has full discretion on adaptation; each one is logged.
 
 ### Step 4 — module rendering inside the page
 
@@ -177,8 +190,7 @@ Soft contracts (log + surface, don't refuse):
 
 - **Template-conformance shape** — Path A′ deviations are
   expected and logged; not enforced byte-for-byte.
-- **Bespoke slots** — logged; counted toward auto-promotion at
-  3 instances.
+- **Bespoke slots** — logged (§ Bespoke slot).
 - **Canon deviations** — logged with reason.
 - **Broken internal links** — every link rewritten to the
   migrated tree; missing-slug targets flagged
@@ -292,8 +304,7 @@ Pages with non-trivial decisions: 8
 
 Broken internal links: 3
   /events       referenced by 2 pages; not in inventory
-  /press        referenced by 1 page; not in inventory
-  /board        referenced by 1 page; not in inventory
+  ...
 
 Bespoke slots crossing promotion threshold: 1
   hotline-211: "state"  (3 instances) — consider promoting via $stardust prepare-migration --refine-module

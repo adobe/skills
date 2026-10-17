@@ -185,7 +185,9 @@ brand modules.
 
 **Representative.** A sibling's optional `representative` key names the
 archetype slug it clones (`state.mjs set <slug…> --representative
-<archetype-slug>`): `migrate.mjs render` forks that archetype when no
+<archetype-slug>`; `--clear-representative` nulls it; a link chain
+that leads back to a named page is a cycle, refused with the chain
+named): `migrate.mjs render` forks that archetype when no
 `--archetype` is given, and rollout's `inventory.mjs --state` keys a
 pending sibling to it before its `type`.
 

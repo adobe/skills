@@ -32,12 +32,11 @@ never *re-author from scratch*.
 
 "Same template" is a hypothesis the crawl JSON cannot confirm: eight siblings
 of one gated archetype varied in ways no structure capture showed — a compact
-hero template (441 vs 528px, a wider card, a smaller logo), an INVERTED hero
-scrim (0.6→0.1 vs 0.1→0.5), tier lists split into two visual families
-(arrow-image `::before` rows vs plain discs), terms sections in three shapes
-(h2+paragraph, h2+list, inline-bold prefix), and three pages reusing another
-page's hero image (the source's own choice — replicate, don't "fix"). Every
-one surfaced late, at the pixel gate, as rework on an already-cloned page.
+hero, an INVERTED hero scrim, tier lists in two visual families (`::before`
+arrows vs plain discs), terms sections in three shapes, and three pages
+reusing another page's hero image (the source's own choice — replicate,
+don't "fix"). Every one surfaced late, at the pixel gate, as rework on an
+already-cloned page.
 
 **Before generating a template's siblings, run ONE automated probe of the
 template-defining computed values on every sibling's live page and diff
@@ -71,9 +70,15 @@ archetype's slug; one row per sibling — `same` / `differs`, missing and
 extra probes, deltas — merged across runs against the same archetype).
 `migrate.mjs render` reads it for every A′ page: no row → recorded as
 `skipped`; `differs` → refused unless `--accept-variance "<reason>"`
-(the reason reaches the coverage row's `source.variance`); more than half
-of the archetype's current clones differing → refused even then. The
-current clones are the rows whose page clones this archetype now
+(the reason reaches the coverage row's `source.variance`; a new one
+replaces it). The acceptance holds on re-render while the probe row is
+unchanged on verdict, missing, extra and deltas (lists in any order) —
+read from the page's previous sidecar `variance`, else its coverage row
+— and the run names those pages on one `variance:` line; a changed row
+is refused, naming each changed field and quoting the earlier reason.
+More than half of the archetype's current clones differing → refused
+even then, an earlier acceptance included. The current clones are the
+rows whose page clones this archetype now
 (`--archetype`, else its representative, else its type); a row left by a
 sibling moved to a sub-archetype counts on neither side. Re-type the
 template (sub-archetypes by locale family or composition via `state.mjs
