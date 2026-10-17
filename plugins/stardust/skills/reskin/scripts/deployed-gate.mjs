@@ -11,6 +11,8 @@
 //            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking; n/a on a protected preview.
 //   sanity   A4: the hard asserts on the preview at 1440 and 360 (overflow, decoration, broken images, page errors,
 //            clip-probe, content-presence). Blocking and never waivable; n/a on a protected preview.
+//   inherited  A5: deploy's delivered-page gates on the preview: the .plain.html asserts, ai-readability, qa-gate; the
+//            pre-delivery gates are recorded as run by deploy. Blocking.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
@@ -28,6 +30,7 @@ export const HELP = `Usage:
   node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
   node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs inherited --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview.
 
@@ -123,12 +126,42 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
          status, artifact, detail }] }) and sanity/ (clip-probe-1440.json, content-presence-1440.json) beside
          preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay
          in sanity.json).
+inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads preview.json (no record, or one with
+         problems, is exit 2; a skipped leg prints "not run: skipped", exit 0) and needs the deploy skill's scripts
+         beside the reskin ones (ai-readability, qa-gate). Rows, in order:
+           .plain.html     the authored form (the record's plain URL) fetched directly: 200, exactly one <h1>, no
+                           about:error, no src starting with /img/ (a repo-relative image the ingester could not
+                           take) and a top-level <div> (the sections EDS delivers); each problem is named
+           ai-readability  ai-readability.mjs on the preview's origin and path, --min 98: the page's code score
+                           (its --json report); under 98 is "ai-readability <score> < 98", the blocks the served
+                           HTML lacks most below it
+           qa-gate         qa-gate.mjs on the delivered page with --schema <dir>/eds-schema/<slug>.json (deploy
+                           Step 2b) and --design <deployed>/design.json (parity's cap-probe capture): its exit is
+                           the verdict, its ✗ lines the findings. "n/a: run deploy Step 2b" without the schema,
+                           "n/a: run deployed-gate parity first (design.json)" without the design, and
+                           "n/a: protected preview" on a protected preview: qa-gate carries no site auth
+           by deploy       localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own
+                           loop before the push and are not re-run: recorded as "by deploy", never PASS or FAIL,
+                           and no part of the verdict
+         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without): the
+         .plain.html request carries the header to the preview origin only, ai-readability gets the bare token as
+         DEPLOYED_GATE_SITE_TOKEN (--token-env; it sends "token <t>", so a "bearer" or other scheme is "n/a" there).
+         A preview that needs no token is sent none. HTTP 401 or 403 on the .plain.html is exit 2. Prints "PASS
+         inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
+         "ai-readability 97 < 98", the findings below it), one "n/a: <reason> (<rows>)" line per reason and "by
+         deploy (<rows>)"; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when
+         a check gave no verdict (no answer from the preview, an instrument exiting other than 0 or 1, no score in
+         ai-readability's report, no QA GATE line from qa-gate: re-run once). Writes inherited.json ({ verdict,
+         rows: [{ check, value, bar, status, detail? }] }) and inherited/ (ai-readability.json, qa-gate.txt) beside
+         preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay in
+         inherited.json).
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
                only, never printed or recorded (preview.json says only auth: true). tokens hands it to
                donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
+               inherited sends it with the .plain.html request and hands ai-readability its bare token.
 --reskin <f>   the local reskin page parity holds the preview to and sanity's content-presence compares it with
                (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
@@ -161,6 +194,11 @@ const SPEC = {
   },
   sanity: {
     values: ['--page', '--reskin', '--dir'],
+    bools: [],
+    positional: [],
+  },
+  inherited: {
+    values: ['--page', '--auth-header', '--token-env', '--dir'],
     bools: [],
     positional: [],
   },
@@ -319,13 +357,28 @@ async function sanityStep(ctx) {
   return result.exit;
 }
 
+async function inheritedStep(ctx) {
+  const { dir, opts, env, log, UsageError } = ctx;
+  const preview = await pageRecord('inherited', ctx);
+  if (!preview) return 0;
+  const { runInherited, inheritedLines } = await helper('inherited');
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
+  try {
+    const result = await runInherited({ dir, slug: opts.page, preview, auth, env });
+    for (const line of inheritedLines(result)) say(line);
+    return result.exit;
+  } catch (e) {
+    throw scrub(e);
+  }
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, ...steps };
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, inherited: inheritedStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 
