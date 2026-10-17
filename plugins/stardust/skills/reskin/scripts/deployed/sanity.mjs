@@ -16,8 +16,9 @@
 //        ({ verdict, hard: true, rows }) and returns { verdict: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', exit, hard, rows }.
 //        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', artifact, detail }. A check
 //        that gave no verdict (an instrument exiting 124, 1, 4 or any other unexpected exit or no number in its JSON,
-//        a page the browser could not load or that answered HTTP 400 or more) makes its row "ERROR (exit N)", the verdict ERROR and the exit 124; a bot
-//        challenge throws an error with code 3. `tools` maps clip and presence to script paths (default: diffTools()),
+//        a page the browser could not load or that answered HTTP 400 or more) makes its row "ERROR (exit N)", the
+//        verdict ERROR and the exit 124; a bot challenge throws an error with code 3. `tools` maps clip and presence
+//        to script paths (default: diffTools()),
 //        for tests; edsTimeoutMs bounds the settle (default 20000).
 //   diffTools(from)    the two instruments in either layout of the scripts, or a UsageError naming what is missing
 //   sanityLines(result)  the lines the CLI prints
