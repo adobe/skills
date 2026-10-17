@@ -358,12 +358,12 @@ policy; font forks on inner spans and overlay scrims, which only the gate
 catches. It ships as flags (`--ua`, `--wait-until`, `--dismiss`,
 `--headed`, `--locale`, visual-diff `--main`) backed by `live-session.mjs`
 — a hand-edited project copy is a defect (gate doc § Script adaptations).
-`measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs` and the probes on
-live-session's `gotoLive`/`visit()` defaults (e.g. anchor, chrome-parity,
-sibling-variance, clip-probe, content-presence, unit-geometry) navigate
-under one timeout — max(`STARDUST_NAV_TIMEOUT_MS`, 2 × the crawl's
-`crawl.navMs.p95`) clamped to 20–180 s (the env a floor: gate doc rule 2),
-else their own default, a flag winning; measure and cap-probe race each
+`measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs`, motion-observe, content-diff,
+visual-diff, the reskin probes and the `gotoLive`/`visit()` probes (e.g.
+anchor, chrome-parity, sibling-variance, clip-probe, content-presence,
+unit-geometry) navigate under one timeout — max(`STARDUST_NAV_TIMEOUT_MS`,
+2 × `crawl.navMs.p95`) clamped to 20–180 s (the env a floor: gate doc
+rule 2), else their own default, a flag winning; measure and cap-probe race each
 width read against it, re-read once on a fresh page when the page
 navigated under a read, and exit 124 (no verdict) only when every width
 read failed (cap-probe capture: every page's probe failed a read; compare:

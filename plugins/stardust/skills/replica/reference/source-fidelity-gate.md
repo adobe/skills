@@ -551,8 +551,8 @@ rather than erroring.
    `networkidle`, they decorate async) and keep `networkidle` for local
    prototypes; `--wait-until` overrides. stitch-shot is always
    `domcontentloaded`. stitch-shot, measure, cap-probe, style-census, the
-   crawl's page gotos, content-diff, visual-diff and the probes on
-   `gotoLive` / `visit()` defaults navigate under
+   crawl's page gotos, content-diff, visual-diff, motion-observe, the reskin
+   probes and the probes on `gotoLive` / `visit()` defaults navigate under
    max(`STARDUST_NAV_TIMEOUT_MS`, 2 × `crawl.navMs.p95`) clamped to 20–180 s
    (the env is only a floor: the crawl measured the real pages), else their
    own default; a flag wins.
