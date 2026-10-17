@@ -73,8 +73,9 @@
  *   Each page's goto timeout: env STARDUST_NAV_TIMEOUT_MS (ms, as given), else the crawl figure —
  *   2 × crawl.navMs.p95 from the previous <out>/_crawl-log.json, clamped to 20000–180000 — else 45000;
  *   resolved once through the diff skill's live-session.mjs (../../diff/scripts/, ../diff/ or ./ — when
- *   none is there the crawl keeps 45000 and says so once on stderr). The entry probe, the challenge
- *   reload and the slash retry keep their own timeouts.
+ *   none is there the crawl keeps 45000 and says so once on stderr). One stderr line names the value
+ *   and its source (`[crawl] page goto timeout <ms> ms (env|crawl|default) — <detail>`). The entry
+ *   probe, the challenge reload and the slash retry keep their own timeouts.
  *
  * Writes (everything under --out; nothing outside it):
  *   pages/<slug>.json              one record per captured page — slug, url, finalUrl, title,
@@ -82,7 +83,8 @@
  *                                  media {imgs, allImgCount, cssBackgrounds, modals, videos,
  *                                  iframes}, customProps (CSS custom properties resolved on
  *                                  :root), _signals, _provenance, renderedHtml, screenshot,
- *                                  navMs (ms the page's own goto took to domcontentloaded)
+ *                                  navMs (ms the page's own goto took to domcontentloaded; after a
+ *                                  slash-retry rescue, the retry's — capped by its 15 s timeout)
  *                                  (+ `dynamic` with --dynamics; `_signals.duplicateOf` marks a
  *                                  page whose main content hashes equal to an earlier page's)
  *   pages/<slug>.html              the settled rendered DOM, verbatim (parse offline — never re-scrape)
@@ -98,7 +100,8 @@
  *                                  (nearest-rank, integer ms; nulls when n is 0) — the crawl figure:
  *                                  2 × p95, clamped, is the navigation timeout live-session gives the
  *                                  live instruments (from stardust/current/) and the next crawl into
- *                                  this --out
+ *                                  this --out; `crawl.navTimeout` { ms, source }: the page goto
+ *                                  timeout this crawl used (source env | crawl | default)
  * Not captured here: page images and videos (recorded as URLs under `media`, never downloaded),
  * stylesheets, font files, the logo and the rest of the brand surface — those belong to the
  * extract skill's Phase 3 (brand-surface extraction), not to the crawl; do not look for them
@@ -996,12 +999,15 @@ async function main() {
   const args = parseArgs(process.argv);
   ({ chromium } = await import('playwright'));
   // One goto timeout for every page, resolved once — env, else the previous crawl's figure in this --out (its
-  // _crawl-log.json, read before this crawl rewrites it), else 45 s.
+  // _crawl-log.json, read before this crawl rewrites it), else 45 s. Printed and logged (crawl.navTimeout): a fast
+  // previous figure lowers it to as little as 20 s, and a page that then times out must say where that came from.
   const session = await loadLiveSession();
-  if (session && typeof session.resolveNavTimeoutMs === 'function') {
-    args.navTimeoutMs = session.resolveNavTimeoutMs({ crawlLog: path.join(args.out, '_crawl-log.json'), fallback: NAV_TIMEOUT_FALLBACK_MS });
+  if (session && typeof session.navTimeout === 'function') {
+    const t = session.navTimeout({ crawlLog: path.join(args.out, '_crawl-log.json'), fallback: NAV_TIMEOUT_FALLBACK_MS });
+    args.navTimeoutMs = t.ms; args.navTimeoutSource = t.source;
+    console.error(`[crawl] page goto timeout ${t.ms} ms (${t.source}) — ${t.detail}`);
   } else {
-    args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS;
+    args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS; args.navTimeoutSource = 'default';
     console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
   }
   const outPages = path.join(args.out, 'pages');
@@ -1134,6 +1140,7 @@ async function main() {
   // the crawl figure: live-session derives the navigation timeout of the live instruments (and of the next crawl
   // into this --out) from its p95, so a slow origin is measured once instead of guessed per instrument.
   log.crawl.navMs = navMsSummary(navTimes);
+  log.crawl.navTimeout = { ms: args.navTimeoutMs, source: args.navTimeoutSource }; // the goto timeout this crawl used
 
   // cross-page duplicate (detail == listing) detection — deterministic post-pass
   // in original queue order: canonical = earliest-QUEUED page per content hash
