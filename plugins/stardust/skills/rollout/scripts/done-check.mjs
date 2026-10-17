@@ -25,12 +25,15 @@
  *
  * Delivered rows are coverage rows `deployed` or `verified`. Gaps, one per line in this order; complete = none:
  *   pages_unfinished:N             coverage rows not yet verified (pending, content-pending, converting, deployed, stale)
- *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false
- *   pages_overridden:N: <why>      N delivered rows carry a gate override (delivery.gate.override: the overrides.json
- *                                  verdict, or an object); a gap when the rows passing only by override exceed 10 %
- *                                  of delivered rows, or an override cites no `## R-<nn>` heading of the register
- *                                  (in the override itself, else the recorded gate table's override.reason) or is
- *                                  marked valid: false
+ *   pages_failed:N: <paths>        rows failed, or whose published-origin gate (delivery.gate.pass) is false; a row
+ *                                  with an inconclusive gate only when it also failed for another reason
+ *   gates_inconclusive:N: <paths>  rows whose gate gave no verdict (delivery.gate.inconclusive: reasons, or true)
+ *   pages_overridden:N: <why>      N delivered rows carry a gate override (delivery.gate.override: gate-all's
+ *                                  {verdict, reason, valid}, or the older verdict string); a gap when an object
+ *                                  override is not `valid: true` (not validated by gate-all), the rows passing by
+ *                                  an earned override exceed 10 % of delivered rows, or an override cites no
+ *                                  `## R-<nn>` heading of the register (in the override itself, else the recorded
+ *                                  gate table's override.reason, which must not be marked valid: false)
  *   pages_not_live:N: <paths>      deployed or verified rows that do not answer 200 on the live host
  *   sidecars_missing:N: <counts>   delivered rows missing <schemas>/<slug>.json, a delivery.gate.atByWidth time at
  *                                  a --widths width (only in a flow with a published-origin gate table: state.json
@@ -50,6 +53,8 @@
  *                                  chrome/header-parity.json (chrome-compare) is missing, older than the contract,
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors
+ *   header_parity_errors:N         any project: the undecided error findings of chrome/header-parity.json
+ *                                  (counts.error − counts.decided without findings[]); no file, no gap
  *   ledger_unpaired:N: <ends>      ledger `end` lines without an open start that no later start and end of the
  *                                  same phase re-records (stardust ledger.mjs unpairedEnds); `unchecked` when
  *                                  ledger.mjs is not found beside the rollout scripts
@@ -79,13 +84,15 @@ const pathOf = (p) => p.path || `/${p.slug}`;
 const listed = (paths) => (paths.length > LIST_MAX ? `${paths.slice(0, LIST_MAX).join(', ')}, … (+${paths.length - LIST_MAX})` : paths.join(', '));
 const isDelivered = (p) => DELIVERED.has(statusOf(p));
 const gateOf = (p) => (p && p.delivery && p.delivery.gate) || null;
+// a gate with no verdict (a polluted capture): its reasons as a non-empty string, or true
+const isInconclusive = (p) => { const i = (gateOf(p) || {}).inconclusive; return i === true || (typeof i === 'string' && i !== ''); };
 const gatedAt = (gate, widths) => widths.every((w) => !!(gate && gate.atByWidth && gate.atByWidth[String(w)]));
 const contentLines = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 const decoded = (s) => { try { return decodeURI(s); } catch { return s; } };
 const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** The rows that should answer on the live host. */
-// probed at the URL EDS serves (a folder index at `/a/`): `/a` 404s on a plain site (some add a 301; neither is 200)
+// probed where each page was deployed (publicUrl: delivery.deployedUrl, else its path): the other slash form is no 200
 export const deliveredPaths = (pages) => pages.filter((p) => DELIVERED.has(statusOf(p))).map(publicUrl);
 
 /** Is the rollout's final phase ended? The LAST I-dashboard line decides (a later `start` re-opens it). */
@@ -116,6 +123,20 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   return open.length ? `header_parity:${open.length}: ${listed(open.map((f) => f.key))}` : null;
 }
 
+/**
+ * header_parity_errors, or null: the undecided error findings of chrome/header-parity.json in any project. Its
+ * findings[] decide when present (chrome-compare's counts.error already leaves the decided out); without them,
+ * counts.error − counts.decided, floored at 0. An absent or unreadable file (`parity` null) is no gap. Pure.
+ */
+export function headerParityErrors(parity) {
+  if (!isMap(parity)) return null;
+  const counts = isMap(parity.counts) ? parity.counts : {};
+  const n = Array.isArray(parity.findings)
+    ? parity.findings.filter((f) => f && f.severity === 'error' && !f.decided).length
+    : Math.max(0, (Number(counts.error) || 0) - (Number(counts.decided) || 0));
+  return n > 0 ? `header_parity_errors:${n}` : null;
+}
+
 const REF = /\bR-\d+\b/;
 const refIn = (v) => { const m = typeof v === 'string' ? v.match(REF) : null; return m ? m[0] : null; };
 
@@ -124,16 +145,17 @@ export const registerEntries = (text) => new Set([...String(text || '').matchAll
 
 /**
  * The register entry a delivered row's gate override cites: `{ ref, invalid }`. An object override cites the
- * first R-<nn> of its reason, else of any other string field, and is invalid when it carries `valid: false`. A
- * string override (the overrides.json verdict) cites itself when it holds one, else the row of the recorded gate
- * table (`readTable(delivery.gate.table)` → rows[], by slug, then path) cites its `override.reason`. Pure.
+ * first R-<nn> of its reason, else of any other string field, and is invalid unless gate-all validated it
+ * (`valid: true`; a table older than that check carries none). A string override (the older overrides.json
+ * verdict) cites itself when it holds one, else the row of the recorded gate table (`readTable(delivery.gate.table)`
+ * → rows[], by slug, then path) cites its `override.reason`, invalid when that carries `valid: false`. Pure.
  */
 export function overrideRef(page, readTable = () => null) {
   const gate = gateOf(page) || {};
   const o = gate.override;
   if (o && typeof o === 'object') {
     const ref = refIn(o.reason) || Object.keys(o).filter((k) => k !== 'reason').map((k) => refIn(o[k])).find(Boolean) || null;
-    return { ref, invalid: o.valid === false };
+    return { ref, invalid: o.valid !== true };
   }
   const own = refIn(o);
   if (own) return { ref: own, invalid: false };
@@ -146,19 +168,26 @@ export function overrideRef(page, readTable = () => null) {
 
 /**
  * pages_overridden, or null. Override rows: delivered rows whose delivery.gate.override is set (string or object).
- * Passing by override: an override row with gate.pass true whose own measurements failed (`reasons` non-empty or
- * absent; an empty array passed on its own). A gap when those exceed 10 % of delivered rows (k × 10 > d), or any
- * override row cites no register entry (`register` = the register's text). Pure.
+ * An object override is earned only with `valid: true`; one without is listed as not validated by gate-all.
+ * Passing by override: an earned override row (object valid, or the string form) with gate.pass true whose own
+ * measurements failed (`reasons` non-empty or absent; an empty array passed on its own). A gap when those exceed
+ * 10 % of delivered rows (k × 10 > d), any object override is not validated, or any override row cites no
+ * register entry (`register` = the register's text). Pure.
  */
 export function overrideGap({ pages = [], register = '', readTable = () => null } = {}) {
   const delivered = pages.filter(isDelivered);
   const rows = delivered.filter((p) => { const g = gateOf(p); return !!(g && g.override); });
   if (!rows.length) return null;
-  const byOverride = rows.filter((p) => { const g = gateOf(p); return g.pass === true && !(Array.isArray(g.reasons) && g.reasons.length === 0); });
+  const isObject = (p) => typeof gateOf(p).override === 'object';
+  const earned = (p) => !isObject(p) || gateOf(p).override.valid === true;
+  const byOverride = rows.filter((p) => { const g = gateOf(p); return earned(p) && g.pass === true && !(Array.isArray(g.reasons) && g.reasons.length === 0); });
+  const unvalidated = rows.filter((p) => !earned(p));
   const entries = registerEntries(register);
-  const unbacked = rows.filter((p) => { const { ref, invalid } = overrideRef(p, readTable); return invalid || !ref || !entries.has(ref); });
+  // an object override's validity is named apart above; a string override's recorded `valid: false` stays here
+  const unbacked = rows.filter((p) => { const { ref, invalid } = overrideRef(p, readTable); return (invalid && !isObject(p)) || !ref || !entries.has(ref); });
   const why = [];
   if (byOverride.length * 10 > delivered.length) why.push(`${byOverride.length}/${delivered.length} delivered pages pass by override (cap 10 %)`);
+  if (unvalidated.length) why.push(`${unvalidated.length} not validated by gate-all (override.valid is not true): ${listed(unvalidated.map(pathOf))}`);
   if (unbacked.length) why.push(`no register entry for ${listed(unbacked.map(pathOf))}`);
   return why.length ? `pages_overridden:${rows.length}: ${why.join('; ')}` : null;
 }
@@ -247,15 +276,21 @@ export function ledgerGap(unpaired) {
 
 /**
  * The verdict. `notLive` is the list of delivered paths the live probe found missing, or null when the probe did
- * not run (offline). `header`, `overridden`, `sidecars`, `ledger` are gap lines (or null), `units` gap lines, from
- * the functions above; `skipped` names the checks that did not run.
+ * not run (offline). `header`, `headerErrors`, `overridden`, `sidecars`, `ledger` are gap lines (or null), `units`
+ * gap lines, from the functions above; `skipped` names the checks that did not run. A row whose gate is
+ * inconclusive (delivery.gate.inconclusive: reasons, or true) has no verdict: gates_inconclusive, and in
+ * pages_failed only when it failed for another reason (status failed with an error not from the gate).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, overridden = null, sidecars = null, units = [], ledger = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
-  const failed = pages.filter((p) => statusOf(p) === 'failed' || (p.delivery && p.delivery.gate && p.delivery.gate.pass === false));
+  const inconclusive = pages.filter(isInconclusive);
+  const failedElsewhere = (p) => statusOf(p) === 'failed' && !/^gate: /.test(String(p.delivery.error || ''));
+  const failed = pages.filter((p) => (statusOf(p) === 'failed' || (p.delivery && p.delivery.gate && p.delivery.gate.pass === false))
+    && (!isInconclusive(p) || failedElsewhere(p)));
   if (failed.length) gaps.push(`pages_failed:${failed.length}: ${listed(failed.map(pathOf))}`);
+  if (inconclusive.length) gaps.push(`gates_inconclusive:${inconclusive.length}: ${listed(inconclusive.map(pathOf))}`);
   if (overridden) gaps.push(overridden);
   if (notLive && notLive.length) gaps.push(`pages_not_live:${notLive.length}: ${listed(notLive)}`);
   if (sidecars) gaps.push(sidecars);
@@ -263,6 +298,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const p1 = openP1(findings);
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
+  if (headerErrors) gaps.push(headerErrors);
   if (ledger) gaps.push(ledger);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped] };
@@ -349,9 +385,11 @@ async function main() {
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
-  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity: readJSON(join(chrome, 'header-parity.json')), liveHost: OFFLINE ? null : host });
+  const parity = readJSON(join(chrome, 'header-parity.json'));
+  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity, liveHost: OFFLINE ? null : host });
   const verdict = doneGaps({
     pages, findings, ledgerLines, notLive, header,
+    headerErrors: headerParityErrors(parity),
     overridden: overrideGap({ pages, register: textOf(REGISTER), readTable }),
     sidecars: sidecars.gap,
     units: units.gaps,

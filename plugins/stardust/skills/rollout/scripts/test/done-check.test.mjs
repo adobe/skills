@@ -10,7 +10,10 @@
 // every done unit's pages pass the gate at both widths; every delivered row has its schema, both gate widths (in a
 // flow with a gate table — replica, or any gated row; else skipped) and, when its path changed, a redirects line (in
 // the sheet or the redirects-cdn.tsv beside it); every ledger `end` is paired or re-recorded; the checks that did not
-// run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap.
+// run are listed as skipped; ledger.mjs resolves in the project-copy layout too, and its absence is a gap. A gate
+// with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
+// override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
+// header-parity.json in any project (its findings decide; counts.error − counts.decided without them).
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +21,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { doneGaps, deliveredPaths, headerGap, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
@@ -82,6 +85,26 @@ check('failed lists failed rows and rows whose gate failed, by path', () => {
   assert.ok(v.gaps.includes('pages_failed:2: /a, /b'), v.gaps.join(' | '));
 });
 
+// an inconclusive gate (a polluted capture): recorded pass false, reasons in `inconclusive`, status never flipped
+const inconclusive = (r, why = 'capture polluted: consent banner over the fold at 360', delivery = {}) => ({ ...r, delivery: { ...r.delivery, ...delivery, gate: { ...(r.delivery.gate || {}), pass: false, inconclusive: why } } });
+check('gates_inconclusive: a gate with no verdict is named apart from pages_failed; a row failed for another reason stays failed too', () => {
+  const pages = [
+    row('ok', '/ok', 'verified', true),
+    inconclusive(row('a', '/a', 'verified')),
+    inconclusive(row('b', '/b', 'failed'), undefined, { error: 'gate: pixel 14.2 > 10' }),
+    inconclusive(row('c', '/c', 'failed'), undefined, { error: 'deploy: 401 on preview' }),
+    inconclusive(row('d', '/d', 'verified'), true),
+    row('e', '/e', 'verified', false),
+    inconclusive(row('f', '/f', 'verified'), ''),
+    { ...row('g', '/g', 'verified'), delivery: { status: 'verified', gate: { pass: false, inconclusive: null } } },
+  ];
+  const v = doneGaps({ pages, ledgerLines: ENDED, notLive: [] });
+  assert.deepEqual(v.gaps, ['pages_failed:4: /c, /e, /f, /g', 'gates_inconclusive:4: /a, /b, /c, /d']);
+  assert.equal(v.complete, false);
+  const only = doneGaps({ pages: [...CLEAN_PAGES, inconclusive(proven(row('x', '/x', 'verified')))], ledgerLines: ENDED, notLive: [] });
+  assert.deepEqual(only.gaps, ['gates_inconclusive:1: /x'], 'never complete, never failed');
+});
+
 check('not-live lists the probe misses; an offline run neither reports it nor claims it checked', () => {
   const live = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: ['/about'] });
   assert.ok(live.gaps.includes('pages_not_live:1: /about'));
@@ -122,7 +145,9 @@ const TABLE = 'stardust/replica/gates/all-1440/summary.json';
 const plain = (n, prefix = 'p') => Array.from({ length: n }, (_, i) => proven(row(`${prefix}${i}`, `/${prefix}${i}`, 'verified')));
 // an override row whose own measurements failed (reasons non-empty) unless `reasons` says otherwise
 const overridden = (slug, override, gate = {}) => proven(row(slug, `/${slug}`, 'verified'), { reasons: ['pixel 14.2 > 10'], override, ...gate });
-const CITED = { verdict: 'tier-shift', reason: 'tier shift above the fold (R-07)' };
+// gate-all's validated object override (a table with gate-all's override check); a bare string is the older verdict form
+const CITED = { verdict: 'tier-shift', reason: 'tier shift above the fold (R-07)', valid: true };
+const NOT_VALIDATED = (paths) => `${paths.length} not validated by gate-all (override.valid is not true): ${paths.join(', ')}`;
 
 check('pages_overridden: rows passing by override above 10 % of delivered rows are a gap; exactly 10 % is not', () => {
   const at10 = [...plain(18), overridden('o1', CITED), overridden('o2', CITED), { ...overridden('n1', CITED), delivery: { status: 'pending', gate: { pass: true, override: CITED } } }];
@@ -136,15 +161,29 @@ check('pages_overridden: an override under the cap needs a `## R-<nn>` heading i
   assert.equal(overrideGap({ pages, register: '' }), 'pages_overridden:1: no register entry for /o1');
   assert.equal(overrideGap({ pages, register: '## R-08 — another trait\n\nsee R-07\n### R-07 — not an entry heading\n' }), 'pages_overridden:1: no register entry for /o1');
   assert.equal(overrideGap({ pages, register: REGISTER }), null);
-  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { verdict: 'tier-shift', reason: 'banner' })], register: REGISTER }), 'pages_overridden:1: no register entry for /o1');
+  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { verdict: 'tier-shift', reason: 'banner', valid: true })], register: REGISTER }), 'pages_overridden:1: no register entry for /o1');
   assert.deepEqual([...registerEntries(`${REGISTER}## R-12 — second\n## R-3x — malformed\n`)], ['R-07', 'R-12']);
 });
 
-check('pages_overridden: an object override marked valid: false is a gap even with its register entry', () => {
-  const pages = [...plain(19), overridden('o1', { ...CITED, valid: false })];
-  assert.equal(overrideGap({ pages, register: REGISTER }), 'pages_overridden:1: no register entry for /o1');
-  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { ...CITED, valid: true })], register: REGISTER }), null);
-  assert.deepEqual(overrideRef(overridden('o1', { verdict: 'tier-shift', note: 'R-07' })), { ref: 'R-07', invalid: false });
+check('pages_overridden: an object override is earned only with valid: true — valid false or absent (a table older than the check) is named apart from the register, even with its entry', () => {
+  const unvalidated = (valid) => { const o = { ...CITED, valid }; if (valid === undefined) delete o.valid; return [...plain(19), overridden('o1', o)]; };
+  assert.equal(overrideGap({ pages: unvalidated(false), register: REGISTER }), `pages_overridden:1: ${NOT_VALIDATED(['/o1'])}`);
+  assert.equal(overrideGap({ pages: unvalidated(undefined), register: REGISTER }), `pages_overridden:1: ${NOT_VALIDATED(['/o1'])}`);
+  assert.equal(overrideGap({ pages: unvalidated('true'), register: REGISTER }), `pages_overridden:1: ${NOT_VALIDATED(['/o1'])}`, 'only the boolean true');
+  assert.equal(overrideGap({ pages: unvalidated(true), register: REGISTER }), null);
+  assert.equal(overrideGap({ pages: [...plain(19), overridden('o1', { verdict: 'tier-shift', reason: 'banner' })], register: REGISTER }), `pages_overridden:1: ${NOT_VALIDATED(['/o1'])}; no register entry for /o1`);
+  assert.deepEqual(overrideRef(overridden('o1', { verdict: 'tier-shift', note: 'R-07', valid: true })), { ref: 'R-07', invalid: false });
+  assert.deepEqual(overrideRef(overridden('o1', { verdict: 'tier-shift', note: 'R-07' })), { ref: 'R-07', invalid: true });
+});
+
+check('pages_overridden: only earned overrides count against the cap — an unvalidated object override is not passing by override, it is a gap of its own', () => {
+  const objects = (valid) => [...plain(17), ...['o1', 'o2', 'o3'].map((s) => overridden(s, { ...CITED, valid }))];
+  assert.equal(overrideGap({ pages: objects(true), register: REGISTER }), 'pages_overridden:3: 3/20 delivered pages pass by override (cap 10 %)');
+  assert.equal(overrideGap({ pages: objects(false), register: REGISTER }), `pages_overridden:3: ${NOT_VALIDATED(['/o1', '/o2', '/o3'])}`);
+  const strings = [...plain(17), ...['o1', 'o2', 'o3'].map((s) => overridden(s, 'tier-shift per R-07'))];
+  assert.equal(overrideGap({ pages: strings, register: REGISTER }), 'pages_overridden:3: 3/20 delivered pages pass by override (cap 10 %)', 'the string form with gate.pass true counts as before');
+  const failing = strings.map((p) => (p.slug.startsWith('o') ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, pass: false } } } : p));
+  assert.equal(overrideGap({ pages: failing, register: REGISTER }), null, 'a string override on a failing gate passes nothing');
 });
 
 check('pages_overridden: a bare verdict string cites the recorded gate table row\'s override.reason (by slug, then path)', () => {
@@ -271,10 +310,10 @@ check('ledger_unpaired: an end without an open start is a gap until a later star
 });
 
 check('the new gaps take their places in the fixed order', () => {
-  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('f', '/f', 'failed')], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'],
-    header: 'header_parity:no contract', overridden: 'pages_overridden:1: x', sidecars: 'sidecars_missing:1: x', units: ['unit_unproven:a: x', 'unit_unproven:b: x'], ledger: 'ledger_unpaired:1: x', skipped: ['s1'] });
+  const v = doneGaps({ pages: [row('u', '/u', 'pending'), row('f', '/f', 'failed'), inconclusive(row('i', '/i', 'verified'))], findings: [finding('P1', 'open')], ledgerLines: [], notLive: ['/x'],
+    header: 'header_parity:no contract', headerErrors: 'header_parity_errors:2', overridden: 'pages_overridden:1: x', sidecars: 'sidecars_missing:1: x', units: ['unit_unproven:a: x', 'unit_unproven:b: x'], ledger: 'ledger_unpaired:1: x', skipped: ['s1'] });
   assert.deepEqual(v.gaps.map((g) => g.split(':').slice(0, g.startsWith('unit_') ? 2 : 1).join(':')),
-    ['pages_unfinished', 'pages_failed', 'pages_overridden', 'pages_not_live', 'sidecars_missing', 'unit_unproven:a', 'unit_unproven:b', 'open_p1', 'header_parity', 'ledger_unpaired', 'rollout_incomplete']);
+    ['pages_unfinished', 'pages_failed', 'gates_inconclusive', 'pages_overridden', 'pages_not_live', 'sidecars_missing', 'unit_unproven:a', 'unit_unproven:b', 'open_p1', 'header_parity', 'header_parity_errors', 'ledger_unpaired', 'rollout_incomplete']);
   assert.deepEqual(v.skipped, ['s1']);
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: null, skipped: ['s1'] }).skipped, [OFFLINE_SKIP, 's1']);
 });
@@ -358,6 +397,29 @@ check('CLI: a replica project without a header contract is not complete', () => 
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1); assert.match(r.stdout, /^header_parity:no contract/m);
   rmSync(proj, { recursive: true, force: true });
+});
+
+const herr = (key, decided) => ({ key, severity: 'error', ...(decided ? { decided: { decision: 'accepted', by: 'Site owner', at: '2026-10-09T12:00:00Z', reason: 'r' } } : {}) });
+check('headerParityErrors: the undecided error findings of header-parity.json; counts.error − counts.decided (floored at 0) only when it has no findings[]', () => {
+  assert.equal(headerParityErrors({ findings: ['a', 'b', 'c', 'd'].map((k) => herr(k)) }), 'header_parity_errors:4');
+  assert.equal(headerParityErrors({ findings: [herr('a', true), herr('b', true), herr('c'), { key: 'w', severity: 'warn' }] }), 'header_parity_errors:1');
+  // chrome-compare writes counts.error without the decided findings: the findings decide whenever they are there
+  assert.equal(headerParityErrors({ counts: { error: 3, warn: 0, decided: 2 }, findings: [herr('a'), herr('b'), herr('c'), herr('d', true), herr('e', true)] }), 'header_parity_errors:3');
+  assert.equal(headerParityErrors({ counts: { error: 5, warn: 1, decided: 2 } }), 'header_parity_errors:3');
+  assert.equal(headerParityErrors({ counts: { error: 1, decided: 3 } }), null);
+  assert.equal(headerParityErrors({ counts: { error: 2, decided: 0 }, findings: [] }), null);
+  for (const parity of [null, undefined, 'x', [], {}, { counts: null }, { counts: { error: 'many' } }]) assert.equal(headerParityErrors(parity), null, JSON.stringify(parity));
+});
+
+check('CLI: header_parity_errors fires whenever chrome/header-parity.json has undecided errors — any project, right after header_parity; absent or unreadable → no gap', () => {
+  const parity = { tool: 'chrome-compare', source: 'https://example.com/', build: 'https://main--site--org.aem.live/', at: '2026-10-09T12:00:00Z', profile: 'replica', widths: [1440, 390],
+    counts: { error: 2, warn: 0, decided: 1 }, findings: [herr('state-missing@1440 Shop [hover]'), herr('motion@390 Open menu [click]'), herr('focus@1440 Search', true)] };
+  const gaps = (files) => { const proj = project({ files }); const r = run(proj, ['--offline', '--json']); rmSync(proj, { recursive: true, force: true }); return { status: r.status, gaps: JSON.parse(r.stdout).gaps }; };
+  assert.deepEqual(gaps({ 'stardust/chrome/header-parity.json': parity }), { status: 1, gaps: ['header_parity_errors:2'] });
+  assert.deepEqual(gaps({ 'stardust/chrome/header-parity.json': '{"counts": ' }), { status: 0, gaps: [] });
+  const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 390: {} } };
+  assert.deepEqual(gaps({ 'stardust/state.json': { flow: 'replica' }, 'stardust/chrome/header-contract.json': contract, 'stardust/chrome/header-parity.json': parity }).gaps,
+    ['header_parity:2: state-missing@1440 Shop [hover], motion@390 Open menu [click]', 'header_parity_errors:2']);
 });
 
 check('CLI: usage errors exit 2 — no pages.json; no live host without --offline', () => {
