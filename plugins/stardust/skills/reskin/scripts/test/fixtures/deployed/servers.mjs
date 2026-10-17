@@ -35,7 +35,9 @@
 // on the visible text (T1) and on the ordered image src. deltas.json declares every one of these differences.
 // home.html's <main> has three top-level div.section: [0] empty (the phantom first section), [1] s01 as default
 // content, [2] s02 as the cards block, whose single .cards > div is the 560×240 card; no element has class
-// "card". Its block CSS (display: grid) applies only once data-block-status is "loaded", as in EDS.
+// "card". Its block CSS (display: grid) applies only once data-block-status is "loaded", as in EDS. As EDS
+// delivers a page, home.html's head carries <meta name="nav" content="/ns/nav"> and <meta name="footer"
+// content="/ns/footer"> and home.plain.html has no metadata block (its first top-level <div> is empty).
 import { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join } from 'node:path';

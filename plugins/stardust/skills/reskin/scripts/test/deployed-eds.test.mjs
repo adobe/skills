@@ -101,17 +101,18 @@ await check('fixtures: home.html carries no element with class card and its :roo
   assert.ok(style.startsWith(rootTokens(tokens).css), 'the :root block is not rootTokens(donor-tokens.json) first in the first <style>');
 });
 
-await check('fixtures: home.plain.html is the authored form: a metadata block (Title, Description, nav, footer), s01 default content, the cards rows', () => {
+await check('fixtures: home.plain.html is the authored form as EDS delivers it: no metadata block, an empty first section, s01 default content, the cards rows; the nav and footer metas are in home.html\'s head', () => {
   const plain = read('home.plain.html');
   assert.match(plain, /^<body>\s*<header><\/header>\s*<main>/);
   assert.match(plain, /<\/main>\s*<footer><\/footer>\s*<\/body>\s*$/);
-  const rows = [...plain.matchAll(/<div><div>(Title|Description|nav|footer)<\/div><div>([^<]*)<\/div><\/div>/g)].map((m) => [m[1], m[2]]);
-  assert.deepEqual(rows.map((r) => r[0]), ['Title', 'Description', 'nav', 'footer']);
-  assert.deepEqual(rows.slice(2), [['nav', '/ns/nav'], ['footer', '/ns/footer']]);
-  assert.ok(plain.indexOf('<div class="metadata">') < plain.indexOf('<h1'), 'the metadata block comes first');
+  assert.ok(!/metadata/i.test(plain), 'EDS strips the metadata block from the authored form');
+  assert.match(plain, /<main>\s*<div><\/div>\s*<div><h1 /, 'the first top-level div is empty');
   assert.equal([...plain.matchAll(/<h1[ >]/g)].length, 1);
   assert.ok(plain.includes('<div class="cards">'));
   assert.ok(!plain.includes('about:error') && !plain.includes('/img/'));
+  const head = read('home.html').split('</head>')[0];
+  assert.ok(head.includes('<meta name="nav" content="/ns/nav">'), 'the page head carries the nav meta');
+  assert.ok(head.includes('<meta name="footer" content="/ns/footer">'), 'the page head carries the footer meta');
 });
 
 let playwrightOk = false;
@@ -265,7 +266,7 @@ if (playwrightOk) {
     } finally { await ctx.close(); await server.close(); }
   });
 
-  await check('the plain form is served beside the page, with the metadata rows', async () => {
+  await check('the plain form is served beside the page, without a metadata block', async () => {
     const server = await startPreviewServer();
     try {
       const plain = await fetch(`${server.origin}/ns/home.plain.html`);

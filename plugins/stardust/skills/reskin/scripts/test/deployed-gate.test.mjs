@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir, readPreview } from '../deployed/io.mjs';
-import { eligibility, isolation, metadataRows, previewOrigin } from '../deployed/preview.mjs';
+import { eligibility, headMetadata, isolation, previewOrigin } from '../deployed/preview.mjs';
 import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -53,13 +53,16 @@ const recordOf = (root) => JSON.parse(readFileSync(join(deployedDir(join(root, '
 const recordPath = (root) => join(deployedDir(join(root, 'stardust'), 'home'), 'preview.json');
 const noToken = (...texts) => { for (const t of texts) assert.ok(!t.includes(TOKEN), `the token leaked: …${t.slice(Math.max(0, t.indexOf(TOKEN) - 40), t.indexOf(TOKEN) + 40)}…`); };
 
-// The delivered fixture page with its authored form's nav row changed, served from a file of its own.
-const pageWithNav = (name, nav) => {
+// The delivered fixture page with its head's nav and footer metas changed (null drops one), served from a file of its own.
+const pageWithChrome = (name, { nav = '/ns/nav', footer = '/ns/footer' } = {}) => {
   const html = join(scratch, `${name}.html`);
-  copyFileSync(fixturePath('home.html'), html);
-  writeFileSync(join(scratch, `${name}.plain.html`), readFileSync(fixturePath('home.plain.html'), 'utf8').replace('<div>/ns/nav</div>', `<div>${nav}</div>`));
+  const meta = (key, value) => (value === null ? '' : `<meta name="${key}" content="${value}">`);
+  writeFileSync(html, readFileSync(fixturePath('home.html'), 'utf8')
+    .replace('<meta name="nav" content="/ns/nav">', () => meta('nav', nav))
+    .replace('<meta name="footer" content="/ns/footer">', () => meta('footer', footer)));
   return html;
 };
+const pageWithNav = (name, nav) => pageWithChrome(name, { nav });
 
 await check('previewOrigin: <branch>--<repo>--<org> on aem.page; a host label over 63 characters is refused naming 63', () => {
   assert.equal(previewOrigin({ org: 'o', repo: 'r', branch: 'b' }), 'https://b--r--o.aem.page');
@@ -68,27 +71,63 @@ await check('previewOrigin: <branch>--<repo>--<org> on aem.page; a host label ov
   assert.throws(() => previewOrigin({ org: 'o', repo: 'r', branch: `${label63}b` }), (e) => e instanceof UsageError && /63/.test(e.message) && /branch/.test(e.message));
 });
 
+const ORIGIN = 'https://b--r--o.aem.page';
+const CHROME = { nav: '/ns/nav', footer: '/ns/footer' };
+
 await check('isolation: path, nav and footer problems listed together; none with --sandbox; a clean page has none', () => {
-  const bad = isolation({ path: '/home', rows: { nav: '/nav' }, namespace: 'ns' });
+  const bad = isolation({ path: '/home', meta: { nav: '/nav' }, origin: ORIGIN, namespace: 'ns' });
   assert.equal(bad.length, 3, bad.join(' | '));
   assert.match(bad[0], /\/home/);
   assert.match(bad.find((p) => /nav/.test(p)), /\/nav.*\/ns\/nav/);
   assert.match(bad.find((p) => /footer/.test(p)), /absent.*\/ns\/footer/);
-  assert.deepEqual(isolation({ path: '/home', rows: { nav: '/nav' }, namespace: 'ns', sandbox: true }), []);
-  assert.deepEqual(isolation({ path: '/ns/home', rows: { nav: '/ns/nav', footer: '/ns/footer' }, namespace: 'ns' }), []);
-  assert.equal(isolation({ path: '/ns/home', rows: { nav: '/ns/nav', footer: '/other/footer' }, namespace: 'ns' }).length, 1);
-  assert.equal(isolation({ path: '/nsx/home', rows: { nav: '/ns/nav', footer: '/ns/footer' }, namespace: 'ns' }).length, 1, '/nsx/ is not inside /ns/');
+  assert.deepEqual(isolation({ path: '/home', meta: { nav: '/nav' }, origin: ORIGIN, namespace: 'ns', sandbox: true }), []);
+  assert.deepEqual(isolation({ path: '/ns/home', meta: CHROME, origin: ORIGIN, namespace: 'ns' }), []);
+  assert.equal(isolation({ path: '/ns/home', meta: { nav: '/ns/nav', footer: '/other/footer' }, origin: ORIGIN, namespace: 'ns' }).length, 1);
+  assert.equal(isolation({ path: '/nsx/home', meta: CHROME, origin: ORIGIN, namespace: 'ns' }).length, 1, '/nsx/ is not inside /ns/');
 });
 
-await check('metadataRows: the metadata block\'s two-cell rows, keys lower-cased, markup stripped, entities decoded', () => {
-  const rows = metadataRows(readFileSync(fixturePath('home.plain.html'), 'utf8'));
-  assert.deepEqual(rows, { title: 'Sample kit home', description: 'A calm, readable starting point for every page in the sample kit.', nav: '/ns/nav', footer: '/ns/footer' });
-  const nested = '<main><div><div class="section-metadata"><div><div>Style</div><div>dark</div></div></div>'
-    + '<div class="metadata block"><div><div>NAV</div><div><a href="/ns/nav">/ns/nav</a></div></div><div><div>Title</div><div>Fish &#x26; chips &amp; <em>more</em></div></div>'
-    + '<div><div>Solo</div></div><div><div>nav</div><div>/second</div></div></div></div></main>';
-  assert.deepEqual(metadataRows(nested), { nav: '/ns/nav', title: 'Fish & chips & more' }, 'section-metadata is not the metadata block; a one-cell row and a repeated key are ignored');
-  assert.deepEqual(metadataRows('<main><div><p>no block</p></div></main>'), {});
-  assert.deepEqual(metadataRows(''), {});
+await check('isolation: nav and footer are compared by pathname: a full URL on the page\'s origin is accepted, another origin or a normalised-away path is a problem', () => {
+  const at = (meta) => isolation({ path: '/ns/home', meta, origin: ORIGIN, namespace: 'ns' });
+  assert.deepEqual(at({ nav: `${ORIGIN}/ns/nav`, footer: `${ORIGIN}/ns/footer?v=2` }), [], 'same-origin full URLs');
+  assert.deepEqual(at({ nav: '/ns/x/../nav', footer: '/ns/./footer' }), [], 'resolved as the header block resolves it');
+  const other = at({ nav: 'https://other.test/ns/nav', footer: '/ns/footer' });
+  assert.equal(other.length, 1, other.join(' | '));
+  assert.match(other[0], /nav.*other\.test/);
+  const up = at({ nav: '/ns/../nav', footer: '/ns/footer' });
+  assert.equal(up.length, 1, up.join(' | '));
+  assert.match(up[0], /nav/);
+  assert.equal(at({ nav: '/NS/nav', footer: '/ns/footer' }).length, 1, 'the namespace is case-sensitive');
+  assert.equal(at({ nav: '', footer: '/ns/footer' }).length, 1, 'an empty value falls back to /nav in the header block');
+  assert.equal(at({ nav: 'http://', footer: '/ns/footer' }).length, 1, 'a value that is no URL');
+});
+
+await check('isolation: a path that a fetch would normalise, and so could leave the namespace, is a problem on its own; /ns/ stays accepted', () => {
+  const at = (path) => isolation({ path, meta: CHROME, origin: ORIGIN, namespace: 'ns' });
+  for (const path of ['/ns/../home', '/ns/%2e%2e/home', '/ns/%2E%2E/home', '/ns/..\\home', '/ns\\..\\home', '/ns/./home', '/ns/a/../../home', '/ns//home', '//evil.test/ns/home', '/ns/ho%6de', '/ns/home?x=1', '/ns/home#x', 'ns/home', '', '/ns/ home']) {
+    const problems = at(path);
+    assert.equal(problems.length, 1, `${JSON.stringify(path)}: ${problems.join(' | ')}`);
+    assert.ok(problems[0].includes(path), `names the path: ${problems[0]}`);
+  }
+  assert.equal(at('/NS/home').length, 1, '/NS/ is not /ns/');
+  assert.equal(at('/ns').length, 1, '/ns is not inside /ns/');
+  assert.deepEqual(at('/ns/'), []);
+  assert.deepEqual(at('/ns/a/b-c_d.e'), []);
+  assert.deepEqual(isolation({ path: '/ns/../home', meta: {}, origin: ORIGIN, namespace: 'ns', sandbox: true }), [], '--sandbox waives it');
+});
+
+await check('headMetadata: the first <meta name="nav"> and <meta name="footer"> of the head, in any attribute order, quoting or case, entities decoded', () => {
+  assert.deepEqual(headMetadata(readFileSync(fixturePath('home.html'), 'utf8')), CHROME);
+  const head = (inner, body = '') => `<!doctype html><html><head><title>t</title>${inner}</head><body>${body}</body></html>`;
+  assert.deepEqual(headMetadata(head('<meta content="/a/nav" name="nav"><meta NAME=\'footer\' CONTENT=\'/a/f&#x6f;oter\'>')), { nav: '/a/nav', footer: '/a/footer' });
+  assert.deepEqual(headMetadata(head('<meta name=nav content=/ns/nav />')), { nav: '/ns/nav' }, 'unquoted values');
+  assert.deepEqual(headMetadata(head('<meta name="nav" content="/first"><meta name="nav" content="/second">')), { nav: '/first' }, 'the first one wins');
+  assert.deepEqual(headMetadata(head('<meta name="nav" content="/a?x=1&amp;y=2>3">')), { nav: '/a?x=1&y=2>3' }, 'a > inside a quoted value');
+  assert.deepEqual(headMetadata(head('<meta name="nav" content="">')), { nav: '' }, 'present and empty');
+  assert.deepEqual(headMetadata(head('<meta property="nav" content="/p"><meta name="Nav" content="/q"><meta name="navigation" content="/r"><meta name="nav">')), {}, 'only name="nav" with a content counts');
+  assert.deepEqual(headMetadata(head('<!-- <meta name="nav" content="/c"> --><script>var s = \'<meta name="nav" content="/s">\';</script><style>/* <meta name="footer" content="/t"> */</style>', '<meta name="footer" content="/body">')), {}, 'comments, scripts, styles and the body are not the head');
+  assert.deepEqual(headMetadata('<meta name="nav" content="/bare">'), { nav: '/bare' }, 'a fragment without <head> is read whole');
+  assert.deepEqual(headMetadata(''), {});
+  assert.deepEqual(headMetadata(undefined), {});
 });
 
 await check('eligibility: needs stardust/runtime-contract.json, head.html and scripts/aem.js at the project root, and names what is missing', () => {
@@ -192,8 +231,8 @@ await check('preview against the fake preview, in an eligible project: PASS <url
     });
     assert.ok(!Number.isNaN(Date.parse(rec.checkedAt)));
     assert.deepEqual(readPreview(join(root, 'stardust'), 'home'), rec, 'readPreview returns what the CLI wrote');
-    assert.ok(server.requests.some((q) => q.path === '/ns/home.plain.html'));
-    assert.ok(server.requests.every((q) => q.path === '/ns/home.plain.html'), 'only the authored form was asked for');
+    assert.deepEqual(server.requests.map((q) => q.path), ['/ns/home.plain.html', '/ns/home'], 'the authored form, then the delivered page for its head');
+    assert.ok(server.requests.every((q) => q.method === 'GET'));
   } finally { await server.close(); }
 });
 
@@ -216,7 +255,7 @@ await check('the project root is the parent of --dir: --dir <project>/stardust w
   } finally { await server.close(); }
 });
 
-await check('a page whose authored nav row is /nav fails naming nav (exit 1); the record is still written and lists the problem', async () => {
+await check('a page whose head nav meta is /nav fails naming nav (exit 1); the record is still written and lists the problem', async () => {
   const server = await startPreviewServer({ pages: { '/ns/home': pageWithNav('nav-shared', '/nav') } });
   try {
     const root = project('nav');
@@ -228,6 +267,47 @@ await check('a page whose authored nav row is /nav fails naming nav (exit 1); th
     assert.equal(rec.url, `${server.origin}/ns/home`);
     assert.equal(rec.problems.length, 1);
     assert.match(rec.problems[0], /nav/);
+  } finally { await server.close(); }
+});
+
+await check('the chrome comes from the delivered page\'s head: absent metas fail for both, a same-origin full URL passes, another origin fails', async () => {
+  const server = await startPreviewServer({ pages: {
+    '/ns/none': pageWithChrome('chrome-none', { nav: null, footer: null }),
+    '/ns/full': pageWithChrome('chrome-full', { nav: '__ORIGIN__/ns/nav', footer: '__ORIGIN__/ns/footer' }),
+    '/ns/away': pageWithChrome('chrome-away', { nav: 'https://other.test/ns/nav', footer: '/ns/footer' }),
+  } });
+  try {
+    const root = project('chrome');
+    const at = (slug) => run(['preview', ...PAGE.slice(0, 8), '--path', `/ns/${slug}`, '--namespace', 'ns'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: server.origin } });
+    const none = await at('none');
+    assert.equal(none.status, 1, none.all);
+    assert.match(none.stdout, /^FAIL preview: .*nav.*absent.*\/ns\/nav/m);
+    assert.match(none.stdout, /^FAIL preview: .*footer.*absent.*\/ns\/footer/m);
+    const full = await at('full');
+    assert.equal(full.status, 0, full.all);
+    assert.equal(full.stdout.trim(), `PASS preview ${server.origin}/ns/full`);
+    const away = await at('away');
+    assert.equal(away.status, 1, away.all);
+    assert.match(away.stdout, /^FAIL preview: .*nav.*other\.test/m);
+    assert.ok(!/footer/.test(away.stdout), 'the footer is fine');
+  } finally { await server.close(); }
+});
+
+await check('a path that normalises out of the namespace fails naming it, asks the preview for nothing and records the problem', async () => {
+  const server = await startPreviewServer({ pages: { '/home': 'home.html', '/ns/home': 'home.html' } });
+  try {
+    const root = project('traversal');
+    for (const path of ['/ns/../home', '/ns/%2e%2e/home', '/ns/..\\home']) {
+      const r = await run(['preview', ...PAGE.slice(0, 8), '--path', path, '--namespace', 'ns'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: server.origin } });
+      assert.equal(r.status, 1, `${path}: ${r.all}`);
+      assert.match(r.stdout, /^FAIL preview: the page path .*not a plain path/m, path);
+      assert.ok(r.stdout.includes(path), `names ${path}: ${r.stdout}`);
+      assert.ok(!/^PASS/m.test(r.stdout));
+      assert.equal(server.requests.length, 0, `${path}: a path that is refused is never fetched`);
+      const rec = recordOf(root);
+      assert.equal(rec.problems.length, 1);
+      assert.equal(rec.path, path);
+    }
   } finally { await server.close(); }
 });
 
@@ -292,12 +372,14 @@ await check('a page that stays 404 is exit 124 after --max-wait: ERROR (exit 124
 
 await check('the poll waits for the page: 404 twice, then 200 is a PASS', async () => {
   const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
+  const page = readFileSync(fixturePath('home.html'), 'utf8');
   let seen = 0;
   const server = createServer((req, res) => {
-    seen += 1;
-    if (seen <= 2) { res.writeHead(404); return res.end('not yet'); }
+    const isPlain = req.url.endsWith('.plain.html');
+    if (isPlain) seen += 1;
+    if (isPlain && seen <= 2) { res.writeHead(404); return res.end('not yet'); }
     res.writeHead(200, { 'content-type': 'text/html' });
-    return res.end(plain);
+    return res.end(isPlain ? plain : page);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   try {
@@ -306,6 +388,38 @@ await check('the poll waits for the page: 404 twice, then 200 is a PASS', async 
     assert.equal(r.status, 0, r.all);
     assert.equal(seen, 3);
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
+await check('the delivered page is polled too: an authored form that answers while the page stays 404 is exit 124 naming the page', async () => {
+  const server = createServer((req, res) => {
+    if (req.url.endsWith('.plain.html')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<body><main><div></div></main></body>'); }
+    res.writeHead(404);
+    return res.end('not yet');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const root = project('page-404');
+    const r = await preview(root, `http://127.0.0.1:${server.address().port}`, ['--namespace', 'ns', '--max-wait', '2']);
+    assert.equal(r.status, 124, r.all);
+    assert.match(r.stdout, /^ERROR \(exit 124\) preview: \/ns\/home not 200 after 2 s$/m);
+    assert.match(r.stdout, /last response: HTTP 404/);
+    assert.ok(!existsSync(recordPath(root)), 'no verdict leaves no preview.json behind');
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
+await check('a server that never answers cannot overrun --max-wait: each request is clamped to the time left, exit 124 within the bound', async () => {
+  const hung = createServer(() => {});
+  await new Promise((resolve) => hung.listen(0, '127.0.0.1', resolve));
+  try {
+    const root = project('hung');
+    const started = Date.now();
+    const r = await preview(root, `http://127.0.0.1:${hung.address().port}`, ['--namespace', 'ns', '--max-wait', '2']);
+    const took = Date.now() - started;
+    assert.equal(r.status, 124, r.all);
+    assert.match(r.stdout, /^ERROR \(exit 124\) preview: \/ns\/home\.plain\.html not 200 after 2 s$/m);
+    assert.match(r.stdout, /last response: no response/);
+    assert.ok(took >= 1800 && took < 5000, `bounded by --max-wait, not by the 10 s request timeout: ${took} ms`);
+  } finally { hung.closeAllConnections(); await new Promise((resolve) => hung.close(resolve)); }
 });
 
 await check('--auth-header: the header goes to the preview, preview.json holds auth: true, and the token is in no output or file', async () => {
@@ -336,18 +450,37 @@ await check('--token-env reads the token from the environment; without a token a
     const unset = await preview(root, server.origin, ['--namespace', 'ns', '--token-env', 'STARDUST_T4_NO_SUCH_TOKEN']);
     assert.equal(unset.status, 2, unset.all);
     assert.match(unset.stderr, /STARDUST_T4_NO_SUCH_TOKEN/);
-    for (const blank of ['', ' ']) {
-      const emptyHeader = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', blank]);
-      assert.equal(emptyHeader.status, 2, `--auth-header "${blank}": ${emptyHeader.all}`);
-      assert.match(emptyHeader.stderr, /--auth-header is empty/);
-    }
   } finally { await server.close(); }
 });
 
-await check('the header never leaves the preview origin: a redirect elsewhere is not followed, and is no verdict', async () => {
+await check('an empty or blank --auth-header / --token-env is exit 2 "needs a value", never a fallback to $SITE_TOKEN or a .env', async () => {
+  const server = await startPreviewServer({ token: TOKEN });
+  try {
+    const root = project('auth-blank');
+    writeFileSync(join(root, '.env'), `SITE_TOKEN=${TOKEN}\n`);
+    for (const flag of ['--auth-header', '--token-env']) {
+      for (const blank of ['', ' ', '\t']) {
+        const r = await preview(root, server.origin, ['--namespace', 'ns', flag, blank, '--max-wait', '1'], { env: { SITE_TOKEN: TOKEN } });
+        assert.equal(r.status, 2, `${flag} ${JSON.stringify(blank)}: ${r.all}`);
+        assert.match(r.stderr, new RegExp(`${flag} needs a value`));
+        noToken(r.all);
+      }
+    }
+    assert.equal(server.requests.length, 0, 'nothing was asked: no fallback token was read');
+    assert.ok(!existsSync(recordPath(root)));
+  } finally { await server.close(); }
+});
+
+await check('the header never leaves the preview origin: a redirect elsewhere is not followed, for the authored form or the page, and is no verdict', async () => {
   const elsewhere = await startPreviewServer();
   const redirecting = createServer((req, res) => { res.writeHead(302, { location: `${elsewhere.origin}/ns/home.plain.html` }); res.end(); });
+  const pageRedirecting = createServer((req, res) => {
+    if (req.url.endsWith('.plain.html')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<body><main><div></div></main></body>'); }
+    res.writeHead(302, { location: `${elsewhere.origin}/ns/home` });
+    return res.end();
+  });
   await new Promise((resolve) => redirecting.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => pageRedirecting.listen(0, '127.0.0.1', resolve));
   try {
     const root = project('redirect');
     const r = await preview(root, `http://127.0.0.1:${redirecting.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '1']);
@@ -355,7 +488,16 @@ await check('the header never leaves the preview origin: a redirect elsewhere is
     assert.match(r.stdout, /last response: HTTP 302/);
     assert.equal(elsewhere.requests.length, 0, 'the redirect target was never asked');
     noToken(r.all);
-  } finally { redirecting.closeAllConnections(); await new Promise((resolve) => redirecting.close(resolve)); await elsewhere.close(); }
+    const p = await preview(root, `http://127.0.0.1:${pageRedirecting.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '1']);
+    assert.equal(p.status, 124, p.all);
+    assert.match(p.stdout, /^ERROR \(exit 124\) preview: \/ns\/home not 200 after 1 s$/m);
+    assert.match(p.stdout, /last response: HTTP 302/);
+    assert.equal(elsewhere.requests.length, 0, 'the page\'s redirect target was never asked');
+    noToken(p.all);
+  } finally {
+    for (const s of [redirecting, pageRedirecting]) { s.closeAllConnections(); await new Promise((resolve) => s.close(resolve)); }
+    await elsewhere.close();
+  }
 });
 
 await check('main dispatches to a replaceable step and returns its exit code; the help guard runs before any step', async () => {
