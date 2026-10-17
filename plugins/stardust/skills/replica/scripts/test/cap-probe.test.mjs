@@ -1,33 +1,39 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/cap-probe.test.mjs — the cap-probe.mjs contract. Part (a): the pure
 // classification (capped vs fluid, cap origins, kinds, the content cap, the derived probe width, the
-// cross-archetype aggregate and register items, the live-vs-build rows), argument parsing and the
-// DESIGN.json merge — no browser. Part (b): end-to-end against fixture pages served from this process
-// (a live-like page with a 1920 shell + 1600 article + 1180 module, a fluid build, a fixed build) —
-// runs only where playwright is importable, prints a skip line otherwise. Run: node <this file>.
+// cross-archetype aggregate and register items, the live-vs-build rows), argument parsing, the
+// DESIGN.json merge, the one re-probe (fakes), the exit code and the status line — no browser. Part
+// (b): end-to-end against fixture pages served from this process (a live-like page with a 1920 shell
+// + 1600 article + 1180 module, a fluid build, a fixed build, a page that navigates on its first
+// resize, a page that wedges on the resize to the probe width) — runs only where playwright is
+// importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
-  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, DEFAULT_TIMEOUT_MS,
+  parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH, DEFAULT_TIMEOUT_MS, exitCodeFor, statusLine, probeWithRetry,
 } from '../cap-probe.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'cap-probe.mjs');
+// The diff skill's live-session.mjs — plugin tree, else the project copy (the layouts cap-probe.mjs resolves).
+const { isContextDestroyed, withDeadline } = await import(pathToFileURL([join(HERE, '../../../diff/scripts'), join(HERE, '../../diff')].map((d) => join(d, 'live-session.mjs')).find((p) => existsSync(p))).href);
 const root = mkdtempSync(join(tmpdir(), 'cap-probe-test-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const run = (args, cwd = root) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd }); return { code: r.status, out: r.stdout, err: r.stderr }; };
-// The e2e runs must not block the event loop — the fixture server answers from THIS process.
-const runAsync = (args, cwd = root) => new Promise((done) => {
-  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd }); let out = ''; let err = '';
+// The e2e runs must not block the event loop — the fixture server answers from THIS process. A run
+// past `limitMs` is stopped (SIGTERM: playwright closes its browser) and reported, never left hanging.
+const runAsync = (args, { cwd = root, env = {}, limitMs = 120000 } = {}) => new Promise((done) => {
+  const t0 = Date.now(); const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...process.env, ...env } }); let out = ''; let err = '';
+  const timer = setTimeout(() => { err += `\n[test] stopped after ${limitMs} ms`; child.kill('SIGTERM'); }, limitMs);
   child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { err += d; });
-  child.on('close', (code) => done({ code, out, err }));
+  child.on('close', (code) => { clearTimeout(timer); done({ code, out, err, ms: Date.now() - t0 }); });
 });
 
 // ---- fixture pass (the shape probePassInPage returns) -----------------------------------------------
@@ -193,6 +199,79 @@ await check('parseArgs: --timeout-ms stays null unless given — main resolves e
   assert.equal(parseArgs(['https://s/', '--timeout-ms', '5000']).timeoutMs, 5000);
 });
 
+// ---- the re-probe (fakes: pages are numbers, a probe throws what the script says) ------------------------
+const destroyed = (width) => Object.assign(new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation'), { width, probeWidth: 2560 });
+const fakeRun = async (script, { openFails = [] } = {}) => {
+  const log = { opened: [], closed: [], probed: [], retried: [] }; let n = 0; const steps = [...script];
+  const outcome = await probeWithRetry({
+    open: async () => { n += 1; const f = openFails[n - 1]; if (f) throw f; log.opened.push(n); return n; },
+    probe: async (page) => { log.probed.push(page); const s = steps.shift(); if (s instanceof Error) throw s; return { page, ...s }; },
+    close: async (page) => { log.closed.push(page); },
+    isContextDestroyed,
+    onRetry: (e) => { log.retried.push(e.width); },
+  }).then((model) => ({ model }), (error) => ({ error }));
+  return { ...outcome, log };
+};
+await check('probeWithRetry: a destroyed context is re-probed once, whole, on a fresh page; every page is closed', async () => {
+  const r = await fakeRun([destroyed(2560), { contentMaxWidth: 1600 }]);
+  assert.equal(r.error, undefined); assert.deepEqual(r.model, { page: 2, contentMaxWidth: 1600 });
+  assert.deepEqual(r.log, { opened: [1, 2], closed: [1, 2], probed: [1, 2], retried: [2560] });
+  const lost = await fakeRun([Object.assign(new Error('the page navigated after the base pass'), { name: 'PageNavigatedError', width: 2304 }), {}]);
+  assert.deepEqual([lost.error, lost.log.retried], [undefined, [2304]], 'the base pass\'s boxes gone = the same navigation, seen after it');
+});
+await check('probeWithRetry: a second failure, a deadline and a failed re-open leave with the read\'s width; a deadline is not retried', async () => {
+  const twice = await fakeRun([destroyed(2560), destroyed(2304)]);
+  assert.equal(twice.error.width, 2304); assert.deepEqual([twice.log.opened, twice.log.closed], [[1, 2], [1, 2]]);
+  const late = await withDeadline(new Promise(() => {}), 5, 'probe read').catch((e) => Object.assign(e, { width: 2560 }));
+  const hung = await fakeRun([late, {}]);
+  assert.equal(hung.error.name, 'DeadlineError'); assert.match(hung.error.message, /probe read: deadline 5 ms exceeded/);
+  assert.deepEqual([hung.log.opened, hung.log.retried, hung.log.closed], [[1], [], [1]], 'no second wait on the same deadline');
+  const reopen = await fakeRun([destroyed(1440)], { openFails: [null, new Error('page.goto: Timeout 5000 ms exceeded\n  call log …')] });
+  assert.equal(reopen.error.width, 1440); assert.equal(reopen.error.message, 're-open on a fresh page failed — page.goto: Timeout 5000 ms exceeded');
+  assert.deepEqual(reopen.log.closed, [1]);
+});
+await check('probeWithRetry: the first open failing is a load failure (no width); a bot challenge on the re-open leaves as itself', async () => {
+  const load = await fakeRun([{}], { openFails: [new Error('HTTP 500')] });
+  assert.equal(load.error.message, 'HTTP 500'); assert.equal(load.error.width, undefined); assert.deepEqual(load.log.probed, []);
+  const bot = await fakeRun([destroyed(2560)], { openFails: [null, Object.assign(new Error('challenge'), { name: 'BotChallengeError' })] });
+  assert.equal(bot.error.name, 'BotChallengeError'); assert.equal(bot.error.width, undefined);
+});
+
+// ---- verdict and status line ---------------------------------------------------------------------------
+const cap = (failedList, urls = ['https://s/a', 'https://s/b']) => ({ _provenance: { urls, failed: failedList, partial: failedList.some((f) => f.width) }, pages: {}, aggregate: null });
+const cmp = (failedList, compare) => ({ _provenance: { urls: ['https://s/', 'http://localhost:1/'], failed: failedList, partial: failedList.length > 0, baseWidth: 1440, probeWidth: 2560 }, urls: ['https://s/', 'http://localhost:1/'], probeNote: 'derived', live: null, build: null, ...(compare ? { compare } : {}) });
+const hangA = { url: 'https://s/a', width: 2560, error: 'probe read: deadline 5000 ms exceeded' };
+await check('exitCodeFor: 1 load failure > 124 no verdict > 0 (a partial capture) / 2 compare FAIL', () => {
+  assert.equal(exitCodeFor(cap([])), 0);
+  assert.equal(exitCodeFor(cap([hangA])), 0, 'one of two pages probed: partial, exit 0');
+  assert.equal(exitCodeFor(cap([hangA, { ...hangA, url: 'https://s/b', width: 1440 }])), 124, 'every page\'s probe failed a read');
+  assert.equal(exitCodeFor(cap([hangA, { url: 'https://s/b', error: 'HTTP 500' }])), 1, 'a page that failed to load keeps exit 1');
+  assert.equal(exitCodeFor(cmp([], { pass: true })), 0); assert.equal(exitCodeFor(cmp([], { pass: false })), 2);
+  assert.equal(exitCodeFor(cmp([{ ...hangA, url: 'http://localhost:1/' }])), 124);
+  assert.equal(exitCodeFor(cmp([{ ...hangA, url: 'http://localhost:1/' }], { pass: true })), 124, 'a failed read never exits as a PASS');
+});
+await check('statusLine: none without a failed read; PARTIAL / NO VERDICT with every failed read listed', () => {
+  assert.equal(statusLine(cap([])), null); assert.equal(statusLine(cmp([], { pass: true })), null);
+  assert.equal(statusLine(cap([hangA])), 'cap-probe: PARTIAL — 1 of 2 page probe(s) failed: https://s/a @2560 (probe read: deadline 5000 ms exceeded)');
+  assert.equal(statusLine(cap([hangA, { url: 'https://s/b', width: 2304, error: 'x' }])), 'cap-probe: NO VERDICT — every page\'s probe failed (exit 124): https://s/a @2560 (probe read: deadline 5000 ms exceeded); https://s/b @2304 (x)');
+  assert.equal(statusLine(cmp([{ ...hangA, url: 'http://localhost:1/' }])), 'cap-probe: NO VERDICT — a side\'s probe failed, compare needs both (exit 124): http://localhost:1/ @2560 (probe read: deadline 5000 ms exceeded)');
+});
+await check('formatCompare / formatCapture with a failed read: the status line first, the side not probed, no PASS/FAIL line', () => {
+  const live = { ...classifyCaps(livePass(), { probeWidth: 2560 }), baseWidth: 1440 };
+  const r = { ...cmp([{ ...hangA, url: 'http://localhost:1/' }]), live, evidence: 'stardust/replica/gates/home-2560/cap-iter.json' };
+  const lines = formatCompare(r).split('\n');
+  assert.match(lines[0], /^cap-probe: NO VERDICT — a side's probe failed/); assert.match(lines[1], /^cap-probe {2}base 1440 → probe 2560/);
+  assert.ok(lines.includes('  ✗ not probed @2560 — probe read: deadline 5000 ms exceeded'), lines.join('\n'));
+  assert.equal(lines.at(-1), 'cap-probe: NO VERDICT at 2560 — no rows compared, a side was not probed (exit 124) (evidence stardust/replica/gates/home-2560/cap-iter.json)');
+  assert.ok(!lines.some((l) => /^cap-probe: (PASS|FAIL)/.test(l)));
+  const liveFailed = cmp([{ ...hangA, url: 'https://s/' }]);
+  const skippedBuild = formatCompare({ ...liveFailed, _provenance: { ...liveFailed._provenance, skipped: [{ url: 'http://localhost:1/', reason: 'the live side was not probed' }] } });
+  assert.match(skippedBuild, /live {3}https:\/\/s\/\n {2}✗ not probed @2560 — .*\nbuild {2}http:\/\/localhost:1\/\n {2}- not probed — the live side was not probed/);
+  const c = formatCapture({ ...cap([hangA]), pages: { 'https://s/b': { ...live, probeNote: 'derived' } }, aggregate: aggregateCaps({ 'https://s/b': live }) }).split('\n');
+  assert.match(c[0], /^cap-probe: PARTIAL — 1 of 2/); assert.ok(c.includes('✗ https://s/a @2560 not probed — probe read: deadline 5000 ms exceeded'), c.join('\n'));
+  assert.match(c.at(-1), /^contentMaxWidth: 1600px/);
+});
+
 // ---- (b) end-to-end, where playwright resolves from the script's location ---------------------------
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "import('playwright').then(() => process.exit(0), () => process.exit(1))"], { cwd: dirname(SCRIPT) });
 if (pwProbe.status !== 0) {
@@ -204,7 +283,12 @@ if (pwProbe.status !== 0) {
   const fluidBuild = page('fluid', { css: '.container{width:1180px;margin:0 auto}', html: [1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('') });
   const percentBuild = page('percent', { css: '.container{max-width:90%;margin:0 auto}', html: `<div class="wrap"><div class="inner">${[1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('')}</div></div>` });
   const fixedBuild = page('fixed', { css: 'main{max-width:1600px;margin:0 auto}.container{width:1180px;margin:0 auto}', html: [1, 2, 3].map((n) => `<div class="section">${sectionHtml(n)}</div>`).join('') });
-  const pages = { '/live': liveLike, '/fluid': fluidBuild, '/fixed': fixedBuild, '/percent': percentBuild };
+  const withScript = (html, js) => html.replace('</body>', `<script>${js}</script></body>`);
+  // Navigates (reloads) on its first resize, once per browser context — the flag lives in localStorage.
+  const navOnce = withScript(liveLike, "addEventListener('resize', () => { if (!localStorage.getItem('navonce')) { localStorage.setItem('navonce', '1'); location.reload(); } });");
+  // Wedges its renderer (a busy loop) once resized past 2000 px — the probe width, never the 1440 base.
+  const hangWide = withScript(liveLike, 'addEventListener(\'resize\', () => { if (innerWidth > 2000) { for (;;) { /* busy */ } } });');
+  const pages = { '/live': liveLike, '/fluid': fluidBuild, '/fixed': fixedBuild, '/percent': percentBuild, '/navonce': navOnce, '/hang': hangWide };
   const server = createServer((req, res) => { const body = pages[req.url.split('?')[0]]; if (!body) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'text/html' }); res.end(body); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -237,6 +321,49 @@ if (pwProbe.status !== 0) {
       const ok = await runAsync([`${base}/live`, '--against', `${base}/fixed`, '--design', join(root, 'DESIGN.json')]);
       assert.equal(ok.code, 0, ok.out + ok.err);
       assert.match(ok.out, /probe 2560 \(from .*DESIGN.json\)/); assert.match(ok.out, /✓ wrapper cap: live 1600px = build 1600px/); assert.match(ok.out, /cap-probe: PASS at 2560/);
+    });
+    // The deadline runs: --timeout-ms 5000 bounds every read; a wedged page costs the deadline plus its bounded closes.
+    await check('e2e capture: a page that navigates on its first resize is re-probed once on a fresh page — complete, exit 0', async () => {
+      const out = join(root, 'navonce.json');
+      const r = await runAsync([`${base}/navonce`, '--timeout-ms', '5000', '--out', out]);
+      assert.equal(r.code, 0, r.out + r.err);
+      assert.match(r.err, /navonce @\d+: execution context destroyed \(the page navigated\) — re-probed on a fresh page/);
+      assert.match(r.out.split('\n')[0], /\/navonce {2}base 1440 → probe 2560/, 'no status line without a failed read');
+      assert.match(r.out, /content {3}1600px {2}max-width/);
+      const j = JSON.parse(readFileSync(out, 'utf8'));
+      assert.deepEqual([j._provenance.partial, j._provenance.failed, j._provenance.warnings.length, j._provenance.navTimeout], [false, [], 1, { ms: 5000, source: 'flag' }]);
+    });
+    await check('e2e capture: a page that hangs on the resize to the probe width — recorded at that width, exit 124, NO VERDICT first, bounded', async () => {
+      const out = join(root, 'hang.json');
+      const r = await runAsync([`${base}/hang`, '--timeout-ms', '5000', '--out', out]);
+      assert.equal(r.code, 124, r.out + r.err);
+      assert.match(r.out.split('\n')[0], new RegExp(`^cap-probe: NO VERDICT — every page's probe failed \\(exit 124\\): ${base}/hang @2560 \\(probe read: deadline 5000 ms exceeded\\)$`));
+      const j = JSON.parse(readFileSync(out, 'utf8'));
+      assert.equal(j._provenance.partial, true); assert.equal(j.aggregate, null); assert.deepEqual(j.pages, {});
+      assert.equal(j._provenance.failed.length, 1); const [f] = j._provenance.failed;
+      assert.deepEqual([f.url, f.width], [`${base}/hang`, 2560]); assert.match(f.error, /deadline/);
+      assert.ok(r.ms < 60000, `took ${r.ms} ms — a hung read must cost the deadline, not the run`);
+    });
+    await check('e2e capture: a hanging page beside a good one — the next URL goes on, exit 0, partial, the aggregate from the good one', async () => {
+      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json'], { env: { STARDUST_NAV_TIMEOUT_MS: '5000' } });
+      assert.equal(r.code, 0, r.out + r.err);
+      const j = JSON.parse(r.out);
+      assert.match(r.err, new RegExp(`cap-probe: PARTIAL — 1 of 2 page probe\\(s\\) failed: ${base}/hang @2560 \\(probe read: deadline 5000 ms`), 'with --json the status line goes to stderr');
+      assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'env' }, 'no flag: the env figure is the navigation timeout and the deadline');
+      assert.equal(j._provenance.partial, true); assert.deepEqual(Object.keys(j.pages), [`${base}/live`]);
+      assert.deepEqual([j.aggregate.containerMaxWidth, j.aggregate.shellMaxWidth], ['1600px', 1920]);
+    });
+    await check('e2e compare against a build that hangs: NO VERDICT, exit 124 (never 0 or 2), the attempt recorded under --slug without a verdict', async () => {
+      const r = await runAsync([`${base}/live`, '--against', `${base}/hang`, '--timeout-ms', '5000', '--slug', 'hang', '--label', 'iter1']);
+      assert.equal(r.code, 124, r.out + r.err);
+      const lines = r.out.trim().split('\n');
+      assert.match(lines[0], new RegExp(`^cap-probe: NO VERDICT — a side's probe failed, compare needs both \\(exit 124\\): ${base}/hang @2560 \\(probe read: deadline 5000 ms exceeded\\)$`));
+      assert.match(lines.at(-1), /^cap-probe: NO VERDICT at 2560 — .*\(evidence stardust\/replica\/gates\/hang-2560\/cap-iter1.json\)$/);
+      assert.doesNotMatch(r.out, /^cap-probe: (PASS|FAIL)/m);
+      const ev = JSON.parse(readFileSync(join(root, 'stardust/replica/gates/hang-2560/cap-iter1.json'), 'utf8'));
+      assert.equal(ev._provenance.partial, true); assert.equal('compare' in ev, false); assert.equal(ev.build, null); assert.equal(ev.live.contentMaxWidth, 1600);
+      assert.deepEqual(ev._provenance.failed.map((f) => [f.url, f.width]), [[`${base}/hang`, 2560]]);
+      assert.doesNotMatch(readFileSync(join(root, 'stardust/replica/gates/hang-2560/cap-iter1.txt'), 'utf8'), /^cap-probe: (PASS|FAIL)/m);
     });
   } finally {
     server.close();
