@@ -11,7 +11,9 @@
 // with no recorded time, or a record without the map, is applied; an INCONCLUSIVE row is recorded pass false with its
 // reasons and never flips the status; only gate-all's validated override (`valid: true`) passes a failing row; a row's
 // fix-round count (`round`) merges into delivery.gate.rounds per width, a row without one keeps the map; an --only run's
-// runs/<ts>-<slug>.json table ingests like the roster summary.
+// runs/<ts>-<slug>.json table ingests like the roster summary; a gate dir ingests summary.json then runs/*.json in name
+// order (newest row wins); an absent summary.json beside runs/ tables ingests those with one stdout note; not found,
+// unparsable and no-rows files are refused apart (exit 1, nothing written).
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync, utimesSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -422,6 +424,84 @@ await check('--gate ingests an --only run table runs/<ts>-<slug>.json (same row 
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'failed'); assert.equal(d.error, 'gate: pixel 12% > 10%'); assert.equal(d.gate.table, rel);
   assert.equal(d.gate.at, T2); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.rounds, { 1440: 1 });
+});
+
+await check('--gate <dir> ingests its summary.json, then runs/*.json in name order — the newest row per page and width wins whichever table holds it', async () => {
+  const { proj, out } = fixture();
+  for (const r of await Promise.all([run(['page-0', '--status', 'deployed'], proj), run(['page-1', '--status', 'deployed'], proj)])) assert.equal(r.code, 0, r.err);
+  mkdirSync(join(proj, GATE_DIR), { recursive: true });
+  gateTable(proj, join(GATE_DIR, 'summary.json'), T2, 1440, [failRow('page-0'), passRow('page-1', { round: 0 }), passRow('page-2')]);
+  onlyRun(proj, T1, 'page-1', [{ ...failRow('page-1'), round: 1 }]); // a fix round before the roster: skipped
+  const newer = onlyRun(proj, T3, 'page-0', [passRow('page-0', { round: 1 })]); // a fix round after the roster: wins
+  const r = await run(['--gate', GATE_DIR], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `gate ${GATE_DIR} (3 tables) → 5 of 5 rows matched, 2 status flip(s), 1 older row(s) skipped\n`);
+  const p0 = gateOf(out, 'page-0');
+  assert.equal(p0.status, 'deployed', 'the newer --only row lifts the roster failure'); assert.equal(p0.error, null);
+  assert.equal(p0.gate.pass, true); assert.equal(p0.gate.table, newer); assert.equal(p0.gate.at, T3); assert.deepEqual(p0.gate.rounds, { 1440: 1 });
+  const p1 = gateOf(out, 'page-1');
+  assert.equal(p1.status, 'deployed', 'an --only row older than the roster never reverts it'); assert.equal(p1.gate.pass, true);
+  assert.equal(p1.gate.table, join(GATE_DIR, 'summary.json')); assert.equal(p1.gate.at, T2); assert.deepEqual(p1.gate.rounds, { 1440: 0 });
+});
+
+await check('--gate <dir>/summary.json absent while <dir>/runs/ holds tables → ingests those with one stdout note; a dir without summary.json ingests runs/ with no note', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  onlyRun(proj, T1, 'page-0', [{ ...failRow('page-0'), round: 1 }]);
+  const last = onlyRun(proj, T2, 'page-0', [passRow('page-0', { round: 2 })]);
+  const summary = join(GATE_DIR, 'summary.json');
+  r = await run(['--gate', summary], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(r.out.split('\n'), [
+    `summary.json absent — an --only run writes runs/<ts>-<slug>.json; ingested 2 table(s) from ${GATE_DIR}/runs/`,
+    `gate ${GATE_DIR}/runs/ (2 tables) → 2 of 2 rows matched, 2 status flip(s), 0 older row(s) skipped`, '',
+  ]);
+  const d = gateOf(out, 'page-0');
+  assert.equal(d.status, 'deployed'); assert.equal(d.gate.table, last); assert.equal(d.gate.at, T2); assert.deepEqual(d.gate.rounds, { 1440: 2 });
+  r = await run(['--gate', GATE_DIR], proj);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, `gate ${GATE_DIR} (2 tables) → 2 of 2 rows matched, 0 status flip(s), 1 older row(s) skipped\n`, 'the same tables again: the older fix round is skipped');
+  assert.equal(gateOf(out, 'page-0').gate.at, T2);
+});
+
+await check('--gate refuses a path that does not exist (exit 1, `<path> not found`) — no runs/ table beside a summary.json, a mistyped run table, an empty gate dir; nothing written', async () => {
+  const { proj, out } = fixture();
+  const before = pagesText(out);
+  const summary = join(GATE_DIR, 'summary.json');
+  const expectRefused = async (path, msg) => {
+    const r = await run(['--gate', path], proj);
+    assert.equal(r.code, 1, `${path}: ${r.out}`); assert.equal(r.err, `rollout: ${msg}\n`); assert.equal(r.out, '');
+    assert.equal(pagesText(out), before, 'pages.json untouched');
+  };
+  await expectRefused(summary, `${summary} not found`);
+  mkdirSync(join(proj, GATE_DIR, 'runs'), { recursive: true });
+  writeFileSync(join(proj, GATE_DIR, 'runs', 'notes.txt'), 'not a table');
+  await expectRefused(summary, `${summary} not found`);
+  await expectRefused(runFile(T2, 'page-0'), `${runFile(T2, 'page-0')} not found`);
+  await expectRefused(GATE_DIR, `${GATE_DIR} holds no gate-all table (no summary.json, no runs/*.json)`);
+});
+
+await check('--gate names an unparsable file by its own error, and "not a gate-all summary (no rows[])" only a parsed file without rows — exit 1, nothing written, a bad table in a dir refuses the whole dir', async () => {
+  const { proj, out } = fixture();
+  const before = pagesText(out);
+  writeFileSync(join(proj, 'truncated.json'), '{"_provenance": {"writtenBy": "gate-all.mjs"}, "rows": [');
+  let r = await run(['--gate', 'truncated.json'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /^rollout: truncated\.json does not parse as JSON \(.+\)\n$/); assert.doesNotMatch(r.err, /no rows\[\]|not found/);
+  writeFileSync(join(proj, 'rounds.json'), JSON.stringify({ rounds: 1, max: 3, at: [T1] }));
+  r = await run(['--gate', 'rounds.json'], proj);
+  assert.equal(r.code, 1); assert.equal(r.err, 'rollout: rounds.json is not a gate-all summary (no rows[])\n');
+  mkdirSync(join(proj, GATE_DIR, 'runs'), { recursive: true });
+  gateTable(proj, join(GATE_DIR, 'summary.json'), T2, 1440, [failRow('page-0')]);
+  const empty = runFile(T3, 'page-0'); writeFileSync(join(proj, empty), '');
+  r = await run(['--gate', GATE_DIR], proj);
+  assert.equal(r.code, 1); assert.ok(r.err.startsWith(`rollout: ${empty} does not parse as JSON (`), r.err);
+  assert.equal(pagesText(out), before, 'pages.json untouched');
+});
+
+await check('--help names the gate dir form, the absent summary.json note and the three refusals', async () => {
+  const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help4-'));
+  const r = await run(['--help'], proj);
+  assert.equal(r.code, 0);
+  for (const s of ['--gate <table | dir>', 'runs/*.json in name order', 'summary.json absent — an --only run writes runs/<ts>-<slug>.json', '<path> not found', 'does not parse as JSON', 'not a gate-all summary (no rows[])']) assert.ok(r.out.includes(s), s);
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');

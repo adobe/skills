@@ -8,11 +8,22 @@
  *
  * Page:   node update-coverage.mjs <slug>  --status <s> [--url <deployedUrl>] [--error <msg>]
  * Block:  node update-coverage.mjs --block <id> --status <s> [--eds-name <name>]
- * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
- *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, inconclusive, override, table, at, width, atByWidth, rounds} and flips a failing page (no valid
- *   override) from deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
- *   `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
+ * Gate:   node update-coverage.mjs --gate <table | dir>
+ *   <table> = a gate-all table: the roster stardust/replica/gates/all-<w>/summary.json, or the
+ *   runs/<ts>-<slug>.json an --only run writes instead (never summary.json; same rows, fewer); <dir> = the
+ *   gate dir all-<w>/: its summary.json when present, then runs/*.json in name order, every table ingested
+ *   with the newest-row rule below. A summary.json that is absent while the runs/ beside it holds tables
+ *   ingests those tables and says so on stdout:
+ *     summary.json absent — an --only run writes runs/<ts>-<slug>.json; ingested <n> table(s) from <dir>/runs/
+ *   Refused (exit 1, nothing written; every table is read before any write): `<path> not found` (no file,
+ *   and no runs/ table beside a summary.json); `<path> does not parse as JSON (<error>)`; a parsed file
+ *   without a rows array, `<path> is not a gate-all summary (no rows[])`; a dir holding no table,
+ *   `<dir> holds no gate-all table (no summary.json, no runs/*.json)`. One bad table in a dir refuses the ingest.
+ *   Writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
+ *   reasons, inconclusive, override, table, at, width, atByWidth, rounds} (`table` = the file the row came
+ *   from) and flips a failing page (no valid override) from deployed / verified to `failed` (error
+ *   `gate: <reasons>`), a passing one out of that failure back to `deployed`; verify.mjs never marks a page
+ *   `verified` while its `delivery.gate.pass` is false (#125 —
  *   completion derives from one place: a page the pixel table failed cannot read as verified).
  *   `override` = gate-all's validated {verdict, reason, valid}; only `valid: true` passes a failing row (a table
  *   whose override has no `valid` predates the check: not valid). An INCONCLUSIVE row (a polluted capture — no
@@ -55,12 +66,13 @@
  *
  * Writes (under --out, default stardust/rollout): coverage/pages.json (page + new forms) or
  * coverage/blocks.json (block form), then coverage/templates.json and rollout.json when
- * they exist. One result line on stdout. Exit 0 ok, 2 usage, 1 missing ledger / refused row.
+ * they exist. One result line on stdout (a --gate ingest of an absent summary.json: the note line first).
+ * Exit 0 ok, 2 usage, 1 missing ledger / refused row / refused --gate input (not found, unparsable, no rows[]).
  */
-import { join } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock } from './lib.mjs';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -198,41 +210,76 @@ if (blockId) {
   process.exit(0);
 }
 
+// --gate <path> → { label, tables: [{ file, table }] in ingest order, note } — every table parsed before anything is
+// written; a refusal (exit 1) names its case: not found, does not parse, no rows[].
+function gateTables(path) {
+  const refuse = (msg) => { console.error(`rollout: ${msg}`); process.exit(1); };
+  const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+  const runsOf = (dir) => (isDir(join(dir, 'runs')) ? readdirSync(join(dir, 'runs')).filter((f) => f.endsWith('.json')).sort().map((f) => join(dir, 'runs', f)) : []);
+  const load = (file) => {
+    let text;
+    try { text = readFileSync(file, 'utf8'); } catch (e) { refuse(`${file} cannot be read (${e.code || e.message})`); }
+    let table;
+    try { table = JSON.parse(text); } catch (e) { refuse(`${file} does not parse as JSON (${e.message})`); }
+    if (!table || !Array.isArray(table.rows)) refuse(`${file} is not a gate-all summary (no rows[])`);
+    return { file, table };
+  };
+  if (isDir(path)) {
+    const files = [...(existsSync(join(path, 'summary.json')) ? [join(path, 'summary.json')] : []), ...runsOf(path)];
+    if (!files.length) refuse(`${path} holds no gate-all table (no summary.json, no runs/*.json)`);
+    return { label: `${path} (${files.length} table${files.length === 1 ? '' : 's'})`, tables: files.map(load), note: null };
+  }
+  if (existsSync(path)) return { label: path, tables: [load(path)], note: null };
+  // an --only run writes runs/<ts>-<slug>.json and never summary.json
+  const dir = dirname(path);
+  const runs = basename(path) === 'summary.json' ? runsOf(dir) : [];
+  if (!runs.length) refuse(`${path} not found`);
+  return {
+    label: `${dir}/runs/ (${runs.length} table${runs.length === 1 ? '' : 's'})`,
+    tables: runs.map(load),
+    note: `summary.json absent — an --only run writes runs/<ts>-<slug>.json; ingested ${runs.length} table(s) from ${dir}/runs/`,
+  };
+}
+
 // Gate ingest (#125): the pixel table's rows into delivery.gate
-const gateFile = arg('gate', null);
-if (gateFile) {
-  const table = readJSON(gateFile);
-  if (!table || !Array.isArray(table.rows)) { console.error(`rollout: ${gateFile} is not a gate-all summary (no rows[])`); process.exit(1); }
+const gateArg = arg('gate', null);
+if (gateArg) {
+  const { label, tables, note } = gateTables(gateArg);
   const doc = readJSON(pagesPath);
   if (!doc) { console.error(`rollout: ${pagesPath} not found — run inventory.mjs first.`); process.exit(1); }
-  const prov = table._provenance || {};
-  const width = prov.breakpoint ?? null;
-  let matched = 0; let flipped = 0; let skipped = 0; let inconclusive = 0;
-  for (const r of table.rows) {
-    const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
-    if (!p) continue;
-    matched += 1;
-    const at = (r.reused && r.reused.what === 'row' && r.reused.at) || prov.writtenAt || null;
-    const rec = p.delivery && p.delivery.gate;
-    const recAt = width != null && rec && rec.atByWidth ? rec.atByWidth[width] : null;
-    if (at && recAt && Date.parse(at) < Date.parse(recAt)) { skipped += 1; continue; }
-    const atByWidth = { ...((rec && rec.atByWidth) || {}) };
-    if (at && width != null) atByWidth[width] = at;
-    const rounds = { ...((rec && rec.rounds) || {}) };
-    if (Number.isInteger(r.round) && r.round >= 0 && width != null) rounds[width] = r.round;
-    p.delivery = p.delivery || {};
-    // gate-all's validated override; a table written before the check carries none with `valid` — not earned
-    const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
-    const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds };
-    if (r.inconclusive) inconclusive += 1;
-    else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
-    else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
+  let matched = 0; let flipped = 0; let skipped = 0; let inconclusive = 0; let rowCount = 0;
+  // summary.json first, then runs/ in name order (= time order); the newest row per page and width wins regardless
+  for (const { file: gateFile, table } of tables) {
+    const prov = table._provenance || {};
+    const width = prov.breakpoint ?? null;
+    rowCount += table.rows.length;
+    for (const r of table.rows) {
+      const p = (doc.pages || []).find((x) => x.slug === r.slug || (r.path && x.path === r.path));
+      if (!p) continue;
+      matched += 1;
+      const at = (r.reused && r.reused.what === 'row' && r.reused.at) || prov.writtenAt || null;
+      const rec = p.delivery && p.delivery.gate;
+      const recAt = width != null && rec && rec.atByWidth ? rec.atByWidth[width] : null;
+      if (at && recAt && Date.parse(at) < Date.parse(recAt)) { skipped += 1; continue; }
+      const atByWidth = { ...((rec && rec.atByWidth) || {}) };
+      if (at && width != null) atByWidth[width] = at;
+      const rounds = { ...((rec && rec.rounds) || {}) };
+      if (Number.isInteger(r.round) && r.round >= 0 && width != null) rounds[width] = r.round;
+      p.delivery = p.delivery || {};
+      // gate-all's validated override; a table written before the check carries none with `valid` — not earned
+      const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
+      const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
+      p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, rounds };
+      if (r.inconclusive) inconclusive += 1;
+      else if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
+      else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
+    }
   }
   doc.generatedAt = now;
   writeJSON(pagesPath, doc);
   reRoll();
-  console.log(`gate ${gateFile} → ${matched} of ${table.rows.length} rows matched, ${flipped} status flip(s), ${skipped} older row(s) skipped${inconclusive ? `, ${inconclusive} inconclusive (status unchanged)` : ''}`);
+  if (note) console.log(note);
+  console.log(`gate ${label} → ${matched} of ${rowCount} rows matched, ${flipped} status flip(s), ${skipped} older row(s) skipped${inconclusive ? `, ${inconclusive} inconclusive (status unchanged)` : ''}`);
   process.exit(0);
 }
 
@@ -240,7 +287,7 @@ if (gateFile) {
 if (!slug || !status || !PAGE_STATUSES.includes(status)) {
   console.error(`usage: update-coverage.mjs <slug> --status <${PAGE_STATUSES.join('|')}> [--url <u>] [--error <m>]`);
   console.error('   or: update-coverage.mjs --block <id> --status <pending|converted|deployed|verified|failed> [--eds-name <n>]');
-  console.error('   or: update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or runs/<ts>-<slug>.json)');
+  console.error('   or: update-coverage.mjs --gate <table | dir>   (stardust/replica/gates/all-<w>/summary.json, …/runs/<ts>-<slug>.json, or all-<w>/)');
   console.error('   or: update-coverage.mjs --new <slug> --path </path> --template <id> --origin <origin> [--title <t>] [--status <s>]');
   process.exit(2);
 }
