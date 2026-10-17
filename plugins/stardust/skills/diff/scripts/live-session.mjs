@@ -33,8 +33,15 @@
  *     request makes cross-origin CORS-mode font fetches (Typekit, Google
  *     Fonts, any font CDN) non-simple; they die with net::ERR_FAILED and the
  *     live capture silently renders FALLBACK type — wrong wraps, wrong
- *     heights, wrong doc height, no error anywhere. Bot managers fingerprint
- *     the navigation request, which still carries the full set.
+ *     heights, wrong doc height, no error anywhere. Of the document route's
+ *     set only Accept / Accept-Language / Upgrade-Insecure-Requests apply:
+ *     Playwright drops its sec-* values as forbidden headers. Every request's
+ *     sec-ch-ua* comes from the browser, through the UA metadata
+ *     applyUaMetadata sets from the UA string (a site behind a vendor wall
+ *     served a 200 "System Down" page when the UA claimed Chrome and the
+ *     hints did not back it); browser-set low-entropy hints trigger no CORS
+ *     preflight, unlike F-B2's author headers. Escape hatch:
+ *     STARDUST_LIVE_HINTS=native.
  *   - A challenge/blocked interstitial FAILS LOUD (BotChallengeError), never
  *     silently measured as the source (the Access-Denied trap: an "Access Denied"
  *     page diffs cleanly — wrongly). So does a 2xx DENIAL page (a vendor wall
@@ -74,14 +81,22 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { release as osRelease } from 'node:os';
 import { dirname } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
-// token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
-// and standardHeaders() derives sec-ch-ua from it so the two never disagree.
+// token at 10_15_7 and the minor version at .0.0.0 — only the major matters.
+// The sec-ch-ua* a request carries come from the browser's UA metadata, which
+// applyUaMetadata sets from this string (uaMetadata), so the two never
+// disagree; standardHeaders()' sec-ch-ua is the same brand list, but a route's
+// sec-* values never arrive (Playwright drops them as forbidden headers).
 export const REAL_CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
 const CHROME_MAJOR = (REAL_CHROME_UA.match(/Chrome\/(\d+)/) || [])[1] || '143';
+
+// The brands a Chrome of version `chrome` claims, the GREASE entry first (the order standardHeaders' sec-ch-ua sends):
+// one list for the header and for uaMetadata's brands / fullVersionList.
+const chromeBrands = (grease, chrome) => [{ brand: 'Not/A)Brand', version: grease }, { brand: 'Chromium', version: chrome }, { brand: 'Google Chrome', version: chrome }];
 
 // 'en' → the exact field-proven value ('en-US,en;q=0.9' — the B-probe that
 // turned a nonprofit site's 403 into a 200); a regioned tag keeps its base as fallback.
@@ -169,10 +184,115 @@ export function standardHeaders(locale = 'en') {
     Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
     'Accept-Language': acceptLanguage(locale),
     'Upgrade-Insecure-Requests': '1',
-    'sec-ch-ua': `"Not/A)Brand";v="8", "Chromium";v="${CHROME_MAJOR}", "Google Chrome";v="${CHROME_MAJOR}"`,
+    'sec-ch-ua': chromeBrands('8', CHROME_MAJOR).map((b) => `"${b.brand}";v="${b.version}"`).join(', '),
     'sec-ch-ua-mobile': '?0',
     'sec-ch-ua-platform': '"macOS"',
   };
+}
+
+// ---- client hints: consistent with the UA on every request (V4) ----------------------------------------------------
+// A site behind a vendor wall answered a recorded run with a 200 "System Down" page when the UA claimed Chrome and the
+// requests' client hints did not back it. A route cannot fix that: Playwright drops every sec-* header override as a
+// forbidden header. So the browser's own UA metadata is set from the UA string (applyUaMetadata) and the browser sends
+// matching sec-ch-ua* on every request — documents and subresources, same- and cross-origin — with no CORS preflight
+// (browser-set low-entropy hints are not author headers; F-B2 stays clear). The value, in order: the caller's `hints`
+// option, else env STARDUST_LIVE_HINTS (the escape hatch reaches the instruments gate rounds spawn), else
+// 'ua-metadata'; 'native' leaves the browser's own hints.
+export const HINTS_ENV = 'STARDUST_LIVE_HINTS';
+export const HINT_SCOPES = Object.freeze(['ua-metadata', 'native']);
+let hintsEnvWarned = false; // one warning per process, not one per context
+let cdpWarned = false; // likewise for a CDP failure in applyUaMetadata
+
+/**
+ * The client-hint value a context runs → 'ua-metadata' | 'native'. `hints` when non-null (outside HINT_SCOPES →
+ * throws), else env STARDUST_LIVE_HINTS trimmed ('' = unset; outside HINT_SCOPES → ignored with ONE stderr warning per
+ * process), else 'ua-metadata'.
+ */
+export function hintScope({ hints = null, env = process.env } = {}) {
+  if (hints != null) {
+    if (!HINT_SCOPES.includes(hints)) throw new Error(`hints must be one of ${HINT_SCOPES.join(', ')} — got ${hints}`);
+    return hints;
+  }
+  const raw = env && env[HINTS_ENV] != null ? String(env[HINTS_ENV]).trim() : '';
+  if (HINT_SCOPES.includes(raw)) return raw;
+  if (raw && !hintsEnvWarned) {
+    hintsEnvWarned = true;
+    console.error(`[live-session] ${HINTS_ENV}=${raw} is not one of ${HINT_SCOPES.join(', ')} — ignored`);
+  }
+  return 'ua-metadata';
+}
+
+const UA_PLATFORMS = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
+
+/**
+ * The CDP userAgentMetadata a real Chrome of the UA's version would report on this host → null when `ua` has no
+ * `Chrome/<n>`. Brands and fullVersionList from the UA (chromeBrands — the same list as standardHeaders' sec-ch-ua);
+ * platform, platformVersion (macOS from the Darwin release: major ≥ 25 → major + 1, else major − 9; minor kept, patch
+ * 0), architecture and bitness from the HOST.
+ */
+export function uaMetadata(ua = REAL_CHROME_UA, host = { platform: process.platform, release: osRelease(), arch: process.arch }) {
+  const m = String(ua || '').match(/Chrome\/(\d+)((?:\.\d+)*)/);
+  if (!m) return null;
+  const fullVersion = `${m[1]}${m[2]}`;
+  const release = String(host.release || '');
+  let platformVersion = (release.match(/^\d+(\.\d+){0,2}/) || [''])[0];
+  if (host.platform === 'darwin') {
+    const d = release.match(/^(\d+)(?:\.(\d+))?/);
+    platformVersion = d ? `${Number(d[1]) >= 25 ? Number(d[1]) + 1 : Number(d[1]) - 9}.${d[2] || 0}.0` : '';
+  }
+  return {
+    brands: chromeBrands('8', m[1]),
+    fullVersionList: chromeBrands('8.0.0.0', fullVersion),
+    fullVersion,
+    platform: UA_PLATFORMS[host.platform] || '',
+    platformVersion,
+    architecture: ['arm64', 'arm'].includes(host.arch) ? 'arm' : 'x86',
+    bitness: ['arm64', 'x64', 'ppc64', 's390x'].includes(host.arch) ? '64' : '32',
+    model: '',
+    mobile: false,
+    wow64: false,
+  };
+}
+
+/**
+ * Set the browser's UA metadata from `ua` on every page of `ctx` (Emulation.setUserAgentOverride on a CDP session of
+ * our own — sent after Playwright's own init-time override, so it wins): the pages it has, each page ctx.newPage
+ * returns (before it returns) and each page the site opens (popups; best effort). `locale` is the context's locale
+ * option — the acceptLanguage Playwright itself sends — so Accept-Language is unchanged. `hints` (hintScope) is
+ * validated first. 'native', or a UA with no Chrome version → nothing set, ctx.stardustHints 'native'. A CDP failure
+ * (a non-Chromium browser, a closed page) → ONE stderr line per process and 'native'; else 'ua-metadata'.
+ */
+export async function applyUaMetadata(ctx, { ua = REAL_CHROME_UA, locale, hints = null } = {}) {
+  const scope = hintScope({ hints });
+  const userAgentMetadata = scope === 'ua-metadata' ? uaMetadata(ua) : null;
+  if (!userAgentMetadata) { ctx.stardustHints = 'native'; return; }
+  ctx.stardustHints = 'ua-metadata';
+  // Out-of-process iframes keep Playwright's own metadata (a known limit): the override is per page target.
+  // page → the promise of its CDP session, kept referenced while the page lives: a detached session clears the override.
+  const applied = new WeakMap();
+  const apply = (page) => {
+    if (!applied.has(page)) {
+      applied.set(page, (async () => {
+        try {
+          const cdp = await ctx.newCDPSession(page);
+          await cdp.send('Emulation.setUserAgentOverride', { userAgent: ua, acceptLanguage: locale, userAgentMetadata });
+          return cdp;
+        } catch (e) {
+          ctx.stardustHints = 'native';
+          if (!cdpWarned) {
+            cdpWarned = true;
+            console.error(`[live-session] the UA client-hint metadata could not be set (${String(e.message).split('\n')[0]}) — the browser's own client hints ride this context (hints: native)`);
+          }
+          return null;
+        }
+      })());
+    }
+    return applied.get(page);
+  };
+  for (const page of ctx.pages()) await apply(page);
+  const open = ctx.newPage.bind(ctx);
+  ctx.newPage = async (...args) => { const page = await open(...args); await apply(page); return page; };
+  ctx.on('page', (page) => { apply(page); });
 }
 
 /**
@@ -199,15 +319,24 @@ export function contextOptions({ ua, locale, viewport } = {}) {
  * context that skipped the spoof is re-challenged even after another one
  * cleared it; the spoof is harmless on non-challenging sites). Extra
  * Playwright context options pass through (reducedMotion, ...).
+ * `hints` (null → env STARDUST_LIVE_HINTS → 'ua-metadata'; hintScope) is
+ * validated before any context opens, then applyUaMetadata runs with the
+ * context's UA and locale. The context records `stardustHints` and
+ * `stardustBuild` (browserBuild) — hintRecord reads them for a capture record.
  */
-export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, ...rest } = {}) {
+export async function newLiveContext(browser, { ua, locale, viewport, authOrigin, authHeader, hints, ...rest } = {}) {
   // F-B2 (financial-services site, 2026-08-25): the standard header set must ride on
   // DOCUMENT requests only. Forcing it via extraHTTPHeaders on every request
   // makes cross-origin CORS-mode subresource fetches (Typekit/webfont CDNs)
   // non-simple; they die with net::ERR_FAILED and the live capture silently
   // renders FALLBACK type — an asymmetric false measurement (the prototype
-  // side loads the same kit fine). Bot-manager fingerprinting happens on the
-  // navigation request, which still carries the full set below.
+  // side loads the same kit fine). Of the set below only Accept,
+  // Accept-Language and Upgrade-Insecure-Requests apply: Playwright drops its
+  // sec-* values as forbidden headers. Every request's sec-ch-ua* comes from
+  // the browser, through the UA metadata applyUaMetadata sets from the UA
+  // string; browser-set low-entropy hints trigger no CORS preflight, unlike
+  // the author headers above. Escape hatch: STARDUST_LIVE_HINTS=native.
+  const scope = hintScope({ hints });
   const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport });
   const ctx = await browser.newContext({ ...rest, ...base });
   await ctx.route('**/*', (route) => {
@@ -221,8 +350,13 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
   if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
+  ctx.stardustBuild = browserBuild(browser);
+  await applyUaMetadata(ctx, { ua: base.userAgent, locale: base.locale, hints: scope });
   return ctx;
 }
+
+/** What a capture record names about the client hints: the build that ran and the hint value of its context. */
+export const hintRecord = (ctx) => ({ browserBuild: ctx.stardustBuild || 'unknown', hints: ctx.stardustHints || 'native' });
 
 /**
  * Origin-scoped site auth (protected demo origins: access allow-list + site
@@ -600,8 +734,12 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
  * challenge that genuinely needs a human. Every `--headed` flag means THIS tier.
  *
  * `channel: 'chrome'` needs Google Chrome installed; when the launch fails the
- * bundled Chromium is launched instead with the same stealth args and a loud
- * stderr warning (the instrument is then the lesser tier — say so in the log).
+ * full Chromium build (`channel: 'chromium'`) is launched instead, else the
+ * bundled default build, with the same stealth args and a loud stderr warning
+ * naming the build that ran (the instrument is then the lesser tier — say so
+ * in the log). Tags `stardustTier` (browserTier) and `stardustBuild`
+ * (browserBuild: 'chrome', else 'chromium', else 'chromium-headless-shell'
+ * unless the window is visible).
  */
 export async function launchStealthHeaded(chromium) {
   const visible = process.env.STARDUST_HEADED_WINDOW === '1';
@@ -614,12 +752,20 @@ export async function launchStealthHeaded(chromium) {
   try {
     const b = await chromium.launch(opts);
     b.stardustTier = visible ? 'chrome-window' : 'chrome';
+    b.stardustBuild = 'chrome';
     return b;
   } catch (e) {
-    console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium with the stealth args; bot-managed origins may still block this tier`);
     const { channel, ...rest } = opts;
-    const b = await chromium.launch(rest);
+    let b = null; let build = 'chromium';
+    try { b = await chromium.launch({ ...rest, channel: 'chromium' }); } catch { /* the full build is not installed — no channel below */ }
+    if (!b) {
+      b = await chromium.launch(rest);
+      build = visible ? 'chromium' : 'chromium-headless-shell';
+    }
+    const ran = build === 'chromium' ? 'the full Chromium build' : 'the Chromium headless shell';
+    console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to ${ran} with the stealth args; bot-managed origins may still block this tier`);
     b.stardustTier = 'chromium-fallback';
+    b.stardustBuild = build;
     return b;
   }
 }
@@ -627,6 +773,38 @@ export async function launchStealthHeaded(chromium) {
  * 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records it in its
  * evidence so a run that degraded is visible in the artifact, not only in a log line. */
 export const browserTier = (b) => b.stardustTier || 'chromium';
+
+/** The build a browser runs, as this module tagged it at launch: 'chrome' (real Chrome) | 'chromium' (the full
+ * Chromium build — `channel: 'chromium'`, or a headed bundled launch) | 'chromium-headless-shell' | 'unknown' (a
+ * browser this module did not launch). hintRecord names it in a capture record. */
+export const browserBuild = (b) => (b && b.stardustBuild) || 'unknown';
+
+let shellWarned = false; // one warning per process, not one per launch
+
+/**
+ * chromium.launch preferring the full Chromium build (`channel: 'chromium'`) — the closer match to a real Chrome (the
+ * headless shell's own client hints name a "HeadlessChrome" brand; the escape hatch 'native' sends those). Not
+ * installed → `chromium.launch(launchOpts)` (the headless shell unless `headless: false`) with ONE stderr line per
+ * process; newLiveContext's UA metadata still applies. Tags stardustTier 'chromium' and stardustBuild (browserBuild).
+ * Takes the caller's `chromium` so this module stays import-free.
+ */
+export async function launchChromium(chromium, launchOpts = {}) {
+  try {
+    const b = await chromium.launch({ ...launchOpts, channel: 'chromium' });
+    b.stardustTier = 'chromium';
+    b.stardustBuild = 'chromium';
+    return b;
+  } catch (e) {
+    if (!shellWarned) {
+      shellWarned = true;
+      console.error(`[live-session] the full Chromium build is not installed (channel chromium: ${String(e.message).split('\n')[0]}) — the headless shell runs; the UA client-hint metadata still applies (npx playwright install chromium)`);
+    }
+    const b = await chromium.launch(launchOpts);
+    b.stardustTier = 'chromium';
+    b.stardustBuild = launchOpts.headless === false ? 'chromium' : 'chromium-headless-shell';
+    return b;
+  }
+}
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.

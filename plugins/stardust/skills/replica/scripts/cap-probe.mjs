@@ -582,6 +582,8 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+  // The live side's UA client-hint metadata on the local side too (symmetric); a stale live-session copy has neither.
+  if (!live && typeof session.applyUaMetadata === 'function') await session.applyUaMetadata(context, { ua: o.ua || session.REAL_CHROME_UA, locale: 'en-US' });
   const bounded = (p) => session.withDeadline(p, CLOSE_MS, 'close').catch(() => {});
   // A page at the base width (the context's viewport), opened the one way this URL is opened. `bound` (the re-probe's
   // fresh page only) races each step around the navigation against FRESH_PAGE_STEP_MS; a new page that arrives after

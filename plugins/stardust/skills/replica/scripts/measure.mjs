@@ -300,6 +300,8 @@ async function measurePage(browser, url, o, session) {
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
+  // The live side's UA client-hint metadata on the local side too (symmetric); a stale live-session copy has neither.
+  if (!live && typeof session.applyUaMetadata === 'function') await session.applyUaMetadata(context, { ua: o.ua || session.REAL_CHROME_UA, locale: 'en-US' });
   // Errors ignored: the page is abandoned either way, and browser.close() kills what is left.
   const closeBounded = (p) => session.withDeadline(p.close(), CLOSE_DEADLINE_MS, `${url} page close`).catch(() => {});
   // The open path in two parts: the navigation (bounded by its own timeouts; never raced — a late BotChallengeError
