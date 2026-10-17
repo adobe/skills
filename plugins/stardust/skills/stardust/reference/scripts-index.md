@@ -16,7 +16,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/fresh-check.mjs` — propagation wait on the decoded body — `<url> (--expect-file <f>|--expect-sha <hex>|--grep <marker>) [--max-s 180] [--json]`; exit 3 = stale
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--redirects <f>] [--check]`; a missing `--redirects` file = note
 - `deploy/martech-scaffold.mjs` — contract → `scripts/martech.js` + hooks — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid/conflict/no hook
-- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json]`
+- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json] [--source-capture <json>]`
 - `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`

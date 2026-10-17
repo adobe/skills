@@ -26,7 +26,7 @@ node skills/rollout/scripts/delivery-lint.mjs --file <content.html> \
 | Rule | Sev | Why it breaks delivery |
 |---|---|---|
 | `wrapper` | P0 | No `<body>…<main>…</main></body>` → DA silently discards the content. `<header>`/`<footer>` absent → P1. |
-| `h1` | P0/P1 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. 0 is a `note` when the source capture records no h1 either (`--slug`, else the coverage row matching `--path`; `--current` defaults to `stardust/current`) — content is never edited to satisfy a verifier; `verify.mjs` keeps the same exception. |
+| `h1` | P0/P1 | A page needs exactly one `<h1>` (SEO + decoration). 0 → P0; >1 → P1. A fragment must have none. 0 is a `note` when the source capture records no h1 either (`--slug`, else the coverage row matching `--path`; `--current` defaults to `stardust/current`) — content is never edited to satisfy a verifier; `verify.mjs`, `optimize.mjs` (source parity) and `qa-gate.mjs --source-capture` (a WARN) keep the same exception. The capture records VISIBLE headings with text only, so a hidden or image-only source `<h1>` reads as "no h1": judge such a page by eye before relying on the note. |
 | `one-cta-per-p` | P1 | `decorateButtons` only buttonizes a link that is the **sole** content of its `<p>`. Two emphasized links in one paragraph ship as unstyled text. Split each CTA into its own `<p>`. |
 | `about-error` | P0 | `about:error` in the source means a broken image rendition already shipped. |
 | `img-path` | P0 | A `/img/...` src 404s at delivery. |
