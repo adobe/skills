@@ -8,7 +8,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed, 3 = token halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file] [--site-token-env <N>]`; exit 1 = failed, 3 = token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
 - `deploy/file-lock.mjs` — library (ledger lock), no CLI
 - `deploy/eds-path.mjs` — library (path contract), no CLI
