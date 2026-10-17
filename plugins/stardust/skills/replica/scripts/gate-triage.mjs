@@ -67,7 +67,8 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --help, -h                this text
 Advisory: the rows stay the verdict; fix by cause, re-gate the named scope; 3 fix rounds per page.
 INCONCLUSIVE rows (a polluted capture) are listed apart as capture fixes (--hide / presence.json), never as failing;
-an override skips a row only when gate-all validated it (valid: true) — a rejected one is triaged.
+an override skips a row only when gate-all validated it (valid: true) — a rejected one is triaged; a row without a pixel
+measurement is listed under "No verdict (re-run)" whatever its override says.
 Re-gate commands: one per eds host, --eds-host normalised to https://<host> (a bare host and its URL share one).
 Exit: 0 triage computed, 1 usage / no gate table / malformed JSON / output inside a frozen path.`;
 
@@ -445,8 +446,9 @@ export function buildTriage(input, runParity = null) {
     const m = merged.get(r.slug); const id = `${r.slug}@${width}`;
     // a polluted capture measured nothing: no verdict to triage or override — the capture is the fix
     if (r.inconclusive) { inconclusive.push({ row: id, reasons: (r.reasons || []).map(String), source: m.src.file }); continue; }
-    if (r.override && r.override.valid === true) continue;
+    // no pixel measurement: nothing an override can lift (a table written before gate-all refused one may say valid)
     if (r.pct == null) { errors.push({ row: id, error: r.error ? String(r.error) : 'no verdict — re-run', source: m.src.file }); continue; }
+    if (r.override && r.override.valid === true) continue;
     if (r.pass) continue;
     failing.push(id);
     const template = templateOf(r); const heightTol = (m.src.prov && m.src.prov.heightTolerance) ?? 0.05;

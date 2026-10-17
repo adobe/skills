@@ -48,9 +48,10 @@
  * OVERRIDES: an overrides.json entry `{ verdict, reason }` lifts a failing row (passWithOverride; exit 0 when every row
  * passes or is lifted) only when validated (`checkOverride`): its verdict is tier-shift / instrument-artifact /
  * source-volatile, its reason names R-<nn> entries that head a section of stardust/replica/inconsistency-register.md
- * (read once per run, cwd-relative), clip PASS and — on the published stage — content PASS (n/a is not PASS), and the
- * row is not INCONCLUSIVE. The row's `override` is { verdict, reason, valid[, rejected] }; every failed rule of a failing
- * row is an `override rejected: <rule>` reason; totals count overridePass, overrideRejected and overrideShare.
+ * (read once per run, cwd-relative), clip PASS and — on the published stage — content PASS (n/a is not PASS), the row
+ * has a pixel measurement (not a missing capture or a pixel error) and is not INCONCLUSIVE. The row's `override` is
+ * { verdict, reason, valid[, rejected] }; every failed rule of a failing row is an `override rejected: <rule>` reason;
+ * totals count overridePass, overrideRejected and overrideShare.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
  * (shown BESIDE the number, never replacing it; it counts only when validated — OVERRIDES above), clip-allow.json,
@@ -195,7 +196,8 @@ Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND cl
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header);
   overrides.json { "<slug>": { verdict, reason } } counts only when validated: verdict tier-shift / instrument-artifact /
   source-volatile, a reason naming an R-<nn> of stardust/replica/inconsistency-register.md, clip + content PASS (prototype
-  stage: clip), the row not INCONCLUSIVE — else "override rejected: <rule>" reasons and the row stays FAIL.
+  stage: clip), a pixel measurement (not a missing capture / pixel error), the row not INCONCLUSIVE — else "override
+  rejected: <rule>" reasons and the row stays FAIL.
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
@@ -334,13 +336,14 @@ export function registerIds(text) {
 }
 const passWord = (v) => (v === true ? 'PASS' : v === false ? 'FAIL' : 'n/a');
 /**
- * checkOverride(raw, { inconclusive, clipPass, contentPass, stage, register }) → { verdict, reason, valid[, rejected] }, or
- * null without an entry. `register` = { file, found, ids } (REGISTER_FILE, read once per run). Each failing rule is one
+ * checkOverride(raw, { inconclusive, compared, clipPass, contentPass, stage, register }) → { verdict, reason, valid[, rejected] }, or
+ * null without an entry. `register` = { file, found, ids } (REGISTER_FILE, read once per run); `compared` = the row has a
+ * pixel measurement (not a missing capture or a pixel error; absent = not compared). Each failing rule is one
  * `rejected` line: the verdict is one of OVERRIDE_VERDICTS; the reason names R-<nn> entries the register heads; clip PASS
- * and — except on the prototype stage, which has no content criterion — content PASS (n/a is not PASS); the row is not
- * INCONCLUSIVE. `rejected` is present only when invalid.
+ * and — except on the prototype stage, which has no content criterion — content PASS (n/a is not PASS); the row has a
+ * pixel measurement; the row is not INCONCLUSIVE. `rejected` is present only when invalid.
  */
-export function checkOverride(raw, { inconclusive = false, clipPass = null, contentPass = null, stage = 'published', register = null } = {}) {
+export function checkOverride(raw, { inconclusive = false, compared = false, clipPass = null, contentPass = null, stage = 'published', register = null } = {}) {
   if (raw == null) return null;
   const o = typeof raw === 'object' ? raw : { verdict: raw };
   const kind = o.verdict ?? null; const reason = o.reason ?? null; const file = (register && register.file) || REGISTER_FILE;
@@ -352,6 +355,7 @@ export function checkOverride(raw, { inconclusive = false, clipPass = null, cont
   else { const absent = named.filter((id) => !register.ids.includes(id)); if (absent.length) rejected.push(`${absent.join(', ')} not in ${file}`); }
   const proto = stage === 'prototype';
   if (clipPass !== true || (!proto && contentPass !== true)) rejected.push(`clip and content must pass (clip ${passWord(clipPass)}, content ${proto ? 'not a criterion' : passWord(contentPass)})`);
+  if (!compared) rejected.push('no pixel measurement to override');
   if (inconclusive) rejected.push('the row is INCONCLUSIVE — no verdict to override');
   return { verdict: kind, reason, valid: !rejected.length, ...(rejected.length ? { rejected } : {}) };
 }
@@ -420,7 +424,7 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   reasons.push(...fontReasons);
   const pixelOnlyPass = !inconclusive && !!(pixelPass && heightPass);
   const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fontReasons.length;
-  const ov = checkOverride(override, { inconclusive, clipPass, contentPass, stage, register });
+  const ov = checkOverride(override, { inconclusive, compared: !!compared, clipPass, contentPass, stage, register });
   if (!inconclusive && !pass && ov && !ov.valid) reasons.push(...ov.rejected.map((x) => `override rejected: ${x}`));
   return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!(ov && ov.valid), inconclusive, fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons: inconclusive ? [...polluted, ...fontReasons] : reasons, override: ov };
 }
@@ -755,7 +759,7 @@ export function rowReuse({ prior, gateKey, edsPng, override = null, register = n
   const { row } = prior;
   if (row.gateKey !== gateKey || row.pass !== true || row.inconclusive || row.originAsymmetric || !sameCriteria(prior.prov, opts)) return null;
   const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
-  const ov = checkOverride(override, { inconclusive: false, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register });
+  const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register });
   return { ...row, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
 }
 

@@ -26,7 +26,7 @@
 // (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record, a failed
 // --recapture-origin keeping an origin from before the check → INCONCLUSIVE, exit 2.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
-// stage — not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
+// stage — a pixel measurement, not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
 // one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
 // font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*. A font check
 // that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
@@ -107,7 +107,7 @@ check('registerIds: the R-<nn> IDs that head a section of the register — sorte
   assert.deepEqual(registerIds(''), []); assert.deepEqual([OVERRIDE_VERDICTS, REGISTER_FILE], [['tier-shift', 'instrument-artifact', 'source-volatile'], REG]);
 });
 check('checkOverride: a validated override (kind, register entry, clip + content PASS) is valid; each failing rule is one rejected line; the prototype stage needs clip only; an INCONCLUSIVE row has no verdict to override', () => {
-  const ok = { inconclusive: false, clipPass: true, contentPass: true, stage: 'published', register };
+  const ok = { inconclusive: false, compared: true, clipPass: true, contentPass: true, stage: 'published', register };
   assert.equal(checkOverride(null, ok), null);
   assert.deepEqual(checkOverride({ verdict: 'tier-shift', reason: 'R-01: the source serves another tier at this width' }, ok), { verdict: 'tier-shift', reason: 'R-01: the source serves another tier at this width', valid: true });
   const no = (raw, ctx) => { const o = checkOverride(raw, { ...ok, ...ctx }); assert.equal(o.valid, false, JSON.stringify(raw)); return o.rejected; };
@@ -123,7 +123,22 @@ check('checkOverride: a validated override (kind, register entry, clip + content
   assert.equal(checkOverride({ verdict: 'tier-shift', reason: 'R-01' }, { ...ok, stage: 'prototype', contentPass: null }).valid, true, 'the prototype stage has no content criterion');
   assert.deepEqual(no({ verdict: 'tier-shift', reason: 'R-01' }, { stage: 'prototype', clipPass: null }), ['clip and content must pass (clip n/a, content not a criterion)']);
   assert.deepEqual(no({ verdict: 'tier-shift', reason: 'R-01' }, { inconclusive: true }), ['the row is INCONCLUSIVE — no verdict to override']);
-  assert.deepEqual(no({ verdict: 'PASS', reason: 'looks fine' }, { clipPass: false, inconclusive: true }), [`verdict "PASS" ${KIND}`, `reason names no R-<nn> of ${REG}`, 'clip and content must pass (clip FAIL, content PASS)', 'the row is INCONCLUSIVE — no verdict to override'], 'every rule, in order');
+  assert.deepEqual(no({ verdict: 'tier-shift', reason: 'R-01' }, { compared: false }), ['no pixel measurement to override'], 'a missing capture or a pixel error');
+  assert.deepEqual(no({ verdict: 'tier-shift', reason: 'R-01' }, { compared: undefined }), ['no pixel measurement to override'], 'not said: not compared');
+  assert.deepEqual(no({ verdict: 'PASS', reason: 'looks fine' }, { clipPass: false, compared: false, inconclusive: true }), [`verdict "PASS" ${KIND}`, `reason names no R-<nn> of ${REG}`, 'clip and content must pass (clip FAIL, content PASS)', 'no pixel measurement to override', 'the row is INCONCLUSIVE — no verdict to override'], 'every rule, in order');
+});
+check('verdict: a row without a pixel measurement (a pixel error, a missing capture) has nothing to override — a well-formed override is rejected and the row is not delivered', () => {
+  const reg = { file: REG, found: true, ids: ['R-03'] }; const ov = { verdict: 'tier-shift', reason: 'R-03: the source serves another tier' };
+  const v = verdict({ pixel: { error: 'stitch exit 1: scroll stall' }, clip: clip(0), content: content(0, 0), override: ov, register: reg });
+  assert.deepEqual([v.pass, v.passWithOverride, v.override.valid, v.override.rejected], [false, false, false, ['no pixel measurement to override']]);
+  assert.deepEqual(v.reasons, ['pixel error: stitch exit 1: scroll stall', 'override rejected: no pixel measurement to override']);
+  const m = verdict({ pixel: {}, clip: clip(0), content: content(0, 0), override: ov, register: reg });
+  assert.deepEqual([m.passWithOverride, m.reasons], [false, ['missing capture', 'override rejected: no pixel measurement to override']]);
+  assert.equal(verdict({ pixel: px(30, 0), clip: clip(0), content: content(0, 0), override: ov, register: reg }).passWithOverride, true, 'measured and failing: the override still lifts it');
+});
+check('verdict: a validated override lifts a font-not-loaded row — the override rules as written (kind, register entry, clip + content PASS, a pixel measurement)', () => {
+  const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), register, override: { verdict: 'instrument-artifact', reason: 'R-12: the face is served from another host' }, capture: { polluted: [], fonts: ['Brand Sans'] } });
+  assert.deepEqual([v.pass, v.passWithOverride, v.override.valid, v.fontsNotLoaded, v.reasons], [false, true, true, ['Brand Sans'], ['font-not-loaded:Brand Sans']]);
 });
 check('verdict: a FAIL row with an invalid override stays FAIL (passWithOverride false, one "override rejected:" reason per rule); a valid one lifts it beside the number; an INCONCLUSIVE row\'s override is rejected without reasons', () => {
   const failing = { pixel: px(30, 0), clip: clip(0), content: content(0, 0), register };
@@ -437,7 +452,7 @@ check('keyChanged / skipCapture / rowKey: an EDS capture is reused only while ga
 check('rowReuse: a PASS row under the same key and criteria is reused whole; never an INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin', () => {
   const opts = parseArgs(['node', 'x', '--skip-existing']);
   const prov = { stage: 'published', threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, criteria: { clip: true, content: true } };
-  const prior = (over = {}) => ({ row: { slug: 'a', gateKey: 'K', pass: true, passWithOverride: true, clipPass: true, contentPass: true, inconclusive: false, originAsymmetric: false, reasons: [], ...over }, from: 'summary.json', at: T(1), prov });
+  const prior = (over = {}) => ({ row: { slug: 'a', gateKey: 'K', pct: 2, pass: true, passWithOverride: true, clipPass: true, contentPass: true, inconclusive: false, originAsymmetric: false, reasons: [], ...over }, from: 'summary.json', at: T(1), prov });
   assert.deepEqual(rowReuse({ prior: prior(), gateKey: 'K', edsPng: true, opts }).reused, { what: 'row', from: 'summary.json', at: T(1), gateKey: 'K' });
   assert.equal(rowReuse({ prior: prior({ inconclusive: true, pass: false, passWithOverride: false }), gateKey: 'K', edsPng: true, opts }), null);
   assert.equal(rowReuse({ prior: prior({ inconclusive: true }), gateKey: 'K', edsPng: true, opts }), null, 'whatever else the row says');

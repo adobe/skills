@@ -5,7 +5,8 @@
 // writes nothing, --help in an empty dir, P3/P4 row fields tolerated, runs/ merge (newest row per page),
 // parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass), the gate's presence.json and
 // a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host,
-// INCONCLUSIVE rows listed as capture fixes (never failing, never errors) and only a validated override skipping a row.
+// INCONCLUSIVE rows listed as capture fixes (never failing, never errors), a row without a pixel measurement a no-verdict
+// row whatever its override says, and only a validated override skipping a row.
 // Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
@@ -450,6 +451,17 @@ check('(s) an INCONCLUSIVE row is a capture fix — listed apart, never failing,
     assert.equal(r.stdout.trim().split('\n').pop(), '{"failing":2,"grouped":0,"share":0,"groups":0,"routed":0,"inconclusive":1}');
     assert.match(ok(run(root, ['--help'])).stdout, /INCONCLUSIVE/);
   });
+});
+check('(t) a row without a pixel measurement (pct null) is a no-verdict row even when its table marks the override valid; an INCONCLUSIVE row stays a capture fix', () => {
+  const ov = { verdict: 'tier-shift', reason: 'R-3 another tier', valid: true }; // a table written before gate-all refused it
+  const rows = [
+    row('n1', { pct: null, pixelPass: false, heightPass: false, pixelOnlyPass: false, pass: false, passWithOverride: true, error: 'stitch exit 1: scroll stall', reasons: ['pixel error: stitch exit 1: scroll stall'], override: ov }),
+    row('i2', { inconclusive: true, pct: null, pixelPass: null, heightPass: null, pixelOnlyPass: false, pass: false, passWithOverride: false, reasons: ['origin capture polluted: overlay left — X'], override: { ...ov, valid: false, rejected: ['the row is INCONCLUSIVE — no verdict to override'] } }),
+  ];
+  const t = buildTriage({ gate: GATE, sources: [{ file: `${GATE}/summary.json`, writtenAt: T1, prov: { breakpoint: 1440 }, rows }] });
+  assert.deepEqual(t.errors, [{ row: 'n1@1440', error: 'stitch exit 1: scroll stall', source: `${GATE}/summary.json` }]);
+  assert.deepEqual(t.inconclusive.map((x) => x.row), ['i2@1440']);
+  assert.match(formatTriage(t), /\n## No verdict \(re-run\)\n\n- n1@1440 — stitch exit 1: scroll stall \(stardust\/replica\/gates\/all-1440\/summary\.json\)\n/);
 });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);
