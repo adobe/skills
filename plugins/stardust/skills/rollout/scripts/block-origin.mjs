@@ -246,9 +246,10 @@ function deepest(index, start, s) {
 /**
  * alignBlock(index, fragments) → { anchor, confidence, covered, total, unmatched }. Text fragments are the
  * non-image fragments with a non-empty squashed text (an image's alt never counts); total = the sum of their
- * lengths. Each one covers (once) the deepest elements under body containing it — only those whose text is
- * exactly it, when there are any (a short text inside a longer one elsewhere does not pull the anchor) — and
- * all their ancestors up to body; the anchor is the element covering the most, then the deepest, then the first in document order;
+ * lengths. Each one covers (once) the deepest elements under body containing it and all their ancestors up to
+ * body; the anchor is the element covering the most, then (on equal coverage) the one whose own text is the
+ * shortest — closest to the fragments, so an element holding exactly a heading beats a deeper paragraph that
+ * merely contains it — then the deepest, then the first in document order;
  * confidence = covered / total (3 decimals); unmatched = the keys of text fragments found nowhere. No text
  * fragment (an image-only block included) → anchor null and zeros.
  */
@@ -260,9 +261,7 @@ export function alignBlock(index, fragments) {
   for (const f of frags) {
     if (!index.meta.get(index.body).text.includes(f.s)) { unmatched.push(f.key); continue; }
     const hit = new Set();
-    const found = deepest(index, index.body, f.s);
-    const exact = found.filter((d) => index.meta.get(d).text === f.s);
-    for (const d of exact.length ? exact : found) {
+    for (const d of deepest(index, index.body, f.s)) {
       for (let n = d; n && n !== index.root; n = n === index.body ? null : index.meta.get(n).parent) hit.add(n);
     }
     for (const n of hit) covered.set(n, (covered.get(n) || 0) + f.s.length);
@@ -270,7 +269,9 @@ export function alignBlock(index, fragments) {
   let [anchor, best] = [null, 0];
   for (const [n, c] of covered) {
     const [m, a] = [index.meta.get(n), anchor && index.meta.get(anchor)];
-    if (!a || c > best || (c === best && (m.depth > a.depth || (m.depth === a.depth && m.order < a.order)))) [anchor, best] = [n, c];
+    const tie = () => m.text.length < a.text.length
+      || (m.text.length === a.text.length && (m.depth > a.depth || (m.depth === a.depth && m.order < a.order)));
+    if (!a || c > best || (c === best && tie())) [anchor, best] = [n, c];
   }
   return { anchor, confidence: anchor ? round3(best / total) : 0, covered: best, total, unmatched };
 }

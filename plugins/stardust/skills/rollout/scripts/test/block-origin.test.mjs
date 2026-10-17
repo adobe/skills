@@ -290,7 +290,7 @@ check('alignBlock: a delivered-only text lowers confidence to its share; the dee
   assert.equal(bo.stableSelector(idx, a.anchor), 'body > main > section.grid:nth-of-type(2) > article.card:nth-of-type(1)');
 });
 
-check('alignBlock: a fragment aligns on an element holding exactly its text, not on a deeper one that merely contains it', () => {
+check('alignBlock: at equal coverage, the element holding exactly a fragment\'s text beats a deeper one that merely contains it', () => {
   // "Story two" is the h1, and also part of a deeper quote paragraph
   const idx = bo.indexSource('<html><body><main><section><h1>Story two</h1></section><section><blockquote><p>A quote for story two.</p></blockquote></section></main></body></html>');
   const a = bo.alignBlock(idx, bo.fragmentsOf(lib.walkDelivered('<main><div><h1>Story two</h1></div></main>').nodes[0]));
@@ -299,6 +299,20 @@ check('alignBlock: a fragment aligns on an element holding exactly its text, not
   // without an exact holder, the deepest containing element still counts
   const loose = bo.indexSource('<html><body><main><blockquote><p>A quote for story two.</p></blockquote></main></body></html>');
   assert.equal(bo.alignBlock(loose, bo.fragmentsOf(lib.walkDelivered('<main><div><h1>Story two</h1></div></main>').nodes[0])).anchor.tag, 'p');
+});
+
+check('alignBlock: exact text only breaks ties — a nav link repeating a card\'s title does not pull the anchor out of the card', () => {
+  // C: the card's title is its own direct text; the nav link holds exactly the title
+  const c = bo.indexSource('<html><body><header><nav><a href="/">Home</a><a href="/services">Our services</a></nav></header><main><div class="card">Our services<p>We build bridges and roads.</p></div></main></body></html>');
+  const ca = bo.alignBlock(c, bo.fragmentsOf(blockNode('<div class="cards"><div><div><h3>Our services</h3><p>We build bridges and roads.</p></div></div></div>')));
+  assert.deepEqual([bo.stableSelector(c, ca.anchor), ca.confidence], ['div.card', 1]);
+});
+
+check('alignBlock: exact text only breaks ties — a breadcrumb item repeating a lede\'s first line does not pull the anchor out of the lede', () => {
+  // D: a breadcrumb item holds exactly the lede's first line
+  const d = bo.indexSource('<html><body><main><nav class="crumbs"><ul><li><a href="/">Home</a></li><li>Harbour tours</li></ul></nav><section class="intro"><p class="lede">Harbour tours<br>Sail the bay at dawn.</p></section></main></body></html>');
+  const da = bo.alignBlock(d, bo.fragmentsOf(blockNode('<div class="hero"><div><div><p>Harbour tours</p><p>Sail the bay at dawn.</p></div></div></div>')));
+  assert.deepEqual([bo.stableSelector(d, da.anchor), da.confidence], ['p.lede', 1]);
 });
 
 check('alignBlock: a block without text has no anchor', () => {
