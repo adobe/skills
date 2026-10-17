@@ -3,9 +3,10 @@
 // (exit 0, usage, nothing written), usage errors (exit 2), the boxes subcommand (every included module,
 // one root's outline, served from the box cache once nodes.json is gone), a project without a capture
 // (exit 2 naming figma-donor.mjs capture), the --confidential guard, and `all` (evidence, summary.json and
-// the ledger fragment; the page parts need playwright, pngjs and pixelmatch). Run: node <this file>.
+// the ledger fragment; the page parts need playwright, pngjs and pixelmatch; those cases build their own
+// projects and run at most four at a time). Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -19,10 +20,41 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'figma-gate.mjs');
 const scratch = mkdtempSync(join(tmpdir(), 'figma-gate-cli-'));
 let failed = 0;
-const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
-const acheck = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+const report = (name, e) => {
+  if (!e) { console.log(`✓ ${name}`); return; }
+  failed += 1;
+  console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`);
+};
+const check = (name, fn) => { try { fn(); report(name); } catch (e) { report(name, e); } };
+const acheck = async (name, fn) => { try { await fn(); report(name); } catch (e) { report(name, e); } };
+// The page cases each build their own project, so they run at most CONCURRENCY at a time; their results
+// print in the order the cases are written.
+const CONCURRENCY = 4;
+const queued = [];
+const queue = (name, fn) => { queued.push({ name, fn, result: null }); };
+const runQueued = async () => {
+  let next = 0;
+  let printed = 0;
+  const flush = () => { while (printed < queued.length && queued[printed].result) { report(queued[printed].name, queued[printed].result.error); printed += 1; } };
+  const worker = async () => {
+    while (next < queued.length) {
+      const c = queued[next++];
+      c.result = await c.fn().then(() => ({}), (error) => ({ error: error ?? new Error('rejected without a reason') }));
+      flush();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queued.length) }, worker));
+};
 const walk = (dir) => (existsSync(dir) ? readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : [p]; }) : []);
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+const runAsync = (args, cwd) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.on('close', (status) => resolve({ status, stdout, stderr }));
+});
 let n = 0;
 const project = () => { n += 1; return makeProject(join(scratch, `p${n}`)); };
 
@@ -187,7 +219,7 @@ if (playwrightOk && pngOk) {
   const work = (p) => join(p.dir, '.work', 'reskin', 'gates', p.slug, 'figma');
   const summaryOf = (p) => JSON.parse(readFileSync(join(work(p), 'summary.json'), 'utf8'));
   const registerOf = (p) => JSON.parse(readFileSync(join(work(p), 'register.json'), 'utf8'));
-  const runAll = (p, cwd = p.root) => run(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], cwd);
+  const runAll = (p, cwd = p.root) => runAsync(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], cwd);
 
   // The frame image: figma-frame.html drawn at 1440×1840, as M1 would cache it for frame 1:2.
   const withFrameImage = async (p) => {
@@ -206,9 +238,9 @@ if (playwrightOk && pngOk) {
   const edit = (p, from, to) => writeFileSync(p.page, readFileSync(p.page, 'utf8').replace(from, to));
   const sectionsOf = (html) => [...html.matchAll(/ {2}<section[\s\S]*?<\/section>\n/g)].map((m) => m[0]);
 
-  await acheck('all on page.html: join, geometry, ramp PASS, pixel advisory, register written; exit 0', async () => {
+  queue('all on page.html: join, geometry, ramp PASS, pixel advisory, register written; exit 0', async () => {
     const p = await framed();
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     for (const re of [/^PASS join/m, /^geometry PASS \d+\/\d+$/m, /^ramp PASS \d+\/\d+/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, re);
     const s = summaryOf(p);
@@ -234,18 +266,18 @@ if (playwrightOk && pngOk) {
     assert.equal(r.stdout.split(lines.at(-1)).length, 2, 'the register path is printed once');
   });
 
-  await acheck('all twice, nodes.json deleted in between: the second run is served from the box cache, exit 0', async () => {
+  queue('all twice, nodes.json deleted in between: the second run is served from the box cache, exit 0', async () => {
     const p = await framed();
-    assert.equal(runAll(p).status, 0);
+    assert.equal((await runAll(p)).status, 0);
     rmSync(cacheFor(p.dir, KEY).version(VERSION).path('nodes.json'));
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 
-  await acheck('.card { width: 540px }: geometry FAIL, exit 1, the fragment and register carry it', async () => {
+  queue('.card { width: 540px }: geometry FAIL, exit 1, the fragment and register carry it', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^geometry FAIL 1\/\d+$/m);
     const s = summaryOf(p);
@@ -255,12 +287,12 @@ if (playwrightOk && pngOk) {
     assert.equal(registerOf(p).counts.unmandated, 1);
   });
 
-  await acheck('swapped sections: join FAIL, geometry/ramp/pixel not run: section drift, register shows nothing mandated, exit 1', async () => {
+  queue('swapped sections: join FAIL, geometry/ramp/pixel not run: section drift, register shows nothing mandated, exit 1', async () => {
     const p = await framed();
     const html = readFileSync(p.page, 'utf8');
     const [s1, s2] = sectionsOf(html);
     writeFileSync(p.page, html.replace(s1, '@@1@@').replace(s2, s1).replace('@@1@@', s2));
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^FAIL join/m);
     assert.match(r.stdout, /section drift: s02 before s01/);
@@ -276,19 +308,19 @@ if (playwrightOk && pngOk) {
     for (const f of ['geometry.json', 'ramp.json', 'pixel.json']) assert.ok(!existsSync(join(work(p), f)), f);
   });
 
-  await acheck('a drifted run after a passing one never reuses the earlier step files', async () => {
+  queue('a drifted run after a passing one never reuses the earlier step files', async () => {
     const p = await framed();
-    assert.equal(runAll(p).status, 0);
+    assert.equal((await runAll(p)).status, 0);
     assert.ok(existsSync(join(work(p), 'pixel.json')));
     edit(p, 'data-slot="s02"', 'data-slot="s09"');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     for (const f of ['geometry.json', 'ramp.json', 'pixel.json']) assert.ok(!existsSync(join(work(p), f)), f);
     assert.equal(summaryOf(p).ledgerFragment.pixel, 'not run: section drift');
     assert.equal(registerOf(p).counts.mandated, 0);
   });
 
-  await acheck('a step that throws is CRASH: <message>, the other steps still run, the exit is 124', async () => {
+  queue('a step that throws is CRASH: <message>, the other steps still run, the exit is 124', async () => {
     const p = await framed();
     const out = [];
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: (m) => out.push(m), warn: () => {}, steps: { geometry: async () => { throw new Error('boom'); } } });
@@ -301,7 +333,7 @@ if (playwrightOk && pngOk) {
     assert.equal(s.steps.register.verdict, 'written');
   });
 
-  await acheck('a step that throws code 3 (bot challenge): the other steps still run, the exit is 3, over a 124 and a 1', async () => {
+  queue('a step that throws code 3 (bot challenge): the other steps still run, the exit is 3, over a 124 and a 1', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
     const challenge = async () => { const e = new Error('challenge'); e.code = 3; throw e; };
@@ -318,7 +350,7 @@ if (playwrightOk && pngOk) {
     assert.equal(crashOnly, 124);
   });
 
-  await acheck('an earlier 1 does not hide a later 124: the exit is the first present of 2, 3, 124, 1, 0', async () => {
+  queue('an earlier 1 does not hide a later 124: the exit is the first present of 2, 3, 124, 1, 0', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { pixel: async () => 124 } });
@@ -327,17 +359,19 @@ if (playwrightOk && pngOk) {
     assert.equal(summaryOf(p).ledgerFragment.geometry.slice(0, 4), 'FAIL');
   });
 
-  await acheck('all under --confidential with .work/ and reskin/figma-checks/ git-ignored runs, and no register row has a link', async () => {
+  queue('all under --confidential with .work/ and reskin/figma-checks/ git-ignored runs, and no register row has a link', async () => {
     const p = await framed();
     confidential(p);
     writeFileSync(join(p.dir, '.gitignore'), '.work/\nreskin/figma-checks/\n');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const reg = registerOf(p);
     assert.ok(reg.rows.length > 0);
     assert.ok(reg.rows.every((x) => x.link === null));
     assert.ok(!JSON.stringify(summaryOf(p)).includes(KEY));
   });
+
+  await runQueued();
 }
 
 rmSync(scratch, { recursive: true, force: true });
