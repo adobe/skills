@@ -30,6 +30,7 @@ import { appendFileSync, existsSync, mkdirSync, readdirSync, readFileSync, realp
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_PATHS } from './foundation-freeze.mjs';
+import { edsOrigin } from './gate-all.mjs';
 
 const HELP = `gate-triage — failing gate rows grouped by shared cause, re-gate scope per cause (advisory)
 
@@ -65,6 +66,7 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
   --json                    print {totals, triages[]} (each = triage.json) instead of the md head
   --help, -h                this text
 Advisory: the rows stay the verdict; fix by cause, re-gate the named scope; 3 fix rounds per page.
+Re-gate commands: one per eds host, --eds-host normalised to https://<host> (a bare host and its URL share one).
 Exit: 0 triage computed, 1 usage / no gate table / malformed JSON / output inside a frozen path.`;
 
 class UsageError extends Error {}
@@ -392,7 +394,8 @@ function tokenGroups(groups) {
 
 /**
  * One gate-all command per eds host: a page with a gate row keeps the host its newest row was measured on; a page
- * without one takes the group's host when the group's rows share one, else none (named in `note`).
+ * without one takes the group's host when the group's rows share one, else none (named in `note`). hostOf returns
+ * the host normalised (edsOrigin), so a bare host and its URL form are one host here.
  */
 function regateCommands(pages, rows, { width, hostOf, hasRow }) {
   const hosts = [...new Set(rows.map((r) => hostOf(r.slug)))];
@@ -415,14 +418,15 @@ function regateCommands(pages, rows, { width, hostOf, hasRow }) {
  * <gate>/presence.json | null) }.
  * runParity({ slug, width, live, build, regions, rowAt, hide, presence }) → { file, exit, result } | { error } | { skipped }
  * (it owns the --parity-max budget, one per run; hide = the rep row's list, presence = the file or null). Re-gate commands
- * keep each page's own --eds-host (its newest row's table).
+ * keep each page's own --eds-host (its newest row's table), normalised by gate-all's edsOrigin to https://<host> (a value
+ * it refuses stays raw); _provenance.inputs keep the recorded value.
  */
 export function buildTriage(input, runParity = null) {
   const { gate, sources = [], ev = () => null, capture = () => null, blocks = [], covPages = [], statePages = [], families = null, frozen = DEFAULT_PATHS, hot = 15, regions = {}, parity = false, unit = 'gate-triage', coverageFiles = { blocks: null, pages: null }, presence = null } = input;
   const merged = mergeRows(sources);
   const newest = [...sources].map((s, i) => ({ s, i })).sort((a, b) => cmp(String(a.s.writtenAt || ''), String(b.s.writtenAt || '')) || a.i - b.i).map((x) => x.s).pop();
   const width = (newest && newest.prov && newest.prov.breakpoint) ?? (Number((String(gate).match(/-(\d+)\/?$/) || [])[1]) || null);
-  const hostOf = (slug) => { const m = merged.get(slug); return (m && m.src.prov && m.src.prov.edsHostOverride) || null; };
+  const hostOf = (slug) => { const m = merged.get(slug); const h = (m && m.src.prov && m.src.prov.edsHostOverride) || null; return h && (edsOrigin(h).origin || h); };
   const tableRows = [...merged.values()].map((m) => m.row).sort((a, b) => cmp(a.slug, b.slug));
   const names = blockNames(blocks);
   const bySlug = new Map(tableRows.map((r) => [r.slug, r]));

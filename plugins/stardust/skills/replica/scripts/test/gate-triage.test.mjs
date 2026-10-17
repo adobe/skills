@@ -4,7 +4,8 @@
 // the routed request lines byte-for-byte under a real foundation freeze + idempotent re-runs, --dry-run
 // writes nothing, --help in an empty dir, P3/P4 row fields tolerated, runs/ merge (newest row per page),
 // parsePairMsg on chrome-parity's message shapes, the unit view's first pass (firstPass), the gate's presence.json and
-// a row's hide list reaching chrome-parity (argv = stored-result key). Fixtures are built in a temp project per check.
+// a row's hide list reaching chrome-parity (argv = stored-result key), re-gate commands per (normalised) eds host.
+// Fixtures are built in a temp project per check.
 // Run: node <this file>   (TMPDIR may point at a scratch dir)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -256,6 +257,23 @@ check('(l) re-gate commands keep each page\'s own --eds-host (its newest row\'s 
     ok(run(root, ['--no-parity'])); const { scope } = readT(root).groups[0];
     assert.deepEqual(scope.commands, [cmd('p3'), cmd('p1,p2,p4', host('fix-a'))], 'a page without a row takes the group\'s single host');
     assert.equal(scope.note, undefined);
+  });
+});
+check('(r) re-gate --eds-host is normalised: a bare host and its URL form → one https://<host> command; a refused value stays raw', () => {
+  const clipFail = (s) => row(s, { pct: 5, clipped: 3, clipPass: false, pass: false, clipGroups: [CARD_GROUP] });
+  const spec = { rows: [row('p1'), row('p2'), row('p3')], files: {}, pages: A.pages };
+  const table = (slug, i, edsHostOverride) => ({ name: `2026-10-0${i}T00-00-00-000Z-${slug}.json`, writtenAt: `2026-10-0${i}T00:00:00.000Z`, edsHostOverride, rows: [clipFail(slug)] });
+  const cmd = (only, h) => `node stardust/scripts/replica/gate-all.mjs --only ${only} --width 1440${h ? ` --eds-host ${h}` : ''}`;
+  withProject(spec, { runs: [table('p1', 2, 'fix-a--site--org.aem.page'), table('p2', 3, 'https://fix-a--site--org.aem.page/')] }, (root) => {
+    ok(run(root, ['--no-parity'])); const t = readT(root); const { scope } = t.groups[0];
+    assert.deepEqual(scope.commands, [cmd('p3'), cmd('p1,p2,p4', 'https://fix-a--site--org.aem.page')]);
+    assert.equal(scope.note, undefined);
+    assert.deepEqual(t._provenance.inputs.map((i) => i.edsHost), [null, 'fix-a--site--org.aem.page', 'https://fix-a--site--org.aem.page/'], 'provenance keeps the recorded value');
+  });
+  withProject(spec, { runs: [table('p1', 2, 'fix-a--site--org.aem.page'), table('p2', 3, 'https://fix-a--site--org.aem.page/x')] }, (root) => {
+    ok(run(root, ['--no-parity'])); const { scope } = readT(root).groups[0];
+    assert.deepEqual(scope.commands, [cmd('p3,p4'), cmd('p1', 'https://fix-a--site--org.aem.page'), cmd('p2', 'https://fix-a--site--org.aem.page/x')]);
+    assert.match(scope.note, /p4 .*2 eds hosts/);
   });
 });
 check('(m) a request whose property diff did not run says so; a later real diff is queued once beside it, then nothing', () => {
