@@ -71,11 +71,13 @@ extra probes, deltas — merged across runs against the same archetype).
 `migrate.mjs render` reads it for every A′ page: no row → recorded as
 `skipped`; `differs` → refused unless `--accept-variance "<reason>"`
 (the reason reaches the coverage row's `source.variance`; a new one
-replaces it). The acceptance holds on re-render while the probe row is
-unchanged on verdict, missing, extra and deltas (lists in any order) —
-read from the page's previous sidecar `variance`, else its coverage row
-— and the run names those pages on one `variance:` line; a changed row
-is refused, naming each changed field and quoting the earlier reason.
+replaces it). The acceptance holds on re-render while the record is
+unchanged — the same archetype, verdict, missing, extra, delta count
+and delta kinds (each kind, with its probe if any; lists in any order) — read
+from the page's previous sidecar `variance`, else its coverage row,
+and the run names those pages on one `variance:` line; a changed row,
+or an earlier record without the archetype or delta kinds, is refused,
+naming each changed field and quoting the earlier reason.
 More than half of the archetype's current clones differing → refused
 even then, an earlier acceptance included. The current clones are the
 rows whose page clones this archetype now
