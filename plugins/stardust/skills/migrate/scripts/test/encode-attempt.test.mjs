@@ -12,7 +12,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine } from '../encode-attempt.mjs';
+import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'encode-attempt.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'encode-attempt-test-'));
@@ -132,7 +132,8 @@ check('a template name that could leave the record directory → exit 2, nothing
     assert.equal(r.status, 2, `${JSON.stringify(t)}: ${r.out}${r.err}`);
   }
   assert.ok(!has(P('stardust/migrate/escape.json'))); assert.ok(!has(P('stardust/migrate/encode/...json')));
-  assert.throws(() => recordAttempt(ROOT, '../escape', { notAttempted: 'x' }), /template/);
+  // migrate.mjs plan maps this class to one clean line, so the library throws the exported UsageError.
+  assert.throws(() => recordAttempt(ROOT, '../escape', { notAttempted: 'x' }), (e) => e instanceof UsageError && /template/.test(e.message));
 });
 check('usage errors → exit 2: no --template, unknown command, unknown flag, a --root that is not a directory', () => {
   assert.equal(run(['record', '--root', ROOT]).status, 2);

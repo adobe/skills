@@ -70,7 +70,7 @@ const VERDICTS = ['encoded', 'no-roundtrip', 'not-attempted'];
 const TIMEOUT_MS = 120000;
 const RECORD_CMD = 'node stardust/scripts/migrate/encode-attempt.mjs record --template';
 
-class UsageError extends Error {}
+export class UsageError extends Error {}
 
 const isFile = (p) => { try { return statSync(p).isFile(); } catch { return false; } };
 const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };

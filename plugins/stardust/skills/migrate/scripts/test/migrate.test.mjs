@@ -3,8 +3,9 @@
 // the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
 // block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule, the A′ fork
 // from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate (an earlier acceptance holds
-// while the probe row is unchanged; sidecar, else the coverage row) and the fork's
-// slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/).
+// while the probe row is unchanged; sidecar, else the coverage row), the fork's
+// slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/) and plan's encode
+// attempt per template with A′ siblings (a fake encoder; kept, --force, the production default, refusals).
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -801,6 +802,77 @@ check('default (no --slots): a missing capture (the sibling\'s or the archetype\
 });
 // Later sections keep the page-JSON default: no mapping in the project.
 rmSync(join(tmp, RW), { recursive: true, force: true }); rmSync(join(tmp, 'stardust/rollout/coverage'), { recursive: true, force: true });
+
+// ---- the encode attempt: plan records it per template with A′ siblings ------------------------------------
+console.log('plan: the encode attempt per template');
+const s6 = json(STATE);
+s6.pages.push(page('events', '/events/', 'approved', 'event'), page('event-one', '/events/one/', 'directed', 'event'), page('event-two', '/events/two/', 'directed', 'event'),
+  page('venues', '/venues/', 'approved', 'venue'), page('venue-one', '/venues/one/', 'directed', 'venue'), page('shows', '/shows/', 'approved', 'show'), page('show-one', '/shows/one/', 'directed', 'show'),
+  page('press', '/press/', 'directed', 'press'), page('odd!', '/odd/', 'approved', 'odd'), page('odd-one', '/odd/one/', 'directed', 'odd'));
+write(STATE, `${JSON.stringify(s6, null, 2)}\n`);
+write(`${P}/events-proposed.html`, minimal('Events').replace('<h1>Events</h1>', '<h1 data-slot="headline">Events</h1>'));
+for (const s of ['event-two', 'venues', 'venue-one', 'shows', 'show-one', 'press', 'odd!', 'odd-one']) write(`${P}/${s}-proposed.html`, minimal(s));
+for (const s of ['events', 'event-two', 'venues', 'venue-one', 'shows', 'show-one', 'press', 'odd-one']) capture(s, s, `${s} description.`);
+write('stardust/current/pages/event-one.json', JSON.stringify({ url: 'https://example.test/events/one/', title: 'Event one', _provenance: { unsourcedContent: [] }, slots: { headline: 'Event one' } }));
+for (const t of ['events', 'venues']) write(`stardust/import/${t}/vocabulary.json`, '{}\n');
+const ENC = (t) => `stardust/migrate/encode/${t}.json`;
+const ENC_RUNS = 'encoder-runs.log';
+const encRuns = () => (has(ENC_RUNS) ? read(ENC_RUNS).split('\n').filter(Boolean) : []);
+// A fake encoder: events round-trips, venues does not; every run appends one line to encoder-runs.log in the project.
+write('fake-encode.mjs', `import { appendFileSync } from 'node:fs';
+const a = process.argv.slice(2); const mode = a[0]; const t = a[a.indexOf('--template') + 1];
+appendFileSync('${ENC_RUNS}', mode + ' ' + t + '\\n');
+if (mode === '--lint') { console.log('lint ' + t + ': 0 findings · 0 notes'); process.exit(0); }
+if (t === 'events') { console.log('roundtrip events at text: equal — content/events.html'); process.exit(0); }
+console.log('roundtrip ' + t + ' at text: not equal (2 differences) — content/' + t + '.html'); process.exit(2);
+`);
+const PLAN = ['plan', 'home', 'events', 'event-one', 'event-two', 'venues', 'venue-one', 'press', '--branch-b', 'press', '--encoder', 'fake-encode.mjs'];
+check('plan records one encode attempt per template with A′ siblings (not for an A page without siblings, nor B) and prints the count last', () => {
+  const r = run(PLAN); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+  assert.deepEqual(r.out.trim().split('\n'), [
+    "plan: 7 page(s) — A 3 · A' 3 on 2 template(s) · B 1 · passthrough 0 · refused 0",
+    'A  3 page(s): home, events, venues',
+    "A' events: 2 sibling(s): event-one (fork), event-two",
+    "A' venues: 1 sibling(s): venue-one",
+    'B  1 page(s): press',
+    'encode-attempt events: encoded — roundtrip events at text: equal — content/events.html',
+    'encode-attempt venues: no-roundtrip — roundtrip venues at text: not equal (2 differences) — content/venues.html',
+    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)',
+  ]);
+  const ev = json(ENC('events'));
+  assert.equal(ev.template, 'events'); assert.equal(ev.verdict, 'encoded'); assert.deepEqual(ev.lint, { exit: 0, line: 'lint events: 0 findings · 0 notes' }); assert.match(ev.at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(json(ENC('venues')).verdict, 'no-roundtrip');
+  for (const t of ['home', 'press', 'event']) assert.ok(!has(ENC(t)), `no record for ${t}`);
+  assert.deepEqual(encRuns(), ['--roundtrip events', '--lint events', '--roundtrip venues', '--lint venues']);
+  assert.ok(!has(`${OUT}/events/one/index.html`) && !has(`${OUT}/events/index.html`), 'plan renders nothing');
+});
+check('a re-run keeps an existing record (the encoder is not run again); --force re-records', () => {
+  const at = json(ENC('events')).at;
+  const r = run(PLAN); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, new RegExp(`^encode-attempt events: encoded — roundtrip events at text: equal — content/events\\.html \\(kept from ${at.replace(/\./g, '\\.')}; --force re-records\\)$`, 'm'));
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)');
+  assert.equal(encRuns().length, 4, 'nothing run'); assert.equal(json(ENC('events')).at, at);
+  const f = run([...PLAN, '--force']); assert.equal(f.status, 0, f.err);
+  assert.doesNotMatch(f.out, /kept from/); assert.equal(encRuns().length, 8);
+});
+check('the production default encoder (encode.mjs beside encode-attempt.mjs): a template without a map is recorded not-attempted, nothing run', () => {
+  const r = run(['plan', 'show-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+  assert.equal(json(ENC('shows')).verdict, 'not-attempted');
+});
+check('plan refusals: a missing --encoder is a usage error; a template name the record cannot take is one clean line, exit 2; a branch refusal is named and the count still printed last', () => {
+  const bad = run(['plan', 'venue-one', '--encoder', 'nope.mjs', '--force']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --encoder nope\.mjs does not exist/);
+  const odd = run(['plan', 'odd-one']); assert.equal(odd.status, 2);
+  assert.equal(odd.err, 'encode-attempt odd!: not recorded — template "odd!" is not a template name (letters, digits, _ . - and not only dots)\n');
+  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  const all = run(['plan', '--all', '--encoder', 'fake-encode.mjs']); assert.equal(all.status, 2);
+  assert.match(all.err, /^refused faq: strict branch — /m); assert.match(all.out, /^skip contact: status extracted$/m); assert.match(all.out.trim().split('\n').at(-1), /^encode: \d+ encoded · /);
+});
+check('plan is flow-guarded like render', () => {
+  const s = json(STATE); const keep = read(STATE); delete s.flow; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  try { const r = run(['plan', 'event-one']); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/); assert.equal(r.out, ''); } finally { write(STATE, keep); }
+});
 
 // ---- --help ---------------------------------------------------------------------------------
 console.log('--help');
