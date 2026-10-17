@@ -145,7 +145,8 @@
  * after the capture): { writtenBy, url, width, vh, height (the PNG's),
  * chunks, headerMorph (px, 0 when none), overflow: { scrollWidth, viewport,
  * delta }, browserBuild ('chromium' | 'chromium-headless-shell' | 'chrome' |
- * 'unknown'), hints ('ua-metadata' | 'native' | 'unknown'), dismissed: {
+ * 'unknown'), hints ('ua-metadata' | 'native' | 'unknown'), denialCheck ('ok'
+ * | 'skipped: <reason>' — the post-sweep denial-page read), dismissed: {
  * extra, consent, marketing, dialogs, dialogsLeft, scrollLockReleased } — the
  * sweeps merged (arrays de-duplicated in order, the first consent, released by
  * any sweep, dialogsLeft from the last) — or null under --no-dismiss, at }.
@@ -216,8 +217,9 @@ vs the viewport at --width (delta = px over, 0 when it fits), read after the chu
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
 Writes <out.png> and <stem>.capture.json beside it (build.png → build.capture.json; removed when a capture starts, so a
 failed one leaves none): { writtenBy, url, width, vh, height, chunks, headerMorph, overflow: { scrollWidth, viewport,
-delta }, browserBuild, hints, dismissed, at } — dismissed = { extra, consent, marketing, dialogs, dialogsLeft,
-scrollLockReleased } over every sweep (dialogsLeft from the last), null under --no-dismiss.
+delta }, browserBuild, hints, denialCheck, dismissed, at } — denialCheck = 'ok' | 'skipped: <reason>' (the denial-page
+read after the sweeps); dismissed = { extra, consent, marketing, dialogs, dialogsLeft, scrollLockReleased } over every
+sweep (dialogsLeft from the last), null under --no-dismiss.
 Overlays: consent, timed marketing modals, then open dialogs (close(), a close control, Escape — logged as
 \`dialog closed: …\` / \`dialog still open: …\`). The html/body scroll lock is released
 (overflow-y visible, a hidden overflow-x clipped) only when the pass closed a dialog and none is still open; any other
@@ -330,15 +332,17 @@ export function captureHintRecord(session, ctx) {
 // R4: gotoLive reads the entry for a 2xx denial page; this reads the page once more after the dismissal sweep(s) — a
 // denial page a script renders after domcontentloaded. A marker → BotChallengeError (exit 3), with the entry's status.
 // A page the probe cannot read, or a copy without pageDenial / botChallengeError, is one stderr line — skipped, never
-// a silent pass.
+// a silent pass. → capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' — on the record, since
+// gate-all keeps only stdout's last two lines and a skip on stderr alone would leave no trace in a gate round.
 export async function recheckDenial(session, page, url, status) {
   if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
     console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
-    return;
+    return 'skipped: live-session.mjs predates pageDenial';
   }
   const { marker, skipped } = await session.pageDenial(page);
   if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
   if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
+  return skipped ? `skipped: ${skipped}` : 'ok';
 }
 
 // The root line gate.sh's horizontal-overflow assert reads (measure.mjs root-line semantics: viewport =
@@ -426,7 +430,7 @@ async function main() {
     }
 
     // A denial page a script rendered after domcontentloaded (gotoLive read the entry): exit 3, no PNG, no sidecar.
-    await recheckDenial(liveSession, page, url, entry.status());
+    const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
     if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url })).catch((e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
@@ -592,7 +596,7 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
-    writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowRead(root), browserBuild, hints, dismissed: opts.noDismiss ? null : mergeDismissed(sweeps), at: new Date().toISOString() }, null, 2)}\n`);
+    writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowRead(root), browserBuild, hints, denialCheck, dismissed: opts.noDismiss ? null : mergeDismissed(sweeps), at: new Date().toISOString() }, null, 2)}\n`);
     console.log(overflowLine(root));
     // Last stdout line, no line after it: gate-all keeps the last two (overflow + stitched) in origin.json's log.
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks${headerMorph > 0 ? ` — header morph ${headerMorph} px` : ''}`);

@@ -40,7 +40,8 @@ when the client-hint headers were inconsistent.
   stitch-shot prefers the full Chromium build (`launchChromium`; the headless shell, with one stderr line, when it is
   not installed) and prints `browser: <build>, client hints: <hints>`. The escape hatch is `native`: `--hints native`
   in stitch-shot, `STARDUST_LIVE_HINTS=native` in every instrument and gate round. `<stem>.capture.json` gains
-  `browserBuild`, `hints` and `dismissed` (the sweeps merged; null under `--no-dismiss`).
+  `browserBuild`, `hints`, `denialCheck` (`ok`, or `skipped: <reason>` when the post-sweep denial-page read could not
+  run — on the record, not only stderr) and `dismissed` (the sweeps merged; null under `--no-dismiss`).
 - **`STARDUST_NAV_TIMEOUT_MS` is a floor.** The navigation timeout is max(env, 2 × `crawl.navMs.p95`) clamped to
   20–180 s — the env is clamped too — else the instrument's default; an explicit flag always wins, and the recorded
   `source` names the input that set the max (`env` on a tie). A runner sets the env from its discovery sample while

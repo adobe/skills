@@ -69,7 +69,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
-- `replica/stitch-shot.mjs` — stitched full-page capture + `<stem>.capture.json` (`headerMorph`: a header shrinking on scroll, not a stall; `browserBuild`, `hints`, `dismissed`) — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hints <ua-metadata|native>]`; exit 3 = bot challenge or 2xx denial page (no PNG, no sidecar; escalate `--headed`)
+- `replica/stitch-shot.mjs` — stitched full-page capture + `<stem>.capture.json` (`headerMorph`: a header shrinking on scroll, not a stall; `browserBuild`, `hints`, `denialCheck`, `dismissed`) — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hints <ua-metadata|native>]`; exit 3 = bot challenge or 2xx denial page (no PNG, no sidecar; escalate `--headed`)
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
