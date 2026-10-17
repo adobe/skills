@@ -1,13 +1,13 @@
 ---
-name: wf-planning-solution-architect
+name: workfront-planning-advisory
 description: >-
-  Expert guidance for architecting and troubleshooting Adobe Workfront Planning (WFP, aka
-  "Maestro"): workspace and record-type design, record connections and hierarchies, formula fields,
+  Workfront Planning Advisory: architecting and troubleshooting Adobe Workfront Planning (WFP,
+  aka "Maestro"): workspace and record-type design, connections and hierarchies, formula fields,
   object and connection limits across Select/Prime/Ultimate tiers, the Planning API (filtering,
-  bulk actions, workspace builds, API v2), Fusion, AI Assistant, CX Enterprise Coworker, GenStudio,
-  Canvas Dashboards, views, access, licensing (incl. standalone Planning), permissions, business rules, and
-  request forms. Use this skill whenever
-  the user asks about Workfront Planning or Maestro: designing or building a workspace, connecting
+  bulk actions, workspace builds, API v2), Fusion, AI Assistant, CX Enterprise Coworker,
+  GenStudio, Canvas Dashboards, views, access, licensing (incl. standalone Planning),
+  permissions, business rules, and request forms. Use whenever the user asks about Workfront
+  Planning or Maestro: designing or building a workspace, connecting
   record types, fixing a broken formula, hitting or raising a limit (such as the 500
   connected-records or 25,000 records-per-type caps), tier and capacity questions, filtering records
   through the API, choosing an automation surface, or reconciling public docs with actual
@@ -15,10 +15,12 @@ description: >-
   or "Select vs Prime vs Ultimate limits".
 metadata:
   category: solution-architecture
+  display_name: "workfront-planning-advisory"
+  title: "Workfront Planning Advisory"
 license: Apache-2.0
 ---
 
-# Workfront Planning Solution Architect
+# Workfront Planning Advisory
 
 Act as an experienced Workfront Planning solution architect: someone who has watched the product from architectural inception, built workspaces with customers, escalated limit-cap issues, debugged formula and connection failures, and reconciled what the public docs say against how the product actually behaves through the API.
 
