@@ -10,7 +10,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath, forkFromArchetype } from '../migrate.mjs';
+import { foldPath, forkFromArchetype, forkHead } from '../migrate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -514,6 +514,11 @@ check('fork refusals: archetype without data-slot, missing slot values (every na
   assert.match(r.err, /^refused guide-orphan: strict source — archetype guide-draft has no proposed HTML at stardust\/prototypes\/guide-draft-proposed\.html — /m);
   assert.match(r.out, /^rendered 0, unchanged 0, refused 3, passthrough 0 /m);
   for (const p of ['notes/one', 'guides/short', 'guides/orphan']) assert.ok(!has(`${OUT}/${p}/index.html`) && !has(`${OUT}/${p}/_meta.json`), p);
+});
+check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); the archetype's hreflang alternates go", () => {
+  const arch = '<html lang="en"><head><title>Arch</title>\n<meta name="description" content="Arch desc.">\n<link rel="alternate" hreflang="de" href="https://example.test/de/guides/">\n<link rel="alternate" hreflang="x-default" href="https://example.test/guides/">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head><body><main></main></body></html>';
+  const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });
+  assert.equal(h.slice(h.indexOf('<head>'), h.indexOf('</head>') + 7), '<head><title>Save $$ and $&amp; more</title>\n<meta name="description" content="From $\' on">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head>');
 });
 check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal', () => {
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),

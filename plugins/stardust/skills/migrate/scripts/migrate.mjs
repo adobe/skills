@@ -77,8 +77,9 @@
  *   name with no key in slots (every missing name listed); a value its element cannot take.
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
- *   canonical, og:*, twitter:* and every application/ld+json script removed, <html lang> ←
- *   language || lang. Media in slot values and inserted HTML (the archetype's own media stay; in
+ *   canonical, hreflang alternate links, og:*, twitter:* and every application/ld+json script
+ *   removed, <html lang> ← language || lang (capture text placed verbatim, escaped). Media in
+ *   slot values and inserted HTML (the archetype's own media stay; in
  *   inserted HTML only src / srcset on <img> <source> <video> <audio> and poster on <video> —
  *   any other element's URLs are left as is) resolve against the capture's finalUrl || url,
  *   then: a --media-map entry (default
@@ -520,23 +521,27 @@ export function ledgerIndex(raw) {
   }
   return out;
 }
-// The fork's <head>: title / description / lang from the capture; the archetype's canonical, og:*, twitter:* and JSON-LD go
-// (composeHead re-adds canonical / og:url / the default JSON-LD for this page).
+// The fork's <head>: title / description / lang from the capture; the archetype's canonical, hreflang alternates, og:*, twitter:*
+// and JSON-LD go (composeHead re-adds canonical / og:url / the default JSON-LD for this page). Capture text reaches the head through
+// function replacers only, so a `$&` / `$'` / `$$` in it stays verbatim.
 export function forkHead(html, capture) {
   const c = capture || {}; const line = (t) => new RegExp(`[ \\t]*<${t}\\b(?:[^>"']|"[^"]*"|'[^']*')*>[ \\t]*\\r?\\n?`, 'gi');
   html = html.replace(/[ \t]*<script\b(?:[^>"']|"[^"]*"|'[^']*')*>[\s\S]*?<\/script>[ \t]*\r?\n?/gi, (m) => (/^\s*<script\b[^>]*?type\s*=\s*["']?application\/ld\+json/i.test(m) ? '' : m));
   const ho = html.match(/<head\b(?:[^>"']|"[^"]*"|'[^']*')*>/i); const hc = html.search(/<\/head>/i);
   if (ho && hc > ho.index) {
     let head = html.slice(ho.index + ho[0].length, hc);
-    head = head.replace(line('link'), (m) => (/^canonical$/i.test(attrValue(m, 'rel') || '') ? '' : m));
+    head = head.replace(line('link'), (m) => {
+      const rel = (attrValue(m, 'rel') || '').toLowerCase().split(/\s+/);
+      return rel.includes('canonical') || (rel.includes('alternate') && attrValue(m, 'hreflang') !== null) ? '' : m;
+    });
     head = head.replace(line('meta'), (m) => (/^(og|twitter):/i.test(attrValue(m, 'property') || attrValue(m, 'name') || '') ? '' : m));
     const title = c.title == null ? '' : String(c.title).trim();
-    head = head.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, `<title>${esc(title)}</title>`);
+    head = head.replace(/<title\b[^>]*>[\s\S]*?<\/title>/i, () => `<title>${esc(title)}</title>`);
     const desc = c.metaDescription || c.description || null; let placed = false;
     head = head.replace(line('meta'), (m) => {
       if ((attrValue(m, 'name') || '').toLowerCase() !== 'description') return m;
       if (!desc || placed) return '';
-      placed = true; return m.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, `<meta name="description" content="${esc(desc)}">`);
+      placed = true; return m.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, () => `<meta name="description" content="${esc(desc)}">`);
     });
     if (desc && !placed) head = `${head.replace(/\s*$/, '')}\n<meta name="description" content="${esc(desc)}">\n`;
     html = html.slice(0, ho.index + ho[0].length) + head + html.slice(hc);
