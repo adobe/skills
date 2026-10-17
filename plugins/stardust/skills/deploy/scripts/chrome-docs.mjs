@@ -27,8 +27,9 @@
  *                id or aria-label matches logo|brand; else one with href "/"; else the first <a> holding an image
  *                (none: an empty section, `brand 0`)
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
- *                <ul>; nesting only where the source has a list (a heading or column text right before a list heads
- *                it), other text stays inline in its item; a trigger without href keeps its label text (no list: an
+ *                <ul>; nesting only where the source has a list (a link, a heading or column text right before a
+ *                list heads it; a badge or description after a link stays inline), other text stays inline in its
+ *                item; a trigger without href keeps its label text (no list: an
  *                empty section)
  *                section 3 tools: every other link as <p><a>, every other list as <ul>, in document order
  *   footer.html  one section per footer band — the element children of <footer>, through single-child wrappers
@@ -305,8 +306,9 @@ function navParts(li, ctx) {
 /**
  * `<li>inline<ul>…</ul></li>`. The inline part is the first link or text (a trigger without href: its label) and
  * every other text or link that does not head a list, in document order. Nesting comes only from the source's
- * lists: a nested list's items, and a text or link directly followed by a list as `<li>label<ul>…` (a mega-menu
- * column heading). A description or badge after a link never turns the link into a dropdown trigger.
+ * lists: a nested list's items, and a link, or a text that starts a block (a heading or a panel column), directly
+ * followed by a list as `<li>label<ul>…` (a mega-menu column heading). Inline text after a link (a description or a
+ * badge) stays inline even before a list, so it never turns the link into a dropdown trigger.
  */
 function navItem(li, ctx) {
   const parts = navParts(li, ctx);
@@ -316,7 +318,7 @@ function navItem(li, ctx) {
   for (let i = 0; i < parts.length; i += 1) {
     const p = parts[i]; const next = parts[i + 1];
     if (p.kind === 'list') items.push(...navItems(p.el, ctx));
-    else if (i > 0 && p.block && next?.kind === 'list') {
+    else if (i > 0 && (p.kind === 'link' || p.block) && next?.kind === 'list') {
       const sub = navItems(next.el, ctx); i += 1;
       items.push(sub.length ? block(`<li>${p.html}`, [block('<ul>', sub, '</ul>')], '</li>') : `<li>${p.html}</li>`);
     } else inline.push(p.html);

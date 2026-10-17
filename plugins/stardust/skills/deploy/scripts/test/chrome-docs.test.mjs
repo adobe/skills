@@ -215,6 +215,27 @@ check('nav nesting comes only from source lists: a description and a badge stay 
         </li>
       </ul>`);
 });
+check('nav: a link directly followed by a list heads it — a button trigger over two link-headed columns, each with its own list', () => {
+  const r = buildNav(`<header><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul>
+    <li><button>Products</button><a href="/a">Column A</a><ul><li><a href="/a1">A1</a></li></ul><a href="/b">Column B</a><ul><li><a href="/b1">B1</a></li></ul></li>
+  </ul></nav></header>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li>Products
+          <ul>
+            <li><a href="/a">Column A</a>
+              <ul>
+                <li><a href="/a1">A1</a></li>
+              </ul>
+            </li>
+            <li><a href="/b">Column B</a>
+              <ul>
+                <li><a href="/b1">B1</a></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>`);
+});
 check('brand: an icon link before the logo stays a tool; a logo signal, then a named link, then "/", then any image link', () => {
   const r = buildNav('<header><a href="/stores"><svg><path d="M0 0"/></svg>Find a store</a><a class="logo" href="/"><img src="/media/logo.svg" alt="Example"></a><nav><ul><li><a href="/a">A</a></li></ul></nav></header>');
   assert.equal(sectionsOf(r.doc)[0], '      <p><a href="/"><img src="/media/logo.svg" alt="Example"></a></p>');
