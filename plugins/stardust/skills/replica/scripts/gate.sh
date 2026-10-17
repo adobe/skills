@@ -133,8 +133,9 @@
 # codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
 # the build side), 3 bot challenge, 1 capture/compare error (after the one
 # retry — re-queue, not a verdict), a malformed presence.json (fix the
-# file; re-queuing won't help) or an overlay left on either capture (no
-# verdict: fix the capture — --consent / --dismiss / --hide — not the page),
+# file; re-queuing won't help), an overlay left on either capture (no
+# verdict: fix the capture — --consent / --dismiss / --hide — not the page)
+# or a project stitch-shot.mjs that predates --json (re-copy it; no capture),
 # 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
@@ -323,6 +324,13 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
   fi
   echo "gate.sh: move to a per-project port (never kill a listener you did not start), or pass --marker <string> if the slug legitimately doesn't appear in the page." >&2
   exit 4
+fi
+
+# A project copy of stitch-shot.mjs from before the capture record rejects --json: both captures would exit 1 twice
+# and read as "re-queue the round". Name the stale copy instead — before any capture.
+if ! grep -q -e '--json' "$HERE/stitch-shot.mjs" 2>/dev/null; then
+  echo "gate.sh: $HERE/stitch-shot.mjs predates the --json capture record — re-copy it from the plugin (no verdict)" >&2
+  exit 1
 fi
 
 # Live side: captured once per breakpoint per full gate run and reused

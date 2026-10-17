@@ -7,7 +7,8 @@
 // both captures and every probe as one effective list (chrome-parity: the flag list + --presence), live.json's `hide`
 // record and the live retake on a changed list, the overlay-left rule (a capture that leaves an overlay gives no verdict:
 // exit 1, a live one drops live.png / live.json / the live caches), both captures' --json record, live.json's overlayLeft
-// / fontsFailed and the retake of a live.png that predates the overlay check, with stub instruments (no browser, no network).
+// / fontsFailed and the retake of a live.png that predates the overlay check, a project stitch-shot.mjs that predates
+// --json (no verdict before any capture), with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -575,6 +576,23 @@ check('a malformed presence.json: exit 1 with one stderr line naming the file, b
   && /^gate\.sh: presence\.json stardust\/replica\/gates\/prototypes-1440\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
   && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
 unlinkSync(join(root, presenceFile('prototypes')));
+
+// A stale project copy of stitch-shot (from before the capture record: it rejects the flag, exit 1 — twice, read as
+// "re-queue the round"): no verdict before any capture, one stderr line naming the file and the fix.
+const stitchShot = join(replica, 'stitch-shot.mjs'); const currentStitch = readFileSync(stitchShot, 'utf8');
+check('the stub stitch-shot takes --json (the stale-copy check lets it through)', currentStitch.includes('--json'));
+stub(replica, 'stitch-shot.mjs', `
+  import { appendFileSync } from 'node:fs';
+  if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, 'STALE\\n');
+  const known = ['--width', '--settle', '--locale', '--hide', '--consent', '--dismiss', '--no-dismiss', '--vh'];
+  const bad = process.argv.slice(4).find((a) => a.startsWith('--') && !known.includes(a));
+  if (bad) { console.error('stitch-shot error: unknown flag ' + bad); process.exit(1); }`);
+resetCount();
+r = await gate(['stale1', 'https://live.example/stale1', buildUrl, '1440', 'st1', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('a stitch-shot.mjs that predates --json: exit 1 before any capture, one stderr line naming the file and the fix (no verdict)', r.status === 1 && attempts().length === 0
+  && r.stderr.trim() === `gate.sh: ${replica}/stitch-shot.mjs predates the --json capture record — re-copy it from the plugin (no verdict)`
+  && !existsSync(join(root, gdir('stale1'), 'live.png')), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
+writeFileSync(stitchShot, currentStitch);
 
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
