@@ -360,7 +360,7 @@ backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
 `measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs` and the probes on
-live-session's `gotoLive`/`visit()` defaults (anchor, chrome-parity,
+live-session's `gotoLive`/`visit()` defaults (e.g. anchor, chrome-parity,
 sibling-variance, clip-probe, content-presence, unit-geometry) navigate
 under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else 2 × the crawl's
 `crawl.navMs.p95` (20–180 s), else their own default, a flag winning;

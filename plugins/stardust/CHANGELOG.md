@@ -15,11 +15,11 @@ shrinks on scroll stopped as a scroll stall; the workaround was a different `--v
 - **One navigation timeout.** `diff/scripts/live-session.mjs` resolves it: env `STARDUST_NAV_TIMEOUT_MS` (ms, used as
   given; an invalid value is ignored with one stderr warning), else 2 × `crawl.navMs.p95` from
   `stardust/current/_crawl-log.json` clamped to 20–180 s, else the instrument's current default. `gotoLive` (60 s) and
-  `measure-live.mjs` `visit()` (90 s) default to it (anchor, chrome-parity, sibling-variance, clip-probe,
+  `measure-live.mjs` `visit()` (90 s) default to it (e.g. anchor, chrome-parity, sibling-variance, clip-probe,
   content-presence, unit-geometry rely on those defaults); `measure.mjs` (20 s), `cap-probe.mjs` (30 s),
   `style-census.mjs` (20 s) and `stitch-shot.mjs` (60 s) take it when their flag is not given — an explicit flag
   always wins — and the crawl's per-page goto (45 s) always. Callers that pass their own timeout keep it
-  (motion-observe, visual-diff, content-diff: 60 s). measure and cap-probe record `navTimeout: {ms, source}` in
+  (e.g. motion-observe, visual-diff, content-diff: 60 s). measure and cap-probe record `navTimeout: {ms, source}` in
   `_provenance`.
 - **The crawl measures the figure.** `crawl.mjs` records each page's `navMs` (its goto to `domcontentloaded`) in the
   page record, and `crawl.navMs` {n, p50, p95, max} and `crawl.navTimeout` {ms, source} in `_crawl-log.json`; it names
