@@ -10,11 +10,10 @@
  * with all whitespace removed (squash), so inline-element splits do not matter. querySelectorAll/countMatches
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
  * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
- * comes before the text (its k-th match, confidence 1; without one, confidence 0 and its raw selector only
- * when that provably matches nothing — syntax outside the grammar is of unknown reach, so null — so an
- * instance never points at another block's element); a block without either takes its position among its
- * anchored neighbours; a section takes the lowest common ancestor of its records; a template's sections are
- * aligned across its pages and their selectors generalised (buildMapping).
+ * comes before the text when it selects the block's element (its k-th match, confidence 1); a block it has
+ * no element for falls through to its text, then to its position among its anchored neighbours; a section
+ * takes the lowest common ancestor of its records; a template's sections are aligned across its pages and
+ * their selectors generalised (buildMapping).
  *
  * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
  * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping, serialize,
@@ -52,21 +51,18 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
                       positionBlocks }, skipped }; notes go to stderr
 
 Per page (coverage pages in slug order with a delivered structure, a content file and a capture), each
-delivered block is located in its capture by its template's encoder map (the first marker emitting
-block:<name>: the k-th block of that name takes the marker's k-th match under the map's root, confidence
-1; without one, confidence 0 and the raw selector — the root before each of the marker's alternatives —
-only when it matches nothing on the page, else no selector, also for syntax outside the engine's grammar:
-never another block's element), else by its text (the element covering most of it, the deepest on ties;
+delivered block is located in its capture by its template's encoder map when the map selects its element
+(the first marker emitting block:<name>: the k-th block of that name takes the marker's k-th match under
+the map's root; confidence 1), else by its text (the element covering most of it, the deepest on ties;
 confidence = the share covered), else by its position among its anchored neighbours (confidence 0; never
-an element another record already has). A
-section takes the lowest common ancestor of its records (confidence = the share of their text it holds,
-the lowest over the pages); its default-content roles are the page's eds-schema roles of its text (an
-equal text, else the shorter of the two, 8+ characters, inside the other), else its delivered default
-parts. A template's sections are aligned across its pages by style and block names; a section's selector
-is the generalisation that resolves to exactly one element on the most of its pages (its pages lists
-them). Text is compared normalised (NFKC, lower case, typographic quotes and dashes folded) with
-whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no auto-closed p).
-Without --verify every instance records verified null (skipped).
+an element another record already has). A section takes the lowest common ancestor of its records
+(confidence = the share of their text it holds, the lowest over the pages); its default-content roles are
+the page's eds-schema roles of its text (an equal text, else the shorter of the two, 8+ characters, inside
+the other), else its delivered default parts. A template's sections are aligned across its pages by style
+and block names; a section's selector is the generalisation that resolves to exactly one element on the
+most of its pages (its pages lists them). Text is compared normalised (NFKC, lower case, typographic
+quotes and dashes folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted
+tbody, no auto-closed p). Without --verify every instance records verified null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
@@ -543,24 +539,6 @@ const elementSibling = (index, el, step) => {
   return m && m.parent ? elements(m.parent)[m.index - 1 + step] || null : null;
 };
 
-/** The top-level alternatives of a selector list: a comma inside a string, [] or () does not split. */
-function alternatives(sel) {
-  const parts = [];
-  let [depth, quote, start] = [0, null, 0];
-  for (let i = 0; i < sel.length; i += 1) {
-    const c = sel[i];
-    if (c === '\\') i += 1;
-    else if (quote) { if (c === quote) quote = null; } else if (c === '"' || c === "'") quote = c;
-    else if (c === '[' || c === '(') depth += 1;
-    else if ((c === ']' || c === ')') && depth > 0) depth -= 1;
-    else if (c === ',' && !depth) { parts.push(sel.slice(start, i).trim()); start = i + 1; }
-  }
-  parts.push(sel.slice(start).trim());
-  const out = parts.filter(Boolean);
-  return out.length ? out : [sel];
-}
-/** An encoder map marker's raw selector: each root alternative before each of the marker's (`root a, root b`), or `sel` alone without a root. */
-const rawSelector = (root, sel) => (root ? alternatives(root).flatMap((r) => alternatives(sel).map((s) => `${r} ${s}`)).join(', ') : sel);
 
 /** eds-schema items `{ role, s }` of a page (`sections[].items[]` or `items[]`, role + text), or null without a readable file. */
 function edsItems(dir, slug) {
@@ -656,7 +634,8 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
     const frags = d ? fragmentsOf(cov.kind === 'block' ? [doc.nodes[d.pos]] : doc.nodes[d.pos]) : [];
     return { cov, doc: d, frags, anchor: null, selector: null, confidence: 0, source: null };
   });
-  // An encoder map's marker first (the k-th block of a name takes the marker's k-th match), else the text.
+  // An encoder map's marker first (the k-th block of a name takes the marker's k-th match); a block it has no
+  // element for falls through to its text, then its position, as without a map.
   const rootEls = map && map.root ? safeQuery(index, map.root) : [];
   const matchesOf = new Map();
   const matches = (m) => {
@@ -669,17 +648,9 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
   for (const r of recs) {
     if (!r.doc) continue;
     const marker = map && r.cov.kind === 'block' ? map.markers.find((m) => m.emitter === `block:${r.cov.block}`) : null;
-    if (marker) {
-      const el = matches(marker)[occurrence.get(r.doc)];
-      if (el) Object.assign(r, { anchor: el, selector: stableSelector(index, el), confidence: 1, source: 'encoder-map' });
-      else {
-        // No k-th match: the raw selector only when it hits nothing here (never another block's element);
-        // syntax outside the engine's grammar, or a page too deep to match, has an unknown reach: null.
-        const raw = rawSelector(map.root, marker.sel);
-        let hits;
-        try { hits = querySelectorAll(index, raw).length; } catch (e) { if (!(e instanceof RangeError || (e && e.name === 'UnsupportedSelector'))) throw e; hits = -1; }
-        Object.assign(r, { anchor: null, selector: hits === 0 ? raw : null, confidence: 0, source: 'encoder-map' });
-      }
+    const el = marker ? matches(marker)[occurrence.get(r.doc)] : null;
+    if (el) {
+      Object.assign(r, { anchor: el, selector: stableSelector(index, el), confidence: 1, source: 'encoder-map' });
       continue;
     }
     const a = alignBlock(index, r.frags);

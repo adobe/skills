@@ -597,7 +597,7 @@ check('mapping: a template of three pages — sections aligned by signature; the
 });
 
 // An encoder map for the hub template: `.intro` also matches outside main#main (header first), cards has
-// two occurrences (the k-th block takes the k-th match), media's marker matches nothing.
+// two occurrences (the k-th block takes the k-th match), media's marker matches nothing (it falls through).
 const HUB_MAP = {
   root: 'main#main',
   markers: [
@@ -609,7 +609,7 @@ const HUB_MAP = {
   ],
 };
 
-check('mapping: an encoder map marker wins over text alignment (confidence 1): its k-th match under the root, else its raw selector (confidence 0)', () => {
+check('mapping: an encoder map marker wins over text alignment (confidence 1): its k-th match under the root; without one the block falls through', () => {
   const dir = hubProject('map-encode', { encode: { hub: HUB_MAP } });
   const r = runMap(dir);
   ok(r);
@@ -617,18 +617,19 @@ check('mapping: an encoder map marker wins over text alignment (confidence 1): i
   assert.deepEqual(t.blocks.map((b) => [b.section, b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
     ['s1', 'teaser-grid', [['section.intro', 1, 'encoder-map']]],
     ['s2', 'cards', [['div.card', 1, 'encoder-map']]],
-    // no match: the raw selector (the root before each alternative) matches nothing on the page, so it is kept
-    ['s3', 'media', [['main#main video, main#main audio', 0, 'encoder-map']]],
+    // no match: the block is placed as without a map (image-only: its position)
+    ['s3', 'media', [['figure.frame', 0, 'position']]],
     ['s3', 'cards', [['div.caption', 1, 'encoder-map']]],
     ['s4', 'hero', [['section.banner', 0, 'position']]],
   ]);
   assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.confidence]), [['s1', 'section.intro', 1], ['s2', 'div.card', 0.593], ['s3', 'section.gallery', 1], ['s4', null, 0]]);
-  assert.equal(lines(r)[1], 'sources encoder-map 4 · text-alignment 0 · position 1');
+  assert.equal(lines(r)[1], 'sources encoder-map 3 · text-alignment 0 · position 2');
   assert.equal(lines(r)[2], 'confidence ≥0.9 3 · 0.5–<0.9 0 · >0–<0.5 0 · 0 2');
 });
 
-check('mapping: an encoder-map instance without its k-th match never points at another block\'s element (selector null, confidence 0)', () => {
-  // two cards blocks, one `.card` under the roots: the second block's raw selector would hit the first's element
+check('mapping: a block the encoder map has no k-th match for falls through to text alignment, then position', () => {
+  // two cards blocks, one `.card` under the roots: the second cards block is aligned by its text, the media block
+  // (no match, no text) takes its position — never the first block's element
   const map = { root: '#main, footer', markers: [{ sel: '.card', emitter: 'block:cards' }, { sel: 'video, audio', emitter: 'block:media' }] };
   const dir = hubProject('map-encode-kth', { encode: { hub: map } });
   const r = runMap(dir, ['--verify']);
@@ -636,8 +637,8 @@ check('mapping: an encoder-map instance without its k-th match never points at a
   const t = readMapping(dir).templates[0];
   assert.deepEqual(t.blocks.filter((b) => b.block === 'cards' || b.block === 'media').map((b) => [b.section, b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]), [
     ['s2', 'cards', [['div.card', 1, 'encoder-map', true]]],
-    ['s3', 'media', [['#main video, #main audio, footer video, footer audio', 0, 'encoder-map', false]]],
-    ['s3', 'cards', [[null, 0, 'encoder-map', false]]],
+    ['s3', 'media', [['figure.frame', 0, 'position', true]]],
+    ['s3', 'cards', [['div.caption p', 1, 'text-alignment', true]]],
   ]);
 });
 
@@ -706,22 +707,22 @@ check('mapping: default-content roles — an equal text wins; containment needs 
   assert.deepEqual(readMapping(dir).templates[0].sections.map((s) => [s.id, s.defaultContent]), [['s1', ['heading', 'body']], ['s2', []], ['s3', ['heading']], ['s4', []]]);
 });
 
-check('mapping: an encoder-map raw selector outside the engine\'s grammar is dropped (unknown reach: selector null, confidence 0)', () => {
-  // a browser would resolve `figure + div` to the gallery cards' element; the engine cannot count it
+check('mapping: an encoder-map marker outside the engine\'s grammar selects nothing: the block falls through', () => {
+  // a browser would resolve `figure + div` to the gallery cards' element; the engine cannot, so no map element
   const map = { root: 'main#main', markers: [{ sel: 'figure + div', emitter: 'block:media' }, { sel: 'section:has(img)', emitter: 'block:hero' }] };
   const dir = hubProject('map-encode-unknown', { encode: { hub: map } });
   ok(runMap(dir, ['--verify']));
   const t = readMapping(dir).templates[0];
   assert.deepEqual(t.blocks.filter((b) => b.block === 'media' || b.block === 'hero').map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]), [
-    ['media', [[null, 0, 'encoder-map', false]]],
-    ['hero', [[null, 0, 'encoder-map', false]]],
+    ['media', [['figure.frame', 0, 'position', true]]],
+    ['hero', [['section.banner', 0, 'position', true]]],
   ]);
 });
 
-// Pages that cannot be mapped, and a coverage block the delivered document no longer has.
+// An encoder map for the story template: its quote marker matches on story-two only.
 const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
 
-check('mapping: --verify — one hit true, else false (a marker without its match on one page); without it null and skipped', () => {
+check('mapping: --verify — every selector resolves once (story-three\'s quote, without its map match, falls through); without it null and skipped', () => {
   const dir = project('map-verify', STORY_PAGES, { encode: { story: STORY_MAP } });
   let r = runMap(dir);
   ok(r);
@@ -729,11 +730,12 @@ check('mapping: --verify — one hit true, else false (a marker without its matc
   assert.ok(readMapping(dir).templates[0].blocks.every((b) => b.instances.every((i) => i.verified === null)), 'verified null without --verify');
   r = runMap(dir, ['--verify']);
   ok(r);
-  assert.equal(lines(r)[0], 'templates 1 · blocks 2 · instances 5 · verified 80.0 %');
+  assert.equal(lines(r)[0], 'templates 1 · blocks 2 · instances 5 · verified 100.0 %');
   assert.equal(lines(r).at(-1), `→ ${MAPPING} (written)`);
   const t = readMapping(dir).templates[0];
   assert.deepEqual(t.blocks.map((b) => [b.block, b.instances.map((i) => [i.slug, i.selector, i.source, i.verified, i.confidence])]), [
-    ['quote', [['story-three', 'main .pull-quote', 'encoder-map', false, 0], ['story-two', 'blockquote.pull-quote', 'encoder-map', true, 1]]],
+    // story-three: as without a map (its text-alignment result)
+    ['quote', [['story-three', 'body > main > section:nth-of-type(2) > blockquote > p', 'text-alignment', true, 1], ['story-two', 'blockquote.pull-quote', 'encoder-map', true, 1]]],
     ['story-body', [
       ['story-one', 'body > main > section.band:nth-of-type(2)', 'text-alignment', true, 1],
       ['story-three', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true, 1],
@@ -742,24 +744,34 @@ check('mapping: --verify — one hit true, else false (a marker without its matc
   ]);
   assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.pages]), [
     ['s1', 'body > main > section:nth-of-type(1) > h1', ['story-one', 'story-three', 'story-two']],
-    ['s3', 'blockquote.pull-quote', ['story-two']],
+    ['s3', 'body > main > section:nth-of-type(2) > blockquote > p', ['story-three', 'story-two']],
     ['s2', 'body > main > section.band', ['story-one', 'story-three', 'story-two']],
   ]);
   r = runMap(dir, ['--verify', '--json']);
   ok(r);
   const o = JSON.parse(r.stdout);
-  assert.deepEqual([o.status, o.counts.verified, o.counts.verifiedPct, o.counts.sources], ['unchanged', 4, 80, { 'encoder-map': 2, 'text-alignment': 3, position: 0 }]);
+  assert.deepEqual([o.status, o.counts.verified, o.counts.verifiedPct, o.counts.sources], ['unchanged', 5, 100, { 'encoder-map': 1, 'text-alignment': 4, position: 0 }]);
   const none = project('map-verify-none', [{ slug: 'plain', path: '/plain', templateId: 'plain', content: '<main><div><h1>Only a heading</h1></div></main>', capture: '<main><h1>Only a heading</h1></main>' }]);
   r = runMap(none, ['--verify']);
   ok(r);
   assert.equal(lines(r)[0], 'templates 1 · blocks 0 · instances 0 · verified n/a');
 });
 
-check('verifyMapping: re-reads and re-indexes the captures — a selector gone since mapping is false, section pages recomputed', () => {
+check('verifyMapping (what --verify runs): a selector that no longer resolves is false, the others true; captures re-read afresh', () => {
   const dir = project('map-verify-fresh', STORY_PAGES);
   const coverage = JSON.parse(readFileSync(join(dir, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8'));
   const captures = join(dir, 'stardust', 'current', 'pages');
   const { mapping, have } = bo.buildMapping(coverage, { content: join(dir, 'content'), captures });
+  // a broken selector: story-three's quote replaced in the mapping by one its capture does not have
+  const quote = mapping.templates[0].blocks.find((b) => b.block === 'quote').instances.find((i) => i.slug === 'story-three');
+  quote.selector = 'blockquote.gone p';
+  bo.verifyMapping(mapping, have, captures);
+  assert.deepEqual(mapping.templates[0].blocks.flatMap((b) => b.instances.map((i) => [b.block, i.slug, i.verified])), [
+    ['quote', 'story-three', false], ['quote', 'story-two', true],
+    ['story-body', 'story-one', true], ['story-body', 'story-three', true], ['story-body', 'story-two', true],
+  ]);
+  const c = bo.countsOf(mapping, true);
+  assert.deepEqual([c.verified, c.verifiedPct], [4, 80], 'the status line would read verified 80.0 %');
   put(join(captures, 'story-two.html'), storyCapture('two', 'classed').replace('<section class="band">', '<section class="band"><h1>Moved</h1></section><section class="band">'));
   bo.verifyMapping(mapping, have, captures);
   const t = mapping.templates[0];
@@ -772,6 +784,8 @@ check('verifyMapping: re-reads and re-indexes the captures — a selector gone s
   assert.deepEqual(t.blocks.flatMap((b) => b.instances.filter((i) => i.slug === 'story-three').map((i) => i.verified)), [false, false], 'a capture gone: false');
   assert.deepEqual(t.sections.find((s) => s.id === 's3').pages, ['story-two']);
 });
+
+// Pages that cannot be mapped, and a coverage block the delivered document no longer has.
 const DRIFT_COVERED = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div><div class="cards"><div><div><p>Drift card text.</p></div></div></div></div></main>';
 const DRIFT_DOCUMENT = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div></div></main>';
 const SIMPLE = (t) => `<main><div><div class="hero"><div><div><p>${t}</p></div></div></div></div></main>`;
