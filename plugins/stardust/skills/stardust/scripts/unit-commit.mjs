@@ -9,7 +9,8 @@
 // delivered, holds the lock from staging to the last push, and commits by pathspec, so whatever
 // another process staged stays staged and out of the commit.
 //
-//   node stardust/scripts/stardust/unit-commit.mjs <unit> [--push] [--message <m>] [--wait-s 120]
+//   node stardust/scripts/stardust/unit-commit.mjs <unit> [--code blocks/<name>]… [--push] [--message <m>]
+//                                                   [--wait-s 120]
 //
 // Run from the project root, inside its git work tree. The stage set — only files that exist and are
 // not git-ignored (`git check-ignore`), deduped, sorted:
@@ -20,7 +21,11 @@
 //      migrate sidecar beside row.source.migratedHtml (index.html → _meta.json, <name>.html →
 //      <name>._meta.json, same dir);
 //   3. shared bookkeeping: stardust/rollout/coverage/*.json, stardust/rollout/progress.json,
-//      stardust/deploy/media-ledger.json and the unit's own stardust/rollout/units/<unit>.paths.
+//      stardust/deploy/media-ledger.json and the unit's own stardust/rollout/units/<unit>.paths;
+//   4. per --code blocks/<name> (repeatable): that block directory's files, recursively — a cluster's
+//      block code goes through the same lock (a commit outside it collides with the units' commits);
+//      blocks/header and blocks/footer are the frozen foundation and refused. The Code-stage push
+//      before the first preview is `unit-commit.mjs <unit> --code blocks/<name> --push`.
 // The lock is a file, stardust/.work/git.lock, created with open(…, 'wx') and holding one JSON line
 // {pid, host, at, unit}. A waiter polls every 200 ms up to --wait-s. A lock whose pid is not running
 // on this host (kill -0 → ESRCH), or untouched for 300 s (the holder touches it every 30 s and before
@@ -44,9 +49,10 @@
 // a second signal ends the running git step. Exactly one status line on stdout in every outcome;
 // git's chatter is captured (a failing step's last git line goes to stderr, URL credentials redacted).
 // Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 everything else —
-// usage, not a git work tree, missing .paths, unreadable coverage, lock timeout, nothing to commit,
-// a merge/rebase in progress or unmerged files, commit failure, no upstream, rebase conflict, an
-// autostash that did not re-apply, push failure, a timed-out step, a signal.
+// usage (a frozen or malformed --code included), not a git work tree, missing .paths or --code
+// directory, unreadable coverage, lock timeout, nothing to commit, a merge/rebase in progress or
+// unmerged files, commit failure, no upstream, rebase conflict, an autostash that did not re-apply,
+// push failure, a timed-out step, a signal.
 import { spawn } from 'node:child_process';
 import { closeSync, existsSync, linkSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, utimesSync, writeSync } from 'node:fs';
 import { hostname } from 'node:os';
@@ -73,10 +79,13 @@ const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 const PAGES_REL = 'stardust/rollout/coverage/pages.json';
 const COVERAGE_DIR = 'stardust/rollout/coverage';
 const SHARED = ['stardust/rollout/progress.json', 'stardust/deploy/media-ledger.json'];
+export const CODE_RE = /^blocks\/[a-z0-9][a-z0-9-]*\/?$/;
+const FROZEN_BLOCKS = ['blocks/header', 'blocks/footer'];
 const SELF = fileURLToPath(import.meta.url);
 
 const HELP = `Usage:
-  node stardust/scripts/stardust/unit-commit.mjs <unit> [--push] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}]
+  node stardust/scripts/stardust/unit-commit.mjs <unit> [--code blocks/<name>]… [--push] [--message <m>]
+                                                  [--wait-s ${DEFAULT_WAIT_S}]
   (run from the project root, inside its git work tree; <unit> matches ${UNIT_RE})
 
 Commits ONE unit's delivered pages and the shared rollout bookkeeping — by explicit path, never
@@ -93,6 +102,11 @@ The stage set (only files that exist and are not git-ignored; deduped, sorted):
     (index.html → _meta.json, <name>.html → <name>._meta.json)
   shared: ${COVERAGE_DIR}/*.json, ${SHARED.join(', ')},
     stardust/rollout/units/<unit>.paths
+  --code blocks/<name> (repeatable, ${CODE_RE}): that block directory's files,
+    recursively — a cluster's block code commits under the same lock. blocks/header and
+    blocks/footer (the frozen foundation) and anything that is not blocks/<kebab-name> → exit 2,
+    nothing staged; a directory that does not exist → exit 2. The Code-stage push before the
+    first preview: unit-commit.mjs <unit> --code blocks/<name> --push
 Lock: ${LOCK_REL} (one JSON line: pid, host, ISO time, unit), created atomically and waited
   for up to --wait-s seconds (default ${DEFAULT_WAIT_S}, polled every ${POLL_MS} ms). A lock whose pid is not
   running on this host, or untouched for ${STALE_MS / 1000} s (the holder touches it every ${HEARTBEAT_MS / 1000} s), is reaped
@@ -120,10 +134,10 @@ Output: exactly one status line on stdout, e.g.
   git's own output is captured; a failing git step's last line goes to stderr (credentials redacted).
 Writes: a git commit (and a push with --push); the lock file under stardust/.work/ while it runs.
 Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 usage, not a git
-  work tree, missing units/<unit>.paths, unreadable coverage, lock timeout, nothing to commit, a
-  merge or rebase in progress or unmerged files, commit failure, no upstream, rebase conflict, an
-  autostash that did not re-apply, push failure, a timed-out step, a signal — nothing half-done (a
-  commit that could not be pushed is kept locally and named).`;
+  work tree, missing units/<unit>.paths or --code directory, unreadable coverage, lock timeout,
+  nothing to commit, a merge or rebase in progress or unmerged files, commit failure, no
+  upstream, rebase conflict, an autostash that did not re-apply, push failure, a timed-out step,
+  a signal — nothing half-done (a commit that could not be pushed is kept locally and named).`;
 
 export class UsageError extends Error {}
 
@@ -141,6 +155,28 @@ export function sidecarFor(migratedHtml) {
   const leaf = posix.basename(p);
   const name = leaf === 'index.html' ? '_meta.json' : `${leaf.replace(/\.html$/, '')}._meta.json`;
   return dir === '.' ? name : `${dir}/${name}`;
+}
+
+/** A --code value as `blocks/<name>` (trailing slash dropped); throws UsageError for anything else or a frozen block. */
+export function codeDir(value) {
+  const v = String(value ?? '');
+  if (!CODE_RE.test(v)) throw new UsageError(`--code ${v} must be blocks/<kebab-name> (${CODE_RE})`);
+  const dir = v.replace(/\/$/, '');
+  if (FROZEN_BLOCKS.includes(dir)) throw new UsageError(`--code ${dir} is the frozen foundation (blocks/header, blocks/footer) — a unit never commits it`);
+  return dir;
+}
+
+/** Every file under a directory, recursively (posix paths, sorted); symlinked directories are not followed. */
+export function filesUnder(dir) {
+  const out = [];
+  const walk = (d) => {
+    for (const e of readdirSync(d, { withFileTypes: true }).sort((a, b) => byCodePoint(a.name, b.name))) {
+      const p = `${d}/${e.name}`;
+      if (e.isDirectory()) walk(p); else out.push(p);
+    }
+  };
+  walk(dir);
+  return out;
 }
 
 /** The content documents a path key may live in. */
@@ -389,7 +425,7 @@ async function pushOutcome(res, okLine) {
 
 // ---- argv --------------------------------------------------------------------------------------
 export function parseArgs(argv) {
-  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S };
+  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S, code: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -401,7 +437,7 @@ export function parseArgs(argv) {
     };
     if (a === '--push') opts.push = true;
     else if (a === '--message') { opts.message = need(); if (!opts.message.trim()) throw new UsageError('--message is empty'); }
-    else if (a === '--wait-s') {
+    else if (a === '--code') { const d = codeDir(need()); if (!opts.code.includes(d)) opts.code.push(d); } else if (a === '--wait-s') {
       const v = need();
       if (!/^\d+(\.\d+)?$/.test(v)) throw new UsageError(`--wait-s needs a number of seconds ≥ 0, got ${v}`);
       opts.waitS = Number(v);
@@ -435,6 +471,7 @@ async function underLock(opts, lines, stop) {
   const coverageFiles = existsSync(COVERAGE_DIR) && statSync(COVERAGE_DIR).isDirectory()
     ? readdirSync(COVERAGE_DIR).filter((f) => f.endsWith('.json')).sort(byCodePoint).map((f) => `${COVERAGE_DIR}/${f}`) : [];
   const { files, notes } = stageCandidates({ unit, lines, rows, coverageFiles });
+  for (const d of opts.code) files.push(...filesUnder(d));
   for (const n of notes) console.error(`unit-commit ${unit}: note: ${n}`);
   const present = [...new Set(files.map((f) => safeRel(f, cwd)).filter(Boolean))]
     .filter((f) => { try { return statSync(f).isFile(); } catch { return false; } });
@@ -501,7 +538,7 @@ export async function main(argv) {
   let opts;
   try { opts = parseArgs(argv); } catch (e) {
     if (!(e instanceof UsageError)) throw e;
-    emit(null, `${e.message} — usage: unit-commit.mjs <unit> [--push] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}] (--help)`);
+    emit(null, `${e.message} — usage: unit-commit.mjs <unit> [--code blocks/<name>]… [--push] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}] (--help)`);
     return 2;
   }
   const { unit } = opts;
@@ -519,6 +556,11 @@ export async function main(argv) {
     try { isFile = statSync(pathsRel).isFile(); } catch { /* missing */ }
     if (!isFile) { emit(unit, `no ${pathsRel} — write the unit's page list first; nothing staged`); return 2; }
     const lines = parsePaths(readFileSync(pathsRel, 'utf8'));
+    for (const d of opts.code) {
+      let isDir = false;
+      try { isDir = lstatSync(d).isDirectory(); } catch { /* missing */ }
+      if (!isDir) { emit(unit, `--code ${d}: no such directory — nothing staged`); return 2; }
+    }
 
     const lockAbs = resolve(LOCK_REL);
     const got = await acquireGitLock(lockAbs, {

@@ -4,7 +4,8 @@
 // no user or system config leaks in): the pure helpers (paths parsing, sidecar naming, the candidate
 // set, lock judgement); --help writes nothing; usage errors; a missing .paths stages nothing; a unit
 // commits exactly its set while an unrelated pre-staged file stays staged and out of the commit;
-// nothing to commit; nothing new but ahead → push only; a live lock times out naming its owner; a
+// --code blocks/<name> adds exactly that block directory's non-ignored files (header, footer and
+// anything outside blocks/<kebab-name> refused, a missing directory refused); nothing to commit; nothing new but ahead → push only; a live lock times out naming its owner; a
 // dead-pid or untouched lock is reaped; a failing commit unstages the set; two concurrent --push
 // callers queued on one lock (the upstream moved, so one really rebases) both land, each printing the
 // sha that is on the remote, each commit within its unit's set, no lock left; with the upstream
@@ -19,7 +20,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSyn
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { judgeLock, parseOwner, parsePaths, safeRel, sidecarFor, stageCandidates, STALE_MS } from '../unit-commit.mjs';
+import { codeDir, judgeLock, parseOwner, parsePaths, safeRel, sidecarFor, stageCandidates, STALE_MS } from '../unit-commit.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'unit-commit.mjs');
@@ -116,6 +117,12 @@ check('safeRel: clean relative paths inside the tree; escapes and blanks → nul
   assert.equal(safeRel('/etc/hosts', root), null);
   assert.equal(safeRel('  ', root), null);
 });
+check('codeDir: blocks/<kebab-name> (trailing slash dropped); header, footer and anything else refused', () => {
+  assert.equal(codeDir('blocks/cards'), 'blocks/cards');
+  assert.equal(codeDir('blocks/cards-2/'), 'blocks/cards-2');
+  for (const bad of ['blocks/header', 'blocks/footer/']) assert.throws(() => codeDir(bad), /frozen foundation/);
+  for (const bad of ['styles', 'blocks', 'blocks/', 'blocks/Cards', 'blocks/a/b', 'blocks/../x', './blocks/cards', 'blocks/-x', '']) assert.throws(() => codeDir(bad), /must be blocks\/<kebab-name>/, bad);
+});
 check('parseOwner + judgeLock: dead pid on this host or untouched past the limit is stale; live, foreign or young unknown is not', () => {
   const o = parseOwner('{"pid":123,"host":"h1","at":"2026-01-01T00:00:00.000Z","unit":"c2"}');
   assert.deepEqual(o, { pid: 123, host: 'h1', at: '2026-01-01T00:00:00.000Z', unit: 'c2' });
@@ -137,7 +144,7 @@ try {
   configure(clone);
   put(clone, 'README.md', 'project\n');
   put(clone, 'tracked.txt', 'tracked v1\n');
-  put(clone, '.gitignore', 'stardust/eds-schema/b.json\n');
+  put(clone, '.gitignore', 'stardust/eds-schema/b.json\n*.map\n');
   put(clone, 'stardust/.gitignore', '.work/\n');
   git(clone, 'add', '--', 'README.md', 'tracked.txt', '.gitignore', 'stardust/.gitignore');
   git(clone, 'commit', '-q', '-m', 'init');
@@ -173,7 +180,7 @@ try {
     assert.deepEqual(readdirSync(empty), []);
   });
   check('usage: no unit, a bad unit name, unknown flag, bad number, a value flag without value, outside a work tree → exit 2, one line', () => {
-    for (const args of [[], ['../x'], ['c1', 'c2'], ['c1', '--bogus'], ['c1', '--wait-s', 'abc'], ['c1', '--wait-s', '-1'], ['c1', '--message'], ['c1', '--message', '--push']]) {
+    for (const args of [[], ['../x'], ['c1', 'c2'], ['c1', '--bogus'], ['c1', '--wait-s', 'abc'], ['c1', '--wait-s', '-1'], ['c1', '--message'], ['c1', '--message', '--push'], ['c1', '--code'], ['c1', '--code', 'styles'], ['c1', '--code', 'blocks/header']]) {
       const r = run(clone, ...args);
       assert.equal(r.code, 2, `args ${JSON.stringify(args)}: ${r.out}`); oneLine(r);
     }
@@ -202,6 +209,25 @@ try {
     const r = run(clone, 'c1');
     assert.equal(r.code, 2); assert.equal(r.out, 'unit-commit c1: nothing to commit\n');
     assert.equal(head(), before);
+  });
+  check('--code blocks/cards: exactly that block directory\'s non-ignored files join the commit; header, footer, other dirs and a missing block → exit 2, nothing staged', () => {
+    for (const f of ['cards.js', 'cards.css', 'lib/util.js']) put(clone, `blocks/cards/${f}`, `/* ${f} */\n`);
+    put(clone, 'blocks/cards/cards.js.map', '{}\n'); // git-ignored (*.map)
+    put(clone, 'blocks/hero/hero.js', '/* another cluster */\n');
+    put(clone, 'blocks/header/header.js', '/* frozen */\n');
+    const before = head();
+    for (const [args, re] of [[['--code', 'blocks/header'], /frozen foundation/], [['--code', 'blocks/footer/'], /frozen foundation/], [['--code', 'styles'], /must be blocks\/<kebab-name>/], [['--code', 'blocks/nope'], /--code blocks\/nope: no such directory/]]) {
+      const r = run(clone, 'c1', ...args);
+      assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}`); oneLine(r); assert.match(r.out, re);
+    }
+    assert.equal(head(), before); assert.deepEqual(staged(), ['other.txt']);
+    const r = run(clone, 'c1', '--code', 'blocks/cards/');
+    assert.equal(r.code, 0, r.out + r.err); oneLine(r);
+    assert.match(r.out, /^unit-commit c1: committed [0-9a-f]{7} \(3 files\)\n$/);
+    assert.deepEqual(filesOf(clone, 'HEAD'), ['blocks/cards/cards.css', 'blocks/cards/cards.js', 'blocks/cards/lib/util.js']);
+    assert.equal(git(clone, 'status', '--porcelain', '--', 'blocks/hero', 'blocks/header'), '?? blocks/header/\n?? blocks/hero/', 'the other block dirs stay untracked');
+    assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
   });
   check('c1 --push, nothing new but ahead of upstream → push only, exit 0; then not ahead → exit 2', () => {
     const r = run(clone, 'c1', '--push');
