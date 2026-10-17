@@ -4,6 +4,43 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs
+
+Retrospectives of recorded hands-off runs found the gate's economics kept in prose: the 3-round fix cap was a
+sentence a new brief could reset, while gate-triage counted the tables on disk; the same page could PASS at
+gate-all's 5 % height bar and FAIL at gate-evidence's 8 px; a browser slot bounded jobs, not browsers, so one
+gate-all job opened up to six Chromiums inside it; and `update-coverage --gate` refused an `--only` run's table as
+`not a gate-all summary (no rows[])`. Numbered 0.35.6 provisionally, stacked on 0.35.5.
+
+- **Fix rounds are counted by the instrument (#134, extends #126).** Every `gate-all --only` run that yields a
+  verdict counts one round per page in `<out>/<slug>/rounds.json` (an INCONCLUSIVE row does not count, a reused row
+  does); a fourth round is refused before any capture — `gate-all: refused to start, no verdict — cap reached —
+  re-prototype decision: <slug> 3/3 @<w> …`, exit 2, nothing written. Only the re-prototype decision starts a new
+  count: `--round-reset "<reason>"`, recorded in rounds.json `resets` and the row's `roundReset`; `--max-rounds`
+  (1..3) may only lower the cap. Concurrent rounds of one page are refused through `<slug>/rounds.lock`; a project
+  without rounds.json is seeded from its run tables. Rows carry `round`; gate-triage reads the same count (`rounds
+  n/max` per row in triage.md, `cap reached (<slug>@<w> n/max): re-prototype decision now`) instead of counting
+  tables, and `update-coverage --gate` records it per width in `delivery.gate.rounds`.
+- **One height bar per regime.** Without a pixel table, gate-evidence judges a `gate.sh` round at |Δh| ≤ 8 px in
+  the prototype regime and ≤ 5 % of the origin height in the published regime — gate-all's bar; a table row, either
+  stage, still decides at 5 %. The origin height comes from pixel-compare's `A <w>x<h>`; a round whose log has none
+  reads `OPEN: no origin height in the round's log — re-run`, never a pass. `--height-tolerance <v>`: v ≤ 1 a
+  fraction of the origin height, v > 1 pixels, for both regimes. Evidence lines name their bar, e.g.
+  `[published regime: |Δh| ≤ 5 % of origin 3000px = 150px]`.
+- **One browser budget across jobs.** run-bg gives a slot-holding job `STARDUST_BROWSERS_PER_SLOT = max(1,
+  floor(STARDUST_BROWSER_BUDGET (default 3) / STARDUST_BROWSER_SLOTS))`: the contract's 3 browsers = budget 3 across
+  all jobs; a larger machine raises `STARDUST_BROWSER_BUDGET`, and the slots with it; a budget below the slots says
+  so in one `run-bg:` line. Inside a slot gate-all clamps its origin / EDS / probe pools to that share (1 → 1/1/1,
+  the origin captures before the EDS ones; 3 → 2/1/2), and its roster estimate — run-bg's deadline for a gate-all job
+  without `--timeout` — follows the pools (×4 at one browser per slot). gate.sh runs its `--full` probes that many at
+  a time, so a bounded round takes the sum of their times; one stderr line names the bound and, when it holds probes
+  back, the remedy (start the round through run-bg with `--timeout 1800`, or raise `STARDUST_BROWSER_BUDGET`). Run
+  without a slot, nothing changes.
+- **update-coverage ingests every gate-all table.** `--gate <table | dir>` takes the roster `summary.json`, an
+  `--only` run's `runs/<ts>-<slug>.json`, or the gate dir `all-<w>/` (summary.json, then runs/*.json; the newest row
+  per page and width wins). A `summary.json` absent beside `runs/` tables ingests those with one note; `<path> not
+  found`, an unparsable file (its JSON error) and `not a gate-all summary (no rows[])` are distinct refusals.
+
 ## 0.35.5 — a gate names what it could not measure; an override must earn its row
 
 Recorded hands-off runs measured fix rounds against origin captures a consent wall or a geo modal had polluted, and
