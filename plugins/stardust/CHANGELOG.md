@@ -7,7 +7,7 @@ git history only (plus the branch-scoped notes in
 ## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
 
 A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
-coverage rows and gate captures went with it. Its parallel subagents collided in one worktree (`git add content`,
+coverage rows and gate captures went with it. Parallel subagents collided in one worktree (`git add content`,
 `pull --rebase` refusals, push races); propagation polls were gzip-blind in seven agents of a ten-page run; a recorded
 run delivered 94 of 95 rows by override with nothing counting them. Agents edited content to satisfy an h1 check on
 pages whose source has no h1; whitespace-only spacer paragraphs were dropped by the pipeline (#112); subagents read
@@ -51,14 +51,15 @@ boundary ask and blocked on one subagent for hours.
 - **Chain hygiene:** `localize-links.mjs --redirects <f>` naming a file that does not exist is a note on stderr and
   the run continues on the content tree (`redirectsFound: false`); an existing unreadable path stays exit 1. Every
   `python3 -m http.server` example binds `127.0.0.1`: loopback only, and its host-name lookup can crash on a long
-  container host name. A cluster or archetype brief names its read-set — four sections fetched with `section.mjs`,
+  container host name. A cluster or archetype brief names its read-set — four citations fetched with `section.mjs`,
   never a whole SKILL.md, never a full-page PNG in context (`crop-compare.mjs` bands instead).
 
-Patch/contract: no verdict, threshold, criterion, capture or freeze change; the new done-check gaps and `ledger.mjs
-check` only add caution, and every skipped check is named; the h1 note holds only where the captured source itself
-has no h1. Touches #112, #125, #134. The number is provisional
-(renumbered at merge): handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin
-`AGENTS.md` a changed contract is a minor release.
+Patch/contract: no gate verdict, pixel threshold, capture or freeze change. One criterion narrows: a page without an
+h1 whose captured source has none is a note, not a P0 or a verify failure; a missing capture, or one with an h1, keeps
+both. done-check adds a 10 % override cap and new gaps, and `ledger.mjs check` a pairing check — these only add
+caution, and every skipped check is named. Touches #112, #125, #134. The number is provisional (renumbered at merge):
+handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin `AGENTS.md` a changed contract is
+a minor release.
 
 ## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
