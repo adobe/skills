@@ -9,7 +9,11 @@
 // this process — an 88 px in-flow bar above the header, a bar inserted 400 ms after load (hidden by the style rule),
 // an invalid selector, a second call, and a late bar under a CSP that blocks inline <style> (hidden by the adopted
 // sheet) — and dismissOverlays' consent pass on fixture banners: each consent manager's own accept button, a plain
-// label (by priority, never "Decline" first), a label two shadow roots deep, and an in-content "Accept" link left alone.
+// label (by priority, never "Decline" first), a label two shadow roots deep, and an in-content "Accept" link left alone;
+// then detectOverlayLeft (also a stub page: an evaluate error is a failed check, never clean) on what a capture would
+// still carry — a consent root (or its shadow content) shown, a painting full-viewport backdrop or blur, an html / body
+// scroll lock — and on the look-alikes that are none: a transparent wrapper with a toast, a layer below the page
+// (z-index -1), a 120 px bar, roots hidden by display or an opacity-0 ancestor; dismissOverlays returns it.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -62,6 +66,11 @@ check('consent label sweep covers every label of crawl.mjs\'s text-match fallbac
   assert.ok(crawlLabels.length >= 5, `parsed ${crawlLabels.length} labels from crawl.mjs`);
   const missing = crawlLabels.filter((l) => !session.CONSENT_LABEL_SWEEP.labels.includes(l.toLowerCase()));
   assert.deepEqual(missing, [], 'crawl.mjs labels missing from CONSENT_LABEL_SWEEP.labels');
+});
+check('overlay-left: the exported surface', () => {
+  for (const name of ['detectOverlayLeftInPage', 'detectOverlayLeft']) assert.equal(typeof session[name], 'function', `${name} exported`);
+  assert.ok(Array.isArray(session.CONSENT_ROOTS) && session.CONSENT_ROOTS.length, 'CONSENT_ROOTS');
+  assert.equal(typeof session.OVERLAY_COVERAGE, 'number');
 });
 check('isLiveHttpUrl: live http(s) only — never localhost, loopback, file: or garbage', () => {
   assert.equal(session.isLiveHttpUrl('https://www.example.com/page'), true);
@@ -284,6 +293,13 @@ await checkAsync('hideRegions without a browser: [] → [] with no page work; on
   await session.hideRegions(page, '.a', { settleMs: 40 });
   assert.equal(calls[1].arg.settleMs, 40);
 });
+await checkAsync('detectOverlayLeft without a browser: one evaluate with the consent roots and the coverage; an evaluate error is never a clean capture', async () => {
+  const calls = [];
+  assert.equal(await session.detectOverlayLeft({ evaluate: async (fn, arg) => { calls.push({ fn, arg }); return null; } }), null);
+  assert.deepEqual(calls.map((c) => [c.fn, c.arg]), [[session.detectOverlayLeftInPage, { roots: session.CONSENT_ROOTS, coverage: session.OVERLAY_COVERAGE }]]);
+  const failedCheck = await session.detectOverlayLeft({ evaluate: async () => { throw new Error('Execution context was destroyed\n    at a navigation'); } });
+  assert.equal(failedCheck, '(overlay check failed: Execution context was destroyed)');
+});
 
 // ---- hideRegions end-to-end (only where playwright is importable — a project copy) --------------------------------
 let chromium = null;
@@ -321,6 +337,22 @@ else {
       <script>const outer = document.querySelector('consent-shell').attachShadow({ mode: 'open' }); outer.innerHTML = '<consent-panel></consent-panel>'; const inner = outer.querySelector('consent-panel').attachShadow({ mode: 'open' }); inner.innerHTML = '<span role="button" tabindex="0">Zustimmen</span>'; inner.querySelector('span').onclick = () => { document.querySelector('consent-shell').style.display = 'none'; };</script>`),
     '/consent/in-content': doc(`<main><p>Read the terms, then <a href="#" id="terms">Accept</a> them.</p></main>
       <script>document.getElementById('terms').onclick = (e) => { e.preventDefault(); window.termsClicked = true; };</script>`),
+  });
+  // overlay-left fixtures: what a capture would still show after the sweeps — and the look-alikes that are no overlay
+  Object.assign(PAGES, {
+    '/overlay/clean': doc(MAIN),
+    '/overlay/onetrust': doc(`${MAIN}<div id="onetrust-banner-sdk" style="${BANNER}"><p>We use cookies.</p><button id="onetrust-pc-btn-handler">Cookie settings</button></div>`),
+    '/overlay/usercentrics': doc(`${MAIN}<div id="usercentrics-root"></div>
+      <script>document.getElementById('usercentrics-root').attachShadow({ mode: 'open' }).innerHTML = '<div style="${BANNER}"><p>Privacy settings</p><button data-testid="uc-more-button">More</button></div>';</script>`),
+    '/overlay/backdrop': doc(`${MAIN}<div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:500"></div>`),
+    '/overlay/blur': doc(`${MAIN}<div id="scrim" style="position:fixed;inset:0;backdrop-filter:blur(4px);z-index:500"></div>`),
+    '/overlay/body-lock': doc(`${MAIN}<style>body{overflow:hidden}</style>`),
+    '/overlay/html-lock': doc(`${MAIN}<style>html{overflow:hidden}</style>`),
+    '/overlay/toast': doc(`${MAIN}<div style="position:fixed;inset:0;pointer-events:none;z-index:900"><div style="position:absolute;right:16px;bottom:16px;width:240px;padding:12px;background:#333;color:#fff">Saved</div></div>`),
+    '/overlay/below': doc(`${MAIN}<div class="page-bg" style="position:fixed;inset:0;z-index:-1;background:#def"></div>`),
+    '/overlay/bar': doc(`${MAIN}<div class="promo-bar" style="position:fixed;left:0;right:0;bottom:0;height:120px;background:#222;color:#fff">Free shipping</div>`),
+    '/overlay/hidden-roots': doc(`${MAIN}<div id="onetrust-banner-sdk" style="${BANNER};display:none"><p>We use cookies.</p></div>
+      <div style="opacity:0"><div id="didomi-popup" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"><p>Consent</p></div></div>`),
   });
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html');
@@ -411,9 +443,36 @@ else {
         const d = await session.dismissOverlays(page, { lateWindowMs: 0 });
         assert.equal(d.consent, want);
         assert.equal(await page.evaluate(gone), true, want === null ? 'the in-content link was clicked' : 'the banner is still up (or the decline control was clicked)');
+        assert.equal(d.overlayLeft, null, 'nothing left behind');
         await page.close();
       });
     }
+    const OVERLAY = [
+      ['/overlay/clean', null],
+      ['/overlay/onetrust', '#onetrust-banner-sdk (consent root visible)'],
+      ['/overlay/usercentrics', '#usercentrics-root (consent root visible)'],
+      ['/overlay/backdrop', 'div.backdrop (fixed, 100 % of the viewport)'],
+      ['/overlay/blur', 'div#scrim (fixed, 100 % of the viewport)'],
+      ['/overlay/body-lock', 'body (overflow:hidden)'],
+      ['/overlay/html-lock', 'html (overflow:hidden)'],
+      ['/overlay/toast', null],
+      ['/overlay/below', null],
+      ['/overlay/bar', null],
+      ['/overlay/hidden-roots', null],
+    ];
+    for (const [path, want] of OVERLAY) {
+      await checkAsync(`e2e overlay-left: ${path} → ${want}`, async () => {
+        const page = await open(path);
+        assert.equal(await session.detectOverlayLeft(page), want);
+        await page.close();
+      });
+    }
+    await checkAsync('e2e overlay-left: dismissOverlays reports the backdrop it could not dismiss; a closed page is a failed check, never clean', async () => {
+      const page = await open('/overlay/backdrop');
+      assert.deepEqual(await session.dismissOverlays(page, { lateWindowMs: 0 }), { extra: [], consent: null, marketing: [], overlayLeft: 'div.backdrop (fixed, 100 % of the viewport)' });
+      await page.close();
+      assert.match(await session.detectOverlayLeft(page), /^\(overlay check failed: /);
+    });
   } finally { await browser.close(); server.close(); }
 }
 

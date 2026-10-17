@@ -46,6 +46,8 @@
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
+ *     What no sweep removed (a consent root still shown, a full-viewport
+ *     backdrop, a scroll lock) is reported as `overlayLeft`, never captured silently.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
  *     Accept-Language + context locale are pinned.
@@ -480,7 +482,102 @@ export function consentLabelSweepInPage(table) {
   }
   return null;
 }
+
+/**
+ * What a capture would still show after the sweeps, run in the page: `page.evaluate(detectOverlayLeftInPage,
+ * { roots, coverage })` (self-contained). "Shown" = displayed, not visibility-hidden, opacity > 0 (ancestors too, via
+ * checkVisibility where the browser has it) and a 2×2 box. In order:
+ *   1. a consent root (`roots`) still shown — the element or anything in its open shadow root →
+ *      `<root> (consent root visible)`;
+ *   2. the first shown fixed/sticky element (document order, open shadow roots included) with a non-negative z-index
+ *      that paints (background colour alpha > 0, a background image or a backdrop filter) over ≥ `coverage` of the
+ *      viewport → `<tag>[#id | .first.two classes] (<position>, <pct> % of the viewport)`;
+ *   3. a scroll lock: `html (overflow:hidden)` when html's overflow-y is hidden/clip, else `body (overflow:hidden)`
+ *      when body's is while html's is visible (it then locks the viewport).
+ * → that descriptor, or null.
+ */
+export function detectOverlayLeftInPage({ roots, coverage }) {
+  const vw = window.innerWidth; const vh = window.innerHeight;
+  const shown = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden' || Number(cs.opacity) === 0) return false;
+    if (typeof el.checkVisibility === 'function' && !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) return false;
+    const r = el.getBoundingClientRect();
+    return r.width >= 2 && r.height >= 2;
+  };
+  // depth-first over a root and every open shadow root below it; the first element `pick` accepts
+  const find = (root, pick) => {
+    for (const el of root.querySelectorAll('*')) {
+      if (pick(el)) return el;
+      const inner = el.shadowRoot ? find(el.shadowRoot, pick) : null;
+      if (inner) return inner;
+    }
+    return null;
+  };
+  for (const sel of roots) {
+    let els = [];
+    try { els = [...document.querySelectorAll(sel)]; } catch { /* not a selector here — skip it */ }
+    if (els.some((el) => shown(el) || (el.shadowRoot && find(el.shadowRoot, shown)))) return `${sel} (consent root visible)`;
+  }
+  const alpha = (c) => {
+    const m = /\(([^)]*)\)/.exec(c || '');
+    if (!m) return c && c !== 'transparent' ? 1 : 0;
+    const slash = m[1].split('/');
+    const a = (slash.length > 1 ? slash[1] : m[1].split(',')[3] || '1').trim();
+    return a.endsWith('%') ? parseFloat(a) / 100 : parseFloat(a);
+  };
+  let share = 0;
+  const layer = find(document, (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed' && cs.position !== 'sticky') return false;
+    if (parseInt(cs.zIndex, 10) < 0 || !shown(el)) return false;
+    const paints = alpha(cs.backgroundColor) > 0 || (cs.backgroundImage && cs.backgroundImage !== 'none') || (cs.backdropFilter && cs.backdropFilter !== 'none');
+    if (!paints) return false;
+    const r = el.getBoundingClientRect();
+    const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
+    const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
+    share = (ix * iy) / (vw * vh);
+    return share >= coverage;
+  });
+  if (layer) {
+    const classes = [...layer.classList].slice(0, 2);
+    const name = layer.id ? `#${CSS.escape(layer.id)}` : classes.map((c) => `.${CSS.escape(c)}`).join('');
+    return `${layer.tagName.toLowerCase()}${name} (${getComputedStyle(layer).position}, ${Math.round(share * 100)} % of the viewport)`;
+  }
+  const locked = (el) => ['hidden', 'clip'].includes(getComputedStyle(el).overflowY);
+  if (locked(document.documentElement)) return 'html (overflow:hidden)';
+  if (document.body && locked(document.body) && getComputedStyle(document.documentElement).overflowY === 'visible') return 'body (overflow:hidden)';
+  return null;
+}
 /* eslint-enable no-undef */
+
+// Each consent manager's banner root: still shown after the sweeps, the capture carries the banner.
+export const CONSENT_ROOTS = [
+  '#onetrust-banner-sdk',
+  '#CybotCookiebotDialog',
+  '#usercentrics-root',
+  '#truste-consent-track',
+  '.truste_box_overlay',
+  '#didomi-notice',
+  '#didomi-popup',
+  '#cmpbox',
+  '#qc-cmp2-container',
+];
+// A fixed/sticky painting layer over at least this share of the viewport is an overlay left behind.
+export const OVERLAY_COVERAGE = 0.8;
+
+/**
+ * The overlay a capture of `page` would still carry → descriptor (detectOverlayLeftInPage with CONSENT_ROOTS and
+ * OVERLAY_COVERAGE) or null. An evaluate error → `(overlay check failed: <first line>)` — an unchecked capture is
+ * never reported clean.
+ */
+export async function detectOverlayLeft(page) {
+  try {
+    return await page.evaluate(detectOverlayLeftInPage, { roots: CONSENT_ROOTS, coverage: OVERLAY_COVERAGE });
+  } catch (e) {
+    return `(overlay check failed: ${String((e && e.message) || e).split('\n')[0]})`;
+  }
+}
 
 // Container candidates for timed marketing/newsletter interstitials (CH-1).
 // [role=dialog]/[aria-modal]/.modal alone is NOT enough: the recorded
@@ -516,12 +613,14 @@ const MODAL_CLOSE_CANDIDATES = [
  *       Callers pass `lateWindowFor(url, …)`: 0 on local targets and on EDS build/preview hosts, which get one
  *       sweep (stitch-shot runs it after waitEdsDelayedPhase, so a consent manager the build enables is up).
  * `extra` selectors are site-specific dismissers, clicked first (each once).
- * Parks the mouse afterwards (bottom-left — dead space on virtually every
- * layout) so no :hover-styled element under the cursor captures hovered.
- * Returns { extra: [...], consent: <sel|null>, marketing: [...] }.
+ * Then detectOverlayLeft names what the capture would still carry (null when
+ * clean) — reported, never removed. Parks the mouse afterwards (bottom-left —
+ * dead space on virtually every layout) so no :hover-styled element under the
+ * cursor captures hovered.
+ * Returns { extra: [...], consent: <sel|label "<text>"|null>, marketing: [...], overlayLeft: <descriptor|null> }.
  */
 export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } = {}) {
-  const dismissed = { extra: [], consent: null, marketing: [] };
+  const dismissed = { extra: [], consent: null, marketing: [], overlayLeft: null };
 
   for (const sel of extra) {
     try {
@@ -588,6 +687,9 @@ export async function dismissOverlays(page, { extra = [], lateWindowMs = 6000 } 
     await page.waitForTimeout(1500);
     acted = await closeVisibleDialogs();
   }
+
+  // what the capture would still carry (a banner no sweep reached, a backdrop, a scroll lock) — reported, never fixed
+  dismissed.overlayLeft = await detectOverlayLeft(page);
 
   // park the mouse (rule 10): a dismissal click leaves the virtual cursor at
   // the button's coordinates; anything :hover-styled under it captures hovered.
