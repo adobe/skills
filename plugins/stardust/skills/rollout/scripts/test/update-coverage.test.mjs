@@ -8,7 +8,8 @@
 // origin in source.migratedHtml, joins its template, is idempotent, refuses captured slugs and taken
 // paths, and lands under the lock beside concurrent page updates. And `--gate`: the newest row per page
 // and width wins — an older row of either width is skipped and counted (delivery.gate.atByWidth); a width
-// with no recorded time, or a record without the map, is applied. And `--block <name> --status
+// with no recorded time, or a record without the map, is applied; each width keeps its own verdict
+// (delivery.gate.passByWidth) whichever table came last. And `--block <name> --status
 // not-delivered --reason <text>`: the reason is required (exit 2), recorded as delivery.reason, cleared by
 // any other status, the block found by id then by edsBlockName, and counted in lastRun.blocks.notDelivered.
 import assert from 'node:assert/strict';
@@ -301,6 +302,7 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-2'].status, 'deployed', 'a gate failure that now passes goes back to deployed'); assert.equal(by['page-2'].error, null);
   assert.equal(by['page-3'].status, 'verified', 'a documented override keeps the page'); assert.equal(by['page-3'].gate.override, 'PASS (source capture)');
   assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
+  assert.deepEqual(by['page-1'].gate.passByWidth, {}, 'a table without a width records no per-width verdict');
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });
@@ -352,8 +354,34 @@ for (const [a, b] of [[1440, 360], [360, 1440]]) {
     assert.equal(stripGen(pagesText(out)), stripGen(before), 'only the top-level generatedAt may change');
     const d = gateOf(out, 'page-0');
     assert.equal(d.status, 'deployed'); assert.equal(d.gate.width, b); assert.deepEqual(d.gate.atByWidth, { [a]: T2, [b]: T3 });
+    assert.deepEqual(d.gate.passByWidth, { [a]: true, [b]: true }, 'the skipped older row leaves the per-width verdicts alone');
   });
 }
+
+for (const [a, b] of [[1440, 360], [360, 1440]]) {
+  await check(`--gate records each width's verdict in delivery.gate.passByWidth — ${a} then ${b} keeps both keys; pass stays the last width's verdict`, async () => {
+    const { proj, out } = fixture();
+    let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+    const rowAt = (w) => (w === 1440 ? passRow('page-0') : failRow('page-0'));
+    r = await run(['--gate', gateTable(proj, `first-${a}.json`, T1, a, [rowAt(a)])], proj); assert.equal(r.code, 0, r.err);
+    assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { [a]: a === 1440 });
+    r = await run(['--gate', gateTable(proj, `then-${b}.json`, T2, b, [rowAt(b)])], proj); assert.equal(r.code, 0, r.err);
+    const d = gateOf(out, 'page-0');
+    assert.deepEqual(d.gate.passByWidth, { 1440: true, 360: false });
+    assert.deepEqual(Object.keys(d.gate.passByWidth).sort(), ['1440', '360'], 'keys are width strings, as atByWidth');
+    assert.equal(d.gate.pass, b === 1440, 'pass keeps its meaning: the verdict of the row applied last');
+  });
+}
+
+await check('--gate passByWidth: an override passes its width; a width re-gated replaces only its own entry', async () => {
+  const { proj, out } = fixture();
+  let r = await run(['page-0', '--status', 'deployed'], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [{ ...failRow('page-0'), override: { verdict: 'tier-shift', reason: 'R-01', valid: true } }])], proj); assert.equal(r.code, 0, r.err);
+  r = await run(['--gate', gateTable(proj, 'mob.json', T1, 360, [failRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { 1440: true, 360: false });
+  r = await run(['--gate', gateTable(proj, 'mob2.json', T2, 360, [passRow('page-0')])], proj); assert.equal(r.code, 0, r.err);
+  assert.deepEqual(gateOf(out, 'page-0').gate.passByWidth, { 1440: true, 360: true });
+});
 
 await check('--gate records a whole-row reuse at its measured time (row.reused.at), a probe reuse at the table\'s writtenAt, and the width', async () => {
   const { proj, out } = fixture();
@@ -376,12 +404,14 @@ await check('--gate overwrites a recorded gate without atByWidth (recorded befor
   assert.equal(r.code, 0, r.err); assert.match(r.out, /1 of 1 rows matched, 1 status flip\(s\), 0 older row\(s\) skipped/, r.out);
   const d = gateOf(out, 'page-0');
   assert.equal(d.status, 'failed'); assert.equal(d.gate.at, T1); assert.equal(d.gate.width, 1440); assert.deepEqual(d.gate.atByWidth, { 1440: T1 });
+  assert.deepEqual(d.gate.passByWidth, { 1440: false });
 });
 
 await check('--help says the newest row per page and width wins and names the runs/ table', async () => {
   const proj = mkdtempSync(join(tmpdir(), 'update-coverage-help3-'));
   const r = await run(['--help'], proj);
   assert.equal(r.code, 0); assert.match(r.out, /newest row per page and width wins/); assert.match(r.out, /delivery\.gate\.atByWidth/); assert.match(r.out, /runs\/<ts>-<slug>\.json/);
+  assert.match(r.out, /delivery\.gate\.passByWidth/);
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');

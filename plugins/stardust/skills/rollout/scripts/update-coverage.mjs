@@ -12,9 +12,9 @@
  *   name the id instead).
  * Gate:   node update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json   (or a runs/<ts>-<slug>.json table)
  *   writes each row's verdict into the page's `delivery.gate` {pass, pct, heightDelta, clipped, content,
- *   reasons, override, table, at, width, atByWidth} and flips a failing page (no documented override) from
- *   deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure back to
- *   `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
+ *   reasons, override, table, at, width, atByWidth, passByWidth} and flips a failing page (no documented
+ *   override) from deployed / verified to `failed` (error `gate: <reasons>`), a passing one out of that failure
+ *   back to `deployed`; verify.mjs never marks a page `verified` while its `delivery.gate.pass` is false (#125 —
  *   completion derives from one place: a page the pixel table failed cannot read as verified).
  *   The newest row per page and width wins: `delivery.gate.atByWidth` ({"<width>": ISO}) keeps the newest applied
  *   row time per width across ingests; a row older than its width's time is skipped (nothing of that page changes)
@@ -22,6 +22,10 @@
  *   gate recorded without `atByWidth` (before 0.34.4), is applied. Row time (`at`) = `reused.at` of a whole-row
  *   reuse (when the row was measured), else the table's `_provenance.writtenAt`, else null (never skipped, no map
  *   entry); `width` = the table's `_provenance.breakpoint`.
+ *   `pass` is the verdict of the row applied last, whatever its width; `delivery.gate.passByWidth`
+ *   ({"<width>": bool}, keys as atByWidth) keeps each width's own verdict (a documented override passes it): the
+ *   row sets its table's width, other widths' entries are kept, a skipped older row touches none, a table without
+ *   a breakpoint none. done-check.mjs proves a page only when every width passed.
  * New:    node update-coverage.mjs --new <slug> --path </delivered/path> --template <id> --origin <origin> [--title <t>] [--status <s>]
  *   page  <status>: pending | converting | deployed | verified | stale | failed
  *   block <status>: pending | converted | deployed | verified | failed | not-delivered
@@ -232,7 +236,9 @@ if (gateFile) {
     if (at && width != null) atByWidth[width] = at;
     p.delivery = p.delivery || {};
     const pass = !!(r.pass || r.override);
-    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at, width, atByWidth };
+    const passByWidth = { ...((rec && rec.passByWidth) || {}) };
+    if (width != null) passByWidth[String(width)] = pass;
+    p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], override: r.override ? r.override.verdict : null, table: gateFile, at, width, atByWidth, passByWidth };
     if (!pass && ['deployed', 'verified'].includes(p.delivery.status)) { p.delivery.status = 'failed'; p.delivery.error = `gate: ${(r.reasons || []).join('; ') || 'FAIL'}`; flipped += 1; }
     else if (pass && p.delivery.status === 'failed' && /^gate: /.test(p.delivery.error || '')) { p.delivery.status = 'deployed'; p.delivery.error = null; flipped += 1; }
   }
