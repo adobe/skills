@@ -65,8 +65,9 @@ ship here.
   unit's links to other units' pages still localize; a missing `.paths` or a unit with no document is exit 1, a path
   without a document a note; without `--unit` nothing changes. The per-page chain, row C and the deploy skill pass
   `--unit` inside a unit; the whole-tree pass runs where no unit runs (C-final). `dynamics/scripts/dynamics-check.mjs`
-  sets its exit code before the backstop timer — 0 every check passed, 2 any FAIL, 1 usage (was 2) — and rollout D2
-  says a parity fix changes block code, never the delivered content's meaning.
+  sets its exit code before the backstop timer — 0 every check passed, 2 any FAIL (was 1, or 0 when the event loop
+  drained first), 1 usage (was 2) — and rollout D2 says a parity fix changes block code, never the delivered content's
+  meaning.
 - **The usage ledger always writes its table (K7).** `stardust/scripts/token-ledger.mjs` with unreachable transcripts
   still writes `stardust/usage.md` and `usage.json` from the phase windows (`status.jsonl`) and the unit rows (the two
   unit ledgers): from / to, wall minutes and pages kept, every token and request cell `unknown` (JSON `null`,
@@ -90,11 +91,11 @@ ship here.
   quality 80) with a dependency-free area-average downscale and baseline JPEG encoder (4:4:4, alpha on white,
   deterministic); `pngjs` loads only after `--help`. `crop-compare.mjs` writes its diff and strip as capped JPEGs at
   the `.jpg` sibling of `--out` / `--strip`; `--full-res` also writes the full-resolution PNG at the given path (the
-  old output); verdict, numbers and exit codes are unchanged. Its `--json` replaces the `strip` key with `stripImage`
-  and adds `diffImage` and `fullRes` (the PNG paths written). The gate's own PNGs stay full-resolution measurement
-  inputs: the gate doc and the reading discipline say agents look only at capped images, and the breakpoint strip for
-  approval keeps `--full-res`. page-probe's `--shot` / `--sbs` part lands on the stacked 0.35.9 branch with page-probe
-  itself.
+  old output); verdict, numbers and exit codes are unchanged. In its `--json`, `diffImage` now names the capped JPEG
+  (was the `--out` PNG), `strip` → `stripImage` (the strip's JPEG, null without `--strip`), and new `fullRes` lists
+  the PNGs written. The gate's own PNGs stay full-resolution measurement inputs: the gate doc and the reading
+  discipline say agents look only at capped images, and the breakpoint strip for approval keeps `--full-res`.
+  page-probe's `--shot` / `--sbs` part lands on the stacked 0.35.9 branch with page-probe itself.
 - **One consent table (K11).** `extract/scripts/crawl.mjs` dismisses consent from live-session's `CONSENT_CANDIDATES`
   (`consentTable()`, resolved lazily in the plugin tree and both project-copy layouts; a drift test asserts the very
   same array) instead of its own list; its shadow-root pass, text-match fallback and prune pass stay. Without
@@ -131,10 +132,11 @@ own session.
 Patch/contract: no verdict, pixel threshold, capture, criterion or freeze-set change. The new refusals (inventory
 `--state`, a crawl without live-session, progress.mjs shapes, `--push` with no time left), `gates_inconclusive`,
 unvalidated overrides, `header_parity_errors` and the per-width proof only add caution; every skipped check is a named
-line. Output changes: crop-compare writes JPEGs unless `--full-res`, and its JSON `strip` key is now `stripImage`;
-dynamics-check usage errors exit 1 (was 2). Touches #125, #126, #134, #135. Provisional version, renumbered at merge:
-handoff contract row C (C0's sub-units, the gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed
-contract is a minor release.
+line. Output changes: crop-compare writes JPEGs unless `--full-res`; in its JSON `diffImage` now names the capped JPEG
+(was the `--out` PNG), `strip` is now `stripImage` and `fullRes` is new. dynamics-check: any FAIL exits 2 (was 1, or 0
+when the event loop drained first), usage errors exit 1 (was 2). Touches #125, #126, #134, #135. Provisional version,
+renumbered at merge: handoff contract row C (C0's sub-units, the gap-closure phase) and § 5 change, and by plugin
+`AGENTS.md` a changed contract is a minor release.
 
 ## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#135)
 
