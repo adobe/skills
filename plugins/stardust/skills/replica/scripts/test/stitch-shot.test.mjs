@@ -16,6 +16,13 @@
 // missing value is a usage error; e2e an 88 px in-flow .geo-bar above the content — hidden, the stitch is 88 px
 // shorter and stdout says `hidden: .geo-bar ×1 (88px) [--hide]` (also under --no-dismiss); a selector matching nothing
 // is ×0 and changes nothing; under --settle the --inventory already sees the hidden page.
+// overlay-left + --json (the capture record gate.sh / gate-all read): fontFamilies strips quotes, de-duplicates and
+// sorts; --help names both; --json without a value is a usage error. e2e a fixed full-viewport backdrop with no close
+// control → one `overlay-left: div.backdrop (fixed, 100 % of the viewport)` line before the overflow line, exit 0, the
+// record's overlayLeft (also under --no-dismiss, where dismissed is null); hidden with --hide → no line, null; a clean
+// page's record exactly (key order, height = the PNG's); a declared face that 404s → fontsFailed ['Brand Sans'] beside
+// the WARNING; dismissed across the --settle sweeps (consent = last non-null, marketing = union); a failed capture
+// (HTTP 404) writes no record.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -24,7 +31,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { overflowLine, parseArgs } from '../stitch-shot.mjs';
+import { fontFamilies, overflowLine, parseArgs } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -77,6 +84,26 @@ await check('--hide: --help names it; a missing value (end of argv or a flag nex
     assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
+await check('fontFamilies: surrounding quotes stripped, trimmed, empties dropped, unique, sorted — the record\'s fontsFailed', () => {
+  assert.deepEqual(fontFamilies(['"A B"', "'C'", 'A B', '']), ['A B', 'C']);
+  assert.deepEqual(fontFamilies([' "Z" ', 'Brand Sans', '"Brand Sans"']), ['Brand Sans', 'Z']);
+  assert.deepEqual(fontFamilies([]), []);
+});
+await check('--json: --help names it and the overlay-left line; a missing value (end of argv or a flag next) is a usage error, exit 1, nothing written', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'stitch-json-'));
+  try {
+    const h = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8', timeout: 15000 });
+    assert.equal(h.status, 0, h.stderr);
+    assert.match(h.stdout, /--json <file> +after the PNG, write the capture record/);
+    assert.match(h.stdout, /overlay-left: <sel>/);
+    for (const tail of [['--json'], ['--json', '--settle']]) {
+      const r = spawnSync(process.execPath, [SCRIPT, 'http://127.0.0.1:9/', 'x.png', ...tail], { cwd, encoding: 'utf8', timeout: 15000 });
+      assert.equal(r.status, 1, `${tail.join(' ')}: ${r.stderr}`);
+      assert.match(r.stderr, /^--json needs a file path/);
+    }
+    assert.deepEqual(readdirSync(cwd), []);
+  } finally { rmSync(cwd, { recursive: true, force: true }); }
+});
 
 // ---- end-to-end (needs playwright + pngjs importable from the script's location) ---------------------------
 let chromium = null;
@@ -110,6 +137,20 @@ if (chromium) {
       '<style>#hd{height:60px;background:#222}#hd.pin{position:fixed;top:0;left:0;right:0}</style>'),
     // --hide: an 88 px per-visitor bar (a location suggestion) in flow above the header — not an overlay.
     '/geo': page('<div class="geo-bar" style="height:88px;background:#f90"><a href="/loc">Switch location</a></div><header style="height:60px;background:#222"></header><main><h1 style="margin:0;height:60px">Heading</h1><section></section><section></section></main>'),
+  });
+  // overlay-left + --json: a fixed full-viewport backdrop with no close control (no sweep removes it) over page content
+  // (a line of text at the viewport centre); a declared face whose file 404s; a consent banner shown at load beside a
+  // newsletter popup opening 6.5 s after load — during --settle's pass, so the settle sweep closes it after the first
+  // sweep took the banner.
+  const popupLate = `<script>addEventListener('load', () => setTimeout(() => {
+    const p = document.createElement('div'); p.id = 'newsletter-popup'; p.style.cssText = 'position:fixed;top:100px;left:100px;width:400px;height:300px;background:#fff';
+    const x = document.createElement('button'); x.setAttribute('aria-label', 'Close'); x.textContent = '×'; x.onclick = () => p.remove();
+    p.appendChild(x); document.body.appendChild(p);
+  }, 6500));</script>`;
+  Object.assign(pages, {
+    '/backdrop': page('<section><p style="margin:0;padding-top:430px;font:40px/40px sans-serif;text-align:center">Page content beneath the backdrop</p></section><section></section><div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"></div>'),
+    '/font-fail': page('<section>Brand type</section><section></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/missing.woff2)}body{font-family:"Brand Sans",sans-serif}</style>'),
+    '/consent-popup': page('<div id="banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><button id="onetrust-accept-btn-handler" onclick="this.parentNode.remove()">OK</button></div><section></section><section></section>', popupLate),
   });
   const server = createServer((req, res) => {
     const body = pages[req.url.split('?')[0]];
@@ -218,6 +259,81 @@ if (chromium) {
       assert.equal(inv.docH, pngHeight('geo-hide.png'));
       assert.equal(inv.items.find((x) => x.kind === 'heading').y, 60, 'the heading sits right below the 60 px header (148 with the bar)');
       assert.ok(!inv.items.some((x) => x.href === '/loc'), 'the bar\'s link is not inventoried');
+    });
+    // overlay-left + the --json capture record (gate.sh greps the line, gate-all / gate.sh read the record)
+    const OVL = 'div.backdrop (fixed, 100 % of the viewport)';
+    const ovlLines = (r) => r.stdout.split('\n').filter((l) => l.startsWith('overlay-left:'));
+    const record = (f) => JSON.parse(readFileSync(join(work, f), 'utf8'));
+    const shots = {
+      backdrop: run([`${base}/backdrop`, 'backdrop.png', '--json', 'backdrop.json'], work),
+      noDismiss: run([`${base}/backdrop`, 'backdrop-nod.png', '--no-dismiss', '--json', 'rec/backdrop-nod.json'], work),
+      hidden: run([`${base}/backdrop`, 'backdrop-hide.png', '--hide', '.backdrop', '--json', 'backdrop-hide.json'], work),
+      fit: run([`${base}/fit`, 'fit-rec.png', '--json', 'fit-rec.json'], work),
+      font: run([`${base}/font-fail`, 'font.png', '--json', 'font.json'], work),
+      sweeps: run([`${base}/consent-popup`, 'sweeps.png', '--settle', '--json', 'sweeps.json'], work),
+      failed: run([`${base}/no-such-page`, 'failed.png', '--json', 'failed.json'], work),
+    };
+    await check('e2e overlay-left: a fixed full-viewport backdrop no sweep removes → one `overlay-left:` line before the overflow line, exit 0; --json records it', async () => {
+      const r = await shots.backdrop;
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(ovlLines(r), [`overlay-left: ${OVL}`], r.stdout);
+      const lines = r.stdout.trim().split('\n');
+      assert.ok(lines.indexOf(`overlay-left: ${OVL}`) < lines.findIndex((l) => LINE_RE.test(l)), r.stdout);
+      assert.match(lines.at(-2), LINE_RE, 'the overflow line still sits right before the stitched line');
+      const j = record('backdrop.json');
+      assert.equal(j.overlayLeft, OVL);
+      assert.deepEqual(j.fontsFailed, []);
+      assert.deepEqual(j.dismissed, { consent: null, extra: [], marketing: [] });
+    });
+    await check('e2e overlay-left under --no-dismiss: the check still runs (the line, overlayLeft) and dismissed is null; --json creates its directory', async () => {
+      const r = await shots.noDismiss;
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(ovlLines(r), [`overlay-left: ${OVL}`], r.stdout);
+      const j = record('rec/backdrop-nod.json');
+      assert.equal(j.dismissed, null);
+      assert.equal(j.overlayLeft, OVL);
+    });
+    await check('e2e overlay-left after --hide: a backdrop --hide removes is not reported — no line, overlayLeft null, the hide records kept', async () => {
+      const r = await shots.hidden;
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(ovlLines(r), [], r.stdout);
+      assert.match(r.stdout, /^hidden: \.backdrop ×1 \(900px\) \[--hide\]$/m);
+      const j = record('backdrop-hide.json');
+      assert.equal(j.overlayLeft, null);
+      assert.deepEqual(j.hidden, [{ sel: '.backdrop', source: '--hide', n: 1, h: 900 }]);
+    });
+    await check('e2e --json on a clean page: the record exactly — key order, 2-space JSON + newline, height = the PNG\'s, overflow = the line\'s numbers', async () => {
+      const r = await shots.fit;
+      assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(ovlLines(r), [], r.stdout);
+      assert.equal(lastTwo(r)[0], 'overflow: scrollWidth=1440 viewport=1440 delta=0');
+      const want = { url: `${base}/fit`, out: 'fit-rec.png', width: 1440, vh: 900, settle: false, dismissed: { consent: null, extra: [], marketing: [] },
+        overlayLeft: null, fontsFailed: [], hidden: [], height: pngHeight('fit-rec.png'), overflow: { scrollWidth: 1440, viewport: 1440, delta: 0 } };
+      assert.equal(readFileSync(join(work, 'fit-rec.json'), 'utf8'), `${JSON.stringify(want, null, 2)}\n`);
+    });
+    await check('e2e --json fontsFailed: a declared face whose file 404s → [\'Brand Sans\'], beside the one FONT LOAD FAILED warning', async () => {
+      const r = await shots.font;
+      assert.equal(r.status, 0, r.stderr);
+      const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
+      assert.equal(warnings.length, 1, r.stderr);
+      assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) "?Brand Sans"?/);
+      assert.deepEqual(record('font.json').fontsFailed, ['Brand Sans']);
+    });
+    await check('e2e --json dismissed across the --settle sweeps: consent kept from the first (the settle sweep finds none), the popup the settle sweep closed', async () => {
+      const r = await shots.sweeps;
+      assert.equal(r.status, 0, r.stderr);
+      assert.match(r.stdout, /^consent dismissed via #onetrust-accept-btn-handler$/m);
+      assert.match(r.stdout, /^marketing modal dismissed via \[aria-label\*="close" i\]$/m);
+      const j = record('sweeps.json');
+      assert.deepEqual(j.dismissed, { consent: '#onetrust-accept-btn-handler', extra: [], marketing: ['[aria-label*="close" i]'] });
+      assert.equal(j.settle, true);
+      assert.equal(j.overlayLeft, null);
+    });
+    await check('e2e --json: a failed capture (HTTP 404) exits 1 and writes no record', async () => {
+      const r = await shots.failed;
+      assert.equal(r.status, 1, r.stderr);
+      assert.ok(!existsSync(join(work, 'failed.json')), 'no record');
+      assert.ok(!existsSync(join(work, 'failed.png')), 'no PNG');
     });
   } finally {
     server.close();

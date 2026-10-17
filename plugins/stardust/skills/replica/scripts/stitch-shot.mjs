@@ -88,6 +88,15 @@
  *     `hidden: <sel> ×<n> (<h>px) [--hide]; …` line (×0: nothing matched).
  *     gate.sh / gate-all pass the SAME list to the live and build captures —
  *     symmetric, like overlay dismissal: the build has nothing to hide.
+ *   - the OVERLAY-LEFT check (live-session detectOverlayLeft) runs ONCE,
+ *     after the last dismissal sweep and the --hide pass (a layer hidden on
+ *     both sides is not reported), before --inventory and the freeze — under
+ *     --no-dismiss too. A consent root still visible, a fixed/sticky layer
+ *     over most of the viewport or a scroll lock prints ONE `overlay-left:
+ *     <descriptor>` line there; exit stays 0 (gate.sh / gate-all decide).
+ *     --json <file> writes the capture record once the PNG is written: the
+ *     sweeps' dismissals, overlayLeft, fontsFailed (the font-load
+ *     assertion's families), the hide records, height and the overflow line.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -109,6 +118,8 @@
  *     --timeout <ms>      goto timeout                      (default 60000)
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
+ *     --json <file>       after the PNG, write the capture record (gate.sh /
+ *                         gate-all read overlayLeft and fontsFailed)
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -117,8 +128,8 @@
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
  * --help needs neither), and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail
- * loud, never captured).
+ * Exit codes: 0 written (an overlay left included), 1 error, 3 bot challenge
+ * (live side blocked — fail loud, never captured).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -138,7 +149,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, parseHideList, hideRegions, formatHidden } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isEdsHost, lateWindowFor, waitEdsDelayedPhase, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, detectOverlayLeft, parseHideList, hideRegions, formatHidden } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -157,8 +168,16 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
+  --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle, dismissed
+                    ({ consent, extra, marketing } over the sweeps; null under --no-dismiss), overlayLeft (null when
+                    clean), fontsFailed (families of declared faces that failed to load), hidden, height, overflow
   --help            this text
 
+Prints \`overlay-left: <sel> (<why>)\` once — after the last dismissal sweep and --hide, before the capture, also under
+--no-dismiss — when the capture would still carry an overlay: a consent root still visible, a fixed / sticky layer
+painting ≥ 80 % of the viewport, or a scroll lock (html / body overflow:hidden); a check that could not run prints
+\`overlay-left: (overlay check failed: <msg>)\`. Exit stays 0: gate.sh gives no verdict, gate-all marks the row
+INCONCLUSIVE. --json records it as overlayLeft; a failed capture writes no record.
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
 vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop, back at the top with
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
@@ -167,13 +186,14 @@ after the EDS delayed phase (live source sites keep the 6 s poll, local targets 
 With --hide: one \`hidden: <sel> ×<n> (<h>px) [--hide]; …\` line (×0 = nothing matched); gate.sh / gate-all
 pass the same list to both captures.
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+Exit codes: 0 written (an overlay left included), 1 error (also --hide / --json without a value), 3 bot challenge
+(live side blocked — fail loud).`;
 
 export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, json: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -193,6 +213,11 @@ export function parseArgs(argv) {
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a === '--inventory') { opts.inventory = rest[i += 1]; }
+    else if (a === '--json') {
+      const v = rest[i += 1];
+      if (v === undefined || v === '' || v.startsWith('--')) { console.error(`--json needs a file path\n\n${HELP}`); process.exit(1); }
+      opts.json = v;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -218,9 +243,18 @@ async function dismissAndLog(page, url, opts) {
 }
 
 // The root line gate.sh's horizontal-overflow assert reads (measure.mjs root-line semantics: viewport =
-// window.innerWidth, delta = scrollWidth − the root's clientWidth, never below 0).
-export function overflowLine({ scrollWidth, innerWidth, clientWidth }) {
-  return `overflow: scrollWidth=${scrollWidth} viewport=${innerWidth} delta=${Math.max(0, scrollWidth - clientWidth)}`;
+// window.innerWidth, delta = scrollWidth − the root's clientWidth, never below 0); the --json record's `overflow`.
+const overflowOf = ({ scrollWidth, innerWidth, clientWidth }) => ({ scrollWidth, viewport: innerWidth, delta: Math.max(0, scrollWidth - clientWidth) });
+export function overflowLine(root) {
+  const { scrollWidth, viewport, delta } = overflowOf(root);
+  return `overflow: scrollWidth=${scrollWidth} viewport=${viewport} delta=${delta}`;
+}
+
+/** The families of declared faces that failed to load, as the --json record carries them: surrounding quotes
+ * stripped, trimmed, empty dropped, unique, sorted. */
+export function fontFamilies(list) {
+  const names = (list || []).filter((s) => typeof s === 'string').map((s) => s.trim().replace(/^["']+|["']+$/g, '').trim());
+  return [...new Set(names.filter(Boolean))].sort();
 }
 
 async function main() {
@@ -241,6 +275,13 @@ async function main() {
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
+    // The record's dismissed: consent = the last non-null one over the sweeps, extra / marketing = every sweep's, unique.
+    const dismissed = opts.noDismiss ? null : { consent: null, extra: [], marketing: [] };
+    const sweep = async () => {
+      const d = await dismissAndLog(page, url, opts);
+      if (d.consent) dismissed.consent = d.consent;
+      for (const k of ['extra', 'marketing']) for (const s of d[k]) if (!dismissed[k].includes(s)) dismissed[k].push(s);
+    };
     // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
     if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
     else {
@@ -250,7 +291,7 @@ async function main() {
         if (!opts.settle) await waitEdsDelayedPhase(page);
         console.log('late-modal window skipped on an EDS host (one sweep after the delayed phase)');
       }
-      await dismissAndLog(page, url, opts);
+      await sweep();
     }
 
     if (opts.settle) {
@@ -269,12 +310,18 @@ async function main() {
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
-      if (!opts.noDismiss) await dismissAndLog(page, url, opts);
+      if (!opts.noDismiss) await sweep();
     }
 
     // --hide: after the last dismissal sweep, before --inventory, the freeze and the height read — the inventories,
     // the page height and every chunk see the page without the in-flow regions (header, the --hide bullet).
-    if (opts.hide.length) console.log(`hidden: ${formatHidden(await hideRegions(page, opts.hide))}`);
+    const hidden = opts.hide.length ? await hideRegions(page, opts.hide) : [];
+    if (opts.hide.length) console.log(`hidden: ${formatHidden(hidden)}`);
+
+    // The overlay-left check (header): once, on the page the chunks will show — after the last sweep and --hide,
+    // under --no-dismiss too. Named, never removed; the exit code stays 0 (gate.sh / gate-all decide).
+    const overlayLeft = await detectOverlayLeft(page);
+    if (overlayLeft) console.log(`overlay-left: ${overlayLeft}`);
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
     if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url })).catch((e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
@@ -418,6 +465,11 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
+    // --json: the capture record, only once the PNG is written (a failed capture leaves none).
+    if (opts.json) {
+      mkdirSync(dirname(opts.json), { recursive: true });
+      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, fontsFailed: fontFamilies(failedFonts), hidden, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
+    }
     console.log(overflowLine(root));
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
   } finally {
