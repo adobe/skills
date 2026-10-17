@@ -4,6 +4,51 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.2 — instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#135)
+
+A recorded hands-off run's `measure.mjs` hung 8× at 900 s (run-bg's job deadline) on a site that navigates after
+load — after a resize or a consent click: it reused one page across widths with no deadline on the reads. The live
+instruments' navigation defaults ranged from 20 to 90 s with no shared value. A bare `run-bg.mjs wait` in one agent
+waited on every other agent's jobs, and `--timeout` on `wait` was silently ignored. A stitched capture of a page whose
+in-flow header shrinks on scroll stopped as a scroll stall; the run's workaround was a different `--vh`.
+
+- **One navigation timeout.** `diff/scripts/live-session.mjs` resolves it: env `STARDUST_NAV_TIMEOUT_MS` (ms, used as
+  given; an invalid value is ignored with one stderr warning), else 2 × `crawl.navMs.p95` from
+  `stardust/current/_crawl-log.json` clamped to 20–180 s, else the instrument's current default. `gotoLive` (60 s) and
+  `measure-live.mjs` `visit()` (90 s) default to it; `measure.mjs` (20 s), `cap-probe.mjs` (30 s),
+  `style-census.mjs` (20 s), `stitch-shot.mjs` (60 s) and the crawl's per-page goto (45 s) take it when their flag is
+  not given — an explicit flag always wins. measure and cap-probe record `navTimeout: {ms, source}` in `_provenance`.
+- **The crawl measures the figure.** `crawl.mjs` writes each page's `navMs` (its goto to `domcontentloaded`),
+  `crawl.navMs` {n, p50, p95, max} and `crawl.navTimeout` {ms, source} into `_crawl-log.json` and names its page goto
+  timeout on one stderr line; the entry probe, the challenge reload and the slash retry keep their constants. Without
+  `live-session.mjs` beside it the crawl keeps 45 s and says so.
+- **Every width read races `--timeout-ms` (measure, cap-probe).** A page that navigated under a read (execution context
+  destroyed) is re-read once on a fresh page in the same browser context, cookies and consent kept; a deadline is
+  never retried (a second would double the wait). A width that still fails is recorded as `{url, width, error}` in
+  `_provenance.failed`, `_provenance.partial` turns true and the next width starts on a fresh page; a bot challenge
+  still exits 3. cap-probe's reads form one model per page, so its retry re-probes the whole page.
+- **Exit 124 = no verdict, only when nothing was measured.** measure exits 124 only when every width read failed, else
+  0 with a first line `measure: PARTIAL — <k> of <n> width read(s) failed: …` (stderr under `--json`); precedence
+  3 > 1 > 124 > 0. A cap-probe capture exits 124 only when every page's probe failed, else 0 with `PARTIAL`, and a
+  partial capture never merges into `--write-design` (the skip is recorded in `_provenance.designWrite`); a cap-probe
+  compare with a failed read on either side prints `NO VERDICT` and exits 124 — never PASS or FAIL.
+- **`run-bg.mjs wait` and `status` cover the caller's own jobs.** `start` records `ownerPid`: `RUN_BG_OWNER` (a
+  harness whose agents share one process sets it per agent), else the nearest ancestor that is not a shell or wrapper
+  — the agent behind the tool call's shell. Bare `wait`/`status` select the caller's jobs, `--all` every owner's,
+  names those; the report's first line names the selection and its count. `--timeout` on `wait`/`status` is a usage
+  error (exit 125) naming `--max`. A job state without an owner is reached by name or `--all`.
+- **A header that shrinks on scroll is a morph, not a scroll stall (`stitch-shot.mjs`).** A shortfall the document's
+  own shrink explains continues the stitch at the shrunk height and records `headerMorph: <px>` in a new sidecar
+  `<stem>.capture.json` beside the PNG (`writtenBy, url, width, vh, height, chunks, headerMorph, overflow, at`); the
+  `stitched` line ends ` — header morph <px> px` when it is above 0. A no-op scroll with the height unchanged still
+  exits 1; no `--vh` workaround is needed.
+- **Docs:** the scripts index rows, one sentence each in the extract and replica skills, handoff contract § Fan-out
+  discipline (`wait`'s scope), source-fidelity gate hardening rule 13 (`headerMorph`).
+
+Patch: no verdict, threshold, criterion, gate-row or pairing change; the new states only add caution — a width not
+measured is recorded as not measured, and a compare that could not measure both sides never exits with a PASS or FAIL
+code; touches #124 (cap-probe). Provisional: 0.35.2 and #135 are renumbered at merge.
+
 ## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
