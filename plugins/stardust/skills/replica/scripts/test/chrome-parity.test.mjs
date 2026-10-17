@@ -4,12 +4,13 @@
 // presence.json read (selO=selE halves, list entries joined, a missing slug / file hides nothing; `hide` with "*" on
 // both sides), the site-wide stardust/replica/presence.json read by default and merged under --presence's file (its
 // selectors attributed `site presence.json`; a malformed one exits 1 naming it), the --live-cache key (unchanged
-// without hides), the region diff, the live hide-miss warning (liveHideMiss over live-session's hideMisses /
-// hideMissLine), and --help / usage errors from a copy with no playwright and no diff dir beside it. Part (b):
-// end-to-end against fixture pages served from this process — a live page with an in-flow 88 px bar above <header>,
-// one whose script re-renders a NEW bar two frames after the hide pass, one whose empty wrapper above the header a
-// delayed lookup fills with an 88 px bar, one that injects a bar the moment the hide rule lands, a build page without
-// any — runs only where playwright is importable, prints a skip line otherwise.
+// without hides), the region diff, the offset hint (pairOffsets / uniformOffset / offsetHint / chromeHint), the live
+// hide-miss warning (liveHideMiss over live-session's hideMisses / hideMissLine), and --help / usage errors from a copy
+// with no playwright and no diff dir beside it. Part (b): end-to-end against fixture pages served from this process —
+// a live page with an in-flow 88 px bar above <header>, one whose script re-renders a NEW bar two frames after the
+// hide pass, one whose empty wrapper above the header a delayed lookup fills with an 88 px bar, one that injects a bar
+// the moment the hide rule lands, a build page without any — runs only where playwright is importable, prints a skip
+// line otherwise.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -18,7 +19,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, liveHideMiss, UsageError } from '../chrome-parity.mjs';
+import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, pairOffsets, uniformOffset, offsetHint, chromeHint, liveHideMiss, UsageError } from '../chrome-parity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'chrome-parity.mjs');
@@ -137,6 +138,47 @@ await check('compareRegion: a region pushed down on the live side reads as a ver
   assert.match(r.findings[0].msg, /^Δy -88px \(88→0\)$/);
 });
 
+// both sides' measurements as probeRegion records: header texts at y0 + 30, the footer's at y0 + 600 (+ footerShift)
+const atom = (text, y) => ({ key: text.toLowerCase(), text, tag: 'a', rect: { x: 20, y, w: 40, h: 20 }, box: { x: 20, y, w: 40, h: 20 }, boxTag: 'a', style: {}, boxStyle: null });
+const sides = (y0, footerShift = 0) => ({
+  header: { found: true, sel: 'header', rect: { x: 0, y: y0, w: 1440, h: 80 }, atoms: ['Home', 'Products', 'Contact'].map((t) => atom(t, y0 + 30)), icons: [] },
+  footer: { found: true, sel: 'footer', rect: { x: 0, y: y0 + 580, w: 1440, h: 80 }, atoms: [atom('Footer text', y0 + 600 + footerShift)], icons: [] },
+});
+const HINT = 'hint: an in-flow region above the header — presence.mjs add --hide';
+const ZERO = ' (0px now — a block that grows later is still hidden by the persistent display:none !important rule)';
+
+await check('pairOffsets + uniformOffset: every matched text pair\'s Δy (build − live); one offset on ≥ 3 pairs, |Δy| > tol, all within tol → the lower side', () => {
+  const offs = pairOffsets(sides(88), sides(0), ['header', 'footer']);
+  assert.deepEqual(offs, [{ region: 'header', text: 'Home', dy: -88 }, { region: 'header', text: 'Products', dy: -88 }, { region: 'header', text: 'Contact', dy: -88 }, { region: 'footer', text: 'Footer text', dy: -88 }]);
+  assert.deepEqual(uniformOffset(offs, 1), { dy: -88, side: 'live', pairs: 4 });
+  assert.deepEqual(uniformOffset(pairOffsets(sides(0), sides(40), ['header', 'footer']), 1), { dy: 40, side: 'build', pairs: 4 });
+  assert.deepEqual(uniformOffset([-88, -87, -88].map((dy) => ({ dy })), 1), { dy: -88, side: 'live', pairs: 3 }, 'within tol of each other');
+  assert.equal(uniformOffset(pairOffsets(sides(88), sides(0, 180), ['header', 'footer']), 1), null, 'the footer offset by more → not one offset');
+  assert.equal(uniformOffset([-88, -88].map((dy) => ({ dy })), 1), null, 'fewer than 3 pairs');
+  assert.equal(uniformOffset([-1, -1, -1].map((dy) => ({ dy })), 1), null, '|Δy| within tolerance is parity');
+  assert.equal(uniformOffset([], 1), null);
+  assert.deepEqual(pairOffsets({ header: { found: false, sel: 'header' } }, sides(0), ['header']), [], 'a region missing on one side pairs nothing');
+});
+
+await check('offsetHint: the lower side\'s in-flow block whose height is closest to |Δy| (first on a tie); a 0-px one says so; none → the placeholder naming the side', () => {
+  const c = (selector, tag, height) => ({ tag, id: null, classes: [], top: 0, height, selector });
+  const live = { dy: -88, side: 'live', pairs: 4 };
+  assert.equal(offsetHint(live, [c('div.promo', 'div', 40), c('section.bar__wrapper', 'section', 88), c('#notice', 'div', 20)]), `${HINT} section.bar__wrapper`);
+  assert.equal(offsetHint(live, [c('div.a', 'div', 80), c('div.b', 'div', 96)]), `${HINT} div.a`, 'a tie keeps document order');
+  assert.equal(offsetHint(live, [c('section.bar__wrapper', 'section', 0)]), `${HINT} section.bar__wrapper${ZERO}`);
+  assert.equal(offsetHint(live, []), `${HINT} <selector> (no in-flow block found above the header on the live side)`);
+  assert.equal(offsetHint({ dy: 40, side: 'build', pairs: 3 }, [c(null, 'div', 40)]), `${HINT} <selector> (no in-flow block found above the header on the build side)`, 'an entry without a selector is no candidate');
+  assert.equal(offsetHint(null, [c('div.a', 'div', 88)]), null);
+});
+
+await check('chromeHint: the offset side picks its own candidate list; no uniform offset → null', () => {
+  const above = { live: [{ tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' }], build: [] };
+  assert.equal(chromeHint(sides(88), sides(0), ['header', 'footer'], 1, above), `${HINT} section.bar__wrapper`);
+  assert.equal(chromeHint(sides(0), sides(88), ['header', 'footer'], 1, above), `${HINT} <selector> (no in-flow block found above the header on the build side)`);
+  assert.equal(chromeHint(sides(0), sides(0), ['header', 'footer'], 1, above), null);
+  assert.equal(chromeHint(sides(88), sides(0), ['header'], 1, null), `${HINT} <selector> (no in-flow block found above the header on the live side)`);
+});
+
 await check('liveHideMiss: ×0 at the hide pass AND at the measurement is a miss → hideMiss { sels, candidates } + one WARNING line (live-session\'s text)', () => {
   const lib = { hideMisses, hideMissLine };
   const cands = [{ tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' }];
@@ -155,6 +197,7 @@ await check('CLI: --help answers and a usage error exits 1, from a copy with no 
   assert.match(h.out, /--hide <sel,…>/); assert.match(h.out, /--presence <file>/); assert.match(h.out, /--slug <slug>/);
   assert.match(h.out, /stardust\/replica\/presence\.json \(cwd-relative\) is read by default/);
   assert.match(h.out, /^ {2}WARNING hide matched nothing on live — candidates: <selector> \(<tag>, <h>px\); … \(<sel>, …\)$/m);
+  assert.match(h.out, /^ {2}hint: an in-flow region above the header — presence\.mjs add --hide <candidate selector>$/m);
   const u = run(join(solo, 'chrome-parity.mjs'), ['https://live.example/']);
   assert.equal(u.code, 1); assert.match(u.err, /need <liveURL> and <buildURL>/); assert.match(u.err, /Usage:/);
   const p = run(join(solo, 'chrome-parity.mjs'), ['https://live.example/', 'http://127.0.0.1:1/b.html', '--presence', join(root, 'presence.json')]);
@@ -192,17 +235,18 @@ if (pwProbe.status !== 0) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const WRAPPER = { tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' };
   try {
-    await check('e2e: an in-flow bar above the live header reads as a vertical offset (exit 2)', async () => {
+    await check('e2e: an in-flow bar above the live header reads as a vertical offset (exit 2); the hint names it, just before the summary', async () => {
       const r = await runAsync([`${base}/live`, `${base}/build`]);
       assert.equal(r.code, 2, r.out + r.err);
       assert.match(r.out, /REGION BOX +Δy -88px \(88→0\)/);
       assert.doesNotMatch(r.out, /hidden live:|WARNING/);
+      assert.match(r.out, /\n\nhint: an in-flow region above the header — presence\.mjs add --hide div\.geo-bar\n\n✗ \d+ delta\(s\) — /);
     });
     await check('e2e --hide: the bar is hidden on both sides before measuring (exit 0), the hidden lines record it', async () => {
       const r = await runAsync([`${base}/live`, `${base}/build`, '--hide', '.geo-bar']);
       assert.equal(r.code, 0, r.out + r.err);
       assert.match(r.out, /^ {2}build: \S+\n {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]$/m);
-      assert.doesNotMatch(r.out, /WARNING/, 'the build side\'s ×0 is no miss');
+      assert.doesNotMatch(r.out, /WARNING|hint:/, 'the build side\'s ×0 is no miss');
     });
     await check('e2e presence.json: the slug\'s variable region is hidden like --hide, the source says presence.json', async () => {
       const f = join(root, 'gates-presence.json'); writeFileSync(f, JSON.stringify({ home: { variable: ['.geo-bar'] } }));
@@ -216,7 +260,7 @@ if (pwProbe.status !== 0) {
     await check('e2e late bar: a NEW bar the page re-renders after the hide pass is hidden by the style rule (exit 0, no vertical offset)', async () => {
       const r = await runAsync([`${base}/live-late`, `${base}/build`, '--hide', '.geo-bar']);
       assert.equal(r.code, 0, r.out + r.err);
-      assert.doesNotMatch(r.out, /REGION BOX|WARNING/);
+      assert.doesNotMatch(r.out, /REGION BOX|WARNING|hint:/);
       assert.match(r.out, /^ {2}hidden live: {2}\.geo-bar ×1 \(88px\) \[--hide\]$/m);
     });
     await check('e2e presence.json "*": its hide list reaches both sides for any slug (exit 0), the source says presence.json', async () => {
@@ -228,7 +272,7 @@ if (pwProbe.status !== 0) {
       const j = JSON.parse((await runAsync([`${base}/live`, `${base}/build`, '--presence', f, '--slug', 'any-page', '--json'])).out);
       assert.deepEqual(j.hidden.live, [{ sel: '.geo-bar', source: 'presence.json', n: 1, h: 88, nAtCapture: 1 }]);
       assert.deepEqual([j.presence.regions, j.presence.hide], [[], ['.geo-bar']]);
-      assert.equal(j.hideMiss, null);
+      assert.deepEqual([j.hideMiss, j.hint], [null, null]);
     });
     await check('e2e --json: hidden { live, build } and presence; an invalid selector is recorded, never a crash (nor a miss)', async () => {
       const r = await runAsync([`${base}/live`, `${base}/build`, '--hide', '.geo-bar,[[', '--json']);
@@ -256,34 +300,44 @@ if (pwProbe.status !== 0) {
       assert.match(again.err, /--live-cache \S+chrome-live\.json has no record of the in-flow blocks above the live header \(an older chrome-parity wrote it\) — re-probing live/);
       assert.deepEqual(JSON.parse(readFileSync(c, 'utf8')).above, []);
     });
-    // the delayed bar, live side only: live ×0 warning (E14), the site-wide presence.json by default (E9)
+    // the delayed bar, live side only: hint (E10b), live ×0 warning (E14), the site-wide presence.json by default (E9)
+    await check('e2e delayed bar: every chrome text offset by −88 on live → the hint names the wrapper the lookup filled (exit 2, no warning)', async () => {
+      const r = await runAsync([`${base}/live-delayed`, `${base}/build`]);
+      assert.equal(r.code, 2, r.out + r.err);
+      assert.match(r.out, /REGION BOX +Δy -88px \(88→0\)/);
+      assert.match(r.out, /\n\nhint: an in-flow region above the header — presence\.mjs add --hide section\.bar__wrapper\n\n✗ \d+ delta\(s\) — /);
+      assert.doesNotMatch(r.out, /WARNING/);
+    });
     await check('e2e delayed bar + a stale --hide: WARNING naming the candidates and the missed selector after the hidden lines; never an exit change', async () => {
       const r = await runAsync([`${base}/live-delayed`, `${base}/build`, '--hide', '.geo-bar']);
       assert.equal(r.code, 2, r.out + r.err);
       assert.match(r.out, /^ {2}hidden live: {2}\.geo-bar ×0 \[--hide\]\n {2}hidden build: \.geo-bar ×0 \[--hide\]\nWARNING hide matched nothing on live — candidates: section\.bar__wrapper \(section, 88px\) \(\.geo-bar\)\n/m);
       assert.equal(r.out.match(/WARNING/g).length, 1);
+      assert.match(r.out, /^hint: an in-flow region above the header — presence\.mjs add --hide section\.bar__wrapper$/m);
     });
-    await check('e2e delayed bar --json: hideMiss { sels, candidates } recorded, stdout one JSON document, the WARNING on stderr', async () => {
+    await check('e2e delayed bar --json: hideMiss { sels, candidates } and hint recorded, stdout one JSON document, the lines on stderr', async () => {
       const r = await runAsync([`${base}/live-delayed`, `${base}/build`, '--hide', '.geo-bar', '--json']);
       assert.equal(r.code, 2, r.out + r.err);
       const j = JSON.parse(r.out);
       assert.deepEqual(j.hidden.live, [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0, nAtCapture: 0 }]);
       assert.deepEqual(j.hideMiss, { sels: ['.geo-bar'], candidates: [WRAPPER] });
+      assert.equal(j.hint, 'hint: an in-flow region above the header — presence.mjs add --hide section.bar__wrapper');
       assert.match(r.err, /^WARNING hide matched nothing on live — candidates: section\.bar__wrapper \(section, 88px\) \(\.geo-bar\)$/m);
+      assert.match(r.err, /^hint: an in-flow region above the header — presence\.mjs add --hide section\.bar__wrapper$/m);
     });
     await check('e2e bar injected after the hide pass: ×0 then, counted at the measurement — hidden by the rule, no miss (exit 0)', async () => {
       const r = await runAsync([`${base}/live-inject`, `${base}/build`, '--hide', '.geo-bar', '--json']);
       assert.equal(r.code, 0, r.out + r.err);
       const j = JSON.parse(r.out);
       assert.deepEqual(j.hidden.live, [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0, nAtCapture: 1 }]);
-      assert.equal(j.hideMiss, null); assert.doesNotMatch(r.err, /WARNING/);
+      assert.deepEqual([j.hideMiss, j.hint], [null, null]); assert.doesNotMatch(r.err, /WARNING/);
     });
-    await check('e2e site presence.json: read from the cwd with no flag ("*" only), its selector says site presence.json (exit 0)', async () => {
+    await check('e2e site presence.json: read from the cwd with no flag ("*" only), its selector says site presence.json (exit 0, no hint)', async () => {
       const dir = project('site-project', { '*': { hide: ['section.bar__wrapper'] }, home: { hide: ['.geo-bar'] } });
       const r = await runAsync([`${base}/live-delayed`, `${base}/build`], dir);
       assert.equal(r.code, 0, r.out + r.err);
       assert.match(r.out, /^ {2}hidden live: {2}section\.bar__wrapper ×1 \(88px\) \[site presence\.json\]\n {2}hidden build: section\.bar__wrapper ×0 \[site presence\.json\]\n {2}presence: stardust\/replica\/presence\.json → "\*": 0 variable region\(s\), 1 hide selector\(s\)$/m);
-      assert.doesNotMatch(r.out, /WARNING/);
+      assert.doesNotMatch(r.out, /WARNING|hint:/);
     });
     await check('e2e site presence.json + --slug alone: the slug\'s entry too — its stale selector is the live miss (WARNING, exit 0); --presence merges a gate file over it', async () => {
       const dir = join(root, 'site-project');

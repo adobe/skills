@@ -78,6 +78,17 @@
  * (inFlowRegionsAboveHeader; `none found above the header` when there are none). A
  * warning — never silent, never a verdict or exit-code change.
  *
+ * Offset hint: when every matched chrome text pair shows the same vertical offset on
+ * one side (≥ 3 pairs, |Δy| > tolerance, all within tolerance of each other) — an
+ * in-flow region above the header that only one side has — one line names the
+ * candidate to hide:
+ *   hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>
+ * the in-flow block above the header on the side whose content sits lower whose height
+ * is closest to |Δy| (the first on a tie), read off that side's DOM;
+ * ` (0px now — a block that grows later is still hidden by the persistent
+ * display:none !important rule)` follows a 0-px one, and with no block found it reads
+ * `… --hide <selector> (no in-flow block found above the header on the <side> side)`.
+ *
  * Example:
  *   node stardust/scripts/replica/chrome-parity.mjs "https://<site>/" "http://localhost:8791/home-proposed.html" \
  *     --region header=header --region strip=".quick-links|.quicklinks" --region footer=footer
@@ -85,14 +96,15 @@
  * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
  * (`<sel> ×<n> (<h>px) [--hide|presence.json|site presence.json]`) when a hide list is set,
  * one `presence:` line (variable and hide counts, the file(s) read) with --presence or a
- * site file, and the `WARNING hide matched nothing on live — …` line on a live miss. --json carries
+ * site file, and the `WARNING hide matched nothing on live — …` line on a live miss; the
+ * `hint: …` line just before the closing ✗/✓ line. --json carries
  * `hidden: { live, build }` (entries { sel, source, n, h, error? }; a live entry adds
  * `nAtCapture`, its count right before measuring), `presence:
  * { file, slug, regions, hide?, note, site?, hideSources?, variableSource? } | null` (hide only when the file has
  * entries for the slug; site / hideSources / variableSource only when the site file was read — file is null without
  * --presence; null when neither file is in play), `hideMiss: { sels, candidates } | null` (candidates = the in-flow
- * blocks above the live header); with --json the WARNING line goes to stderr (stdout stays one JSON
- * document). Per region: the
+ * blocks above the live header) and `hint: <the hint line> | null`; with --json the WARNING and hint lines go to
+ * stderr (stdout stays one JSON document). Per region: the
  * region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
  * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
@@ -102,7 +114,8 @@
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both); both are imported
  * inside main(), so --help and the exported pure functions (parseArgs,
- * hideLists, cacheKey, compareRegion, liveHideMiss) need neither (the async readPresence
+ * hideLists, cacheKey, compareRegion, pairOffsets, uniformOffset, offsetHint,
+ * chromeHint, liveHideMiss) need neither (the async readPresence
  * loads live-session). Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
@@ -141,7 +154,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
                      (stardust/replica/gates/{all,prototypes}-<w>/; needs --slug), merged over the site file
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
-  --json             machine-readable output (adds hideMiss; the WARNING line on stderr)
+  --json             machine-readable output (adds hideMiss and hint; WARNING / hint lines on stderr)
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
@@ -152,7 +165,10 @@ presence.json (either file) is an error naming it, before any navigation.
 On the live page the hide matches are recounted right before measuring; a selector that matched nothing
 (×0 at the hide pass and at the measurement) prints one line naming the in-flow blocks above the header:
   WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
-a warning, never a verdict.
+a warning, never a verdict. When every paired chrome text is offset by the same Δy on one side (≥ 3 pairs,
+|Δy| > tolerance, all within tolerance of each other), one line names the block to hide — the in-flow block
+above the header on the lower side whose height is closest to |Δy|:
+  hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (also a malformed presence.json),
 3 bot challenge (live side).`;
@@ -348,7 +364,55 @@ export function compareRegion(name, L, B, tol) {
   return r;
 }
 
-// ------------------------------------------------------- live hide misses
+// ------------------------------------------- offset hint and live hide misses
+
+/** Every matched chrome text pair's vertical offset (build − live, document px — diffRect's Δy sign) across the named
+ * regions found on both sides, paired by text like compareRegion → [{ region, text, dy }]. */
+export function pairOffsets(L, B, names) {
+  const out = [];
+  for (const name of names) {
+    const l = L && L[name]; const b = B && B[name];
+    if (!l || !b || !l.found || !b.found) continue;
+    for (const [x, y] of pairAtoms(l.atoms || [], b.atoms || []).pairs) out.push({ region: name, text: x.text, dy: y.rect.y - x.rect.y });
+  }
+  return out;
+}
+
+/** The same vertical offset on every pair → { dy, side, pairs } | null: at least 3 pairs, every |dy| > tol and all
+ * within tol of each other (so one sign). `dy` = the lower median (a measured value); `side` = the side whose content
+ * sits lower — `live` for a negative dy (live y larger), `build` for a positive one. */
+export function uniformOffset(offsets, tol) {
+  const dys = (offsets || []).map((o) => o.dy);
+  if (dys.length < 3 || dys.some((d) => !(Math.abs(d) > tol))) return null;
+  const sorted = [...dys].sort((a, b) => a - b);
+  if (sorted[sorted.length - 1] - sorted[0] > tol) return null;
+  const dy = sorted[Math.floor((sorted.length - 1) / 2)];
+  return { dy, side: dy < 0 ? 'live' : 'build', pairs: dys.length };
+}
+
+const HINT = 'hint: an in-flow region above the header — presence.mjs add --hide';
+const ZERO_PX = ' (0px now — a block that grows later is still hidden by the persistent display:none !important rule)';
+
+/** A uniform offset + that side's in-flow blocks above the header (live-session's inFlowRegionsAboveHeader, document
+ * order) → the hint line | null (no offset): the entry whose height is closest to |dy| (the first on a tie — the first
+ * entry when nothing else decides), ZERO_PX after a 0-px one; no entry with a selector → the `<selector>` placeholder
+ * and `(no in-flow block found above the header on the <side> side)`. */
+export function offsetHint(offset, candidates) {
+  if (!offset) return null;
+  const rows = (candidates || []).filter((c) => c && typeof c.selector === 'string' && c.selector);
+  if (!rows.length) return `${HINT} <selector> (no in-flow block found above the header on the ${offset.side} side)`;
+  const want = Math.abs(offset.dy);
+  const gap = (c) => { const g = Math.abs(Number(c.height) - want); return Number.isFinite(g) ? g : Infinity; };
+  const best = rows.reduce((a, c) => (gap(c) < gap(a) ? c : a), rows[0]);
+  return `${HINT} ${best.selector}${Number(best.height) === 0 ? ZERO_PX : ''}`;
+}
+
+/** Both sides' measurements → the hint line | null: pairOffsets over the region names, uniformOffset at `tol`, then
+ * offsetHint with `above[<side>]` (the in-flow blocks above the header on the side whose content sits lower). */
+export function chromeHint(L, B, names, tol, above) {
+  const offset = uniformOffset(pairOffsets(L, B, names), tol);
+  return offset ? offsetHint(offset, (above || {})[offset.side]) : null;
+}
 
 /** The live side's hide records (recounted: nAtCapture) + the in-flow blocks above the live header → { hideMiss:
  * { sels, candidates } | null, warning: 'WARNING <hideMissLine>' | null }, with live-session's hideMisses and
@@ -380,7 +444,7 @@ async function probeSide(browser, session, url, opts, isLive, hides) {
   await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
   let hidden = await hideRegions(page, hides);
-  // the in-flow blocks above the header, then (live) each hide selector's count right before measuring
+  // the hint's and the warning's candidates, then (live) each hide selector's count right before measuring
   const above = await inFlowRegionsAboveHeader(page);
   if (isLive) hidden = await recountHides(page, hidden);
   const out = {};
@@ -432,10 +496,12 @@ async function main(args) {
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     const { hideMiss, warning } = liveHideMiss(hidden.live, liveSide.above, session);
+    const hint = chromeHint(L, B, opts.regions.map((r) => r.name), opts.tolerance, { live: liveSide.above, build: buildSide.above });
     if (opts.json) {
-      // stdout stays one JSON document: the warning (also recorded below) goes to stderr
+      // stdout stays one JSON document: the warning and the hint (also recorded below) go to stderr
       if (warning) console.error(warning);
-      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, hideMiss, regions, raw: { live: L, build: B } }, null, 2));
+      if (hint) console.error(hint);
+      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, hideMiss, hint, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
       if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${session.formatHidden(hidden.live)}\n  hidden build: ${session.formatHidden(hidden.build)}`);
@@ -446,6 +512,7 @@ async function main(args) {
         console.log(`\n■ ${r.name}: ${r.findings.length ? `${r.findings.length} delta(s)` : '✓ parity'}${inv}`);
         for (const f of r.findings) console.log(`  ${f.kind.padEnd(12)} ${f.text ? `"${f.text.slice(0, 40)}"  ` : ''}${f.msg}`);
       }
+      if (hint) console.log(`\n${hint}`);
       console.log(`\n${total ? `✗ ${total} delta(s) — fix these before any pixel iteration on chrome; re-run until quiet, then crop-compare confirms.` : '✓ chrome parity within tolerance — run crop-compare (pass bar item 5) to confirm in pixels.'}`);
     }
   } finally {
