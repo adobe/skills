@@ -7,7 +7,8 @@
 // holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
 // STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
 // (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT); the job's deadline exported as
-// RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout).
+// RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout) — × 1
+// with the lock off, × 4 at the default one browser per slot.
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 25 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -393,30 +394,49 @@ await check('a project copy resolves browser-lock.mjs beside it (stardust/script
 const proj = join(lockRoot, 'proj'); mkdirSync(join(proj, 'stardust'), { recursive: true }); // a project: 40 deployed pages
 const deployed = (n) => Array.from({ length: n }, (_, i) => ({ slug: `p${i}`, url: `https://o.test/p${i}`, status: 'deployed', liveUrl: `https://e.test/p${i}` }));
 writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ pages: deployed(40) })); writeFileSync(join(proj, 'small.json'), JSON.stringify({ pages: deployed(8) }));
-await check('gateAllTimeout: a gate-all job without --timeout gets max(900, 25 s × pages × widths) summed over its invocations (argv tokens or sh -c words); other jobs and an explicit --timeout → null', async () => {
+// gateAllTimeout runs gate-all's rosterEstimate in this process's env (its pools follow the slot run-bg will take): pin
+// the browser-slot env for the call, restore it after.
+const SLOT_ENV = ['STARDUST_BROWSER_SLOT', 'STARDUST_BROWSER_SLOTS', 'STARDUST_BROWSER_BUDGET', 'STARDUST_BROWSERS_PER_SLOT'];
+const withSlotEnv = async (vars, fn) => {
+  const saved = SLOT_ENV.map((k) => [k, process.env[k]]);
+  for (const k of SLOT_ENV) { if (k in vars) process.env[k] = vars[k]; else delete process.env[k]; }
+  try { return await fn(); } finally { for (const [k, v] of saved) { if (v === undefined) delete process.env[k]; else process.env[k] = v; } }
+};
+await check('gateAllTimeout: a gate-all job without --timeout gets max(900, 25 s × pages × widths × factor) summed over its invocations (argv tokens or sh -c words); other jobs and an explicit --timeout → null; factor × 1 with the lock off (STARDUST_BROWSER_SLOTS=0), × 4 under the defaults (budget 3 / 3 slots → 1 browser per slot, captures sequential)', async () => {
   const GA = 'stardust/scripts/replica/gate-all.mjs';
-  assert.deepEqual(await gateAllTimeout('node', [GA, '--width', '1440'], { cwd: proj }), { timeoutSec: 1000, note: 'gates 40 page(s) × 1 width ≈ 1000 s (gate-all estimate, 25 s per page per width) — no --timeout given: deadline 1000 s instead of the 900 s default' });
-  const two = await gateAllTimeout('sh', ['-c', `node ${GA} --width 1440 > a.txt; node ${GA} --width 360 --only 'p0,p1,p2,p3'`], { cwd: proj });
-  assert.equal(two.timeoutSec, 1100, two.note); assert.match(two.note, /^gates 40 page\(s\) × 1 width \+ 4 page\(s\) × 1 width ≈ 1100 s \(gate-all estimate/, 'both invocations counted, each with its own args');
-  assert.deepEqual(await gateAllTimeout(process.execPath, ['/abs/gate-all.mjs', '--state', 'small.json'], { cwd: proj }), { timeoutSec: 900, note: 'gates 8 page(s) × 1 width ≈ 200 s (gate-all estimate, 25 s per page per width) — within the 900 s default — kept' }, 'raised only, never lowered');
-  const none = await gateAllTimeout('node', [GA, '--state', 'nope.json'], { cwd: proj });
-  assert.equal(none.timeoutSec, 900); assert.match(none.note, /^gate-all estimate unavailable \(.*nope\.json not found\) — 900 s default kept$/, none.note);
-  for (const argv of [['stardust/scripts/replica/gate.sh', 'home', 'LIVE', 'PROTO', '1440', 'iter1'], ['node', 'stardust/scripts/replica/stitch-shot.mjs', 'LIVE', 'o.png'], ['bash', '-c', 'node gate-all.test.mjs'], ['true']]) assert.equal(await gateAllTimeout(argv[0], argv.slice(1), { cwd: proj }), null, argv.join(' ')); // eslint-disable-line no-await-in-loop
-  assert.equal(await gateAllTimeout('node', [GA], { cwd: proj, given: true }), null, 'an explicit --timeout is never changed');
+  await withSlotEnv({ STARDUST_BROWSER_SLOTS: '0' }, async () => {
+    assert.deepEqual(await gateAllTimeout('node', [GA, '--width', '1440'], { cwd: proj }), { timeoutSec: 1000, note: 'gates 40 page(s) × 1 width ≈ 1000 s (gate-all estimate, 25 s per page per width) — no --timeout given: deadline 1000 s instead of the 900 s default' });
+    const two = await gateAllTimeout('sh', ['-c', `node ${GA} --width 1440 > a.txt; node ${GA} --width 360 --only 'p0,p1,p2,p3'`], { cwd: proj });
+    assert.equal(two.timeoutSec, 1100, two.note); assert.match(two.note, /^gates 40 page\(s\) × 1 width \+ 4 page\(s\) × 1 width ≈ 1100 s \(gate-all estimate/, 'both invocations counted, each with its own args');
+    assert.deepEqual(await gateAllTimeout(process.execPath, ['/abs/gate-all.mjs', '--state', 'small.json'], { cwd: proj }), { timeoutSec: 900, note: 'gates 8 page(s) × 1 width ≈ 200 s (gate-all estimate, 25 s per page per width) — within the 900 s default — kept' }, 'raised only, never lowered');
+    const none = await gateAllTimeout('node', [GA, '--state', 'nope.json'], { cwd: proj });
+    assert.equal(none.timeoutSec, 900); assert.match(none.note, /^gate-all estimate unavailable \(.*nope\.json not found\) — 900 s default kept$/, none.note);
+    for (const argv of [['stardust/scripts/replica/gate.sh', 'home', 'LIVE', 'PROTO', '1440', 'iter1'], ['node', 'stardust/scripts/replica/stitch-shot.mjs', 'LIVE', 'o.png'], ['bash', '-c', 'node gate-all.test.mjs'], ['true']]) assert.equal(await gateAllTimeout(argv[0], argv.slice(1), { cwd: proj }), null, argv.join(' ')); // eslint-disable-line no-await-in-loop
+    assert.equal(await gateAllTimeout('node', [GA], { cwd: proj, given: true }), null, 'an explicit --timeout is never changed');
+  });
+  await withSlotEnv({}, async () => {
+    assert.deepEqual(await gateAllTimeout('node', [GA, '--width', '1440'], { cwd: proj }), { timeoutSec: 4000, note: 'gates 40 page(s) × 1 width ≈ 4000 s (gate-all estimate, 25 s per page per width) — no --timeout given: deadline 4000 s instead of the 900 s default' });
+    const two = await gateAllTimeout('sh', ['-c', `node ${GA} --width 1440 > a.txt; node ${GA} --width 360 --only 'p0,p1,p2,p3'`], { cwd: proj });
+    assert.equal(two.timeoutSec, 4400, two.note); assert.match(two.note, /^gates 40 page\(s\) × 1 width \+ 4 page\(s\) × 1 width ≈ 4400 s \(gate-all estimate/, 'both invocations counted, each with its own args');
+    assert.deepEqual(await gateAllTimeout(process.execPath, ['/abs/gate-all.mjs', '--state', 'small.json'], { cwd: proj }), { timeoutSec: 900, note: 'gates 8 page(s) × 1 width ≈ 800 s (gate-all estimate, 25 s per page per width) — within the 900 s default — kept' }, 'raised only, never lowered');
+  });
 });
-await check('start without --timeout on a gate-all.mjs job: deadline = the estimate, named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
+await check('start without --timeout on a gate-all.mjs job: deadline = the estimate (× 1 with the lock off, × 4 under the default slot env), named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
   const fake = join(lockRoot, 'fake'); mkdirSync(fake); // stand-ins that print the deadline they see
   for (const f of ['gate-all.mjs', 'stitch-shot.mjs']) writeFileSync(join(fake, f), "console.log('deadline='+process.env.RUN_BG_DEADLINE_SEC)");
   const d = join(proj, 'bg');
   const startIn = (extra, name, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, 'start', '--dir', d, '--name', name, '--no-lock', ...args], { cwd: proj, encoding: 'utf8', env: { ...env, ...extra } }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
-  const ga = startIn({}, 'ga', '--', process.execPath, join(fake, 'gate-all.mjs'));
+  const OFF = { STARDUST_BROWSER_SLOTS: '0' }; // the lock off: no slot, the default pools, × 1
+  const ga = startIn(OFF, 'ga', '--', process.execPath, join(fake, 'gate-all.mjs'));
   assert.match(ga, /^run-bg: ga gates 40 page\(s\) × 1 width ≈ 1000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 1000 s instead of the 900 s default$/m, ga);
-  const given = startIn({}, 'given', '--timeout', '30', '--', process.execPath, join(fake, 'gate-all.mjs'));
-  const shot = startIn({}, 'shot', '--', process.execPath, join(fake, 'stitch-shot.mjs'));
-  const zero = startIn({ RUN_BG_DEADLINE_SEC: '77' }, 'zero', '--timeout', '0', '--', process.execPath, join(fake, 'gate-all.mjs'));
+  const ga4 = startIn({}, 'ga4', '--', process.execPath, join(fake, 'gate-all.mjs')); // the default slot env: 1 browser per slot, × 4
+  assert.match(ga4, /^run-bg: ga4 gates 40 page\(s\) × 1 width ≈ 4000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 4000 s instead of the 900 s default$/m, ga4);
+  const given = startIn(OFF, 'given', '--timeout', '30', '--', process.execPath, join(fake, 'gate-all.mjs'));
+  const shot = startIn(OFF, 'shot', '--', process.execPath, join(fake, 'stitch-shot.mjs'));
+  const zero = startIn({ ...OFF, RUN_BG_DEADLINE_SEC: '77' }, 'zero', '--timeout', '0', '--', process.execPath, join(fake, 'gate-all.mjs'));
   for (const out of [given, shot, zero]) assert.doesNotMatch(out, /gates|estimate/, out);
-  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
-  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
+  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'ga4', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
+  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['ga4', 4000, '4000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
     assert.equal(stateIn(d, name).timeoutSec, timeoutSec, name); assert.equal(stateIn(d, name).exit, 0, name);
     assert.match(logIn(d, name), new RegExp(`^deadline=${seen}$`, 'm'), `${name}: ${logIn(d, name)}`);
   }
