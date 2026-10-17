@@ -56,7 +56,10 @@
  *                        hide list (keyed only when non-empty); probe
  *                        and write it otherwise. Same contract as gate.sh's live.png:
  *                        one live navigation per breakpoint per full gate run, delete
- *                        the file to re-probe. Convention:
+ *                        the file to re-probe. The file keeps the live hide records
+ *                        (with their recount) and the in-flow blocks above the live
+ *                        header; one written without the latter (an older
+ *                        chrome-parity) is re-probed. Convention:
  *                        stardust/replica/gates/<slug>-<w>/chrome-live.json
  *
  * Site-wide presence file: stardust/replica/presence.json (cwd-relative = the project
@@ -66,6 +69,15 @@
  * Its selectors are attributed `site presence.json`, the gate dir's `presence.json`. A
  * malformed file (either) is an error naming it, exit 1 before any navigation.
  *
+ * Hide misses (live side): right before measuring, the live page's hide matches are
+ * recounted (live-session's recountHides); a selector that matched nothing — ×0 at the
+ * hide pass AND at the measurement (a block injected after the hide pass is still
+ * hidden by the style rule and counted then) — prints ONE line
+ *   WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
+ * (live-session's hideMissLine) naming the in-flow blocks above the live header
+ * (inFlowRegionsAboveHeader; `none found above the header` when there are none). A
+ * warning — never silent, never a verdict or exit-code change.
+ *
  * Example:
  *   node stardust/scripts/replica/chrome-parity.mjs "https://<site>/" "http://localhost:8791/home-proposed.html" \
  *     --region header=header --region strip=".quick-links|.quicklinks" --region footer=footer
@@ -73,11 +85,14 @@
  * Output: after the live/build lines, `hidden live:` / `hidden build:` lines
  * (`<sel> ×<n> (<h>px) [--hide|presence.json|site presence.json]`) when a hide list is set,
  * one `presence:` line (variable and hide counts, the file(s) read) with --presence or a
- * site file. --json carries
- * `hidden: { live, build }` (entries { sel, source, n, h, error? }), `presence:
+ * site file, and the `WARNING hide matched nothing on live — …` line on a live miss. --json carries
+ * `hidden: { live, build }` (entries { sel, source, n, h, error? }; a live entry adds
+ * `nAtCapture`, its count right before measuring), `presence:
  * { file, slug, regions, hide?, note, site?, hideSources?, variableSource? } | null` (hide only when the file has
  * entries for the slug; site / hideSources / variableSource only when the site file was read — file is null without
- * --presence; null when neither file is in play). Per region: the
+ * --presence; null when neither file is in play), `hideMiss: { sels, candidates } | null` (candidates = the in-flow
+ * blocks above the live header); with --json the WARNING line goes to stderr (stdout stays one JSON
+ * document). Per region: the
  * region box delta, then one line per paired element
  * listing only the properties that differ, then MISSING (live-only) / EXTRA
  * (build-only) texts and the icon inventory. Exit 0 = parity within tolerance,
@@ -87,7 +102,7 @@
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both); both are imported
  * inside main(), so --help and the exported pure functions (parseArgs,
- * hideLists, cacheKey, compareRegion) need neither (the async readPresence
+ * hideLists, cacheKey, compareRegion, liveHideMiss) need neither (the async readPresence
  * loads live-session). Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
  * the round's evidence.
@@ -126,13 +141,18 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
                      (stardust/replica/gates/{all,prototypes}-<w>/; needs --slug), merged over the site file
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
-  --json             machine-readable output
+  --json             machine-readable output (adds hideMiss; the WARNING line on stderr)
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
 The site-wide stardust/replica/presence.json (cwd-relative) is read by default, no flag needed: its "*"
 entry, plus the --slug entry when given; its selectors print as [site presence.json]. A malformed
 presence.json (either file) is an error naming it, before any navigation.
+
+On the live page the hide matches are recounted right before measuring; a selector that matched nothing
+(×0 at the hide pass and at the measurement) prints one line naming the in-flow blocks above the header:
+  WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
+a warning, never a verdict.
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (also a malformed presence.json),
 3 bot challenge (live side).`;
@@ -328,6 +348,18 @@ export function compareRegion(name, L, B, tol) {
   return r;
 }
 
+// ------------------------------------------------------- live hide misses
+
+/** The live side's hide records (recounted: nAtCapture) + the in-flow blocks above the live header → { hideMiss:
+ * { sels, candidates } | null, warning: 'WARNING <hideMissLine>' | null }, with live-session's hideMisses and
+ * hideMissLine passed in (a selector "matched nothing" when ×0 at the hide pass and at the measurement). */
+export function liveHideMiss(records, candidates, { hideMisses, hideMissLine }) {
+  const sels = hideMisses(records || []);
+  if (!sels.length) return { hideMiss: null, warning: null };
+  const list = Array.isArray(candidates) ? candidates : [];
+  return { hideMiss: { sels, candidates: list }, warning: `WARNING ${hideMissLine(sels, list)}` };
+}
+
 // ---------------------------------------------------------------------- main
 
 async function settleTop(page) {
@@ -341,17 +373,20 @@ async function settleTop(page) {
 }
 
 async function probeSide(browser, session, url, opts, isLive, hides) {
-  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil, hideRegions } = session;
+  const { isLiveHttpUrl, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil, hideRegions, inFlowRegionsAboveHeader, recountHides } = session;
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
   await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
-  const hidden = await hideRegions(page, hides);
+  let hidden = await hideRegions(page, hides);
+  // the in-flow blocks above the header, then (live) each hide selector's count right before measuring
+  const above = await inFlowRegionsAboveHeader(page);
+  if (isLive) hidden = await recountHides(page, hidden);
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);
   await ctx.close();
-  return { data: out, hidden };
+  return { data: out, hidden, above };
 }
 
 // --live-cache: the live side's probe result keyed on URL + width + live
@@ -368,6 +403,7 @@ function readLiveCache(file, live, opts, hideLive) {
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
     if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts, hideLive))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions/hides — re-probing live`); return null; }
+    if (!Array.isArray(c.above)) { console.error(`chrome-parity: --live-cache ${file} has no record of the in-flow blocks above the live header (an older chrome-parity wrote it) — re-probing live`); return null; }
     return c;
   } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }
 }
@@ -384,10 +420,10 @@ async function main(args) {
   let total = 0;
   try {
     const cached = readLiveCache(opts.liveCache, live, opts, hides.live);
-    const liveSide = cached ? { data: cached.data, hidden: cached.hidden || [] } : await probeSide(browser, session, live, opts, true, hides.live);
+    const liveSide = cached ? { data: cached.data, hidden: cached.hidden || [], above: cached.above } : await probeSide(browser, session, live, opts, true, hides.live);
     if (opts.liveCache && !cached) {
       mkdirSync(dirname(opts.liveCache), { recursive: true });
-      writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts, hides.live), probedAt: new Date().toISOString(), data: liveSide.data, hidden: liveSide.hidden }, null, 2));
+      writeFileSync(opts.liveCache, JSON.stringify({ key: cacheKey(live, opts, hides.live), probedAt: new Date().toISOString(), data: liveSide.data, hidden: liveSide.hidden, above: liveSide.above }, null, 2));
     }
     const liveNote = cached ? ` (live side from cache ${opts.liveCache}, probed ${cached.probedAt} — delete the file to re-probe)` : '';
     const buildSide = await probeSide(browser, session, build, opts, false, hides.build);
@@ -395,12 +431,16 @@ async function main(args) {
     const hidden = { live: liveSide.hidden, build: buildSide.hidden };
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
+    const { hideMiss, warning } = liveHideMiss(hidden.live, liveSide.above, session);
     if (opts.json) {
-      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, regions, raw: { live: L, build: B } }, null, 2));
+      // stdout stays one JSON document: the warning (also recorded below) goes to stderr
+      if (warning) console.error(warning);
+      console.log(JSON.stringify({ live, build, width: opts.width, tolerance: opts.tolerance, liveCache: cached ? { file: opts.liveCache, probedAt: cached.probedAt } : null, hidden, presence, hideMiss, regions, raw: { live: L, build: B } }, null, 2));
     } else {
       console.log(`chrome-parity @ ${opts.width}px, tolerance ${opts.tolerance}px\n  live:  ${live}${liveNote}\n  build: ${build}`);
       if (hidden.live.length || hidden.build.length) console.log(`  hidden live:  ${session.formatHidden(hidden.live)}\n  hidden build: ${session.formatHidden(hidden.build)}`);
       if (presence) console.log(`  presence: ${presence.note}`);
+      if (warning) console.log(warning);
       for (const r of regions) {
         const inv = r.inventory ? ` — ${r.pairs} paired of ${r.inventory.live.atoms}/${r.inventory.build.atoms} texts, ${r.inventory.live.icons}/${r.inventory.build.icons} icons` : '';
         console.log(`\n■ ${r.name}: ${r.findings.length ? `${r.findings.length} delta(s)` : '✓ parity'}${inv}`);
