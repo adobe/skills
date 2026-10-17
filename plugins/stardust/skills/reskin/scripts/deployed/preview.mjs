@@ -12,7 +12,7 @@ import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { fetchOnce } from './fetch.mjs';
+import { fetchOnce, plainUrl } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
 
 const REQUIRED = ['stardust/runtime-contract.json', 'head.html', 'scripts/aem.js'];
@@ -129,7 +129,7 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
     try { origin = new URL(env.DEPLOY_VERIFY_ORIGIN).origin; } catch { throw new UsageError(`DEPLOY_VERIFY_ORIGIN is not a URL: ${env.DEPLOY_VERIFY_ORIGIN}`); }
   } else origin = previewOrigin({ org, repo, branch });
   const url = `${origin}${path}`;
-  const plain = `${url}.plain.html`;
+  const plain = plainUrl(url);
   const recorded = (problems) => {
     const record = { url, origin, ...base, plain, checkedAt: new Date().toISOString(), ...(problems.length ? { problems } : {}) };
     writeJson(file, record);
@@ -153,7 +153,7 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
       await sleep(Math.min(POLL_MS, Math.max(0, deadline - Date.now())));
     }
   };
-  await waitFor200(plain, `${path}.plain.html`);
+  await waitFor200(plain, new URL(plain).pathname);
   const page = await waitFor200(url, path);
   return recorded(isolation({ path, meta: headMetadata(page), origin, namespace, sandbox }));
 }

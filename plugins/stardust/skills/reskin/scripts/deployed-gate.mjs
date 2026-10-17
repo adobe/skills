@@ -47,8 +47,9 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          Runs only in an aem-boilerplate project: stardust/runtime-contract.json (deploy's runtime probe),
          head.html and scripts/aem.js at the project root, the parent of --dir. Otherwise it prints
          "SKIPPED deployed leg: <reason>", records that and exits 0.
-         Polls https://<branch>--<repo>--<org>.aem.page<path>.plain.html (a host label over 63 characters
-         is a setup error: shorten the branch) every second until it answers 200, then the delivered page
+         Polls https://<branch>--<repo>--<org>.aem.page<path>.plain.html (<path>index.plain.html for a folder path,
+         one that ends in /; a host label over 63 characters is a setup error: shorten the branch) every second until it
+         answers 200, then the delivered page
          <path> the same way, at most --max-wait seconds in all (default 120; each request is cut off at the
          time left): no 200 is "ERROR (exit 124) preview: <path>[.plain.html] not 200 after <n> s".
          Then, in a shared repo, the path must be a plain path (no %, \\, ., .. or empty segment) starting

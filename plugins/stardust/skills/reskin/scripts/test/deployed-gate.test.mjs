@@ -400,6 +400,28 @@ await check('the poll waits for the page: 404 twice, then 200 is a PASS', async 
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
 });
 
+await check('a folder path (/ns/) is polled at its index.plain.html, as figma-gate finds it, and recorded so; /ns/.plain.html is never asked for', async () => {
+  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
+  const page = readFileSync(fixturePath('home.html'), 'utf8');
+  const asked = [];
+  const server = createServer((req, res) => {
+    asked.push(req.url);
+    const body = { '/ns/index.plain.html': plain, '/ns/': page }[req.url];
+    res.writeHead(body ? 200 : 404, { 'content-type': 'text/html' });
+    res.end(body ?? 'not found');
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  try {
+    const root = project('folder');
+    const origin = `http://127.0.0.1:${server.address().port}`;
+    const r = await run(['preview', ...PAGE.slice(0, 8), '--path', '/ns/', '--namespace', 'ns', '--max-wait', '5'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: origin } });
+    assert.equal(r.status, 0, r.all);
+    assert.equal(r.stdout.trim(), `PASS preview ${origin}/ns/`);
+    assert.equal(recordOf(root).plain, `${origin}/ns/index.plain.html`);
+    assert.deepEqual(asked, ['/ns/index.plain.html', '/ns/']);
+  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
+});
+
 await check('the delivered page is polled too: an authored form that answers while the page stays 404 is exit 124 naming the page', async () => {
   const server = createServer((req, res) => {
     if (req.url.endsWith('.plain.html')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<body><main><div></div></main></body>'); }

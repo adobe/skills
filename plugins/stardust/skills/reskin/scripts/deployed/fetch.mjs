@@ -1,8 +1,20 @@
-// skills/reskin/scripts/deployed/fetch.mjs — the one request the deployed steps make to the preview themselves (`preview`
-// polls with it, `inherited` reads the authored form with it). A library, no CLI.
+// skills/reskin/scripts/deployed/fetch.mjs — what the deployed steps share to ask the preview for a page themselves (`preview`
+// polls with fetchOnce, `inherited` reads the authored form with it, figma-gate's preview join finds the authored form by
+// plainUrl). A library, no CLI.
+//   plainUrl(url)                     the authored form of a preview page: <path>.plain.html, <folder>/index.plain.html for a
+//        folder (a path ending in /), a .html extension and the query and fragment dropped.
 //   fetchOnce(url, auth, timeoutMs)   { status: 200, body } when the page answers 200, { status, last: 'HTTP <n>' } for any
 //        other answer, { status: 0, last: 'no response (<code>)' } when there is none. The Authorization header (the
 //        value, or null) goes to `url` and to no other host: a redirect is never followed, it is a non-200 answer.
+export function plainUrl(url) {
+  const u = new URL(url);
+  u.search = '';
+  u.hash = '';
+  const path = u.pathname.replace(/\.html$/, '');
+  u.pathname = `${path}${path.endsWith('/') ? 'index' : ''}.plain.html`;
+  return u.href;
+}
+
 export async function fetchOnce(url, auth, timeoutMs) {
   try {
     const res = await fetch(url, { headers: auth ? { authorization: auth } : {}, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });

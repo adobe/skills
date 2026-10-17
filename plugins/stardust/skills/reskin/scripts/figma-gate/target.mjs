@@ -77,16 +77,6 @@ const REQUEST_MS = 10000;
 const coded = (code, message) => Object.assign(new Error(message), { code });
 const refused = (url, status, auth) => new UsageError(`${url} answered HTTP ${status}: ${auth ? 'the site token was not accepted' : 'the preview is protected: pass --auth-header or --token-env'}`);
 
-// The authored form of a preview page: <path>.plain.html, or <folder>/index.plain.html for a folder.
-export function plainUrl(url) {
-  const u = new URL(url);
-  u.search = '';
-  u.hash = '';
-  const path = u.pathname.replace(/\.html$/, '');
-  u.pathname = `${path}${path.endsWith('/') ? 'index' : ''}.plain.html`;
-  return u.href;
-}
-
 // The authored form, with the site token when there is one. A redirect is a non-200 answer, so the header never
 // follows one to another origin. A 401 or 403 is a usage error; no answer, or any other status, is no verdict (124).
 async function fetchPlain(url, auth) {
@@ -121,6 +111,7 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
     join: {
       name: '.plain.html',
       async collect(page) {
+        const { plainUrl } = await import('../deployed/fetch.mjs');
         const html = await fetchPlain(plainUrl(url), auth);
         const decorated = await page.evaluate(() => [...document.querySelectorAll('main > div')].map((el) => el.innerText));
         const local = await reskinPage.open(page.context().browser(), page.viewportSize()?.width ?? 1440);
