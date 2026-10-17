@@ -39,7 +39,8 @@
  * the run file and STARDUST_SITE_OVERLAYS.
  *
  * Output (stdout): `<key>.hide: <sel>, <sel>` — the key's resulting list (`*.hide: …` for "*") — then
- * `wrote <file>: +<n> selector(s), <m> reason(s)` or `unchanged: <file>`; seed with no selector from either
+ * `wrote <file>: +<n> selector(s), <m> reason(s)` or `unchanged: <file>`, both printed only after the write
+ * succeeded (a failed write prints nothing on stdout); seed with no selector from either
  * source prints `nothing to seed (<run>: <not found | no siteOverlays>; STARDUST_SITE_OVERLAYS: <unset | empty>)`
  * and touches no file.
  *
@@ -206,14 +207,16 @@ function readRun(file) {
   return { found, overlays: so };
 }
 
-function writeAtomic(file, json) {
+/** `json` → `file` atomically (`<file>.<pid>.tmp` + rename, the directory created); a failure removes the tmp file
+ * and throws InputError naming the file. */
+export function writeAtomic(file, json) {
   const tmp = `${file}.${process.pid}.tmp`;
   try {
     mkdirSync(dirname(resolvePath(file)), { recursive: true });
     writeFileSync(tmp, `${JSON.stringify(json, null, 2)}\n`);
     renameSync(tmp, file);
   } catch (e) {
-    rmSync(tmp, { force: true });
+    try { rmSync(tmp, { force: true }); } catch { /* no tmp to remove (its directory is not one) */ }
     throw new InputError(`presence: cannot write ${file} (${e.code || e.message})`);
   }
 }
@@ -247,10 +250,10 @@ export async function main(argv, { env = process.env, log = console.log } = {}) 
   const current = readJsonObject(o.file).json;
   checkEntry(current, key, o.file);
   const r = applyHide(current, key, selectors, { parse: parseHideList, reasonOf, onlyAdded });
+  // the resulting list is printed only once it is true on disk: a failed write prints nothing as written
+  if (r.changed) writeAtomic(o.file, r.json);
   log(`${key}.hide: ${r.list.join(', ')}`);
-  if (!r.changed) { log(`unchanged: ${o.file}`); return 0; }
-  writeAtomic(o.file, r.json);
-  log(`wrote ${o.file}: +${plural(r.added.length, 'selector')}, ${plural(r.reasonChanges, 'reason')}`);
+  log(r.changed ? `wrote ${o.file}: +${plural(r.added.length, 'selector')}, ${plural(r.reasonChanges, 'reason')}` : `unchanged: ${o.file}`);
   return 0;
 }
 

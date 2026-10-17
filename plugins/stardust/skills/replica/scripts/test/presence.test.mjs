@@ -4,7 +4,8 @@
 // records --reason R-<digits> in the entry's `reasons`, leaves other keys and fields alone and is idempotent (a second
 // run prints `unchanged` and leaves the bytes as they were); `seed` unions run.json siteOverlays and
 // STARDUST_SITE_OVERLAYS into "*".hide with the seeded reasons (never replacing a recorded one), prints `nothing to
-// seed` without touching a file; a malformed presence or run file is refused (exit 1, named, nothing written); usage
+// seed` without touching a file; a malformed presence or run file is refused (exit 1, named, nothing written); a failed
+// write exits 1 with nothing printed as written and no temp file left; usage
 // errors exit 2; --help answers before any import or file access; the project-copy layout (stardust/scripts/diff/
 // beside stardust/scripts/replica/) resolves live-session.
 // Run: node plugins/stardust/skills/replica/scripts/test/presence.test.mjs   (about 1 s)
@@ -14,7 +15,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFile
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_FILE, applyHide } from '../presence.mjs';
+import { DEFAULT_FILE, InputError, applyHide, writeAtomic } from '../presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'presence.mjs');
@@ -239,6 +240,22 @@ check('a malformed run file is refused: exit 1 naming it, the presence file not 
     assert.match(r.err, /presence: stardust\/\.labs\/run\.json is malformed \(.+\) — nothing written/);
     assert.equal(existsSync(join(root, DEFAULT_FILE)), false);
   }
+});
+
+check('a failed write: exit 1 naming the file, nothing printed as written, no temp file left behind', () => {
+  // the --file's directory is a regular file: the write fails after the list was computed
+  const root = project();
+  write(root, 'blocker', 'not a directory');
+  const r = run(root, ['add', '--hide', '.geo-bar', '--file', 'blocker/presence.json']);
+  assert.equal(r.code, 1, `${r.out}${r.err}`);
+  assert.match(r.err, /^presence: cannot write blocker\/presence\.json \((ENOTDIR|EEXIST)\)$/m);
+  assert.equal(r.out, '', 'neither the resulting list nor "wrote" is printed');
+  assert.deepEqual(listing(root), ['blocker']);
+  // the rename fails after the temp file was written (the target is a directory): the temp file is removed
+  const dir = project();
+  mkdirSync(join(dir, 'presence.json'));
+  assert.throws(() => writeAtomic(join(dir, 'presence.json'), { '*': { hide: ['.a'] } }), (e) => e instanceof InputError && /cannot write .*presence\.json \(E[A-Z]+\)/.test(e.message));
+  assert.deepEqual(listing(dir), ['presence.json']);
 });
 
 check('usage errors exit 2 with one stderr line and write nothing', () => {
