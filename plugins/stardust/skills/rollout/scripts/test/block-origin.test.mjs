@@ -7,13 +7,18 @@
 // fragments (roles, keyed duplicates), text alignment (a content container beats a nav repeating one
 // of its texts; a delivered-only text lowers confidence), lca and coveredShare; importing runs nothing,
 // --help writes nothing, unit-geometry resolves in both layouts and its absence fails only on use.
+// The mapping run (CLI): instance selectors and confidences by text alignment, sections (anchor,
+// confidence, default-content roles), the position fallback, sections aligned across a template's pages
+// and their generalised selector, skipped pages and records, exit codes, determinism, the schema and
+// the project-copy layout.
 // Scratch copies live next to this file (removed at exit). All HTML is synthetic and inline.
 // Run: node plugins/stardust/skills/rollout/scripts/test/block-origin.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { loadSchema, unsupported, validate } from './schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
@@ -380,6 +385,303 @@ catch (e) { console.log(\`error: \${e.message}\`); }`;
   r = node(copy, ['--input-type=module', '-e', probe]);
   ok(r);
   assert.equal(r.stdout.trim(), 'text:hi there');
+});
+
+// --- the mapping run (CLI) -------------------------------------------------------------------------
+const GENERATED_AT = '2026-01-02T03:04:05.000Z';
+const MAPPING = join('stardust', 'rollout', 'workspace', 'mapping.json');
+const put = (file, text) => { mkdirSync(dirname(file), { recursive: true }); writeFileSync(file, text); };
+const variantOf = (block, classes = []) => lib.variantId(block, classes);
+/** A coverage row as inventory.mjs writes it: delivered parsed from `content` (or `delivered` as given). */
+function rowFor({ slug, path, templateId = null, content, delivered }) {
+  if (delivered !== undefined) return { slug, path, templateId, delivered };
+  const { records, sections } = lib.parseDelivered(content);
+  const blocks = records.map((r) => ({ ...r, variantId: r.kind === 'block' ? variantOf(r.block, r.classes) : null }));
+  return { slug, path, templateId, delivered: { blocks, sections, lang: null, sourceSnapshot: null, contentHash: lib.sha256(content) } };
+}
+/**
+ * A project in a scratch dir: coverage pages.json from `pages`, each page's content file (`document` when
+ * the file on disk differs from what coverage was built from; `file: null` writes none) and capture,
+ * encoder maps (`encode`: templateId → map object or raw text) and eds-schema files (`eds`: slug → doc).
+ */
+function project(name, pages, { encode = {}, eds = {}, coverage } = {}) {
+  const dir = scratch(name);
+  mkdirSync(join(dir, 'content'), { recursive: true });
+  mkdirSync(join(dir, 'stardust', 'current', 'pages'), { recursive: true });
+  put(join(dir, 'stardust', 'rollout', 'coverage', 'pages.json'),
+    JSON.stringify(coverage || { formatVersion: '0.1.0', generatedAt: GENERATED_AT, pages: pages.map(rowFor) }, null, 2));
+  for (const p of pages) {
+    const text = p.document ?? p.content;
+    if (p.file !== null && text != null) put(join(dir, 'content', p.file || `${p.path.replace(/^\/+/, '')}.html`), text);
+    if (p.capture != null) put(join(dir, 'stardust', 'current', 'pages', `${p.slug}.html`), p.capture);
+  }
+  for (const [id, map] of Object.entries(encode)) put(join(dir, 'stardust', 'migrate', 'encode', id, 'vocabulary.json'), typeof map === 'string' ? map : JSON.stringify(map));
+  for (const [slug, doc] of Object.entries(eds)) put(join(dir, 'stardust', 'eds-schema', `${slug}.json`), JSON.stringify(doc));
+  return dir;
+}
+const runMap = (dir, args = []) => node(dir, [SCRIPT, ...args]);
+const readMapping = (dir) => JSON.parse(readFileSync(join(dir, MAPPING), 'utf8'));
+const lines = (r) => r.stdout.trimEnd().split('\n');
+const sortedKeys = (v) => (Array.isArray(v) ? v.map(sortedKeys) : v && typeof v === 'object'
+  ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortedKeys(v[k])])) : v);
+const instance = (slug, selector, confidence, source, verified = null) => ({ slug, selector, confidence, source, verified });
+
+// A hub page. Delivered: [heading+text, teaser-grid] · dark [cards with a delivered-only sentence] ·
+// [heading, an image-only media block, cards] · [an image-only hero]. Captured: the header nav repeats a
+// teaser title; a header note and a footer paragraph carry the class `intro` (outside main).
+const HUB_CONTENT = `<html><head><title>A hub page</title></head><body><header></header><main>
+<div>
+<h1>Welcome to the hub</h1>
+<p>Intro paragraph for the hub.</p>
+<div class="teaser-grid"><div><div><h3>First teaser</h3><p>Opening card body.</p></div></div><div><div><h3>Second teaser</h3><p>Closing card body.</p></div></div></div>
+</div>
+<div>
+<div class="cards"><div><div><h3>Card heading</h3><p>A card about the harbour.</p><p>Only delivered sentence.</p></div></div></div>
+<div class="section-metadata"><div><div>style</div><div>dark</div></div></div>
+</div>
+<div>
+<h2>Gallery heading</h2>
+<div class="media"><div><div><picture><img src="a.jpg" alt="A view of the gallery"></picture></div></div></div>
+<div class="cards"><div><div><p>Gallery caption text.</p></div></div></div>
+</div>
+<div>
+<div class="hero wide"><div><div><picture><img src="b.jpg" alt=""></picture></div></div></div>
+</div>
+</main><footer></footer></body></html>`;
+const HUB_CAPTURE = `<!doctype html><html><head><title>A hub page</title></head><body>
+<header class="site-header"><p class="intro">Header note</p><nav><a href="/">Home</a><a href="/teasers">First teaser</a></nav></header>
+<main id="main">
+<section class="intro"><h1>Welcome to the hub</h1><p>Intro paragraph for the hub.</p>
+<div class="teaser-list"><article class="teaser"><h3>First teaser</h3><p>Opening card body.</p></article><article class="teaser"><h3>Second teaser</h3><p>Closing card body.</p></article></div>
+</section>
+<section class="cards-band"><div class="card"><h3>Card heading</h3><p>A card about the harbour.</p></div></section>
+<section class="gallery"><h2>Gallery heading</h2><figure class="frame"><img src="a.jpg" alt="A view of the gallery"></figure><div class="caption"><p>Gallery caption text.</p></div></section>
+<section class="banner"><img src="b.jpg" alt=""></section>
+</main>
+<footer><p class="intro">Footer text</p></footer>
+</body></html>`;
+const HUB_EDS = { sections: [{ section: 'intro', items: [{ role: 'heading', order: 0, text: 'Welcome to the hub' }, { role: 'body', order: 1, text: 'Intro paragraph for the hub.' }] }] };
+const HUB_PAGE = { slug: 'hub', path: '/hub', templateId: 'hub', content: HUB_CONTENT, capture: HUB_CAPTURE };
+const hubProject = (name, opts = {}) => project(name, [HUB_PAGE], { eds: { hub: HUB_EDS }, ...opts });
+
+// Three story pages of one template (none named after it: the first slug represents it). Delivered:
+// [heading] · [quote] (two and three only) · [story-body]. Captured: the story body sits in the only
+// section.band of main (another one is in the footer) at a varying ordinal; page two's quote carries a
+// class, page three's does not.
+const storyContent = (n, quote) => `<html><body><main>
+<div><h1>Story ${n}</h1></div>
+${quote ? `<div><div class="quote"><div><div><p>A quote for story ${n}.</p></div></div></div></div>` : ''}
+<div><div class="story-body"><div><div><p>Story ${n} body text.</p><p>More of story ${n}.</p></div></div></div></div>
+</main></body></html>`;
+const storyCapture = (n, quote) => `<html><body><main><section><h1>Story ${n}</h1></section>${quote
+  ? `<section><blockquote${quote === 'classed' ? ' class="pull-quote"' : ''}><p>A quote for story ${n}.</p></blockquote></section>` : ''}<section class="band"><p>Story ${n} body text.</p><p>More of story ${n}.</p></section></main>
+<footer><section class="band"><p>Footer band</p></section></footer></body></html>`;
+const STORY_PAGES = [
+  { slug: 'story-one', path: '/stories/story-one', templateId: 'story', content: storyContent('one', false), capture: storyCapture('one', false) },
+  { slug: 'story-two', path: '/stories/story-two', file: 'stories/story-two/index.html', templateId: 'story', content: storyContent('two', true), capture: storyCapture('two', 'classed') },
+  { slug: 'story-three', path: '/stories/story-three', templateId: 'story', content: storyContent('three', true), capture: storyCapture('three', 'plain') },
+];
+
+let hubDir = null;
+let hubRun = null;
+check('mapping: one page — instance selectors and confidences by text alignment; sections with anchor, confidence, roles', () => {
+  hubDir = hubProject('map-hub');
+  hubRun = runMap(hubDir);
+  ok(hubRun);
+  assert.equal(hubRun.stderr, '');
+  const m = readMapping(hubDir);
+  assert.equal(m.formatVersion, '0.1.0');
+  assert.deepEqual(m.skipped, []);
+  assert.deepEqual(m.templates.map((t) => [t.templateId, t.pages]), [['hub', ['hub']]]);
+  const [t] = m.templates;
+  assert.deepEqual(t.sections, [
+    { id: 's1', selector: 'section.intro', pages: ['hub'], style: null, blocks: ['teaser-grid'], defaultContent: ['heading', 'body'], confidence: 1 },
+    { id: 's2', selector: 'div.card', pages: ['hub'], style: 'dark', blocks: ['cards'], defaultContent: [], confidence: 0.593 },
+    { id: 's3', selector: 'section.gallery', pages: ['hub'], style: null, blocks: ['media', 'cards'], defaultContent: ['heading'], confidence: 1 },
+    { id: 's4', selector: null, pages: [], style: null, blocks: ['hero'], defaultContent: [], confidence: 0 },
+  ]);
+  const text = t.blocks.filter((b) => b.instances.some((i) => i.source === 'text-alignment'));
+  assert.deepEqual(text, [
+    // the teaser list beats the header nav that repeats its first title
+    { block: 'teaser-grid', variant: null, variantId: variantOf('teaser-grid'), section: 's1', instances: [instance('hub', 'div.teaser-list', 1, 'text-alignment')] },
+    // cardheading (11) + acardabouttheharbour. (21) of 54: onlydeliveredsentence. (22) is delivered only
+    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's2', instances: [instance('hub', 'div.card', 0.593, 'text-alignment')] },
+    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's3', instances: [instance('hub', 'div.caption p', 1, 'text-alignment')] },
+  ]);
+  assert.deepEqual(t.blocks.map((b) => `${b.section}:${b.block}`), ['s1:teaser-grid', 's2:cards', 's3:media', 's3:cards', 's4:hero'], 'section order, then first appearance');
+});
+
+check('mapping: an image-only block takes its position — the free child after its neighbour, else the next sibling', () => {
+  assert.ok(hubDir, 'the one-page run did not happen');
+  const t = readMapping(hubDir).templates[0];
+  const pos = t.blocks.filter((b) => b.instances.some((i) => i.source === 'position'));
+  assert.deepEqual(pos, [
+    // section.gallery's children: h2 (the heading's anchor), figure (free), div.caption (the cards' anchor)
+    { block: 'media', variant: null, variantId: variantOf('media'), section: 's3', instances: [instance('hub', 'figure.frame', 0, 'position')] },
+    // a section without any anchor: the previous anchor's next element sibling, walking up (p → div.caption → section.gallery)
+    { block: 'hero', variant: 'wide', variantId: variantOf('hero', ['wide']), section: 's4', instances: [instance('hub', 'section.banner', 0, 'position')] },
+  ]);
+});
+
+check('mapping: status lines — counts, verified skipped, sources, confidence bands, position fallback, → out (written)', () => {
+  assert.ok(hubRun, 'the one-page run did not happen');
+  assert.deepEqual(lines(hubRun), [
+    'templates 1 · blocks 5 · instances 5 · verified skipped',
+    'sources encoder-map 0 · text-alignment 3 · position 2',
+    'confidence ≥0.9 2 · 0.5–<0.9 1 · >0–<0.5 0 · 0 2',
+    'position fallback: hero ×1, media ×1',
+    `→ ${MAPPING} (written)`,
+  ]);
+});
+
+check('mapping: determinism — a second run is unchanged, bytes identical; keys sorted; generatedAt from coverage', () => {
+  assert.ok(hubDir, 'the one-page run did not happen');
+  const before = readFileSync(join(hubDir, MAPPING), 'utf8');
+  const r = runMap(hubDir);
+  ok(r);
+  assert.equal(lines(r).at(-1), `→ ${MAPPING} (unchanged)`);
+  assert.equal(readFileSync(join(hubDir, MAPPING), 'utf8'), before);
+  assert.ok(before.endsWith('}\n'));
+  const m = JSON.parse(before);
+  assert.equal(before, `${JSON.stringify(sortedKeys(m), null, 2)}\n`, 'object keys sorted at every level, 2-space indent');
+  assert.equal(m.generatedAt, GENERATED_AT);
+  assert.deepEqual(Object.keys(m), ['formatVersion', 'generatedAt', 'skipped', 'templates']);
+  assert.ok(!readdirSync(join(hubDir, 'stardust', 'rollout', 'workspace')).some((f) => f.endsWith('.tmp')), 'no temp file left');
+});
+
+check('mapping: --json — one object { status, out, counts, skipped }, verified null without --verify', () => {
+  const dir = hubProject('map-json');
+  const r = runMap(dir, ['--json']);
+  ok(r);
+  const o = JSON.parse(r.stdout);
+  assert.deepEqual(o, {
+    status: 'written',
+    out: MAPPING,
+    counts: {
+      templates: 1, blocks: 5, instances: 5, verified: null, verifiedPct: null,
+      sources: { 'encoder-map': 0, 'text-alignment': 3, position: 2 },
+      confidence: { high: 2, medium: 1, low: 0, none: 2 },
+      positionBlocks: { hero: 1, media: 1 },
+    },
+    skipped: [],
+  });
+  assert.ok(existsSync(join(dir, MAPPING)), 'the mapping is still written');
+});
+
+let storyDir = null;
+check('mapping: a template of three pages — sections aligned by signature; the generalised selector drops a varying ordinal', () => {
+  storyDir = project('map-story', STORY_PAGES);
+  ok(runMap(storyDir));
+  const m = readMapping(storyDir);
+  assert.deepEqual(m.templates.map((t) => [t.templateId, t.pages]), [['story', ['story-one', 'story-three', 'story-two']]]);
+  const [t] = m.templates;
+  assert.deepEqual(t.sections, [
+    { id: 's1', selector: 'body > main > section:nth-of-type(1) > h1', pages: ['story-one', 'story-three', 'story-two'], style: null, blocks: [], defaultContent: ['heading'], confidence: 1 },
+    // the quote section, missing on the representative, goes after the section its predecessor matched
+    { id: 's3', selector: 'body > main > section:nth-of-type(2) > blockquote > p', pages: ['story-three', 'story-two'], style: null, blocks: ['quote'], defaultContent: [], confidence: 1 },
+    // :nth-of-type(2) on one page, (3) on the others: the ordinal is dropped, the class kept
+    { id: 's2', selector: 'body > main > section.band', pages: ['story-one', 'story-three', 'story-two'], style: null, blocks: ['story-body'], defaultContent: [], confidence: 1 },
+  ]);
+  assert.deepEqual(t.blocks.map((b) => [b.section, b.block]), [['s3', 'quote'], ['s2', 'story-body']]);
+  assert.deepEqual(t.blocks[0].instances, [
+    instance('story-three', 'body > main > section:nth-of-type(2) > blockquote > p', 1, 'text-alignment'),
+    instance('story-two', 'blockquote.pull-quote p', 1, 'text-alignment'),
+  ]);
+  assert.deepEqual(t.blocks[1].instances, [
+    instance('story-one', 'body > main > section.band:nth-of-type(2)', 1, 'text-alignment'),
+    instance('story-three', 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
+    instance('story-two', 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
+  ]);
+});
+
+// Pages that cannot be mapped, and a coverage block the delivered document no longer has.
+const DRIFT_COVERED = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div><div class="cards"><div><div><p>Drift card text.</p></div></div></div></div></main>';
+const DRIFT_DOCUMENT = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div></div></main>';
+const SIMPLE = (t) => `<main><div><div class="hero"><div><div><p>${t}</p></div></div></div></div></main>`;
+const SKIP_PAGES = [
+  { slug: 'no-delivered', path: '/no-delivered', templateId: 'misc', delivered: null, capture: '<p>x</p>' },
+  { slug: 'no-content', path: '/no-content', templateId: 'misc', content: SIMPLE('No content'), file: null, capture: '<p>No content</p>' },
+  { slug: 'no-capture', path: '/no-capture', templateId: 'misc', content: SIMPLE('No capture') },
+  { slug: 'deep', path: '/deep', templateId: 'misc', content: SIMPLE('Deep text'), capture: `<html><body>${'<div>'.repeat(60000)}Deep text</body></html>` },
+  { slug: 'drift', path: '/drift', templateId: 'drift', content: DRIFT_COVERED, document: DRIFT_DOCUMENT, capture: '<html><body><main><section class="lead"><p>Drift hero text.</p></section></main></body></html>' },
+];
+
+check('mapping: skipped pages and records are recorded; a template left without pages is omitted', () => {
+  const dir = project('map-skipped', SKIP_PAGES);
+  const r = runMap(dir);
+  ok(r);
+  const m = readMapping(dir);
+  assert.deepEqual(m.skipped, [
+    { slug: 'deep', reason: 'capture could not be indexed' },
+    { slug: 'drift', block: 'cards', pos: 1, reason: 'not in the delivered document' },
+    { slug: 'no-capture', reason: 'no capture' },
+    { slug: 'no-content', reason: 'no content file' },
+    { slug: 'no-delivered', reason: 'no delivered structure' },
+  ]);
+  assert.deepEqual(m.templates.map((t) => [t.templateId, t.pages]), [['drift', ['drift']]]);
+  assert.deepEqual(m.templates[0].blocks.map((b) => [b.block, b.instances.map((i) => i.selector)]), [['hero', ['section.lead p']]]);
+  assert.ok(lines(r).includes('skipped: 5 (capture could not be indexed ×1, no capture ×1, no content file ×1, no delivered structure ×1, not in the delivered document ×1)'), r.stdout);
+});
+
+check('mapping: exit 2 on usage, exit 1 on a missing input — nothing written either way', () => {
+  const dir = hubProject('map-exit');
+  const out = join(dir, MAPPING);
+  for (const args of [['--bogus'], ['--out'], ['--coverage', '--json'], ['extra']]) {
+    const r = runMap(dir, args);
+    ok(r, 2);
+    assert.match(r.stderr, /usage: block-origin\.mjs/);
+    assert.ok(!existsSync(out), `${args.join(' ')} wrote the mapping`);
+  }
+  const empty = scratch('map-empty');
+  let r = runMap(empty);
+  ok(r, 1);
+  assert.match(r.stderr, /coverage/);
+  assert.deepEqual(readdirSync(empty), [], 'nothing written into an empty project');
+  r = runMap(dir, ['--captures', 'nowhere']);
+  ok(r, 1);
+  assert.match(r.stderr, /--captures nowhere/);
+  r = runMap(dir, ['--content', 'nowhere']);
+  ok(r, 1);
+  const stale = project('map-stale', [HUB_PAGE], { coverage: { formatVersion: '0.0.9', generatedAt: GENERATED_AT, pages: [] } });
+  r = runMap(stale);
+  ok(r, 1);
+  assert.match(r.stderr, /formatVersion/);
+  const bare = project('map-bare', [HUB_PAGE], { coverage: { generatedAt: GENERATED_AT, pages: [] } });
+  ok(runMap(bare), 1);
+  put(join(bare, 'stardust', 'rollout', 'coverage', 'pages.json'), '{ not json');
+  ok(runMap(bare), 1);
+  assert.ok(!existsSync(out) && !existsSync(join(stale, MAPPING)) && !existsSync(join(bare, MAPPING)));
+});
+
+check('mapping: the output validates against schemas/rollout-workspace-mapping.schema.json', () => {
+  const schema = loadSchema('rollout-workspace-mapping.schema.json');
+  assert.deepEqual(unsupported(schema), [], 'only keywords schema-validate.mjs checks');
+  const dirs = [hubDir, storyDir].filter(Boolean);
+  assert.equal(dirs.length, 2, 'the one-page and three-page runs did not happen');
+  const skippedDir = join(SCRATCH, 'map-skipped');
+  for (const d of [...dirs, skippedDir]) assert.deepEqual(validate(schema, readMapping(d)), [], d);
+  const bad = readMapping(hubDir);
+  bad.templates[0].blocks[0].instances[0].source = 'guess';
+  bad.templates[0].sections[0].extra = 1;
+  assert.equal(validate(schema, bad).length, 2, 'an unknown source and an unknown field are refused');
+});
+
+check('mapping: runs from a project copy (stardust/scripts/rollout + stardust/scripts/diff); without diff/ exit 1', () => {
+  const dir = hubProject('map-copy');
+  const rollout = join(dir, 'stardust', 'scripts', 'rollout');
+  mkdirSync(rollout, { recursive: true });
+  for (const f of ['block-origin.mjs', 'lib.mjs']) copyFileSync(join(SCRIPTS, f), join(rollout, f));
+  let r = node(dir, [join('stardust', 'scripts', 'rollout', 'block-origin.mjs')]);
+  ok(r, 1);
+  assert.match(r.stderr, /unit-geometry\.mjs/);
+  assert.ok(!existsSync(join(dir, MAPPING)), 'nothing written without unit-geometry');
+  const diff = join(dir, 'stardust', 'scripts', 'diff');
+  mkdirSync(diff, { recursive: true });
+  for (const f of readdirSync(DIFF).filter((x) => x.endsWith('.mjs'))) copyFileSync(join(DIFF, f), join(diff, f));
+  r = node(dir, [join('stardust', 'scripts', 'rollout', 'block-origin.mjs')]);
+  ok(r);
+  assert.ok(hubDir, 'the one-page run did not happen');
+  assert.equal(readFileSync(join(dir, MAPPING), 'utf8'), readFileSync(join(hubDir, MAPPING), 'utf8'), 'the same mapping as from the plugin tree');
 });
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
