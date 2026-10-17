@@ -258,22 +258,23 @@ check('readPresenceFile: variable halves (joined entries, first "="), hide with 
       '*': { hide: ['.geo-bar'], variable: ['.star-var'] },
       home: { main: 'main=#main', variable: ['.promo=.build-promo, .hero', ' .news = .build-news ', '.slot=[data-slot="a"]'], hide: ['.location-bar, .geo-bar'] },
     }));
-    const r = session.readPresenceFile(file, 'home');
+    // site: null — the gate file alone, whatever presence.json the cwd's project carries
+    const r = session.readPresenceFile(file, 'home', { site: null });
     assert.deepEqual(r.variable, [{ live: '.promo', build: '.build-promo' }, { live: '.hero', build: '.hero' }, { live: '.news', build: '.build-news' }, { live: '.slot', build: '[data-slot="a"]' }]);
     assert.deepEqual([r.file, r.slug, r.found, r.hide], [file, 'home', true, ['.geo-bar', '.location-bar']]);
     assert.equal(r.note, `${file} → home: 4 variable region(s), 2 hide selector(s)`);
-    const star = session.readPresenceFile(file, 'about');
+    const star = session.readPresenceFile(file, 'about', { site: null });
     assert.deepEqual([star.found, star.variable, star.hide], [true, [], ['.geo-bar']], '"*".variable is not read');
     assert.equal(star.note, `${file} → about: 0 variable region(s), 1 hide selector(s)`);
     const old = join(dir, 'old.json');
     writeFileSync(old, JSON.stringify({ home: { variable: '.promo' } }));
-    assert.equal(session.readPresenceFile(old, 'home').note, `${old} → home: 1 variable region(s)`, 'without hide the note keeps its old form');
-    assert.equal(session.readPresenceFile(old, 'about').note, `${old} has no variable regions for about — nothing hidden`);
+    assert.equal(session.readPresenceFile(old, 'home', { site: null }).note, `${old} → home: 1 variable region(s)`, 'without hide the note keeps its old form');
+    assert.equal(session.readPresenceFile(old, 'about', { site: null }).note, `${old} has no variable regions for about — nothing hidden`);
     const gone = join(dir, 'absent.json');
-    assert.deepEqual(session.readPresenceFile(gone, 'home'), { file: gone, slug: 'home', found: false, variable: [], hide: [], note: `${gone} not found — nothing hidden` });
+    assert.deepEqual(session.readPresenceFile(gone, 'home', { site: null }), { file: gone, slug: 'home', found: false, variable: [], hide: [], note: `${gone} not found — nothing hidden` });
     const bad = join(dir, 'bad.json');
     writeFileSync(bad, '{"home": {');
-    assert.throws(() => session.readPresenceFile(bad, 'home'), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`) && e.message.endsWith(')'));
+    assert.throws(() => session.readPresenceFile(bad, 'home', { site: null }), (e) => e.message.startsWith(`presence.json ${bad} unreadable (`) && e.message.endsWith(')'));
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 check('mergePresence: per key and field the gate dir wins; keys and fields only one file has are kept; missing = {}', () => {

@@ -50,13 +50,14 @@ await check('hideArgs: --hide repeatable comma lists; --presence needs --slug; a
 await check('effectiveHide: --hide first, then presence.json "*" and the slug (hide only, not variable), de-duplicated', () => {
   const f = join(pure, 'presence.json');
   writeFileSync(f, JSON.stringify({ '*': { hide: ['.geo-bar'] }, home: { main: 'main', variable: ['.greeting'], hide: ['.promo-strip', '.geo-bar'] } }));
-  const e = effectiveHide({ hide: ['.cookie-strip', '.geo-bar'], presence: f, slug: 'home' });
+  // site: null — no site-wide file, whatever presence.json the cwd's project carries
+  const e = effectiveHide({ hide: ['.cookie-strip', '.geo-bar'], presence: f, slug: 'home', site: null });
   assert.deepEqual(e.entries, [{ sel: '.cookie-strip', source: '--hide' }, { sel: '.geo-bar', source: '--hide' }, { sel: '.promo-strip', source: 'presence.json' }]);
   assert.equal(e.presence, f); assert.equal(e.found, true);
-  assert.deepEqual(effectiveHide({ presence: f, slug: 'other' }).entries, [{ sel: '.geo-bar', source: 'presence.json' }]);
-  const none = effectiveHide({ presence: join(pure, 'none.json'), slug: 'home' });
+  assert.deepEqual(effectiveHide({ presence: f, slug: 'other', site: null }).entries, [{ sel: '.geo-bar', source: 'presence.json' }]);
+  const none = effectiveHide({ presence: join(pure, 'none.json'), slug: 'home', site: null });
   assert.deepEqual([none.entries, none.found], [[], false]); assert.match(none.note, /not found/);
-  assert.deepEqual(effectiveHide({ hide: [] }), { entries: [], presence: null, found: null, note: null });
+  assert.deepEqual(effectiveHide({ hide: [], site: null }), { entries: [], presence: null, found: null, note: null });
 });
 await check('CLI: --presence without --slug exits 1 before any browser or file', () => {
   const r = spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', join(pure, 'x.json'), '--presence', join(pure, 'presence.json')], { cwd: pure, encoding: 'utf8' });
