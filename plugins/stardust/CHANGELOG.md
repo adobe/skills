@@ -15,7 +15,9 @@ the element), so nothing in the export said which element a block was built from
   hits that page's own section, and for every delivered block instance its coverage `pos` (the key a client matches it
   to the page's blocks by; each template block lists its `positions`), the CSS selector of its origin element in the
   page's captured source DOM, a confidence (the share of the block's text the element holds; image alt text never
-  counts) and its source: the template's encoder map first (where it selects the block's element; a block it does not
+  counts) and its source: the template's encoder map first (by default `stardust/import/<templateId>/vocabulary.json`,
+  where the encoder writes it, when `stardust/import` exists, else under `stardust/migrate/encode`; `--encode`
+  overrides, and a status line names the directory used) where it selects the block's element (a block it does not
   falls through), else text alignment, else, for a block whose text is not found (an image-only one, say), its
   position (confidence 0): a child of its section's element, else next to the nearest anchored neighbour, never
   another record's element, or no selector. Selectors are derived from and checked against the capture as stardust's
