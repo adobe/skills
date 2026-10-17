@@ -29,8 +29,9 @@
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
  *                <ul>; nesting only where the source has a list (a link, a heading or column text right before a
  *                list heads it; a badge or description after a link stays inline), other text stays inline in its
- *                item; a trigger without href keeps its label text (only as an item's first part: in a column a
- *                button or a link without href, such as a Back or Close at the top of a panel, is a control); a column
+ *                item; a trigger without href keeps its label text as the first part of an item, or of a column with
+ *                no label before it (a dropdown wrapper holding its toggle and list); in a column after a label, a
+ *                button or a link without href (a Back or Close at the top of a panel) is a control; a column
  *                (a div, section, … holding a list) is read on its own — every heading or link in it heads the list
  *                right after it, a run after its first list stands as an entry — so a column heading never labels
  *                the item: an item with no label of its own outside its columns gives its place to their entries (no
@@ -278,14 +279,16 @@ const isColumn = (n) => WRAPPERS.has(n.tag) && [...walk(n)].some((d) => d.tag ==
 
 /**
  * A nav list item's parts in document order: text runs, links, nested lists, columns. `block` marks a part that
- * starts a block (a heading or a panel), as opposed to a badge or description inline after a link. Only an item's
- * first part may be a trigger (a button or a link without href, its label kept); inside a column (`column`) such a
- * control is skipped, so a Back or Close at the top of a panel never becomes a label.
+ * starts a block (a heading or a panel), as opposed to a badge or description inline after a link. Only the first
+ * part may be a trigger (a button or a link without href, its label kept), and only while `triggers` holds: a column
+ * keeps it only when no label (text, link or trigger) comes before it, so a dropdown wrapper holding its own toggle
+ * and list keeps that label, while a Back or Close at the top of a panel after the item's label is a skipped control.
  */
-function navParts(li, ctx, column = false) {
+function navParts(li, ctx, triggers = true) {
   const parts = []; let joinable = false; let fresh = true;
   const push = (p) => { parts.push({ ...p, block: fresh }); fresh = false; };
-  const trigger = (el) => !column && !parts.length && plainLabel(el);
+  const trigger = (el) => triggers && !parts.length && plainLabel(el);
+  const unlabelled = () => parts.every((p) => p.kind === 'list' || p.kind === 'column');
   const visit = (node) => {
     for (const ch of node.children) {
       if (!ch.tag) {
@@ -307,7 +310,7 @@ function navParts(li, ctx, column = false) {
       } else if (BUTTONLIKE.has(t) && trigger(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
       else if (BUTTONLIKE.has(t) || CONTROLS.has(t)) ctx.skipped += 1;
       else if (t === 'ul' || t === 'ol') { push({ kind: 'list', el: ch }); fresh = true; }
-      else if (isColumn(ch)) { push({ kind: 'column', el: ch }); fresh = true; }
+      else if (isColumn(ch)) { push({ kind: 'column', el: ch, triggers: triggers && unlabelled() }); fresh = true; }
       else { fresh = true; visit(ch); joinable = false; fresh = true; }
     }
   };
@@ -320,23 +323,23 @@ const navLi = (head, items) => (items.length ? block(`<li>${head}`, [block('<ul>
 
 /**
  * An item's (or a column's) label and the entries below it: { head, items, columns }. The label is the first link
- * or text (an item's trigger without href: its label; in a column such a control is skipped, see navParts) and every
- * other text or link that does not head a list, in document order. Nesting comes only from the source's lists: a
- * nested list's items, and a link, or a text that starts a block (a heading or a panel), directly followed by a list
- * as `<li>label<ul>…` (a mega-menu column heading).
+ * or text (a trigger without href: its label, where navParts allows one) and every other text or link that does not
+ * head a list, in document order. Nesting comes only from the source's lists: a nested list's items, and a link, or
+ * a text that starts a block (a heading or a panel), directly followed by a list as `<li>label<ul>…` (a mega-menu
+ * column heading).
  * Inline text after a link (a description or a badge) stays inline even before a list, so it never turns the link
  * into a dropdown trigger. A column is read on its own, so none of its text is ever the item's label: in it even the
  * first link or text heads the list right after it, its label is only what comes before its first list, and a run
  * after that heads the next list or stands as an entry of its own. A labelled column is one entry; one without a
  * label stands in for a list (a link or block text right before it heads its entries).
  */
-function navGroup(el, ctx, column = false) {
+function navGroup(el, ctx, column = false, triggers = true) {
   let columns = false;
-  const parts = navParts(el, ctx, column).map((p) => {
+  const parts = navParts(el, ctx, triggers).map((p) => {
     if (p.kind === 'list') return { ...p, items: navItems(p.el, ctx) };
     if (p.kind !== 'column') return p;
     columns = true;
-    const c = navGroup(p.el, ctx, true);
+    const c = navGroup(p.el, ctx, true, p.triggers);
     return c.head ? { kind: 'column', items: [navLi(c.head, c.items)] } : { kind: 'list', items: c.items };
   });
   const inline = [];

@@ -3,8 +3,8 @@
 // header (brand image link, a nav with a dropdown sub-list and a button trigger, a utility list, a CTA, an icon-only
 // search link, a search button) and a footer (link columns with headings, a legal line with links, social icon links,
 // a newsletter form); entities (a prototype-key name stays literal); the empty-list nav; column-only nav items, with and
-// without their own label; a Back or Close control at the top of a panel stays a skipped control; the CLI (written,
-// unchanged, --check, --prefix, a missing source).
+// without their own label; a Back or Close control at the top of a panel stays a skipped control, while a dropdown
+// wrapper holding its own trigger keeps that label; the CLI (written, unchanged, --check, --prefix, a missing source).
 // Run: node plugins/stardust/skills/deploy/scripts/test/chrome-docs.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -294,6 +294,7 @@ const navFor = (li) => buildNav(`<header><a class="logo" href="/"><img src="/med
 const navOf = (li) => sectionsOf(navFor(li).doc)[1];
 const COL_W = '<div class="col"><h3>Widgets</h3><ul><li><a href="/w1">W1</a></li></ul></div>';
 const COL_G = '<div class="col"><h3>Gadgets</h3><ul><li><a href="/g1">G1</a></li></ul></div>';
+const P12 = '<ul><li><a href="/p1">P1</a></li><li><a href="/p2">P2</a></li></ul>';
 const W_G = `        <li>Widgets
           <ul>
             <li><a href="/w1">W1</a></li>
@@ -335,8 +336,7 @@ check('nav: a link after the columns is the item\'s own label, never a column he
       </ul>`);
   assert.equal(navOf(`<li><span class="chev"></span>${COL_W}<i class="icon"></i>${COL_G}</li>`), `      <ul>\n${W_G}\n      </ul>`);
 });
-check('nav: a Back or Close control at the top of a panel is skipped, never a label — inside a column a button or an href-less link is a control', () => {
-  const p12 = '<ul><li><a href="/p1">P1</a></li><li><a href="/p2">P2</a></li></ul>';
+check('nav: a Back or Close control at the top of a panel is skipped, never a label — in a column after the item\'s label a button or an href-less link is a control', () => {
   const under = (head) => `      <ul>
         <li>${head}
           <ul>
@@ -347,7 +347,7 @@ check('nav: a Back or Close control at the top of a panel is skipped, never a la
       </ul>`;
   for (const [own, head, links] of [['<a href="/products">Products</a>', '<a href="/products">Products</a>', 3], ['<button>Products</button>', 'Products', 2]]) {
     for (const back of ['<button class="back">Back</button>', '<a href="#">Back</a>']) {
-      const r = navFor(`<li>${own}<div class="submenu">${back}${p12}</div></li>`);
+      const r = navFor(`<li>${own}<div class="submenu">${back}${P12}</div></li>`);
       assert.equal(sectionsOf(r.doc)[1], under(head));
       assert.deepEqual(r.counts, { brand: 1, links, tools: 0, skipped: 1 });
     }
@@ -361,6 +361,29 @@ check('nav: a Back or Close control at the top of a panel is skipped, never a la
         </li>
       </ul>`);
   assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 1 });
+});
+check('nav: a dropdown wrapper holding its own trigger and list keeps the label — a button or an href-less link, item by item or in one item', () => {
+  const two = `      <ul>
+        <li>Products
+          <ul>
+            <li><a href="/p1">P1</a></li>
+            <li><a href="/p2">P2</a></li>
+          </ul>
+        </li>
+        <li>Services
+          <ul>
+            <li><a href="/s1">S1</a></li>
+          </ul>
+        </li>
+      </ul>`;
+  const s1 = '<ul><li><a href="/s1">S1</a></li></ul>';
+  let r = navFor(`<li><div class="dropdown"><button>Products</button>${P12}</div></li>
+    <li><div class="dropdown"><a href="#">Services</a><div class="menu"><button class="back">Back</button>${s1}</div></div></li>`);
+  assert.equal(sectionsOf(r.doc)[1], two);
+  assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 1 });
+  r = navFor(`<li><div class="dropdown"><button>Products</button>${P12}</div><div class="dropdown"><button>Services</button>${s1}</div></li>`);
+  assert.equal(sectionsOf(r.doc)[1], two);
+  assert.deepEqual(r.counts, { brand: 1, links: 3, tools: 0, skipped: 0 });
 });
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');
