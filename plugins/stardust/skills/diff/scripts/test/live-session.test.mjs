@@ -862,14 +862,15 @@ const DIALOG_PAGES = {
   '/dialog-styled': fixturePage(`<dialog id="notice" open><p>Neue Öffnungszeiten.</p>
     <button type="button" aria-label="Schließen" onclick="this.closest('dialog').style.display = 'none'">Schließen</button></dialog>`,
   { head: '<style>dialog{display:block}</style>' }),
-  // (c) a non-native modal its close control hides — the html lock class stays — and a fixed panel only Escape hides.
+  // (c) a non-native modal its close control hides — the html lock class (overflow-y only) stays — and a fixed panel
+  // only Escape hides.
   // The control is a non-button `.modal__close`: a `button.close` in a `.modal` is the marketing pass's
   // (`button[class*="close" i]`), so that modal would never reach the dialog pass.
   '/modals': fixturePage(`<div class="modal show" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.5)">
     <p>Choose your region.</p><span class="modal__close" role="button" tabindex="0" onclick="this.closest('.modal').style.display = 'none'">×</span></div>
     <div class="promo-modal is-open" style="position:fixed;left:0;right:0;bottom:0;height:240px;background:#eee"><p>Spring offer.</p></div>
     <script>document.addEventListener('keydown', (e) => { if (e.key === 'Escape') document.querySelector('.promo-modal').style.display = 'none'; });</script>`,
-  { htmlClass: 'locked', head: '<style>html.locked{overflow:hidden}</style>' }),
+  { htmlClass: 'locked', head: '<style>html.locked{overflow-y:hidden}</style>' }),
   // (d) a fixed modal no control and no Escape closes, over a body lock — beside a dialog close() does close
   '/modal-stuck': fixturePage(`<dialog id="note" open><p>Store hours changed.</p></dialog>
     <div id="blocker" role="dialog" aria-modal="true" style="position:fixed;inset:0;background:rgba(0,0,0,.6)"><p>Please wait.</p></div>`,
@@ -928,12 +929,12 @@ if (chromium) {
       const { d } = await sweep('/dialog-styled');
       assert.deepEqual(pass(d), [['dialog#notice (close control [aria-label*="schließen" i])'], [], false], 'no lock to release');
     });
-    await checkAsync('dismissOverlays (c): a non-native modal closed by its close control, a panel by Escape — the html lock released (overflow-y visible, overflow-x clip)', async () => {
+    await checkAsync('dismissOverlays (c): a non-native modal closed by its close control, a panel by Escape — the html lock released (overflow-y visible; an overflow-x that was not hidden is never clipped)', async () => {
       const { d, lock, x } = await sweep('/modals', readLock);
       assert.deepEqual(pass(d), [['div.modal.show (close control .modal__close)', 'div.promo-modal.is-open (Escape)'], [], true], JSON.stringify(d));
       assert.deepEqual(d.marketing, [], 'the marketing pass left both to the dialog pass');
       assert.equal(lock.locked, false, JSON.stringify(lock));
-      assert.equal(x[0], 'clip', 'html\'s hidden overflow-x becomes clip — still hidden, no scroll container (R2-amend)');
+      assert.equal(x[0], 'visible', 'only a hidden overflow-x becomes clip — html\'s was not hidden (R2-amend)');
     });
     await checkAsync('dismissOverlays (d): a modal that survives keeps the lock (R1) — dialogsLeft names it, though another dialog closed', async () => {
       const { d, lock } = await sweep('/modal-stuck', readLock);
