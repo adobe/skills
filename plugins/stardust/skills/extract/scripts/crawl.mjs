@@ -17,6 +17,14 @@
  * response validation) plus the finding-#7 hardening below. The recipe remains
  * the authoritative field spec; extend the in-page capture() to match it fully.
  *
+ * Bot challenge: a 2xx DENIAL PAGE counts as one, like an edge interstitial — a
+ * vendor signature or a tiny page under one error heading (live-session.mjs's
+ * pageDenial table; without it the check is off and stderr says so): at the
+ * entry it escalates to headed real Chrome + stealth (_crawl-log.json
+ * discovery.botBlock 'denial'; still denied → fatal, exit 2), and any other
+ * denied page is listed in crawl.failures (errorClass BotChallengeError) and
+ * never captured — no page record, no screenshot.
+ *
  * Hardening (#7), all applied inside the page context:
  *   - VISIBILITY FILTER: headings/body/CTAs skip nodes that are display:none,
  *     visibility:hidden, aria-hidden, [hidden], or off-screen / zero-area.
@@ -293,6 +301,16 @@ async function clearChallenge(page, resp) {
     if (reloaded) resp = reloaded;
   }
   return resp;
+}
+// A vendor wall can also answer 200 with its denial text ("Access Denied … Reference #", "System Down") —
+// no header to classify, so the PAGE is read: live-session's pageDenial (its signature table and the tiny-page /
+// one-error-heading rule; never a copy here). → the marker, or null. A response >= 400 keeps its HTTP path; a
+// check that cannot run (no live-session.mjs is said once in main(); an unreadable page here) never passes silently.
+async function denialAt(args, page, resp, url) {
+  if (!args.pageDenial || (resp && resp.status() >= 400)) return null;
+  const d = await args.pageDenial(page);
+  if (d.skipped) console.error(`[crawl] denial-page check skipped at ${url}: ${d.skipped}`);
+  return d.marker || null;
 }
 
 // ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
@@ -910,6 +928,10 @@ async function capturePage(context, url, slug, args) {
   if (status >= 400) throw Object.assign(new Error(`HTTP ${status}`), { errorClass: 'HTTPError' });
   const ct = resp.headers()['content-type'] || '';
   if (!/text\/html|application\/xhtml/.test(ct)) throw Object.assign(new Error(`content-type ${ct}`), { errorClass: 'ContentTypeError' });
+  // a 2xx denial page is a bot challenge, not content: fail it HERE, before consent, scroll, record and screenshot,
+  // so crawl.failures names it and no page record or screenshot of it exists (gate-all's crawl-shot fallback included).
+  const denial = await denialAt(args, page, resp, resolvedUrl);
+  if (denial) throw Object.assign(new Error(`bot challenge: HTTP ${status} ${denial} — a denial page, not the page; not captured (escalate: the crawl's headed fallback / --headed)`), { errorClass: 'BotChallengeError' });
 
   if (args.consent) await dismissConsent(page);
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
@@ -1002,13 +1024,17 @@ async function main() {
   // _crawl-log.json, read before this crawl rewrites it), else 45 s. Printed and logged (crawl.navTimeout): a fast
   // previous figure lowers it to as little as 20 s, and a page that then times out must say where that came from.
   const session = await loadLiveSession();
+  // the 2xx denial-page check (denialAt) reads live-session's table; off without it, and said so on stderr below
+  args.pageDenial = session && typeof session.pageDenial === 'function' ? session.pageDenial : null;
   if (session && typeof session.navTimeout === 'function') {
     const t = session.navTimeout({ crawlLog: path.join(args.out, '_crawl-log.json'), fallback: NAV_TIMEOUT_FALLBACK_MS });
     args.navTimeoutMs = t.ms; args.navTimeoutSource = t.source;
     console.error(`[crawl] page goto timeout ${t.ms} ms (${t.source}) — ${t.detail}`);
+    // an older live-session copy (navTimeout, no pageDenial): the skipped check is still said
+    if (!args.pageDenial) console.error('[crawl] live-session.mjs has no pageDenial (an older copy) — the 2xx denial-page check is off');
   } else {
     args.navTimeoutMs = NAV_TIMEOUT_FALLBACK_MS; args.navTimeoutSource = 'default';
-    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)`);
+    console.error(`[crawl] no usable live-session.mjs (looked in ../../diff/scripts/, ../diff/ and ./) — page goto timeout ${NAV_TIMEOUT_FALLBACK_MS} ms; STARDUST_NAV_TIMEOUT_MS and the crawl figure are not read (copy the diff skill's live-session.mjs alongside to use them)${args.pageDenial ? '' : ' — and the 2xx denial-page check is off'}`);
   }
   const outPages = path.join(args.out, 'pages');
   await mkdir(outPages, { recursive: true });
@@ -1019,15 +1045,25 @@ async function main() {
   let probe = await context.newPage();
 
   // bot-management probe on the entry URL; switch to headed real Chrome on reject.
-  // Two distinct reject modes must both trigger the fallback:
+  // Three distinct reject modes must all trigger the fallback:
   //   1. a network fingerprint block — the goto THROWS (isFingerprintBlock);
   //   2. a challenge / edge block — the goto SUCCEEDS but returns a 403/429/503
   //      interstitial (isChallengeResponse). This one previously slipped through
   //      the probe and only failed at capture-time (Cloudflare-fronted site finding).
-  let botBlock = null; // 'fingerprint' | 'challenge'
+  //   3. a 2xx denial page — the goto succeeds with a status under 400 and the
+  //      page IS the vendor's denial text (denialAt); headed real Chrome + stealth
+  //      is the escalation, as for 2.
+  let botBlock = null; // 'fingerprint' | 'challenge' | 'denial'
   try {
     const probeResp = await probe.goto(args.url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     if (isChallengeResponse(probeResp)) botBlock = 'challenge';
+    else {
+      const denial = await denialAt(args, probe, probeResp, args.url);
+      if (denial) {
+        botBlock = 'denial';
+        console.error(`[crawl] entry probe: HTTP ${probeResp ? probeResp.status() : 'n/a'} ${denial} — a denial page, not the page`);
+      }
+    }
   } catch (err) {
     if (isFingerprintBlock(err)) botBlock = 'fingerprint';
     else throw err;
@@ -1049,6 +1085,15 @@ async function main() {
       await browser.close();
       throw Object.assign(
         new Error(`bot-management challenge not cleared after headed real-Chrome + stealth fallback (entry status ${probeResp ? probeResp.status() : 'n/a'}) — the site requires an interactive challenge solve; run against it in a headed session you can complete by hand`),
+        { errorClass: 'BotChallengeError' },
+      );
+    }
+    // the same 2xx denial-page check on the headed page: still the vendor's denial text → nothing to capture
+    const denial = await denialAt(args, probe, probeResp, args.url);
+    if (denial) {
+      await browser.close();
+      throw Object.assign(
+        new Error(`bot challenge not cleared after headed real-Chrome + stealth fallback: entry HTTP ${probeResp ? probeResp.status() : 'n/a'} ${denial} — a denial page, not the page; origin blocked, nothing captured`),
         { errorClass: 'BotChallengeError' },
       );
     }

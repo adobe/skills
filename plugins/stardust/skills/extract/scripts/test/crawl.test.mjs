@@ -9,7 +9,10 @@
 // e2e crawls of a local fixture origin: navMs on every record and crawl.navMs in _crawl-log.json; the page goto
 // timeout and its source on one stderr line and in crawl.navTimeout (default, env, a previous crawl's figure in the
 // same --out); env STARDUST_NAV_TIMEOUT_MS bounds each page's goto (not the entry probe's); a copy without
-// live-session.mjs keeps 45 s and says so once on stderr. Prints a skip line otherwise.
+// live-session.mjs keeps 45 s and says so once on stderr (the 2xx denial-page check off, on the same line); a 200
+// denial page ("Access Denied" + "Reference #") linked from the entry is a BotChallengeError in crawl.failures with no
+// page record and no screenshot, its sibling captured; an older live-session copy without pageDenial says the check is
+// off. Prints a skip line otherwise. Not exercised: the entry probe's denial path (it launches headed real Chrome).
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
@@ -106,6 +109,12 @@ check('--help names the goto timeout\'s env and crawl figure, its stderr line, n
   assert.match(r.stdout, /navMs \(ms the page's own goto took/); assert.match(r.stdout, /after a\s+slash-retry rescue, the retry's — capped by its 15 s timeout/);
   assert.match(r.stdout, /`crawl\.navMs` \{ n, p50, p95, max \}/); assert.match(r.stdout, /`crawl\.navTimeout` \{ ms, source \}/);
 });
+check('--help says a 2xx denial page is a bot challenge: headed escalation at the entry (discovery.botBlock \'denial\'), elsewhere a BotChallengeError in crawl.failures, never captured', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const t = r.stdout.replace(/\s+/g, ' ');
+  assert.match(t, /a 2xx DENIAL PAGE counts as one/); assert.match(t, /discovery\.botBlock 'denial'/); assert.match(t, /crawl\.failures \(errorClass BotChallengeError\) and never captured/);
+});
 
 // ---- e2e: navMs per record, crawl.navMs in the log, the shared goto timeout (needs playwright) -------------------
 const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
@@ -114,6 +123,10 @@ try { await import('playwright'); playwrightOk = true; } catch { console.log('sk
 if (playwrightOk) {
   const html = (title) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body><main><h1>${title}</h1><h2>Section of ${title}</h2><p>${`Body copy of ${title}, long enough to count as page content. `.repeat(4)}</p></main></body></html>`;
   const pages = { '/': html('Home'), '/a': html('Page A'), '/b': html('Page B'), '/slow': html('Slow page') };
+  // a vendor wall's 200 denial page (the "Access Denied" + "Reference #" pair), linked from /hub beside a real page
+  pages['/hub'] = html('Hub').replace('</main>', '<nav><a href="/denied">Denied</a> <a href="/ok">OK</a></nav></main>');
+  pages['/ok'] = html('OK page');
+  pages['/denied'] = '<!doctype html><html><head><title>Access Denied</title></head><body><h1>Access Denied</h1>You don\'t have permission to access "/denied" on this server.<p>Reference #18.4f2a</p></body></html>';
   const server = createServer((req, res) => {
     const p = req.url.split('?')[0];
     const send = () => { if (res.destroyed) return; const body = pages[p]; res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope'); };
@@ -125,8 +138,8 @@ if (playwrightOk) {
   const work = mkdtempSync(join(tmpdir(), 'crawl-e2e-'));
   const cleanEnv = { ...process.env }; delete cleanEnv.STARDUST_NAV_TIMEOUT_MS;
   // asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running
-  const crawl = (script, args, env) => new Promise((done) => {
-    const child = spawn(process.execPath, [script, '--url', `${base}/`, '--wait', 'fast', ...args], { cwd: work, env });
+  const crawl = (script, args, env, entry = '/') => new Promise((done) => {
+    const child = spawn(process.execPath, [script, '--url', `${base}${entry}`, '--wait', 'fast', ...args], { cwd: work, env });
     let stderr = ''; child.stderr.on('data', (d) => { stderr += d; }); child.stdout.resume();
     const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
     child.on('close', (status) => { clearTimeout(timer); done({ status, stderr }); });
@@ -146,12 +159,21 @@ if (playwrightOk) {
     alone = join(work, 'alone', 'scripts', 'crawl.mjs');
     mkdirSync(dirname(alone), { recursive: true }); copyFileSync(SCRIPT, alone); symlinkSync(nodeModules, join(work, 'alone', 'node_modules'), 'dir');
   } catch (e) { alone = null; console.log(`skip  e2e crawl without live-session.mjs (${e.message})`); }
+  // a copy beside an older live-session.mjs: navTimeout, no pageDenial
+  let stale = null;
+  if (alone) {
+    stale = join(work, 'stale', 'scripts', 'crawl.mjs');
+    mkdirSync(dirname(stale), { recursive: true }); copyFileSync(SCRIPT, stale); symlinkSync(join(work, 'alone', 'node_modules'), join(work, 'stale', 'node_modules'), 'dir');
+    writeFileSync(join(dirname(stale), 'live-session.mjs'), "export function navTimeout() { return { ms: 45000, source: 'default', detail: 'older copy' }; }\n");
+  }
   try {
-    const [plain, byEnv, bare, again] = await Promise.all([
+    const [plain, byEnv, bare, again, denied, older] = await Promise.all([
       crawl(SCRIPT, ['--pages', '/a,/b', '--out', join(work, 'plain')], cleanEnv),
       crawl(SCRIPT, ['--pages', '/slow', '--out', join(work, 'env')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }),
       alone ? crawl(alone, ['--pages', '/slow', '--out', join(work, 'bare')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }) : null,
       crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'again')], cleanEnv),
+      crawl(SCRIPT, ['--out', join(work, 'denied')], cleanEnv, '/hub'),
+      stale ? crawl(stale, ['--pages', '/denied', '--out', join(work, 'older')], cleanEnv) : null,
     ]);
     await checkAsync('e2e: every page record carries navMs (integer ms); _crawl-log.json crawl.navMs is navMsSummary of them, beside crawl.failures', () => {
       assert.equal(plain.status, 0, plain.stderr);
@@ -182,13 +204,35 @@ if (playwrightOk) {
       await checkAsync('e2e: without live-session.mjs the crawl keeps 45 s (the env is not read: the 4 s page is captured) and says so on ONE stderr line; navMs still recorded', () => {
         assert.equal(bare.status, 0, bare.stderr);
         const lines = bare.stderr.split('\n').filter((l) => /live-session\.mjs/.test(l));
-        assert.equal(lines.length, 1, bare.stderr); assert.match(lines[0], /no usable live-session\.mjs .* 45000 ms/);
+        assert.equal(lines.length, 1, bare.stderr); assert.match(lines[0], /no usable live-session\.mjs .* 45000 ms/); assert.match(lines[0], / — and the 2xx denial-page check is off$/);
         assert.deepEqual(gotoLines(bare.stderr), [], 'that line is the only timeout report');
         const { log, records } = readOut(join(work, 'bare'));
         assert.deepEqual(log.crawl.failures, []); assert.equal(log.crawl.navMs.n, 2); assert.deepEqual(log.crawl.navTimeout, { ms: 45000, source: 'default' });
         assert.ok(records.find((r) => r.slug === 'slow').navMs >= 3900, 'navMs times the goto: the 4 s answer is in it');
       });
+      await checkAsync('e2e: beside an older live-session.mjs without pageDenial the crawl says on ONE stderr line that the 2xx denial-page check is off — and the denial page is captured', () => {
+        assert.equal(older.status, 0, older.stderr);
+        const lines = older.stderr.split('\n').filter((l) => /denial-page check/.test(l));
+        assert.deepEqual(lines, ['[crawl] live-session.mjs has no pageDenial (an older copy) — the 2xx denial-page check is off']);
+        const { log, records } = readOut(join(work, 'older'));
+        assert.deepEqual(log.crawl.failures, []); assert.deepEqual(records.map((r) => r.slug), ['denied', 'index']);
+      });
     }
+    await checkAsync('e2e: a 200 denial page ("Access Denied" + "Reference #") linked from the entry is a BotChallengeError in crawl.failures — no page record, no rendered DOM, no screenshot; its sibling is captured', () => {
+      assert.equal(denied.status, 0, denied.stderr);
+      const out = join(work, 'denied');
+      const { log, records } = readOut(out);
+      assert.deepEqual(records.map((r) => r.slug), ['hub', 'ok']);
+      assert.equal(log.crawl.failures.length, 1, JSON.stringify(log.crawl.failures));
+      const [f] = log.crawl.failures;
+      assert.equal(f.slug, 'denied'); assert.equal(f.errorClass, 'BotChallengeError');
+      assert.equal(f.message, 'bot challenge: HTTP 200 denial page — "Access Denied" + "Reference #" — a denial page, not the page; not captured (escalate: the crawl\'s headed fallback / --headed)');
+      assert.deepEqual(readdirSync(join(out, 'pages')).sort(), ['hub.html', 'hub.json', 'ok.html', 'ok.json']);
+      assert.deepEqual(readdirSync(join(out, 'assets', 'screenshots')).sort(), ['hub.png', 'ok.png']);
+      assert.equal(log.discovery.botBlock, undefined, 'the entry is no denial page: no escalation');
+      assert.match(denied.stderr, /\[crawl\] FAIL denied {2}BotChallengeError: bot challenge: HTTP 200 denial page/);
+      assert.doesNotMatch(denied.stderr, /denial-page check (skipped|is off)/);
+    });
   } finally {
     server.close();
     rmSync(work, { recursive: true, force: true });
