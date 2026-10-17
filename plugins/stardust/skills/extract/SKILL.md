@@ -386,9 +386,11 @@ breakpoints include it. One more live pass over every page — run it
 ONCE, after the crawl, in the background; it opens the live side
 through `live-session.mjs` like every other live instrument. The crawl
 records each page's goto time (`navMs`, in its page record) and
-`crawl.navMs` {n, p50, p95, max} in `_crawl-log.json`; every instrument's
-navigation timeout then defaults to `STARDUST_NAV_TIMEOUT_MS`, else that
-p95 × 2 clamped to 20–180 s, else its own default (a flag wins). Read the
+`crawl.navMs` {n, p50, p95, max} in `_crawl-log.json`; style-census, the
+next crawl's page goto, replica's measure, cap-probe and stitch-shot, and
+the probes on live-session's `gotoLive`/`visit()` defaults then navigate
+under `STARDUST_NAV_TIMEOUT_MS`, else that p95 × 2 clamped to 20–180 s,
+else their own default (a flag wins). Read the
 palette, type, motif and hover values from the file's `aggregate` and
 cite each from its `sources[]` (`url`, `selector`, `prop`); the
 per-page detail sits under `pages[url][width]`.

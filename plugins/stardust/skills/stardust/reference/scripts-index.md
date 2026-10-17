@@ -1,6 +1,6 @@
 # Scripts index — `<skill>/<script>` — what — key flags
 
-Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4. A live instrument's navigation timeout without its flag: `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else its own default.
+Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else their default.
 
 - `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
@@ -48,7 +48,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps or source switch points — `[--target 600,900,1200]` | `--inventory <file|dir…>`
-- `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL, 124 = no verdict (compare: any failed read; capture: every page failed); a partial capture skips `--write-design`
+- `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL, 124 = no verdict (compare: any failed read; capture: every page's probe failed a read); a partial capture skips `--write-design`
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`

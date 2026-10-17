@@ -69,10 +69,11 @@ eyeballing.
    (ledger.mjs, state.mjs, browser-lock.mjs) to `stardust/scripts/stardust/`, the migrate
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
    AND the whole
-   `../diff/scripts/` dir to `stardust/scripts/diff/` (ALL live-target
-   hardening lives in its live-session.mjs, which the replica instruments
-   resolve from `stardust/scripts/diff/` next to `stardust/scripts/replica/`
-   — keep the two dirs siblings). Never copy into the project-root
+   `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
+   import diff-profiles.mjs, and ALL live-target hardening lives in its
+   live-session.mjs, which the replica instruments resolve from
+   `stardust/scripts/diff/` next to `stardust/scripts/replica/` — keep the
+   two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary). `run-bg.mjs` takes one slot of a
    machine-wide browser budget per browser job (`browser-lock.mjs`, slot
@@ -357,13 +358,17 @@ The live-target hardening ships as flags on the diff scripts (`--ua`,
 `--wait-until`, `--dismiss`, `--headed`, `--locale`, visual-diff `--main`)
 backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
-(`reference/source-fidelity-gate.md` § Script adaptations). Every
-instrument navigates under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else
-2 × the crawl's `crawl.navMs.p95` (20–180 s), else its own default; a flag
-wins. `measure.mjs` and `cap-probe.mjs` race each width read against it,
-re-read once on a fresh page when the page navigated under a read, and exit
-124 (no verdict) only when every read failed (a cap-probe compare: any),
-else 0 with `_provenance.partial` and a `PARTIAL` first line.
+(`reference/source-fidelity-gate.md` § Script adaptations).
+`measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs` and the probes on
+live-session's `gotoLive`/`visit()` defaults (anchor, chrome-parity,
+sibling-variance, clip-probe, content-presence, unit-geometry) navigate
+under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else 2 × the crawl's
+`crawl.navMs.p95` (20–180 s), else their own default, a flag winning;
+measure and cap-probe race each width read against it, re-read once on a
+fresh page when the page navigated under a read, and exit 124 (no verdict)
+only when every width read failed (cap-probe capture: every page's probe
+failed a read; compare: any), else 0 with `_provenance.partial` and a
+`PARTIAL` first line.
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**
