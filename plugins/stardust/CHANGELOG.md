@@ -22,13 +22,15 @@ version; numbers marked "local" are integration-only and renumbered by the maint
 - `stardust/migrate-shipped-encoder` — 0.35.0 (#139 local).
 - `stardust/rollout-workspace-export` — 0.34.0 (#133, PR #443).
 - `stardust/rollout-block-origin` — 0.34.1 (#136 local).
-- Local-only commits: the scripts-index lint cap at 16 KiB; an encoded page's sidecar feeds its
-  delivered `lang` in the rollout inventory; `stardust.gitignore` tracks the gate's JSON sidecars under
-  `replica/gates/` (renders and diffs stay untracked); the renumbering above.
-- Not in this image: `stardust/rollout-run-followups` (0.35.7) and `stardust/capture-dialogs-and-denials`
-  (0.35.8, still in progress).
+- `stardust/rollout-run-followups` — 0.35.7 (#143 local); it tracks the gate's JSON sidecars under
+  `replica/gates/`, which replaced the local stand-in.
+- Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
+  its delivered `lang` in the rollout inventory; the master card's Versioning line names the tracked gate
+  sidecars; the renumbering above.
+- Not in this image: `stardust/handover-followups` (0.35.9, awaiting its nav fix) and
+  `stardust/capture-dialogs-and-denials` (0.35.8, still in progress).
 
-## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#NNN provisional)
+## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#143)
 
 A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,
 missed headings it passed to `section.mjs` verbatim, read 65 full-page PNGs (about 17 MB) into context and held the
@@ -172,7 +174,7 @@ the image), `gates_inconclusive`, unvalidated overrides, `header_parity_errors` 
 add caution; every skipped check is a named line. Output changes: crop-compare writes JPEGs unless `--full-res`; in its
 JSON `diffImage` now names the capped JPEG (was the `--out` PNG), `strip` is now `stripImage` and `fullRes` is new.
 dynamics-check: any FAIL exits 2 (was 1, or 0 when the event loop drained first), usage errors exit 1 (was 2). Touches
-#125, #126, #134, #135. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
+#125, #126, #134, #140. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
 gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed contract is a minor release.
 
 ## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
