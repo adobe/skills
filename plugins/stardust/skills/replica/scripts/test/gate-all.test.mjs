@@ -24,7 +24,8 @@
 // Gate trust: capturePollution, an INCONCLUSIVE verdict / summary cell / head, rowReuse and the reuse deciders refusing a
 // capture without the overlay-left check or with an overlay left; every stitch stub writes the --json capture record
 // (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record, a failed
-// --recapture-origin keeping an origin from before the check → INCONCLUSIVE, exit 2.
+// --recapture-origin keeping an origin from before the check → INCONCLUSIVE, exit 2; a record from before the check
+// (no overlayLeft key): skipCapture's `unchecked`, --skip-existing re-stitches it (logged), --compare-only → INCONCLUSIVE.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — a pixel measurement, not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
 // one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
@@ -848,6 +849,11 @@ check('hide: probeInputs / gateKeyParts are unchanged without a list (old probes
   assert.equal(skipCapture({}, 'origin', cc), true, 'no hideChanged: as before');
   assert.equal(skipCapture({}, 'origin', { ...cc, hideChanged: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, hideChanged: () => true }), false);
 });
+check('skipCapture: a capture ctx.unchecked names (a stitched record without an overlay-left record) is not reused on either side; without unchecked, as before', () => {
+  const cc = { opts: { skip: true }, has: () => true, keyChanged: () => false };
+  assert.equal(skipCapture({}, 'origin', { ...cc, unchecked: () => true }), false); assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => true }), false);
+  assert.equal(skipCapture({}, 'eds', { ...cc, unchecked: () => false }), true); assert.equal(skipCapture({}, 'origin', cc), true);
+});
 check('parseArgs: --origin-max-age <h>; pools origin 2 / EDS 4 / probe 2 with or without a machine browser slot (STARDUST_BROWSER_SLOT — it bounds jobs, not browsers), explicit flags win', () => {
   assert.equal(parseArgs(['node', 'x'], {}).originMaxAge, null); assert.equal(parseArgs(['node', 'x', '--origin-max-age', '6'], {}).originMaxAge, 6);
   const plain = parseArgs(['node', 'x'], {}); assert.deepEqual([plain.oc, plain.ec, plain.pc], [2, 4, 2]);
@@ -1533,6 +1539,25 @@ check('trust 10: a font check that could not run (record fontsFailed: null) → 
   const a = tgate([]);
   assert.equal(a.status, 0, a.stderr + a.stdout); assert.equal(a.stitches('ORIGIN').length, 0); assert.equal('fontsFailed' in tjson('a', 'origin.json'), false);
   rmSync(g, { recursive: true, force: true });
+});
+// a capture record from before the overlay-left check: origin.json / eds.json without the overlayLeft key (nor fontsFailed)
+const legacyRecord = (f) => { const m = tjson('a', f); delete m.overlayLeft; delete m.fontsFailed; writeFileSync(join(TOUT, 'a', f), JSON.stringify(m, null, 2)); };
+check('trust 11: --skip-existing never keeps a stitched origin whose record predates the overlay-left check — re-stitched, logged, the row has a verdict; a checked one is kept', () => {
+  assert.equal(tgate([]).status, 0);
+  assert.equal(tgate(['--skip-existing']).stitches('ORIGIN').length, 0, 'a checked origin is reused');
+  legacyRecord('origin.json');
+  const r = tgate(['--skip-existing']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.stitches('ORIGIN').length, 1);
+  assert.match(tlog(), /origin a → not reused \(--skip-existing: no overlay-left record\)/);
+  assert.deepEqual([r.row('a').inconclusive, r.row('a').pass, r.row('a').originReused, tjson('a', 'origin.json').overlayLeft], [false, true, null, null]);
+});
+check('trust 12: --compare-only (no captures) reads a stitched record without an overlay-left record as unchecked → INCONCLUSIVE, exit 2; its fontsFailed as recorded, the record on disk unchanged', () => {
+  legacyRecord('origin.json'); legacyRecord('eds.json');
+  const r = tgate(['--compare-only']);
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stitches('ORIGIN').length + r.stitches('EDS').length, 0);
+  const unchecked = 'unchecked (capture predates the overlay-left check)';
+  assert.deepEqual([r.row('a').inconclusive, r.row('a').reasons], [true, [`origin capture polluted: overlay left — ${unchecked}`, `build capture polluted: overlay left — ${unchecked}`]]);
+  assert.deepEqual(['overlayLeft' in tjson('a', 'origin.json'), 'fontsFailed' in tjson('a', 'eds.json')], [false, false]);
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');

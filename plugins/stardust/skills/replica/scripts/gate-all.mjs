@@ -70,10 +70,12 @@
  * A kept origin (a fix round's, either stage's live.png) must record the overlay-left check with nothing left
  * (origin.json / live.json `overlayLeft: null`) — a capture from before the check, or one that left an overlay, is
  * re-stitched; a previous origin kept after a failed --recapture-origin without that record is `unchecked` (an
- * INCONCLUSIVE row); --skip-existing and --compare-only keep what is on disk as documented.
+ * INCONCLUSIVE row); --skip-existing re-shoots a stitched capture of either side without that record (logged `not
+ * reused (--skip-existing: no overlay-left record)`) and --compare-only reads one as `unchecked` (an INCONCLUSIVE row).
  *
  * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
- * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
+ * page dir are reused as before — never a stitched one whose record predates the overlay-left check (re-shot); an EDS
+ * capture only while its <slug>/gate-key.json proves it current (below), with the same overlay-left record rule.
  * Probes are replayed from <slug>/probes.json while the capture pair they were taken against is the one on disk —
  * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes, a
  * reused origin (it keeps its first capture time) the one probes.json recorded in `pair` — so the same-minute
@@ -162,7 +164,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
   --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched)
-  --skip-existing           reuse captures; probes while the capture pair is unchanged; PASS rows
+  --skip-existing           reuse captures (not a stitched one recorded before the overlay-left check:
+                            re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
                             only while <slug>/gate-key.json proves it current (same key, or unknown
                             key with the same tree, reason, upstream, ledger rows); no local
@@ -182,7 +185,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --threshold <pct>         10     --height-tol <frac>    0.05   --clip-max <n>  0   --unit-tol <px>  4
   --no-clip | --no-content | --no-probes   drop criteria 3 / 4 / both (pixel-only verdict)
   --units <file>            repeated-unit declarations (default <out>/units.json)
-  --compare-only            no captures; recompute from existing PNGs
+  --compare-only            no captures; recompute from existing PNGs (a stitched record from before the
+                            overlay-left check reads unchecked → INCONCLUSIVE)
   --warmup <url>            origin warm-up for the probes
   --one-load                one navigation per side: each stitch also takes the presence / clip / unit inventories
                             (both sides headed real Chrome, live.png not reused); a side without one → the probes, logged
@@ -365,7 +369,8 @@ export function checkOverride(raw, { inconclusive = false, compared = false, cli
  * capturePollution(originMeta, edsMeta) → why the capture pair cannot carry a pixel verdict (origin.json, eds.json; the EDS
  * side is `build`): a crawl-fullpage / asymmetric origin fallback, or a stitch whose record names an overlay left after
  * dismissal (`unchecked …` when stitch-shot wrote no record). A missing, failed or `none` capture adds nothing — that row
- * is an error. A legacy meta without `overlayLeft` adds nothing either; the reuse deciders refuse it instead.
+ * is an error. A legacy meta without `overlayLeft` adds nothing either; the reuse deciders refuse it instead (and
+ * --compare-only, which takes no capture, hands it in as `unchecked`).
  */
 export function capturePollution(originMeta, edsMeta) {
   const out = [];
@@ -716,10 +721,11 @@ export function keyChanged(stored, current) {
 }
 /**
  * --skip-existing reuse of one side's capture: on disk, not that side's --recapture-*, for EDS not a changed key, not a
- * capture taken with another hide list. ctx = { opts, has(p, side), keyChanged(p), hideChanged(p, side) }.
+ * capture taken with another hide list, not a stitched one whose record predates the overlay-left check.
+ * ctx = { opts, has(p, side), keyChanged(p), hideChanged(p, side), unchecked(p, side) }.
  */
-export function skipCapture(p, side, { opts, has, keyChanged: changed, hideChanged = () => false }) {
-  return !!opts.skip && !opts[side === 'eds' ? 'recaptureEds' : 'recaptureOrigin'] && !(side === 'eds' && changed(p)) && has(p, side) && !hideChanged(p, side);
+export function skipCapture(p, side, { opts, has, keyChanged: changed, hideChanged = () => false, unchecked = () => false }) {
+  return !!opts.skip && !opts[side === 'eds' ? 'recaptureEds' : 'recaptureOrigin'] && !(side === 'eds' && changed(p)) && has(p, side) && !hideChanged(p, side) && !unchecked(p, side);
 }
 /**
  * rowKey(stored, current, probedFresh) — the key a FRESH row is stamped with: its evidence's stored key only while it
@@ -778,6 +784,9 @@ const FRESH = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'live-session
  * `overlayLeft` key (or no record) → it predates the check; a truthy one → it left an overlay. → why not, or null.
  */
 const overlayWhy = (meta, what) => (!meta || !('overlayLeft' in meta) ? `${what} predates the overlay-left check` : meta.overlayLeft ? `${what} left an overlay (${meta.overlayLeft})` : null);
+/** A stitched capture record (origin.json / eds.json) from before the overlay-left check: no `overlayLeft` key. */
+const legacyStitch = (meta) => !!meta && meta.instrument === 'stitch-live' && !('overlayLeft' in meta);
+const LEGACY_UNCHECKED = 'unchecked (capture predates the overlay-left check)';
 /**
  * May a fix round keep <out>/<slug>/origin.png? → { reuse, why } (why = the policy when reused). `hide` = this run's
  * presence.json hide list for the page; origin.json's `hide` (absent = []) must be the same list; origin.json must record
@@ -976,7 +985,7 @@ async function main() {
       keep({ ...kept, ...reuseOf(out, kept, 'skip-existing'), stale: f.fresh ? undefined : f.reason }, `origin ${p.slug} → reused (--skip-existing)${f.fresh ? ` (captured ${kept.at}; ${f.policy})` : ` WARN ${f.reason}`}`);
       return;
     }
-    if (hideMoved(p, 'origin')) log(`origin ${p.slug} → not reused (--skip-existing: hide list differs)`);
+    logNotKept(p, 'origin');
     // a fix round keeps this run's origin (originReusePlan); the capture time `at` is kept, the reuse added
     const prev = existsSync(out) && existsSync(meta) ? tryJson(meta) : null;
     const plan = keepOneLoad(originReusePlan({ stage: opts.stage, only: opts.only, recaptureEds: opts.recaptureEds, recaptureOrigin: opts.recaptureOrigin, url: p.url, width: opts.width, vh: opts.vh, hide }, prev, prev && fresh(prev)), p, prev);
@@ -1034,7 +1043,7 @@ async function main() {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (skipCapture(p, 'eds', capCtx)) { rec(p, 'eds', readJson(meta)); return; }
-    if (hideMoved(p, 'eds')) log(`eds ${p.slug} → not reused (--skip-existing: hide list differs)`);
+    logNotKept(p, 'eds');
     const t0 = new Date().toISOString(); const hide = hideOf(p);
     const s = await stitch(p, 'eds', edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }, OL ? ['--headed'] : []);
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotRecord(p, 'eds'), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
@@ -1067,9 +1076,15 @@ async function main() {
   const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
   const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), KEYS[p.slug]),
     // a stitched capture records the hide list it was taken with (absent = none); a crawl shot can hide nothing
-    hideChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !sameHide(m.hide, hideOf(p)); } };
-  // --skip-existing would have kept the capture but for its hide list (logged, then re-shot)
-  const hideMoved = (p, side) => skipCapture(p, side, { ...capCtx, hideChanged: undefined }) && capCtx.hideChanged(p, side);
+    hideChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !sameHide(m.hide, hideOf(p)); },
+    unchecked: (p, side) => legacyStitch(readSafe(join(dir(p), `${side}.json`))) };
+  // --skip-existing would have kept the capture but for its hide list or a record from before the overlay-left check
+  // (logged, then re-shot)
+  const notKept = (p, side) => {
+    if (!skipCapture(p, side, { ...capCtx, hideChanged: undefined, unchecked: undefined })) return null;
+    return capCtx.hideChanged(p, side) ? 'hide list differs' : capCtx.unchecked(p, side) ? 'no overlay-left record' : null;
+  };
+  const logNotKept = (p, side) => { const why = notKept(p, side); if (why) log(`${side} ${p.slug} → not reused (--skip-existing: ${why})`); };
   // The post-spawn record of each probe, shared by the fresh and the replayed path so both build the same row.
   function recordContent(p, content, pr) {
     const d = dir(p);
@@ -1209,7 +1224,11 @@ async function main() {
       const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
       if (k && m && m.at >= startedAt) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
     }
-  } else for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, m); }
+  } else {
+    // --compare-only takes no capture: a stitched record from before the overlay-left check is read as unchecked (an
+    // INCONCLUSIVE row), never clean; the record on disk and its fontsFailed stay as they are
+    for (const p of todo) for (const side of ['origin', 'eds']) { const m = readJson(join(dir(p), `${side}.json`)); if (m) rec(p, side, legacyStitch(m) ? { ...m, overlayLeft: LEGACY_UNCHECKED } : m); }
+  }
   if (opts.clip || opts.content || FAMILIES || Object.keys(UNITS).length) await pool(todo, opts.pc, probe);
   await pool(todo, 4, compare);
 
