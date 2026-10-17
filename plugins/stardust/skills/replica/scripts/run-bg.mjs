@@ -111,12 +111,14 @@
  *        identity matches (below).
  *
  * Owner: start records the caller in the job state as ownerPid — RUN_BG_OWNER
- * when set (non-empty, stored as given: a harness whose agents share one
- * process sets it per agent), else the nearest ancestor of run-bg (from its
- * parent pid) whose command is not a shell or wrapper (sh bash zsh dash ksh
- * mksh ash fish tcsh csh env nohup timeout nice; a login shell's `-` stripped):
- * the agent process behind the tool call's shell, the same whether that shell
- * exec'd node or not; the parent pid itself where no process table answers. A
+ * when set (non-empty, stored as given), else the nearest ancestor of run-bg
+ * (from its parent pid) whose command is not a shell or wrapper (sh bash zsh
+ * dash ksh mksh ash fish tcsh csh env nohup timeout nice; a login shell's `-`
+ * stripped): the agent process behind the tool call's shell, the same whether
+ * that shell exec'd node or not; the parent pid itself where no process table
+ * answers. The owner is a process: where agents share one (in-process
+ * subagents), a fan-out subagent names its jobs (`wait <job>…`) or prefixes
+ * each of its run-bg calls with RUN_BG_OWNER=<unit>. A
  * bare wait/status selects the jobs whose ownerPid is the caller's; a state
  * without one (older runs) is nobody's — reached by name or --all. Why: in a
  * recorded hands-off run a bare wait in one agent blocked on every other
@@ -249,9 +251,9 @@ const HELP = `Usage:
   (all: [--dir <d>], default ${DEFAULT_DIR})
   Selection (wait, status): <job>… = those; bare = the caller's own jobs — unfinished, else its latest batch; --all =
   every owner's — unfinished, else every job on disk. The report's first line names the selection and its count. The
-  owner, recorded by start: RUN_BG_OWNER (a harness whose agents share one process sets it per agent), else the nearest
-  ancestor that is not a shell or wrapper — the agent behind the tool call's shell; a job state without one is reached
-  by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
+  owner, recorded by start: RUN_BG_OWNER, else the nearest ancestor that is not a shell or wrapper — the agent process
+  behind the tool call's shell (agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg
+  call); a job state without one is reached by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
   --timeout is a start flag: on wait or status a usage error (exit 125), no longer silently ignored — wait takes --max
   (at most ${MAX_CEILING_SEC} s).
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
@@ -340,7 +342,7 @@ function parentOf(pid) {
   const m = r.status === 0 ? /^\s*(\d+)\s+(.*\S)/.exec(r.stdout) : null;
   return m ? { ppid: Number(m[1]), command: m[2] } : procInfo(pid);
 }
-// → RUN_BG_OWNER (non-empty: stored as given — a harness whose agents share one process sets it per agent), else the pid
+// → RUN_BG_OWNER (non-empty: stored as given — agents sharing one process prefix each run-bg call with it), else the pid
 // of the nearest ancestor, starting at `ppid`, whose command is not in OWNER_SKIP; `ppid` itself when no process table
 // answers (no ps, no /proc). `info(pid)` → { ppid, command } | null; tests inject one.
 export function callerOwner(env = process.env, { ppid = process.ppid, info = parentOf } = {}) {

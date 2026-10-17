@@ -287,7 +287,7 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # apart, capped), never a fixed sleep.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
-node stardust/scripts/replica/run-bg.mjs wait      # your jobs (--all: every agent's); full output: run-bg.mjs log <job> --grep <re>
+node stardust/scripts/replica/run-bg.mjs wait      # your agent process's jobs (--all: every agent's; agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg call); full output: run-bg.mjs log <job> --grep <re>
 # Content-cap row — once per archetype after the 1440 pass, at DESIGN.json's derived probeWidth (never a pinned 1920)
 node stardust/scripts/replica/cap-probe.mjs "$LIVE" --against "$PROTO" --design DESIGN.json --slug <slug> --main "<content-root>"
 ```

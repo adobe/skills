@@ -36,11 +36,12 @@ shrinks on scroll stopped as a scroll stall; the workaround was a different `--v
   (a load failure exits 1), else 0 with `PARTIAL`, and a partial capture never merges into `--write-design` (the skip
   is recorded in `_provenance.designWrite`); a cap-probe compare with a failed read on either side prints `NO VERDICT`,
   exit 124.
-- **`run-bg.mjs wait` and `status` cover the caller's own jobs.** `start` records `ownerPid`: `RUN_BG_OWNER` (a
-  harness whose agents share one process sets it per agent), else the nearest ancestor that is not a shell or wrapper
-  — the agent behind the tool call's shell. Bare `wait`/`status` select the caller's jobs, `--all` every owner's,
-  `<job>…` names those; the report's first line names the selection and its count. `--timeout` on `wait`/`status` is
-  a usage error (exit 125) naming `--max`. A job state without an owner is reached by name or `--all`.
+- **`run-bg.mjs wait` and `status` cover the caller's own jobs.** `start` records `ownerPid`: `RUN_BG_OWNER`, else the
+  nearest ancestor that is not a shell or wrapper — the agent process behind the tool call's shell (where agents share
+  one process, a fan-out subagent names its jobs or prefixes each run-bg call with `RUN_BG_OWNER=<unit>`). Bare
+  `wait`/`status` select the caller's jobs, `--all` every owner's, `<job>…` names those; the report's first line names
+  the selection and its count. `--timeout` on `wait`/`status` is a usage error (exit 125) naming `--max`. A job state
+  without an owner is reached by name or `--all`.
 - **A header that shrinks on scroll is a morph, not a scroll stall (`stitch-shot.mjs`).** A shortfall the document's
   own shrink explains continues the stitch at the shrunk height and records `headerMorph: <px>` in a new sidecar
   `<stem>.capture.json` beside the PNG (`writtenBy, url, width, vh, height, chunks, headerMorph, overflow, at`); the
