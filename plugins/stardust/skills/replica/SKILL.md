@@ -93,7 +93,8 @@ section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
 table), captured HTML through `html-slice.mjs`; instrument output through
 `run-bg.mjs wait` and `log --grep`, never `cat`; live-vs-prototype boxes
-through `measure.mjs`, never an authored probe; images one crop per fact,
+through `measure.mjs`, any other look at a page through `page-probe.mjs`,
+never an authored probe; images one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
 `thumb.mjs`, is the one exception); script flags from
 `../stardust/reference/scripts-index.md` first, then `--help`, never the
@@ -216,8 +217,12 @@ as **clean semantic HTML/CSS** from three sources, in this order:
     the live page against the served prototype goes through the shipped
     `measure.mjs` (`node stardust/scripts/replica/measure.mjs <live-url>
     --against <prototype-url> --selectors "<css>,…"` — rect + computed values
-    per selector per width, one delta line each), never through an authored
-    probe.
+    per selector per width, one delta line each); any other look at a
+    page — a screenshot, a JS value, a click state, two shots side by side
+    — through `node stardust/scripts/diff/page-probe.mjs <url> [--shot
+    <png>] [--eval <expr>] [--click <sel>] [--sbs <a> <b> <out>]` (the
+    gate's navigation and consent handling; for looking, never gate
+    evidence). Never an authored browser script.
 (c) **The captured screenshot as ground truth** for everything CSS doesn't
     name (composition, image crops, paint effects).
 
