@@ -12,9 +12,10 @@ the element), so nothing in the export said which element a block was built from
 
 - **`rollout/block-origin.mjs`** writes `stardust/rollout/workspace/mapping.json` (`formatVersion` 0.1.0): per
   template its sections, aligned across its pages with one selector that generalises over them and the pages it
-  resolves on, and for every delivered block instance the CSS selector of its origin element in the page's captured
-  source DOM, a confidence (the share of the block's text the element holds; image alt text never counts) and its
-  source: the template's encoder map first, else text alignment, else the block's place next to its aligned
+  resolves on, and for every delivered block instance its coverage `pos` (the key a client matches it to the page's
+  blocks by; each template block lists its `positions`), the CSS selector of its origin element in the page's
+  captured source DOM, a confidence (the share of the block's text the element holds; image alt text never counts)
+  and its source: the template's encoder map first, else text alignment, else the block's place next to its aligned
   neighbours (image-only blocks, confidence 0). An encoder-map selector that would point at another block is never
   emitted. Selectors are derived from and checked against the capture as stardust's own parser reads it, with no
   browser. Pages and blocks it could not map are listed under `skipped`; keys are sorted and `generatedAt` is copied
@@ -23,8 +24,9 @@ the element), so nothing in the export said which element a block was built from
   (`verified` true or false; without the flag null, recorded as skipped). It checks uniqueness, not that the element
   is the right one.
 - **The rule:** clients read selectors only from mapping.json and only when its sha256 is listed in manifest.json
-  outputs. `workspace-manifest.mjs` hash-lists `workspace/mapping.json` under `outputs` when present (and so in
-  `_provenance.readArtifacts`); nothing else in the manifest changes.
+  outputs; a mapping whose `generatedAt` differs from pages.json's is stale. `workspace-manifest.mjs` hash-lists
+  `workspace/mapping.json` under `outputs` when present (and so in `_provenance.readArtifacts`); nothing else in the
+  manifest changes.
 - **The export step** (Phase I, opt-in, non-gating) runs `block-origin.mjs --verify` before the final
   `workspace-manifest.mjs`. `reference/coverage-contract.md` gains "mapping — the source side" and no longer
   declares source selectors absent; schema `schemas/rollout-workspace-mapping.schema.json`. rollout `lib.mjs` gains
