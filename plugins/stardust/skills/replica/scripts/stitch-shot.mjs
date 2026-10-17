@@ -93,7 +93,9 @@
  *     both sides is not reported), before --inventory and the freeze — under
  *     --no-dismiss too. A consent root still visible, a fixed/sticky layer
  *     over most of the viewport or a scroll lock prints ONE `overlay-left:
- *     <descriptor>` line there; exit stays 0 (gate.sh / gate-all decide).
+ *     <descriptor>` line there (a consent-sweep click that left the page:
+ *     `(consent sweep navigated to <url>)`); exit stays 0 (gate.sh / gate-all
+ *     decide).
  *     --json <file> writes the capture record once the PNG is written: the
  *     sweeps' dismissals, overlayLeft, fontsFailed (the font-load
  *     assertion's families), the hide records, height and the overflow line.
@@ -175,7 +177,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
 
 Prints \`overlay-left: <sel> (<why>)\` once — after the last dismissal sweep and --hide, before the capture, also under
 --no-dismiss — when the capture would still carry an overlay: a consent root still visible, a fixed / sticky layer
-painting ≥ 80 % of the viewport, or a scroll lock (html / body overflow:hidden); a check that could not run prints
+painting ≥ 80 % of the viewport, or a scroll lock (html / body overflow:hidden); a consent-sweep click that left the
+page prints \`overlay-left: (consent sweep navigated to <url>)\`, a check that could not run
 \`overlay-left: (overlay check failed: <msg>)\`. Exit stays 0: gate.sh gives no verdict, gate-all marks the row
 INCONCLUSIVE. --json records it as overlayLeft; a failed capture writes no record.
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
@@ -276,11 +279,15 @@ async function main() {
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
     // The record's dismissed: consent = the last non-null one over the sweeps, extra / marketing = every sweep's, unique.
+    // A sweep whose consent click left the page (dismissOverlays' overlayLeft `(consent sweep navigated to <url>)`)
+    // is kept for the overlay-left check below: the capture is of another page, whatever that page shows.
     const dismissed = opts.noDismiss ? null : { consent: null, extra: [], marketing: [] };
+    let navigated = null;
     const sweep = async () => {
       const d = await dismissAndLog(page, url, opts);
       if (d.consent) dismissed.consent = d.consent;
       for (const k of ['extra', 'marketing']) for (const s of d[k]) if (!dismissed[k].includes(s)) dismissed[k].push(s);
+      if (!navigated && typeof d.overlayLeft === 'string' && d.overlayLeft.startsWith('(consent sweep navigated to ')) navigated = d.overlayLeft;
     };
     // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
     if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
@@ -319,8 +326,9 @@ async function main() {
     if (opts.hide.length) console.log(`hidden: ${formatHidden(hidden)}`);
 
     // The overlay-left check (header): once, on the page the chunks will show — after the last sweep and --hide,
-    // under --no-dismiss too. Named, never removed; the exit code stays 0 (gate.sh / gate-all decide).
-    const overlayLeft = await detectOverlayLeft(page);
+    // under --no-dismiss too; a sweep that navigated away is named instead. Never removed; the exit code stays 0
+    // (gate.sh / gate-all decide).
+    const overlayLeft = navigated || await detectOverlayLeft(page);
     if (overlayLeft) console.log(`overlay-left: ${overlayLeft}`);
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).

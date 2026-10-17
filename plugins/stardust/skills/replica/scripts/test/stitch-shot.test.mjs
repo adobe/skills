@@ -21,8 +21,9 @@
 // control → one `overlay-left: div.backdrop (fixed, 100 % of the viewport)` line before the overflow line, exit 0, the
 // record's overlayLeft (also under --no-dismiss, where dismissed is null); hidden with --hide → no line, null; a clean
 // page's record exactly (key order, height = the PNG's); a declared face that 404s → fontsFailed ['Brand Sans'] beside
-// the WARNING; dismissed across the --settle sweeps (consent = last non-null, marketing = union); a failed capture
-// (HTTP 404) writes no record.
+// the WARNING; dismissed across the --settle sweeps (consent = last non-null, marketing = union); a consent-sweep
+// click that leaves the page → overlayLeft `(consent sweep navigated to <url>)`; a failed capture (HTTP 404) writes no
+// record.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -151,6 +152,8 @@ if (chromium) {
     '/backdrop': page('<section><p style="margin:0;padding-top:430px;font:40px/40px sans-serif;text-align:center">Page content beneath the backdrop</p></section><section></section><div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"></div>'),
     '/font-fail': page('<section>Brand type</section><section></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/missing.woff2)}body{font-family:"Brand Sans",sans-serif}</style>'),
     '/consent-popup': page('<div id="banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><button id="onetrust-accept-btn-handler" onclick="this.parentNode.remove()">OK</button></div><section></section><section></section>', popupLate),
+    // a consent banner whose "Accept" is a link to another path: the label sweep's click leaves the page
+    '/consent-link': page('<div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><a href="/fit">Accept</a></div><section></section><section></section>'),
   });
   const server = createServer((req, res) => {
     const body = pages[req.url.split('?')[0]];
@@ -271,6 +274,7 @@ if (chromium) {
       fit: run([`${base}/fit`, 'fit-rec.png', '--json', 'fit-rec.json'], work),
       font: run([`${base}/font-fail`, 'font.png', '--json', 'font.json'], work),
       sweeps: run([`${base}/consent-popup`, 'sweeps.png', '--settle', '--json', 'sweeps.json'], work),
+      navigated: run([`${base}/consent-link`, 'nav.png', '--json', 'nav.json'], work),
       failed: run([`${base}/no-such-page`, 'failed.png', '--json', 'failed.json'], work),
     };
     await check('e2e overlay-left: a fixed full-viewport backdrop no sweep removes → one `overlay-left:` line before the overflow line, exit 0; --json records it', async () => {
@@ -328,6 +332,15 @@ if (chromium) {
       assert.deepEqual(j.dismissed, { consent: '#onetrust-accept-btn-handler', extra: [], marketing: ['[aria-label*="close" i]'] });
       assert.equal(j.settle, true);
       assert.equal(j.overlayLeft, null);
+    });
+    await check('e2e overlay-left: a consent-sweep click that left the page is named — never the new page\'s own (clean) check', async () => {
+      const r = await shots.navigated;
+      assert.equal(r.status, 0, r.stderr);
+      const want = `(consent sweep navigated to ${base}/fit)`;
+      assert.deepEqual(ovlLines(r), [`overlay-left: ${want}`], r.stdout);
+      const j = record('nav.json');
+      assert.equal(j.overlayLeft, want);
+      assert.equal(j.dismissed.consent, 'label "Accept"');
     });
     await check('e2e --json: a failed capture (HTTP 404) exits 1 and writes no record', async () => {
       const r = await shots.failed;
