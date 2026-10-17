@@ -202,33 +202,34 @@ await check('parseArgs: --timeout-ms stays null unless given — main resolves e
 // ---- the re-probe (fakes: pages are numbers, a probe throws what the script says) ------------------------
 const destroyed = (width) => Object.assign(new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation'), { width, probeWidth: 2560 });
 const fakeRun = async (script, { openFails = [] } = {}) => {
-  const log = { opened: [], closed: [], probed: [], retried: [] }; let n = 0; const steps = [...script];
+  const log = { opened: [], closed: [], probed: [], retried: [], recovered: [] }; let n = 0; const steps = [...script];
   const outcome = await probeWithRetry({
     open: async () => { n += 1; const f = openFails[n - 1]; if (f) throw f; log.opened.push(n); return n; },
     probe: async (page) => { log.probed.push(page); const s = steps.shift(); if (s instanceof Error) throw s; return { page, ...s }; },
     close: async (page) => { log.closed.push(page); },
     isContextDestroyed,
     onRetry: (e) => { log.retried.push(e.width); },
+    onRecovered: (e) => { log.recovered.push(e.width); },
   }).then((model) => ({ model }), (error) => ({ error }));
   return { ...outcome, log };
 };
 await check('probeWithRetry: a destroyed context is re-probed once, whole, on a fresh page; every page is closed', async () => {
   const r = await fakeRun([destroyed(2560), { contentMaxWidth: 1600 }]);
   assert.equal(r.error, undefined); assert.deepEqual(r.model, { page: 2, contentMaxWidth: 1600 });
-  assert.deepEqual(r.log, { opened: [1, 2], closed: [1, 2], probed: [1, 2], retried: [2560] });
+  assert.deepEqual(r.log, { opened: [1, 2], closed: [1, 2], probed: [1, 2], retried: [2560], recovered: [2560] });
   const lost = await fakeRun([Object.assign(new Error('the page navigated after the base pass'), { name: 'PageNavigatedError', width: 2304 }), {}]);
   assert.deepEqual([lost.error, lost.log.retried], [undefined, [2304]], 'the base pass\'s boxes gone = the same navigation, seen after it');
 });
-await check('probeWithRetry: a second failure, a deadline and a failed re-open leave with the read\'s width; a deadline is not retried', async () => {
+await check('probeWithRetry: a second failure, a deadline and a failed re-open leave with the read\'s width (never "recovered"); a deadline is not retried', async () => {
   const twice = await fakeRun([destroyed(2560), destroyed(2304)]);
-  assert.equal(twice.error.width, 2304); assert.deepEqual([twice.log.opened, twice.log.closed], [[1, 2], [1, 2]]);
+  assert.equal(twice.error.width, 2304); assert.deepEqual([twice.log.opened, twice.log.closed, twice.log.retried, twice.log.recovered], [[1, 2], [1, 2], [2560], []]);
   const late = await withDeadline(new Promise(() => {}), 5, 'probe read').catch((e) => Object.assign(e, { width: 2560 }));
   const hung = await fakeRun([late, {}]);
   assert.equal(hung.error.name, 'DeadlineError'); assert.match(hung.error.message, /probe read: deadline 5 ms exceeded/);
   assert.deepEqual([hung.log.opened, hung.log.retried, hung.log.closed], [[1], [], [1]], 'no second wait on the same deadline');
   const reopen = await fakeRun([destroyed(1440)], { openFails: [null, new Error('page.goto: Timeout 5000 ms exceeded\n  call log …')] });
   assert.equal(reopen.error.width, 1440); assert.equal(reopen.error.message, 're-open on a fresh page failed — page.goto: Timeout 5000 ms exceeded');
-  assert.deepEqual(reopen.log.closed, [1]);
+  assert.deepEqual([reopen.log.closed, reopen.log.recovered], [[1], []]);
 });
 await check('probeWithRetry: the first open failing is a load failure (no width); a bot challenge on the re-open leaves as itself', async () => {
   const load = await fakeRun([{}], { openFails: [new Error('HTTP 500')] });
@@ -238,7 +239,8 @@ await check('probeWithRetry: the first open failing is a load failure (no width)
 });
 
 // ---- verdict and status line ---------------------------------------------------------------------------
-const cap = (failedList, urls = ['https://s/a', 'https://s/b']) => ({ _provenance: { urls, failed: failedList, partial: failedList.some((f) => f.width) }, pages: {}, aggregate: null });
+// A capture result: every URL without a failure entry was probed.
+const cap = (failedList, urls = ['https://s/a', 'https://s/b']) => ({ _provenance: { urls, failed: failedList, partial: failedList.some((f) => f.width) }, pages: Object.fromEntries(urls.filter((u) => !failedList.some((f) => f.url === u)).map((u) => [u, {}])), aggregate: null });
 const cmp = (failedList, compare) => ({ _provenance: { urls: ['https://s/', 'http://localhost:1/'], failed: failedList, partial: failedList.length > 0, baseWidth: 1440, probeWidth: 2560 }, urls: ['https://s/', 'http://localhost:1/'], probeNote: 'derived', live: null, build: null, ...(compare ? { compare } : {}) });
 const hangA = { url: 'https://s/a', width: 2560, error: 'probe read: deadline 5000 ms exceeded' };
 await check('exitCodeFor: 1 load failure > 124 no verdict > 0 (a partial capture) / 2 compare FAIL', () => {
@@ -255,6 +257,9 @@ await check('statusLine: none without a failed read; PARTIAL / NO VERDICT with e
   assert.equal(statusLine(cap([hangA])), 'cap-probe: PARTIAL — 1 of 2 page probe(s) failed: https://s/a @2560 (probe read: deadline 5000 ms exceeded)');
   assert.equal(statusLine(cap([hangA, { url: 'https://s/b', width: 2304, error: 'x' }])), 'cap-probe: NO VERDICT — every page\'s probe failed (exit 124): https://s/a @2560 (probe read: deadline 5000 ms exceeded); https://s/b @2304 (x)');
   assert.equal(statusLine(cmp([{ ...hangA, url: 'http://localhost:1/' }])), 'cap-probe: NO VERDICT — a side\'s probe failed, compare needs both (exit 124): http://localhost:1/ @2560 (probe read: deadline 5000 ms exceeded)');
+  const none = cap([hangA, { url: 'https://s/b', error: 'HTTP 500' }]);
+  assert.equal(exitCodeFor(none), 1);
+  assert.equal(statusLine(none), 'cap-probe: NO VERDICT — no page probed (1 of 2 failed a read, the rest failed to load): https://s/a @2560 (probe read: deadline 5000 ms exceeded)', 'nothing probed is never "partial", and exit 1 is not cited as 124');
 });
 await check('formatCompare / formatCapture with a failed read: the status line first, the side not probed, no PASS/FAIL line', () => {
   const live = { ...classifyCaps(livePass(), { probeWidth: 2560 }), baseWidth: 1440 };
@@ -327,11 +332,13 @@ if (pwProbe.status !== 0) {
       const out = join(root, 'navonce.json');
       const r = await runAsync([`${base}/navonce`, '--timeout-ms', '5000', '--out', out]);
       assert.equal(r.code, 0, r.out + r.err);
-      assert.match(r.err, /navonce @\d+: execution context destroyed \(the page navigated\) — re-probed on a fresh page/);
+      assert.match(r.err, /navonce @\d+: execution context destroyed \(the page navigated\) — re-probe attempted on a fresh page/);
       assert.match(r.out.split('\n')[0], /\/navonce {2}base 1440 → probe 2560/, 'no status line without a failed read');
       assert.match(r.out, /content {3}1600px {2}max-width/);
       const j = JSON.parse(readFileSync(out, 'utf8'));
-      assert.deepEqual([j._provenance.partial, j._provenance.failed, j._provenance.warnings.length, j._provenance.navTimeout], [false, [], 1, { ms: 5000, source: 'flag' }]);
+      assert.deepEqual([j._provenance.partial, j._provenance.failed, j._provenance.navTimeout], [false, [], { ms: 5000, source: 'flag' }]);
+      assert.equal(j._provenance.warnings.length, 1);
+      assert.match(j._provenance.warnings[0], /\/navonce @\d+: execution context destroyed \(the page navigated\) — re-probed on a fresh page$/, 'the recovered re-probe is on record');
     });
     await check('e2e capture: a page that hangs on the resize to the probe width — recorded at that width, exit 124, NO VERDICT first, bounded', async () => {
       const out = join(root, 'hang.json');

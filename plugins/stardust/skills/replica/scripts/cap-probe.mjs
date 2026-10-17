@@ -63,8 +63,8 @@
  * `cap-probe: PASS|FAIL at <probeWidth> — <n> of <m> rows…`. A ✗ names the sizing rule to fix
  * (deploy Step 3 scaffold); never iterate pixels on it. The JSON's `_provenance` records
  * `navTimeout: { ms, source }`, `failed` (`{ url, error }` a page failed to load, `{ url, width,
- * error }` a read failed), `partial`, `warnings` (a re-probe) and `designWrite` (a skipped
- * --write-design).
+ * error }` a read failed), `partial`, `warnings` (a re-probe that recovered) and `designWrite` (a
+ * skipped --write-design).
  *
  * Deadlines (why: a recorded hands-off run hung 8× at 900 s in the reads after the goto, on a site
  * that navigates after a resize or a consent click): every read — resize + settle + evaluate at the
@@ -78,7 +78,8 @@
  * — qa-gate and compare --design read DESIGN.json as complete); compare gives NO VERDICT
  * (no `compare` key; --slug still records the attempt) — half a measurement is never a PASS or a
  * FAIL. Then the first stdout line (stderr with --json) is `cap-probe: PARTIAL — <k> of <n> page
- * probe(s) failed: <url> @<w> (<error>); …` or `cap-probe: NO VERDICT — … (exit 124): …`.
+ * probe(s) failed: <url> @<w> (<error>); …`, or `cap-probe: NO VERDICT — …: …` when no page (in
+ * compare: not both sides) was probed.
  *
  * Exit codes: 0 pass / measured (a capture may be partial — _provenance.partial), 2 compare FAIL,
  * 1 a page failed to load or playwright missing, 3 bot challenge on the live side (escalate
@@ -420,7 +421,10 @@ export function statusLine(result) {
   const list = fails.map((f) => `${f.url} @${f.width} (${f.error})`).join('; ');
   if (!isCapture(result)) return `cap-probe: NO VERDICT — a side's probe failed, compare needs both (exit 124): ${list}`;
   if (exitCodeFor(result) === 124) return `cap-probe: NO VERDICT — every page's probe failed (exit 124): ${list}`;
-  return `cap-probe: PARTIAL — ${fails.length} of ${result._provenance.urls.length} page probe(s) failed: ${list}`;
+  const n = result._provenance.urls.length;
+  // Nothing probed, yet not 124: the other pages failed to load (exit 1) — no model at all, so never "partial".
+  if (!Object.keys(result.pages || {}).length) return `cap-probe: NO VERDICT — no page probed (${fails.length} of ${n} failed a read, the rest failed to load): ${list}`;
+  return `cap-probe: PARTIAL — ${fails.length} of ${n} page probe(s) failed: ${list}`;
 }
 
 // ---- formatting (pure) ----------------------------------------------------------------------------
@@ -530,8 +534,8 @@ function navigatedError() { return Object.assign(new Error('the page navigated a
 // kept). Anything else — a deadline (a second would double the wait), a second failure — leaves at
 // once with the read's `width`. The first open failing is "a page failed to load" (no width); a
 // re-open failing is the retried read's failure; a BotChallengeError always leaves as itself.
-// Every page opened is closed.
-export async function probeWithRetry({ open, probe, close, isContextDestroyed, onRetry = () => {} }) {
+// `onRetry(e)` runs before the re-probe, `onRecovered(e)` only once it succeeded. Every page opened is closed.
+export async function probeWithRetry({ open, probe, close, isContextDestroyed, onRetry = () => {}, onRecovered = () => {} }) {
   let page = await open();
   try {
     try { return await probe(page); } catch (e) {
@@ -542,7 +546,9 @@ export async function probeWithRetry({ open, probe, close, isContextDestroyed, o
         if (re && re.name === 'BotChallengeError') throw re;
         throw Object.assign(new Error(`re-open on a fresh page failed — ${firstLine(re)}`), { width: e.width, probeWidth: e.probeWidth });
       }
-      return await probe(page);
+      const model = await probe(page);
+      onRecovered(e);
+      return model;
     }
   } finally {
     if (page) await close(page);
@@ -578,7 +584,8 @@ async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, war
       probe: (page) => probePage(page, { rootSel, baseWidth: o.width, probeWidth, deadlineMs: o.timeoutMs }),
       close: (page) => bounded(page.close()),
       isContextDestroyed: session.isContextDestroyed,
-      onRetry: (e) => { const w = `${url} @${e.width}: execution context destroyed (the page navigated) — re-probed on a fresh page`; warnings.push(w); console.error(`cap-probe: ${w}`); },
+      onRetry: (e) => { console.error(`cap-probe: ${url} @${e.width}: execution context destroyed (the page navigated) — re-probe attempted on a fresh page`); },
+      onRecovered: (e) => { warnings.push(`${url} @${e.width}: execution context destroyed (the page navigated) — re-probed on a fresh page`); },
     });
   } finally {
     await bounded(context.close());
