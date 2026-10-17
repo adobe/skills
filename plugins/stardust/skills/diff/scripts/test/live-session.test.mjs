@@ -6,10 +6,13 @@
 // late-modal poll on EDS build/preview hosts), and waitEdsDelayedPhase never throwing (stub page). The hide helpers:
 // parseHideList, presenceHide, mergePresence, readPresenceFile (with and without the site-wide presence.json merged
 // under the gate file), hideEntries, formatHidden and hideRegions' empty / argument contract
-// (stub page); where playwright is importable (a project copy), hideRegions end-to-end on fixture pages served from
+// (stub page); the hide misses: formatCandidates, hideMisses (n 0 at the hide pass AND nAtCapture 0), hideMissLine
+// (one line) and recountHides' contract (stub page); where playwright is importable (a project copy), hideRegions end-to-end on fixture pages served from
 // this process — an 88 px in-flow bar above the header, a bar inserted 400 ms after load (hidden by the style rule),
 // an invalid selector, a second call, and a late bar under a CSP that blocks inline <style> (hidden by the adopted
-// sheet) — and dismissOverlays' consent pass on fixture banners: each consent manager's own accept button, a plain
+// sheet) — inFlowRegionsAboveHeader (an empty wrapper before the header at 0px, then 88px once a lookup fills it, a
+// fixed banner and a script not listed; a header inside an app root; #id / fewest classes / :nth-of-type selectors;
+// no header) and recountHides counting a bar injected after the hide pass — and dismissOverlays' consent pass on fixture banners: each consent manager's own accept button, a plain
 // label (by priority, never "Decline" first), a label two shadow roots deep, a consent form's submit and a "#" link
 // in a fixed banner, and the controls left alone — an in-content "Accept" link, a sticky header's search submit "OK";
 // a sweep click that navigates away is named in overlayLeft;
@@ -345,6 +348,42 @@ check('formatHidden: ×n (hpx), ×0, error, joined with "; ", empty → ""', () 
   assert.equal(session.formatHidden([{ sel: '.a', source: '--hide', n: 2, h: 120 }, { sel: '.b', source: 'presence.json', n: 0, h: 0 }]), '.a ×2 (120px) [--hide]; .b ×0 [presence.json]');
   for (const v of [[], null, undefined]) assert.equal(session.formatHidden(v), '');
 });
+check('formatCandidates: <selector> (<tag>, <h>px) joined "; ", a 0-px block reads "0px now — …", none → "none found above the header"', () => {
+  const bar = { tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' };
+  assert.equal(session.formatCandidates([bar]), 'section.bar__wrapper (section, 88px)');
+  assert.equal(session.formatCandidates([{ ...bar, height: 0 }, { tag: 'div', id: 'promo', classes: [], top: 0, height: 40, selector: '#promo' }]),
+    'section.bar__wrapper (section, 0px now — a block that grows later is still hidden by the persistent display:none !important rule); #promo (div, 40px)');
+  for (const v of [[], null, undefined]) assert.equal(session.formatCandidates(v), 'none found above the header');
+});
+check('hideMisses: n 0 at the hide pass AND nAtCapture 0 — a block counted at the capture, one matched at the hide pass, an error, a record not recounted are no miss', () => {
+  const recs = [
+    { sel: '.geo-bar', source: 'presence.json', n: 0, h: 0, nAtCapture: 0 },
+    { sel: '.late-bar', source: '--hide', n: 0, h: 0, nAtCapture: 1 },
+    { sel: '.promo', source: '--hide', n: 1, h: 40, nAtCapture: 0 },
+    { sel: 'div[[', source: '--hide', n: 0, h: 0, error: 'not a valid selector', nAtCapture: 0 },
+    { sel: '.not-recounted', source: '--hide', n: 0, h: 0 },
+    { sel: '.strip', source: 'site presence.json', n: 0, h: 0, nAtCapture: 0 },
+  ];
+  assert.deepEqual(session.hideMisses(recs), ['.geo-bar', '.strip']);
+  for (const v of [[], null, undefined]) assert.deepEqual(session.hideMisses(v), []);
+});
+check('hideMissLine: ONE line — the candidates, then the missed selectors; no miss → ""', () => {
+  const list = [{ tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' }];
+  assert.equal(session.hideMissLine(['.geo-bar', '.strip'], list), 'hide matched nothing on live — candidates: section.bar__wrapper (section, 88px) (.geo-bar, .strip)');
+  assert.equal(session.hideMissLine(['.geo-bar'], []), 'hide matched nothing on live — candidates: none found above the header (.geo-bar)');
+  assert.equal(session.hideMissLine(['.geo-bar\n'], list).split('\n').length, 1, 'never more than one line');
+  for (const v of [[], null, undefined]) assert.equal(session.hideMissLine(v, list), '');
+});
+await checkAsync('recountHides without a browser: [] → [] with no page work; one evaluate with the selectors → the records with nAtCapture, inputs untouched', async () => {
+  const untouched = new Proxy({}, { get: (_, k) => { throw new Error(`page.${String(k)} touched`); } });
+  for (const v of [[], null, undefined]) assert.deepEqual(await session.recountHides(untouched, v), []);
+  const calls = [];
+  const page = { evaluate: async (fn, arg) => { calls.push(arg); return [1, 0]; } };
+  const recs = [{ sel: '.late', source: 'presence.json', n: 0, h: 0 }, { sel: 'div[[', source: '--hide', n: 0, h: 0, error: 'not a valid selector' }];
+  assert.deepEqual(await session.recountHides(page, recs), [{ ...recs[0], nAtCapture: 1 }, { ...recs[1], nAtCapture: 0 }]);
+  assert.deepEqual(calls, [['.late', 'div[[']]);
+  assert.equal(recs[0].nAtCapture, undefined, 'the input records are untouched');
+});
 await checkAsync('hideRegions without a browser: [] → [] with no page work; one evaluate with the normalised list and settleMs', async () => {
   const untouched = new Proxy({}, { get: (_, k) => { throw new Error(`page.${String(k)} touched`); } });
   for (const v of [[], null, undefined, ['', ' , ']]) assert.deepEqual(await session.hideRegions(untouched, v), []);
@@ -443,6 +482,16 @@ else {
       <script>const d = document.querySelector('dialog.signup'); d.showModal(); document.getElementById('close').onclick = () => d.close();</script>`),
     '/overlay/inline-dialog': doc(`<main style="min-height:1800px"><p>Content</p><dialog open class="note" style="position:static;margin:8px;width:240px">A note in the content</dialog></main>`),
   });
+  // derived candidates: an empty (0 px) location-bar wrapper before the header that a geo lookup fills 600 ms after
+  // load, a fixed banner and a script before it too; a header inside an app root; the three selector forms; no header
+  const BAR_CSS = '<style>.bar{height:88px;background:#eee}</style>';
+  const FILL = '<script>addEventListener(\'load\', () => setTimeout(() => { document.querySelector(\'.bar__wrapper\').innerHTML = \'<div class="bar">Use the site for your region?</div>\'; }, 600));</script>';
+  Object.assign(PAGES, {
+    '/derive/wrapper': `${head}${BAR_CSS}</head><body><div class="promo-banner" style="position:fixed;top:0;left:0;right:0;height:40px;background:#fc0;z-index:10">Sale</div>${FILL}<section class="bar__wrapper"></section><header>Header</header><main><p>Content</p></main></body></html>`,
+    '/derive/root': `${head}${BAR_CSS}</head><body><div id="root"><div class="bar">Use the site for your region?</div><header>Header</header><main><p>Content</p></main></div></body></html>`,
+    '/derive/forms': `${head}</head><body><div id="geo" style="height:20px"></div><div id="dup" class="strip one" style="height:10px"></div><div id="app"><div class="strip" style="height:10px"></div><div style="height:10px"></div><header>Header</header></div><main><p id="dup">Content</p></main></body></html>`,
+    '/derive/none': `${head}${BAR_CSS}</head><body><div class="bar">Use the site for your region?</div><main><p>Content</p></main></body></html>`,
+  });
   const server = createServer((req, res) => {
     res.setHeader('content-type', 'text/html');
     if (req.url === '/csp') res.setHeader('content-security-policy', `style-src 'self' 'nonce-${NONCE}'`);
@@ -513,6 +562,59 @@ else {
       assert.equal(s.bar, 'none', 'the late bar computes display: none');
       assert.equal(s.headerTop, 0);
       assert.deepEqual(s.adopted, [['.geo-bar { display: none !important; }', 'main p { display: none !important; }']], 'one adopted sheet, its rules the union');
+      await page.close();
+    });
+    // derived candidates and the recount at the capture
+    await checkAsync('e2e derive: an empty wrapper before the header is listed at 0px, at 88px once a lookup fills it; a fixed banner and a script are not', async () => {
+      const page = await open('/derive/wrapper');
+      const wrapper = { tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, selector: 'section.bar__wrapper' };
+      const before = await session.inFlowRegionsAboveHeader(page);
+      assert.deepEqual(before, [{ ...wrapper, height: 0 }]);
+      assert.equal(session.formatCandidates(before), 'section.bar__wrapper (section, 0px now — a block that grows later is still hidden by the persistent display:none !important rule)');
+      await page.waitForTimeout(1000);
+      const after = await session.inFlowRegionsAboveHeader(page);
+      assert.deepEqual(after, [{ ...wrapper, height: 88 }]);
+      assert.equal(session.formatCandidates(after), 'section.bar__wrapper (section, 88px)');
+      await page.close();
+    });
+    await checkAsync('e2e derive: the 0-px candidate hidden before the lookup fills it keeps the header at 0; the wrong selector is the miss the line names', async () => {
+      const page = await open('/derive/wrapper');
+      const rec = await session.hideRegions(page, ['.geo-bar', 'section.bar__wrapper']);
+      assert.deepEqual(rec.map((x) => [x.sel, x.n, x.h]), [['.geo-bar', 0, 0], ['section.bar__wrapper', 1, 0]]);
+      await page.waitForTimeout(1000);
+      assert.equal(await page.evaluate(() => document.querySelector('header').getBoundingClientRect().top), 0, 'the filled wrapper stays hidden');
+      const at = await session.recountHides(page, rec);
+      assert.deepEqual(at.map((x) => x.nAtCapture), [0, 1]);
+      const misses = session.hideMisses(at);
+      assert.deepEqual(misses, ['.geo-bar']);
+      assert.equal(session.hideMissLine(misses, await session.inFlowRegionsAboveHeader(page)), 'hide matched nothing on live — candidates: none found above the header (.geo-bar)', 'a hidden block is no candidate');
+      await page.close();
+    });
+    await checkAsync('e2e derive: body > div#root > [div.bar, header] → div.bar (88px)', async () => {
+      const page = await open('/derive/root');
+      assert.deepEqual(await session.inFlowRegionsAboveHeader(page), [{ tag: 'div', id: null, classes: ['bar'], top: 0, height: 88, selector: 'div.bar' }]);
+      await page.close();
+    });
+    await checkAsync('e2e derive: selectors — #id when unique, the fewest classes matching one element, an :nth-of-type path from a unique id; in document order; no header → []', async () => {
+      const page = await open('/derive/forms');
+      const got = await session.inFlowRegionsAboveHeader(page);
+      assert.deepEqual(got.map((x) => [x.selector, x.top, x.height]), [['#geo', 0, 20], ['div.one', 20, 10], ['#app > div:nth-of-type(1)', 30, 10], ['#app > div:nth-of-type(2)', 40, 10]]);
+      assert.deepEqual(got[1], { tag: 'div', id: 'dup', classes: ['strip', 'one'], top: 20, height: 10, selector: 'div.one' });
+      assert.deepEqual(await page.evaluate((sels) => sels.map((s) => document.querySelectorAll(s).length), got.map((x) => x.selector)), [1, 1, 1, 1]);
+      await page.close();
+      const none = await open('/derive/none');
+      assert.deepEqual(await session.inFlowRegionsAboveHeader(none), []);
+      await none.close();
+    });
+    await checkAsync('e2e recount: a bar injected after hideRegions is counted at the capture (and computes display: none); a selector matching nothing is the miss', async () => {
+      const page = await open('/late');
+      const rec = await session.hideRegions(page, ['.geo-bar', '.location-bar']);
+      assert.deepEqual(rec.map((x) => x.n), [0, 0], 'nothing to hide yet');
+      await page.waitForTimeout(800);
+      const at = await session.recountHides(page, rec);
+      assert.deepEqual(at, [{ sel: '.geo-bar', source: '--hide', n: 0, h: 0, nAtCapture: 1 }, { sel: '.location-bar', source: '--hide', n: 0, h: 0, nAtCapture: 0 }]);
+      assert.equal(await page.evaluate(() => getComputedStyle(document.querySelector('.geo-bar')).display), 'none');
+      assert.deepEqual(session.hideMisses(at), ['.location-bar']);
       await page.close();
     });
     // consent: dismissOverlays → the vendor's own accept button, else the label sweep (by label priority, guarded to

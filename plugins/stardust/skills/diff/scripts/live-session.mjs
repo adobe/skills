@@ -58,6 +58,10 @@
  *     them down — so `--hide` / presence.json `hide` reach every instrument
  *     through hideRegions: measured, hidden inline AND by a
  *     `<style data-stardust-hide>` rule that also hides a bar rendered later.
+ *     A selector that matched nothing at the hide pass AND right before the
+ *     capture (recountHides → hideMisses) is warned on, never silently
+ *     carried: hideMissLine names the candidates read off the DOM — the
+ *     in-flow blocks above the header (inFlowRegionsAboveHeader) — not guesses.
  *
  * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
  *   headers+UA (default) → --headed (launchStealthHeaded) → if STILL blocked,
@@ -936,6 +940,133 @@ export async function hideRegions(page, entries, { settleMs = 250 } = {}) {
 /** Records → one text line's worth: `<sel> ×<n> (<h>px) [<source>]`, `<sel> ×0 [<source>]`,
  * `<sel> error: <msg> [<source>]`, joined with '; ' ('' for none). */
 export const formatHidden = (records) => (records || []).map((x) => `${x.sel} ${x.error ? `error: ${x.error}` : `×${x.n}${x.n ? ` (${x.h}px)` : ''}`} [${x.source}]`).join('; ');
+
+// ---- hide misses and derived candidates: what to hide is read off the DOM, never guessed ---------------------------
+// A hide selector that matched nothing at the hide pass AND right before the capture hid nothing; the in-flow blocks
+// above the header are the candidates the warning names instead (the first body-level in-flow block above the header
+// is where a per-visitor location bar sits).
+
+/* eslint-disable no-undef */
+/**
+ * Runs in the page (self-contained): `page.evaluate(inFlowRegionsAboveHeaderInPage)`. The header = the first visible
+ * (displayed, not visibility-hidden, a box of non-zero size) of `header, [role="banner"]` in document order, inside
+ * body; none → []. For the header and each of its ancestors up to body, every preceding sibling element that is in
+ * flow — computed position neither fixed nor absolute, a box at all (display: none generates none; it is also what an
+ * applied hide leaves) — and not script / style / link / meta / noscript / template, whose top (document px, rounded)
+ * is above the header's; a 0-px block at the header's top is kept too (an empty wrapper a geo lookup fills later).
+ * → [{ tag, id, classes, top, height, selector }] in document order (`id` null when none, px rounded). `selector` is
+ * unique on the page, checked by querySelectorAll: `#id` when unique, else `tag.class…` with the fewest classes that
+ * match only this element (subsets of the first 8 classes, smallest first, in class order; then all of them), else a
+ * `tag:nth-of-type(i)` path from the nearest ancestor with a unique id, else from body; null if even that is not.
+ */
+export function inFlowRegionsAboveHeaderInPage() {
+  const SKIP = new Set(['script', 'style', 'link', 'meta', 'noscript', 'template']);
+  const shown = (el) => {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+    const r = el.getBoundingClientRect();
+    return r.width > 0 && r.height > 0;
+  };
+  const { body } = document;
+  const header = body ? [...document.querySelectorAll('header, [role="banner"]')].find((el) => body.contains(el) && shown(el)) : null;
+  if (!header) return [];
+  const topOf = (el) => Math.round(el.getBoundingClientRect().top + window.scrollY);
+  const headerTop = topOf(header);
+  const only = (sel, el) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; } catch { return false; } };
+  const subsets = (items, k, from = 0) => (k === 0 ? [[]] : items.slice(from).flatMap((x, i) => subsets(items, k - 1, from + i + 1).map((rest) => [x, ...rest])));
+  const selectorOf = (el) => {
+    const tag = el.tagName.toLowerCase();
+    if (el.id && only(`#${CSS.escape(el.id)}`, el)) return `#${CSS.escape(el.id)}`;
+    const classes = [...el.classList];
+    const pool = classes.slice(0, 8);
+    const tries = [];
+    for (let k = 1; k <= pool.length; k += 1) tries.push(...subsets(pool, k));
+    if (classes.length > pool.length) tries.push(classes);
+    for (const set of tries) {
+      const sel = `${tag}${set.map((c) => `.${CSS.escape(c)}`).join('')}`;
+      if (only(sel, el)) return sel;
+    }
+    const parts = [];
+    for (let n = el; n !== body; n = n.parentElement) {
+      const p = n.parentElement;
+      parts.unshift(`${n.tagName.toLowerCase()}:nth-of-type(${[...p.children].filter((c) => c.tagName === n.tagName).indexOf(n) + 1})`);
+      if (p !== body && p.id && only(`#${CSS.escape(p.id)}`, p)) { parts.unshift(`#${CSS.escape(p.id)}`); break; }
+      if (p === body) parts.unshift('body');
+    }
+    const path = parts.join(' > ');
+    return only(path, el) ? path : null;
+  };
+  // preceding siblings of the header and of each ancestor below body: an outer level precedes an inner one in document
+  // order, and each level's siblings are walked from its first child
+  const levels = [];
+  for (let el = header; el !== body; el = el.parentElement) {
+    const level = [];
+    for (let s = el.parentElement.firstElementChild; s && s !== el; s = s.nextElementSibling) {
+      const tag = s.tagName.toLowerCase();
+      const cs = getComputedStyle(s);
+      if (!SKIP.has(tag) && cs.position !== 'fixed' && cs.position !== 'absolute' && cs.display !== 'none') {
+        const top = topOf(s);
+        const height = Math.round(s.getBoundingClientRect().height);
+        if (top < headerTop || (height === 0 && top <= headerTop)) level.push({ tag, id: s.id || null, classes: [...s.classList], top, height, selector: selectorOf(s) });
+      }
+    }
+    levels.unshift(level);
+  }
+  return levels.flat();
+}
+
+// Runs in the page: each selector's current match count (a selector the query refuses counts 0).
+function countInPage(sels) {
+  return sels.map((sel) => { try { return document.querySelectorAll(sel).length; } catch { return 0; } });
+}
+/* eslint-enable no-undef */
+
+/**
+ * The in-flow blocks above the header on a Playwright `page` — the hide-list candidates read off the DOM: one
+ * page.evaluate of inFlowRegionsAboveHeaderInPage → [{ tag, id, classes, top, height, selector }] in document order
+ * ([] without a header). An evaluate error (a closed page) rejects.
+ */
+export async function inFlowRegionsAboveHeader(page) {
+  return page.evaluate(inFlowRegionsAboveHeaderInPage);
+}
+
+/**
+ * hideRegions' records recounted right before a capture / measurement → the same records (new objects, input order)
+ * each with `nAtCapture`: its selector's current match count (one page.evaluate; a selector the query refuses counts 0).
+ * A block injected after the hide pass is still hidden by the persistent `display: none !important` rule and is
+ * counted here. An empty list → [] without touching the page.
+ */
+export async function recountHides(page, records) {
+  const list = (Array.isArray(records) ? records : []).filter((r) => r && typeof r.sel === 'string');
+  if (!list.length) return [];
+  const counts = await page.evaluate(countInPage, list.map((r) => r.sel));
+  return list.map((r, i) => ({ ...r, nAtCapture: counts[i] }));
+}
+
+/** The selectors that matched nothing: `n === 0 && nAtCapture === 0` (a record not recounted is not judged), error
+ * records excluded; de-duplicated, in record order. */
+export function hideMisses(records) {
+  const out = [];
+  for (const r of records || []) if (r && !r.error && r.n === 0 && r.nAtCapture === 0 && !out.includes(r.sel)) out.push(r.sel);
+  return out;
+}
+
+/** Candidates → one text: `<selector> (<tag>, <h>px)` joined '; ', a 0-px one `<selector> (<tag>, 0px now — a block
+ * that grows later is still hidden by the persistent display:none !important rule)`; none → `none found above the
+ * header`. */
+export function formatCandidates(list) {
+  const rows = (list || []).filter(Boolean);
+  if (!rows.length) return 'none found above the header';
+  return rows.map((c) => (c.height ? `${c.selector} (${c.tag}, ${c.height}px)` : `${c.selector} (${c.tag}, 0px now — a block that grows later is still hidden by the persistent display:none !important rule)`)).join('; ');
+}
+
+/** The live-side warning, ONE line every tool prints (callers may prefix it): `hide matched nothing on live —
+ * candidates: <formatCandidates(list)> (<sel>, …)` naming the missed selectors; no selector → ''. */
+export function hideMissLine(sels, list) {
+  const missed = [].concat(sels || []).filter((s) => typeof s === 'string' && s);
+  if (!missed.length) return '';
+  return `hide matched nothing on live — candidates: ${formatCandidates(list)} (${missed.join(', ')})`.replace(/[\r\n]+/g, ' ');
+}
 
 // ---- evidence freshness: when a source-side capture may be reused ------------------------------
 // One policy for every reuse of source-side evidence (an origin capture, a live inventory, the live
