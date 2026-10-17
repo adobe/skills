@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.1 — block provenance: the export carries the source selector of every delivered block
+## 0.34.1 — block provenance: the export carries the source selector of every delivered block (#NNN)
 
 Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
 from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
