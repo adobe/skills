@@ -4,6 +4,7 @@
 //   preview  A0: the branch preview of the page: the project can have one, its authored form (.plain.html) and
 //            delivered page answer 200, and the page keeps to its namespace in a shared repo (its path, and the
 //            nav and footer metas of its head). Writes preview.json.
+//   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
@@ -17,6 +18,7 @@ export const HELP = `Usage:
   node deployed-gate.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path </ns/slug>
                          (--namespace <ns> | --sandbox) [--auth-header <value> | --token-env <NAME>]
                          [--max-wait 120] [--dir stardust]
+  node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview.
 
@@ -35,10 +37,25 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          --sandbox (a repo of one's own) waives both and is recorded; give --namespace or --sandbox, not both.
          Prints "PASS preview <url>". Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
            { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, checkedAt, problems? }
+tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
+         settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
+         on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
+         :root token of the block the reskin renders from the sheet, verbatim. Reads preview.json (no record, or
+         one with problems, is exit 2; a skipped leg prints "not run: skipped", exit 0), the donor token sheet
+         <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
+         root (missing either is exit 2). layout.containerMaxWidth (measured by parity's cap-probe) and
+         layout.sectionPaddingY (EDS section rhythm, measured in the real run) are not asserted: each prints
+         a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n assertions failing) plus one
+         indented line per failing assertion (exit 1). Writes tokens-spec.json, tokens-probe.md,
+         tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. The
+         token reaches donor-probe by environment, never argv. A probe that cannot run is exit 2 (a stalled
+         decoration, an unreachable or protected page), 3 (a bot challenge) or 124 (no verdict).
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
-               only, never printed or recorded (preview.json says only auth: true).
+               only, never printed or recorded (preview.json says only auth: true). tokens hands it to
+               donor-probe as the variable DEPLOYED_GATE_SITE_TOKEN, which puts "token " in front of a value
+               that starts with neither "token " nor "bearer ".
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
 
@@ -50,6 +67,11 @@ const SPEC = {
   preview: {
     values: ['--page', '--org', '--repo', '--branch', '--path', '--namespace', '--auth-header', '--token-env', '--max-wait', '--dir'],
     bools: ['--sandbox'],
+    positional: [],
+  },
+  tokens: {
+    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    bools: [],
     positional: [],
   },
 };
@@ -92,6 +114,21 @@ async function helper(name, sub = 'deployed') {
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
+// The site token the gate was given (--auth-header or --token-env), or null. `say` prints through redact and
+// `scrub` takes the token out of an error text, so no line the gate prints can carry it.
+async function siteToken(opts, log, UsageError) {
+  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return { auth: null, say: log, scrub: (e) => e };
+  const eds = await helper('eds');
+  await eds.loadLiveSession();
+  const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
+  if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
+  return {
+    auth,
+    say: (m) => log(eds.redact(m, auth)),
+    scrub: (e) => { if (e?.message) e.message = eds.redact(e.message, auth); return e; },
+  };
+}
+
 async function previewStep({ dir, opts, env, log, UsageError }) {
   for (const flag of ['page', 'org', 'repo', 'branch', 'path']) {
     if (!opts[flag]) throw new UsageError(`preview needs --${flag}`);
@@ -106,15 +143,7 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
   if (!Number.isInteger(maxWaitSec) || maxWaitSec < 1) throw new UsageError(`--max-wait needs a positive integer (seconds), got "${opts['max-wait']}"`);
 
   const { runPreview } = await helper('preview');
-  let auth = null;
-  let eds = null;
-  if (opts['auth-header'] !== undefined || opts['token-env'] !== undefined) {
-    eds = await helper('eds');
-    await eds.loadLiveSession();
-    auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
-    if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
-  }
-  const say = (m) => log(auth ? eds.redact(m, auth) : m);
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
   try {
     const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, auth, maxWaitSec, env });
     if (record.skipped) { say(`SKIPPED deployed leg: ${record.reason}`); return 0; }
@@ -127,8 +156,28 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
       say(`  last response: ${e.last}`);
       return 124;
     }
-    if (auth && e?.message) e.message = eds.redact(e.message, auth);
-    throw e;
+    throw scrub(e);
+  }
+}
+
+async function tokensStep({ dir, opts, env, log, UsageError }) {
+  if (!opts.page) throw new UsageError('tokens needs --page <slug>');
+  if (!NAME.test(opts.page)) throw new UsageError(`--page must be a slug (letters, digits, . _ -), got "${opts.page}"`);
+  const { readPreview } = await helper('io');
+  const preview = readPreview(dir, opts.page);
+  if (preview.skipped) { log('not run: skipped'); return 0; }
+  if (preview.problems?.length) throw new UsageError(`preview has problems: run deployed-gate preview again (${preview.problems.length} recorded in preview.json)`);
+
+  const { runTokens } = await helper('eds-spec');
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
+  try {
+    const result = await runTokens({ dir, slug: opts.page, preview, auth, env });
+    say(result.verdict === 'PASS' ? `PASS tokens ${result.total}/${result.total}` : `FAIL tokens ${result.failures.length}/${result.total}`);
+    for (const f of result.failures) say(`  ${f}`);
+    for (const s of result.skipped) say(`SKIP ${s}`);
+    return result.exit;
+  } catch (e) {
+    throw scrub(e);
   }
 }
 
@@ -138,7 +187,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, ...steps };
+  const table = { preview: previewStep, tokens: tokensStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 

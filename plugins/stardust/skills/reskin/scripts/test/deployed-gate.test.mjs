@@ -160,7 +160,7 @@ await check('--help answers from a directory holding only the script: exit 0, us
     assert.match(r.stdout, /usage/i);
     assert.match(r.stdout, /deployed-gate\.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path <\/ns\/slug>/);
     for (const flagName of ['--namespace', '--sandbox', '--auth-header', '--token-env', '--max-wait', '--dir']) assert.ok(r.stdout.includes(flagName), `usage names ${flagName}`);
-    assert.ok(!/deployed-gate\.mjs (content|tokens|parity|sanity|inherited|all)\b/.test(r.stdout), 'no unwired subcommand in the usage');
+    assert.ok(!/deployed-gate\.mjs (content|parity|sanity|inherited|all)\b/.test(r.stdout), 'no unwired subcommand in the usage');
   }
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
   const bare = await run(['preview', ...PAGE, '--namespace', 'ns'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });

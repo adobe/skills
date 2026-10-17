@@ -1,0 +1,139 @@
+// skills/reskin/scripts/deployed/eds-spec.mjs — A2 of the deployed leg, `tokens`: the donor tokens asserted on the
+// EDS DOM of the preview, through donor-probe.mjs.
+//   edsSpec({ tokens, runtimeContract })  the probe entries: palette, type and the primary button on the selectors
+//                                         EDS markup has, then each :root token verbatim. A token the sheet does not
+//                                         carry has no entry. layout.containerMaxWidth (A3's cap-probe measures it:
+//                                         EDS wrappers are full-width by design) and layout.sectionPaddingY (EDS section
+//                                         rhythm, measured in the real run) are not asserted here.
+//   runTokens({ dir, slug, preview, auth, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
+//                                         writes tokens.json and returns { verdict, exit, report, json, total, failures,
+//                                         skipped }. A probe that cannot give a verdict throws: a UsageError (exit 2),
+//                                         an error with code 3 (bot challenge) or code 124 (no verdict).
+// The labels are donor-probe's DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5.
+// The site token reaches the probe by environment (never argv) and never appears in a message, report or record.
+import { spawn } from 'node:child_process';
+import { existsSync, rmSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { UsageError } from '../figma/errors.mjs';
+import { readJson, writeJson } from '../figma/io.mjs';
+import { rootTokens } from '../render/root-tokens.mjs';
+import { redact } from './eds.mjs';
+import { deployedDir } from './io.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+// donor-probe.mjs sits beside deployed-gate.mjs in both layouts (plugin tree and project copy).
+const DONOR_PROBE = resolve(HERE, '..', 'donor-probe.mjs');
+const TOKEN_ENV = 'DEPLOYED_GATE_SITE_TOKEN';
+const BUTTON = 'main a.button.primary';
+const PRIMARY_CLASS = /\.button\.primary(?![\w-])/;
+
+const SKIPPED = [
+  'layout.containerMaxWidth: measured by parity cap-probe',
+  'layout.sectionPaddingY: EDS section rhythm, measured in the real run',
+];
+
+const ROWS = [
+  { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
+  { label: 'body fg', selector: 'body', property: 'color', token: 'palette.bodyFg' },
+  { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family', compare: 'firstFamily' },
+  { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
+  { label: 'display weight', selector: 'main h1', property: 'fontWeight', token: 'type.display.fontWeight' },
+  { label: 'heading color', selector: 'main h2', property: 'color', token: 'palette.headingFg' },
+  { label: 'primary button bg', selector: BUTTON, property: 'backgroundColor', token: 'buttons.primary.background' },
+  { label: 'primary button fg', selector: BUTTON, property: 'color', token: 'buttons.primary.color' },
+  { label: 'primary button radius', selector: BUTTON, property: 'borderRadius', token: 'buttons.primary.borderRadius' },
+  { label: 'primary button padding (±2px)', selector: BUTTON, property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2 },
+  { label: 'primary button font size', selector: BUTTON, property: 'fontSize', token: 'buttons.primary.fontSize' },
+];
+
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const lookup = (tokens, path) => path.split('.').reduce((o, k) => (isObject(o) ? o[k] : undefined), tokens);
+const present = (v) => v !== undefined && v !== null && !(typeof v === 'string' && v.trim() === '');
+
+export function edsSpec({ tokens, runtimeContract }) {
+  const rows = [];
+  for (const { token, ...row } of ROWS) {
+    const value = lookup(tokens, token);
+    if (!present(value)) continue;
+    if (typeof value !== 'string') throw new UsageError(`donor-tokens.json: ${token} must be a string, got ${typeof value}`);
+    rows.push({ label: row.label, selector: row.selector, property: row.property, value, ...(row.tolerancePx ? { tolerancePx: row.tolerancePx } : {}), ...(row.compare ? { compare: row.compare } : {}) });
+  }
+  if (rows.some((r) => r.selector === BUTTON) && !PRIMARY_CLASS.test(String(runtimeContract?.buttonClasses ?? ''))) {
+    throw new UsageError(`runtime-contract.json: buttonClasses (${JSON.stringify(runtimeContract?.buttonClasses ?? null)}) does not mention .button.primary, so the deployed site has no primary button for \`${BUTTON}\` to assert`);
+  }
+  let root;
+  try { root = rootTokens(tokens).entries; } catch (e) { throw new UsageError(`donor-tokens.json: ${e.message}`); }
+  return [...rows, ...root.map((e) => ({ label: `:root ${e.name}`, selector: ':root', property: e.name, value: e.value }))];
+}
+
+function readInput(path, what) {
+  if (!existsSync(path)) throw new UsageError(`missing ${path}: ${what}`);
+  try { return readJson(path); } catch (e) { throw new UsageError(`${path} is not valid JSON (${e.message})`); }
+}
+
+const coded = (code, message) => Object.assign(new Error(message), { code });
+
+// The probe as a child process, collected; async, so a server in this process can answer it.
+function runProbe(args, env) {
+  return new Promise((done, fail) => {
+    const child = spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d; });
+    child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d; });
+    child.on('error', fail);
+    child.on('close', (status, signal) => done({ status, signal, stdout, stderr }));
+  });
+}
+
+const SELECTOR_NOTHING = /^selector ".*" matched nothing$/;
+
+// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null. The sheet is
+// <dir>/reskin/donor-tokens.json, the runtime contract <parent of dir>/stardust/runtime-contract.json (as the
+// eligibility check reads it). Blocking: verdict FAIL is exit 1.
+export async function runTokens({ dir, slug, preview, auth = null, env = process.env, donorProbe = DONOR_PROBE }) {
+  const out = deployedDir(dir, slug);
+  const files = { record: join(out, 'tokens.json'), spec: join(out, 'tokens-spec.json'), report: join(out, 'tokens-probe.md'), json: join(out, 'tokens-probe.json') };
+  for (const f of Object.values(files)) rmSync(f, { force: true });
+
+  const sheetPath = join(dir, 'reskin', 'donor-tokens.json');
+  if (typeof preview?.url !== 'string' || !preview.url) throw new UsageError(`${join(out, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
+  const tokens = readInput(sheetPath, 'the donor token sheet the reskin writes');
+  const runtimeContract = readInput(join(dirname(resolve(dir)), 'stardust', 'runtime-contract.json'), 'deploy\'s runtime probe writes it');
+  const spec = edsSpec({ tokens, runtimeContract });
+  if (!spec.length) throw new UsageError(`${sheetPath} holds no token to assert: nothing to assert is no pass`);
+  const want = new Map(spec.map((e) => [e.label, e.value]));
+  writeJson(files.spec, spec);
+
+  const args = [donorProbe, '--tokens', sheetPath, '--spec', files.spec, '--rendered', preview.url, '--wait-eds', '--no-sanity', '--report', files.report, '--json', files.json];
+  const childEnv = { ...process.env, ...env };
+  delete childEnv[TOKEN_ENV];
+  if (auth) {
+    args.push('--token-env', TOKEN_ENV);
+    childEnv[TOKEN_ENV] = auth;
+  }
+  let r;
+  try { r = await runProbe(args, childEnv); } catch (e) { throw coded(124, redact(`donor-probe did not start: ${e.message}`, auth)); }
+  const why = redact((r.stderr || r.stdout).trim(), auth);
+  if (r.status === 2) {
+    const hint = preview.auth && !auth ? '\npreview.json says the preview was reached with a site token: pass --auth-header or --token-env' : '';
+    throw new UsageError(`${why || 'donor-probe exited 2'}${hint}`);
+  }
+  if (r.status === 3) throw coded(3, why || 'donor-probe exited 3: bot challenge');
+
+  let probe = null;
+  if (r.status === 0 || r.status === 1) { try { probe = readJson(files.json); } catch { /* no verdict, reported below */ } }
+  const scored = Array.isArray(probe?.results) ? probe.results.filter((x) => x.status === 'PASS' || x.status === 'FAIL') : null;
+  const bad = scored?.filter((x) => x.status === 'FAIL') ?? [];
+  if (!scored || (r.status === 0) !== (bad.length === 0)) {
+    throw coded(124, `donor-probe did not give a verdict (exit ${r.status ?? r.signal}): ${why}`);
+  }
+  const failures = bad.map((x) => {
+    const label = x.label ?? x.check;
+    return SELECTOR_NOTHING.test(x.detail) ? `${label}: ${x.detail}` : `${label}: got ${x.detail}, want ${want.get(label)}`;
+  });
+  const result = { verdict: bad.length ? 'FAIL' : 'PASS', exit: bad.length ? 1 : 0, report: files.report, json: files.json, skipped: [...SKIPPED] };
+  writeJson(files.record, result);
+  return { ...result, total: scored.length, failures };
+}
