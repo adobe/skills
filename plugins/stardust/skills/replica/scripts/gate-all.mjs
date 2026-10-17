@@ -175,13 +175,16 @@
  * the out dir and any capture, probe, gate key or table write: one stderr line (`no verdict`, the roster, the estimate,
  * the deadline and the remedy `--timeout <estimate>`), exit 2.
  *
- * FIX ROUNDS — the cap is mechanical, per page per out dir (stage and width): every --only run counts one round per
- * selected page whose row has a verdict (`countsAsRound`: a pixel measurement, not INCONCLUSIVE; a reused row's verdict
- * counts too) in <out>/<slug>/rounds.json { rounds, max, at[ISO…], [resets], [seeded: "runs", seededFrom] } (indent 1,
- * atomic; `at` = the counted rounds since the last reset); full runs never count and are never refused. Every row carries
- * `round` (the count after this run), the table `_provenance.maxRounds`. Without rounds.json the count is seeded from the
- * legacy runs/*.json tables holding a verdict row for the page (`roundsOf`, which gate-triage reads too) and the first
- * write records `seeded`. Each --only run first reserves its pages — <slug>/rounds.lock { pid, at }, sorted, complete
+ * FIX ROUNDS — the cap is mechanical, per page per out dir (stage and width): a fix round is a measured --only verdict
+ * of a page that already has one. An --only row counts one round (`countsAsRound`; `roundSkip` names why not) only when
+ * it has a verdict (a pixel measurement, not INCONCLUSIVE), was measured in this run (not a row reused whole under
+ * --skip-existing) and the page already had a verdict row in this out dir before the run (summary.json or runs/*.json,
+ * read before the run — `gatedBefore`, either stage): a page's first gating is round 0. The count is kept in
+ * <out>/<slug>/rounds.json { rounds, max, at[ISO…], [resets], [seeded: "runs", seededFrom] } (indent 1, atomic; `at` =
+ * the counted rounds since the last reset); full runs never count and are never refused. Every row carries `round` (the
+ * count after this run), the table `_provenance.maxRounds`. Without rounds.json the count is seeded from the out dir's
+ * tables (summary.json + runs/*.json, `runTables`): the page's measured verdict rows less one, its first gating
+ * (`roundsOf`, which gate-triage reads too); the first write records `seeded`. Each --only run first reserves its pages — <slug>/rounds.lock { pid, at }, sorted, complete
  * when it appears (a unique temp file hard-linked into place): a lock of a running process — or one without a readable pid
  * younger than 30 s — refuses the run (one stderr line `no verdict — a round of <slug> is in progress (pid <n>) — lock
  * taken <at> (<age> ago): <lock>; wait for that run to end, or remove <lock> if no gate-all run is active`, exit 2); a
@@ -193,7 +196,8 @@
  * decision with --round-reset "<reason>"), exit 2, nothing written. --round-reset (with --only; a non-empty reason) starts
  * a new count for the selected pages at the cap — resets[] { at, reason, from, history }, the row's `roundReset` { reason,
  * at } — or logs `round-reset: no --only slug at the cap — nothing reset`. rounds.json is written before the run table (a
- * crash over-counts, never under-counts); _run.log names each page's count (`rounds @<w>: <slug> <n>/<max>`).
+ * crash over-counts, never under-counts); _run.log names each page's count (`rounds @<w>: <slug> <n>/<max>`, a row that
+ * is no round `(<no verdict | reused whole | first gating> — not counted)`).
  * SELF-TRIAGE (after a fix round): a published-stage --only run in which any selected page already had a row in this out
  * dir (latestRows, read before the run) then runs gate-triage's triageGate on <out> in-process — gate-triage.mjs beside
  * this file, loaded by a dynamic import only (it imports this module: no static cycle; advisory, so not one of the gate
@@ -239,7 +243,7 @@
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
  * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools`, `estimateFactor`, `buildHost` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
- * `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
+ * `roundSkip`, `gatedBefore`, `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -259,8 +263,9 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --state <file>            stardust/state.json — the prototype stage, legacy projects; template / tier of coverage rows
   --out <dir>               stardust/replica/gates/all-<width>
   --width <px>              1440
-  --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched): a fix round — each selected page
-                            whose row has a verdict (not INCONCLUSIVE; a reused row counts) counts one round
+  --only <slug,…>           subset → runs/<ts>-<slug>.json (summary.* untouched): a fix round — a selected page's row
+                            counts one round when measured with a verdict (not INCONCLUSIVE, not reused whole) and
+                            the page already had a verdict row in <out>; its first gating is round 0
   --max-rounds <n>          3 — fix rounds per page per out dir; 1..3 only (it may only lower the cap). An --only run
                             with a selected page at the cap is refused (no verdict, exit 2, nothing written)
   --round-reset "<reason>"  with --only: the re-prototype decision — the selected pages at the cap start a new count
@@ -334,7 +339,8 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   <h>px); … (<sel>, …)", the row's hideMiss, totals.hideMiss and one summary.md line naming the rows.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
-  count is seeded from runs/*.json rows with a verdict; every row carries round (+ roundReset on a reset row). An --only
+  count is seeded from summary.json + runs/*.json: the page's measured verdict rows less one (its first gating); every
+  row carries round (+ roundReset on a reset row). An --only
   run first takes <slug>/rounds.lock { pid, at } (complete when it appears): one held by a running process, or one
   without a readable pid younger than 30 s → "no verdict — a round of <slug> is in progress (pid <n>) — lock taken <at>
   (<age> ago): <lock>; wait for that run to end, or remove <lock> if no gate-all run is active", exit 2; a dead
@@ -1073,35 +1079,51 @@ export function rowReuse({ prior, gateKey, edsPng, override = null, register = n
   return { ...row, host: 'host' in row ? row.host : row.gateKey === gateKey ? host : null, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
 }
 
-// ---- fix rounds: <out>/<slug>/rounds.json counts the --only runs that yielded a verdict — the cap is mechanical ----------
+// ---- fix rounds: <out>/<slug>/rounds.json counts the measured --only verdicts of a page already gated — the cap is mechanical
 export const MAX_ROUNDS = 3;
-/** A row a fix round counts: a verdict — a pixel measurement, not INCONCLUSIVE (a reused row's verdict is one too). */
-export const countsAsRound = (row) => !!row && row.pct != null && row.inconclusive !== true;
-/** <out>/runs/*.json in name order → [{ file, at, rows }] (unreadable tables skipped; at = _provenance.writtenAt, else the file's mtime). */
+const hasVerdict = (row) => !!row && row.pct != null && row.inconclusive !== true;
+const reusedWhole = (row) => !!(row && row.reused && row.reused.what === 'row');
+/** The page already has a verdict row in these tables (runTables, read before the run): a later measured verdict is a fix round. */
+export const gatedBefore = (tables, slug) => (tables || []).some((t) => t.rows.some((r) => r && r.slug === slug && hasVerdict(r)));
+/**
+ * roundSkip(row, { gated }) → why an --only row is no fix round, or null when it is one: 'no verdict' (no pixel
+ * measurement, or INCONCLUSIVE), 'reused whole' (a row reused under --skip-existing), 'first gating' (`gated` = gatedBefore
+ * is false: the page had no verdict row in this out dir before the run — round 0).
+ */
+export function roundSkip(row, { gated = false } = {}) {
+  if (!hasVerdict(row)) return 'no verdict';
+  if (reusedWhole(row)) return 'reused whole';
+  return gated ? null : 'first gating';
+}
+/** A row a fix round counts: a verdict measured in this run (not INCONCLUSIVE, not reused whole) of a page already gated here. */
+export const countsAsRound = (row, ctx = {}) => roundSkip(row, ctx) === null;
+/** <out>/summary.json, then <out>/runs/*.json in name order → [{ file, at, rows }] (unreadable tables skipped; at = _provenance.writtenAt, else the file's mtime). */
 export function runTables(outDir) {
-  const dir = join(outDir, 'runs'); if (!existsSync(dir)) return [];
+  const runs = join(outDir, 'runs');
+  const files = ['summary.json', ...(existsSync(runs) ? readdirSync(runs).filter((x) => x.endsWith('.json')).sort().map((f) => `runs/${f}`) : [])];
   const out = [];
-  for (const f of readdirSync(dir).filter((x) => x.endsWith('.json')).sort()) {
-    let s; try { s = JSON.parse(readFileSync(join(dir, f), 'utf8')); } catch { continue; }
+  for (const f of files) {
+    const p = join(outDir, f); let s; try { s = JSON.parse(readFileSync(p, 'utf8')); } catch { continue; }
     if (!s || !Array.isArray(s.rows)) continue;
-    const at = (s._provenance && typeof s._provenance.writtenAt === 'string' && s._provenance.writtenAt) || statSync(join(dir, f)).mtime.toISOString();
-    out.push({ file: `runs/${f}`, at, rows: s.rows });
+    const at = (s._provenance && typeof s._provenance.writtenAt === 'string' && s._provenance.writtenAt) || statSync(p).mtime.toISOString();
+    out.push({ file: f, at, rows: s.rows });
   }
   return out;
 }
 /**
  * roundsOf(outDir, slug[, tables]) → { rounds, max, at, resets, from: 'rounds.json' | 'runs'[, seeded, seededFrom] } —
  * fs reads only; gate-all's cap and gate-triage read the count with it. <outDir>/<slug>/rounds.json when present (one
- * that does not parse, or has no integer `rounds`, reads as absent); else the legacy seed: the number of
- * <outDir>/runs/*.json tables holding a row for the slug that countsAsRound (`at` their writtenAt, sorted; max MAX_ROUNDS).
- * `tables` = runTables(outDir), read once for many slugs.
+ * that does not parse, or has no integer `rounds`, reads as absent); else the legacy seed ('runs'): the slug's measured
+ * verdict rows (not INCONCLUSIVE, not reused whole) across the tables, less one — the first is its first gating, round 0
+ * (`at` the later rows' table writtenAt, sorted; max MAX_ROUNDS). `tables` = runTables(outDir), read once for many slugs.
  */
 export function roundsOf(outDir, slug, tables = null) {
   let doc = null; try { doc = JSON.parse(readFileSync(join(outDir, slug, 'rounds.json'), 'utf8')); } catch { doc = null; }
   if (doc && typeof doc === 'object' && Number.isInteger(doc.rounds) && doc.rounds >= 0) {
     return { rounds: doc.rounds, max: Number.isInteger(doc.max) && doc.max >= 1 ? doc.max : MAX_ROUNDS, at: Array.isArray(doc.at) ? doc.at : [], resets: Array.isArray(doc.resets) ? doc.resets : [], from: 'rounds.json', ...(doc.seeded ? { seeded: doc.seeded, seededFrom: doc.seededFrom } : {}) };
   }
-  const at = (tables || runTables(outDir)).filter((t) => t.rows.some((r) => r && r.slug === slug && countsAsRound(r))).map((t) => t.at).sort();
+  const measured = (tables || runTables(outDir)).flatMap((t) => t.rows.filter((r) => r && r.slug === slug && hasVerdict(r) && !reusedWhole(r)).map(() => t.at)).sort();
+  const at = measured.slice(1);
   return { rounds: at.length, max: MAX_ROUNDS, at, resets: [], from: 'runs' };
 }
 /**
@@ -1377,6 +1399,8 @@ async function main() {
   const lockNotes = opts.only ? reserveRounds(opts.out, slugs) : [];
   const TABLES = runTables(opts.out);
   const ROUNDS = Object.fromEntries(slugs.map((slug) => [slug, roundsOf(opts.out, slug, TABLES)]));
+  // the tables read before the run, either stage: a page without a verdict row in them is at its first gating (round 0)
+  const GATED = Object.fromEntries(slugs.map((slug) => [slug, gatedBefore(TABLES, slug)]));
   const refusal = opts.only ? capRefusal(slugs.map((slug) => ({ slug, rounds: ROUNDS[slug].rounds })), { max: opts.maxRounds, width: opts.width, reset: opts.roundReset }) : null;
   if (refusal) { console.error(refusal); process.exit(2); }
   // a fix round triages after the table: a published --only run where a selected page already has a row in this out dir
@@ -1754,18 +1778,19 @@ async function main() {
   });
   // a hide selector that matched nothing on the origin (live) capture — fresh, kept or a reused row's: never silent, never a verdict
   for (const row of rows) { const miss = hideMissOf(row.hideMiss); if (miss) log(`WARNING ${row.slug}: ${hideMissText(miss, FRESH && FRESH.hideMissLine)}`); }
-  // Fix rounds: an --only run counts each row with a verdict (countsAsRound) — rounds.json written before the run table, so
-  // a crash over-counts, never under-counts; --round-reset first starts a new count for the selected pages at the cap.
+  // Fix rounds: an --only run counts each row that countsAsRound (a verdict measured in this run of a page that already had
+  // one here; roundSkip names why not) — rounds.json written before the run table, so a crash over-counts, never
+  // under-counts; --round-reset first starts a new count for the selected pages at the cap.
   // Every row carries `round` (a full run: the current count, never counted); a reset row `roundReset`.
   const writtenAt = new Date().toISOString(); const roundLines = [];
   for (const row of rows) {
     const prev = ROUNDS[row.slug]; delete row.roundReset; // a reused row's own reset belongs to its own run
     if (!opts.only) { row.round = prev.rounds; continue; }
-    const counted = countsAsRound(row);
-    const next = nextRounds(prev, { at: writtenAt, max: opts.maxRounds, counted, reset: opts.roundReset && prev.rounds >= opts.maxRounds ? opts.roundReset : null });
+    const skip = roundSkip(row, { gated: GATED[row.slug] });
+    const next = nextRounds(prev, { at: writtenAt, max: opts.maxRounds, counted: !skip, reset: opts.roundReset && prev.rounds >= opts.maxRounds ? opts.roundReset : null });
     if (next.changed) writeJsonAtomic(join(opts.out, row.slug, 'rounds.json'), next.doc);
     row.round = next.round; if (next.roundReset) row.roundReset = next.roundReset;
-    roundLines.push(`${row.slug} ${next.round}/${opts.maxRounds}${counted ? '' : ' (no verdict — not counted)'}${next.roundReset ? ' (after the reset)' : ''}`);
+    roundLines.push(`${row.slug} ${next.round}/${opts.maxRounds}${skip ? ` (${skip} — not counted)` : ''}${next.roundReset ? ' (after the reset)' : ''}`);
   }
   if (roundLines.length) log(`rounds @${opts.width}: ${roundLines.join(', ')}`);
   const n = (f) => rows.filter(f).length;

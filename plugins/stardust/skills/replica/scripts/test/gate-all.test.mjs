@@ -53,8 +53,10 @@
 // font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*. A font check
 // that could not run (fontsFailed: null): fontChecksSkipped, font-check-skipped:<side> failing the row, null carried from
 // the record, a live.json and a kept origin; the trust sandbox with STUB_FONTS_NULL_*.
-// Fix rounds: countsAsRound (a verdict; a reused row's too), roundsOf (rounds.json, else the legacy runs/*.json seed),
-// capRefusal (the cap line), nextRounds (count, reset, seed record); the trust sandbox with its own --out (rounds 1-7):
+// Fix rounds: countsAsRound / roundSkip (a verdict measured in this run of a page gated before — not the first gating, a row
+// reused whole or an INCONCLUSIVE one), gatedBefore, roundsOf (rounds.json, else the summary.json + runs/*.json seed: the
+// measured verdict rows less one), capRefusal (the cap line), nextRounds (count, reset, seed record); the reuse sandbox: a
+// row reused whole is no round; the trust sandbox with its own --out (rounds 1-7): a first gating at round 0, then
 // three counted rounds, a 4th refused before any write (--max-rounds lowers the cap, a full run neither counts nor refuses),
 // --max-rounds / --round-reset usage, a reset recorded (rounds.json + row), an INCONCLUSIVE crawl-fullpage row not counted,
 // a live process's rounds.lock refused (age, recovery) and a dead one's reaped, a partial / young empty lock held, an old
@@ -70,7 +72,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gatedBefore, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundSkip, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -721,20 +723,35 @@ check('rosterEstimate over the coverage: the default file beside a state wins (s
 
 // ---- fix rounds: the count (roundsOf — rounds.json, else the legacy runs/*.json seed), the cap line, the next count ------
 const RT = (m) => `2026-02-01T00:${String(m).padStart(2, '0')}:00.000Z`;
-check('countsAsRound: a row with a verdict counts (a reused row too); an INCONCLUSIVE row, a row without a pixel measurement or no row does not', () => {
-  assert.equal(countsAsRound({ slug: 'a', pct: 2, inconclusive: false }), true); assert.equal(countsAsRound({ slug: 'a', pct: 30, pass: false }), true, 'a FAIL is a verdict');
-  assert.equal(countsAsRound({ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }), true, 'a reused verdict is a verdict');
-  assert.equal(countsAsRound({ slug: 'a', pct: 1.5, inconclusive: true }), false); assert.equal(countsAsRound({ slug: 'a', pct: null, error: 'missing capture' }), false); assert.equal(countsAsRound(null), false);
+check('countsAsRound / roundSkip: a fix round is a verdict measured in this run (a FAIL too) of a page gated before — the first gating, a row reused whole, an INCONCLUSIVE row, a row without a pixel measurement or no row is none, and says why', () => {
+  const gated = { gated: true };
+  assert.equal(countsAsRound({ slug: 'a', pct: 2, inconclusive: false }, gated), true); assert.equal(countsAsRound({ slug: 'a', pct: 30, pass: false }, gated), true, 'a FAIL is a verdict');
+  assert.equal(countsAsRound({ slug: 'a', pct: 2, reused: { what: 'probes', at: RT(1) } }, gated), true, 'replayed probes: the row was still measured');
+  assert.equal(roundSkip({ slug: 'a', pct: 2 }, gated), null);
+  assert.equal(roundSkip({ slug: 'a', pct: 2 }, { gated: false }), 'first gating'); assert.equal(roundSkip({ slug: 'a', pct: 2 }), 'first gating', 'gated defaults to false');
+  assert.equal(roundSkip({ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }, gated), 'reused whole');
+  assert.equal(roundSkip({ slug: 'a', pct: 1.5, inconclusive: true }, gated), 'no verdict'); assert.equal(roundSkip({ slug: 'a', pct: null, error: 'missing capture' }, gated), 'no verdict'); assert.equal(roundSkip(null, gated), 'no verdict');
+  for (const row of [{ slug: 'a', pct: 2 }, { slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }, { slug: 'a', pct: 1.5, inconclusive: true }]) assert.equal(countsAsRound(row), false, JSON.stringify(row));
 });
-check('roundsOf: no rounds.json → the legacy seed from runs/*.json (tables with a verdict row for the slug: INCONCLUSIVE / error rows and unreadable tables are none, a reused row is one), from "runs"; rounds.json present → it (from "rounds.json"); one that does not parse → the seed', () => {
+check('gatedBefore: a verdict row of the slug in the tables read before the run (summary.json or runs/*.json; a reused row is a verdict row too) — an INCONCLUSIVE or error row, another slug or no table is none', () => {
+  const t = (rows) => ({ file: 'runs/x.json', at: RT(1), rows });
+  assert.equal(gatedBefore([], 'a'), false); assert.equal(gatedBefore(null, 'a'), false);
+  assert.equal(gatedBefore([t([{ slug: 'a', pct: 1.5, inconclusive: true }]), t([{ slug: 'a', pct: null, error: 'x' }]), t([{ slug: 'b', pct: 2 }])], 'a'), false);
+  assert.equal(gatedBefore([t([{ slug: 'b', pct: 2 }]), t([{ slug: 'a', pct: 30, pass: false }])], 'a'), true);
+  assert.equal(gatedBefore([t([{ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }])], 'a'), true);
+});
+check('roundsOf: no rounds.json → the legacy seed from summary.json + runs/*.json — the slug\'s measured verdict rows less one, its first gating (INCONCLUSIVE / error rows, rows reused whole and unreadable tables are none), from "runs"; rounds.json present → it (from "rounds.json"); one that does not parse → the seed', () => {
   const out = mkdtempSync(join(tmpdir(), 'gate-all-rounds-'));
   assert.deepEqual(roundsOf(out, 'a'), { rounds: 0, max: MAX_ROUNDS, at: [], resets: [], from: 'runs' }); assert.equal(MAX_ROUNDS, 3);
   mkdirSync(join(out, 'runs'));
   const table = (m, rows) => writeFileSync(join(out, 'runs', `${RT(m).replace(/[:.]/g, '-')}-x.json`), JSON.stringify({ _provenance: { writtenAt: RT(m) }, rows }));
+  writeFileSync(join(out, 'summary.json'), JSON.stringify({ _provenance: { writtenAt: RT(0) }, rows: [{ slug: 'a', pct: 2 }, { slug: 'c', pct: 2 }] }));
   table(4, [{ slug: 'a', pct: 2, reused: { what: 'row', at: RT(1) } }]); table(1, [{ slug: 'a', pct: 2 }, { slug: 'b', pct: 2 }]); table(2, [{ slug: 'a', pct: 1.5, inconclusive: true }]);
-  table(3, [{ slug: 'a', pct: null, error: 'missing capture' }]); table(5, [{ slug: 'b', pct: 30 }]); writeFileSync(join(out, 'runs', 'broken.json'), '{');
-  assert.deepEqual(roundsOf(out, 'a'), { rounds: 2, max: 3, at: [RT(1), RT(4)], resets: [], from: 'runs' });
-  assert.deepEqual(roundsOf(out, 'b'), { rounds: 2, max: 3, at: [RT(1), RT(5)], resets: [], from: 'runs' });
+  table(3, [{ slug: 'a', pct: null, error: 'missing capture' }]); table(5, [{ slug: 'b', pct: 30 }]); table(6, [{ slug: 'a', pct: 30 }]); writeFileSync(join(out, 'runs', 'broken.json'), '{');
+  assert.deepEqual(roundsOf(out, 'a'), { rounds: 2, max: 3, at: [RT(1), RT(6)], resets: [], from: 'runs' }, 'summary RT(0) is the first gating; RT(1), RT(6) measured; RT(4) reused whole');
+  assert.deepEqual(roundsOf(out, 'b'), { rounds: 1, max: 3, at: [RT(5)], resets: [], from: 'runs' });
+  assert.deepEqual(roundsOf(out, 'c'), { rounds: 0, max: 3, at: [], resets: [], from: 'runs' }, 'one gating: round 0');
+  assert.deepEqual(runTables(out).map((x) => x.file).slice(0, 2), ['summary.json', `runs/${RT(1).replace(/[:.]/g, '-')}-x.json`], 'summary.json first, then runs/ in name order');
   assert.deepEqual(roundsOf(out, 'a', runTables(out)), roundsOf(out, 'a'), 'the tables read once give the same count');
   mkdirSync(join(out, 'a'));
   const doc = { rounds: 1, max: 2, at: [RT(9)], resets: [{ at: RT(8), reason: 'r', from: 3, history: [RT(1), RT(4), RT(7)] }], seeded: 'runs', seededFrom: 2 };
@@ -931,6 +948,16 @@ check('a legacy gate dir (no probes.json / gate-key.json, rows without gateKey):
   assert.equal(r.status, 0, r.stderr); assert.deepEqual(r.n, { origin: 0, eds: 2, probes: 2, compares: 2 });
   const s = summary();
   assert.equal(s.totals.reusedRows + s.totals.reusedProbes, 0); assert.match(storedKey('home'), HEX); assert.equal(row(s, 'home').gateKey, storedKey('home'));
+});
+check('fix rounds: an --only --skip-existing row reused whole is no round (round 0, no rounds.json, logged "reused whole — not counted"); the same page measured again (--recapture-eds) is one', () => {
+  const only = (args) => { const x = gateAll(args); const run = (x.stdout.match(/run → (.*)/) || [])[1]; const doc = run ? JSON.parse(readFileSync(join(reuseRoot, run), 'utf8')) : null; return { ...x, doc, row: doc ? row(doc, 'home') : null, log: readFileSync(join(REUSE_OUT, '_run.log'), 'utf8') }; };
+  const reused = only(['--only', 'home', '--skip-existing']);
+  assert.equal(reused.status, 0, reused.stderr); assert.deepEqual(reused.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.equal(reused.row.reused.what, 'row');
+  assert.equal(reused.row.round, 0); assert.equal(existsSync(pageFile('home', 'rounds.json')), false); assert.match(reused.log, /rounds @1440: home 0\/3 \(reused whole — not counted\)$/m);
+  const measured = only(['--only', 'home', '--skip-existing', '--recapture-eds']);
+  assert.equal(measured.status, 0, measured.stderr); assert.equal(measured.n.eds, 1); assert.equal(measured.row.reused, null);
+  assert.equal(measured.row.round, 1); assert.deepEqual(JSON.parse(readFileSync(pageFile('home', 'rounds.json'), 'utf8')), { rounds: 1, max: 3, at: [measured.doc._provenance.writtenAt] });
+  assert.match(measured.log, /rounds @1440: home 1\/3$/m);
 });
 rmSync(base, { recursive: true, force: true });
 
@@ -2093,7 +2120,10 @@ const roundsFile = (slug, out = ROUT) => join(out, slug, 'rounds.json');
 const roundsJson = (slug, out = ROUT) => JSON.parse(readFileSync(roundsFile(slug, out), 'utf8'));
 const tree = () => readdirSync(troot, { recursive: true }).sort();
 const ROUND_ATS = [];
-check('rounds 1: three --only a runs with a verdict count 1, 2, 3 — rounds.json { rounds, max, at } (indent 1, trailing newline; at = each run table\'s writtenAt), every row stamped round, _provenance.maxRounds 3; no rounds.lock left', () => {
+check('rounds 1: a first --only gating on an empty out dir is round 0 (no rounds.json, logged "first gating — not counted"); then three --only a runs with a verdict count 1, 2, 3 — rounds.json { rounds, max, at } (indent 1, trailing newline; at = each run table\'s writtenAt), every row stamped round, _provenance.maxRounds 3; no rounds.lock left', () => {
+  const first = rgate(['--only', 'a']);
+  assert.equal(first.status, 0, first.stderr + first.stdout); assert.equal(first.row('a').round, 0); assert.equal(existsSync(roundsFile('a')), false, 'the first gating writes no count');
+  assert.match(first.log(), /rounds @1440: a 0\/3 \(first gating — not counted\)$/m); assert.equal(existsSync(join(ROUT, 'a', 'rounds.lock')), false);
   for (const i of [1, 2, 3]) {
     const r = rgate(['--only', 'a']);
     assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.row('a').round, i); assert.equal(r.doc._provenance.maxRounds, 3);
@@ -2177,14 +2207,15 @@ check('rounds 6: the reservation — a rounds.lock of a running process refuses 
   assert.equal(o.status, 0, o.stderr + o.stdout); assert.match(o.log(), /rounds lock b → reaped an unreadable lock \(60 min old\)$/m); assert.equal(o.row('b').round, 3);
   assert.deepEqual(readdirSync(join(ROUT, 'b')).filter((f) => f.startsWith('rounds.lock')), [], 'no lock, temp or reap file left');
 });
-check('rounds 7: legacy seed — no rounds.json: the run tables with a verdict row for the page seed the count (an INCONCLUSIVE or error row is none, a reused row is one); the first write records seeded: "runs", seededFrom; the next --only is refused at the cap', () => {
+check('rounds 7: legacy seed — no rounds.json: the page\'s measured verdict rows across summary.json + runs/*.json less one, its first gating (an INCONCLUSIVE or error row and a row reused whole are none); the first write records seeded: "runs", seededFrom; the next --only is refused at the cap', () => {
   const LREL = 'stardust/replica/gates/legacy-1440'; const LOUT = join(troot, LREL); mkdirSync(join(LOUT, 'runs'), { recursive: true });
   const table = (m, row) => writeFileSync(join(LOUT, 'runs', `${RT(m).replace(/[:.]/g, '-')}-a.json`), JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt: RT(m), breakpoint: 1440 }, rows: [{ slug: 'a', ...row }] }));
-  table(1, { pct: 2, pass: true }); table(2, { pct: 1.5, inconclusive: true }); table(3, { pct: null, error: 'missing capture' }); table(4, { pct: 2, pass: true, reused: { what: 'row', at: RT(1) } });
-  assert.deepEqual(roundsOf(LOUT, 'a'), { rounds: 2, max: 3, at: [RT(1), RT(4)], resets: [], from: 'runs' });
+  writeFileSync(join(LOUT, 'summary.json'), JSON.stringify({ _provenance: { writtenBy: 'gate-all.mjs', writtenAt: RT(1), breakpoint: 1440 }, rows: [{ slug: 'a', pct: 2, pass: true }] }));
+  table(2, { pct: 1.5, inconclusive: true }); table(3, { pct: null, error: 'missing capture' }); table(4, { pct: 2, pass: true, reused: { what: 'row', at: RT(1) } }); table(5, { pct: 30, pass: false }); table(6, { pct: 2, pass: true });
+  assert.deepEqual(roundsOf(LOUT, 'a'), { rounds: 2, max: 3, at: [RT(5), RT(6)], resets: [], from: 'runs' });
   const r = rgate(['--only', 'a'], {}, LREL);
   assert.equal(r.status, 0, r.stderr + r.stdout); const t = r.doc._provenance.writtenAt;
-  assert.deepEqual(roundsJson('a', LOUT), { rounds: 3, max: 3, at: [RT(1), RT(4), t], seeded: 'runs', seededFrom: 2 }); assert.equal(r.row('a').round, 3);
+  assert.deepEqual(roundsJson('a', LOUT), { rounds: 3, max: 3, at: [RT(5), RT(6), t], seeded: 'runs', seededFrom: 2 }); assert.equal(r.row('a').round, 3);
   const capped = rgate(['--only', 'a'], {}, LREL);
   assert.equal(capped.status, 2, capped.stderr + capped.stdout); assert.match(capped.stderr, /cap reached — re-prototype decision: a 3\/3 @1440 /);
 });

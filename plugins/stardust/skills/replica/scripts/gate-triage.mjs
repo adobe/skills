@@ -20,9 +20,9 @@
  * stardust/replica/presence.json when the gate dir has none (passed to chrome-parity as --presence --slug <rep>, with
  * the rep row's `hide` list as --hide; a stored parity result is reused only while the merged entries — "*" and <rep>,
  * the site file's under the gate's — are unchanged; a malformed one is that run's parity error), each failing page's
- * fix-round count (gate-all's roundsOf: <gate>/<slug>/rounds.json, else seeded from runs/*.json verdict rows;
- * group rows carry rounds / maxRounds / roundsFrom beside gateRuns, and a layout group with a row at its cap is the
- * re-prototype decision now). Causes: block:<name>,
+ * fix-round count (gate-all's roundsOf: <gate>/<slug>/rounds.json, else seeded from summary.json + runs/*.json — the
+ * page's measured verdict rows less one, its first gating; group rows carry rounds / maxRounds / roundsFrom beside
+ * gateRuns, and a layout group with a row at its cap is the re-prototype decision now). Causes: block:<name>,
  * selector:<sel>, encoder:<template>, layout:<template> (re-prototype candidate), capture:<slug>,
  * page:<slug>@<w>, and token:<prop>:<from>→<to> from the property diff. Same inputs ⇒ byte-identical
  * outputs and no new request line; run-dependent status goes to stdout only, as does the unit view (--unit with
@@ -81,8 +81,9 @@ Usage: node stardust/scripts/replica/gate-triage.mjs [options]   (from the proje
 Advisory: the rows stay the verdict; fix by cause, re-gate the named scope; 3 fix rounds per page.
 Fix rounds: each group row carries the page's mechanical count — rounds/maxRounds/roundsFrom in triage.json,
 \`rounds n/max\` in triage.md — read as gate-all reads it: <gate>/<slug>/rounds.json, else seeded from the
-runs/*.json tables with a verdict row for the page (roundsFrom "runs"; also under --no-runs); gateRuns still counts
-the merged tables' rows. A layout group with a row at rounds >= maxRounds reads "cap reached": the re-prototype decision.
+summary.json + runs/*.json tables: the page's measured verdict rows less one, its first gating (roundsFrom "runs";
+also under --no-runs); gateRuns still counts the merged tables' rows. A layout group with a row at rounds >= maxRounds
+reads "cap reached": the re-prototype decision.
 INCONCLUSIVE rows (a polluted capture) are listed apart as capture fixes (--hide / presence.json), never as failing;
 an override skips a row only when gate-all validated it (valid: true) — a rejected one is triaged; a row without a pixel
 measurement is listed under "No verdict (re-run)" whatever its override says.
@@ -384,7 +385,7 @@ function routeOf(g) {
   if (g.kind === 'block') return ['cluster', `fix blocks/${g.name}/ (CSS or encoder) once, re-gate the scope`];
   if (g.kind === 'selector') return ['cluster', `fix the block holding ${g.name} (CSS or encoder) once, re-gate the scope`];
   if (g.kind === 'encoder') return ['cluster', 'fix the template\'s encoder, re-render its siblings, re-gate'];
-  // the cap is mechanical: the page's fix-round count (rounds.json, else the legacy runs/ seed), never the table count
+  // the cap is mechanical: the page's fix-round count (rounds.json, else the legacy table seed), never the table count
   const capped = g.rows.filter((r) => r.rounds != null && r.rounds >= r.maxRounds);
   const cap = Math.min(...g.rows.map((r) => r.maxRounds ?? MAX_ROUNDS));
   return ['re-prototype', capped.length ? `cap reached (${capped.map((r) => `${r.row} ${r.rounds}/${r.maxRounds}`).join(', ')}): re-prototype decision now` : `re-prototype candidate — the variance probe decides; cap: ${cap} fix rounds per page`];
@@ -675,7 +676,7 @@ function gateInput({ rel, P, frozen }, { blocksDoc, pagesDoc, stateDoc, families
   const ev = (slug, kind) => { const k = `${slug}\u0000${kind}`; if (!cache.has(k)) cache.set(k, readJson(join(g, String(slug), `${kind}.json`))); return cache.get(k); };
   const capture = (slug) => { const f = join(P.captures, `${slug}.html`); return existsSync(f) && statSync(f).isFile() ? captureText(readFileSync(f, 'utf8')) : null; };
   const presAbs = join(g, 'presence.json'); const presence = isFile(presAbs) ? rel(presAbs) : isFile(P.site) ? rel(P.site) : null;
-  // fix rounds as gate-all counts them (one rule): rounds.json, else the runs/ seed — whatever --no-runs says
+  // fix rounds as gate-all counts them (one rule): rounds.json, else the summary.json + runs/ seed — whatever --no-runs says
   let tables = null; const rounds = (slug) => roundsOf(g, String(slug), tables || (tables = runTables(g)));
   return { gate: rel(g), sources, ev, capture, blocks: (blocksDoc && blocksDoc.blocks) || [], covPages: (pagesDoc && pagesDoc.pages) || [], statePages: (stateDoc && stateDoc.pages) || [], families, frozen, hot: opts.hot, regions: opts.regions, parity: !opts.noParity, unit: opts.unit, coverageFiles: { blocks: blocksDoc ? rel(P.blocks) : null, pages: pagesDoc ? rel(P.pages) : null }, presence, rounds };
 }
