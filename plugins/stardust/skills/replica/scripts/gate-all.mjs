@@ -40,6 +40,9 @@
  * after dismissal — each stitch gets `--json <slug>/<side>-shot.json` (deleted before the spawn; origin.json / eds.json
  * record its `overlayLeft` and `fontsFailed`), and no readable record is `unchecked`, never clean. Its reasons are
  * `<origin|build> capture polluted: …` — fix the capture (--hide / presence.json, the consent dismissal), not the page.
+ * FONTS: a face the page declares that did not load on either side (the capture records' `fontsFailed`) fails the row —
+ * one `font-not-loaded:<family>` reason each (`fontsNotLoaded`, sorted; totals.fontsNotLoaded counts the rows, the
+ * calibration line names them); the pixel-only calibration verdict is unchanged.
  * OVERRIDES: an overrides.json entry `{ verdict, reason }` lifts a failing row (passWithOverride; exit 0 when every row
  * passes or is lifted) only when validated (`checkOverride`): its verdict is tier-shift / instrument-artifact /
  * source-volatile, its reason names R-<nn> entries that head a section of stardust/replica/inconsistency-register.md
@@ -130,7 +133,7 @@
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
  * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or --eds-host, 1 error
  * or an empty selection.
- * `verdict`, `capturePollution`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
+ * `verdict`, `capturePollution`, `fontsNotLoaded`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
@@ -184,6 +187,7 @@ Usage: node gate-all.mjs [options]   (from the project root)
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
   INCONCLUSIVE row (no pixel / height verdict, never PASS): a polluted capture — a crawl-fullpage origin fallback, or
   an overlay left after dismissal (or no record of the check) in the stitch's --json record <slug>/<side>-shot.json.
+  A declared face that did not load on either side (the record's fontsFailed) fails the row: font-not-loaded:<family>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header);
   overrides.json { "<slug>": { verdict, reason } } counts only when validated: verdict tier-shift / instrument-artifact /
   source-volatile, a reason naming an R-<nn> of stardust/replica/inconsistency-register.md, clip + content PASS (prototype
@@ -364,11 +368,17 @@ export function capturePollution(originMeta, edsMeta) {
   }
   return out;
 }
+/** fontsNotLoaded(originMeta, edsMeta) → the declared faces that did not load on either side (the capture records' `fontsFailed`), sorted, unique. */
+export function fontsNotLoaded(originMeta, edsMeta) {
+  return [...new Set([originMeta, edsMeta].flatMap((m) => (m && Array.isArray(m.fontsFailed) ? m.fontsFailed : [])).filter((f) => typeof f === 'string' && f))].sort();
+}
 /**
  * verdict({ pixel, clip, content, units, override, allowance, capture, register }, opts) → row fields. `pixel` = pixel.json,
  * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null,
- * `capture` = { polluted: capturePollution(…) } — any pollution makes the row INCONCLUSIVE: pixelPass / heightPass null,
- * never PASS, no override lifts it, its reasons are the pollution. `override` (the overrides.json entry) is validated
+ * `capture` = { polluted: capturePollution(…), fonts: fontsNotLoaded(…) } — any pollution makes the row INCONCLUSIVE:
+ * pixelPass / heightPass null, never PASS, no override lifts it, its reasons are the pollution (then the font reasons);
+ * any font fails the row with one `font-not-loaded:<family>` reason each (`fontsNotLoaded`; the pixel-only calibration
+ * verdict unchanged). `override` (the overrides.json entry) is validated
  * with checkOverride against `register` and opts.stage → the row's `override`; only a valid one sets passWithOverride,
  * an invalid one on a failing row adds one `override rejected: <rule>` reason per rule.
  */
@@ -391,11 +401,13 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
   if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}`);
+  const fonts = (capture && capture.fonts) || []; const fontReasons = fonts.map((f) => `font-not-loaded:${f}`);
+  reasons.push(...fontReasons);
   const pixelOnlyPass = !inconclusive && !!(pixelPass && heightPass);
-  const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false;
+  const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fonts.length;
   const ov = checkOverride(override, { inconclusive, clipPass, contentPass, stage, register });
   if (!inconclusive && !pass && ov && !ov.valid) reasons.push(...ov.rejected.map((x) => `override rejected: ${x}`));
-  return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!(ov && ov.valid), inconclusive, reasons: inconclusive ? [...polluted] : reasons, override: ov };
+  return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!(ov && ov.valid), inconclusive, fontsNotLoaded: fonts, reasons: inconclusive ? [...polluted, ...fontReasons] : reasons, override: ov };
 }
 
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
@@ -404,7 +416,7 @@ export function formatSummary(summary) {
   // validated overrides lift a row (counted); rejected ones are named — both with the share of the table they cover
   const counted = t.overridePass || 0; const rejected = t.overrideRejected || 0;
   const ovClause = counted + rejected ? ` · overrides: ${counted} counted / ${rejected} rejected — override share ${counted} of ${t.pages} (${(t.pages ? (100 * counted) / t.pages : 0).toFixed(1)} %)` : '';
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -1177,7 +1189,7 @@ async function main() {
   const rows = pages.map((p) => {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
-    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
+    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds), fonts: fontsNotLoaded(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
@@ -1194,7 +1206,7 @@ async function main() {
   // an INCONCLUSIVE row is neither a FAIL nor an error, and has no pixel / height verdict (null) to count; only a validated
   // override lifts a failing row (overridePass), an invalid one is counted as rejected
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && !!r.override && r.override.valid === true), overrideRejected: n((r) => !r.pass && !!r.override && r.override.valid !== true), fail: n((r) => !r.inconclusive && !r.pass && r.pct != null), error: n((r) => !r.inconclusive && r.pct == null), inconclusive: n((r) => r.inconclusive),
-    failPixel: n((r) => r.pct != null && r.pixelPass === false), failHeight: n((r) => r.pct != null && r.heightPass === false), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
+    failPixel: n((r) => r.pct != null && r.pixelPass === false), failHeight: n((r) => r.pct != null && r.heightPass === false), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded && r.fontsNotLoaded.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     reusedRows: n((r) => r.reused && r.reused.what === 'row'), reusedProbes: n((r) => r.reused && r.reused.what === 'probes') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
   totals.overrideShare = totals.pages ? Number((totals.overridePass / totals.pages).toFixed(3)) : 0;

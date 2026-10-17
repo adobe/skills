@@ -26,7 +26,8 @@
 // (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record → INCONCLUSIVE, exit 2.
 // Validated overrides: registerIds, checkOverride (kind, register entry, clip + content PASS — clip only on the prototype
 // stage — not INCONCLUSIVE), the verdict / summary / rowReuse with a valid and an invalid override; the trust sandbox with
-// one valid and three invalid overrides.json rows and a register file, then without the register.
+// one valid and three invalid overrides.json rows and a register file, then without the register. Fonts: fontsNotLoaded,
+// font-not-loaded:<family> reasons failing the row, the calibration line; the trust sandbox with STUB_FONTS_*.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -35,7 +36,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { OVERRIDE_VERDICTS, REGISTER_FILE, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { OVERRIDE_VERDICTS, REGISTER_FILE, capturePollution, checkOverride, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -143,6 +144,28 @@ check('formatSummary: the override clause — counted / rejected and the overrid
   assert.match(md, /\*\*0 PASS \/ 3 FAIL \/ 0 error of 3\*\* · overrides: 1 counted \/ 1 rejected — override share 1 of 3 \(33\.3 %\)\n/);
   assert.match(md, /\| FAIL → tier-shift: R-01 another tier \|/); assert.match(md, /\| FAIL → PASS \(source capture\): drift \(rejected\) \|/);
   assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, overridePass: 0, overrideRejected: 0 }, rows: [rows[2]] }), /overrides:/);
+});
+// ---- fonts: a declared face that did not load on either side fails the row ----------------------------------------------
+check('fontsNotLoaded: the capture records\' fontsFailed of both sides — sorted, unique; a meta without one (legacy, crawl shot, failed) adds none', () => {
+  assert.deepEqual(fontsNotLoaded({ fontsFailed: ['B', 'A'] }, { fontsFailed: ['A'] }), ['A', 'B']);
+  assert.deepEqual(fontsNotLoaded({ instrument: 'crawl-fullpage' }, { fontsFailed: ['Brand Sans'] }), ['Brand Sans']);
+  assert.deepEqual(fontsNotLoaded(null, { fontsFailed: 'Brand Sans' }), []);
+});
+check('verdict: a face that did not load fails an otherwise passing row — one font-not-loaded:<family> reason each, the pixel-only calibration verdict unchanged; on an INCONCLUSIVE row the font reasons follow the pollution; an override rule follows them', () => {
+  const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: [], fonts: ['Brand Sans'] } });
+  assert.deepEqual([v.pass, v.pixelOnlyPass, v.passWithOverride, v.fontsNotLoaded, v.reasons], [false, true, false, ['Brand Sans'], ['font-not-loaded:Brand Sans']]);
+  const inc = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: ['build capture polluted: overlay left — X'], fonts: ['A', 'B'] } });
+  assert.deepEqual(inc.reasons, ['build capture polluted: overlay left — X', 'font-not-loaded:A', 'font-not-loaded:B']); assert.equal(inc.inconclusive, true);
+  const ov = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), register, override: { verdict: 'PASS', reason: 'R-01' }, capture: { polluted: [], fonts: ['A'] } });
+  assert.deepEqual(ov.reasons, ['font-not-loaded:A', `override rejected: verdict "PASS" ${KIND}`]);
+  assert.deepEqual(verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) }).fontsNotLoaded, [], 'no capture input: none');
+});
+check('formatSummary: the calibration line names fonts not loaded only when a row has one', () => {
+  const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
+  const r0 = { slug: 'a', path: '/a', pct: 1.5, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: false, pixelOnlyPass: true, fontsNotLoaded: ['Brand Sans'], reasons: ['font-not-loaded:Brand Sans'], override: null, error: null };
+  const totals = { pages: 1, pass: 0, pixelOnlyPass: 1, overridePass: 0, fail: 1, error: 0, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0, fontsNotLoaded: 1 };
+  assert.match(formatSummary({ _provenance: pv, totals, rows: [r0] }), /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1; content n\/a/);
+  assert.doesNotMatch(formatSummary({ _provenance: pv, totals: { ...totals, fontsNotLoaded: 0 }, rows: [r0] }), /fonts not loaded/);
 });
 // ---- a polluted capture: no pixel verdict — the row is INCONCLUSIVE ---------------------------------------------------
 check('capturePollution: a crawl-fullpage origin, an overlay left on either side → one reason per side; a legacy meta without overlayLeft, a failed or missing capture → none', () => {
@@ -1415,6 +1438,18 @@ check('trust 7: every failing row lifted by a validated override → exit 0; the
   assert.equal(g.status, 2, g.stderr + g.stdout); assert.deepEqual(g.row('v').override.rejected, [`no inconsistency register at ${REG}`]);
   assert.match(g.md, /overrides: 0 counted \/ 1 rejected — override share 0 of 2 \(0\.0 %\)/);
   tpages(['a']);
+});
+check('trust 8: a declared face that did not load on the build side (the record\'s fontsFailed) → a FAIL row with font-not-loaded:<family>, totals.fontsNotLoaded 1, the calibration line names it, exit 2', () => {
+  tpages(['a']);
+  const r = tgate([], { STUB_FONTS_EDS: 'Brand Sans' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  const row = r.row('a'); assert.deepEqual([row.pass, row.pixelOnlyPass, row.inconclusive, row.fontsNotLoaded, row.reasons], [false, true, false, ['Brand Sans'], ['font-not-loaded:Brand Sans']]);
+  assert.deepEqual(tjson('a', 'eds.json').fontsFailed, ['Brand Sans']); assert.deepEqual(tjson('a', 'origin.json').fontsFailed, []);
+  assert.deepEqual([r.s.totals.fontsNotLoaded, r.s.totals.fail, r.s.totals.pass], [1, 1, 0]);
+  assert.match(r.md, /Failing by criterion: pixel 0, height 0, clip 0, content 0, fonts not loaded 1;/); assert.match(r.md, /\| FAIL \(elements\) \| font-not-loaded:Brand Sans \|/);
+  const both = tgate([], { STUB_FONTS_ORIGIN: 'Brand Serif,Brand Sans', STUB_FONTS_EDS: 'Brand Sans' });
+  assert.deepEqual(both.row('a').reasons, ['font-not-loaded:Brand Sans', 'font-not-loaded:Brand Serif'], 'either side, once each');
+  const clean = tgate([]); assert.equal(clean.status, 0, clean.stderr + clean.stdout); assert.equal(clean.s.totals.fontsNotLoaded, 0); assert.doesNotMatch(clean.md, /fonts not loaded/);
 });
 rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
