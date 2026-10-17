@@ -17,15 +17,25 @@
  *
  * Gates derived (each evidence one-liner carries its `(<job>.log)` pointer):
  *   pixel-gate-<width>  latest gate.sh round at that width (gate.sh <slug> <live> <build> <width>
- *                       [label]) whose pixel-compare line reads `→ PASS` with |height delta| ≤
- *                       --height-tolerance AND whose overflow assert did not fire: a round whose log
+ *                       [label]) whose pixel-compare line reads `→ PASS` with |height delta| within the
+ *                       round's height bar (below) AND whose overflow assert did not fire: a round whose log
  *                       carries gate.sh's `OVERFLOW at <w> — build scrollWidth <n> > viewport <n>
  *                       (+<n>px)` line is `FAIL: horizontal overflow +<n>px …` whatever the pixel
  *                       line says (a recorded run passed two pages 373 and 400 px wide at 360 as
- *                       residuals; the assert is the one no iteration cap waives). The line ends
- *                       with the round's REGIME, read from the
- *                       build URL argument: localhost / 127.0.0.1 / file: → `[prototype regime]`,
- *                       anything else → `[published regime]`. The prototype-regime bar is the
+ *                       residuals; the assert is the one no iteration cap waives). The round's REGIME is
+ *                       read from the build URL argument: localhost / 127.0.0.1 / file: → prototype,
+ *                       anything else → published. ONE HEIGHT BAR per regime (this log rule only — a
+ *                       table row keeps gate-all's own verdict): the prototype regime is judged at
+ *                       |Δh| ≤ 8px, the published regime at |Δh| ≤ 5 % of the origin height — gate-all's
+ *                       bar. The origin height is A's on pixel-compare's `A <w>x<h>  B <w>x<h>  → compare
+ *                       <w>x<h>, height delta <n>px` line (A = the origin/live capture, B = the build,
+ *                       Δh = A − B). --height-tolerance replaces the bar of both regimes. A fraction bar on
+ *                       a round whose log has no `A <w>x<h>` size is
+ *                       `OPEN: no origin height in the round's log — re-run` — never a pass (a pixel FAIL
+ *                       stays FAIL). The line ends with the regime and the bar it was judged at:
+ *                       `[prototype regime: |Δh| ≤ 8px]`, `[published regime: |Δh| ≤ 5 % of origin 3000px = 150px]`;
+ *                       a height FAIL reads `FAIL: |height delta| <n>px > <bar> (<regime> regime) — …`.
+ *                       The prototype-regime bar is the
  *                       archetype's; siblings are gated in the published regime only (#126); it never replaces the published-origin gate
  *                       (gate.sh header: "the published-origin gate is the same command with the
  *                       preview URL") — a reader who needs the published verdict looks for that word.
@@ -81,8 +91,11 @@
  *   node stardust/scripts/replica/gate-evidence.mjs [--migrated stardust/migrated]
  *        [--bg stardust/.work/replica/bg] [--progress stardust/replica/progress.json]
  *        [--lint stardust/scripts/rollout/delivery-lint.mjs] [--content content] [--widths 1440,360]
- *        [--height-tolerance 8] [--tables stardust/replica/gates] [--slug <s>]… [--check] [--dry-run] [--json]
+ *        [--height-tolerance <v>] [--tables stardust/replica/gates] [--slug <s>]… [--check] [--dry-run] [--json]
  *
+ *   --height-tolerance <v>  the log rule's height bar, for BOTH regimes: v ≤ 1 a fraction of the origin
+ *                height (`0.02` = 2 %), v > 1 pixels (`12`); default: each regime's own bar — prototype
+ *                8px, published 0.05 of the origin height. Table rows are not affected
  *   --tables <dir>  where gate-all.mjs writes the pixel tables (`prototypes-<w>/`, `all-<w>/`); when
  *                one exists for a width its rows decide pixel-gate-<w> and a page without a row is
  *                OPEN
@@ -134,7 +147,7 @@ import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { listJobs, logPath } from './run-bg.mjs';
 
-export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: 8 };
+export const DEFAULTS = { tables: 'stardust/replica/gates', migrated: 'stardust/migrated', bg: 'stardust/.work/replica/bg', progress: 'stardust/replica/progress.json', lint: 'stardust/scripts/rollout/delivery-lint.mjs', content: 'content', widths: [1440, 360], heightTolerance: null, heightBars: { prototype: 8, published: 0.05 } };
 // The sibling acceptance set for one --widths list: a pixel gate per width, in the order given. Every reader of the set
 // (--check, the row's `missing`, progress.json migrate.missing) goes through this; archetypes and thin pages are not held to it.
 export const acceptanceFor = (widths) => ['variance-probe', ...widths.map((w) => `pixel-gate-${w}`), 'delivery-lint', 'media-reconcile', 'content-fidelity', 'content-count'];
@@ -165,7 +178,7 @@ export function parseArgs(argv) {
     else if (a === '--content') o.content = val(a, argv[++i]);
     else if (a === '--tables') o.tables = val(a, argv[++i]);
     else if (a === '--widths') { o.widths = val(a, argv[++i]).split(',').map((w) => Number(w.trim())); if (!o.widths.length || o.widths.some((w) => !Number.isInteger(w) || w <= 0)) throw new UsageError(`gate-evidence: --widths needs a comma list of pixel widths (got "${argv[i]}")`); }
-    else if (a === '--height-tolerance') { o.heightTolerance = Number(val(a, argv[++i])); if (!Number.isFinite(o.heightTolerance) || o.heightTolerance < 0) throw new UsageError('gate-evidence: --height-tolerance needs a number of pixels'); }
+    else if (a === '--height-tolerance') { o.heightTolerance = Number(val(a, argv[++i])); if (!Number.isFinite(o.heightTolerance) || o.heightTolerance < 0) throw new UsageError('gate-evidence: --height-tolerance needs a number ≥ 0 (≤ 1 a fraction of the origin height, > 1 pixels)'); }
     else if (a === '--slug') o.slugs.push(val(a, argv[++i]));
     else if (a === '--check') o.check = true;
     else if (a === '--dry-run') o.dryRun = true;
@@ -277,14 +290,27 @@ export function regimeOf(job) {
 }
 // A job that ended on the instrument's deadline: run-bg's `timedOut` flag or exit 124. Not a verdict.
 export const deadline = (job) => job.timedOut === true || job.exit === 124;
+// The log rule's height bar for one round: `tolerance` (--height-tolerance) when given, else the regime's own bar
+// (DEFAULTS.heightBars); a value ≤ 1 is a fraction of the origin height, > 1 pixels. `px` is null when a fraction has no
+// origin height to apply to — the caller must not pass on it. Rounded to 6 decimals (float noise only: 0.07 × 100 is 7) so
+// the bar printed is the bar applied.
+export function heightBar(regime, tolerance, originH) {
+  const v = tolerance ?? DEFAULTS.heightBars[regime];
+  if (v > 1) return { px: v, text: `${v}px` };
+  const pct = `${Number((v * 100).toFixed(6))} %`;
+  if (originH === null || originH === undefined) return { px: null, text: `${pct} of origin height` };
+  const px = Number((v * originH).toFixed(6));
+  return { px, text: `${pct} of origin ${originH}px = ${px}px` };
+}
 
 // ---- verdict parsers (pure) --------------------------------------------------------------------
-// pixel-compare: `A WxH  B WxH  → compare WxH, height delta Npx` then `differing pixels: n / m = p%  (threshold t%) → PASS|FAIL…`.
+// pixel-compare: `A <w>x<h>  B <w>x<h>  → compare WxH, height delta Npx` then `differing pixels: n / m = p%  (threshold t%) → PASS|FAIL…`.
+// A is the origin (live) capture, B the build, delta = A.h − B.h; `originH` / `buildH` are null when the line carries no sizes.
 export function parseVerdict(text) {
   const v = [...text.matchAll(/differing pixels: (\d+) \/ (\d+) = ([\d.]+)%\s+\(threshold ([\d.]+)%\) → (PASS|FAIL)/g)].pop();
   if (!v) return null;
-  const h = [...text.matchAll(/→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
-  return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
+  const h = [...text.matchAll(/(?:A \d+x(\d+)\s+B \d+x(\d+)\s+)?→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
+  return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[3]) : null, originH: h && h[1] ? Number(h[1]) : null, buildH: h && h[2] ? Number(h[2]) : null };
 }
 // content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`; gate.sh --full echoes the same after `content-diff: `.
 export function parseFindings(text) {
@@ -409,16 +435,20 @@ export function derive(page, jobs, o, ctx) {
     const regime = regimeOf(j);
     const ov = parseOverflow(j.log);
     facts.pixel[w] = { pct: v.pct, px: v.px, heightDelta: v.heightDelta, overflowX: ov ? ov.px : null, verdict: v.verdict, label, regime };
-    const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime]`;
-    const withinHeight = v.heightDelta !== null && Math.abs(v.heightDelta) <= o.heightTolerance;
+    // One height bar per regime: the line names the regime and the bar the round was judged at.
+    const bar = heightBar(regime, o.heightTolerance, v.originH);
+    const line = `${fmtPct(v.pct)} (${v.px} px, threshold ${v.threshold}%), height delta ${v.heightDelta === null ? '?' : v.heightDelta}px, round ${label} @${w} ${cite(j)} [${regime} regime: |Δh| ≤ ${bar.text}]`;
     // The overflow assert and the --full element lines outrank the pixel line: a build wider than its viewport, a
-    // clipped text / control or a MISSING / HIDDEN link never earns the gate (#125).
+    // clipped text / control or a MISSING / HIDDEN link never earns the gate (#125). A pixel FAIL is a verdict on its own;
+    // only a PASS needs the height bar, and a fraction bar without the origin height cannot grant it.
     const el = parseElements(j.log);
     if (ov && ov.px > 0) open(`pixel-gate-${w}`, `horizontal overflow +${ov.px}px at ${w} (scrollWidth ${ov.scrollWidth} > viewport ${ov.viewport}) — ${line}`, 'FAIL');
     else if (el.clipped > 0) open(`pixel-gate-${w}`, `clipped ${el.clipped} on the build (clip-probe) — ${line}`, 'FAIL');
     else if (el.missing + el.hidden > 0) open(`pixel-gate-${w}`, `content MISSING ${el.missing} / HIDDEN ${el.hidden} (content-presence) — ${line}`, 'FAIL');
-    else if (v.verdict === 'PASS' && withinHeight) pass(`pixel-gate-${w}`, line);
-    else open(`pixel-gate-${w}`, v.verdict === 'PASS' ? `|height delta| > ${o.heightTolerance}px tolerance — ${line}` : line, 'FAIL');
+    else if (v.verdict !== 'PASS') open(`pixel-gate-${w}`, line, 'FAIL');
+    else if (bar.px === null) open(`pixel-gate-${w}`, `no origin height in the round's log — re-run — ${line}`);
+    else if (v.heightDelta !== null && Math.abs(v.heightDelta) <= bar.px) pass(`pixel-gate-${w}`, line);
+    else open(`pixel-gate-${w}`, `|height delta| ${v.heightDelta === null ? '?' : Math.abs(v.heightDelta)}px > ${bar.text} (${regime} regime) — ${line}`, 'FAIL');
   }
 
   // The dedicated content-diff run is the acceptance check; a gate.sh --full round's line stands in only when there is none.

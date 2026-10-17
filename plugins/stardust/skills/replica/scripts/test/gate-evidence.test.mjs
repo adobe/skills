@@ -10,7 +10,9 @@
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
 // dropped from the acceptance set until the page's delivered content file exists (`--content`), an INCONCLUSIVE
-// pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated).
+// pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated), one height bar per regime in the log
+// rule (prototype 8px, published 5 % of the origin height, --height-tolerance ≤ 1 a fraction / > 1 pixels, no origin
+// height under a fraction bar → OPEN).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -18,7 +20,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
+import { ACCEPTANCE, acceptanceFor, attribute, contentFileFor, daPath, deadline, detectIndent, heightBar, loadTables, nameOwner, pagePaths, parseCounts, parseElements, parseFindings, parseLint, parseOverflow, parseVariance, parseVerdict, regimeOf } from '../gate-evidence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'gate-evidence.mjs');
@@ -71,12 +73,14 @@ function job(name, cmd, args, { start, end, exit = 0, log, timedOut = false }) {
 }
 const GATE = 'stardust/scripts/replica/gate.sh';
 const LIVE = 'https://example.test'; const PROTO = 'http://localhost:8791';
-const pixelLog = (h, n, m, pct, v) => `stitched stardust/replica/gates/x/build.png: 1440x${3690 + h} from 8 chunks\nA 1440x3690  B 1440x${3690 + h}  → compare 1440x3690, height delta ${h}px\ndiffering pixels: ${n} / ${m} = ${pct}%  (threshold 10%) → ${v}\ndiff image: stardust/replica/gates/x/diff.png\n  y      0–500: 0.4%`;
+// pixel-compare's own lines: A = the live origin (`w`x`H`), B = the build; height delta h = A − B, the overlap is the shorter.
+const pixelLog = (h, n, m, pct, v, { w = 1440, H = 3690 } = {}) => `stitched stardust/replica/gates/x/build.png: ${w}x${H - h} from 8 chunks\nA ${w}x${H}  B ${w}x${H - h}  → compare ${w}x${Math.min(H, H - h)}, height delta ${h}px\ndiffering pixels: ${n} / ${m} = ${pct}%  (threshold 10%) → ${v}\ndiff image: stardust/replica/gates/x/diff.png\n  y      0–500: 0.4%`;
+const AT360 = { w: 360, H: 1450 };
 // tours-north @1440: iter1 FAIL (older by endedAt, but given the NEWEST mtime below), iter2 PASS, iter3 still running with a wild FAIL.
 job('tours-north-1440-iter2', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '1440', 'iter2'], { start: 30, end: 35, exit: 0, log: pixelLog(2, 6960, 5313600, '0.13', 'PASS') });
 job('tours-north-1440-iter1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '1440', 'iter1'], { start: 10, end: 15, exit: 2, log: pixelLog(64, 637632, 5313600, '12.00', 'FAIL') });
 job('tours-north-1440-iter3', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '1440', 'iter3', '--full'], { start: 40, end: null, log: pixelLog(0, 4780000, 5313600, '90.00', 'FAIL') });
-job('tours-north-360-iter1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '360', 'iter1'], { start: 12, end: 17, exit: 0, log: pixelLog(12, 4700, 522000, '0.90', 'PASS') });
+job('tours-north-360-iter1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '360', 'iter1'], { start: 12, end: 17, exit: 0, log: pixelLog(12, 4700, 522000, '0.90', 'PASS', AT360) });
 job('home-1440-iter1', GATE, ['home', `${LIVE}/`, `${PROTO}/home-proposed.html`, '1440'], { start: 20, end: 26, exit: 0, log: pixelLog(-3, 69600, 5313600, '1.31', 'PASS') });
 for (const f of readdirSync(BG)) utimesSync(join(BG, f), new Date(T0), new Date(f.includes('iter1') ? Date.now() : T0)); // mtime lies: iter1 newest
 job('cd-tours-north', 'node', ['stardust/scripts/diff/content-diff.mjs', `${LIVE}/tours/north/`, `${PROTO}/tours-north-proposed.html`, '--profile', 'generic'], { start: 50, end: 52, log: 'content-diff generic @1280\n  live: 12 headings\n\nFindings: none — content + roles match' });
@@ -88,7 +92,8 @@ job('serve', 'python3', ['-m', 'http.server', '8791'], { start: 0, end: 90, log:
 
 // ---- pure helpers ------------------------------------------------------------------------------
 check('parsers read the instruments\' verdict lines and nothing else', () => {
-  assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9 });
+  assert.deepEqual(parseVerdict(`${pixelLog(-9, 12, 100, '12.00', 'FAIL')}\n`), { px: 12, total: 100, pct: 12, threshold: 10, verdict: 'FAIL', heightDelta: -9, originH: 3690, buildH: 3699 });
+  assert.deepEqual(parseVerdict(pixelLog(100, 1, 100, '1.00', 'PASS').replace(/^A \S+ {2}B \S+ {2}/m, '')), { px: 1, total: 100, pct: 1, threshold: 10, verdict: 'PASS', heightDelta: 100, originH: null, buildH: null }, 'no A/B sizes on the line → no origin height');
   assert.equal(parseVerdict('differing pixels: 1 / 100 = 1.00%  (threshold 10%) → PASS  [MASKED 40 rows: 0:40 — authored-volatile, excluded]').verdict, 'PASS');
   assert.equal(parseVerdict('run-bg: x launched: gate.sh a b c 1440'), null);
   assert.deepEqual(parseFindings('x\nFindings: none — content + roles match\n'), { total: 0, structural: 0, text: 'none — content + roles match' });
@@ -108,6 +113,14 @@ check('parsers read the instruments\' verdict lines and nothing else', () => {
   assert.equal(parseVariance(log, pagePaths('about/team.html')).deltas, 0);
   const vn = parseVariance(log, pagePaths('other.html')); assert.equal(vn.deltas, null); assert.match(vn.line, /^✗ 1 of 2/); assert.equal(vn.own, false); assert.equal(vl.own, true);
   assert.equal(parseVariance('sibling-variance error: boom'), null);
+});
+check('heightBar: each regime\'s default bar (prototype 8px, published 5 % of the origin height); a given tolerance ≤ 1 is a fraction, > 1 pixels, for both regimes; a fraction without an origin height has no bar', () => {
+  assert.deepEqual(heightBar('prototype', null, 3000), { px: 8, text: '8px' });
+  assert.deepEqual(heightBar('published', null, 3000), { px: 150, text: '5 % of origin 3000px = 150px' });
+  assert.deepEqual(heightBar('published', null, null), { px: null, text: '5 % of origin height' });
+  assert.deepEqual(heightBar('prototype', 1, 3000), { px: 3000, text: '100 % of origin 3000px = 3000px' }, '1 is still a fraction');
+  assert.deepEqual(heightBar('published', 1.5, null), { px: 1.5, text: '1.5px' }, 'above 1 is pixels — no origin height needed');
+  assert.deepEqual(heightBar('prototype', 0.02, null), { px: null, text: '2 % of origin height' });
 });
 check('regimeOf: localhost / 127.0.0.1 / file: build URLs are the prototype regime, anything else published; deadline() reads run-bg state', () => {
   const px = (build) => ({ instArgs: ['home', `${LIVE}/`, build, '1440'] });
@@ -176,14 +189,14 @@ check('tours-north: the declaration stays first, then the derived gates in order
 });
 check('tours-north evidence: latest round by endedAt (not mtime), the running round ignored, every job line ends with its log pointer', () => {
   const e = json(side.north).gateEvidence;
-  assert.equal(e['pixel-gate-1440'], '0.13% (6960 px, threshold 10%), height delta 2px, round iter2 @1440 (tours-north-1440-iter2.log) [prototype regime]');
-  assert.match(e['pixel-gate-360'], /^FAIL: \|height delta\| > 8px tolerance — 0\.90% .*height delta 12px, round iter1 @360 \(tours-north-360-iter1\.log\) \[prototype regime\]$/);
+  assert.equal(e['pixel-gate-1440'], '0.13% (6960 px, threshold 10%), height delta 2px, round iter2 @1440 (tours-north-1440-iter2.log) [prototype regime: |Δh| ≤ 8px]');
+  assert.match(e['pixel-gate-360'], /^FAIL: \|height delta\| 12px > 8px \(prototype regime\) — 0\.90% .*height delta 12px, round iter1 @360 \(tours-north-360-iter1\.log\) \[prototype regime: \|Δh\| ≤ 8px\]$/);
   assert.equal(e['content-count'], 'content-diff: none — content + roles match (cd-tours-north.log)');
   assert.equal(e['media-reconcile'], '4 keep · 1 optimize · 0 omit (media-tours-north.log)');
   assert.equal(e['delivery-lint'], '0 P0 · 0 P1 · 1 P2 (delivery-lint --path /tours/north)');
   assert.doesNotMatch(JSON.stringify(e), /iter3|90\.00/, 'the still-running round left no trace');
   for (const g of ['content-count', 'media-reconcile']) assert.match(e[g], /\([a-z0-9-]+\.log\)$/, g);
-  for (const g of ['pixel-gate-1440', 'pixel-gate-360']) assert.match(e[g], /\([a-z0-9-]+\.log\) \[prototype regime\]$/, g);
+  for (const g of ['pixel-gate-1440', 'pixel-gate-360']) assert.match(e[g], /\([a-z0-9-]+\.log\) \[prototype regime: \|Δh\| ≤ 8px\]$/, g);
 });
 check('about-history: only variance-probe passes; the others are recorded OPEN:/FAIL: with their pointers', () => {
   const m = json(side.history);
@@ -197,7 +210,7 @@ check('about-history: only variance-probe passes; the others are recorded OPEN:/
 check('home (archetype): its own pixel round, lint FAIL at path /, no variance-probe at all; not delivered → media-reconcile reads n/a, never OPEN', () => {
   const m = json(side.home);
   assert.deepEqual(m.gatesPassed, ['pixel-gate-1440']);
-  assert.match(m.gateEvidence['pixel-gate-1440'], /height delta -3px, round iter @1440 \(home-1440-iter1\.log\) \[prototype regime\]$/);
+  assert.match(m.gateEvidence['pixel-gate-1440'], /height delta -3px, round iter @1440 \(home-1440-iter1\.log\) \[prototype regime: \|Δh\| ≤ 8px\]$/);
   assert.equal(m.gateEvidence['delivery-lint'], 'FAIL: 1 P0 · 0 P1 · 0 P2 (delivery-lint --path /)');
   assert.equal('variance-probe' in m.gateEvidence, false);
   assert.equal(m.gateEvidence['media-reconcile'], 'n/a: no delivered content file yet (content/index.html) — media-reconcile runs in the delivery chain (row C)');
@@ -262,7 +275,7 @@ check('--json prints the rows as a JSON array', () => {
 check('--help in an empty cwd: exit 0, usage on stdout, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-evidence-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
-  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /usage/i); assert.match(r.stdout, /content-fidelity\s+NEVER added here/); assert.match(r.stdout, /--height-tolerance 8/);
+  assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /usage/i); assert.match(r.stdout, /content-fidelity\s+NEVER added here/); assert.match(r.stdout, /--height-tolerance <v>/); assert.match(r.stdout, /\[published regime: \|Δh\| ≤ 5 % of origin 3000px = 150px\]/); assert.match(r.stdout, /no origin height in the round's log — re-run/);
   assert.match(r.stdout, /--content <dir>/); assert.match(r.stdout, /n\/a: no delivered content file yet/); assert.match(r.stdout, /FAIL: horizontal overflow/); assert.match(r.stdout, /\[\/ovf\+<px>\]/);
   assert.deepEqual(readdirSync(cwd), []); rmSync(cwd, { recursive: true, force: true });
 });
@@ -280,28 +293,65 @@ check('without a resolvable --lint the latest delivery-lint job stands in, and o
 
 // ---- hardening: regime, deadline, no verdict, stale, not-in-probe, malformed ledger ----------------
 check('a published-origin round is the published regime: evidence suffix and the progress.json regime field', () => {
-  job('tours-north-360-pub', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'pub1', '--marker', 'north'], { start: 80, end: 84, exit: 0, log: pixelLog(0, 2600, 522000, '0.50', 'PASS') });
+  job('tours-north-360-pub', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'pub1', '--marker', 'north'], { start: 80, end: 84, exit: 0, log: pixelLog(0, 2600, 522000, '0.50', 'PASS', AT360) });
   const r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
   const m = json(side.north);
-  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round pub1 @360 (tours-north-360-pub.log) [published regime]');
+  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round pub1 @360 (tours-north-360-pub.log) [published regime: |Δh| ≤ 5 % of origin 1450px = 72.5px]');
   assert.ok(m.gatesPassed.includes('pixel-gate-360'), 'the published round passes the gate the prototype round failed');
-  assert.equal(m.gateEvidence['pixel-gate-1440'].endsWith('[prototype regime]'), true, 'the 1440 gate still reads prototype');
+  assert.equal(m.gateEvidence['pixel-gate-1440'].endsWith('[prototype regime: |Δh| ≤ 8px]'), true, 'the 1440 gate still reads prototype');
   const p = json(PROGRESS).siblings['tours-north'].pixel; assert.equal(p['360'].regime, 'published'); assert.equal(p['1440'].regime, 'prototype'); assert.equal(p['360'].label, 'pub1');
 });
 check('the overflow assert outranks the pixel line: a PASS round whose log carries gate.sh\'s OVERFLOW line is FAIL: horizontal overflow — row /ovf+<px>, ledger overflowX; a later clean-assert round passes with overflowX 0', () => {
-  job('tours-north-360-ovf1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf1', '--marker', 'north'], { start: 85, end: 86, exit: 2, log: `${pixelLog(0, 2100, 522000, '0.40', 'PASS')}\ngate.sh: OVERFLOW at 360 — build scrollWidth 373 > viewport 360 (+13px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence stardust/replica/gates/tours-north-360/overflow-ovf1.txt)` });
+  job('tours-north-360-ovf1', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf1', '--marker', 'north'], { start: 85, end: 86, exit: 2, log: `${pixelLog(0, 2100, 522000, '0.40', 'PASS', AT360)}\ngate.sh: OVERFLOW at 360 — build scrollWidth 373 > viewport 360 (+13px) → FAIL (hard assert: no iteration cap waives horizontal overflow; evidence stardust/replica/gates/tours-north-360/overflow-ovf1.txt)` });
   let r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err);
   let m = json(side.north);
-  assert.equal(m.gateEvidence['pixel-gate-360'], 'FAIL: horizontal overflow +13px at 360 (scrollWidth 373 > viewport 360) — 0.40% (2100 px, threshold 10%), height delta 0px, round ovf1 @360 (tours-north-360-ovf1.log) [published regime]');
+  assert.equal(m.gateEvidence['pixel-gate-360'], 'FAIL: horizontal overflow +13px at 360 (scrollWidth 373 > viewport 360) — 0.40% (2100 px, threshold 10%), height delta 0px, round ovf1 @360 (tours-north-360-ovf1.log) [published regime: |Δh| ≤ 5 % of origin 1450px = 72.5px]');
   assert.match(r.err, /tours-north: pixel-gate-360 stays in gatesPassed, but the latest evidence reads "FAIL: horizontal overflow/);
   assert.match(r.out, /^tours-north {2}sibling {2}1440=0\.13%\/Δ2 {2}360=0\.40%\/Δ0\/ovf\+13 {2}cd=/m, r.out);
   let p = json(PROGRESS).siblings['tours-north'].pixel['360']; assert.equal(p.overflowX, 13); assert.equal(p.verdict, 'PASS', 'the pixel verdict is reported as printed; the gate is what the overflow withholds'); assert.equal(p.label, 'ovf1');
   const c = run('--check', '--slug', 'tours-north', '--dry-run'); assert.equal(c.code, 2); assert.match(c.out, /^tours-north: stale pixel-gate-360/m);
-  job('tours-north-360-ovf2', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf2', '--marker', 'north'], { start: 87, end: 88, exit: 0, log: `${pixelLog(0, 2600, 522000, '0.50', 'PASS')}\ngate.sh: overflow assert at 360 — build scrollWidth 360 = viewport → ok` });
+  job('tours-north-360-ovf2', GATE, ['tours-north', `${LIVE}/tours/north/`, `${PUBLISHED}/tours/north/`, '360', 'ovf2', '--marker', 'north'], { start: 87, end: 88, exit: 0, log: `${pixelLog(0, 2600, 522000, '0.50', 'PASS', AT360)}\ngate.sh: overflow assert at 360 — build scrollWidth 360 = viewport → ok` });
   r = run('--slug', 'tours-north'); assert.equal(r.code, 0, r.err); m = json(side.north);
-  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round ovf2 @360 (tours-north-360-ovf2.log) [published regime]');
+  assert.equal(m.gateEvidence['pixel-gate-360'], '0.50% (2600 px, threshold 10%), height delta 0px, round ovf2 @360 (tours-north-360-ovf2.log) [published regime: |Δh| ≤ 5 % of origin 1450px = 72.5px]');
   assert.match(r.out, /^tours-north {2}sibling {2}1440=0\.13%\/Δ2 {2}360=0\.50%\/Δ0 {2}cd=/m, 'no /ovf suffix on a clean assert');
   p = json(PROGRESS).siblings['tours-north'].pixel['360']; assert.equal(p.overflowX, 0);
+});
+check('one height bar in the log rule: a published round at 5 % of its origin height (A on pixel-compare\'s line), a prototype round at 8px; --height-tolerance ≤ 1 a fraction, > 1 pixels, for both regimes; a fraction bar on a log without the A size is OPEN, never a pass', () => {
+  const sideC = join(MIG, 'contact._meta.json'); const made = [];
+  writeFileSync(join(MIG, 'contact.html'), '<html><body><main><h1>Contact</h1></main></body></html>\n');
+  writeFileSync(sideC, `${JSON.stringify({ slug: 'contact', type: 'contact', fidelityTier: 'archetype', template: null, gatesPassed: [] }, null, 2)}\n`);
+  const round = (name, build, width, start, log) => { made.push(name); job(name, GATE, ['contact', `${LIVE}/contact.html`, build, String(width), name.split('-').pop()], { start, end: start + 1, exit: 0, log }); };
+  const rowOf = (...args) => { const r = run('--slug', 'contact', '--dry-run', '--json', ...args); assert.equal(r.code, 0, r.err); return JSON.parse(r.out)[0]; };
+  const ev = (...args) => rowOf(...args).gateEvidence;
+  try {
+    round('contact-1440-pub1', `${PUBLISHED}/contact`, 1440, 300, pixelLog(100, 21000, 4176000, '0.50', 'PASS', { H: 3000 }));
+    round('contact-360-proto1', `${PROTO}/contact-proposed.html`, 360, 300, pixelLog(10, 1000, 1076400, '0.09', 'PASS', { w: 360, H: 3000 }));
+    const row = rowOf();
+    assert.equal(row.gateEvidence['pixel-gate-1440'], '0.50% (21000 px, threshold 10%), height delta 100px, round pub1 @1440 (contact-1440-pub1.log) [published regime: |Δh| ≤ 5 % of origin 3000px = 150px]');
+    assert.equal(row.gateEvidence['pixel-gate-360'], 'FAIL: |height delta| 10px > 8px (prototype regime) — 0.09% (1000 px, threshold 10%), height delta 10px, round proto1 @360 (contact-360-proto1.log) [prototype regime: |Δh| ≤ 8px]');
+    assert.deepEqual(row.gatesPassed, ['pixel-gate-1440']);
+    let e = ev('--height-tolerance', '0.02');
+    assert.equal(e['pixel-gate-1440'], 'FAIL: |height delta| 100px > 2 % of origin 3000px = 60px (published regime) — 0.50% (21000 px, threshold 10%), height delta 100px, round pub1 @1440 (contact-1440-pub1.log) [published regime: |Δh| ≤ 2 % of origin 3000px = 60px]');
+    assert.equal(e['pixel-gate-360'], '0.09% (1000 px, threshold 10%), height delta 10px, round proto1 @360 (contact-360-proto1.log) [prototype regime: |Δh| ≤ 2 % of origin 3000px = 60px]', 'a given fraction is the prototype regime\'s bar too');
+    e = ev('--height-tolerance', '12');
+    assert.match(e['pixel-gate-1440'], /^FAIL: \|height delta\| 100px > 12px \(published regime\) — .* \[published regime: \|Δh\| ≤ 12px\]$/, 'a given pixel bar is the published regime\'s bar too');
+    assert.match(e['pixel-gate-360'], /^0\.09% .* \[prototype regime: \|Δh\| ≤ 12px\]$/);
+    assert.match(ev('--height-tolerance', '100')['pixel-gate-1440'], /^0\.50% .* \[published regime: \|Δh\| ≤ 100px\]$/, '|Δh| equal to the bar passes, as in gate-all');
+    round('contact-1440-pub2', `${PUBLISHED}/contact`, 1440, 302, pixelLog(160, 20000, 4089600, '0.49', 'PASS', { H: 3000 }));
+    assert.equal(ev()['pixel-gate-1440'], 'FAIL: |height delta| 160px > 5 % of origin 3000px = 150px (published regime) — 0.49% (20000 px, threshold 10%), height delta 160px, round pub2 @1440 (contact-1440-pub2.log) [published regime: |Δh| ≤ 5 % of origin 3000px = 150px]');
+    const noOrigin = (h, n, pct, v) => pixelLog(h, n, 4176000, pct, v, { H: 3000 }).replace(/^A \S+ {2}B \S+ {2}/m, '');
+    round('contact-1440-pub3', `${PUBLISHED}/contact`, 1440, 304, noOrigin(100, 21000, '0.50', 'PASS'));
+    const open = rowOf();
+    assert.equal(open.gateEvidence['pixel-gate-1440'], 'OPEN: no origin height in the round\'s log — re-run — 0.50% (21000 px, threshold 10%), height delta 100px, round pub3 @1440 (contact-1440-pub3.log) [published regime: |Δh| ≤ 5 % of origin height]');
+    assert.equal(open.gatesPassed.includes('pixel-gate-1440'), false);
+    assert.match(ev('--height-tolerance', '0.5')['pixel-gate-1440'], /^OPEN: no origin height in the round's log — re-run — .* \[published regime: \|Δh\| ≤ 50 % of origin height\]$/, 'any fraction bar needs the origin height');
+    assert.match(ev('--height-tolerance', '120')['pixel-gate-1440'], /^0\.50% .* \[published regime: \|Δh\| ≤ 120px\]$/, 'a pixel bar does not');
+    round('contact-1440-pub4', `${PUBLISHED}/contact`, 1440, 306, noOrigin(100, 600000, '14.37', 'FAIL'));
+    assert.match(ev()['pixel-gate-1440'], /^FAIL: 14\.37% .* \[published regime: \|Δh\| ≤ 5 % of origin height\]$/, 'a pixel FAIL is a verdict without the origin height');
+  } finally {
+    for (const n of made) { rmSync(join(BG, `${n}.json`)); rmSync(join(BG, `${n}.log`)); }
+    rmSync(sideC); rmSync(join(MIG, 'contact.html'));
+  }
 });
 check('media-reconcile is required only once the delivered content file exists: absent → `n/a:` (latest run cited as advisory), dropped from the acceptance set and --check; present → OPEN and required again; --content moves the tree', () => {
   const file = join(CONTENT, 'about/history.html'); const keep = read(file);
