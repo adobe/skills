@@ -9,19 +9,24 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]
+ *        --schema stardust/eds-schema/<page>.json [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band] \
+ *        [--source-capture stardust/current/pages/<slug>.json]
  *
  *   --design <file>  DESIGN.json whose extensions.breakpoints carry the measured sizing model
  *                    (cap-probe.mjs --write-design): probeWidth sets the wide pass's viewport,
  *                    containerMaxWidth is the cap asserted there and the --maxw default.
  *                    Default: ./DESIGN.json when it exists. The URL may be the harness or the
  *                    published origin — the cap assert is the same on both.
+ *   --source-capture <json>  the page's source capture (no default). When the page renders 0 <h1>
+ *                    and this capture parses with a `headings` array holding no h1, the h1 assert
+ *                    is a WARN (a recorded source trait), not a FAIL — content is never edited to
+ *                    satisfy a verifier. More than one <h1>, or no/unreadable capture → FAIL as before.
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
- *   - exactly one <h1>, no heading nested inside it (#35/#55)
+ *   - exactly one <h1> (0 with --source-capture lacking an h1 → WARN), no heading nested inside it (#35/#55)
  *   - >0 sections; every [data-block-name] reaches data-block-status="loaded"
  *   - zero pageerror events; zero broken images (loaded but naturalWidth 0)
  *   - every block instance renders non-empty (height > 5px, has child elements)
@@ -77,8 +82,17 @@ const capProbe = capProbeUrl ? await import(capProbeUrl.href) : null;
 const sizing = capProbe && designPath ? capProbe.readDesignSizing(designPath) : null;
 const maxw = Number(opt('maxw', sizing && sizing.containerMaxWidth ? sizing.containerMaxWidth : 1340));
 const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]'); process.exit(2); }
+if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band] [--source-capture <capture.json>]'); process.exit(2); }
 const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
+// true only when the given capture parses with a headings array that holds no h1
+const sourceCapturePath = opt('source-capture', null);
+const sourceLacksH1 = (() => {
+  if (!sourceCapturePath) return false;
+  try {
+    const cap = JSON.parse(fs.readFileSync(sourceCapturePath, 'utf8'));
+    return Array.isArray(cap.headings) && !cap.headings.some((h) => h && String(h.tag).toLowerCase() === 'h1');
+  } catch { return false; }
+})();
 
 const fails = [];
 const warns = [];
@@ -146,7 +160,8 @@ const r = await page.evaluate(() => {
 });
 
 check(r.appear, 'body.appear set (runtime booted)');
-check(r.h1 === 1, 'exactly one <h1>', `found ${r.h1}`);
+if (r.h1 === 0 && sourceLacksH1) warns.push('exactly one <h1>: 0 — source has no h1 (recorded source trait); content is never edited to satisfy a verifier');
+else check(r.h1 === 1, 'exactly one <h1>', `found ${r.h1}`);
 check(r.h1Nested === 0, 'no heading nested inside <h1>', `found ${r.h1Nested}`);
 check(r.sections > 0, 'main .section count > 0', `${r.sections} sections`);
 check(pageErrors.length === 0, 'zero pageerror events', pageErrors.slice(0, 3).join(' | '));

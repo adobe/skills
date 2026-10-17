@@ -14,7 +14,9 @@
  * Source parity: when the page's capture exists (`<current>/pages/<slug>.json`, with its
  * rendered-DOM sidecar `pages/<slug>.html`), a finding whose condition the SOURCE shares — the
  * same <title> (title-length / title-missing), no meta description on the source either, no
- * JSON-LD on the source either, the same title or description shared by the same pages — is
+ * JSON-LD on the source either, no <h1> on the source either (single-h1 with 0 delivered <h1>,
+ * the capture's `headings` without an h1 — a recorded source trait; content is never edited to
+ * satisfy a verifier), the same title or description shared by the same pages — is
  * tagged `fixability: out-of-scope` with the evidence prefix `source parity: ` (the findings
  * schema has no parity property). Such findings are informational: listed in their own report
  * section, excluded from the health score and the open P1/P2/P3 counts, never gated, never
@@ -77,6 +79,7 @@ const has = (re, s) => re.test(s);
 const titleOf = (html) => (html.match(/<title[^>]*>([\s\S]*?)<\/title>/i) || [])[1]?.trim() || null;
 const descOf = (html) => (html.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']*)["']/i) || [])[1]?.trim() || null;
 const hasJsonLd = (html) => /application\/ld\+json/i.test(html);
+const h1Of = (html) => (html.match(/<h1[\s>]/gi) || []).length;
 
 function detectPage(html, slug) {
   const f = [];
@@ -90,7 +93,7 @@ function detectPage(html, slug) {
   if (!title) f.push(mk('seo', 'title-missing', 'P1', 'platform-migration', lvl, id, 'no <title>', 'Add a metadata block (deploy #34); EDS derives <title> from it.'));
   else if (title.length < 10 || title.length > 70) f.push(mk('seo', 'title-length', 'P3', 'platform-migration', lvl, id, `<title> is ${title.length} chars ("${title.slice(0, 40)}")`, 'Aim for ~50-60 chars: brand + primary keyword (deploy #34).'));
   if (!descOf(html)) f.push(mk('seo', 'meta-description', 'P2', 'platform-migration', lvl, id, 'no <meta name="description">', 'Add a Description row to the metadata block (deploy #34).'));
-  const h1 = (html.match(/<h1[\s>]/gi) || []).length;
+  const h1 = h1Of(html);
   if (h1 !== 1) f.push(mk('seo', 'single-h1', 'P1', 'platform-migration', lvl, id, `${h1} <h1> (expected exactly 1)`, 'Hero/lead headline = the page\'s single <h1>; other titles <h2> (deploy #35).'));
   if (!has(/<link[^>]+rel=["']canonical["']/i, html)) f.push(mk('seo', 'canonical', 'P2', 'platform-migration', lvl, id, 'no rel=canonical', 'Emit a self-canonical link at delivery.'));
   // ai-search
@@ -126,7 +129,8 @@ function loadCapture(slug) {
   const sidecar = rec.renderedHtml ? join(CURRENT, rec.renderedHtml) : join(CURRENT, 'pages', `${slug}.html`);
   let jsonld = null; // null = unknown (no rendered sidecar)
   if (existsSync(sidecar)) { try { jsonld = hasJsonLd(readFileSync(sidecar, 'utf8')); } catch { jsonld = null; } }
-  return { title: norm(rec.title || (rec.og && rec.og.title) || ''), description: norm(rec.description || ''), jsonld };
+  const noH1 = Array.isArray(rec.headings) && !rec.headings.some((h) => h && String(h.tag).toLowerCase() === 'h1');
+  return { title: norm(rec.title || (rec.og && rec.og.title) || ''), description: norm(rec.description || ''), jsonld, noH1 };
 }
 
 /** The shared condition when `f` mirrors the source, else null. */
@@ -139,6 +143,7 @@ function parityReason(f, captures, deliveredBySlug) {
     if (f.check === 'title-length') return cap.title && norm(got.title) === cap.title ? 'the source page carries the same <title>' : null;
     if (f.check === 'meta-description') return !cap.description ? 'the source page has no meta description either' : null;
     if (f.check === 'jsonld') return cap.jsonld === false ? 'the source page has no JSON-LD either' : null;
+    if (f.check === 'single-h1') return cap.noH1 && got.h1 === 0 ? 'the source page has no <h1> either' : null;
     return null;
   }
   if (f.check === 'duplicate-title' || f.check === 'duplicate-description') {
@@ -167,7 +172,7 @@ for (const p of target) {
   const r = await loadPageHTML(p, { root: ROOT, base: BASE });
   if (!r.ok) continue; // unreachable pages are verify.mjs's concern, not optimize's
   inspectedSlugs.add(p.slug);
-  loaded.push({ slug: p.slug, title: titleOf(r.body), desc: descOf(r.body) });
+  loaded.push({ slug: p.slug, title: titleOf(r.body), desc: descOf(r.body), h1: h1Of(r.body) });
   const cap = loadCapture(p.slug);
   if (cap) captures.set(p.slug, cap);
   rawDetected.push(...detectPage(r.body, p.slug));

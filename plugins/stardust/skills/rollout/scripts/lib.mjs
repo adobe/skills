@@ -201,9 +201,10 @@ export function autofixFor(check) {
 // --- optimize: source parity ---------------------------------------------------
 /**
  * A finding whose condition the SOURCE capture shares — the same <title>, no meta description on
- * the source either, no JSON-LD on the source either, the same title shared by the same pages —
- * mirrors the source rather than a delivery defect. A recorded hands-off run accepted 63 such
- * findings by hand. They stay in the ledger (listed in their own report section) but are
+ * the source either, no JSON-LD on the source either, no <h1> on the source either, the same
+ * title shared by the same pages — mirrors the source rather than a delivery defect. A recorded
+ * hands-off run accepted 63 such findings by hand. They stay in the ledger (listed in their own
+ * report section) but are
  * informational: never scored, never counted open, never auto-fixed (a faithful migration is not
  * rewritten). The findings schema has no parity property, so the tag is `fixability:
  * out-of-scope` (the schema's own "informational" value) plus this evidence prefix; both are read.
