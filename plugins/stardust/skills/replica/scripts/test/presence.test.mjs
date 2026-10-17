@@ -7,15 +7,22 @@
 // seed` without touching a file; a malformed presence or run file is refused (exit 1, named, nothing written); a failed
 // write exits 1 with nothing printed as written and no temp file left; usage
 // errors exit 2; --help answers before any import or file access; the project-copy layout (stardust/scripts/diff/
-// beside stardust/scripts/replica/) resolves live-session.
-// Run: node plugins/stardust/skills/replica/scripts/test/presence.test.mjs   (about 1 s)
+// beside stardust/scripts/replica/) resolves live-session. add without --verify writes and warns (one stderr line);
+// playwright is loaded only by suggest and add --verify (where it is not importable, those exit 1 and add / seed work);
+// suggestLines and pollSelectors (stub page). Then, where playwright is importable, end-to-end against pages served
+// from this process — the delayed bar (an empty wrapper above the header that a lookup fills 4 s after load): add
+// --verify with the right selector verifies once the bar arrives and writes; the old wrong selector exits 2 naming
+// the wrapper (hideMissLine) with the file untouched; suggest lists the wrapper, the add line, and warns on a stale
+// "*".hide selector; a bot challenge exits 3, an HTTP error 1. Prints a skip line otherwise.
+// Run: node plugins/stardust/skills/replica/scripts/test/presence.test.mjs   (about 1 s; about 12 s with playwright)
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_FILE, InputError, applyHide, writeAtomic } from '../presence.mjs';
+import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'presence.mjs');
@@ -25,6 +32,7 @@ const scratch = realpathSync(mkdtempSync(join(tmpdir(), 'presence-test-')));
 
 let failed = 0; let checks = 0;
 const check = (name, fn) => { checks += 1; try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+const checkAsync = async (name, fn) => { checks += 1; try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 // Each case gets its own project root; STARDUST_SITE_OVERLAYS from the caller's shell never leaks in.
 let n = 0;
 const project = () => { n += 1; const d = join(scratch, `p${n}`); mkdirSync(d); return d; };
@@ -48,7 +56,7 @@ check('--help: usage, inputs, outputs and exit codes on stdout; no import, no fi
     const r = run(cwd, ['add', flag], { script: join(lone, 'presence.mjs') });
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /Usage:/);
-    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', 'Exit codes']) assert.ok(r.out.includes(s), `--help names ${s}`);
+    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', 'suggest <url> [--width 1440]', '--verify <url>', '--wait-ms', '--headed', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', UNVERIFIED, 'hide matched nothing on live — candidates:', 'none found above the header', 'Exit codes', '3 bot challenge']) assert.ok(r.out.includes(s), `--help names ${s}`);
     assert.equal(r.err, '');
   }
   assert.deepEqual(listing(cwd), []);
@@ -60,16 +68,18 @@ check('--help: usage, inputs, outputs and exit codes on stdout; no import, no fi
   assert.deepEqual(listing(cwd), []);
 });
 
-check('add: creates the default file with "*".hide (indent 2 + newline); a second run is unchanged and byte-identical', () => {
+check('add: creates the default file with "*".hide (indent 2 + newline); a second run is unchanged and byte-identical; unverified → one stderr warning', () => {
   const root = project();
   let r = run(root, ['add', '--hide', '.geo-bar']);
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(lines(r.out), ['*.hide: .geo-bar', `wrote ${DEFAULT_FILE}: +1 selector, 0 reasons`]);
+  assert.equal(r.err, `presence: ${UNVERIFIED}\n`, 'without --verify: written, and exactly one warning line');
   const first = read(root);
   assert.equal(first, pretty({ '*': { hide: ['.geo-bar'] } }));
   r = run(root, ['add', '--hide', '.geo-bar']);
   assert.equal(r.code, 0, r.err);
   assert.deepEqual(lines(r.out), ['*.hide: .geo-bar', `unchanged: ${DEFAULT_FILE}`]);
+  assert.equal(r.err, `presence: ${UNVERIFIED}\n`);
   assert.equal(read(root), first);
   assert.deepEqual(listing(join(root, 'stardust/replica')), ['presence.json'], 'no temp file left behind');
 });
@@ -148,6 +158,7 @@ check('seed: run.json siteOverlays into "*".hide after the existing list, reason
   write(root, 'stardust/.labs/run.json', pretty({ site: 'https://www.example.com', siteOverlays: ['#newsletter-modal', '.geo-bar', '.promo-strip'] }));
   let r = run(root, ['seed']);
   assert.equal(r.code, 0, r.err);
+  assert.equal(r.err, '', 'seed never warns about a live page');
   assert.deepEqual(lines(r.out), ['*.hide: .geo-bar, #newsletter-modal, .promo-strip', `wrote ${DEFAULT_FILE}: +2 selectors, 2 reasons`]);
   const after = json(root);
   assert.deepEqual(after['*'], { hide: ['.geo-bar', '#newsletter-modal', '.promo-strip'], reasons: { '.geo-bar': 'R-02', '#newsletter-modal': 'seeded: run.json siteOverlays', '.promo-strip': 'seeded: run.json siteOverlays' } });
@@ -274,6 +285,18 @@ check('usage errors exit 2 with one stderr line and write nothing', () => {
     [['add', '--hide', '.a', '--run', 'x.json'], /unknown argument --run for add/],
     [['seed', '--hide', '.a'], /unknown argument --hide for seed/],
     [['seed', '--file'], /--file needs a value/],
+    [['suggest'], /suggest needs a page URL/],
+    [['suggest', 'www.example.com'], /suggest needs an http\(s\) page URL \(got "www\.example\.com"\)/],
+    [['suggest', 'https://a.example/', 'https://b.example/'], /suggest takes one page URL/],
+    [['suggest', 'https://a.example/', '--hide', '.a'], /unknown argument --hide for suggest/],
+    [['suggest', 'https://a.example/', '--width', 'wide'], /--width must be a whole number ≥ 1 \(got "wide"\)/],
+    [['add', '--hide', '.a', '--verify'], /--verify needs a value/],
+    [['add', '--hide', '.a', '--verify', 'file:///site/index.html'], /--verify needs an http\(s\) page URL/],
+    [['add', '--hide', '.a', '--verify', 'https://a.example/', '--wait-ms', '-1'], /--wait-ms must be a whole number ≥ 0 \(got "-1"\)/],
+    [['add', '--hide', '.a', '--verify', 'https://a.example/', '--width', '0'], /--width must be a whole number ≥ 1/],
+    [['add', '--hide', '.a', '--wait-ms', '100'], /--wait-ms, --width and --headed need --verify <url>/],
+    [['add', '--hide', '.a', '--headed'], /need --verify <url>/],
+    [['seed', '--headed'], /unknown argument --headed for seed/],
   ];
   for (const [args, re] of cases) {
     const r = run(root, args);
@@ -296,6 +319,63 @@ check('project-copy layout: stardust/scripts/replica/presence.mjs finds stardust
   assert.deepEqual(json(root), { '*': { hide: ['.geo-bar'], reasons: { '.geo-bar': 'R-01' } } });
 });
 
+check('playwright is loaded only by suggest and add --verify: where it is not importable, add / seed still work and those two exit 1, nothing written', () => {
+  // a scratch project without node_modules: add and seed above ran here without playwright; the live commands need it
+  const root = project();
+  mkdirSync(join(root, 'stardust/scripts/replica'), { recursive: true });
+  mkdirSync(join(root, 'stardust/scripts/diff'), { recursive: true });
+  copyFileSync(SCRIPT, join(root, 'stardust/scripts/replica/presence.mjs'));
+  copyFileSync(LIVE_SESSION, join(root, 'stardust/scripts/diff/live-session.mjs'));
+  const copy = join(root, 'stardust/scripts/replica/presence.mjs');
+  assert.equal(run(root, ['seed'], { script: copy, env: { STARDUST_SITE_OVERLAYS: '.chat' } }).code, 0);
+  const text = read(root);
+  for (const args of [['add', '--hide', '.geo-bar', '--verify', 'https://www.example.com/'], ['suggest', 'https://www.example.com/']]) {
+    const r = run(root, args, { script: copy });
+    assert.equal(r.code, 1, `${args[0]}: ${r.out}${r.err}`);
+    assert.match(r.err, /^presence: playwright is not importable from .+ \(ERR_MODULE_NOT_FOUND\) — replica SKILL\.md § Setup/);
+    assert.equal(r.out, '');
+    assert.equal(read(root), text);
+  }
+  // add --verify and suggest refuse a malformed presence file before they open any page
+  write(root, DEFAULT_FILE, '{"*": 5}');
+  for (const args of [['add', '--hide', '.geo-bar', '--verify', 'https://www.example.com/'], ['suggest', 'https://www.example.com/']]) {
+    const r = run(root, args, { script: copy });
+    assert.equal(r.code, 1, args[0]);
+    assert.match(r.err, /is malformed \("\*" must be an object\) — nothing written/);
+    assert.doesNotMatch(r.err, /playwright/);
+  }
+});
+
+check('suggestLines: one "<selector>  <tag>  <h>px" line per candidate in order, then the add line for the first with a selector (shell-quoted where needed)', () => {
+  const url = 'https://www.example.com/';
+  const wrapper = { tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 0, selector: 'section.bar__wrapper' };
+  const geo = { tag: 'div', id: 'geo', classes: [], top: 0, height: 88, selector: '#geo' };
+  assert.deepEqual(suggestLines([wrapper, geo], { url }), ['section.bar__wrapper  section  0px', '#geo  div  88px', `presence.mjs add --hide section.bar__wrapper --verify ${url}`]);
+  assert.deepEqual(suggestLines([{ ...wrapper, selector: null }, geo], { url: `${url}?region=eu&x=1`, width: 390 }), [
+    '(no unique selector)  section  0px', '#geo  div  88px', `presence.mjs add --hide '#geo' --verify '${url}?region=eu&x=1' --width 390`,
+  ]);
+  assert.deepEqual(suggestLines([{ ...wrapper, selector: null }], { url }), ['(no unique selector)  section  0px'], 'no selector → no add line');
+  assert.deepEqual(suggestLines([], { url }), []);
+  assert.equal(shellArg("div[data-x='a b']"), "'div[data-x='\\''a b'\\'']'");
+});
+
+await checkAsync('pollSelectors: polls until every selector matched once (a block rendered late is found), the highest count kept; never-matched ones are the misses', async () => {
+  const stub = (frames) => { let i = 0; return { looks: () => i, evaluate: async (fn, sels) => { const f = frames[Math.min(i, frames.length - 1)]; i += 1; return sels.map((_, k) => f[k]); }, waitForTimeout: (ms) => new Promise((r) => { setTimeout(r, ms); }) }; };
+  // .geo-bar arrives on the third look; .strip matched once and went away — still verified
+  let page = stub([[0, 1], [0, 0], [1, 0]]);
+  assert.deepEqual(await pollSelectors(page, ['.geo-bar', '.strip'], { waitMs: 5000, everyMs: 1 }), { counts: [1, 1], misses: [] });
+  assert.equal(page.looks(), 3, 'stops as soon as every selector matched');
+  // a selector that never matches is a miss once the window closed
+  page = stub([[2, 0]]);
+  const t0 = Date.now();
+  assert.deepEqual(await pollSelectors(page, ['.geo-bar', '.location-bar'], { waitMs: 60, everyMs: 10 }), { counts: [2, 0], misses: ['.location-bar'] });
+  assert.ok(Date.now() - t0 >= 55 && page.looks() > 2, 'kept looking for the window');
+  // --wait-ms 0: one look
+  page = stub([[0], [1]]);
+  assert.deepEqual(await pollSelectors(page, ['.geo-bar'], { waitMs: 0 }), { counts: [0], misses: ['.geo-bar'] });
+  assert.equal(page.looks(), 1);
+});
+
 check('applyHide is pure: the input is not mutated; no change returns the same object', () => {
   const input = { '*': { hide: ['.a'], reasons: { '.a': 'R-1' } } };
   const snapshot = JSON.stringify(input);
@@ -311,6 +391,87 @@ check('the default file is the site-wide presence path live-session reads (when 
   assert.equal(DEFAULT_FILE, 'stardust/replica/presence.json');
   if ('SITE_PRESENCE' in liveSession) assert.equal(liveSession.SITE_PRESENCE, DEFAULT_FILE);
 });
+
+// ---- end-to-end: suggest and add --verify on pages served from this process (only where playwright is importable) ----
+let chromium = null;
+try { ({ chromium } = await import('playwright')); } catch { chromium = null; }
+if (!chromium) console.log('skip  end-to-end suggest / add --verify (playwright not importable here; run this test in an environment that has it)');
+else {
+  // the delayed bar: an empty location-bar wrapper, the first body-level in-flow block above the header, that a geo
+  // lookup fills 4 s after load — later than the settle, so only the poll finds the bar
+  const DELAYED = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} .geo-bar{height:88px;background:#eee} header{height:60px;background:#333;color:#fff}</style></head><body>'
+    + '<script>addEventListener(\'load\', () => setTimeout(() => { document.querySelector(\'.bar__wrapper\').innerHTML = \'<div class="geo-bar">Use the site for your region?</div>\'; }, 4000));</script>'
+    + '<section class="bar__wrapper"></section><header>Header</header><main><p>Content</p></main></body></html>';
+  const server = createServer((req, res) => {
+    if (req.url === '/challenge') { res.writeHead(403, { 'content-type': 'text/html', 'cf-ray': '0-TEST' }); res.end('<html><body>Just a moment…</body></html>'); return; }
+    if (req.url === '/missing') { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<html><body>Not found</body></html>'); return; }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+    res.end(DELAYED);
+  });
+  await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
+  const base = `http://127.0.0.1:${server.address().port}`;
+  const url = `${base}/delayed-bar`;
+  const runAsync = (cwd, args) => new Promise((done) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: baseEnv() });
+    let out = ''; let err = '';
+    child.stdout.on('data', (d) => { out += d; });
+    child.stderr.on('data', (d) => { err += d; });
+    child.on('close', (code) => done({ code, out, err }));
+  });
+  const seeded = () => { const root = project(); write(root, DEFAULT_FILE, pretty({ '*': { hide: ['.promo'] } })); return root; };
+  try {
+    const right = seeded(); const wrong = seeded(); const blocked = seeded(); const missing = seeded(); const plain2 = project();
+    const stale = project();
+    write(stale, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
+    const [ok, refused, listed, challengedAdd, challengedSuggest, notFound] = await Promise.all([
+      runAsync(right, ['add', '--hide', '.geo-bar', '--verify', url]),
+      runAsync(wrong, ['add', '--hide', '.location-bar', '--verify', url, '--reason', 'R-04']),
+      runAsync(stale, ['suggest', url]),
+      runAsync(blocked, ['add', '--hide', '.geo-bar', '--verify', `${base}/challenge`]),
+      runAsync(plain2, ['suggest', `${base}/challenge`]),
+      runAsync(missing, ['add', '--hide', '.geo-bar', '--verify', `${base}/missing`]),
+    ]);
+    await checkAsync('e2e add --verify: the right selector verifies once the delayed bar arrives — written, no warning', async () => {
+      assert.equal(ok.code, 0, ok.err);
+      assert.deepEqual(lines(ok.out), [`verified on ${url} @ 1440px: .geo-bar ×1`, '*.hide: .promo, .geo-bar', `wrote ${DEFAULT_FILE}: +1 selector, 0 reasons`]);
+      assert.equal(ok.err, '');
+      assert.deepEqual(json(right)['*'].hide, ['.promo', '.geo-bar']);
+    });
+    await checkAsync('e2e add --verify: the old wrong selector exits 2 with the wrapper as a candidate (hideMissLine) and the file untouched', async () => {
+      assert.equal(refused.code, 2, `${refused.out}${refused.err}`);
+      assert.deepEqual(lines(refused.err), [
+        'presence: hide matched nothing on live — candidates: section.bar__wrapper (section, 88px) (.location-bar)',
+        `presence: refused — nothing written to ${DEFAULT_FILE}`,
+      ]);
+      assert.equal(refused.out, '');
+      assert.equal(read(wrong), pretty({ '*': { hide: ['.promo'] } }));
+      assert.deepEqual(listing(join(wrong, 'stardust/replica')), ['presence.json']);
+    });
+    await checkAsync('e2e suggest: the wrapper listed first, then the add line for it; a "*".hide selector that matches nothing is warned on (exit 0), nothing written', async () => {
+      assert.equal(listed.code, 0, listed.err);
+      assert.deepEqual(lines(listed.out), [
+        'section.bar__wrapper  section  88px',
+        `presence.mjs add --hide section.bar__wrapper --verify ${url}`,
+      ], 'the header\'s only preceding in-flow block (the script is skipped), read after the poll — filled by then');
+      assert.equal(listed.err, 'presence: WARNING hide matched nothing on live — candidates: section.bar__wrapper (section, 88px) (.location-bar)\n', '.geo-bar arrived during the poll and is not named');
+      assert.equal(read(stale), pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
+      assert.deepEqual(listing(stale), ['stardust', 'stardust/replica', 'stardust/replica/presence.json']);
+    });
+    await checkAsync('e2e: a bot challenge exits 3 (suggest and add --verify), an HTTP error exits 1 — never read as the page, nothing written', async () => {
+      for (const r of [challengedAdd, challengedSuggest]) {
+        assert.equal(r.code, 3, `${r.out}${r.err}`);
+        assert.match(r.err, /^presence: bot challenge at http:\/\/127\.0\.0\.1:\d+\/challenge: HTTP 403 \+ /);
+        assert.equal(r.out, '');
+      }
+      assert.equal(notFound.code, 1, `${notFound.out}${notFound.err}`);
+      assert.match(notFound.err, /^presence: cannot load http:\/\/127\.0\.0\.1:\d+\/missing \(HTTP 404 at /);
+      for (const root of [blocked, missing]) assert.equal(read(root), pretty({ '*': { hide: ['.promo'] } }));
+      assert.deepEqual(listing(plain2), []);
+    });
+  } finally {
+    server.close();
+  }
+}
 
 rmSync(scratch, { recursive: true, force: true });
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\npresence: all ${checks} checks passed`);

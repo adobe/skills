@@ -9,22 +9,46 @@
  * region and its selector in prose, nothing wrote the selector into the file, and the gate never hid it —
  * this script is that link.
  *
- *   add   the preserve-direction step records a region it identified: the selector(s) are appended to
- *         `"*".hide` (every page) or, with --slug, to `<slug>.hide` (that page only).
- *   seed  Setup writes the runner's overlay selectors into `"*".hide`: run.json `siteOverlays` (an array of
- *         selectors) and the env STARDUST_SITE_OVERLAYS (a comma list), in that order.
+ *   add      the preserve-direction step records a region it identified: the selector(s) are appended to
+ *            `"*".hide` (every page) or, with --slug, to `<slug>.hide` (that page only). With --verify <url>
+ *            the selectors are checked on the live page first: a selector that matches nothing there is refused
+ *            (exit 2, nothing written) — a recorded hands-off run carried a bar selector that matched nothing on
+ *            the live page while the real element was the first body-level in-flow block above the header.
+ *   seed     Setup writes the runner's overlay selectors into `"*".hide`: run.json `siteOverlays` (an array of
+ *            selectors) and the env STARDUST_SITE_OVERLAYS (a comma list), in that order. No browser.
+ *   suggest  lists the candidates read off the live page's DOM — the in-flow blocks above the header
+ *            (live-session's inFlowRegionsAboveHeader), where a per-visitor location bar sits — and checks the
+ *            presence file's `"*".hide` on the same page: a selector there that matches nothing is warned on
+ *            (never a refusal, exit 0). Writes nothing.
  *
  * Usage:
  *   node stardust/scripts/replica/presence.mjs add --hide <sel[,sel…]> [--slug <s>] [--reason <R-nn>] [--file <f>]
+ *        [--verify <url> [--wait-ms 5000] [--width 1440] [--headed]]
  *   node stardust/scripts/replica/presence.mjs seed [--run stardust/.labs/run.json] [--file <f>]
+ *   node stardust/scripts/replica/presence.mjs suggest <url> [--width 1440] [--wait-ms 5000] [--headed] [--file <f>]
  *
  *   --hide <sel,…>   selectors to append (repeatable; each value a comma list)
  *   --slug <s>       write `<s>.hide` instead of `"*".hide`
  *   --reason <R-nn>  the residual id (`R-<digits>`) recorded as `reasons[<sel>]` for every selector of the
  *                    call (a different earlier reason is replaced)
+ *   --verify <url>   add: before writing, load the http(s) page and poll each selector of the call for up to
+ *                    --wait-ms after the settle; every one must match at least once
+ *   --wait-ms <n>    add --verify, suggest: the poll window in ms (default 5000; 0 = one look after the settle)
+ *   --width <px>     add --verify, suggest: the viewport width (default 1440; height 900)
+ *   --headed         add --verify, suggest: the stealth real-Chrome tier (live-session launchStealthHeaded,
+ *                    with the challenge-solve window) — for a bot-managed site that challenged the default tier
  *   --run <f>        the runner's run file (default stardust/.labs/run.json); a missing file seeds nothing
  *   --file <f>       the presence file (default stardust/replica/presence.json, relative to the cwd = the
- *                    project root); created with its directory when missing
+ *                    project root); created with its directory when missing (suggest only reads it)
+ *
+ * The live page is opened the way the gate's live instruments open it (live-session.mjs): newLiveContext
+ * (real-Chrome UA + document-only headers), gotoLive (the default waitUntil, settle 2500 ms on a live site,
+ * 1200 ms on a local one; a bot challenge or an HTTP error is never measured), dismissOverlays (the late-modal
+ * window on a live site), then one scroll through the page and back to the top. add --verify then polls
+ * every 250 ms until each selector of the call matched at least once or --wait-ms passed (a block a geo lookup
+ * renders late is found when it arrives); a selector the query refuses counts 0. suggest polls the presence
+ * file's `"*".hide` the same way (none listed, or the file missing: no poll), then reads the candidates (a 0-px
+ * wrapper is listed: a block that grows later is still hidden by the persistent display:none !important rule).
  *
  * File shape (a gate dir's presence.json shape): `{ "*": { "hide": [<sel>, …], "reasons": { "<sel>":
  * "<R-nn | seeded: …>" } }, "<slug>": { "hide": […], "main": …, "variable": […] } }`. Readers ignore
@@ -36,27 +60,42 @@
  * top-level keys and the entry's other fields are left as they are; a new key or field is appended. No
  * change → the file is not rewritten. Writes are atomic (`<file>.<pid>.tmp` + rename), JSON indent 2 plus a
  * trailing newline, no timestamps — the same inputs give the same bytes. Reads nothing but the presence file,
- * the run file and STARDUST_SITE_OVERLAYS.
+ * the run file, STARDUST_SITE_OVERLAYS and — suggest, add --verify — the page at the URL.
  *
- * Output (stdout): `<key>.hide: <sel>, <sel>` — the key's resulting list (`*.hide: …` for "*") — then
+ * Output (stdout): add --verify first prints `verified on <url> @ <w>px: <sel> ×<n>, …` (the highest match
+ * count seen). add / seed: `<key>.hide: <sel>, <sel>` — the key's resulting list (`*.hide: …` for "*") — then
  * `wrote <file>: +<n> selector(s), <m> reason(s)` or `unchanged: <file>`, both printed only after the write
  * succeeded (a failed write prints nothing on stdout); seed with no selector from either
  * source prints `nothing to seed (<run>: <not found | no siteOverlays>; STARDUST_SITE_OVERLAYS: <unset | empty>)`
- * and touches no file.
+ * and touches no file. add without --verify also prints one warning line on stderr (it still writes):
+ * `presence: not verified against a live page — add --verify <url> (presence.mjs suggest <url> lists candidates)`.
+ * A refused add --verify prints on stderr `presence: hide matched nothing on live — candidates: <…> (<sel>, …)`
+ * (live-session's hideMissLine: the in-flow blocks above the header, then the selectors that matched nothing)
+ * and `presence: refused — nothing written to <file>`. suggest prints one line per candidate in document
+ * order, `<selector>  <tag>  <h>px` (`(no unique selector)` when the page has none for it), then
+ * `presence.mjs add --hide <first candidate> --verify <url>` (+ `--width <w>` off the default; shell-quoted
+ * where needed); no candidate → `none found above the header`; a `"*".hide` selector that matched nothing →
+ * one more line on stderr, `presence: WARNING hide matched nothing on live — candidates: <…> (<sel>, …)`.
  *
- * Exit codes: 0 written, unchanged or nothing to seed; 1 a malformed input file — the presence file not JSON,
- * not an object, the touched entry not an object, its `hide` not a selector string or list, its `reasons` not
- * an object of strings; the run file not JSON, not an object, `siteOverlays` not an array of strings — named
- * on stderr with nothing written (also: a file that cannot be read or written, live-session.mjs not found);
- * 2 usage (no or unknown command, unknown flag, a flag without a value, add without a selector, --reason not
- * `R-<digits>`).
+ * Exit codes: 0 written, unchanged, nothing to seed, or suggest listed; 1 a malformed input file — the presence
+ * file not JSON, not an object, the touched entry not an object, its `hide` not a selector string or list, its
+ * `reasons` not an object of strings; the run file not JSON, not an object, `siteOverlays` not an array of
+ * strings — named on stderr with nothing written (add --verify and suggest check the presence file before
+ * opening the page; also: a file that cannot be read or written, live-session.mjs not found, playwright not importable, the
+ * page not loadable — an HTTP error, a navigation failure); 2 usage (no or unknown command, unknown flag, a flag
+ * without a value, add without a selector, --reason not `R-<digits>`, a URL that is not http(s), --wait-ms /
+ * --width not a whole number, --wait-ms / --width / --headed on add without --verify) — or add --verify refused:
+ * a selector matched nothing on the live page, nothing written; 3 a bot challenge on the page (suggest,
+ * add --verify; nothing written — retry with --headed).
  *
- * Requires the diff skill's live-session.mjs (parseHideList) in one of two layouts — the plugin tree
- * (../../diff/scripts/) or the project copy (stardust/scripts/diff/ beside stardust/scripts/replica/; replica
- * SKILL.md § Setup copies both). It is imported after --help, so --help needs neither it nor any file.
+ * Requires the diff skill's live-session.mjs (parseHideList; for suggest / --verify the live helpers) in one of
+ * two layouts — the plugin tree (../../diff/scripts/) or the project copy (stardust/scripts/diff/ beside
+ * stardust/scripts/replica/; replica SKILL.md § Setup copies both). It is imported after --help, so --help needs
+ * neither it nor any file. playwright is imported only by suggest and add --verify: --help, seed and add without
+ * --verify never load it.
  */
 
-/* eslint-disable import/extensions, no-restricted-syntax, brace-style, object-curly-newline, max-len */
+/* eslint-disable import/extensions, no-restricted-syntax, no-await-in-loop, brace-style, object-curly-newline, max-len */
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -68,37 +107,68 @@ export const DEFAULT_RUN = 'stardust/.labs/run.json';
 export const ENV_OVERLAYS = 'STARDUST_SITE_OVERLAYS';
 export const SEED_REASON = Object.freeze({ run: 'seeded: run.json siteOverlays', env: 'seeded: STARDUST_SITE_OVERLAYS' });
 export const REASON_RE = /^R-\d+$/;
+export const DEFAULT_WIDTH = 1440;
+export const DEFAULT_WAIT_MS = 5000;
+export const UNVERIFIED = 'not verified against a live page — add --verify <url> (presence.mjs suggest <url> lists candidates)';
 
 const HELP = `presence.mjs — write the site-wide hide list (${DEFAULT_FILE}) every gate instrument merges under a gate dir's presence.json
 
 Usage:
   node stardust/scripts/replica/presence.mjs add --hide <sel[,sel…]> [--slug <s>] [--reason <R-nn>] [--file <f>]
+       [--verify <url> [--wait-ms ${DEFAULT_WAIT_MS}] [--width ${DEFAULT_WIDTH}] [--headed]]
   node stardust/scripts/replica/presence.mjs seed [--run ${DEFAULT_RUN}] [--file <f>]
+  node stardust/scripts/replica/presence.mjs suggest <url> [--width ${DEFAULT_WIDTH}] [--wait-ms ${DEFAULT_WAIT_MS}] [--headed] [--file <f>]
 
-  add    append in-flow per-visitor region selectors (a location bar above the header) to "*".hide, or to
-         <slug>.hide with --slug — the preserve-direction step records a region it identified
-  seed   append the runner's overlay selectors to "*".hide: run.json siteOverlays (array of selectors), then
-         the env ${ENV_OVERLAYS} (comma list) — run at Setup
+  add      append in-flow per-visitor region selectors (a location bar above the header) to "*".hide, or to
+           <slug>.hide with --slug — the preserve-direction step records a region it identified
+  seed     append the runner's overlay selectors to "*".hide: run.json siteOverlays (array of selectors), then
+           the env ${ENV_OVERLAYS} (comma list) — run at Setup; no browser
+  suggest  list the hide candidates read off the live page's DOM — the in-flow blocks above the header (where a
+           per-visitor location bar sits) — and warn on a "*".hide selector of the file that matches nothing
+           there; writes nothing
   --hide <sel,…>   selectors to append (repeatable; comma lists)
   --slug <s>       write <s>.hide instead of "*".hide
   --reason <R-nn>  residual id (R-<digits>) recorded as reasons[<sel>] for every selector of the call
+  --verify <url>   add: before writing, load the http(s) page and poll each selector for up to --wait-ms after
+                   the settle — a selector that never matches is refused (exit 2, nothing written)
+  --wait-ms <n>    add --verify, suggest: the poll window in ms (default ${DEFAULT_WAIT_MS}; 0 = one look after the settle)
+  --width <px>     add --verify, suggest: viewport width (default ${DEFAULT_WIDTH}; height 900)
+  --headed         add --verify, suggest: stealth real-Chrome tier (a bot-managed site that challenged the default)
   --run <f>        the run file (default ${DEFAULT_RUN}); missing = nothing from it
-  --file <f>       the presence file (default ${DEFAULT_FILE}, relative to the project root = cwd)
+  --file <f>       the presence file (default ${DEFAULT_FILE}, relative to the project root = cwd; suggest reads it)
   --help           this text (reads and writes nothing)
+
+The page (suggest, add --verify) opens the way the gate's live instruments open it (live-session: newLiveContext,
+gotoLive, dismissOverlays), then one scroll through it and back to the top; playwright is loaded only for these two —
+--help, seed and add without --verify never import it.
 
 Writes: the key's hide list extended in order, de-duplicated (live-session parseHideList), stored one selector per
 item; reasons in the entry's "reasons" map (seed: "${SEED_REASON.run}" / "${SEED_REASON.env}" for the
 selectors it appends); other keys and fields untouched; atomic (tmp + rename), indent 2 + newline, deterministic.
 No change → the file is not rewritten.
 
-Output: "<key>.hide: <sel>, <sel>" (the key's resulting list; "*.hide: …"), then "wrote <file>: +<n> selector(s),
-<m> reason(s)" or "unchanged: <file>"; seed with nothing from either source: "nothing to seed (…)", no file touched.
+Output: add --verify first "verified on <url> @ <w>px: <sel> ×<n>, …"; then "<key>.hide: <sel>, <sel>" (the key's
+resulting list; "*.hide: …") and "wrote <file>: +<n> selector(s), <m> reason(s)" or "unchanged: <file>", printed
+after the write succeeded; seed with nothing from either source: "nothing to seed (…)", no file touched.
+add without --verify still writes and warns on stderr:
+  presence: ${UNVERIFIED}
+add --verify refused (stderr, nothing written):
+  presence: hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
+  presence: refused — nothing written to <file>
+suggest: one line per candidate in document order, "<selector>  <tag>  <h>px", then
+"presence.mjs add --hide <first candidate> --verify <url>"; no candidate: "none found above the header"; a "*".hide
+selector of the file that matched nothing (polled like --verify) adds on stderr, exit still 0:
+  presence: WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
 
-Exit codes: 0 written / unchanged / nothing to seed; 1 malformed input file (presence file or run file — named,
-nothing written), a file that cannot be read or written, or live-session.mjs not found; 2 usage error.`;
+Exit codes: 0 written / unchanged / nothing to seed / suggest listed; 1 malformed input file (presence file or run
+file — named, nothing written), a file that cannot be read or written, live-session.mjs not found, playwright not
+importable, or the page not loadable (HTTP error, navigation failure); 2 usage error, or add --verify refused (a
+selector matched nothing on the live page); 3 bot challenge on the page (suggest, add --verify — retry --headed).`;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
 export class InputError extends Error { constructor(msg) { super(msg); this.code = 1; } }
+/** The live page could not be read: code 3 a bot challenge, 1 any other load failure. */
+export class LiveError extends Error { constructor(msg, code) { super(msg); this.code = code; } }
 
 // live-session.mjs lives in the diff skill's scripts dir: the plugin tree (../../diff/scripts/) or the project copy
 // (stardust/scripts/diff/ beside stardust/scripts/replica/).
@@ -108,17 +178,34 @@ async function loadLiveSession() {
   return import(pathToFileURL(found).href);
 }
 
-const FLAGS = { add: ['--hide', '--slug', '--reason', '--file'], seed: ['--run', '--file'] };
+const FLAGS = {
+  add: ['--hide', '--slug', '--reason', '--file', '--verify', '--wait-ms', '--width', '--headed'],
+  seed: ['--run', '--file'],
+  suggest: ['--width', '--headed', '--wait-ms', '--file'],
+};
+const COMMANDS = 'add, seed or suggest';
+const isHttpUrl = (v) => { try { return ['http:', 'https:'].includes(new URL(v).protocol); } catch { return false; } };
+const wholeNumber = (flag, v, min) => {
+  if (!/^\d+$/.test(v) || Number(v) < min) throw new UsageError(`presence: ${flag} must be a whole number ≥ ${min} (got "${v}")`);
+  return Number(v);
+};
 
-/** argv after the script path → { cmd, hide: [values], slug, reason, file, run }; throws UsageError. --help is answered before this. */
+/** argv after the script path → { cmd, hide: [values], slug, reason, file, run, url, verify, waitMs, width, headed };
+ * throws UsageError. --help is answered before this. */
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
-  if (!cmd) throw new UsageError('presence: a command is required — add or seed (see --help)');
-  if (!Object.hasOwn(FLAGS, cmd)) throw new UsageError(`presence: unknown command "${cmd}" — add or seed (see --help)`);
-  const o = { cmd, hide: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN };
+  if (!cmd) throw new UsageError(`presence: a command is required — ${COMMANDS} (see --help)`);
+  if (!Object.hasOwn(FLAGS, cmd)) throw new UsageError(`presence: unknown command "${cmd}" — ${COMMANDS} (see --help)`);
+  const o = { cmd, hide: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN, url: null, verify: null, waitMs: null, width: null, headed: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
+    if (cmd === 'suggest' && !a.startsWith('-')) {
+      if (o.url !== null) throw new UsageError(`presence: suggest takes one page URL (got "${o.url}" and "${a}")`);
+      o.url = a;
+      continue;
+    }
     if (!FLAGS[cmd].includes(a)) throw new UsageError(`presence: unknown argument ${a} for ${cmd} (see --help)`);
+    if (a === '--headed') { o.headed = true; continue; }
     const v = rest[i + 1];
     if (v === undefined || v.startsWith('--')) throw new UsageError(`presence: ${a} needs a value (see --help)`);
     i += 1;
@@ -127,12 +214,21 @@ export function parseArgs(argv) {
     else if (a === '--reason') o.reason = v.trim();
     else if (a === '--file') o.file = v;
     else if (a === '--run') o.run = v;
+    else if (a === '--verify') o.verify = v.trim();
+    else if (a === '--wait-ms') o.waitMs = wholeNumber(a, v, 0);
+    else if (a === '--width') o.width = wholeNumber(a, v, 1);
   }
   if (cmd === 'add' && !o.hide.length) throw new UsageError('presence: add needs --hide <sel[,sel…]> (see --help)');
+  if (cmd === 'suggest' && o.url === null) throw new UsageError('presence: suggest needs a page URL (see --help)');
+  if (cmd === 'suggest' && !isHttpUrl(o.url)) throw new UsageError(`presence: suggest needs an http(s) page URL (got "${o.url}")`);
+  if (o.verify !== null && !isHttpUrl(o.verify)) throw new UsageError(`presence: --verify needs an http(s) page URL (got "${o.verify}")`);
+  if (cmd === 'add' && o.verify === null && (o.waitMs !== null || o.width !== null || o.headed)) throw new UsageError('presence: --wait-ms, --width and --headed need --verify <url> (see --help)');
   if (o.slug === '') throw new UsageError('presence: --slug needs a page slug (see --help)');
   if (o.reason !== null && !REASON_RE.test(o.reason)) throw new UsageError(`presence: --reason must be a residual id R-<digits> (got "${o.reason}")`);
   if (!o.file.trim()) throw new UsageError('presence: --file needs a path (see --help)');
   if (!o.run.trim()) throw new UsageError('presence: --run needs a path (see --help)');
+  o.width ??= DEFAULT_WIDTH;
+  o.waitMs ??= DEFAULT_WAIT_MS;
   return o;
 }
 
@@ -223,17 +319,130 @@ export function writeAtomic(file, json) {
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-/** The CLI: argv after the script path → exit code; lines go to `log`. */
-export async function main(argv, { env = process.env, log = console.log } = {}) {
+// ---- the live page: suggest and add --verify ------------------------------------------------------------------
+
+// playwright is imported here only: --help, seed and add without --verify never load it.
+async function loadChromium() {
+  let m;
+  try { m = await import('playwright'); } catch (e) { throw new InputError(`presence: playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
+  return (m.chromium ? m : m.default).chromium;
+}
+
+/* eslint-disable no-undef */
+// In the page: each selector's current match count; a selector the query refuses counts 0 (live-session's recount rule).
+function countInPage(sels) {
+  return sels.map((sel) => { try { return document.querySelectorAll(sel).length; } catch { return 0; } });
+}
+// In the page: one scroll through the document and back to the top — lazy content rendered, the header at rest.
+async function scrollThroughInPage() {
+  const h = document.documentElement.scrollHeight;
+  for (let y = 0; y < h; y += 700) { window.scrollTo(0, y); await new Promise((r) => { setTimeout(r, 80); }); }
+  window.scrollTo(0, 0);
+  await new Promise((r) => { setTimeout(r, 400); });
+}
+/* eslint-enable no-undef */
+
+/**
+ * Opens `url` the way the gate's live instruments do (live-session: newLiveContext, gotoLive with the default
+ * waitUntil — a bot challenge or an HTTP error is never read as the page —, dismissOverlays with the late-modal
+ * window of a live site, then one scroll through and back to the top), runs `work(page)` and closes the browser.
+ * A bot challenge → LiveError code 3; any other load failure → LiveError code 1.
+ */
+async function withLivePage(session, url, { width, headed }, work) {
+  const chromium = await loadChromium();
+  const browser = headed ? await session.launchStealthHeaded(chromium) : await chromium.launch();
+  try {
+    const ctx = await session.newLiveContext(browser, { viewport: { width, height: 900 } });
+    const page = await ctx.newPage();
+    try {
+      await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), settleMs: session.isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: headed });
+    } catch (e) {
+      const why = String(e.message).split('\n')[0];
+      throw e.name === 'BotChallengeError' ? new LiveError(`presence: ${why}`, 3) : new LiveError(`presence: cannot load ${url} (${why})`, 1);
+    }
+    await session.dismissOverlays(page, { lateWindowMs: session.lateWindowFor(url) });
+    await page.evaluate(scrollThroughInPage);
+    await page.waitForTimeout(500);
+    return await work(page);
+  } finally {
+    await browser.close().catch(() => {});
+  }
+}
+
+/**
+ * Polls each selector on `page` every `everyMs` until every one matched at least once or `waitMs` passed (one look
+ * when `waitMs` is 0) → { counts: the highest match count seen per selector, misses: the selectors never matched }.
+ * A block rendered late (a geo lookup filling its wrapper) is found when it arrives.
+ */
+export async function pollSelectors(page, sels, { waitMs = DEFAULT_WAIT_MS, everyMs = 250 } = {}) {
+  const counts = sels.map(() => 0);
+  const deadline = Date.now() + waitMs;
+  for (;;) {
+    const now = await page.evaluate(countInPage, sels);
+    now.forEach((c, i) => { counts[i] = Math.max(counts[i], c); });
+    const left = deadline - Date.now();
+    if (counts.every((c) => c > 0) || left <= 0) break;
+    await page.waitForTimeout(Math.min(everyMs, left));
+  }
+  return { counts, misses: sels.filter((_, i) => counts[i] === 0) };
+}
+
+const SHELL_SAFE = /^[\w.\-/:=@%+,]+$/;
+/** A value for a copy-paste command line: as is when the shell reads it literally, else single-quoted. */
+export const shellArg = (v) => (SHELL_SAFE.test(v) ? v : `'${v.replace(/'/g, "'\\''")}'`);
+
+/** Pure: inFlowRegionsAboveHeader's candidates → suggest's lines: `<selector>  <tag>  <h>px` each, in document order
+ * (`(no unique selector)` when the page has none for a block), then `presence.mjs add --hide <first selector>
+ * --verify <url>` (+ `--width <w>` off the default); no candidate → []. */
+export function suggestLines(list, { url, width = DEFAULT_WIDTH }) {
+  const rows = (list || []).filter(Boolean);
+  const lines = rows.map((c) => `${c.selector || '(no unique selector)'}  ${c.tag}  ${c.height}px`);
+  const first = rows.find((c) => c.selector);
+  if (first) lines.push(`presence.mjs add --hide ${shellArg(first.selector)} --verify ${shellArg(url)}${width === DEFAULT_WIDTH ? '' : ` --width ${width}`}`);
+  return lines;
+}
+
+/** The CLI: argv after the script path → exit code; result lines go to `log`, warnings and refusals to `warn`. */
+export async function main(argv, { env = process.env, log = console.log, warn = console.error } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const o = parseArgs(argv);
-  const { parseHideList } = await loadLiveSession();
+  const session = await loadLiveSession();
+  const { parseHideList } = session;
+  if (o.cmd === 'suggest') {
+    // the presence file's "*" list is checked on the same page: a selector that matches nothing there is warned on
+    const json = readJsonObject(o.file).json;
+    checkEntry(json, '*', o.file);
+    const entry = own(json, '*');
+    const listed = parseHideList(entry && entry.hide);
+    const seen = await withLivePage(session, o.url, o, async (page) => {
+      const { misses } = listed.length ? await pollSelectors(page, listed, { waitMs: o.waitMs }) : { misses: [] };
+      return { misses, list: await session.inFlowRegionsAboveHeader(page) };
+    });
+    const lines = suggestLines(seen.list, o);
+    for (const line of lines.length ? lines : [session.formatCandidates([])]) log(line);
+    if (seen.misses.length) warn(`presence: WARNING ${session.hideMissLine(seen.misses, seen.list)}`);
+    return 0;
+  }
   const key = o.cmd === 'add' && o.slug ? o.slug : '*';
   let selectors; let reasonOf = null; let onlyAdded = false;
   if (o.cmd === 'add') {
     selectors = parseHideList(o.hide);
     if (!selectors.length) throw new UsageError('presence: --hide names no selector (see --help)');
     if (o.reason) reasonOf = () => o.reason;
+    if (o.verify) {
+      // a malformed presence file is refused before the page is opened; it is read again after the wait
+      checkEntry(readJsonObject(o.file).json, key, o.file);
+      const v = await withLivePage(session, o.verify, o, async (page) => {
+        const polled = await pollSelectors(page, selectors, { waitMs: o.waitMs });
+        return { ...polled, candidates: polled.misses.length ? await session.inFlowRegionsAboveHeader(page) : [] };
+      });
+      if (v.misses.length) {
+        warn(`presence: ${session.hideMissLine(v.misses, v.candidates)}`);
+        warn(`presence: refused — nothing written to ${o.file}`);
+        return 2;
+      }
+      log(`verified on ${o.verify} @ ${o.width}px: ${selectors.map((sel, i) => `${sel} ×${v.counts[i]}`).join(', ')}`);
+    }
   } else {
     const run = readRun(o.run);
     const raw = env[ENV_OVERLAYS];
@@ -254,6 +463,7 @@ export async function main(argv, { env = process.env, log = console.log } = {}) 
   if (r.changed) writeAtomic(o.file, r.json);
   log(`${key}.hide: ${r.list.join(', ')}`);
   log(r.changed ? `wrote ${o.file}: +${plural(r.added.length, 'selector')}, ${plural(r.reasonChanges, 'reason')}` : `unchanged: ${o.file}`);
+  if (o.cmd === 'add' && !o.verify) warn(`presence: ${UNVERIFIED}`);
   return 0;
 }
 
@@ -261,7 +471,8 @@ export async function main(argv, { env = process.env, log = console.log } = {}) 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
   main(process.argv.slice(2)).then((code) => { process.exitCode = code; }, (e) => {
-    console.error(e instanceof UsageError || e instanceof InputError ? e.message : `presence: ${e.stack || e.message}`);
-    process.exitCode = e instanceof UsageError ? 2 : 1;
+    const known = e instanceof UsageError || e instanceof InputError || e instanceof LiveError;
+    console.error(known ? e.message : `presence: ${e.stack || e.message}`);
+    process.exitCode = known ? e.code : 1;
   });
 }
