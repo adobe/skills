@@ -120,10 +120,13 @@
  *   reason replaces an earlier one) or an earlier acceptance of the same row holds: the page's
  *   previous sidecar `variance` (else, with no sidecar record, its row's source.variance in
  *   <dirname(state)>/rollout/coverage/pages.json, read once per run) carries `accepted` and equals
- *   the row on verdict, missing, extra and deltas (lists in any order) → rendered without the flag,
+ *   this render's record on archetype, verdict, missing, extra, deltas (the count) and deltaKinds
+ *   (the deltas' fingerprint: each kind, with its probe when it names one, sorted — never the
+ *   message), lists in any order → rendered without the flag,
  *   `accepted` (and `acceptedAt` when the earlier record has one) kept, one run summary line
  *   `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged variance (…)`; a
- *   changed row is refused naming each changed field and quoting the earlier reason. More than half
+ *   changed row — or an earlier record without archetype / deltaKinds — is refused naming each
+ *   changed field and quoting the earlier reason. More than half
  *   of the archetype's current clones differ → refused even with --accept-variance or an earlier
  *   acceptance (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
  *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
@@ -846,7 +849,7 @@ function mediaResolver(run, slug, capture) {
   return (ref) => mediaRefFor(ref, { base, map: mediaSource(run, 'map', slug), ledger: mediaSource(run, 'ledger', slug), protoDir: run.protoDir, bundles });
 }
 // The variance gate (replica/sibling-variance.mjs record, <variance-dir>/<archetype-slug>.json) → the sidecar `variance` record:
-// { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted[, acceptedAt] }. Throws Refusal (strict
+// { status: 'skipped', reason } | { verdict, file, at, archetype, missing, extra, deltas, deltaKinds, accepted[, acceptedAt] }. Throws Refusal (strict
 // variance) on a differing page without --accept-variance or an earlier acceptance of the unchanged row, on any page of a template
 // whose current clones mostly differ, and on a malformed file.
 export function varianceGate(run, page, archetype, old = null) {
@@ -859,7 +862,7 @@ export function varianceGate(run, page, archetype, old = null) {
   const row = rows.find((s) => s.slug === page.slug);
   if (!row) return { status: 'skipped', reason: `${rel} has no row for ${page.slug}` };
   const list = (v) => (Array.isArray(v) ? v : []);
-  const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, accepted: null };
+  const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, archetype: archetype.slug, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, deltaKinds: deltaKindsOf(row.deltas), accepted: null };
   if (row.verdict === 'same') return rec;
   if (row.verdict !== 'differs') throw new Refusal(page.slug, 'variance', `${rel} gives ${page.slug} the verdict ${JSON.stringify(row.verdict ?? null)} (same or differs expected)`, `re-run replica/sibling-variance.mjs for archetype ${archetype.slug}, then re-run`);
   // The majority counts the current clones only: rows whose page clones this archetype now (a row left behind by a page moved
@@ -877,12 +880,16 @@ export function varianceGate(run, page, archetype, old = null) {
   const reason = prior && typeof prior.accepted === 'string' && prior.accepted.trim() ? prior.accepted : null;
   const changed = reason ? VARIANCE_FIELDS.filter((k) => varianceKey(prior[k]) !== varianceKey(rec[k])) : [];
   if (reason && !changed.length) return { ...rec, accepted: reason, ...(prior.acceptedAt != null ? { acceptedAt: prior.acceptedAt } : {}) };
-  const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : String(v ?? 'none'));
+  const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : v == null ? '(not recorded)' : String(v));
   const since = reason ? `; changed since an earlier render accepted it ("${reason}"): ${changed.map((k) => `${k} ${shown(prior[k])} → ${shown(rec[k])}`).join('; ')}` : '';
   throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
 }
-// An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order).
-const VARIANCE_FIELDS = ['verdict', 'missing', 'extra', 'deltas'];
+// An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order): the
+// archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds.
+const VARIANCE_FIELDS = ['verdict', 'archetype', 'missing', 'extra', 'deltas', 'deltaKinds'];
+// The deltas' fingerprint: each delta's kind, with its probe when it names one ("COUNT(card)", "SECTIONS"), sorted. Never the
+// message — SECTION HEIGHTS carries pixel values that move on every probe.
+const deltaKindsOf = (deltas) => (Array.isArray(deltas) ? deltas : []).map((d) => (d && typeof d === 'object' ? `${d.kind}${d.probe != null ? `(${d.probe})` : ''}` : String(d))).sort();
 const varianceKey = (v) => JSON.stringify(Array.isArray(v) ? v.map((x) => JSON.stringify(x)).sort() : v ?? null);
 // The variance record an earlier render left: the page's previous sidecar `variance`, else (no sidecar record) its row's
 // source.variance in <dirname(state)>/rollout/coverage/pages.json — the rollout inventory's verbatim copy, read once per run.
