@@ -287,11 +287,29 @@ function slotKindOf(idx, e) {
   if (links.length === 1 && !imgs.length && text === squash(textOf(idx, links[0]))) return 'link';
   return 'html';
 }
+// srcset candidates as a browser splits them: a URL runs to whitespace (so a data: URL keeps its comma), a trailing comma
+// ends a candidate, else its descriptors run to the next comma. → [{ url, desc }]
+function srcsetCandidates(s) {
+  const str = String(s || ''); const out = []; let i = 0;
+  while (i < str.length) {
+    while (i < str.length && /[\s,]/.test(str[i])) i += 1;
+    let j = i; while (j < str.length && !/\s/.test(str[j])) j += 1;
+    let url = str.slice(i, j); let desc = '';
+    if (/,$/.test(url)) { url = url.replace(/,+$/, ''); i = j; } else {
+      let k = j; let depth = 0;
+      while (k < str.length && (str[k] !== ',' || depth)) { if (str[k] === '(') depth += 1; else if (str[k] === ')') depth = Math.max(0, depth - 1); k += 1; }
+      desc = str.slice(j, k).trim(); i = k + 1;
+    }
+    if (url) out.push({ url, desc });
+  }
+  return out;
+}
+const isData = (u) => /^data:/i.test(u);
 // An image's URLs (src, data-src, then every srcset / data-srcset candidate), data: URLs skipped.
 function imageUrls(idx, img) {
   const a = attrsOf(idx, img); const out = [];
-  for (const k of ['src', 'data-src']) { const v = (a.get(k) || '').trim(); if (v && !/^data:/i.test(v)) out.push(v); }
-  for (const k of ['srcset', 'data-srcset']) for (const part of (a.get(k) || '').split(',')) { const u = part.trim().split(/\s+/)[0]; if (u && !/^data:/i.test(u)) out.push(u); }
+  for (const k of ['src', 'data-src']) { const v = (a.get(k) || '').trim(); if (v && !isData(v)) out.push(v); }
+  for (const k of ['srcset', 'data-srcset']) for (const c of srcsetCandidates(a.get(k))) if (!isData(c.url)) out.push(c.url);
   return out;
 }
 // A URL's file name as extract/media-harvest.mjs names a harvested file: decoded, extension dropped, lower case, runs of
@@ -364,22 +382,29 @@ export function slotRecipes(archetypeProtoHtml, archetypeCaptureHtml, anchors) {
   }
   return Object.fromEntries([...lists].map(([name, l]) => [name, l.length === 1 ? l[0] : l]));
 }
-function valueOf(idx, el, kind) {
+function valueOf(idx, el, kind, where) {
   const a = attrsOf(idx, el);
   if (kind === 'image') {
-    if (el.tag !== 'img') return { why: `the element at the path is a <${el.tag}>, not an <img>` };
+    if (el.tag !== 'img') return { why: `the element at ${where} is a <${el.tag}>, not an <img>` };
     const src = imageUrls(idx, el)[0];
-    if (!src) return { why: 'the <img> at the path has no source' };
+    if (!src) return { why: `the <img> at ${where} has no source` };
     const v = { src }; if (a.has('alt')) v.alt = a.get('alt');
-    const set = (a.get('srcset') || a.get('data-srcset') || '').trim(); if (set) v.srcset = set;
+    // the first of srcset / data-srcset with a candidate that is not a data: placeholder, without the placeholders
+    for (const k of ['srcset', 'data-srcset']) {
+      const set = srcsetCandidates(a.get(k)).filter((c) => !isData(c.url));
+      if (set.length) { v.srcset = set.map((c) => (c.desc ? `${c.url} ${c.desc}` : c.url)).join(', '); break; }
+    }
     return { value: v };
   }
   if (kind === 'link') {
-    if (el.tag !== 'a') return { why: `the element at the path is a <${el.tag}>, not an <a>` };
+    if (el.tag !== 'a') return { why: `the element at ${where} is a <${el.tag}>, not an <a>` };
     const href = (a.get('href') || '').trim();
-    if (!href) return { why: 'the <a> at the path has no href' };
+    if (!href) return { why: `the <a> at ${where} has no href` };
+    // A link recipe is built only from an archetype link with text: a sibling link without any differs (an image or icon
+    // link), and a value without text would keep the archetype's label beside the sibling's href.
     const text = collapse(textOf(idx, el));
-    return { value: text ? { href, text } : { href } };
+    if (!text) return { why: `the <a> at ${where} has no text` };
+    return { value: { href, text } };
   }
   if (kind === 'html') { const inner = idx.html.slice(el.openEnd, el.closeStart).trim(); return { value: inner ? { html: inner } : null }; }
   return { value: collapse(textOf(idx, el)) || null };
@@ -388,10 +413,12 @@ const pathText = (path) => path.map((s) => `${s.tag}[${s.n}]`).join('/');
 /**
  * slotValues(recipes, siblingCaptureHtml) → { slots, unresolved }: slots = { name: value | [value…] | null } in the shapes
  * migrate.mjs forkFromArchetype takes — text: a string (whitespace collapsed; null when empty); html: { html } (the inner
- * HTML, trimmed; null when empty); image: { src, alt?, srcset? } (src, else data-src, else the first srcset candidate);
- * link: { href, text? }. A name whose recipe (any of a repeated name's) has no anchor is left out — the caller decides.
- * unresolved = [{ slot, reason }]: an anchor that does not match exactly one element of the sibling's capture, a path that
- * leads nowhere, or an element that cannot give the value; such a slot's value is null.
+ * HTML, trimmed; null when empty); image: { src, alt?, srcset? } (src, else data-src, else the first srcset candidate;
+ * data: placeholders never); link: { href, text }. A name whose recipe (any of a repeated name's) has no anchor is left
+ * out — the caller decides. unresolved = [{ slot, reason }]: an anchor that does not match exactly one element of the
+ * sibling's capture, a path that leads nowhere, an element that cannot give the value (a link without text included), or
+ * a repeated name whose sibling has more items than the archetype (a same-tag element after the last recipe's element
+ * under its parent: the list is never truncated); such a slot's value is null.
  */
 export function slotValues(recipes, siblingCaptureHtml) {
   const idx = indexHtml(siblingCaptureHtml); const slots = {}; const unresolved = []; const hits = new Map();
@@ -403,17 +430,24 @@ export function slotValues(recipes, siblingCaptureHtml) {
     const h = hits.get(r.anchor);
     if (!h) return { why: `anchor ${JSON.stringify(r.anchor)} is outside the selector grammar` };
     if (h.length !== 1) return { why: `anchor ${JSON.stringify(r.anchor)} matches ${h.length} elements` };
+    const where = r.path.length ? `${pathText(r.path)} under ${JSON.stringify(r.anchor)}` : JSON.stringify(r.anchor);
     let el = h[0];
     for (const step of r.path) {
       el = (idx.kids.get(el) || []).filter((k) => k.tag === step.tag)[step.n - 1];
-      if (!el) return { why: `path ${pathText(r.path)} under ${JSON.stringify(r.anchor)} leads nowhere` };
+      if (!el) return { why: `path ${where} leads nowhere` };
     }
-    return valueOf(idx, el, r.kind);
+    const v = valueOf(idx, el, r.kind, where);
+    return v.why ? v : { ...v, el };
   };
   for (const [name, rec] of Object.entries(recipes || {})) {
     const list = Array.isArray(rec) ? rec : [rec];
     if (!list.length || list.some((r) => !r || !r.anchor)) continue;
-    const got = list.map(read); const bad = got.find((g) => g.why);
+    const got = list.map(read); let bad = got.find((g) => g.why);
+    const step = Array.isArray(rec) && !bad ? list.at(-1).path.at(-1) : null;
+    if (step) {
+      const items = (idx.kids.get(got.at(-1).el.parent) || []).filter((k) => k.tag === step.tag).length;
+      if (items > step.n) bad = { why: `the sibling has more items than the archetype (${items} > ${step.n})` };
+    }
     if (bad) { slots[name] = null; unresolved.push({ slot: name, reason: bad.why }); continue; }
     slots[name] = Array.isArray(rec) ? got.map((g) => g.value) : got[0].value;
   }

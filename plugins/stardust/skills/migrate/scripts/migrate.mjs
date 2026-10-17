@@ -95,20 +95,21 @@
  *   malformed media map or ledger refuses the page.
  *
  * Fork slot source (--slots mapping|page-json). Default: page-json when <dirname(state)>/rollout/workspace/mapping.json is
- *   absent; mapping when it is usable (below) and has a verified selector for the archetype; else page-json, never
- *   silently — one run line per archetype `slots: archetype <a> — mapping not used (<reason>); page JSON slots` and the
- *   sidecar slotMapSkipped <reason>. An explicit --slots mapping refuses instead. page-json: the page JSON slots above.
- *   mapping (slot-map.mjs): the rollout block mapping (the rollout skill's coverage-contract.md § mapping), read only
- *   when rollout/workspace/manifest.json lists its sha256 under outputs
+ *   absent; mapping when it is usable (below), has a verified selector for the archetype and both captures exist; else
+ *   page-json, never silently — one run line per archetype and reason `slots: archetype <a> — mapping not used
+ *   (<reason>); page JSON slots` and the sidecar slotMapSkipped <reason>. An explicit --slots mapping refuses instead.
+ *   page-json: the page JSON slots above. mapping (slot-map.mjs): the rollout block mapping (the rollout skill's
+ *   coverage-contract.md § mapping), read only when rollout/workspace/manifest.json lists its sha256 under outputs
  *   and its generatedAt equals rollout/coverage/pages.json's. Each data-slot of the archetype's <main> is found in the
  *   archetype's capture (<current>/pages/<archetype>.html) inside an anchor of the archetype — a block instance verified
  *   true, or a section that resolved on it — by its text (an image by its file name, a link by its text); the same anchor
  *   and child path on this page's capture (<current>/pages/<slug>.html) give its value (<img> image, <a> link, block
  *   children html, else text). A name in the page JSON slots keeps that value (explicit beats derived); the page JSON is
  *   never written. Refused (strict slots, nothing written): with an explicit --slots mapping, the mapping unusable (the
- *   reason; re-run block-origin.mjs --verify, or --slots page-json) or no verified selector for the archetype; in mapping
- *   mode, a missing capture; a slot without a mapped source, or whose anchor does not match exactly one element of this
- *   page's capture or whose path leads nowhere, and no page JSON value for it. sourceForked names the mapping and the capture.
+ *   reason; re-run block-origin.mjs --verify, or --slots page-json), no verified selector for the archetype or a missing
+ *   capture; in mapping mode, a slot without a mapped source, or whose anchor does not match exactly one element of this
+ *   page's capture, whose path leads nowhere, whose link has no text, or a repeated slot with more items than the
+ *   archetype's, and no page JSON value for it. sourceForked names the mapping and the capture.
  *
  * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
  *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).
@@ -728,7 +729,7 @@ export function renderPage(run, page, entry) {
   let forked = null; let sourceHtml; let mapped = null; let slotPlan = null;
   if (fork) {
     const archetypeHtml = readFileSync(archetypeSource, 'utf8');
-    slotPlan = slotSourceFor(run, archetype);
+    slotPlan = slotSourceFor(run, page, archetype);
     if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
     forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
     sourceHtml = forked.html;
@@ -780,16 +781,19 @@ export function renderPage(run, page, entry) {
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
   return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
 }
-// The fork's slot source for an archetype → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
+// The fork's slot source for a page → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
 // explicit mapping refuses in mappedSlots when unusable); by default the page JSON when there is no mapping file, the mapping
-// when readMapping finds it usable and it has a verified selector for the archetype, else the page JSON with the reason
-// (sidecar slotMapSkipped, one run summary line per archetype — never a silent fallback).
-function slotSourceFor(run, archetype) {
+// when readMapping finds it usable, it has a verified selector for the archetype and both captures (the archetype's, this
+// page's) exist, else the page JSON with the reason (sidecar slotMapSkipped, one run summary line per archetype and reason —
+// never a silent fallback).
+function slotSourceFor(run, page, archetype) {
   if (run.slotFlag) return { mode: run.slotFlag, skipped: null };
   if (!run.mappingPresent) return { mode: 'page-json', skipped: null };
   const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
-  const skipped = !m.mapping ? m.reason : anchorsFor(m.mapping, null, archetype.slug).length ? null : `${m.file} has no verified selector for archetype ${archetype.slug}`;
-  if (skipped) run.slotFallbacks.set(archetype.slug, skipped);
+  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${page.slug}.html`));
+  const skipped = !m.mapping ? m.reason : !anchorsFor(m.mapping, null, archetype.slug).length ? `${m.file} has no verified selector for archetype ${archetype.slug}`
+    : !isFile(archCapture) ? `no capture HTML of archetype ${archetype.slug} at ${archCapture}` : !isFile(ownCapture) ? `no capture HTML at ${ownCapture}` : null;
+  if (skipped) { if (!run.slotFallbacks.has(archetype.slug)) run.slotFallbacks.set(archetype.slug, new Set()); run.slotFallbacks.get(archetype.slug).add(skipped); }
   return { mode: skipped ? 'page-json' : 'mapping', skipped };
 }
 // --slots mapping (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors in the rollout
@@ -950,7 +954,8 @@ export function renderRun(o) {
   if (missing.length) console.log(`missing assets: ${missing.length} reference(s) left as is — ${[...new Set(missing.map((m) => m.subpath))].slice(0, 6).join(', ')}`);
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
-  for (const [a, reason] of [...run.slotFallbacks].sort(([x], [y]) => (x < y ? -1 : x > y ? 1 : 0))) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
+  const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+  for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }

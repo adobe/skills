@@ -723,9 +723,22 @@ check('no verified selector for the archetype (explicit --slots mapping), a slot
   assert.match(none.err, /^refused trip-two: strict slots — stardust\/rollout\/workspace\/mapping\.json has no verified selector for archetype trips — map the archetype with the rollout skill's block-origin\.mjs --verify \(its capture: stardust\/current\/pages\/trips\.html\), or pass --slots page-json$/m);
   publish();
   rmSync(join(tmp, 'stardust/current/pages/trip-two.html'));
-  const nocap = run(['render', 'trip-two', '--force']); assert.equal(nocap.status, 2);
+  const nocap = run(['render', 'trip-two', '--force', '--slots', 'mapping']); assert.equal(nocap.status, 2);
   assert.match(nocap.err, /^refused trip-two: strict slots — no capture HTML at stardust\/current\/pages\/trip-two\.html to read the mapped slots from — re-capture the page \(extract\), or pass --slots page-json$/m);
   write('stardust/current/pages/trip-two.html', fixture('trip-two.html'));
+});
+check('default (no --slots): a missing capture (the sibling\'s or the archetype\'s) falls back to the page JSON slots with the reason, never a refusal', () => {
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Paged headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Paged body.</p>' } } });
+  const slotLines = (out) => out.split('\n').filter((l) => l.startsWith('slots:'));
+  for (const [file, why] of [['trip-two.html', 'no capture HTML at stardust/current/pages/trip-two.html'], ['trips.html', 'no capture HTML of archetype trips at stardust/current/pages/trips.html']]) {
+    rmSync(join(tmp, `stardust/current/pages/${file}`));
+    const r = run(['render', 'trip-two', '--force']); assert.equal(r.status, 0, r.err);
+    assert.match(r.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+    assert.deepEqual(slotLines(r.out), [`slots: archetype trips — mapping not used (${why}); page JSON slots`]);
+    const m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMapSkipped, why);
+    write(`stardust/current/pages/${file}`, fixture(file));
+  }
+  tripCap('trip-two', 'Coastal walks');
 });
 // Later sections keep the page-JSON default: no mapping in the project.
 rmSync(join(tmp, RW), { recursive: true, force: true }); rmSync(join(tmp, 'stardust/rollout/coverage'), { recursive: true, force: true });

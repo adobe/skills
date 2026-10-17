@@ -200,6 +200,22 @@ check('values: a repeated slot gives a list (a missing element → null and list
   assert.deepEqual(r.unresolved, [{ slot: 'tip', reason: 'path ul[1]/li[2] under "section.s" leads nowhere' }]);
   assert.deepEqual(slotValues({ tip: kinds.tip }, CAPTURE).slots, { tip: ['Tip one', 'Tip two'] });
 });
+check('a link without text on the sibling (an image-only link) is unresolved, never the archetype label with the sibling href', () => {
+  const r = slotValues({ more: kinds.more }, SIBLING.replace('<a href="/sib-more">Read on</a>', '<a href="/sib-more"><img src="/m/icon.png" alt="Read on"></a>'));
+  assert.deepEqual(r, { slots: { more: null }, unresolved: [{ slot: 'more', reason: 'the <a> at div[3]/a[2] under "section.s" has no text' }] });
+});
+check('a repeated slot whose sibling has more items than the archetype is unresolved (never truncated); as many items is fine', () => {
+  const more = slotValues({ tip: kinds.tip }, CAPTURE.replace('<ul><li>Tip one</li><li>Tip two</li></ul>', '<ul><li>S1</li><li>S2</li><li>S3</li><li>S4</li></ul>'));
+  assert.deepEqual(more, { slots: { tip: null }, unresolved: [{ slot: 'tip', reason: 'the sibling has more items than the archetype (4 > 2)' }] });
+  assert.deepEqual(slotValues({ tip: kinds.tip }, CAPTURE.replace('<li>Tip one</li><li>Tip two</li>', '<li>S1</li><li>S2</li>')).slots, { tip: ['S1', 'S2'] });
+});
+check('a data: placeholder is never the image source or srcset (a data: URL with its comma is one srcset candidate)', () => {
+  const lazy = '<img src="data:image/gif;base64,R0lGODlhAQABAAAAACw=" srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1w" data-srcset="https://cdn.example.test/m/sib.png?w=800 800w, https://cdn.example.test/m/sib.png?w=1600 1600w" alt="Lazy">';
+  const r = slotValues({ pic: kinds.pic }, SIBLING.replace('<img data-src="https://cdn.example.test/m/sib.png?w=800" alt="Sibling picture">', lazy));
+  assert.deepEqual(r, { slots: { pic: { src: 'https://cdn.example.test/m/sib.png?w=800', alt: 'Lazy', srcset: 'https://cdn.example.test/m/sib.png?w=800 800w, https://cdn.example.test/m/sib.png?w=1600 1600w' } }, unresolved: [] });
+  const mixed = slotValues({ pic: kinds.pic }, SIBLING.replace('alt="Sibling picture"', 'srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x, /m/sib-2x.png 2x" alt="Sibling picture"'));
+  assert.equal(mixed.slots.pic.srcset, '/m/sib-2x.png 2x');
+});
 
 console.log(failed ? `\n${failed} check(s) failed, ${passed} passed` : `\nall checks passed (${passed})`);
 process.exitCode = failed ? 1 : 0;
