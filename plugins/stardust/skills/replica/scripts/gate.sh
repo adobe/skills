@@ -139,6 +139,13 @@
 #                       records the list; a round with a different list (or with hides and no live.json) retakes
 #                       live.png and says so — as it does a live.png with no live.json, or one whose live.json
 #                       predates the overlay-left check (no overlayLeft) or records an overlay left: one line, once.
+#                       A hide selector that matched nothing on the live capture is never silent: when the live
+#                       capture's record (live-shot.json — a reused live.png's too) carries hideMiss, one stderr line
+#                       `gate.sh: WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); …
+#                       (<missed sel>, …)` names the in-flow blocks above the header on that page (a 0-px one reads
+#                       `(<tag>, 0px now — a block that grows later is still hidden by the persistent display:none
+#                       !important rule)`; none → `none found above the header`) and the selectors that missed — put
+#                       the right one in the hide list. A warning only: the verdict and the exit code are unchanged.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -409,6 +416,24 @@ overlay_left() {
   grep -qE '^overlay-left: ' "$2" || return 1
   echo "gate.sh: overlay left on the $1 capture — $(grep -E '^overlay-left: ' "$2" | tail -1 | sed -E 's/^overlay-left: //') — no verdict: fix the capture (--consent / --dismiss / --hide), not the page" >&2
 }
+# A hide selector that matched nothing on live (header § --hide): the live capture's record carries
+# hideMiss { sels, candidates } (null when none) → one stderr WARNING line, never a verdict. The text restates
+# live-session.mjs's hideMissLine / formatCandidates on purpose (import-free, like HIDE_JS) — keep them in step. An
+# absent or unreadable record says nothing (the fontsFailed note covers a fresh capture's).
+hide_miss_warn() {
+  [ -f "$DIR/live-shot.json" ] || return 0
+  node -e 'const fs = require("fs"); let j = null;
+    try { j = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); } catch (e) { j = null; }
+    const m = j && typeof j === "object" && j.hideMiss && typeof j.hideMiss === "object" ? j.hideMiss : null;
+    const sels = m && Array.isArray(m.sels) ? m.sels.filter((s) => typeof s === "string" && s) : [];
+    if (!sels.length) process.exit(0);
+    const list = Array.isArray(m.candidates) ? m.candidates.filter((c) => c && typeof c === "object" && typeof c.selector === "string") : [];
+    const one = (c) => { const h = Math.round(Number(c.height) || 0);
+      return `${c.selector} (${c.tag}, ${h ? `${h}px` : "0px now — a block that grows later is still hidden by the persistent display:none !important rule"})`; };
+    const cands = list.length ? list.map(one).join("; ") : "none found above the header";
+    const line = `hide matched nothing on live — candidates: ${cands} (${sels.join(", ")})`;
+    fs.writeSync(2, `gate.sh: WARNING ${line.replace(/[\r\n]+/g, " ")}\n`);' -- "$DIR/live-shot.json"
+}
 if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   # Its stdout goes to live-capture.txt, then to ours (each attempt rewrites it — the last one decides); its record to
   # live-shot.json (deleted first, so a stale one is never read).
@@ -425,6 +450,7 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+  hide_miss_warn
   if overlay_left live "$LIVE_OUT"; then
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"
     exit 1
@@ -444,6 +470,8 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
       overlayLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
     -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$EFF_HIDE" "$LIVE_AT" \
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
+else
+  hide_miss_warn   # a reused live.png: its capture's record still names a hide that matched nothing
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); settled like the live side

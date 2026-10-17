@@ -8,7 +8,8 @@
 // every probe as one effective list (chrome-parity: the flag list + --presence), live.json's `hide`
 // record and the live retake on a changed list, the overlay-left rule (a capture that leaves an overlay gives no verdict:
 // exit 1, a live one drops live.png / live.json / the live caches), both captures' --json record, live.json's overlayLeft
-// / fontsFailed and the retake of a live.png that predates the overlay check, a project stitch-shot.mjs that predates
+// / fontsFailed and the retake of a live.png that predates the overlay check, the live hide-miss WARNING (the live record's
+// hideMiss, also for a reused live.png; never a verdict), a project stitch-shot.mjs that predates
 // --json (no verdict before any capture), the --full probe bound while run-bg holds a machine browser slot (at most
 // STARDUST_BROWSERS_PER_SLOT probes at a time, in order; the verdict lines and every exit code those of the unbounded
 // round), with stub instruments (no browser, no network), run by /bin/bash (macOS: bash 3.2) where it exists.
@@ -51,7 +52,8 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // STUB_OVERFLOW_FIRST when set, before its exit 1). A successful capture prints `overlay-left: <STUB_OVERLAY_<side>>`
 // first when set (exit 0, as stitch-shot does) and writes its --json record (overlayLeft, fontsFailed = the comma list
 // STUB_FONTS_<side>, or null + fontCheck "failed: …" under STUB_FONTS_NULL_<side> — a font check that could not run;
-// STUB_NO_JSON_<side> writes none, STUB_BAD_JSON_<side> an unreadable one). measure: a call counter only
+// hideMiss = the JSON in STUB_HIDEMISS_<side>, else null; STUB_NO_JSON_<side> writes none, STUB_BAD_JSON_<side> an
+// unreadable one). measure: a call counter only
 // (STUB_MEASURE_COUNT) — a round launches none.
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 const ARGV_LOG = "console.log('argv ' + process.argv.slice(2).join(' ')); console.log('argv-json ' + JSON.stringify(process.argv.slice(2)));";
@@ -86,7 +88,8 @@ stub(replica, 'stitch-shot.mjs', `
   if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
   else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: w, vh: null, settle: process.argv.includes('--settle'),
     dismissed: process.argv.includes('--no-dismiss') ? null : { consent: null, extra: [], marketing: [] }, overlayLeft,
-    ...fonts, hidden: [], height: 2000, overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
+    ...fonts, hidden: [], hideMiss: process.env['STUB_HIDEMISS_' + side] ? JSON.parse(process.env['STUB_HIDEMISS_' + side]) : null,
+    height: 2000, overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
   console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
@@ -157,6 +160,8 @@ check('--help names the overflow assert and the capture retry', /Horizontal-over
 check('--help documents the overlay flags', /Overlay dismissal/.test(r.stdout) && /--consent <sel>/.test(r.stdout) && /--dismiss <sel,…>/.test(r.stdout) && /--no-dismiss/.test(r.stdout), r.stdout.slice(0, 400));
 check('--help documents --hide and presence.json (the site-wide file merged under the gate dir\'s) reaching chrome-parity', /\[--hide <sel,…>\]/.test(r.stdout) && /^ {2}--hide <sel,…> /m.test(r.stdout) && /presence\.json/.test(r.stdout)
   && /--presence stardust\/replica\/presence\.json/.test(r.stdout));
+check('--help documents the live hide-miss warning: its line, never a verdict', /`gate\.sh: WARNING hide matched nothing on live — candidates: <selector> \(<tag>, <h>px\); …/.test(r.stdout)
+  && /none found above the header/.test(r.stdout) && /the verdict and the exit code are unchanged/.test(r.stdout), r.stdout);
 check('--help documents the overlay-left rule: no verdict, exit 1', /overlay-left: <descriptor>/.test(r.stdout) && /overlay left on the <live\|build> capture/.test(r.stdout) && /an overlay left on either capture/.test(r.stdout), r.stdout.slice(0, 400));
 
 // Plain pixel round (no --full): verdict lines, evidence, exit = pixel rc.
@@ -528,6 +533,38 @@ check('an overlay left on the build capture: exit 1, one stderr line naming the 
   && (r.stderr.match(/no verdict/g) || []).length === 1 && /^overlay-left: /m.test(evidence('ovl1', 'overflow-o4.txt')), `status ${r.status} ${r.stderr}`);
 check('… never retried, no pixel verdict, no overflow verdict line, no probe; the cached live.png stays', attempts().join(',') === 'BUILD' && !/retrying/.test(r.stderr)
   && !/differing|overflow assert|OVERFLOW/.test(r.stdout) && !existsSync(join(root, gdir('ovl1'), 'content-diff-o4.txt')) && existsSync(join(root, gdir('ovl1'), 'live.png')), `${attempts().join(',')} ${r.stdout}`);
+
+// A hide that matched nothing on live (header § --hide): the live capture's record (live-shot.json) carries
+// hideMiss { sels, candidates } → one stderr line, hideMissLine's text (`<selector> (<tag>, <h>px)` joined '; ', a 0-px
+// entry `0px now — …`, none → `none found above the header`, then the missed selectors) — after the live capture and
+// again on a round that reuses that live.png; never a verdict (stdout and exit code those of a round without it). A
+// build record's hideMiss is no live warning; an overlay-left live capture still names its miss before the no-verdict line.
+const MISS = { sels: ['.geo-bar', '#top .location-bar'], candidates: [
+  { tag: 'div', id: 'geo-suggest', classes: [], top: 0, height: 48, selector: '#geo-suggest' },
+  { tag: 'aside', id: '', classes: ['region-wrap', 'js-geo'], top: 48, height: 0, selector: 'aside.region-wrap' },
+  { tag: 'div', id: '', classes: ['strip'], top: 48, height: 31.6, selector: 'body > div:nth-of-type(2)' }] };
+const MISS_LINE = 'gate.sh: WARNING hide matched nothing on live — candidates: #geo-suggest (div, 48px); aside.region-wrap (aside, 0px now — a block that grows later is still hidden by the persistent display:none !important rule); body > div:nth-of-type(2) (div, 32px) (.geo-bar, #top .location-bar)';
+const warnings = (stderr) => stderr.split('\n').filter((l) => /WARNING/.test(l));
+const missRound = (slug, lbl, env = {}) => gate([slug, `https://live.example/${slug}`, buildUrl, '1440', lbl, '--marker', 'home-proposed', '--hide', '.geo-bar, #top .location-bar'], { STUB_STITCH_COUNT: countFile, ...env });
+const r0 = await missRound('miss0', 'x1');
+resetCount();
+r = await missRound('miss1', 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify(MISS) });
+check('a live record with hideMiss: one stderr WARNING line, hideMissLine\'s text (a 0-px candidate named as such)', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
+  && JSON.stringify(warnings(r.stderr)) === JSON.stringify([MISS_LINE]), `status ${r.status} ${attempts().join(',')} ${r.stderr}`);
+check('… never a verdict: stdout and the exit code are those of the same round without a miss (which warns nothing)', warnings(r0.stderr).length === 0
+  && r.status === r0.status && r.stdout.replaceAll('miss1', 'S') === r0.stdout.replaceAll('miss0', 'S'), `${r.stdout}\n---\n${r0.stdout}`);
+resetCount();
+r = await missRound('miss1', 'x2', { STUB_PIXEL_RC: '2' });
+check('a reused live.png whose live-shot.json carries hideMiss warns again (no live capture); a FAIL stays exit 2', r.status === 2 && attempts().join(',') === 'BUILD'
+  && JSON.stringify(warnings(r.stderr)) === JSON.stringify([MISS_LINE]), `status ${r.status} ${attempts().join(',')} ${r.stderr}`);
+r = await missRound('miss2', 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify({ sels: ['.geo-bar'], candidates: [] }) });
+check('no candidates: `none found above the header`', r.status === 0 && JSON.stringify(warnings(r.stderr))
+  === JSON.stringify(['gate.sh: WARNING hide matched nothing on live — candidates: none found above the header (.geo-bar)']), `status ${r.status} ${r.stderr}`);
+r = await missRound('miss3', 'x1', { STUB_HIDEMISS_BUILD: JSON.stringify(MISS) });
+check('a hideMiss in the build record only: no live warning', r.status === 0 && warnings(r.stderr).length === 0, `status ${r.status} ${r.stderr}`);
+r = await missRound('miss4', 'x1', { STUB_HIDEMISS_LIVE: JSON.stringify(MISS), STUB_OVERLAY_LIVE: OVL });
+check('an overlay-left live capture: the WARNING line, then the no-verdict line, exit 1', r.status === 1 && JSON.stringify(warnings(r.stderr)) === JSON.stringify([MISS_LINE])
+  && r.stderr.indexOf(MISS_LINE) < r.stderr.indexOf(ovlLine('live')) && r.stderr.includes(ovlLine('live')), `status ${r.status} ${r.stderr}`);
 
 // --hide (in-flow per-visitor regions): ONE effective list — the --hide list, then presence.json's "*" and <slug> `hide`
 // — reaches both stitched captures and every --full probe as one --hide value (split, trimmed, de-duplicated, joined
