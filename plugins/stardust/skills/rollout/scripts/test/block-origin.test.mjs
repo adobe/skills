@@ -594,6 +594,54 @@ check('mapping: a template of three pages — sections aligned by signature; the
   ]);
 });
 
+// An encoder map for the hub template: `.intro` also matches outside main#main (header first), cards has
+// two occurrences (the k-th block takes the k-th match), media's marker matches nothing.
+const HUB_MAP = {
+  root: 'main#main',
+  markers: [
+    { sel: '.intro', kind: 'dark', emitter: 'section-style:dark' },
+    { sel: '.intro', kind: 'teaser', emitter: 'block:teaser-grid' },
+    { sel: '.teaser-list', kind: 'teaser', emitter: 'block:teaser-grid' },
+    { sel: '.card, .caption', kind: 'cards', emitter: 'block:cards' },
+    { sel: 'video', kind: 'media', emitter: 'block:media' },
+  ],
+};
+
+check('mapping: an encoder map marker wins over text alignment (confidence 1): its k-th match under the root, else its raw selector', () => {
+  const dir = hubProject('map-encode', { encode: { hub: HUB_MAP } });
+  const r = runMap(dir);
+  ok(r);
+  const t = readMapping(dir).templates[0];
+  assert.deepEqual(t.blocks.map((b) => [b.section, b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
+    ['s1', 'teaser-grid', [['section.intro', 1, 'encoder-map']]],
+    ['s2', 'cards', [['div.card', 1, 'encoder-map']]],
+    ['s3', 'media', [['main#main video', 1, 'encoder-map']]],
+    ['s3', 'cards', [['div.caption', 1, 'encoder-map']]],
+    ['s4', 'hero', [['section.banner', 0, 'position']]],
+  ]);
+  assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.confidence]), [['s1', 'section.intro', 1], ['s2', 'div.card', 0.593], ['s3', 'section.gallery', 1], ['s4', null, 0]]);
+  assert.equal(lines(r)[1], 'sources encoder-map 4 · text-alignment 0 · position 1');
+});
+
+check('mapping: --encode <dir>; an unreadable encoder map is ignored with one line (stderr under --json)', () => {
+  const dir = project('map-encode-bad', STORY_PAGES);
+  put(join(dir, 'stardust', 'import', 'story', 'vocabulary.json'), '{ "root": "main", "markers": ');
+  const plain = project('map-encode-none', STORY_PAGES);
+  ok(runMap(plain));
+  const note = `encoder map ${join('stardust', 'import', 'story', 'vocabulary.json')} is unreadable or has no markers[] — ignored`;
+  let r = runMap(dir, ['--encode', 'stardust/import']);
+  ok(r);
+  assert.equal(lines(r).filter((l) => l === note).length, 1, r.stdout);
+  assert.match(lines(r)[0], /^templates 1 · /);
+  assert.equal(lines(r).at(-1), `→ ${MAPPING} (written)`);
+  assert.equal(readFileSync(join(dir, MAPPING), 'utf8'), readFileSync(join(plain, MAPPING), 'utf8'), 'as without a map');
+  put(join(dir, 'stardust', 'import', 'story', 'vocabulary.json'), JSON.stringify({ root: 'main', markers: {} }));
+  r = runMap(dir, ['--encode', 'stardust/import', '--json']);
+  ok(r);
+  assert.equal(JSON.parse(r.stdout).status, 'unchanged');
+  assert.equal(r.stderr.trim(), `block-origin: ${note}`);
+});
+
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
 const DRIFT_COVERED = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div><div class="cards"><div><div><p>Drift card text.</p></div></div></div></div></main>';
 const DRIFT_DOCUMENT = '<main><div><div class="hero"><div><div><p>Drift hero text.</p></div></div></div></div></main>';
@@ -659,7 +707,7 @@ check('mapping: the output validates against schemas/rollout-workspace-mapping.s
   const dirs = [hubDir, storyDir].filter(Boolean);
   assert.equal(dirs.length, 2, 'the one-page and three-page runs did not happen');
   const skippedDir = join(SCRATCH, 'map-skipped');
-  for (const d of [...dirs, skippedDir]) assert.deepEqual(validate(schema, readMapping(d)), [], d);
+  for (const d of [...dirs, skippedDir, join(SCRATCH, 'map-encode')]) assert.deepEqual(validate(schema, readMapping(d)), [], d);
   const bad = readMapping(hubDir);
   bad.templates[0].blocks[0].instances[0].source = 'guess';
   bad.templates[0].sections[0].extra = 1;

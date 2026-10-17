@@ -9,9 +9,10 @@
  * stableSelector gives a CSS selector that resolves to exactly that element. Text is compared normalised and
  * with all whitespace removed (squash), so inline-element splits do not matter. querySelectorAll/countMatches
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
- * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. A block without text takes
- * its position among its anchored neighbours; a section takes the lowest common ancestor of its records; a
- * template's sections are aligned across its pages and their selectors generalised (buildMapping).
+ * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
+ * comes before the text; a block without either takes its position among its anchored neighbours; a section
+ * takes the lowest common ancestor of its records; a template's sections are aligned across its pages and
+ * their selectors generalised (buildMapping).
  *
  * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
  * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, serialize, countsOf; main (the
@@ -31,31 +32,37 @@ const HELP = `block-origin — the source side of every delivered block: the CSS
 page's captured source DOM, written to stardust/rollout/workspace/mapping.json (formatVersion 0.1.0).
 
 Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>]
-         [--eds-schema <dir>] [--out <file>] [--json]
+         [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--json]
   (paths are relative to the cwd, the project root)
   --coverage <file>   rollout coverage pages, formatVersion 0.1.0 (default stardust/rollout/coverage/pages.json)
   --content <dir>     the delivered documents, one content file per page path (default content)
   --captures <dir>    the captured source pages, <slug>.html (default stardust/current/pages)
   --eds-schema <dir>  per-page eds-schema <slug>.json: the roles of a section's default content (default
                       stardust/eds-schema; optional: without a page's file, the delivered default parts)
+  --encode <dir>      encoder maps <dir>/<templateId>/vocabulary.json (root, markers[] with sel and emitter
+                      block:<name>), taken before the text (default stardust/migrate/encode; optional; the
+                      shipped encoder keeps its maps under stardust/import: pass --encode stardust/import)
   --out <file>        default stardust/rollout/workspace/mapping.json
   --json              one JSON object on stdout instead of the status lines: { status, out, counts: { templates,
                       blocks, instances, verified, verifiedPct, sources, confidence: { high, medium, low, none },
-                      positionBlocks }, skipped }
+                      positionBlocks }, skipped }; notes go to stderr
 
 Per page (coverage pages in slug order with a delivered structure, a content file and a capture), each
-delivered block is located in its capture by its text (the element covering most of it, the deepest on
-ties; confidence = the share covered), else by its position among its anchored neighbours (confidence 0).
-A section takes the lowest common ancestor of its records (confidence = the share of their text it holds,
-the lowest over the pages). A template's sections are aligned across its pages by style and block names;
-a section's selector is the generalisation that resolves to exactly one element on the most of its pages
-(its pages lists them). Text is compared normalised (NFKC, lower case, typographic quotes and dashes
-folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no
+delivered block is located in its capture by its template's encoder map (the first marker emitting
+block:<name>: the k-th block of that name takes the marker's k-th match under the map's root, else the raw
+root + sel without an element; confidence 1), else by its text (the element covering most of it, the
+deepest on ties; confidence = the share covered), else by its position among its anchored neighbours
+(confidence 0). A section takes the lowest common ancestor of its records (confidence = the share of their
+text it holds, the lowest over the pages). A template's sections are aligned across its pages by style and
+block names; a section's selector is the generalisation that resolves to exactly one element on the most
+of its pages (its pages lists them). Text is compared normalised (NFKC, lower case, typographic quotes and
+dashes folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted tbody, no
 auto-closed p). Every instance records verified null (not verified).
 
 Stdout: templates N · blocks N · instances N · verified skipped; sources encoder-map N · text-alignment N ·
 position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; position fallback: <block> ×N, … and
-skipped: N (<reason> ×N, …) when any; last, → <out> (written|unchanged).
+skipped: N (<reason> ×N, …) when any; one line per unreadable encoder map (ignored); last, → <out>
+(written|unchanged).
 
 Outputs: <out>, keys sorted, generatedAt copied from the coverage (no clock); rewritten only when the bytes
 differ. Under skipped: pages without a delivered structure, a content file or a capture, or whose capture
@@ -520,6 +527,7 @@ const pathSafe = (s) => typeof s === 'string' && s !== '' && !s.split(/[\\/]/).s
 const uniq = (xs) => [...new Set(xs)];
 // A selector count that never throws: outside the grammar, or too deep a document to match, is 0 hits.
 const hitsOf = (index, sel) => { try { return countMatches(index, sel); } catch (e) { if (e instanceof RangeError) return 0; throw e; } };
+const safeQuery = (index, sel) => { try { return querySelectorAll(index, sel); } catch (e) { if (e && e.name === 'UnsupportedSelector') return []; throw e; } };
 const elementSibling = (index, el, step) => {
   const m = index.meta.get(el);
   return m && m.parent ? elements(m.parent)[m.index - 1 + step] || null : null;
@@ -582,16 +590,19 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
 
 /**
  * One page: coverage row `row` (with delivered), its delivered document `contentHtml`, its capture's
- * `index`. → { slug, index, sections: [{ pos, style, sig, names, selector, confidence, defaultContent }],
+ * `index`, the template's encoder map `map` ({ root, markers } or null) and the page's eds-schema items.
+ * → { slug, index, sections: [{ pos, style, sig, names, selector, confidence, defaultContent }],
  * instances: [{ pos, block, variant, variantId, sectionPos, selector, confidence, source }], skipped }.
  */
-function mapPage(row, contentHtml, index, { eds = null } = {}) {
+function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
   const slug = row.slug;
   const doc = walkDelivered(contentHtml);
   const queues = new Map();
+  const occurrence = new Map();
   for (const d of doc.records) {
     const q = `${d.kind}|${d.block}`;
     if (!queues.has(q)) queues.set(q, []);
+    occurrence.set(d, queues.get(q).length);
     queues.get(q).push(d);
   }
   const skipped = [];
@@ -605,8 +616,24 @@ function mapPage(row, contentHtml, index, { eds = null } = {}) {
     const frags = d ? fragmentsOf(cov.kind === 'block' ? [doc.nodes[d.pos]] : doc.nodes[d.pos]) : [];
     return { cov, doc: d, frags, anchor: null, selector: null, confidence: 0, source: null };
   });
+  // An encoder map's marker first (the k-th block of a name takes the marker's k-th match), else the text.
+  const rootEls = map && map.root ? safeQuery(index, map.root) : [];
+  const matchesOf = new Map();
+  const matches = (m) => {
+    if (!matchesOf.has(m)) {
+      const all = safeQuery(index, m.sel);
+      matchesOf.set(m, rootEls.length ? all.filter((el) => rootEls.some((r) => r !== el && contains(index, r, el))) : all);
+    }
+    return matchesOf.get(m);
+  };
   for (const r of recs) {
     if (!r.doc) continue;
+    const marker = map && r.cov.kind === 'block' ? map.markers.find((m) => m.emitter === `block:${r.cov.block}`) : null;
+    if (marker) {
+      const el = matches(marker)[occurrence.get(r.doc)];
+      Object.assign(r, { anchor: el || null, selector: el ? stableSelector(index, el) : map.root ? `${map.root} ${marker.sel}` : marker.sel, confidence: 1, source: 'encoder-map' });
+      continue;
+    }
     const a = alignBlock(index, r.frags);
     r.anchor = a.anchor;
     if (r.cov.kind !== 'block') continue;
@@ -777,11 +804,34 @@ function assembleTemplate(templateId, pages) {
 export const MAPPING_FORMAT_VERSION = '0.1.0';
 
 /**
- * The mapping from a coverage document (formatVersion checked by the caller) and resolved directories
- * { content, captures, eds }. → { mapping, have: Map(templateId → Map(section id → slugs)) }.
- * A page that cannot be indexed or mapped is skipped, never fatal.
+ * A template's encoder map `<dir>/<templateId>/vocabulary.json` → { root (string or null), markers (those
+ * with a sel and an emitter) }; null when absent. One line in `notes` when it exists but does not parse
+ * or has no markers[] (it is then ignored).
  */
-export function buildMapping(coverage, dirs) {
+function loadEncoderMap(dir, shownDir, templateId, notes) {
+  if (!dir || !pathSafe(templateId)) return null;
+  const file = join(dir, templateId, 'vocabulary.json');
+  if (!existsSync(file)) return null;
+  let map = null;
+  try { map = JSON.parse(readFileSync(file, 'utf8')); } catch { map = null; }
+  if (!map || typeof map !== 'object' || !Array.isArray(map.markers)) {
+    notes.push(`encoder map ${join(shownDir, templateId, 'vocabulary.json')} is unreadable or has no markers[] — ignored`);
+    return null;
+  }
+  return {
+    root: typeof map.root === 'string' && map.root.trim() ? map.root.trim() : null,
+    markers: map.markers.filter((m) => m && typeof m.sel === 'string' && m.sel.trim() && typeof m.emitter === 'string')
+      .map((m) => ({ sel: m.sel.trim(), emitter: m.emitter })),
+  };
+}
+
+/**
+ * The mapping from a coverage document (formatVersion checked by the caller) and resolved directories
+ * { content, captures, eds, encode, encodeShown }; lines for stdout go to `notes`.
+ * → { mapping, have: Map(templateId → Map(section id → slugs)) }. A page that cannot be indexed or mapped
+ * is skipped, never fatal.
+ */
+export function buildMapping(coverage, dirs, notes = []) {
   const rows = (Array.isArray(coverage.pages) ? coverage.pages : []).filter((p) => p && typeof p.slug === 'string' && p.slug)
     .slice().sort((a, b) => byStr(a.slug, b.slug));
   const skipped = [];
@@ -801,13 +851,14 @@ export function buildMapping(coverage, dirs) {
   const templates = [];
   const have = new Map();
   for (const id of [...groups.keys()].sort(byStr)) {
+    const map = loadEncoderMap(dirs.encode, dirs.encodeShown || dirs.encode, id, notes);
     const mapped = [];
     for (const g of groups.get(id)) {
       let index;
       try { index = indexSource(readFileSync(g.capture, 'utf8')); } catch { skipped.push({ slug: g.row.slug, reason: 'capture could not be indexed' }); continue; }
       let page;
       try {
-        page = mapPage(g.row, readFileSync(g.file, 'utf8'), index, { eds: edsItems(dirs.eds, g.row.slug) });
+        page = mapPage(g.row, readFileSync(g.file, 'utf8'), index, { map, eds: edsItems(dirs.eds, g.row.slug) });
       } catch (e) {
         skipped.push({ slug: g.row.slug, reason: `page could not be mapped (${(e && e.name) || 'Error'})` });
         continue;
@@ -871,10 +922,10 @@ function statusLines(c, skipped, verify) {
 
 const DEFAULTS = {
   coverage: 'stardust/rollout/coverage/pages.json', content: 'content', captures: 'stardust/current/pages',
-  'eds-schema': 'stardust/eds-schema', out: 'stardust/rollout/workspace/mapping.json',
+  'eds-schema': 'stardust/eds-schema', encode: 'stardust/migrate/encode', out: 'stardust/rollout/workspace/mapping.json',
 };
 const BOOL_FLAGS = ['json'];
-const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--out <file>] [--json] (--help for details)';
+const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--json] (--help for details)';
 const fail = (code, msg) => { process.stderr.write(`block-origin: ${msg}\n`); return code; };
 
 function parseArgs(argv) {
@@ -916,7 +967,10 @@ export function main(argv) {
   for (const flag of ['content', 'captures']) {
     if (!isDir(resolve(opts[flag]))) return fail(1, `--${flag} ${opts[flag]} is not a directory — nothing written`);
   }
-  const { mapping } = buildMapping(coverage, { content: resolve(opts.content), captures: resolve(opts.captures), eds: resolve(opts['eds-schema']) });
+  const notes = [];
+  const { mapping } = buildMapping(coverage, {
+    content: resolve(opts.content), captures: resolve(opts.captures), eds: resolve(opts['eds-schema']), encode: resolve(opts.encode), encodeShown: opts.encode,
+  }, notes);
   const text = serialize(mapping);
   const file = resolve(opts.out);
   let status = 'unchanged';
@@ -925,8 +979,10 @@ export function main(argv) {
     status = 'written';
   }
   const counts = countsOf(mapping, false);
-  if (opts.json) process.stdout.write(`${JSON.stringify({ status, out: opts.out, counts, skipped: mapping.skipped })}\n`);
-  else process.stdout.write(`${[...statusLines(counts, mapping.skipped, false), `→ ${opts.out} (${status})`].join('\n')}\n`);
+  if (opts.json) {
+    notes.forEach((n) => process.stderr.write(`block-origin: ${n}\n`));
+    process.stdout.write(`${JSON.stringify({ status, out: opts.out, counts, skipped: mapping.skipped })}\n`);
+  } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, false), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
   return 0;
 }
 
