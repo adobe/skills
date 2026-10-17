@@ -7,10 +7,11 @@
  * crop-compare.mjs read them at full resolution); read into context they
  * cost far more than an agent needs to see a defect. Every image meant to be
  * looked at is capped at 1400 × 1000 px and JPEG quality 80; the PNG stays
- * untouched beside it.
+ * untouched beside it. A full page fitted whole is a sliver, so a page image
+ * is looked at by its failing band (--y/--height), cropped before the cap.
  *
  * Library (zero runtime dependencies): INSPECT_MAX, INSPECT_QUALITY,
- * fitWithin, downscale (area average), encodeJpeg (an original baseline
+ * fitWithin, cropBand, pngSize, downscale (area average), encodeJpeg (an original baseline
  * encoder: JFIF APP0, Annex K quantisation tables scaled by the usual quality
  * formula, 4:4:4 — no chroma subsampling, so a single-pixel diff mark or
  * coloured text keeps its colour — standard Huffman tables, alpha composited
@@ -28,11 +29,18 @@ export const INSPECT_QUALITY = 80;
 
 const INSTALL_LINE = 'npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps';
 
-const HELP = `inspect-image — a capped JPEG copy of a gate image for an agent to look at
+const HELP = `inspect-image — a capped JPEG copy of a gate image (or of its failing band) for an agent to look at
 
-Usage: node inspect-image.mjs <in.png> [--out <file.jpg>] [--max 1400x1000] [--quality 80]
+Usage: node inspect-image.mjs <in.png> [--y <px> --height <px>] [--out <file.jpg>] [--max 1400x1000] [--quality 80]
+  --y <px> --height <px>
+                     crop this band first (rows y … y+height−1, full width, full
+                     resolution), then cap it: the gate's failing band (gate-all's
+                     first hot band y0-y1 → --y y0 --height y1−y0). A full page
+                     fitted whole is a sliver (1440×6000 → 240×1000): look at the
+                     band, never a whole page downscaled. Both or neither.
   --out <file.jpg>   where to write; must end in .jpg or .jpeg
-                     (default: <in>.inspect.jpg beside the input — live.png → live.inspect.jpg)
+                     (default: <in>.inspect.jpg beside the input — live.png → live.inspect.jpg;
+                     with a band <in>.y<y>-h<h>.inspect.jpg — live.y1200-h800.inspect.jpg)
   --max <W>x<H>      fit within this box, aspect kept, never upscaled (default 1400x1000)
   --quality <1-100>  JPEG quality (default 80)
   --help             this text
@@ -42,11 +50,12 @@ measurement input of pixel-compare / crop-compare. Baseline JPEG, 4:4:4 (no chro
 subsampling), alpha composited on white, deterministic: the same PNG and flags
 give the same bytes.
 
-Prints one line: inspect-image: <in> <w>×<h> → <out> <w2>×<h2> q<q> (<n> KB)
+Prints one line: inspect-image: <in> <w>×<h> [band y<y> h<h>] → <out> <w2>×<h2> q<q> (<n> KB)
 Requires: pngjs (a project devDependency, imported only after --help). Missing →
 from the project root: ${INSTALL_LINE}
 (replica/SKILL.md § Setup).
-Exit codes: 0 written · 1 unreadable input, not a PNG, or pngjs missing · 2 usage.`;
+Exit codes: 0 written · 1 unreadable input, not a PNG, or pngjs missing · 2 usage, or a band
+not wholly inside the image (one line naming the band and the image size; nothing written).`;
 
 // ---- sizes and paths --------------------------------------------------------------------------------------
 
@@ -71,9 +80,31 @@ export function inspectionPath(path) {
   return /^\.jpe?g$/i.test(extname(path)) ? path : `${stem(path)}.jpg`;
 }
 
-/** The CLI's default output beside the input: x.png → x.inspect.jpg. */
-export function inspectionCopyPath(path) {
-  return `${stem(path)}.inspect.jpg`;
+/** The CLI's default output beside the input: x.png → x.inspect.jpg; with a band, x.y<y>-h<h>.inspect.jpg. */
+export function inspectionCopyPath(path, band = null) {
+  return band ? `${stem(path)}.y${band.y}-h${band.height}.inspect.jpg` : `${stem(path)}.inspect.jpg`;
+}
+
+// ---- cropBand: the rows an agent needs, at full resolution --------------------------------------------------
+
+const isBandInside = (band, height) => Number.isInteger(band.y) && band.y >= 0 && positiveInt(band.height) && band.y + band.height <= height;
+
+/**
+ * Rows y … y+height−1 of an RGBA image at its full width — a copy, the input untouched. A full page fitted
+ * whole into the box is a sliver (1440×6000 → 240×1000); its failing band, cropped first, stays readable.
+ * Throws a RangeError for a band not wholly inside the image.
+ */
+export function cropBand(img, band) {
+  const { width, height, data } = img;
+  if (!band || !isBandInside(band, height)) throw new RangeError(`cropBand: band y ${band && band.y} height ${band && band.height} is not inside ${width}×${height}`);
+  const row = width * 4;
+  return { width, height: band.height, data: Buffer.from(data.subarray(band.y * row, (band.y + band.height) * row)) };
+}
+
+/** {width, height} from a PNG's IHDR chunk (no decoder), or null when the buffer carries none. */
+export function pngSize(buf) {
+  if (!Buffer.isBuffer(buf) || buf.length < 24 || buf.toString('latin1', 12, 16) !== 'IHDR') return null;
+  return { width: buf.readUInt32BE(16), height: buf.readUInt32BE(20) };
 }
 
 // ---- downscale: area-average (box filter) resample --------------------------------------------------------
@@ -364,10 +395,11 @@ export function encodeJpeg({ width, height, data }, quality = INSPECT_QUALITY) {
   return Buffer.from(w.buf.subarray(0, w.length));
 }
 
-/** Fits an RGBA image within max (area average), then encodes it: { width, height, jpeg }. */
-export function toInspectionJpeg(img, { max = INSPECT_MAX, quality = INSPECT_QUALITY } = {}) {
-  const size = fitWithin(img.width, img.height, max);
-  const small = downscale(img, size);
+/** Crops the band first when one is given (full resolution), fits the result within max (area average), then encodes it: { width, height, jpeg }. */
+export function toInspectionJpeg(img, { max = INSPECT_MAX, quality = INSPECT_QUALITY, band = null } = {}) {
+  const src = band ? cropBand(img, band) : img;
+  const size = fitWithin(src.width, src.height, max);
+  const small = downscale(src, size);
   return { width: size.width, height: size.height, jpeg: encodeJpeg(small, quality) };
 }
 
@@ -382,11 +414,19 @@ const usage = (msg) => new CliError(`${msg}\n\n${HELP}`, 2);
 
 function parseArgs(rest) {
   const pos = [];
-  const opts = { out: null, max: INSPECT_MAX, quality: INSPECT_QUALITY };
+  const opts = { out: null, max: INSPECT_MAX, quality: INSPECT_QUALITY, band: null };
   const need = (i, flag) => { if (i + 1 >= rest.length || rest[i + 1].startsWith('--')) throw usage(`${flag} needs a value`); return rest[i + 1]; };
+  const px = { y: null, height: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--out') { opts.out = need(i, a); i += 1; }
+    else if (a === '--y' || a === '--height') {
+      const v = need(i, a);
+      const n = /^\d+$/.test(v) ? Number(v) : NaN;
+      if (a === '--y' ? !Number.isInteger(n) : !positiveInt(n)) throw usage(`${a} wants ${a === '--y' ? 'a whole number of px ≥ 0' : 'a whole number of px ≥ 1'}, got "${v}"`);
+      px[a.slice(2)] = n;
+      i += 1;
+    }
     else if (a === '--max') {
       const m = need(i, a).match(/^(\d+)[x×](\d+)$/);
       if (!m || !positiveInt(Number(m[1])) || !positiveInt(Number(m[2]))) throw usage(`--max wants <W>x<H> in px, got "${rest[i + 1]}"`);
@@ -404,7 +444,9 @@ function parseArgs(rest) {
   }
   if (pos.length !== 1) throw usage(`need exactly one <in.png>, got ${pos.length}`);
   [opts.input] = pos;
-  opts.out = opts.out ?? inspectionCopyPath(opts.input);
+  if ((px.y === null) !== (px.height === null)) throw usage('--y and --height go together: the band top and its height in px (the gate\'s failing band)');
+  if (px.y !== null) opts.band = { y: px.y, height: px.height };
+  opts.out = opts.out ?? inspectionCopyPath(opts.input, opts.band);
   if (!/^\.jpe?g$/i.test(extname(opts.out))) throw usage(`--out must end in .jpg or .jpeg (the PNG is a measurement input — never overwrite it), got ${opts.out}`);
   if (resolve(opts.out) === resolve(opts.input)) throw usage('--out is the input itself');
   return opts;
@@ -417,15 +459,21 @@ async function main(argv) {
   let buf;
   try { buf = readFileSync(opts.input); } catch (e) { throw new CliError(`cannot read ${opts.input}: ${e.code || e.message}`, 1); }
   if (buf.length < 8 || !buf.subarray(0, 8).equals(PNG_SIGNATURE)) throw new CliError(`${opts.input} is not a PNG (no PNG signature)`, 1);
+  const { band } = opts;
+  // one line, exit 2: checked on the IHDR size before pngjs loads, and again on the decoded image
+  const outside = ({ width, height }) => new CliError(`band --y ${band.y} --height ${band.height} is not inside ${opts.input} (${width}×${height}): it must end at or above row ${height}`, 2);
+  const size = pngSize(buf);
+  if (band && size && !isBandInside(band, size.height)) throw outside(size);
   let PNG;
   try { ({ PNG } = await import('pngjs')); }
   catch { throw new CliError(`pngjs is not importable from this script's location — from the project root: ${INSTALL_LINE} (replica/SKILL.md § Setup)`, 1); }
   let img;
   try { img = PNG.sync.read(buf); } catch (e) { throw new CliError(`${opts.input} is not a readable PNG: ${e.message}`, 1); }
-  const { width, height, jpeg } = toInspectionJpeg(img, { max: opts.max, quality: opts.quality });
+  if (band && !isBandInside(band, img.height)) throw outside(img);
+  const { width, height, jpeg } = toInspectionJpeg(img, { max: opts.max, quality: opts.quality, band });
   mkdirSync(dirname(opts.out) || '.', { recursive: true });
   writeFileSync(opts.out, jpeg);
-  console.log(`inspect-image: ${opts.input} ${img.width}×${img.height} → ${opts.out} ${width}×${height} q${opts.quality} (${Math.ceil(jpeg.length / 1024)} KB)`);
+  console.log(`inspect-image: ${opts.input} ${img.width}×${img.height}${band ? ` band y${band.y} h${band.height}` : ''} → ${opts.out} ${width}×${height} q${opts.quality} (${Math.ceil(jpeg.length / 1024)} KB)`);
   return 0;
 }
 

@@ -60,7 +60,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow assert + probes (`--full`: + diff probes) — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
-- `replica/inspect-image.mjs` — capped JPEG copy of an image to look at — `<in.png> [--out <f.jpg>] [--max 1400x1000] [--quality 80]`
+- `replica/inspect-image.mjs` — capped JPEG copy of an image or its band to look at — `<in.png> [--y <px> --height <px>] [--out <f.jpg>] [--max 1400x1000] [--quality 80]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360]`
 - `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0) — `<live.json> <build.json> [--tolerance-ms]`

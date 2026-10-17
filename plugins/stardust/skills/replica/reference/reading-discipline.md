@@ -47,7 +47,8 @@ print the part that matters, capped, and say what they left out:
   one image a round needs. Recorded: 21 image reads in one run, most of
   them full pages or triplets, for facts the verdict lines already held.
   Look only at capped copies: `crop-compare.mjs` writes capped JPEGs,
-  `inspect-image.mjs <png>` makes one of any other gate image (gate doc
+  `inspect-image.mjs <png> --y <band top> --height <band height>` makes one
+  of any other gate image's failing band, never of a whole page (gate doc
   § Per-breakpoint procedure).
   Step 10's eyeball of the DEPLOYED page is the published `gate.sh --full`
   round plus header/footer `crop-compare.mjs` bands (gate doc § Pass bar,

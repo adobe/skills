@@ -6,7 +6,10 @@
 // scaled from Annex K by the quality formula, four DHT tables, byte-stuffed scan; alpha composited on white;
 // deterministic; a flat 1400×1000 image under 60 KB), the inspection paths, and the CLI: --help before any import
 // or I/O, usage exit 2, unreadable / not-a-PNG exit 1, and — on a generated PNG — either a written copy (pngjs
-// importable here) or exit 1 naming the install line (pngjs absent). Run: node <this file>.
+// importable here) or exit 1 naming the install line (pngjs absent). A band (--y <px> --height <px>): cropBand
+// takes the rows at full resolution BEFORE the cap (a full page whole is a sliver: 1440×6000 → 240×1000), the
+// default name is <stem>.y<y>-h<h>.inspect.jpg, and a band not wholly inside the image (its size read from the
+// IHDR by pngSize, no decoder) exits 2 with one line, nothing written. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -15,7 +18,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
 import {
-  INSPECT_MAX, INSPECT_QUALITY, downscale, encodeJpeg, fitWithin, inspectionCopyPath, inspectionPath, toInspectionJpeg,
+  INSPECT_MAX, INSPECT_QUALITY, cropBand, downscale, encodeJpeg, fitWithin, inspectionCopyPath, inspectionPath, pngSize, toInspectionJpeg,
 } from '../inspect-image.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -212,6 +215,42 @@ check('toInspectionJpeg: fits within the box, then encodes — the SOF0 carries 
   assert.equal(dqtTables(small.jpeg)[0][0], 16);
 });
 
+// ---- cropBand: the failing band, cropped before the cap ---------------------------------------------------
+// Row y holds the grey value y % 256, so a crop's first row names where it started.
+const rows = (width, height) => image(width, height, (x, y) => [y % 256, y % 256, y % 256, 255]);
+check('cropBand: rows y … y+height−1 at the full width, the pixels themselves; the whole image is a band too', () => {
+  const img = rows(3, 10);
+  const band = cropBand(img, { y: 4, height: 3 });
+  assert.deepEqual([band.width, band.height, band.data.length], [3, 3, 3 * 3 * 4]);
+  assert.deepEqual([band.data[0], band.data[3 * 4], band.data[2 * 3 * 4]], [4, 5, 6]);
+  assert.deepEqual([...cropBand(img, { y: 0, height: 10 }).data], [...img.data]);
+  assert.deepEqual(cropBand(img, { y: 9, height: 1 }).height, 1);
+});
+check('cropBand: a band not wholly inside the image, a negative or non-integer top, or a height below 1 throws', () => {
+  const img = rows(3, 10);
+  for (const band of [{ y: 8, height: 3 }, { y: 10, height: 1 }, { y: -1, height: 2 }, { y: 0, height: 0 }, { y: 1.5, height: 2 }, { y: 0, height: 11 }]) {
+    assert.throws(() => cropBand(img, band), RangeError, JSON.stringify(band));
+  }
+});
+check('toInspectionJpeg with a band: crop first, then the 1400 × 1000 cap — a band of a full page stays readable (1440×6000 → 240×1000 whole; its 800-row band → 1400×778)', () => {
+  assert.deepEqual(fitWithin(1440, 6000), { width: 240, height: 1000 }, 'the whole page is a sliver');
+  assert.deepEqual(fitWithin(360, 9000), { width: 40, height: 1000 }, 'the whole page is a sliver');
+  const page = rows(1440, 6000);
+  const r = toInspectionJpeg(page, { band: { y: 1200, height: 800 } });
+  assert.deepEqual([r.width, r.height], [1400, 778]);
+  assert.deepEqual([sof0(r.jpeg).width, sof0(r.jpeg).height], [1400, 778]);
+  const band = cropBand(page, { y: 1200, height: 800 });
+  assert.ok(r.jpeg.equals(encodeJpeg(downscale(band, fitWithin(1440, 800)), INSPECT_QUALITY)), 'the band is cropped at full resolution, then capped');
+  const mobile = toInspectionJpeg(rows(360, 9000), { band: { y: 4000, height: 1000 } });
+  assert.deepEqual([mobile.width, mobile.height], [360, 1000], 'a 360 band of 1000 rows needs no downscale');
+  assert.throws(() => toInspectionJpeg(page, { band: { y: 5900, height: 200 } }), RangeError);
+});
+check('pngSize: width and height from the IHDR chunk, no decoder needed; null for a buffer without one', () => {
+  assert.deepEqual(pngSize(png(rows(7, 13))), { width: 7, height: 13 });
+  assert.equal(pngSize(Buffer.from('not a png at all, not at all')), null);
+  assert.equal(pngSize(Buffer.alloc(10)), null);
+});
+
 // ---- paths ------------------------------------------------------------------------------------------------
 check('inspectionPath: the .jpg sibling — x.png → x.jpg, a .jpg/.jpeg is itself, no extension → x.jpg', () => {
   assert.equal(inspectionPath('x.png'), 'x.jpg');
@@ -228,6 +267,11 @@ check('inspectionCopyPath: <stem>.inspect.jpg — the CLI default beside the inp
   assert.equal(inspectionCopyPath('x'), 'x.inspect.jpg');
   assert.equal(inspectionCopyPath('dir.v2/x'), 'dir.v2/x.inspect.jpg');
 });
+check('inspectionCopyPath with a band: <stem>.y<y>-h<h>.inspect.jpg — deterministic, one file per band', () => {
+  assert.equal(inspectionCopyPath('gates/home-1440/live.png', { y: 1200, height: 800 }), 'gates/home-1440/live.y1200-h800.inspect.jpg');
+  assert.equal(inspectionCopyPath('diff.png', { y: 0, height: 120 }), 'diff.y0-h120.inspect.jpg');
+  assert.equal(inspectionCopyPath('x.png', null), 'x.inspect.jpg');
+});
 
 // ---- CLI --------------------------------------------------------------------------------------------------
 check('--help in an empty cwd: exit 0, usage with the box, the quality and the exit codes, nothing written — no pngjs needed', () => {
@@ -237,12 +281,15 @@ check('--help in an empty cwd: exit 0, usage with the box, the quality and the e
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /Usage: node inspect-image\.mjs <in\.png>/);
     assert.match(r.out, /1400x1000/); assert.match(r.out, /--quality/); assert.match(r.out, /Exit codes/);
+    assert.match(r.out, /--y <px> --height <px>/); assert.match(r.out, /<in>\.y<y>-h<h>\.inspect\.jpg/);
     assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
-check('usage errors exit 2: no input, two inputs, an unknown flag, a bad --max / --quality, an --out that is not .jpg/.jpeg', () => {
+check('usage errors exit 2: no input, two inputs, an unknown flag, a bad --max / --quality, an --out that is not .jpg/.jpeg, a half or bad band', () => {
   for (const args of [[], ['a.png', 'b.png'], ['a.png', '--bogus'], ['a.png', '--max', '1400'], ['a.png', '--max', '0x10'], ['a.png', '--quality', '0'],
-    ['a.png', '--quality', '101'], ['a.png', '--quality', 'high'], ['a.png', '--out'], ['a.png', '--out', 'a-copy.png']]) {
+    ['a.png', '--quality', '101'], ['a.png', '--quality', 'high'], ['a.png', '--out'], ['a.png', '--out', 'a-copy.png'],
+    ['a.png', '--y', '100'], ['a.png', '--height', '100'], ['a.png', '--y', '-1', '--height', '100'], ['a.png', '--y', '0', '--height', '0'],
+    ['a.png', '--y', '1.5', '--height', '100'], ['a.png', '--y', 'top', '--height', '100'], ['a.png', '--y', '0', '--height']]) {
     const r = run(args);
     assert.equal(r.code, 2, `${args.join(' ')} → ${r.code}\n${r.err}`);
     assert.match(r.err, /inspect-image error/);
@@ -254,6 +301,20 @@ check('an unreadable input or a file that is not a PNG exits 1 and writes nothin
   const notPng = run([SCRIPT, '--out', join(HERE, 'never-written.jpg')]);
   assert.equal(notPng.code, 1); assert.match(notPng.err, /not a PNG/);
   assert.equal(existsSync(join(HERE, 'never-written.jpg')), false);
+});
+check('a band outside the image exits 2 with one line naming the band and the image size, writes nothing — before pngjs is needed', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'inspect-image-band-'));
+  try {
+    const input = join(dir, 'live.png');
+    writeFileSync(input, png(rows(40, 600)));
+    for (const [y, h] of [['500', '200'], ['600', '1'], ['0', '601']]) {
+      const r = run([input, '--y', y, '--height', h]);
+      assert.equal(r.code, 2, `${y}+${h}: ${r.code}\n${r.err}`);
+      assert.equal(r.err.trim().split('\n').length, 1, `one line: ${r.err}`);
+      assert.match(r.err, new RegExp(`band --y ${y} --height ${h} .*40×600`));
+    }
+    assert.deepEqual(readdirSync(dir), ['live.png']);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 let hasPngjs = true;
@@ -274,6 +335,11 @@ check(`a generated 2000×300 PNG: ${hasPngjs ? 'written as a 1400×210 q80 copy 
       assert.equal(r2.code, 0, r2.err);
       assert.match(r2.out, /200×30 q60/);
       assert.equal(dqtTables(readFileSync(custom))[0][0], scaled(16, 60));
+      const r3 = run([input, '--y', '100', '--height', '150']);
+      assert.equal(r3.code, 0, r3.err);
+      const band = join(dir, 'live.y100-h150.inspect.jpg');
+      assert.match(r3.out.trim(), /^inspect-image: \S+live\.png 2000×300 band y100 h150 → \S+live\.y100-h150\.inspect\.jpg 1400×105 q80 \(\d+ KB\)$/);
+      assert.deepEqual([sof0(readFileSync(band)).width, sof0(readFileSync(band)).height], [1400, 105]);
     } else {
       assert.equal(r.code, 1, r.err);
       assert.match(r.err, /pngjs/); assert.match(r.err, /npm i -D playwright pixelmatch pngjs cheerio/);

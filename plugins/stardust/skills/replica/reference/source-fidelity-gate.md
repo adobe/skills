@@ -75,14 +75,18 @@ capture hardening changed); it is a bot-block control, not just a cost note
 (§ Iteration discipline, Hit minimization).
 The prototype capture is re-taken every iteration.
 
-**Look at a capped copy, never a full-resolution PNG** (a recorded run read
-65 of them, 17 MB, into context). `crop-compare.mjs` writes its diff and
-strip as capped JPEGs (`--full-res` also keeps the PNG); any other gate
-image — `live.png`, `proto.png` / `build.png`, `diff-iter<N>.png`, a gate-all
-`origin.png` / `eds.png` / `diff.png` — through
-`node stardust/scripts/replica/inspect-image.mjs <png>` (→ `<name>.inspect.jpg`
-beside it, at most 1400 × 1000, quality 80). The PNGs stay the measurement
-inputs, untouched.
+**Look at a capped copy of the failing band — never a full-resolution PNG**
+(a recorded run read 65 of them, 17 MB, into context), **never a whole page
+downscaled** (1440 × 6000 fits the box as 240 × 1000). `crop-compare.mjs`
+writes its diff and strip as capped JPEGs (`--full-res` also keeps the PNG);
+any other gate image — `live.png`, `proto.png` / `build.png`,
+`diff-iter<N>.png`, a gate-all `origin.png` / `eds.png` / `diff.png` —
+through
+`node stardust/scripts/replica/inspect-image.mjs <png> --y <band top> --height <band height>`
+with the first hot band (§ Reading the band breakdown; gate-all's `hotBands`
+`y0-y1` → `--y y0 --height y1−y0`), cropped before the cap (→
+`<name>.y<y>-h<h>.inspect.jpg` beside it, at most 1400 × 1000, quality 80).
+The PNGs stay the measurement inputs, untouched.
 
 ## Pass bar (all five per breakpoint, plus the content-cap row)
 
