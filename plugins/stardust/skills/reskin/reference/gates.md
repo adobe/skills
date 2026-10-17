@@ -290,9 +290,7 @@ header and footer band measure settles), and `inherited` fetches
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
-- **Protected preview.** A preview is protected when it refuses the first,
-  anonymous request `preview` makes (`preview.json` `auth: true`); a token
-  given for a public preview is recorded `tokenUnused` and changes nothing.
+- **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`).
   `parity`, `sanity` and the `qa-gate` and `ai-readability` rows are
   `n/a: protected preview`: their instruments
   carry no site auth, and `ai-readability` sets its header on its whole

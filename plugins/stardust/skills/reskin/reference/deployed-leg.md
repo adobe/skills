@@ -53,8 +53,7 @@ source first; a token it refuses (401 or 403 once sent) is exit 2 too, not a pol
 asked for (`tokenUnused: true`) changes no verdict: `parity`, `sanity` and the rest run as on any public preview. `preview`
 sends it only after a refusal, `inherited` only to a protected preview's `.plain.html`, `parity` and `sanity` never;
 `content`, `tokens` and `figma` send it to the preview origin whenever one is given. It reaches that origin only, child
-processes by environment, and never argv, output, records or the ledger; under `run-bg` use `--token-env` only, as the
-header value would be in the saved command. A sandbox repo's preview is public by default.
+processes by environment, and never argv, output, records or the ledger. A sandbox repo's preview is public by default.
 
 ## The delta file
 
@@ -98,8 +97,8 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
   "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
 
-A leg pointed at another origin by the test hook `DEPLOY_VERIFY_ORIGIN` also records `originOverride: { env, origin }` in
-`preview.json`, `summary.json` and the fragment: it is not a branch-preview run.
+The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
+the fragment.
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
@@ -126,12 +125,11 @@ protected preview); `figma` is `node stardust/scripts/reskin/figma-gate.mjs all 
 --target preview --reskin stardust/reskin/pages/<slug>.html [--auth-header "<value>" | --token-env <NAME>]`, where
 `<preview url>` is `preview.json`'s `url` (it needs `figma-checks/<slug>.json`; `deployed-gate all` runs it too).
 
-The matrix is for iterating. Only `all` writes `summary.json`, and it clears every step's previous record and re-runs
-every step, so close each round with one `deployed-gate all` and copy its `ledgerFragment` into
-`pages.<slug>.gates.deployed`: a single step's verdict is never what the ledger records.
+The matrix is for iterating: only `all` writes `summary.json`, so close each round with one `deployed-gate all` and copy
+its `ledgerFragment`; a single step's verdict is never what the ledger records.
 A fix counts only once served: `curl --compressed <css url> | grep <marker>` finds it on the preview. A run with no
 verdict (exit 124, or an instrument that did not run) does not count: re-run once; the same 124 twice is a
-`needs-owner` residual. Exit 3 (bot challenge, token halt) is neither a FAIL nor an iteration.
+`needs-owner` residual; exit 3 is neither a FAIL nor an iteration.
 
 ## Defaults
 
@@ -139,4 +137,3 @@ verdict (exit 124, or an instrument that did not run) does not count: re-run onc
   the first family stays the token string. "Font not served" is a declared difference, never a failure: `tokens`
   compares the first family, the Figma pixel check records `served: false`. Licensed files the user supplies stay
   possible through `deploy`'s own rule.
-- **Text.** Advisory while the page's delta file says `"blocking": false`; measured pages decide when it turns blocking.
