@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the skill evals work</title>
+<style>
+  :root { --text:#172033; --muted:#55627a; --line:#d8deea; --bg:#f4f6fb; --blue:#2157d6; --green:#147d42; --orange:#b4561d; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; color:var(--text); background:var(--bg); }
+  main { max-width: 1040px; margin: 0 auto; padding: 28px 20px 64px; }
+  nav { display:flex; gap:18px; font-size:14px; margin-bottom: 18px; } nav a { color: var(--blue); text-decoration:none; }
+  h1 { font-size: 34px; line-height:1.2; margin: 8px 0 6px; } h2 { font-size: 22px; margin: 44px 0 8px; } h3 { font-size:16px; margin: 0 0 4px; }
+  .lead { font-size:18px; color: var(--muted); max-width: 760px; }
+  .stats { display:grid; grid-template-columns: repeat(5, 1fr); gap:10px; margin: 24px 0 8px; }
+  .stat { background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 16px; } .stat b { display:block; font-size:28px; } .stat span { color:var(--muted); font-size:13px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding: 18px 20px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap:12px; }
+  .grid .card p { margin: 4px 0 0; color: var(--muted); font-size:14px; }
+  svg { width:100%; height:auto; background:#fff; border:1px solid var(--line); border-radius:12px; padding:10px; }
+  .t1 { font: 600 14px -apple-system,sans-serif; fill:#172033; } .t2 { font: 12px -apple-system,sans-serif; fill:#55627a; } .t3 { font: 600 13px -apple-system,sans-serif; fill:#172033; }
+  .legend span { display:inline-block; margin-right:14px; font-size:13px; color:var(--muted); } .legend i { display:inline-block; width:12px; height:12px; border-radius:3px; margin-right:6px; vertical-align:-1px; border:1.5px solid; }
+  table { width:100%; border-collapse:collapse; background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; font-size:14px; }
+  th, td { padding:9px 12px; text-align:left; border-bottom:1px solid var(--line); } th { background:#eef2fb; }
+  ul { padding-left: 20px; margin: 8px 0; } li { margin: 5px 0; } code { background:#eef2fb; padding:1px 6px; border-radius:4px; font-size:13px; }
+  pre { background:#172033; color:#e8eefc; padding:14px 16px; border-radius:10px; overflow:auto; font-size:13px; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap:14px; } @media (max-width: 760px) { .stats { grid-template-columns: repeat(2, 1fr); } .two { grid-template-columns: 1fr; } }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+</style></head><body><main>
+<nav><a href="index.html">← Report</a><a href="https://github.com/aem-growth-adoption/skill-evals">GitHub repo</a></nav>
+<h1>How the skill evals work</h1>
+<p class="lead">An agent skill is only useful if the model that runs it follows it. We run each skill on several models, grade the outcome with code, and report the lowest-tier model that does the job well enough, so the model choice is a measured decision instead of "always pick the biggest".</p>
+
+<div class="stats">
+  <div class="stat"><b>8</b><span>skills</span></div>
+  <div class="stat"><b>49</b><span>cases (fixture pages and real sites)</span></div>
+  <div class="stat"><b>6</b><span>models, low to high tier</span></div>
+  <div class="stat"><b>3×</b><span>repeats per case, for stability</span></div>
+  <div class="stat"><b>147</b><span>graded agent runs</span></div>
+</div>
+
+<h2>A run, end to end</h2>
+<p>Every number in the report comes from the same loop. The skill is copied from a git ref into a fresh workspace, promptfoo fans the work out over models, cases and repeats, and each run is a real agent session that uses the skill with a real headless browser.</p>
+<svg viewBox="0 0 980 300" role="img" aria-label="Pipeline of one eval run"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#55627a"/></marker></defs>
+<g><rect x="10" y="20" width="200" height="78" rx="10" fill="#fdf0d2" stroke="#b4561d" stroke-width="1.5"/>
+  <text x="110" y="55" text-anchor="middle" class="t1">Skills repo</text>
+  <text x="110" y="73" text-anchor="middle" class="t2">a git ref: branch or main</text></g>
+<g><rect x="270" y="20" width="200" height="78" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="370" y="55" text-anchor="middle" class="t1">Workspace</text>
+  <text x="370" y="73" text-anchor="middle" class="t2">copy of the skill, per run</text></g>
+<g><rect x="530" y="20" width="200" height="78" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="630" y="55" text-anchor="middle" class="t1">promptfoo</text>
+  <text x="630" y="73" text-anchor="middle" class="t2">models × cases × 3 repeats</text></g>
+<g><rect x="790" y="20" width="180" height="78" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="880" y="55" text-anchor="middle" class="t1">Pi agent session</text>
+  <text x="880" y="73" text-anchor="middle" class="t2">model + skill + browser</text></g>
+<line x1="210" y1="59" x2="268" y2="59" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="470" y1="59" x2="528" y2="59" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="730" y1="59" x2="788" y2="59" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/>
+<g><rect x="790" y="190" width="180" height="78" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="880" y="225" text-anchor="middle" class="t1">Code graders</text>
+  <text x="880" y="243" text-anchor="middle" class="t2">files, answer, browser state</text></g>
+<g><rect x="530" y="190" width="200" height="78" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="630" y="225" text-anchor="middle" class="t1">Run summary</text>
+  <text x="630" y="243" text-anchor="middle" class="t2">pass, seconds, dollars</text></g>
+<g><rect x="270" y="190" width="200" height="78" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="370" y="225" text-anchor="middle" class="t1">Reports</text>
+  <text x="370" y="243" text-anchor="middle" class="t2">gist, per case, markdown</text></g>
+<g><rect x="10" y="190" width="200" height="78" rx="10" fill="#fff" stroke="#8a96ad" stroke-width="1.5"/>
+  <text x="110" y="225" text-anchor="middle" class="t1">Lowest model</text>
+  <text x="110" y="243" text-anchor="middle" class="t2">that meets the skill floor</text></g>
+<line x1="880" y1="98" x2="880" y2="188" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="788" y1="229" x2="732" y2="229" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="528" y1="229" x2="472" y2="229" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="268" y1="229" x2="212" y2="229" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="872" y="140" text-anchor="end" class="t2">headless browser,</text><text x="872" y="155" text-anchor="end" class="t2">fixtures + real sites</text>
+</svg>
+<p class="legend" style="margin-top:10px"><span><i style="background:#e8eefc;border-color:#2157d6"></i>existing tool</span><span><i style="background:#dff5e7;border-color:#147d42"></i>added for this project</span><span><i style="background:#fdf0d2;border-color:#b4561d"></i>under test</span></p>
+
+<h2>The stack: what existed, what we added</h2>
+<p>We did not build an eval framework. promptfoo already provides the matrix, repeats, assertions and a viewer, and Pi already runs a model with tools and skills. What was missing was the glue between them, and the tests themselves.</p>
+<svg viewBox="0 0 980 400" role="img" aria-label="The stack">
+<text x="8" y="41" class="t3">Models</text><g><rect x="150" y="10" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="277.5" y="32" text-anchor="middle" class="t1">Claude Haiku, Sonnet, Opus</text>
+  <text x="277.5" y="50" text-anchor="middle" class="t2">Azure AI Foundry</text></g><g><rect x="420" y="10" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="547.5" y="32" text-anchor="middle" class="t1">GPT-6 Sol</text>
+  <text x="547.5" y="50" text-anchor="middle" class="t2">GitHub Copilot</text></g><g><rect x="690" y="10" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="817.5" y="32" text-anchor="middle" class="t1">Qwen 3.8, Gemma 4</text>
+  <text x="817.5" y="50" text-anchor="middle" class="t2">Cloudflare Workers AI</text></g>
+<text x="8" y="106" class="t3">Agent harness</text><g><rect x="150" y="75" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="277.5" y="97" text-anchor="middle" class="t1">Pi coding agent</text>
+  <text x="277.5" y="115" text-anchor="middle" class="t2">SDK: tools, skills, sessions</text></g><g><rect x="420" y="75" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="547.5" y="97" text-anchor="middle" class="t1">pi-provider.mjs</text>
+  <text x="547.5" y="115" text-anchor="middle" class="t2">our promptfoo provider for Pi</text></g>
+<text x="8" y="171" class="t3">Orchestration</text><g><rect x="150" y="140" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="277.5" y="162" text-anchor="middle" class="t1">promptfoo</text>
+  <text x="277.5" y="180" text-anchor="middle" class="t2">matrix, repeats, assertions</text></g><g><rect x="420" y="140" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="547.5" y="162" text-anchor="middle" class="t1">Config builder + baseline gate</text>
+  <text x="547.5" y="180" text-anchor="middle" class="t2">models.yaml → providers, baseline first</text></g>
+<text x="8" y="236" class="t3">Under test</text><g><rect x="150" y="205" width="255" height="52" rx="10" fill="#fdf0d2" stroke="#b4561d" stroke-width="1.5"/>
+  <text x="277.5" y="227" text-anchor="middle" class="t1">8 web skills</text>
+  <text x="277.5" y="245" text-anchor="middle" class="t2">SKILL.md and their scripts</text></g><g><rect x="420" y="205" width="255" height="52" rx="10" fill="#fdf0d2" stroke="#b4561d" stroke-width="1.5"/>
+  <text x="547.5" y="227" text-anchor="middle" class="t1">Any git ref</text>
+  <text x="547.5" y="245" text-anchor="middle" class="t2">a branch, a PR or main</text></g>
+<text x="8" y="301" class="t3">Browsers</text><g><rect x="150" y="270" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="277.5" y="292" text-anchor="middle" class="t1">playwright-cli</text>
+  <text x="277.5" y="310" text-anchor="middle" class="t2">headless Chrome, one session per run</text></g><g><rect x="420" y="270" width="255" height="52" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="547.5" y="292" text-anchor="middle" class="t1">Chrome DevTools Protocol</text>
+  <text x="547.5" y="310" text-anchor="middle" class="t2">cdp skills and state checks</text></g><g><rect x="690" y="270" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="817.5" y="292" text-anchor="middle" class="t1">Headless shim</text>
+  <text x="817.5" y="310" text-anchor="middle" class="t2">extension skill without a window</text></g>
+<text x="8" y="366" class="t3">Test data</text><g><rect x="150" y="335" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="277.5" y="357" text-anchor="middle" class="t1">Fixture pages</text>
+  <text x="277.5" y="375" text-anchor="middle" class="t2">known ground truth</text></g><g><rect x="420" y="335" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="547.5" y="357" text-anchor="middle" class="t1">Real sites</text>
+  <text x="547.5" y="375" text-anchor="middle" class="t2">bd, adobe, astrazeneca, aem.live</text></g><g><rect x="690" y="335" width="255" height="52" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="817.5" y="357" text-anchor="middle" class="t1">Code graders</text>
+  <text x="817.5" y="375" text-anchor="middle" class="t2">compare with ground truth</text></g>
+</svg>
+<div class="two" style="margin-top:14px">
+  <div class="card"><h3>Existing tools we rely on</h3><ul>
+    <li><b>promptfoo</b>: test matrix, <code>--repeat</code>, assertions, the <code>skill-used</code> check, HTML export</li>
+    <li><b>Pi coding agent</b>: SDK sessions, tool use, skill discovery, many model providers</li>
+    <li><b>playwright-cli</b> and headless Chrome: the browser the skills drive</li>
+    <li><b>Chrome DevTools Protocol</b>: for the cdp skills and for checking browser state</li>
+    <li><b>GitHub Actions and Pages</b>: publishing the report</li>
+  </ul></div>
+  <div class="card"><h3>What we added</h3><ul>
+    <li>A promptfoo provider for Pi: isolated skills, per-run workspace and browser session, timeouts counted as failures, tool trace</li>
+    <li>49 cases with code graders and ground truth, plus a fixture server and a headless shim for the extension skill</li>
+    <li>A baseline gate, per-skill floors, the report generators and a replay provider that renders results through promptfoo</li>
+    <li>A fix in browser-probe so parallel runs no longer share browser sessions (PR #407)</li>
+  </ul></div>
+</div>
+
+<h2>How a run is graded</h2>
+<p>No model grades another model. Each case has a ground truth, either a fixture page whose answer we wrote or a real site checked against its own live behaviour, and a grader written in code.</p>
+<div class="grid">
+  <div class="card"><h3>1. The skill was used</h3><p>promptfoo's <code>skill-used</code> check. Pi has no skill tool, so reading the skill's <code>SKILL.md</code> counts.</p></div>
+  <div class="card"><h3>2. The output is right</h3><p>Files in <code>./out</code>, the reply, or the tools' output, compared with the known answer: languages, forms, section counts, recipes.</p></div>
+  <div class="card"><h3>3. The state is right</h3><p>For browser tasks the grader inspects the agent's own browser session: is the banner really gone, does the recipe really load the page.</p></div>
+  <div class="card"><h3>4. It was fast enough</h3><p>Each skill has a time budget (usually 120 s). A slower run is aborted and counts as a failure. Broken output is a failure with a reason, never a harness error.</p></div>
+</div>
+
+<h2>From runs to an answer</h2>
+<p>The baseline model runs first. If it cannot pass the suite, the problem is the skill or the eval, and other models are not run. The floor is the same for every model: at least 90% of runs pass within the time budget.</p>
+<svg viewBox="0 0 980 190" role="img" aria-label="Baseline gate and floor"><defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0 L10 5 L0 10 z" fill="#55627a"/></marker></defs>
+<g><rect x="10" y="50" width="190" height="80" rx="10" fill="#e8eefc" stroke="#2157d6" stroke-width="1.5"/>
+  <text x="105" y="86" text-anchor="middle" class="t1">Baseline model</text>
+  <text x="105" y="104" text-anchor="middle" class="t2">Sonnet 5.5 low runs first</text></g>
+<g><rect x="270" y="50" width="190" height="80" rx="10" fill="#fff" stroke="#8a96ad" stroke-width="1.5"/>
+  <text x="365" y="86" text-anchor="middle" class="t1">Meets the floor?</text>
+  <text x="365" y="104" text-anchor="middle" class="t2">≥ 90% pass within 120 s</text></g>
+<g><rect x="530" y="10" width="190" height="70" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="625" y="41" text-anchor="middle" class="t1">Run other models</text>
+  <text x="625" y="59" text-anchor="middle" class="t2">Haiku, GPT, Opus, Qwen, …</text></g>
+<g><rect x="530" y="110" width="190" height="70" rx="10" fill="#fdf0d2" stroke="#b4561d" stroke-width="1.5"/>
+  <text x="625" y="141" text-anchor="middle" class="t1">Stop</text>
+  <text x="625" y="159" text-anchor="middle" class="t2">fix the skill or the eval</text></g>
+<g><rect x="790" y="10" width="180" height="70" rx="10" fill="#dff5e7" stroke="#147d42" stroke-width="1.5"/>
+  <text x="880" y="41" text-anchor="middle" class="t1">Lowest model</text>
+  <text x="880" y="59" text-anchor="middle" class="t2">that meets the same floor</text></g>
+<line x1="200" y1="90" x2="268" y2="90" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="460" y1="70" x2="528" y2="45" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="460" y1="110" x2="528" y2="145" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/><line x1="720" y1="45" x2="788" y2="45" stroke="#55627a" stroke-width="1.8" marker-end="url(#arr)"/>
+<text x="472" y="52" class="t2">yes</text><text x="472" y="140" class="t2">no</text>
+</svg>
+<ul>
+  <li><b>Stability</b>: every case runs three times per model. A case is <i>flaky</i> when its repeats disagree, and the report counts those.</li>
+  <li><b>Cost</b>: average dollars per run at the list prices configured in Pi, shown next to the pass rate.</li>
+  <li><b>Tier order</b>: the order of models in <code>models.yaml</code> is a judgment call. "Lowest model" means the first one in that order that meets the floor.</li>
+</ul>
+
+<h2>The cost of the model choice</h2>
+<svg viewBox="0 0 980 392" role="img" aria-label="Cost per run">
+<text x="150" y="14" class="t2">average cost per run: lowest sufficient model (green) vs the highest-tier model run (orange)</text><text x="0" y="45" class="t3">browser-probe</text>
+<rect x="150" y="28" width="258" height="16" rx="3" fill="#147d42"/><text x="414" y="41" class="t2">$0.020 sonnet-5.5-low</text>
+<rect x="150" y="47" width="258" height="16" rx="3" fill="#b4561d"/><text x="414" y="60" class="t2">$0.020 sonnet-5.5-low</text>
+<text x="0" y="89" class="t3">cdp-connect</text>
+<rect x="150" y="72" width="207" height="16" rx="3" fill="#147d42"/><text x="363" y="85" class="t2">$0.016 sonnet-5.5-low</text>
+<rect x="150" y="91" width="207" height="16" rx="3" fill="#b4561d"/><text x="363" y="104" class="t2">$0.016 sonnet-5.5-low</text>
+<text x="0" y="133" class="t3">cdp-ext-pilot</text>
+<rect x="150" y="116" width="366" height="16" rx="3" fill="#147d42"/><text x="522" y="129" class="t2">$0.029 sonnet-5.5-low</text>
+<rect x="150" y="135" width="366" height="16" rx="3" fill="#b4561d"/><text x="522" y="148" class="t2">$0.029 sonnet-5.5-low</text>
+<text x="0" y="177" class="t3">page-collect</text>
+<rect x="150" y="160" width="277" height="16" rx="3" fill="#147d42"/><text x="433" y="173" class="t2">$0.022 sonnet-5.5-low</text>
+<rect x="150" y="179" width="277" height="16" rx="3" fill="#b4561d"/><text x="433" y="192" class="t2">$0.022 sonnet-5.5-low</text>
+<text x="0" y="221" class="t3">page-langs</text>
+<rect x="150" y="204" width="233" height="16" rx="3" fill="#147d42"/><text x="389" y="217" class="t2">$0.019 sonnet-5.5-low</text>
+<rect x="150" y="223" width="233" height="16" rx="3" fill="#b4561d"/><text x="389" y="236" class="t2">$0.019 sonnet-5.5-low</text>
+<text x="0" y="265" class="t3">page-prep</text>
+<rect x="150" y="248" width="365" height="16" rx="3" fill="#147d42"/><text x="521" y="261" class="t2">$0.029 sonnet-5.5-low</text>
+<rect x="150" y="267" width="365" height="16" rx="3" fill="#b4561d"/><text x="521" y="280" class="t2">$0.029 sonnet-5.5-low</text>
+<text x="0" y="309" class="t3">page-reduce</text>
+<rect x="150" y="292" width="520" height="16" rx="3" fill="#147d42"/><text x="676" y="305" class="t2">$0.041 sonnet-5.5-low</text>
+<rect x="150" y="311" width="520" height="16" rx="3" fill="#b4561d"/><text x="676" y="324" class="t2">$0.041 sonnet-5.5-low</text>
+<text x="0" y="353" class="t3">page-tree</text>
+<rect x="150" y="336" width="228" height="16" rx="3" fill="#147d42"/><text x="384" y="349" class="t2">$0.018 sonnet-5.5-low</text>
+<rect x="150" y="355" width="228" height="16" rx="3" fill="#b4561d"/><text x="384" y="368" class="t2">$0.018 sonnet-5.5-low</text></svg>
+
+<h2>Skill, CLI, or neither?</h2>
+<p>The same cases run in three arms. <b>skill + CLI</b>: the skill is loaded and the <code>web</code> CLI is on PATH. <b>CLI only</b>: no skill is loaded or on disk, the CLI is on PATH, and the prompt adds one line: <code>A `web` CLI is installed; `web --help` documents it.</code> <b>Neither</b>: no skill and no CLI. Both comparison arms run in an empty workspace under a private home, and a grader fails any run that opens a skill file from disk (the skills are installed on this machine, so this is checked, not assumed). Their prompts also add the output format, meaning file names and fields, never how to produce them. Cases that hinge on a skill's own method are left out, every bar covers the same cases, and browser-probe is judged only on whether the recipe loads the page. To limit cost they run on a few models only. The report also records whether each CLI-only run actually called <code>web</code>.</p>
+<svg viewBox="0 0 980 424" role="img" aria-label="Skill, CLI, or neither">
+<text x="230" y="14" class="t2">share of runs within the floor: skill + CLI (green), CLI only (blue), neither (orange)</text>
+<text x="0" y="50" class="t3">browser-probe · sonnet</text>
+<rect x="230" y="26" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="36" class="t2">100%</text><rect x="230" y="40" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="50" class="t2">100%</text><rect x="230" y="54" width="560" height="12" rx="3" fill="#b4561d"/><text x="796" y="64" class="t2">93%</text>
+<text x="0" y="98" class="t3">cdp-connect · sonnet</text>
+<rect x="230" y="74" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="84" class="t2">100%</text><rect x="230" y="88" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="98" class="t2">100%</text><rect x="230" y="102" width="514" height="12" rx="3" fill="#b4561d"/><text x="750" y="112" class="t2">86%</text>
+<text x="0" y="146" class="t3">cdp-ext-pilot · sonnet</text>
+<rect x="230" y="122" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="132" class="t2">100%</text><rect x="230" y="136" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="146" class="t2">100%</text><rect x="230" y="150" width="333" height="12" rx="3" fill="#b4561d"/><text x="569" y="160" class="t2">56%</text>
+<text x="0" y="194" class="t3">page-collect · sonnet</text>
+<rect x="230" y="170" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="180" class="t2">100%</text><rect x="230" y="184" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="194" class="t2">100%</text><rect x="230" y="198" width="489" height="12" rx="3" fill="#b4561d"/><text x="725" y="208" class="t2">81%</text>
+<text x="0" y="242" class="t3">page-langs · sonnet</text>
+<rect x="230" y="218" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="228" class="t2">100%</text><rect x="230" y="232" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="242" class="t2">100%</text><rect x="230" y="246" width="533" height="12" rx="3" fill="#b4561d"/><text x="769" y="256" class="t2">89%</text>
+<text x="0" y="290" class="t3">page-prep · sonnet</text>
+<rect x="230" y="266" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="276" class="t2">100%</text><rect x="230" y="280" width="600" height="12" rx="3" fill="#2157d6"/><text x="836" y="290" class="t2">100%</text><rect x="230" y="294" width="600" height="12" rx="3" fill="#b4561d"/><text x="836" y="304" class="t2">100%</text>
+<text x="0" y="338" class="t3">page-reduce · sonnet</text>
+<rect x="230" y="314" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="324" class="t2">100%</text><rect x="230" y="328" width="300" height="12" rx="3" fill="#2157d6"/><text x="536" y="338" class="t2">50%</text><rect x="230" y="342" width="300" height="12" rx="3" fill="#b4561d"/><text x="536" y="352" class="t2">50%</text>
+<text x="0" y="386" class="t3">page-tree · sonnet</text>
+<rect x="230" y="362" width="600" height="12" rx="3" fill="#147d42"/><text x="836" y="372" class="t2">100%</text><rect x="230" y="376" width="560" height="12" rx="3" fill="#2157d6"/><text x="796" y="386" class="t2">93%</text><rect x="230" y="390" width="400" height="12" rx="3" fill="#b4561d"/><text x="636" y="400" class="t2">67%</text></svg>
+<p style="color:var(--muted);font-size:14px">Read it as: what the CLI adds over a clear output format, and what the skill adds over the CLI. These are comparisons on small samples, not benchmarks.</p>
+
+<h2>Browsers stay invisible</h2>
+<p>Evals must never open a window on the machine running them. Every agent shell refuses <code>--headed</code> and <code>open</code>, a grader fails any run that still tried, and a sweeper kills automation browsers started without <code>--headless</code>. The extension skill, which launches a headed Chromium by default, goes through a headless shim.</p>
+
+<h2>Coverage</h2>
+<table><thead><tr><th>Skill</th><th>Fixture cases</th><th>Real-site cases</th><th>Time budget</th></tr></thead><tbody>
+<tr><td>browser-probe</td><td>0</td><td>5</td><td>120 s</td></tr>
+<tr><td>cdp-connect</td><td>7</td><td>0</td><td>120 s</td></tr>
+<tr><td>cdp-ext-pilot</td><td>3</td><td>0</td><td>150 s</td></tr>
+<tr><td>page-collect</td><td>5</td><td>4</td><td>120 s</td></tr>
+<tr><td>page-langs</td><td>5</td><td>5</td><td>120 s</td></tr>
+<tr><td>page-prep</td><td>2</td><td>3</td><td>120 s</td></tr>
+<tr><td>page-reduce</td><td>2</td><td>3</td><td>120 s</td></tr>
+<tr><td>page-tree</td><td>2</td><td>3</td><td>120 s</td></tr>
+</tbody></table>
+<p style="color:var(--muted);font-size:14px">domain-mask is not covered: it needs sudo, edits <code>/etc/hosts</code> and binds port 443, so it cannot run unattended.</p>
+
+<h2>What the benchmark already found</h2>
+<ul>
+  <li>browser-probe reused the same <code>playwright-cli</code> session names, so parallel probes broke each other. Fixed in the skill, with a test, in PR #407.</li>
+  <li>page-prep sometimes hit its time limit because a model read the screenshot in the same turn that took it, then searched the whole disk for the file.</li>
+  <li>Opus saved the page-tree node map in a leaner format than the skill's own. The grader first rejected it, which showed the check was too strict.</li>
+  <li>cdp-ext-pilot opens a headed browser by default. A shim now runs it headless so evals do not take over the screen.</li>
+</ul>
+
+<h2>What these numbers do not tell you</h2>
+<ul>
+  <li><b>Small samples</b>: 9 to 27 runs per skill and model. Differences of a few points are noise.</li>
+  <li><b>Live sites move</b>: real sites change their bot protection, so results drift. Fixture cases do not.</li>
+  <li><b>One harness, one effort level</b>: every model runs in Pi at low reasoning effort. Another harness or setting can behave differently.</li>
+  <li><b>List-price costs</b>: they estimate cost, they are not an invoice, and subscription models are priced as if per token.</li>
+  <li><b>One skill version</b>: results describe the git ref listed in the report, not later changes.</li>
+</ul>
+
+<h2>Run it or extend it</h2>
+<pre>scripts/run.sh page-tree origin/main     # baseline first, then the other models
+scripts/run.sh page-tree my-branch 'haiku'   # only matching models
+npm run report                            # results → REPORT.html, REPORT.md, METHODOLOGY.html</pre>
+<p>Adding a model is one entry in <code>models.yaml</code>. Adding a skill is a folder under <code>skills/</code> with a config, cases, graders and a floor.</p>
+
+<footer>Generated 2026-10-17 from the stored results of 147 runs. Tools: promptfoo, Pi coding agent, playwright-cli, Chrome DevTools Protocol, GitHub Pages.</footer>
+</main></body></html>

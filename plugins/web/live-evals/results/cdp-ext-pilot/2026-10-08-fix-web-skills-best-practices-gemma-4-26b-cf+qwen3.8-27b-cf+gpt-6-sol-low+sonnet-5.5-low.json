@@ -1,0 +1,331 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 75.9,
+      "cost_usd": 0.0061,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 121.3,
+      "cost_usd": 0.0281,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 21.3,
+      "cost_usd": 0.0219,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 19.2,
+      "cost_usd": 0.0257,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "sidepanel, save a note",
+      "pass": false,
+      "latency_s": 150,
+      "cost_usd": 0.0232,
+      "timed_out": true,
+      "why": "failed checks: answer quotes the status"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 83.9,
+      "cost_usd": 0.0083,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 25.2,
+      "cost_usd": 0.027,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 18.6,
+      "cost_usd": 0.0249,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 65.4,
+      "cost_usd": 0.0072,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 127,
+      "cost_usd": 0.025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 25.3,
+      "cost_usd": 0.0277,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 20,
+      "cost_usd": 0.0259,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 40.6,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 41.6,
+      "cost_usd": 0.0161,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 14,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0209,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 54.7,
+      "cost_usd": 0.0071,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 119,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 10,
+      "cost_usd": 0.0169,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 9.9,
+      "cost_usd": 0.0213,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 59.1,
+      "cost_usd": 0.0072,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 76.9,
+      "cost_usd": 0.0194,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 12.2,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 8,
+      "cost_usd": 0.0188,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 39.6,
+      "cost_usd": 0.0028,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 147.9,
+      "cost_usd": 0.0208,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 9.5,
+      "cost_usd": 0.0161,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0278,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 50.4,
+      "cost_usd": 0.0035,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 60,
+      "cost_usd": 0.0186,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 11.4,
+      "cost_usd": 0.0171,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0217,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 38.9,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 38.9,
+      "cost_usd": 0.0172,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0171,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 9.8,
+      "cost_usd": 0.0216,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

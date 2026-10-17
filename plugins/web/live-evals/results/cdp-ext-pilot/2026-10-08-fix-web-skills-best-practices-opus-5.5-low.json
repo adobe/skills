@@ -1,0 +1,88 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 21.1,
+      "cost_usd": 0.043,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 21.5,
+      "cost_usd": 0.0458,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 18.5,
+      "cost_usd": 0.0427,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0397,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 10.6,
+      "cost_usd": 0.0385,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 11.8,
+      "cost_usd": 0.0385,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 12.1,
+      "cost_usd": 0.0396,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 12,
+      "cost_usd": 0.0412,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 12.1,
+      "cost_usd": 0.0397,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

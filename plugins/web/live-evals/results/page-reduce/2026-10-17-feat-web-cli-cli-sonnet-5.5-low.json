@@ -1,0 +1,69 @@
+{
+  "skill": "page-reduce",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "cli",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 11.3,
+      "cost_usd": 0.0268,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 23.2,
+      "cost_usd": 0.0398,
+      "used_cli": true,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 12.3,
+      "cost_usd": 0.0286,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 44.9,
+      "cost_usd": 0.0557,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 49.2,
+      "cost_usd": 0.0729,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 47.3,
+      "cost_usd": 0.0794,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

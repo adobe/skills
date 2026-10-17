@@ -1,0 +1,88 @@
+{
+  "skill": "page-prep",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 28.3,
+      "cost_usd": 0.194,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 20.1,
+      "cost_usd": 0.1804,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 22.6,
+      "cost_usd": 0.1797,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 25.1,
+      "cost_usd": 0.1958,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 28.5,
+      "cost_usd": 0.1886,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 22.8,
+      "cost_usd": 0.1784,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 53.8,
+      "cost_usd": 0.2291,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 69.8,
+      "cost_usd": 0.2701,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 76.2,
+      "cost_usd": 0.5083,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

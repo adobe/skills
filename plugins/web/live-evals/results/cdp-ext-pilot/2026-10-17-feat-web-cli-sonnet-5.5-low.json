@@ -1,0 +1,90 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "feat-web-cli",
+  "commit": "1b65386f",
+  "arm": "skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 28.8,
+      "cost_usd": 0.032,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 36.5,
+      "cost_usd": 0.032,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 35,
+      "cost_usd": 0.0309,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 24.6,
+      "cost_usd": 0.034,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 29.4,
+      "cost_usd": 0.0363,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 19.7,
+      "cost_usd": 0.0318,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 11.7,
+      "cost_usd": 0.0213,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 12.4,
+      "cost_usd": 0.0221,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 12.6,
+      "cost_usd": 0.0215,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

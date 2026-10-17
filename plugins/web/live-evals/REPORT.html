@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Skill evals: lowest model per skill</title>
+<style>
+  body { font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #172033; background: #f4f6fb; margin: 0; }
+  main { max-width: 1100px; margin: 0 auto; padding: 32px 20px 48px; }
+  h1 { font-size: 24px; margin: 0 0 4px; } p { margin: 4px 0 16px; color: #55627a; }
+  table { border-collapse: separate; border-spacing: 4px; width: 100%; }
+  th, td { padding: 10px 12px; text-align: center; border-radius: 6px; background: #fff; }
+  thead th { background: none; font-weight: 600; } th small { display: block; font-weight: 400; color: #55627a; }
+  tbody th { text-align: left; background: none; font-weight: 600; }
+  td b { display: block; font-size: 17px; } td small { display: block; color: #55627a; font-size: 12px; }
+  .ok { background: #dff5e7; } .near { background: #fdf0d2; } .bad { background: #fbdcd8; } .none { color: #99a; }
+  small.cost { color: #3b5bb5; } .flaky { color: #b4561d; font-weight: 600; } .headline { font-size: 16px; color: #172033; background: #fff; padding: 12px 16px; border-radius: 8px; }
+  h2 { font-size: 20px; margin: 40px 0 4px; } table.cmp tbody th small { font-weight: 400; }
+  .delta { background: #fff; } .verdict.same { background: #eef0f4; } .verdict.adds { background: #e0eafd; } .verdict.hurts { background: #fde7d3; } .verdict.none { background: #fbdcd8; }
+  .floor { background: #e8eefc; } .legend span { display: inline-block; padding: 2px 10px; border-radius: 4px; margin-right: 8px; font-size: 13px; }
+  footer a { color: #2157d6; }
+  footer { margin-top: 20px; color: #55627a; font-size: 13px; }
+</style></head><body><main>
+<h1>Which model does each skill need?</h1>
+<p>Share of runs that pass within the skill's time budget, with average run time, cost per run and stability. Every case runs several times (usually three) per model; a case is <span class="flaky">flaky</span> when its repeats disagree. The last column is the lowest-tier model that meets the skill's floor.</p>
+<p class="headline">Using the lowest sufficient model for each skill costs about <b>100%</b> of always using sonnet-5.5-low (average cost per run, summed over 8 skills).</p>
+<p class="legend"><span class="ok">meets the floor</span><span class="near">within 20 points</span><span class="bad">well below</span><span class="none">not run</span></p>
+<table><thead><tr><th>Skill</th><th>gemma-4-26b-cf</th><th>qwen3.8-27b-cf</th><th>haiku-5.5-low</th><th>gpt-6-sol-low</th><th>sonnet-5.5-low<small>baseline</small></th><th>opus-5.5-low</th><th>Lowest model meeting the floor</th></tr></thead>
+<tbody>
+<tr><th>browser-probe</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>15/15 · 29 s</small><small class="cost">$0.020/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>cdp-connect</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>21/21 · 14 s</small><small class="cost">$0.016/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>cdp-ext-pilot</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>9/9 · 23 s</small><small class="cost">$0.029/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>page-collect</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>27/27 · 17 s</small><small class="cost">$0.022/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>page-langs</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>30/30 · 13 s</small><small class="cost">$0.019/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>page-prep</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>15/15 · 29 s</small><small class="cost">$0.029/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>page-reduce</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>15/15 · 25 s</small><small class="cost">$0.041/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+<tr><th>page-tree</th><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="none">·</td><td class="ok"><b>100%</b><small>15/15 · 18 s</small><small class="cost">$0.018/run</small><small>stable</small></td><td class="none">·</td><td class="floor"><b>sonnet-5.5-low</b></td></tr>
+</tbody></table>
+
+<h2>Skill, CLI, or neither?</h2>
+<p>The same cases in three arms: the skill with its CLI, the CLI alone (no skill on disk, the prompt only says <code>web --help</code> documents it), and neither. Each cell covers the same cases. A comparison on a few models, not a benchmark.</p>
+<table class="cmp"><thead><tr><th>Skill and model</th><th>skill + CLI</th><th>CLI only</th><th>neither</th><th>Time</th><th>Cost</th><th>CLI used</th></tr></thead>
+<tbody>
+<tr><th>browser-probe<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>15/15</small></td><td class="ok"><b>100%</b><small>15/15</small></td><td class="ok"><b>93%</b><small>14/15</small></td>
+<td><b>29 / 31 / 39</b><small>seconds</small></td>
+<td><b>$0.020 / $0.020 / $0.027</b><small>per run</small></td>
+<td><b>47%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 7 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>cdp-connect<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>21/21</small></td><td class="ok"><b>100%</b><small>21/21</small></td><td class="near"><b>86%</b><small>18/21</small></td>
+<td><b>14 / 15 / 8</b><small>seconds</small></td>
+<td><b>$0.016 / $0.016 / $0.013</b><small>per run</small></td>
+<td><b>100%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 14 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>cdp-ext-pilot<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>9/9</small></td><td class="ok"><b>100%</b><small>9/9</small></td><td class="bad"><b>56%</b><small>5/9</small></td>
+<td><b>23 / 19 / 47</b><small>seconds</small></td>
+<td><b>$0.029 / $0.022 / $0.028</b><small>per run</small></td>
+<td><b>100%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 44 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>page-collect<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>27/27</small></td><td class="ok"><b>100%</b><small>27/27</small></td><td class="near"><b>81%</b><small>22/27</small></td>
+<td><b>17 / 18 / 23</b><small>seconds</small></td>
+<td><b>$0.022 / $0.031 / $0.036</b><small>per run</small></td>
+<td><b>44%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 19 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>page-langs<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>27/27</small></td><td class="ok"><b>100%</b><small>27/27</small></td><td class="near"><b>89%</b><small>24/27</small></td>
+<td><b>13 / 15 / 11</b><small>seconds</small></td>
+<td><b>$0.019 / $0.017 / $0.019</b><small>per run</small></td>
+<td><b>78%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 11 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>page-prep<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>15/15</small></td><td class="ok"><b>100%</b><small>15/15</small></td><td class="ok"><b>100%</b><small>15/15</small></td>
+<td><b>29 / 25 / 21</b><small>seconds</small></td>
+<td><b>$0.029 / $0.018 / $0.018</b><small>per run</small></td>
+<td><b>100%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 0 points over CLI only; the CLI adds 0 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+<tr><th>page-reduce<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>6/6</small></td><td class="bad"><b>50%</b><small>3/6</small></td><td class="bad"><b>50%</b><small>3/6</small></td>
+<td><b>31 / 31 / 16</b><small>seconds</small></td>
+<td><b>$0.076 / $0.051 / $0.042</b><small>per run</small></td>
+<td><b>67%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 50 points over CLI only; the CLI adds 0 points over neither; CLI only does not reach the floor (90%).</small></td></tr>
+<tr><th>page-tree<small>sonnet-5.5-low</small></th>
+<td class="ok"><b>100%</b><small>15/15</small></td><td class="ok"><b>93%</b><small>14/15</small></td><td class="bad"><b>67%</b><small>10/15</small></td>
+<td><b>18 / 26 / 29</b><small>seconds</small></td>
+<td><b>$0.018 / $0.024 / $0.044</b><small>per run</small></td>
+<td><b>100%</b><small>CLI-only runs</small></td></tr>
+<tr><td colspan="7" style="text-align:left;background:none"><small>the skill adds 7 points over CLI only; the CLI adds 27 points over neither; CLI only reaches the floor (90%).</small></td></tr>
+</tbody></table>
+<p class="legend" style="margin-top:10px"><span class="ok">meets the floor</span><span class="near">within 20 points</span><span class="bad">well below</span></p>
+<footer>8 skills, 6 models, 147 runs, generated 2026-10-17. Floor: pass rate and time budget per skill (skills/&lt;skill&gt;/skill.yaml), usually 90% within 120 s.
+Models run in tier order; the baseline must meet the floor first. Cost is the average per run at the list prices configured in Pi (per-token estimates, not an invoice). Small samples (9 to 27 runs per cell): gaps of a few points are noise.
+How this was measured: <a href="methodology.html">methodology and stack</a>. Source and per-case results: <a href="https://github.com/adobe/skills/tree/main/plugins/web/live-evals">GitHub repo</a>.</footer>
+</main></body></html>

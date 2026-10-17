@@ -1,2 +1,4 @@
 # ignore sem-rel artifacts
 **/CHANGELOG.md
+
+live-evals/

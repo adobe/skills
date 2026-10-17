@@ -1,0 +1,88 @@
+{
+  "skill": "page-reduce",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 39.6,
+      "cost_usd": 0.007,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 30.3,
+      "cost_usd": 0.0043,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 25.9,
+      "cost_usd": 0.0039,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 17.7,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 12.6,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 46.1,
+      "cost_usd": 0.0083,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 46.1,
+      "cost_usd": 0.008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 77.7,
+      "cost_usd": 0.0125,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,115 @@
+{
+  "skill": "page-langs",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 7.4,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 8.6,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 7.7,
+      "cost_usd": 0.001,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 8.1,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 10.6,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 10.6,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 16.6,
+      "cost_usd": 0.0018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 12.5,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "skill": "cdp-connect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 9.9,
+      "cost_usd": 0.0309,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 10.4,
+      "cost_usd": 0.0311,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0307,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 7.7,
+      "cost_usd": 0.0251,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0252,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 21.4,
+      "cost_usd": 0.0566,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 19.3,
+      "cost_usd": 0.0565,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 20.7,
+      "cost_usd": 0.0568,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.5,
+      "cost_usd": 0.0252,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.8,
+      "cost_usd": 0.0253,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0252,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0366,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 11.3,
+      "cost_usd": 0.0349,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 11.6,
+      "cost_usd": 0.0341,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 25.5,
+      "cost_usd": 0.0548,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 20.2,
+      "cost_usd": 0.0389,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 19.5,
+      "cost_usd": 0.0387,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,279 @@
+{
+  "skill": "page-langs",
+  "ref": "feat-web-cli",
+  "commit": "1b65386f",
+  "arm": "skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0166,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 11.5,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 9.4,
+      "cost_usd": 0.0164,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 12.6,
+      "cost_usd": 0.0178,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 12.7,
+      "cost_usd": 0.0177,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0174,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 16.3,
+      "cost_usd": 0.0211,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 14.1,
+      "cost_usd": 0.03,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 15.2,
+      "cost_usd": 0.0234,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 9.4,
+      "cost_usd": 0.0167,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 10.6,
+      "cost_usd": 0.0165,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0166,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 8.6,
+      "cost_usd": 0.0162,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 12.3,
+      "cost_usd": 0.0165,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.6,
+      "cost_usd": 0.0171,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 7.4,
+      "cost_usd": 0.0162,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 8.7,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0166,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 9.3,
+      "cost_usd": 0.016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 9.3,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, webflowmarketingmain.com/fr (French, hreflang de/en/fr)",
+      "pass": true,
+      "latency_s": 17.9,
+      "cost_usd": 0.0188,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, webflowmarketingmain.com/fr (French, hreflang de/en/fr)",
+      "pass": true,
+      "latency_s": 17.7,
+      "cost_usd": 0.0183,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, webflowmarketingmain.com/fr (French, hreflang de/en/fr)",
+      "pass": true,
+      "latency_s": 17.1,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch (regional html lang, many hreflang)",
+      "pass": true,
+      "latency_s": 21.8,
+      "cost_usd": 0.0241,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch (regional html lang, many hreflang)",
+      "pass": true,
+      "latency_s": 19.9,
+      "cost_usd": 0.0197,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch (regional html lang, many hreflang)",
+      "pass": true,
+      "latency_s": 20.7,
+      "cost_usd": 0.0239,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wpbeginner.com (English page, hreflang-only languages)",
+      "pass": true,
+      "latency_s": 13.3,
+      "cost_usd": 0.0195,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wpbeginner.com (English page, hreflang-only languages)",
+      "pass": true,
+      "latency_s": 16,
+      "cost_usd": 0.0195,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wpbeginner.com (English page, hreflang-only languages)",
+      "pass": true,
+      "latency_s": 12.4,
+      "cost_usd": 0.0197,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

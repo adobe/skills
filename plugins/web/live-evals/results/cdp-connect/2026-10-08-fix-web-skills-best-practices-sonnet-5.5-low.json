@@ -1,0 +1,61 @@
+{
+  "skill": "cdp-connect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0196,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0198,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0198,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 16.9,
+      "cost_usd": 0.0185,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0201,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 16.5,
+      "cost_usd": 0.0194,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

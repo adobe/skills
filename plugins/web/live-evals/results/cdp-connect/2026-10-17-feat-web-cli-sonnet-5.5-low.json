@@ -1,0 +1,198 @@
+{
+  "skill": "cdp-connect",
+  "ref": "feat-web-cli",
+  "commit": "1b65386f",
+  "arm": "skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 10.1,
+      "cost_usd": 0.0162,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 9.4,
+      "cost_usd": 0.0151,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0145,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.7,
+      "cost_usd": 0.0117,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0141,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0162,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 10.7,
+      "cost_usd": 0.0155,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 8.9,
+      "cost_usd": 0.0155,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 9,
+      "cost_usd": 0.0185,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.2,
+      "cost_usd": 0.0144,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 45.6,
+      "cost_usd": 0.0254,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 43.1,
+      "cost_usd": 0.0211,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 42.1,
+      "cost_usd": 0.0187,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 11.7,
+      "cost_usd": 0.0152,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 14.2,
+      "cost_usd": 0.02,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 13.8,
+      "cost_usd": 0.0192,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0135,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 8.8,
+      "cost_usd": 0.0136,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 8.3,
+      "cost_usd": 0.0146,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

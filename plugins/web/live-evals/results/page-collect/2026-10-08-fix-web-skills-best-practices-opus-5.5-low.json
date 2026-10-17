@@ -1,0 +1,169 @@
+{
+  "skill": "page-collect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 14.7,
+      "cost_usd": 0.0468,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 15.3,
+      "cost_usd": 0.046,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 22.2,
+      "cost_usd": 0.044,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0314,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0319,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.032,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 11.4,
+      "cost_usd": 0.0315,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 10.9,
+      "cost_usd": 0.0308,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 10,
+      "cost_usd": 0.0306,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 15.3,
+      "cost_usd": 0.0481,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0463,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": false,
+      "latency_s": 23.3,
+      "cost_usd": 0.0479,
+      "timed_out": false,
+      "why": "failed checks: all six collectors present"
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 17.9,
+      "cost_usd": 0.0569,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 16.3,
+      "cost_usd": 0.0534,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 17.4,
+      "cost_usd": 0.0559,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 8.6,
+      "cost_usd": 0.0275,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 8.5,
+      "cost_usd": 0.0293,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 9.4,
+      "cost_usd": 0.0278,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

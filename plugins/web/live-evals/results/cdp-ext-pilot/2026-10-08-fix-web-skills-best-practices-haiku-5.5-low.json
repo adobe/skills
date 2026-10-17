@@ -1,0 +1,88 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 18.3,
+      "cost_usd": 0.002,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 17.7,
+      "cost_usd": 0.0017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 17.2,
+      "cost_usd": 0.0017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 7.1,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 7.4,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 8.4,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 8.3,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

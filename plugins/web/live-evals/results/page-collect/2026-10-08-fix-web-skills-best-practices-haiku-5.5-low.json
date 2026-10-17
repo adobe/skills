@@ -1,0 +1,115 @@
+{
+  "skill": "page-collect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 23.7,
+      "cost_usd": 0.0018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 10.6,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.6,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 12.1,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 11.7,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": false,
+      "latency_s": 20.8,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": "failed checks: all six collectors present"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 11.9,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 12.5,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

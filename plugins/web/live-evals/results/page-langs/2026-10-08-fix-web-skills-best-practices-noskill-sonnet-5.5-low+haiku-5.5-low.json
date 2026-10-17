@@ -1,0 +1,332 @@
+{
+  "skill": "page-langs",
+  "ref": "fix-web-skills-best-practices",
+  "arm": "no-skill",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 6.2,
+      "cost_usd": 0.0099,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 7.5,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 6.6,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 7.1,
+      "cost_usd": 0.0101,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0108,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 8.5,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 6.7,
+      "cost_usd": 0.0128,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0135,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 12.3,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 8.5,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 7,
+      "cost_usd": 0.0135,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 22.6,
+      "cost_usd": 0.0031,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 25.4,
+      "cost_usd": 0.0368,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 18.5,
+      "cost_usd": 0.0272,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 38.4,
+      "cost_usd": 0.0048,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0027,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 24.3,
+      "cost_usd": 0.0403,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": false,
+      "latency_s": 8.3,
+      "cost_usd": 0.0166,
+      "timed_out": false,
+      "why": "html_lang: expected \"en\", got null"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 15.7,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": false,
+      "latency_s": 8.2,
+      "cost_usd": 0.015,
+      "timed_out": false,
+      "why": "html_lang: expected \"en\", got null"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 19.5,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live (English)",
+      "pass": false,
+      "latency_s": 8.2,
+      "cost_usd": 0.0151,
+      "timed_out": false,
+      "why": "html_lang: expected \"en\", got null"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 12.8,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.3,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0122,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0124,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.6,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 8.1,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 6.5,
+      "cost_usd": 0.0122,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 7,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 6.3,
+      "cost_usd": 0.0103,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 6,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 6.9,
+      "cost_usd": 0.0103,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 6.1,
+      "cost_usd": 0.0102,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 7.2,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

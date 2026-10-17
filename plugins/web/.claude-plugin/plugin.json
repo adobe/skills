@@ -1,6 +1,6 @@
 {
   "name": "web",
-  "description": "Browser automation and web page analysis skills: probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, extract page resources, and detect page languages with playwright-cli; drive Chrome and test extensions over CDP; mask domains for demos.",
+  "description": "Browser automation and web page analysis skills: probe CDN bot protection, dismiss overlays, capture spatial DOM trees, reduce pages to skeletons, extract page resources, and detect page languages via the `web` CLI (plugins/web/cli); drive Chrome and test extensions; mask domains for demos.",
   "version": "1.0.0",
   "author": {
     "name": "Adobe"

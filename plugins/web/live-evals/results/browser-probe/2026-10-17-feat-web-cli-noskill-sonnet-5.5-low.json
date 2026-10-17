@@ -1,0 +1,159 @@
+{
+  "skill": "browser-probe",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "no-skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 14.3,
+      "cost_usd": 0.0218,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 32.6,
+      "cost_usd": 0.0158,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 23.5,
+      "cost_usd": 0.0225,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": false,
+      "latency_s": 38.1,
+      "cost_usd": 0.0249,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "still blocked: \"ERROR: The request could not be satisfied\" status=403"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 27.1,
+      "cost_usd": 0.0209,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 49.3,
+      "cost_usd": 0.0346,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 59.2,
+      "cost_usd": 0.0374,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 25.1,
+      "cost_usd": 0.0296,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 53,
+      "cost_usd": 0.0416,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 106.8,
+      "cost_usd": 0.042,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 37.9,
+      "cost_usd": 0.0327,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 39.7,
+      "cost_usd": 0.0275,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 15.8,
+      "cost_usd": 0.0168,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 28.4,
+      "cost_usd": 0.0222,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 29.3,
+      "cost_usd": 0.0167,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

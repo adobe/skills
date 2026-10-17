@@ -1,0 +1,159 @@
+{
+  "skill": "page-tree",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "no-skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": false,
+      "latency_s": 17.2,
+      "cost_usd": 0.0344,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: cards selector in node map"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 25.2,
+      "cost_usd": 0.037,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": false,
+      "latency_s": 19.2,
+      "cost_usd": 0.0347,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: cards selector in node map"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 34.4,
+      "cost_usd": 0.0436,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 27,
+      "cost_usd": 0.0528,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 21.5,
+      "cost_usd": 0.0424,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 22.2,
+      "cost_usd": 0.0446,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 31.8,
+      "cost_usd": 0.0529,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 22.7,
+      "cost_usd": 0.0397,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, long page with grids",
+      "pass": true,
+      "latency_s": 35.1,
+      "cost_usd": 0.0437,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, long page with grids",
+      "pass": true,
+      "latency_s": 31.1,
+      "cost_usd": 0.0447,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, long page with grids",
+      "pass": true,
+      "latency_s": 31,
+      "cost_usd": 0.0555,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, image-background hero",
+      "pass": false,
+      "latency_s": 66.8,
+      "cost_usd": 0.043,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: image background marked"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, image-background hero",
+      "pass": false,
+      "latency_s": 28.6,
+      "cost_usd": 0.0403,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: root line, image background marked"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, image-background hero",
+      "pass": false,
+      "latency_s": 23.2,
+      "cost_usd": 0.0445,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: root line, image background marked"
+    }
+  ]
+}

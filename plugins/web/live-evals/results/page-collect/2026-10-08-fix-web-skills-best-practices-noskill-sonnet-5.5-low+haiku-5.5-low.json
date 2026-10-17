@@ -1,0 +1,332 @@
+{
+  "skill": "page-collect",
+  "ref": "fix-web-skills-best-practices",
+  "arm": "no-skill",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0319,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 51.8,
+      "cost_usd": 0.0088,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 14.6,
+      "cost_usd": 0.0312,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 36.3,
+      "cost_usd": 0.006,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 14.2,
+      "cost_usd": 0.0331,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 30.3,
+      "cost_usd": 0.0049,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 14.7,
+      "cost_usd": 0.0333,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 36.4,
+      "cost_usd": 0.0061,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0032,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 14.2,
+      "cost_usd": 0.0327,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 15.4,
+      "cost_usd": 0.0026,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 16.4,
+      "cost_usd": 0.0357,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 12.9,
+      "cost_usd": 0.031,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 23.2,
+      "cost_usd": 0.0033,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 21.2,
+      "cost_usd": 0.0036,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 15.4,
+      "cost_usd": 0.0334,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 14.8,
+      "cost_usd": 0.0341,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 33.7,
+      "cost_usd": 0.0049,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 35.9,
+      "cost_usd": 0.0927,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 64.3,
+      "cost_usd": 0.0103,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 31.6,
+      "cost_usd": 0.0054,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 38.9,
+      "cost_usd": 0.0889,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 52,
+      "cost_usd": 0.0928,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 70.9,
+      "cost_usd": 0.0109,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 9.9,
+      "cost_usd": 0.0222,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 10.1,
+      "cost_usd": 0.0228,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 14.3,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 10.8,
+      "cost_usd": 0.0236,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 22.6,
+      "cost_usd": 0.0035,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 9.9,
+      "cost_usd": 0.0219,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 16.1,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0228,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 12.4,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 10.8,
+      "cost_usd": 0.023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 15.7,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

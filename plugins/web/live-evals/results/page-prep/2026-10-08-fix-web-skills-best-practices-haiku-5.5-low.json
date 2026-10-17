@@ -1,0 +1,88 @@
+{
+  "skill": "page-prep",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 30.1,
+      "cost_usd": 0.0063,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 27.5,
+      "cost_usd": 0.0065,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 22.3,
+      "cost_usd": 0.006,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 19.1,
+      "cost_usd": 0.0062,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 22.5,
+      "cost_usd": 0.0049,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 23.3,
+      "cost_usd": 0.0059,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 46.4,
+      "cost_usd": 0.0111,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 45.7,
+      "cost_usd": 0.0106,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 44.5,
+      "cost_usd": 0.0074,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

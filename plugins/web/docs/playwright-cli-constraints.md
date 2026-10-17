@@ -1,8 +1,11 @@
 # playwright-cli Constraints
 
-All web plugin skills use `playwright-cli` as their browser layer. This document
-covers constraints that affect skill authors — behaviours that differ from the
-Playwright API and will silently break your skill if you're not aware of them.
+Only `plugins/web/cli/src/driver/playwright-cli.mjs` talks to `playwright-cli`
+now; skills call the `web` CLI, which goes through that driver. This document is
+the driver's reference: behaviours of `playwright-cli` that differ from the
+Playwright API and break callers that are not aware of them. Skills use
+`playwright-cli -s <session> …` directly only as an escape hatch on a browser
+the `web` CLI opened.
 
 ## File Paths
 
@@ -73,6 +76,26 @@ clean up anything you put in the output directory.
 
 ## Session Naming
 
-Session names passed via `-s <name>` persist across calls in the same
-working directory. Always close sessions explicitly with
+Session names passed via `-s <name>` are global per user and machine
+(not scoped to the working directory) and persist until closed. Always close sessions
+explicitly with
 `playwright-cli -s <name> close` to avoid stale sessions blocking future runs.
+
+## `--json` Envelope
+
+The driver always passes `--json`. Output is one document:
+
+- Success from `eval` / `run-code`: `{ "result": "<json string>" }`. The value is
+  a JSON string inside the JSON, so parse twice (`JSON.parse(JSON.parse(out).result)`).
+- Failure: `{ "isError": true, "error": "<message>" }` (exit code can still be 0;
+  check `isError`).
+
+## `file:` URLs
+
+`file:` URLs are refused by playwright-cli. Serve local pages over HTTP
+(`node:http` on `127.0.0.1`) when a real page is needed, as the tests do.
+
+## `run-code` Sandbox
+
+`run-code` runs in a sandbox with no `setTimeout`. Wait with
+`page.waitForTimeout(ms)` instead.

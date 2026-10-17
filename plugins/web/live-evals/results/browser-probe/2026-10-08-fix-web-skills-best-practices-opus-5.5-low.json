@@ -1,0 +1,115 @@
+{
+  "skill": "browser-probe",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 15.8,
+      "cost_usd": 0.0452,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 23,
+      "cost_usd": 0.0479,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0464,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 32,
+      "cost_usd": 0.0625,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 32.8,
+      "cost_usd": 0.0587,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 32.3,
+      "cost_usd": 0.0589,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 42.4,
+      "cost_usd": 0.0659,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 44.8,
+      "cost_usd": 0.067,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 53.1,
+      "cost_usd": 0.0655,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 39.3,
+      "cost_usd": 0.0585,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 44.2,
+      "cost_usd": 0.0658,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 38.8,
+      "cost_usd": 0.0626,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,439 @@
+{
+  "skill": "page-collect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 11,
+      "cost_usd": 0.0149,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 11.6,
+      "cost_usd": 0.0261,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 51,
+      "cost_usd": 0.0039,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 120.5,
+      "cost_usd": 0.0108,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 41.8,
+      "cost_usd": 0.017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 52.9,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 10.8,
+      "cost_usd": 0.0237,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 14.1,
+      "cost_usd": 0.0224,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 11.7,
+      "cost_usd": 0.0159,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0252,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 57.2,
+      "cost_usd": 0.0028,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full inventory",
+      "pass": true,
+      "latency_s": 120.5,
+      "cost_usd": 0.0051,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 22.2,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 10.2,
+      "cost_usd": 0.0216,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 12.2,
+      "cost_usd": 0.0206,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 95.3,
+      "cost_usd": 0.0101,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 49.9,
+      "cost_usd": 0.0018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 9,
+      "cost_usd": 0.0174,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 12.3,
+      "cost_usd": 0.019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 115.7,
+      "cost_usd": 0.0216,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.4,
+      "cost_usd": 0.0141,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 33.4,
+      "cost_usd": 0.0151,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 11.3,
+      "cost_usd": 0.0226,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, icons for Edge Delivery Services",
+      "pass": true,
+      "latency_s": 36.4,
+      "cost_usd": 0.0024,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 10.5,
+      "cost_usd": 0.0174,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 8,
+      "cost_usd": 0.0159,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 31.2,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 58.8,
+      "cost_usd": 0.0078,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.0213,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 28,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 8,
+      "cost_usd": 0.016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 45.9,
+      "cost_usd": 0.0095,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 14.6,
+      "cost_usd": 0.0209,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 7.7,
+      "cost_usd": 0.0157,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 25.7,
+      "cost_usd": 0.0118,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, forms only",
+      "pass": true,
+      "latency_s": 48.9,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 17.7,
+      "cost_usd": 0.02,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0246,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 51.1,
+      "cost_usd": 0.003,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0242,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 36.5,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 12.4,
+      "cost_usd": 0.0212,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 11.4,
+      "cost_usd": 0.025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.029,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 49.5,
+      "cost_usd": 0.0031,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 16.7,
+      "cost_usd": 0.0279,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 11.3,
+      "cost_usd": 0.0239,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full inventory",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0439,
+      "timed_out": true,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,169 @@
+{
+  "skill": "page-prep",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 20,
+      "cost_usd": 0.0928,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 25.9,
+      "cost_usd": 0.1016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 15,
+      "cost_usd": 0.0931,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 17.5,
+      "cost_usd": 0.0915,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 23.1,
+      "cost_usd": 0.0904,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 25.4,
+      "cost_usd": 0.0917,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 14.9,
+      "cost_usd": 0.0892,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 20.3,
+      "cost_usd": 0.0917,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 21,
+      "cost_usd": 0.0902,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 21.8,
+      "cost_usd": 0.0895,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 23.9,
+      "cost_usd": 0.0911,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 23.1,
+      "cost_usd": 0.0908,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 123.3,
+      "cost_usd": 0.0809,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 49.1,
+      "cost_usd": 0.1346,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 33.8,
+      "cost_usd": 0.067,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 50.6,
+      "cost_usd": 0.0817,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 31.4,
+      "cost_usd": 0.0659,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 43,
+      "cost_usd": 0.1204,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

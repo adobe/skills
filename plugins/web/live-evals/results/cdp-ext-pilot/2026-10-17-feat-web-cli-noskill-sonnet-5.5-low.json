@@ -1,0 +1,99 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "no-skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 125.4,
+      "cost_usd": 0.0359,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 17.6,
+      "cost_usd": 0.0262,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 20.8,
+      "cost_usd": 0.0349,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": false,
+      "latency_s": 150,
+      "cost_usd": 0.0147,
+      "used_cli": false,
+      "timed_out": true,
+      "why": "failed checks: answer gives the heading"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 23.8,
+      "cost_usd": 0.0298,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 24.6,
+      "cost_usd": 0.0283,
+      "used_cli": false,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": false,
+      "latency_s": 23.4,
+      "cost_usd": 0.0296,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: extension id reported"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": false,
+      "latency_s": 18.7,
+      "cost_usd": 0.0251,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: extension id reported"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": false,
+      "latency_s": 20.5,
+      "cost_usd": 0.0295,
+      "used_cli": false,
+      "timed_out": false,
+      "why": "failed checks: extension id reported"
+    }
+  ]
+}

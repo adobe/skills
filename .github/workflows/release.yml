@@ -59,6 +59,19 @@ jobs:
             done
           done
 
+          # The web CLI has no SKILL.md; release it when any of its files changed
+          for changed_file in $CHANGED_FILES; do
+            case "$changed_file" in
+              plugins/web/cli/*)
+                case " $DIRS " in
+                  *" plugins/web/cli "*) ;;
+                  *) DIRS="$DIRS plugins/web/cli" ;;
+                esac
+                break
+                ;;
+            esac
+          done
+
           DIRS=$(echo "$DIRS" | xargs)  # trim whitespace
 
           if [ -z "$DIRS" ]; then

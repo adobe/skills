@@ -1,0 +1,223 @@
+{
+  "skill": "cdp-connect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 56.8,
+      "cost_usd": 0.0026,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 36.8,
+      "cost_usd": 0.0135,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 9.7,
+      "cost_usd": 0.0126,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 85.6,
+      "cost_usd": 0.0028,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 67.4,
+      "cost_usd": 0.0139,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 7.1,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 10.1,
+      "cost_usd": 0.0128,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 32.1,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 60.2,
+      "cost_usd": 0.0179,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.001,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0138,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "console output after a reload",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0045,
+      "timed_out": true,
+      "why": "failed checks: reports the log, reports the warning"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 43.6,
+      "cost_usd": 0.0098,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 16.6,
+      "cost_usd": 0.001,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 23.2,
+      "cost_usd": 0.0302,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 73.9,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 45.1,
+      "cost_usd": 0.0102,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 18.8,
+      "cost_usd": 0.001,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0218,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "console output after a reload",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0066,
+      "timed_out": true,
+      "why": "failed checks: reports the log, reports the warning"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "console output after a reload",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0043,
+      "timed_out": true,
+      "why": "failed checks: reports the log, reports the warning"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 93.3,
+      "cost_usd": 0.0035,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.001,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

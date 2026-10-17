@@ -1,0 +1,170 @@
+{
+  "skill": "page-prep",
+  "ref": "fix-web-skills-best-practices",
+  "arm": "no-skill",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 7.2,
+      "cost_usd": 0.0105,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 11.3,
+      "cost_usd": 0.0011,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 16.5,
+      "cost_usd": 0.0131,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 15.6,
+      "cost_usd": 0.0135,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 26.2,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0104,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 22.1,
+      "cost_usd": 0.0012,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 11.6,
+      "cost_usd": 0.0102,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 20.7,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 11.6,
+      "cost_usd": 0.0104,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 23.8,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 14.1,
+      "cost_usd": 0.0148,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 33.4,
+      "cost_usd": 0.002,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 12.1,
+      "cost_usd": 0.0179,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 37,
+      "cost_usd": 0.0034,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 15.4,
+      "cost_usd": 0.0173,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 36.5,
+      "cost_usd": 0.0028,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

@@ -1,0 +1,144 @@
+{
+  "skill": "page-reduce",
+  "ref": "feat-web-cli",
+  "commit": "1b65386f",
+  "arm": "skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 21.9,
+      "cost_usd": 0.0458,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 23.1,
+      "cost_usd": 0.0494,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 20.9,
+      "cost_usd": 0.046,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 28.4,
+      "cost_usd": 0.0171,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 14.8,
+      "cost_usd": 0.0174,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 17,
+      "cost_usd": 0.017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 37.7,
+      "cost_usd": 0.0994,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 40.5,
+      "cost_usd": 0.1092,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 41.7,
+      "cost_usd": 0.1081,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, phase 1 only",
+      "pass": true,
+      "latency_s": 14.6,
+      "cost_usd": 0.0185,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, phase 1 only",
+      "pass": true,
+      "latency_s": 14.4,
+      "cost_usd": 0.0177,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, wknd-adventures.com, phase 1 only",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0186,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, phase 1 only",
+      "pass": true,
+      "latency_s": 29,
+      "cost_usd": 0.0186,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, phase 1 only",
+      "pass": true,
+      "latency_s": 28.9,
+      "cost_usd": 0.0183,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, stripe.com/fr-ch, phase 1 only",
+      "pass": true,
+      "latency_s": 26.6,
+      "cost_usd": 0.0185,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

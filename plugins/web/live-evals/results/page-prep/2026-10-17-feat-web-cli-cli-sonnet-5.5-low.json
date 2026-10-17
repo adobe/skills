@@ -1,0 +1,159 @@
+{
+  "skill": "page-prep",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "cli",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 17.6,
+      "cost_usd": 0.0116,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0117,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 14.4,
+      "cost_usd": 0.0117,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 20.7,
+      "cost_usd": 0.012,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 25.6,
+      "cost_usd": 0.0119,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 18.5,
+      "cost_usd": 0.0121,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 32.4,
+      "cost_usd": 0.0227,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 31,
+      "cost_usd": 0.0225,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 31.8,
+      "cost_usd": 0.0239,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, backlinko.com CookieHub dialog",
+      "pass": true,
+      "latency_s": 21.4,
+      "cost_usd": 0.0193,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, backlinko.com CookieHub dialog",
+      "pass": true,
+      "latency_s": 26.2,
+      "cost_usd": 0.0193,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, backlinko.com CookieHub dialog",
+      "pass": true,
+      "latency_s": 20.5,
+      "cost_usd": 0.0192,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, allbirds.com Shopify privacy banner (agent fallback, the CLI misses it)",
+      "pass": true,
+      "latency_s": 40.6,
+      "cost_usd": 0.0248,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, allbirds.com Shopify privacy banner (agent fallback, the CLI misses it)",
+      "pass": true,
+      "latency_s": 28.9,
+      "cost_usd": 0.0201,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, allbirds.com Shopify privacy banner (agent fallback, the CLI misses it)",
+      "pass": true,
+      "latency_s": 35.7,
+      "cost_usd": 0.0219,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

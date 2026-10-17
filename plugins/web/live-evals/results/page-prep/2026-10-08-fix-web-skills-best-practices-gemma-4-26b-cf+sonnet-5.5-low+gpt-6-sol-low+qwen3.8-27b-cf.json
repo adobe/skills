@@ -1,0 +1,331 @@
+{
+  "skill": "page-prep",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": false,
+      "latency_s": 45.5,
+      "cost_usd": 0.0079,
+      "timed_out": false,
+      "why": "failed checks: did not accept tracking"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 16.3,
+      "cost_usd": 0.0914,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 22.5,
+      "cost_usd": 0.0621,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 120.3,
+      "cost_usd": 0.0618,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": false,
+      "latency_s": 88.1,
+      "cost_usd": 0.0153,
+      "timed_out": false,
+      "why": "failed checks: did not accept tracking"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 20.6,
+      "cost_usd": 0.0614,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 17.4,
+      "cost_usd": 0.1007,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 89.7,
+      "cost_usd": 0.0654,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": false,
+      "latency_s": 88.7,
+      "cost_usd": 0.0121,
+      "timed_out": false,
+      "why": "failed checks: did not accept tracking"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": false,
+      "latency_s": 120.3,
+      "cost_usd": 0.0442,
+      "timed_out": true,
+      "why": "failed checks: banner gone"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 19.3,
+      "cost_usd": 0.0374,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, cookie banner (reject, never accept)",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0988,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 21.4,
+      "cost_usd": 0.0434,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 19.5,
+      "cost_usd": 0.1016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 108.9,
+      "cost_usd": 0.023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 120.1,
+      "cost_usd": 0.0484,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 24.3,
+      "cost_usd": 0.0656,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 17.2,
+      "cost_usd": 0.0902,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 111.7,
+      "cost_usd": 0.0829,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 122.5,
+      "cost_usd": 0.0114,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 79,
+      "cost_usd": 0.0042,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 17.8,
+      "cost_usd": 0.0905,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 29.3,
+      "cost_usd": 0.0405,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, newsletter modal with scroll lock",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0508,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 68.2,
+      "cost_usd": 0.0123,
+      "timed_out": false,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 123.3,
+      "cost_usd": 0.0468,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0286,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 34.2,
+      "cost_usd": 0.0495,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0237,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.068,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 41.5,
+      "cost_usd": 0.0759,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 39.7,
+      "cost_usd": 0.0747,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0012,
+      "timed_out": true,
+      "why": "check crashed on the agent's output: Command failed: playwright-cli -s=run-16cfd4bf eval JSON.stringify(([...document.querySelectorAll('*')].filter((el) => { const s = getComputedStyle(el); const r = el.getBoundingClientRect(); return s.position === 'fixed' && parseInt(s.zIndex) > 1000 && r.width > 300 && r.height > 50 && r.bottom > 0 && r.top < innerHeight && s.display !== 'none' && s.visibility !== 'hidden'; }).map((el) => el.id || el.className || el.tagName)).length === 0)"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "20minutes.fr consent wall",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0296,
+      "timed_out": true,
+      "why": "failed checks: no blocking fixed overlay left"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 30.6,
+      "cost_usd": 0.0618,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "20minutes.fr consent wall",
+      "pass": true,
+      "latency_s": 38.2,
+      "cost_usd": 0.1381,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

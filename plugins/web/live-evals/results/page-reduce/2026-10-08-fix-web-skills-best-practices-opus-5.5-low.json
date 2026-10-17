@@ -1,0 +1,88 @@
+{
+  "skill": "page-reduce",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 27.5,
+      "cost_usd": 0.1041,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 29.8,
+      "cost_usd": 0.1105,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 28.7,
+      "cost_usd": 0.1095,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 20.9,
+      "cost_usd": 0.0558,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": false,
+      "latency_s": 21.2,
+      "cost_usd": 0.0524,
+      "timed_out": false,
+      "why": "Missing required skill(s): page-reduce. Actual skills: (none)"
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 18.8,
+      "cost_usd": 0.0552,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 55.9,
+      "cost_usd": 0.2251,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 53,
+      "cost_usd": 0.2131,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 120.1,
+      "cost_usd": 0.2064,
+      "timed_out": true,
+      "why": []
+    }
+  ]
+}

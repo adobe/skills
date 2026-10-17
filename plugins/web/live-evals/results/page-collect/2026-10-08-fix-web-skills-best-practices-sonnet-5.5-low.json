@@ -1,0 +1,61 @@
+{
+  "skill": "page-collect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 16.5,
+      "cost_usd": 0.0348,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 17.6,
+      "cost_usd": 0.0395,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, icons from sprites, data URIs and inline SVG",
+      "pass": true,
+      "latency_s": 16.1,
+      "cost_usd": 0.0343,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 7.5,
+      "cost_usd": 0.0144,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 6,
+      "cost_usd": 0.0144,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, JSON-LD structured data",
+      "pass": true,
+      "latency_s": 6.9,
+      "cost_usd": 0.0147,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

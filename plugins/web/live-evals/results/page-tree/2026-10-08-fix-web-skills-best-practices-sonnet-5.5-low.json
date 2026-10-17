@@ -1,0 +1,88 @@
+{
+  "skill": "page-tree",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 13.3,
+      "cost_usd": 0.0317,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 12.9,
+      "cost_usd": 0.0295,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 12.6,
+      "cost_usd": 0.0297,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 9.9,
+      "cost_usd": 0.0251,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 10,
+      "cost_usd": 0.0233,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 10,
+      "cost_usd": 0.0226,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 16.3,
+      "cost_usd": 0.0285,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 16.4,
+      "cost_usd": 0.0277,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 14.9,
+      "cost_usd": 0.0276,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

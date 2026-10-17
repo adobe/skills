@@ -1,0 +1,116 @@
+{
+  "skill": "page-reduce",
+  "ref": "fix-web-skills-best-practices",
+  "arm": "no-skill",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 11.9,
+      "cost_usd": 0.0235,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.002,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 12.4,
+      "cost_usd": 0.0248,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 15.6,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 10.5,
+      "cost_usd": 0.023,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 15,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": "failed checks: cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 18,
+      "cost_usd": 0.0399,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 27.1,
+      "cost_usd": 0.0037,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 17,
+      "cost_usd": 0.0359,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 43.1,
+      "cost_usd": 0.0067,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 45.5,
+      "cost_usd": 0.1208,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 59.9,
+      "cost_usd": 0.0094,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

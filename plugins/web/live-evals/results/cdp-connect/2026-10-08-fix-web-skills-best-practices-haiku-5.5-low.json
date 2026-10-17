@@ -1,0 +1,115 @@
+{
+  "skill": "cdp-connect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.1,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 7.6,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.8,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 25.1,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 25.1,
+      "cost_usd": 0.0013,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 29.5,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0009,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 6,
+      "cost_usd": 0.0008,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

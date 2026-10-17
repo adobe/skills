@@ -1,0 +1,331 @@
+{
+  "skill": "page-reduce",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0111,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2, heading and CTA tokens kept"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120.6,
+      "cost_usd": 0.0042,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2, heading and CTA tokens kept"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 20.6,
+      "cost_usd": 0.0545,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 38.6,
+      "cost_usd": 0.0547,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0049,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0303,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2, heading and CTA tokens kept"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 20.6,
+      "cost_usd": 0.0539,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 42.8,
+      "cost_usd": 0.0552,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120.4,
+      "cost_usd": 0.0022,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2, heading and CTA tokens kept"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, full reduction",
+      "pass": false,
+      "latency_s": 120.4,
+      "cost_usd": 0.0216,
+      "timed_out": true,
+      "why": "failed checks: five section markers, manifest lists five sections, cards collapsed to two examples plus REPEAT:2, heading and CTA tokens kept"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 21.3,
+      "cost_usd": 0.0578,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, full reduction",
+      "pass": true,
+      "latency_s": 26.9,
+      "cost_usd": 0.0409,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 13.6,
+      "cost_usd": 0.0265,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 92,
+      "cost_usd": 0.0231,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 27.7,
+      "cost_usd": 0.0306,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 107.6,
+      "cost_usd": 0.0127,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 14.8,
+      "cost_usd": 0.0278,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 19.3,
+      "cost_usd": 0.0227,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 113.9,
+      "cost_usd": 0.0361,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0068,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 62.9,
+      "cost_usd": 0.0068,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 26.8,
+      "cost_usd": 0.0283,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0265,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, phase 1 only",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0282,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0039,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0186,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 42.6,
+      "cost_usd": 0.072,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 35.7,
+      "cost_usd": 0.1029,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0066,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0238,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 34.1,
+      "cost_usd": 0.095,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 42.5,
+      "cost_usd": 0.0678,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.006,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, full reduction",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0342,
+      "timed_out": true,
+      "why": "failed checks: several sections, manifest matches markers"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 44.7,
+      "cost_usd": 0.0792,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, full reduction",
+      "pass": true,
+      "latency_s": 35.7,
+      "cost_usd": 0.1006,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

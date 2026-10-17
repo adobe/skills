@@ -1,0 +1,219 @@
+{
+  "skill": "cdp-connect",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "cli",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 10.4,
+      "cost_usd": 0.0144,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.5,
+      "cost_usd": 0.013,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.3,
+      "cost_usd": 0.013,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 9.4,
+      "cost_usd": 0.0151,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.016,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0173,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.0151,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 15.5,
+      "cost_usd": 0.0182,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 11.5,
+      "cost_usd": 0.0166,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.2,
+      "cost_usd": 0.013,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.3,
+      "cost_usd": 0.0131,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 7.4,
+      "cost_usd": 0.013,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 44.6,
+      "cost_usd": 0.0205,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 39.9,
+      "cost_usd": 0.0249,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "several tabs, click in the right one",
+      "pass": true,
+      "latency_s": 47.7,
+      "cost_usd": 0.0245,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0184,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.0168,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "console output after a reload",
+      "pass": true,
+      "latency_s": 12,
+      "cost_usd": 0.0157,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 9,
+      "cost_usd": 0.0126,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 8,
+      "cost_usd": 0.0127,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "live, open basecamp.com and read the title",
+      "pass": true,
+      "latency_s": 13.4,
+      "cost_usd": 0.0146,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

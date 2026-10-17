@@ -1,0 +1,144 @@
+{
+  "skill": "browser-probe",
+  "ref": "feat-web-cli",
+  "commit": "1b65386f",
+  "arm": "skill",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 17.5,
+      "cost_usd": 0.0212,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 21.6,
+      "cost_usd": 0.0203,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "wknd",
+      "pass": true,
+      "latency_s": 29.9,
+      "cost_usd": 0.02,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 13,
+      "cost_usd": 0.0176,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 25.2,
+      "cost_usd": 0.0179,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "astrazeneca",
+      "pass": true,
+      "latency_s": 26.9,
+      "cost_usd": 0.0206,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 38.5,
+      "cost_usd": 0.0236,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 24,
+      "cost_usd": 0.0238,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "adobe",
+      "pass": true,
+      "latency_s": 31.2,
+      "cost_usd": 0.019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 32.1,
+      "cost_usd": 0.0231,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 45.9,
+      "cost_usd": 0.0209,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "bd",
+      "pass": true,
+      "latency_s": 52.3,
+      "cost_usd": 0.0217,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 20.6,
+      "cost_usd": 0.018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 26.1,
+      "cost_usd": 0.0176,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "stripe",
+      "pass": true,
+      "latency_s": 33.7,
+      "cost_usd": 0.0221,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

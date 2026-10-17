@@ -1,0 +1,115 @@
+{
+  "skill": "browser-probe",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 21.5,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 13.7,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 17.9,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 30,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 24.4,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 24.6,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 37.1,
+      "cost_usd": 0.0024,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 25,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 41.8,
+      "cost_usd": 0.0032,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 33.4,
+      "cost_usd": 0.0024,
+      "timed_out": false,
+      "why": [],
+      "case": "bd"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 49.7,
+      "cost_usd": 0.0024,
+      "timed_out": false,
+      "why": [],
+      "case": "bd"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "pass": true,
+      "latency_s": 32.2,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": [],
+      "case": "bd"
+    }
+  ]
+}

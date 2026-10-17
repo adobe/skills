@@ -1,0 +1,88 @@
+{
+  "skill": "page-langs",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.8,
+      "cost_usd": 0.0167,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 8.1,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.2,
+      "cost_usd": 0.0162,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 8.7,
+      "cost_usd": 0.0156,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 8.2,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 8.7,
+      "cost_usd": 0.016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 7.7,
+      "cost_usd": 0.016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 8.1,
+      "cost_usd": 0.016,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

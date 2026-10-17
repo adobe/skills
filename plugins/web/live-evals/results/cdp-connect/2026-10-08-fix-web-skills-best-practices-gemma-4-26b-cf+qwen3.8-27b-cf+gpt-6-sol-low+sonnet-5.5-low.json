@@ -1,0 +1,439 @@
+{
+  "skill": "cdp-connect",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 40.4,
+      "cost_usd": 0.0035,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 44.9,
+      "cost_usd": 0.0155,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 8.3,
+      "cost_usd": 0.0123,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 6.1,
+      "cost_usd": 0.017,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 36.9,
+      "cost_usd": 0.0029,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 64.4,
+      "cost_usd": 0.0216,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 7.9,
+      "cost_usd": 0.0122,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 6.7,
+      "cost_usd": 0.0171,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 38.8,
+      "cost_usd": 0.0031,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 24.2,
+      "cost_usd": 0.0103,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 7.1,
+      "cost_usd": 0.0123,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fill and submit the greeter form",
+      "pass": true,
+      "latency_s": 7.2,
+      "cost_usd": 0.0163,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 18.6,
+      "cost_usd": 0.0018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 44.8,
+      "cost_usd": 0.0113,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 5.8,
+      "cost_usd": 0.0097,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.9,
+      "cost_usd": 0.0132,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 35.1,
+      "cost_usd": 0.0025,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 36.8,
+      "cost_usd": 0.0083,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.5,
+      "cost_usd": 0.0097,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.7,
+      "cost_usd": 0.0132,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 19.5,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 30.4,
+      "cost_usd": 0.0102,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 5.7,
+      "cost_usd": 0.0097,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "screenshot",
+      "pass": true,
+      "latency_s": 6.5,
+      "cost_usd": 0.0132,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 64.8,
+      "cost_usd": 0.004,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 39.1,
+      "cost_usd": 0.0165,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 13.9,
+      "cost_usd": 0.0234,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 18.1,
+      "cost_usd": 0.0271,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 55.7,
+      "cost_usd": 0.0033,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 112.9,
+      "cost_usd": 0.0166,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 13.6,
+      "cost_usd": 0.0226,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 20,
+      "cost_usd": 0.0308,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 56.4,
+      "cost_usd": 0.0026,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 99.6,
+      "cost_usd": 0.021,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 13.8,
+      "cost_usd": 0.0225,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "network request on load",
+      "pass": true,
+      "latency_s": 20,
+      "cost_usd": 0.0305,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 32.4,
+      "cost_usd": 0.003,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 73.4,
+      "cost_usd": 0.0099,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 5.4,
+      "cost_usd": 0.0095,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 5.5,
+      "cost_usd": 0.0131,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 33.8,
+      "cost_usd": 0.0027,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 28.1,
+      "cost_usd": 0.0086,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 5.5,
+      "cost_usd": 0.0096,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 4.9,
+      "cost_usd": 0.0128,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 28.8,
+      "cost_usd": 0.0021,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 28.2,
+      "cost_usd": 0.015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 5.4,
+      "cost_usd": 0.0096,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "accessible buttons",
+      "pass": true,
+      "latency_s": 4.5,
+      "cost_usd": 0.0129,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

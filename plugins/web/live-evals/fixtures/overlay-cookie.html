@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cookie banner fixture</title>
+<style>
+  body { margin: 0; font-family: sans-serif; }
+  #cookie-banner { position: fixed; left: 0; right: 0; bottom: 0; z-index: 99999; background: #222; color: #fff; padding: 24px; display: flex; gap: 12px; align-items: center; }
+  #cookie-banner p { margin: 0; flex: 1; }
+</style>
+</head>
+<body>
+<h1>Harbor Weather</h1>
+<p>Today's forecast: clear skies with a light breeze from the north.</p>
+<div id="cookie-banner" role="dialog" aria-label="Cookie consent">
+  <p>We use cookies to personalise content and ads and to analyse our traffic.</p>
+  <button id="accept-all" onclick="window.__consent='accepted'; this.closest('#cookie-banner').remove()">Accept all</button>
+  <button id="reject-all" onclick="window.__consent='rejected'; this.closest('#cookie-banner').remove()">Reject non-essential</button>
+</div>
+</body>
+</html>

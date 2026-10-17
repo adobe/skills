@@ -1,0 +1,223 @@
+{
+  "skill": "browser-probe",
+  "ref": "fix-web-skills-best-practices@b3aa00ec",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 19.1,
+      "cost_usd": 0.02,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 69.3,
+      "cost_usd": 0.0034,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0198,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 109.2,
+      "cost_usd": 0.0082,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 18.6,
+      "cost_usd": 0.0195,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 83.2,
+      "cost_usd": 0.003,
+      "timed_out": false,
+      "why": [],
+      "case": "wknd"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 19.6,
+      "cost_usd": 0.0227,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 66,
+      "cost_usd": 0.0033,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 21.7,
+      "cost_usd": 0.0239,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 121.2,
+      "cost_usd": 0.0088,
+      "timed_out": true,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 25.6,
+      "cost_usd": 0.0202,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 75.9,
+      "cost_usd": 0.004,
+      "timed_out": false,
+      "why": [],
+      "case": "astrazeneca"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.005,
+      "timed_out": true,
+      "why": "no recipe to load with",
+      "case": "adobe"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 38.3,
+      "cost_usd": 0.0234,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.007,
+      "timed_out": true,
+      "why": "no recipe to load with",
+      "case": "adobe"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 26.4,
+      "cost_usd": 0.025,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0058,
+      "timed_out": true,
+      "why": "no recipe to load with",
+      "case": "adobe"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 32.8,
+      "cost_usd": 0.0251,
+      "timed_out": false,
+      "why": [],
+      "case": "adobe"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 33.6,
+      "cost_usd": 0.0246,
+      "timed_out": false,
+      "why": [],
+      "case": "bd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0063,
+      "timed_out": true,
+      "why": [],
+      "case": "bd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0064,
+      "timed_out": true,
+      "why": "no recipe to load with",
+      "case": "bd"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": true,
+      "latency_s": 28.6,
+      "cost_usd": 0.0243,
+      "timed_out": false,
+      "why": [],
+      "case": "bd"
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "pass": false,
+      "latency_s": 35.1,
+      "cost_usd": 0.0279,
+      "timed_out": false,
+      "why": "no recipe to load with",
+      "case": "bd"
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0041,
+      "timed_out": true,
+      "why": "no recipe to load with",
+      "case": "bd"
+    }
+  ]
+}

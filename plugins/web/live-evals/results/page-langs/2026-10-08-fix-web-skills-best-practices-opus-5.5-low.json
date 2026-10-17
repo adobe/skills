@@ -1,0 +1,196 @@
+{
+  "skill": "page-langs",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 9.2,
+      "cost_usd": 0.0307,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 8.2,
+      "cost_usd": 0.0299,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, English page declared en",
+      "pass": true,
+      "latency_s": 9.8,
+      "cost_usd": 0.0301,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 11.9,
+      "cost_usd": 0.0347,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 10.7,
+      "cost_usd": 0.0343,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, es+de body declared en with hreflang fr",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0334,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 18,
+      "cost_usd": 0.0609,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 16.7,
+      "cost_usd": 0.0581,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "es.wikipedia.org/wiki/Madrid (Spanish)",
+      "pass": true,
+      "latency_s": 15.1,
+      "cost_usd": 0.0826,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 22.7,
+      "cost_usd": 0.0447,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 16.7,
+      "cost_usd": 0.039,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live (English)",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0311,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 8.5,
+      "cost_usd": 0.031,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 9.2,
+      "cost_usd": 0.032,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, nested lang attribute (en page with a German block)",
+      "pass": true,
+      "latency_s": 8.2,
+      "cost_usd": 0.0311,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 10.1,
+      "cost_usd": 0.0316,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 8.4,
+      "cost_usd": 0.0307,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, French page with no language markup",
+      "pass": true,
+      "latency_s": 9.1,
+      "cost_usd": 0.0313,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.0358,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 11.3,
+      "cost_usd": 0.036,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, too little text to detect a language",
+      "pass": true,
+      "latency_s": 11.2,
+      "cost_usd": 0.0355,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

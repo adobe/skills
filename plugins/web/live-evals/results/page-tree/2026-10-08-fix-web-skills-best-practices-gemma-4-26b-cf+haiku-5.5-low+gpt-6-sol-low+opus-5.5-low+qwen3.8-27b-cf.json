@@ -1,0 +1,412 @@
+{
+  "skill": "page-tree",
+  "ref": "fix-web-skills-best-practices",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, default capture",
+      "pass": false,
+      "latency_s": 120.1,
+      "cost_usd": 0.0026,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 13.2,
+      "cost_usd": 0.0016,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 16.2,
+      "cost_usd": 0.0204,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 15.7,
+      "cost_usd": 0.0535,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 120.5,
+      "cost_usd": 0.0179,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 114.9,
+      "cost_usd": 0.0085,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 15.4,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 115.3,
+      "cost_usd": 0.0221,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 24.8,
+      "cost_usd": 0.023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 15.5,
+      "cost_usd": 0.0538,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 9.8,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 20.2,
+      "cost_usd": 0.0199,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 15.7,
+      "cost_usd": 0.0562,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 81,
+      "cost_usd": 0.0083,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 85.5,
+      "cost_usd": 0.0332,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0039,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 22.3,
+      "cost_usd": 0.0019,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 21.1,
+      "cost_usd": 0.0219,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 80.8,
+      "cost_usd": 0.0285,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 14.6,
+      "cost_usd": 0.0511,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 12.1,
+      "cost_usd": 0.0014,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 18.9,
+      "cost_usd": 0.0187,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 13.7,
+      "cost_usd": 0.0465,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 104.3,
+      "cost_usd": 0.0099,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 104.4,
+      "cost_usd": 0.0307,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0054,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 16.7,
+      "cost_usd": 0.0023,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 19.2,
+      "cost_usd": 0.0184,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 18.7,
+      "cost_usd": 0.0593,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 103.6,
+      "cost_usd": 0.0213,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 16.1,
+      "cost_usd": 0.0018,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 19.6,
+      "cost_usd": 0.0206,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 20.8,
+      "cost_usd": 0.0529,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 109.7,
+      "cost_usd": 0.0159,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0254,
+      "timed_out": true,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0024,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0321,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 24.7,
+      "cost_usd": 0.0022,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 20.3,
+      "cost_usd": 0.0555,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 24,
+      "cost_usd": 0.0233,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gemma-4-26b-cf",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0032,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 14.2,
+      "cost_usd": 0.0015,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "gpt-6-sol-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 18.6,
+      "cost_usd": 0.0228,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "opus-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 19,
+      "cost_usd": 0.0523,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "qwen3.8-27b-cf",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 120,
+      "cost_usd": 0.0239,
+      "timed_out": true,
+      "why": []
+    }
+  ]
+}

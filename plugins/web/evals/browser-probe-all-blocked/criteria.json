@@ -6,7 +6,7 @@
       "name": "no_recipe",
       "max_score": 25,
       "category": "MUST_NOT",
-      "description": "No browser-recipe.json (or other config presented as working) is written, because no configuration loaded the page."
+      "description": "No browser-recipe.json (or other recipe/config presented as working) is written, because no configuration loaded the page."
     },
     {
       "name": "all_configs_failed",

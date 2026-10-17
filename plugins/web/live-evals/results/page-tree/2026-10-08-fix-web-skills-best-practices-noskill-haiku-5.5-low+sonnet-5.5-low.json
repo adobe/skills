@@ -1,0 +1,170 @@
+{
+  "skill": "page-tree",
+  "ref": "fix-web-skills-best-practices",
+  "arm": "no-skill",
+  "date": "2026-10-08",
+  "runs": [
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": false,
+      "latency_s": 32.8,
+      "cost_usd": 0.0047,
+      "timed_out": false,
+      "why": "failed checks: cards selector in node map"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 14.7,
+      "cost_usd": 0.0274,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 22.6,
+      "cost_usd": 0.043,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 26.1,
+      "cost_usd": 0.0038,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, default capture",
+      "pass": false,
+      "latency_s": 32,
+      "cost_usd": 0.0048,
+      "timed_out": false,
+      "why": "failed checks: cards selector in node map"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, default capture",
+      "pass": true,
+      "latency_s": 20.7,
+      "cost_usd": 0.037,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 26.2,
+      "cost_usd": 0.0036,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 21.9,
+      "cost_usd": 0.0419,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 25.6,
+      "cost_usd": 0.0029,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 25.6,
+      "cost_usd": 0.047,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 21,
+      "cost_usd": 0.0361,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "fixture, narrow elements included",
+      "pass": true,
+      "latency_s": 27.6,
+      "cost_usd": 0.0041,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 15.1,
+      "cost_usd": 0.0289,
+      "timed_out": false,
+      "why": "failed checks: root line, node map has body root"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 25.3,
+      "cost_usd": 0.0037,
+      "timed_out": false,
+      "why": "failed checks: root line"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 27.4,
+      "cost_usd": 0.0033,
+      "timed_out": false,
+      "why": "failed checks: root line"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 34.3,
+      "cost_usd": 0.0405,
+      "timed_out": false,
+      "why": "failed checks: root line"
+    },
+    {
+      "model": "haiku-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": false,
+      "latency_s": 120,
+      "cost_usd": 0.0007,
+      "timed_out": true,
+      "why": "tree.txt missing"
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "aem.live, default capture",
+      "pass": true,
+      "latency_s": 15.3,
+      "cost_usd": 0.0277,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}

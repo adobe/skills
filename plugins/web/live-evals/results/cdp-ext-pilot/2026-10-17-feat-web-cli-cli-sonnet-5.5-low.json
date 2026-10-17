@@ -1,0 +1,99 @@
+{
+  "skill": "cdp-ext-pilot",
+  "ref": "feat-web-cli",
+  "commit": "fb498d32",
+  "arm": "cli",
+  "date": "2026-10-17",
+  "runs": [
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 26.2,
+      "cost_usd": 0.0256,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 25.4,
+      "cost_usd": 0.0274,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "sidepanel, save a note",
+      "pass": true,
+      "latency_s": 40.5,
+      "cost_usd": 0.0316,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 12.9,
+      "cost_usd": 0.0193,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 15,
+      "cost_usd": 0.0213,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "options page screenshot",
+      "pass": true,
+      "latency_s": 15,
+      "cost_usd": 0.0214,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 11.1,
+      "cost_usd": 0.0189,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 10.9,
+      "cost_usd": 0.0188,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    },
+    {
+      "model": "sonnet-5.5-low",
+      "case": "extension id",
+      "pass": true,
+      "latency_s": 10.3,
+      "cost_usd": 0.017,
+      "used_cli": true,
+      "timed_out": false,
+      "why": []
+    }
+  ]
+}
