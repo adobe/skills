@@ -209,7 +209,14 @@ else {
   const EDS = ['--wait-eds', '--eds-timeout', '10000'];
   const fixtureDeltas = fixture('deltas.json');
   const variant = (name, change) => write(name, change(structuredClone(fixtureDeltas)));
-  const preview = await startPreviewServer();
+  // Two variants of the preview page for the image checks: a stray image after everything the model owns, and a
+  // display:none image plus a 1×1 tracking pixel ahead of the real one.
+  const homeHtml = readFileSync(fixturePath('home.html'), 'utf8');
+  const HERO_P = '<p><picture><img alt="A calm board of three planned tasks" src="./media_5f2c0a9d4b7e1a63.png?width=750&amp;format=png&amp;optimize=medium" width="320" height="180"></picture></p>';
+  assert.ok(homeHtml.includes(HERO_P) && homeHtml.includes('</main>'), 'home.html still has the hero paragraph and </main>');
+  const trailingPage = write('trailing.html', homeHtml.replace('</main>', '<div class="section" data-section-status="initialized"><p><picture><img alt="A stray extra picture" src="./media_aaaa1111.png" width="100" height="60"></picture></p></div>\n</main>'));
+  const hiddenPage = write('hidden.html', homeHtml.replace(HERO_P, `<p><img alt="Never shown" src="./media_bbbb2222.png" width="100" height="60" style="display:none"></p><p><img alt="" src="./media_cccc3333.png" width="1" height="1"></p>${HERO_P}`));
+  const preview = await startPreviewServer({ pages: { '/ns/home': 'home.html', '/ns/trailing': trailingPage, '/ns/hidden': hiddenPage } });
   const source = await startSourceServer();
   const url = `${preview.origin}/ns/home`;
   const model = write('model.json', loadSourceModel(source.origin));
@@ -240,6 +247,7 @@ else {
       assert.ok(!/Unused/.test(md));
       assert.ok(!md.includes('og:url —') && !/\[[ x]\] (canonical|og og:url|og og:image|tw twitter:image)/.test(md), 'the ignored checks are not run');
       assert.match(md, /\[x\] s01 images \(count\+alt\+width\)/);
+      assert.match(md, /\[x\] images total \(count\+alt\+width\) — 1 image\(s\)/);
       assert.match(md, /\[x\] s01 image "A calm board of three planned tasks" painted/);
     });
 
@@ -310,10 +318,43 @@ else {
         run('slot-coverage', ['--model', write('miss-model.json', extra), '--rendered', url, '--report', join(scratch, 'sc-miss.md'), ...EDS, '--deltas', variant('hard3.json', (d) => { d.blocking = true; return d; })]),
       ]);
       assert.equal(alt.status, 1, alt.all);
-      assert.deepEqual(failures(alt.stdout), ['s01 images (count+alt+width)']);
+      assert.deepEqual(failures(alt.stdout), ['s01 images (count+alt+width)', 'images total (count+alt+width)'], 'the slot, then the total');
       assert.match(alt.stdout, /\[0\] alt: source "A different board", rendered "A calm board of three planned tasks"/);
       assert.equal(miss.status, 1, miss.all);
-      assert.deepEqual(failures(miss.stdout), ['s02 images (count+alt+width)']);
+      assert.deepEqual(failures(miss.stdout), ['s02 images (count+alt+width)', 'images total (count+alt+width)']);
+    });
+
+    await check('an extra rendered image after the last owned one fails the total check, and only it: the per-slot checks cannot see past the model\'s images', async () => {
+      const r = await run('slot-coverage', ['--model', model, '--rendered', `${preview.origin}/ns/trailing`, '--report', join(scratch, 'sc-trailing.md'), ...EDS, '--deltas', variant('hard-trailing.json', (d) => { d.blocking = true; return d; })]);
+      assert.equal(r.status, 1, r.all);
+      assert.deepEqual(failures(r.stdout), ['images total (count+alt+width)']);
+      assert.match(r.stdout, /count: source 1, rendered 2/);
+      assert.match(report('sc-trailing'), /\[ \] images total \(count\+alt\+width\)/);
+      assert.match(report('sc-trailing'), /\[x\] s01 images \(count\+alt\+width\)/);
+    });
+
+    await check('the images the checks count are the visible ones (IMG_VISIBLE, as the model capture and dom-equality see them): a display:none image and a 1px pixel in main shift nothing', async () => {
+      const r = await run('slot-coverage', ['--model', model, '--rendered', `${preview.origin}/ns/hidden`, '--report', join(scratch, 'sc-hidden.md'), ...EDS, '--deltas', variant('hard-hidden.json', (d) => { d.blocking = true; return d; })]);
+      assert.equal(r.status, 0, r.all);
+      assert.deepEqual(failures(r.stdout), []);
+      const md = report('sc-hidden');
+      assert.match(md, /\[x\] s01 images \(count\+alt\+width\) — 1 image\(s\)/);
+      assert.match(md, /\[x\] images total \(count\+alt\+width\) — 1 image\(s\)/);
+      assert.ok(!md.includes('Never shown'), 'a hidden image is not measured, nor painted');
+      const bare = await run('slot-coverage', ['--model', model, '--rendered', `${preview.origin}/ns/hidden`, '--report', join(scratch, 'sc-hidden-bare.md'), ...EDS]);
+      assert.ok(!/images total/.test(bare.stdout + report('sc-hidden-bare')), 'without --deltas nothing about the total');
+    });
+
+    await check('attribution to a slot is positional by cumulative count, so an image the model puts in s02 but the page shows in s01 is NOT detected (a stated limit; the total still sees every image)', async () => {
+      const moved = loadSourceModel(source.origin);
+      moved.sections[1].images = moved.sections[0].images;
+      moved.sections[0].images = [];
+      const r = await run('slot-coverage', ['--model', write('moved-model.json', moved), '--rendered', url, '--report', join(scratch, 'sc-moved.md'), ...EDS, '--deltas', variant('hard-moved.json', (d) => { d.blocking = true; return d; })]);
+      assert.equal(r.status, 0, r.all);
+      assert.deepEqual(failures(r.stdout), []);
+      const md = report('sc-moved');
+      assert.match(md, /\[x\] images total \(count\+alt\+width\)/);
+      assert.match(md, /positional by cumulative count[^\n]*not detected/, 'the report says what the check cannot see');
     });
 
     await check('dom-equality without --deltas fails on the text and on the images; with deltas.json it passes (T1 applied once, count+alt+width)', async () => {

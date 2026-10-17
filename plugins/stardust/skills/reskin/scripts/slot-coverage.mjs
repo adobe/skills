@@ -65,9 +65,15 @@
  *       [--deltas <json>]          the page's declared source → preview differences
  *                                  (reskin/deltas/<slug>.json, deployed/deltas.mjs):
  *                                  text.allow entries rewrite each slot's model text;
- *                                  `images` swaps (3) for a per-slot count + alt + width
- *                                  comparison (slot s owns the next k rendered images in
- *                                  document order, k = its model images; (3b) paint stays);
+ *                                  `images` swaps (3) for a count + alt + width comparison of
+ *                                  the VISIBLE rendered images (source-normalize.mjs
+ *                                  IMG_VISIBLE, the predicate the model capture and
+ *                                  dom-equality use): attribution to a slot is positional by
+ *                                  cumulative count (slot s takes the next k, k = its model
+ *                                  images), so an image moved across a slot boundary, or
+ *                                  replaced by one with the same alt, is not detected; one
+ *                                  `images total` check compares every visible image in scope
+ *                                  with the model's, so extras anywhere fail; (3b) paint stays;
  *                                  links.localize also accepts a CTA's href as deploy
  *                                  localizes it onto the --rendered origin; metadata.ignore
  *                                  keys skip their check, jsonLd "ignore" the count,
@@ -176,12 +182,13 @@ if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is 
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 // --deltas: loaded here, after the --help guard, and validated before a browser starts.
-let deltasLib = null; let deltas = null;
+let deltasLib = null; let deltas = null; let imgVisibleSrc = null;
 if (args.deltas) {
   try {
     deltasLib = await import('./deployed/deltas.mjs');
     deltas = deltasLib.loadDeltas(args.deltas);
     if (deltas.links.localize) deltasLib.requireEdsPath();
+    if (deltas.images) ({ IMG_VISIBLE: imgVisibleSrc } = await import('./source-normalize.mjs'));
   } catch (e) {
     if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
     die(e.message);
@@ -245,21 +252,24 @@ const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
 
 // ---- (1)(2)(3) slot coverage ------------------------------------------------
-const rendered = await page.evaluate((scopeSel) => {
+// With `images` declared, only the images the model capture counts as content are measured (imgVisibleSrc is
+// source-normalize.mjs IMG_VISIBLE, the same code dom-equality runs); otherwise every <img> in scope, as before.
+const rendered = await page.evaluate(({ scopeSel, imgVisibleSrc: visibleSrc }) => {
   const norm = (t) => (t || '').replace(/\s+/g, ' ').trim();
   const scope = document.querySelector(scopeSel);
   if (!scope) return { error: `rendered scope not found: ${scopeSel}` };
+  const imgVisible = visibleSrc ? (0, eval)(visibleSrc) : () => true;
   return {
     text: norm(scope.innerText),
     hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
-    imgs: Array.from(scope.querySelectorAll('img')).map((i) => ({
+    imgs: Array.from(scope.querySelectorAll('img')).filter(imgVisible).map((i) => ({
       src: i.currentSrc || i.src,
       alt: i.getAttribute('alt') ?? '',
       width: Math.round(i.getBoundingClientRect().width),
       painted: i.complete && i.naturalWidth > 0,
     })),
   };
-}, args['rendered-scope']);
+}, { scopeSel: args['rendered-scope'], imgVisibleSrc });
 if (rendered.error) { await browser.close(); die(`${rendered.error}${navErr ? ` (navigation failed: ${navErr.message.split('\n')[0]})` : ''}`); }
 
 const normPath = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
@@ -289,8 +299,10 @@ for (const [si, s] of model.sections.entries()) {
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
   if (deltas?.images) {
-    // count + alt + width: slot s owns the next s.images.length rendered images, so a missing, extra or reordered
-    // image fails the slot where the page diverges.
+    // count + alt + width. Attribution is positional by cumulative count: slot s takes the next s.images.length
+    // visible rendered images, so a missing, extra or reordered image fails the slot where the page diverges, but
+    // an image moved across a slot boundary with the document order kept, or replaced by one with the same alt,
+    // is not detected. The total check below covers everything after the last owned image.
     const owned = rendered.imgs.slice(nextImg, nextImg + s.images.length);
     nextImg += s.images.length;
     if (s.images.length) {
@@ -305,6 +317,10 @@ for (const [si, s] of model.sections.entries()) {
     R('slot-coverage', `${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, matches.length > 0);
     if (matches.length > 0) paintCheck(`${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, matches.some((r2) => r2.painted));
   }
+}
+if (deltas?.images) {
+  const total = deltasLib.compareImages(model.sections.flatMap((s) => s.images), rendered.imgs, deltas.images);
+  R('slot-coverage', `images total (${deltas.images})`, total.pass, total.detail);
 }
 
 // ---- (4) metadata carried verbatim -------------------------------------------
@@ -367,7 +383,7 @@ const ignoredKeys = [...ignored];
 const unused = deltas ? [...textDeltas.unused, ...[...plan.ignore].filter((k) => !ignored.has(k)).map((k) => `metadata.ignore ${JSON.stringify(k)}`)] : [];
 if (deltas) {
   const notes = [];
-  if (deltas.images) notes.push(`Images: ${deltas.images}, per slot (slot s takes the next k rendered images in document order)`);
+  if (deltas.images) notes.push(`Images: ${deltas.images} over the visible images in scope (as the model capture counts them): per slot, positional by cumulative count (slot s takes the next k), plus one total over every image. An image moved across a slot boundary with the document order kept, or replaced by one with the same alt, is not detected`);
   if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
   if (deltas.metadata.jsonLd === 'count-only') notes.push('JSON-LD: count-only (the block count is compared, not the content)');
   if (advisory) md += `\n${deltasLib.ADVISORY}: the failed checks above are reported, the exit code is 0\n`;
