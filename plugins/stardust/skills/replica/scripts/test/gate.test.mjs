@@ -8,7 +8,9 @@
 // record and the live retake on a changed list, the overlay-left rule (a capture that leaves an overlay gives no verdict:
 // exit 1, a live one drops live.png / live.json / the live caches), both captures' --json record, live.json's overlayLeft
 // / fontsFailed and the retake of a live.png that predates the overlay check, a project stitch-shot.mjs that predates
-// --json (no verdict before any capture), with stub instruments (no browser, no network).
+// --json (no verdict before any capture), the --full probe bound while run-bg holds a machine browser slot (at most
+// STARDUST_BROWSERS_PER_SLOT probes at a time, in order; the verdict lines and every exit code those of the unbounded
+// round), with stub instruments (no browser, no network), run by /bin/bash (macOS: bash 3.2) where it exists.
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -52,6 +54,14 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // (STUB_MEASURE_COUNT) — a round launches none.
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 const ARGV_LOG = "console.log('argv ' + process.argv.slice(2).join(' ')); console.log('argv-json ' + JSON.stringify(process.argv.slice(2)));";
+// Every probe stub first appends `start <probe> <ms>` to STUB_TIMELINE and `end <probe> <ms>` when it exits (a deadline's
+// SIGTERM included), then runs STUB_MS_<PROBE> (e.g. STUB_MS_CONTENT_DIFF), else STUB_PROBE_MS, milliseconds.
+const TIMED = (name) => `
+  { const tl = process.env.STUB_TIMELINE; const { appendFileSync: tlAppend } = await import('node:fs');
+    if (tl) { tlAppend(tl, 'start ${name} ' + Date.now() + '\\n'); process.on('exit', () => tlAppend(tl, 'end ${name} ' + Date.now() + '\\n'));
+      process.on('SIGTERM', () => process.exit(143)); }
+    const ms = Number(process.env.STUB_MS_${name.toUpperCase().replace(/-/g, '_')} || process.env.STUB_PROBE_MS || 0);
+    if (ms) await new Promise((r) => setTimeout(r, ms)); }`;
 stub(replica, 'stitch-shot.mjs', `
   import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
   const url = process.argv[2]; const out = process.argv[3];
@@ -84,31 +94,31 @@ stub(replica, 'measure.mjs', `
 stub(replica, 'pixel-compare.mjs', `
   console.log('height delta 0px'); console.log('differing 1.20%');
   process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
-stub(replica, 'chrome-parity.mjs', `
+stub(replica, 'chrome-parity.mjs', `${TIMED('chrome-parity')}
   ${ARGV_LOG}
   if (process.env.STUB_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.STUB_SLEEP)));
   const deltas = Number(process.env.STUB_CHROME_DELTAS || 0);
   console.log('chrome-parity @ 1440px'); console.log(deltas ? '✗ ' + deltas + ' delta(s) — fix these' : '✓ chrome parity');
   process.exit(deltas ? 2 : 0);`);
-stub(diff, 'content-diff.mjs', `
+stub(diff, 'content-diff.mjs', `${TIMED('content-diff')}
   if (process.env.STUB_CD_RC) { console.error('content-diff error: build side answered HTTP 502'); process.exit(Number(process.env.STUB_CD_RC)); }
   const s = Number(process.env.STUB_STRUCTURAL || 0);
   console.log('  live: 12 headings'); console.log('Findings: ' + (s ? (s + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));`);
-stub(diff, 'clip-probe.mjs', `
+stub(diff, 'clip-probe.mjs', `${TIMED('clip-probe')}
   ${ARGV_LOG}
   const n = Number(process.env.STUB_CLIPPED || 0);
   console.log('Clipped: ' + n + ' (text clipped ' + n + ', text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0)');
   process.exit(n ? 2 : 0);`);
-stub(diff, 'content-presence.mjs', `
+stub(diff, 'content-presence.mjs', `${TIMED('content-presence')}
   ${ARGV_LOG}
   const h = Number(process.env.STUB_HIDDEN || 0);
   console.log('Content: MISSING 0 (headings 0, links 0) / HIDDEN ' + h + ' (headings 0, links ' + h + ') / control-state 0');
   process.exit(h ? 2 : 0);`);
-stub(diff, 'unit-geometry.mjs', `
+stub(diff, 'unit-geometry.mjs', `${TIMED('unit-geometry')}
   ${ARGV_LOG}
   if (process.env.STUB_UNITS_RC === '2') { console.log('Units: 1 compared; elements within 2, off 3, hidden 1, missing 0 → FAIL'); process.exit(2); }
   console.log('unit-geometry: none declared for home in stardust/replica/units.json → n/a');`);
-stub(diff, 'visual-diff.mjs', `
+stub(diff, 'visual-diff.mjs', `${TIMED('visual-diff')}
   ${ARGV_LOG} console.log('Visual diff @ 1440px'); console.log('build red flags (advisory): ');
   console.log('  • HEADING COLOR: h2 differs'); console.log('  • IMAGE DIMS: hero'); console.log('Full metrics JSON:'); console.log('{}');`);
 
@@ -118,12 +128,17 @@ await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const buildUrl = `http://127.0.0.1:${server.address().port}/home-proposed.html`;
 
 // Asynchronous: the build origin above lives in this process, so the event loop must keep running while gate.sh
-// fetches it (a synchronous spawn would block the server and read as "did not respond").
+// fetches it (a synchronous spawn would block the server and read as "did not respond"). The interpreter is the script's
+// own (#!/bin/bash — bash 3.2 on macOS); a machine browser slot inherited from a run-bg job is dropped (the bound cases
+// set it themselves).
+const BASH = existsSync('/bin/bash') ? '/bin/bash' : 'bash';
+const inherited = { ...process.env };
+delete inherited.STARDUST_BROWSER_SLOT; delete inherited.STARDUST_BROWSERS_PER_SLOT;
 function gate(args, env = {}) {
   return new Promise((resolve) => {
-    const child = spawn('bash', [join(replica, 'gate.sh'), ...args], {
+    const child = spawn(BASH, [join(replica, 'gate.sh'), ...args], {
       cwd: root,
-      env: { ...process.env, GATE_REAP_MIN: '0', ...env },
+      env: { ...inherited, GATE_REAP_MIN: '0', ...env },
     });
     let stdout = '';
     let stderr = '';
@@ -259,6 +274,77 @@ check('the skip is said in one line', /^gate\.sh: probes skipped — the pixel r
 check('no probe ran or left evidence after a pixel deadline', !/^(content-diff|visual-diff|chrome-parity): /m.test(r.stdout) && !existsSync(join(root, 'stardust/replica/gates/home-1440/content-diff-iter6d.txt')));
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter6e', '--full'], { STUB_PIXEL_RC: '1' });
 check('pixel rc 1 skips the probes and exits 1', r.status === 1 && /probes skipped/.test(r.stderr) && !existsSync(join(root, 'stardust/replica/gates/home-1440/chrome-parity-iter6e.txt')), `status ${r.status}`);
+
+// The probe bound (header § --full, Concurrency): while run-bg holds a machine browser slot (STARDUST_BROWSER_SLOT
+// non-empty) the probes run at most STARDUST_BROWSERS_PER_SLOT at a time (unset / not a positive integer → 1), launched
+// in order, the OLDEST waited before the next launch; without a slot every probe starts at once. Verdict lines, each
+// probe's rc and the round's exit code are those of the unbounded round. Published regime + a families file = all six.
+const SIX = ['content-diff', 'visual-diff', 'chrome-parity', 'clip-probe', 'content-presence', 'unit-geometry'];
+const tlFile = join(root, 'probe-timeline.txt');
+const SLOT = join(root, 'locks/slot-1.json');
+const readTimeline = () => (existsSync(tlFile) ? readFileSync(tlFile, 'utf8').trim().split('\n').filter(Boolean)
+  .map((l) => { const [kind, name, t] = l.split(' '); return { kind, name, t: Number(t) }; }) : []);
+// The most probes alive at once; an end sorts before a start in the same ms (the bounded launch waits for that end).
+const peak = (tl) => { let n = 0; let max = 0; [...tl].sort((a, b) => a.t - b.t || (a.kind === 'end' ? -1 : 1)).forEach((e) => { n += e.kind === 'start' ? 1 : -1; max = Math.max(max, n); }); return max; };
+const tAt = (tl, kind, name) => (tl.find((e) => e.kind === kind && e.name === name) || { t: NaN }).t;
+const startOrder = (tl) => tl.filter((e) => e.kind === 'start').map((e) => e.name).join(',');
+const boundLines = (stderr) => stderr.split('\n').filter((l) => /^gate\.sh: browser slot held/.test(l));
+const bounded = (n) => ({ STARDUST_BROWSER_SLOT: SLOT, ...(n === undefined ? {} : { STARDUST_BROWSERS_PER_SLOT: n }) });
+const timed = async (lbl, env, regime = 'published') => {
+  rmSync(tlFile, { force: true });
+  const res = await gate(['home', 'https://live.example/', buildUrl, '1440', lbl, '--full'], { ...(regime ? { GATE_REGIME: regime } : {}), STUB_TIMELINE: tlFile, ...env });
+  return { ...res, tl: readTimeline() };
+};
+const show = (x) => `status ${x.status} peak ${peak(x.tl)} starts ${startOrder(x.tl)} | ${x.stderr.slice(0, 400)}`;
+mkdirSync(join(root, 'stardust/replica'), { recursive: true });
+writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.a', build: '.b', pages: ['home'] } }));
+const free = await timed('bnd', { STUB_PROBE_MS: '1500', STARDUST_BROWSERS_PER_SLOT: '1' });
+check('no slot: all six probes start at once (a per-slot value alone bounds nothing) and no bound line', free.status === 0 && startOrder(free.tl).split(',').sort().join(',') === [...SIX].sort().join(',')
+  && peak(free.tl) === 6 && boundLines(free.stderr).length === 0, show(free));
+let b = await timed('bnd-empty', { STUB_PROBE_MS: '1500', STARDUST_BROWSER_SLOT: '', STARDUST_BROWSERS_PER_SLOT: '1' });
+check('an empty STARDUST_BROWSER_SLOT is no slot: all six at once, no bound line', b.status === 0 && peak(b.tl) === 6 && boundLines(b.stderr).length === 0, show(b));
+b = await timed('bnd', { STUB_PROBE_MS: '300', ...bounded('1') });
+check('slot held, STARDUST_BROWSERS_PER_SLOT=1: never two probes at once, launched in order', b.status === 0 && b.tl.length === 12 && peak(b.tl) === 1 && startOrder(b.tl) === SIX.join(','), show(b));
+check('… one stderr line names the bound', boundLines(b.stderr).join('\n') === 'gate.sh: browser slot held — the --full probes run at most 1 at a time (STARDUST_BROWSERS_PER_SLOT=1)', b.stderr);
+check('… stdout (every verdict line) and the exit code are byte-for-byte the unbounded round\'s; every pid waited once', b.stdout === free.stdout && b.status === free.status && !/not a child|wait:/.test(b.stderr), `${b.stdout}\n---\n${free.stdout}`);
+b = await timed('bnd', { STUB_PROBE_MS: '1500', ...bounded('3') });
+check('STARDUST_BROWSERS_PER_SLOT=3: at most three at once (three reached), the oldest waited before each next launch', b.status === 0 && peak(b.tl) === 3
+  && tAt(b.tl, 'start', 'clip-probe') >= tAt(b.tl, 'end', 'content-diff') && tAt(b.tl, 'start', 'content-presence') >= tAt(b.tl, 'end', 'visual-diff')
+  && tAt(b.tl, 'start', 'unit-geometry') >= tAt(b.tl, 'end', 'chrome-parity'), show(b));
+check('… its bound line, and stdout + exit code those of the unbounded round', boundLines(b.stderr).join('\n') === 'gate.sh: browser slot held — the --full probes run at most 3 at a time (STARDUST_BROWSERS_PER_SLOT=3)'
+  && b.stdout === free.stdout && b.status === free.status, `${b.stderr}\n${b.stdout}`);
+for (const [per, why] of [[undefined, 'STARDUST_BROWSERS_PER_SLOT unset — an older run-bg'], ['abc', "STARDUST_BROWSERS_PER_SLOT='abc' is not a positive integer"], ['0', "STARDUST_BROWSERS_PER_SLOT='0' is not a positive integer"]]) {
+  b = await timed(`bnd-${per}`, { STUB_PROBE_MS: '150', ...bounded(per) });
+  check(`slot held, STARDUST_BROWSERS_PER_SLOT ${per === undefined ? 'unset' : `'${per}'`}: 1 at a time, the line says why`, b.status === 0 && peak(b.tl) === 1 && startOrder(b.tl) === SIX.join(',')
+    && boundLines(b.stderr).join('\n') === `gate.sh: browser slot held — the --full probes run at most 1 at a time (${why}; 1 is the conservative bound)`, show(b));
+}
+b = await timed('bnd-proto', { STUB_PROBE_MS: '150', ...bounded('1') }, null);
+check('bounded in the prototype regime: content-presence never launched (rc 0 as before), the other five one at a time, exit 0', b.status === 0 && startOrder(b.tl) === SIX.filter((n) => n !== 'content-presence').join(',')
+  && peak(b.tl) === 1 && !/^content-presence:/m.test(b.stdout) && /^unit-geometry: /m.test(b.stdout), show(b));
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'bnd-pix'], bounded('1'));
+check('slot held, no --full: no bound line (it bounds the probes only)', r.status === 0 && boundLines(r.stderr).length === 0, r.stderr);
+// rc precedence under the bound: the same scenario unbounded and with one probe at a time — identical stdout and exit.
+// content-diff runs first, so under the bound its rc is stored while the later probes have not started.
+const twin = async (lbl, env) => {
+  const one = await timed(lbl, env);
+  const two = await timed(lbl, { ...env, ...bounded('1') });
+  return { one, two, same: one.stdout === two.stdout && one.status === two.status && !/not a child|wait:/.test(two.stderr) };
+};
+let t = await twin('rp1', { STUB_MS_CONTENT_DIFF: '6000', GATE_PROBE_TIMEOUT: '2', STUB_CHROME_DELTAS: '3' });
+check('a deadline (124) in the first probe under the bound: exit 124 over a later chrome FAIL, as unbounded', t.same && t.two.status === 124
+  && /^content-diff: DEADLINE \(exit 124\)/m.test(t.two.stdout) && /^chrome-parity: ✗ 3 delta\(s\)/m.test(t.two.stdout), `${show(t.one)}\n${show(t.two)}\n${t.two.stdout}`);
+check('… the deadlined probe ended before the next one started; then the rest one at a time', peak(t.two.tl) === 1 && startOrder(t.two.tl) === SIX.join(',')
+  && tAt(t.two.tl, 'start', 'visual-diff') >= tAt(t.two.tl, 'end', 'content-diff'), show(t.two));
+t = await twin('rp2', { STUB_CD_RC: '1' });
+check('an error in the first probe under the bound: its ERROR line and exit 1, as unbounded', t.same && t.two.status === 1
+  && /^content-diff: ERROR \(exit 1\) — content-diff error: build side answered HTTP 502/m.test(t.two.stdout) && peak(t.two.tl) === 1, `${show(t.one)}\n${show(t.two)}`);
+t = await twin('rp3', { STUB_CD_RC: '1', STUB_CLIPPED: '3' });
+check('… with a later clip-probe FAIL: exit 2 (a verdict beats an error), as unbounded', t.same && t.two.status === 2 && /^clip-probe: Clipped: 3 /m.test(t.two.stdout), `${show(t.one)}\n${show(t.two)}`);
+t = await twin('rp4', { STUB_CHROME_DELTAS: '3' });
+check('a FAIL (chrome-parity exit 2) in an early probe under the bound: exit 2 and its line, as unbounded', t.same && t.two.status === 2 && /^chrome-parity: ✗ 3 delta\(s\)/m.test(t.two.stdout), `${show(t.one)}\n${show(t.two)}`);
+t = await twin('rp5', { STUB_CD_RC: '3' });
+check('a bot challenge (exit 3) in the first probe under the bound: BLOCKED and exit 3, as unbounded', t.same && t.two.status === 3 && /^content-diff: BLOCKED \(exit 3\)/m.test(t.two.stdout), `${show(t.one)}\n${show(t.two)}`);
+unlinkSync(join(root, 'stardust/replica/units.json'));
 
 // --main / --no-dismiss reach the probes (recorded by the stub through its argv → evidence file)
 stub(diff, 'content-diff.mjs', `${ARGV_LOG} console.log('Findings: none — content + roles match');`);
