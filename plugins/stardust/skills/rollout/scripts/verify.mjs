@@ -8,7 +8,8 @@
  * report reflects reality, not just "we pushed it".
  *
  * Two modes:
- *   --base <url>     fetch <base><path> over HTTP (uses rollout.json liveHost if omitted)
+ *   --base <url>     fetch each page over HTTP where it was deployed: <base> + lib.mjs publicUrl (the
+ *                    delivery.deployedUrl pathname, else <path>); rollout.json liveHost if omitted
  *   --root <dir>     offline: resolve <path> to a file under <dir> (for the migrated
  *                    tree or a local export) — checks existence + content
  *
@@ -16,6 +17,8 @@
  * (#75 broken-image ingestion), a page renders exactly one <h1>, every internal href="/…"
  * resolves to a page in coverage, and `delivery.gate.pass` is not false (the pixel table's
  * verdict, written by `update-coverage.mjs --gate` — #125).
+ * Media and text-track links are assets, not pages (`.vtt`, `.srt`, `.mp3`, `.m3u8`, … like
+ * `.css` or `.pdf`): never a broken internal link.
  *
  * A page that renders no <h1> while its source capture (<current>/pages/<slug>.json, extract's
  * crawl) records headings without an h1 is NOT failed: the source's trait is kept — content is
@@ -91,7 +94,7 @@ function checkLinks(body) {
   for (const m of body.matchAll(/href="(\/[^"]*)"/g)) {
     const target = norm(m[1]);
     if (target.startsWith('//')) continue; // protocol-relative external
-    if (/\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip)$/i.test(target)) continue; // assets
+    if (/\.(css|js|png|jpe?g|gif|webp|avif|svg|ico|woff2?|xml|txt|json|pdf|mp4|webm|mov|zip|vtt|srt|ttml|dfxp|sbv|mp3|m4a|aac|oga|ogg|wav|flac|m4v|ogv|m3u8|mpd)$/i.test(target)) continue; // assets, media and text tracks included
     if (!knownPaths.has(target)) broken.push(target);
   }
   return [...new Set(broken)];
