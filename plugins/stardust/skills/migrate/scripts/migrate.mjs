@@ -94,9 +94,15 @@
  *   summary line `variance: <n> A′ page(s) rendered without a variance probe row — recorded as
  *   skipped (…)`; verdict same → recorded; differs → refused (strict variance) unless
  *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted); more
- *   than half of the file's siblings differ → refused even with --accept-variance (re-type the
- *   group: sub-archetypes by locale family or composition, state.mjs set --representative, or a
- *   recorded deviation). A malformed variance file refuses the page.
+ *   than half of the archetype's current clones differ → refused even with --accept-variance
+ *   (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
+ *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
+ *   else (none) the archetype's type and not the archetype itself; rows of other slugs (moved to a
+ *   sub-archetype, not in the state) count on neither side. Re-type the template: sub-archetypes by
+ *   locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then
+ *   probe the new template); the re-typing is recorded as a deviation (migrate.mjs decision <slug>
+ *   --kind re-type …, or deviation), never a mechanical clone. A malformed variance file refuses
+ *   the page.
  *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
@@ -631,6 +637,9 @@ export function sourceFor(run, page) {
   if (page.prototypePath && isFile(page.prototypePath)) return page.prototypePath;
   return join(run.protoDir, `${page.slug}-proposed.html`);
 }
+// The archetype a state page names, in chooseBranch's order: --archetype <slug>=<a>, else its representative (never itself);
+// null = none named (the branch then falls back to the page's type).
+export const namedArchetype = (run, page) => run.archetypes.get(page.slug) || (page.representative && page.representative !== page.slug ? page.representative : null);
 // approved/migrated → A; --branch-b → B; directed → A' of its archetype (--archetype, else page.representative, else the single
 // approved/migrated page of its type with a source file): from its own source file, or forked from the archetype's.
 export function chooseBranch(run, page) {
@@ -638,8 +647,7 @@ export function chooseBranch(run, page) {
   const noSource = () => new Refusal(page.slug, 'source', `no source HTML at ${source}`, 'pass --source <slug>=<file> or build the page first');
   if (run.branchB.has(page.slug)) { if (!own) throw noSource(); return { branch: 'B', tier: 'thin', archetype: null, source, fork: false }; }
   if (page.status !== 'directed') { if (!own) throw noSource(); return { branch: 'A', tier: 'archetype', archetype: null, source, fork: false }; }
-  const flagged = run.archetypes.get(page.slug); const rep = page.representative && page.representative !== page.slug ? page.representative : null;
-  const named = flagged || rep;
+  const flagged = run.archetypes.get(page.slug); const named = namedArchetype(run, page);
   let archetype = null;
   if (named) {
     archetype = run.bySlug.get(named);
@@ -745,7 +753,7 @@ function mediaResolver(run, slug, capture) {
 }
 // The variance gate (replica/sibling-variance.mjs record, <variance-dir>/<archetype-slug>.json) → the sidecar `variance` record:
 // { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted }. Throws Refusal (strict variance) on a
-// differing page without --accept-variance, on any page of a group whose siblings mostly differ, and on a malformed file.
+// differing page without --accept-variance, on any page of a template whose current clones mostly differ, and on a malformed file.
 export function varianceGate(run, page, archetype, old = null) {
   const file = join(run.varianceDir, `${archetype.slug}.json`); const rel = toPosix(file);
   if (!run.varianceCache.has(file)) run.varianceCache.set(file, isFile(file) ? readJson(file) : undefined);
@@ -759,9 +767,16 @@ export function varianceGate(run, page, archetype, old = null) {
   const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, accepted: null };
   if (row.verdict === 'same') return rec;
   if (row.verdict !== 'differs') throw new Refusal(page.slug, 'variance', `${rel} gives ${page.slug} the verdict ${JSON.stringify(row.verdict ?? null)} (same or differs expected)`, `re-run replica/sibling-variance.mjs for archetype ${archetype.slug}, then re-run`);
-  const differ = rows.filter((s) => s.verdict === 'differs').length;
-  const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>), or a recorded deviation`;
-  if (differ * 2 > rows.length) throw new Refusal(page.slug, 'variance', `${differ} of ${rows.length} sibling(s) in ${rel} differ from archetype ${archetype.slug}, so the template does not hold for this group`, `re-type the group: ${retype}; --accept-variance does not unlock a majority`);
+  // The majority counts the current clones only: rows whose page clones this archetype now (a row left behind by a page moved
+  // to a sub-archetype, or by a slug no longer in the state, counts on neither side).
+  const clones = rows.filter((s) => {
+    const p = typeof s.slug === 'string' ? run.bySlug.get(s.slug) : null; if (!p) return false;
+    const named = namedArchetype(run, p);
+    return named ? named === archetype.slug : p.slug !== archetype.slug && p.type === archetype.type;
+  });
+  const differ = clones.filter((s) => s.verdict === 'differs').length;
+  const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica/sibling-variance.mjs); the re-typing is recorded as a deviation (migrate.mjs decision <slug> --kind re-type …, or deviation), never a mechanical clone`;
+  if (differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
   if (!run.acceptVariance) {
     const prior = old?.variance?.accepted ? ` (an earlier render accepted it: "${old.variance.accepted}")` : '';
     throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)`, `check the clone against the archetype and re-run with --accept-variance "<reason>"${prior}, or re-type it: ${retype}`);

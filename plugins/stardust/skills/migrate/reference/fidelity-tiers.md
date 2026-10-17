@@ -72,10 +72,15 @@ extra probes, deltas — merged across runs against the same archetype).
 `migrate.mjs render` reads it for every A′ page: no row → recorded as
 `skipped`; `differs` → refused unless `--accept-variance "<reason>"`
 (the reason reaches the coverage row's `source.variance`); more than half
-of the template's siblings differing → refused even then: re-type the
-template (sub-archetypes by locale family or composition, `state.mjs
-set --representative`) or record the deviation — never a mechanical
-clone. The probe is read-only evidence — it never edits the clone — and
+of the archetype's current clones differing → refused even then. The
+current clones are the rows whose page clones this archetype now
+(`--archetype`, else its representative, else its type); a row left by a
+sibling moved to a sub-archetype counts on neither side. Re-type the
+template (sub-archetypes by locale family or composition via `state.mjs
+set --representative`, then probe the new template) — the re-typing is
+recorded as a deviation (`migrate.mjs decision <slug> --kind re-type …`
+or `deviation`), never a mechanical clone. The probe is read-only
+evidence — it never edits the clone — and
 it costs one live navigation per sibling, so run a template's siblings
 in one pass.
 

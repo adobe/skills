@@ -542,12 +542,41 @@ check('verdict differs → strict variance refusal (nothing written) until --acc
   const again = run(['render', 'guide-beta']); assert.equal(again.status, 2); assert.match(again.err, /--accept-variance "<reason>" \(an earlier render accepted it: "the hero is a page-level promo"\)/);
   const empty = run(['render', 'guide-beta', '--accept-variance', '']); assert.equal(empty.status, 1); assert.match(empty.err, /^usage error: --accept-variance needs a non-empty reason/);
 });
-check('more than half of the siblings differ → strict variance refusal even with --accept-variance (re-typing named); --variance-dir is honoured', () => {
+check('more than half of the current clones differ → strict variance refusal even with --accept-variance (re-typing named); --variance-dir is honoured', () => {
   write('stardust/alt-variance/guides.json', varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['hero']), sib('guide-gamma', 'differs', [], ['map'])]));
   const r = run(['render', 'guide-beta', '--accept-variance', 'looks fine', '--variance-dir', 'stardust/alt-variance']); assert.equal(r.status, 2);
-  assert.match(r.err, /^refused guide-beta: strict variance — 2 of 3 sibling\(s\) in stardust\/alt-variance\/guides\.json differ from archetype guides, so the template does not hold for this group — re-type the group: sub-archetypes by locale family or composition \(state\.mjs set <slug…> --representative <archetype-slug>\), or a recorded deviation; --accept-variance does not unlock a majority$/m);
+  assert.match(r.err, /^refused guide-beta: strict variance — 2 of 3 current clone\(s\) of archetype guides differ in stardust\/alt-variance\/guides\.json, so the template does not hold for this group — re-type the template: sub-archetypes by locale family or composition \(state\.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica\/sibling-variance\.mjs\); the re-typing is recorded as a deviation \(migrate\.mjs decision <slug> --kind re-type …, or deviation\), never a mechanical clone; --accept-variance does not unlock a majority$/m);
+  assert.ok(!/a recorded deviation/.test(r.err), 'a recorded deviation is never offered as a way to unlock the page');
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
+});
+// Rows left behind by siblings that moved to a sub-archetype (and by slugs not in the state) are not current clones.
+const s4 = json(STATE);
+const frs = ['fr-1', 'fr-2', 'fr-3', 'fr-4', 'fr-5']; const des = ['de-1', 'de-2', 'de-3', 'de-4', 'de-5'];
+s4.pages.push(page('city', '/city/', 'approved', 'city'), page('city-fr', '/city/fr/', 'approved', 'city'),
+  ...frs.map((s) => page(s, `/city/${s}/`, 'directed', 'city', { representative: 'city' })),
+  ...des.map((s, i) => page(s, `/city/${s}/`, 'directed', 'city', i < 2 ? { representative: 'city' } : {})));
+write(STATE, `${JSON.stringify(s4, null, 2)}\n`);
+write(`${P}/city-proposed.html`, minimal('City')); write(`${P}/city-fr-proposed.html`, minimal('City FR')); write(`${P}/de-1-proposed.html`, minimal('DE one'));
+capture('de-1', 'DE one', 'DE one description.');
+const citySib = (slug, verdict) => ({ ...sib(slug, verdict, verdict === 'differs' ? ['hero'] : []), url: `https://example.test/city/${slug}/` });
+write('stardust/rollout/variance/city.json', `${JSON.stringify({ template: 'city', archetype: 'https://example.test/city/', at: '2026-10-02T00:00:00Z',
+  siblings: [...frs.map((s) => citySib(s, 'differs')), ...des.map((s, i) => citySib(s, i < 2 ? 'differs' : 'same')), citySib('gone', 'differs')] }, null, 2)}\n`);
+check('the majority counts current clones only: 7 of 10 refused; once the fr-* siblings name a sub-archetype, 2 of 5 → de-1 renders with --accept-variance, refused without', () => {
+  const before = run(['render', 'de-1', '--accept-variance', 'the hero is a page-level promo']); assert.equal(before.status, 2);
+  assert.match(before.err, /^refused de-1: strict variance — 7 of 10 current clone\(s\) of archetype city differ in stardust\/rollout\/variance\/city\.json, /m, 'a row for a slug not in the state counts on neither side');
+  for (const s of s4.pages) if (frs.includes(s.slug)) s.representative = 'city-fr';
+  write(STATE, `${JSON.stringify(s4, null, 2)}\n`);
+  const plain = run(['render', 'de-1']); assert.equal(plain.status, 2);
+  assert.match(plain.err, /^refused de-1: strict variance — the variance probe \(stardust\/rollout\/variance\/city\.json\) found de-1 differs from archetype city: /m);
+  assert.ok(!has(`${OUT}/city/de-1/index.html`), 'nothing written');
+  const ok = run(['render', 'de-1', '--accept-variance', 'the hero is a page-level promo']); assert.equal(ok.status, 0, ok.err);
+  assert.match(ok.out, /^A' de-1 → city\/de-1\/index\.html /m);
+  assert.equal(json(`${OUT}/city/de-1/_meta.json`).variance.accepted, 'the hero is a page-level promo');
+});
+check('--archetype <slug>=<a> makes a row a current clone again (5 of 8 → refused even with --accept-variance)', () => {
+  const r = run(['render', 'de-1', '--accept-variance', 'x', '--archetype', 'fr-1=city', '--archetype', 'fr-2=city', '--archetype', 'fr-3=city']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused de-1: strict variance — 5 of 8 current clone\(s\) of archetype city differ in /m);
 });
 
 // ---- --help ---------------------------------------------------------------------------------
