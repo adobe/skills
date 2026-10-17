@@ -21,15 +21,18 @@
 // non-empty list only; a sandbox whose stub instruments log their argv: "*" then the slug's list reaches both stitches,
 // content-presence and clip-probe, records and rows carry it, fix rounds / live.png / --skip-existing reuse only the
 // same list, no hides → no --hide and no hide field, a live-session.mjs without presenceHide → one log line.
+// Gate trust: capturePollution, an INCONCLUSIVE verdict / summary cell / head, rowReuse and the reuse deciders refusing a
+// capture without the overlay-left check or with an overlay left; every stitch stub writes the --json capture record
+// (SHOT_RECORD); a trust sandbox: an overlay left on either side, a crawl-fullpage fallback, no record → INCONCLUSIVE, exit 2.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { capturePollution, codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, rowReuse, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -43,6 +46,9 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
 const px = (pct, heightDelta, height = 10000) => ({ pct, heightDelta, compared: { width: 1440, height }, pass: pct <= 10 });
 const clip = (total) => ({ counts: { total, textClipped: total, textHidden: 0, controlHidden: 0, controlClipped: 0 } });
 const content = (missing, hidden, controlState = 0) => ({ totals: { missing, hidden, controlState } });
+// stitch-shot's --json capture record, written by every stitch stub: overlayLeft = STUB_OVERLAY_<ORIGIN|EDS>, fontsFailed =
+// STUB_FONTS_<ORIGIN|EDS> (a comma list). `side` is an expression in the stub that evaluates to 'ORIGIN' or 'EDS'.
+const SHOT_RECORD = (side) => `if (process.argv.includes('--json')) writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ overlayLeft: process.env['STUB_OVERLAY_' + ${side}] || null, fontsFailed: (process.env['STUB_FONTS_' + ${side}] || '').split(',').filter(Boolean) }));`;
 
 check('the recorded card page: pixel PASS, elements FAIL — pixelOnlyPass true, pass false, both reasons named', () => {
   const v = verdict({ pixel: px(6.68, 69, 29326), clip: clip(379), content: content(0, 284, 2) });
@@ -80,6 +86,38 @@ check('units: required units fail the page, advisory ones do not', () => {
 check('missing capture / pixel error → not compared, reasons say so; override shows beside, never replaces', () => {
   const v = verdict({ pixel: { error: 'missing capture' }, override: { verdict: 'PASS (source capture)', reason: 'live drifted' } });
   assert.equal(v.pass, false); assert.equal(v.passWithOverride, true); assert.match(v.reasons[0], /missing capture/);
+});
+// ---- a polluted capture: no pixel verdict — the row is INCONCLUSIVE ---------------------------------------------------
+check('capturePollution: a crawl-fullpage origin, an overlay left on either side → one reason per side; a legacy meta without overlayLeft, a failed or missing capture → none', () => {
+  const stitched = { instrument: 'stitch-live', overlayLeft: null, fontsFailed: [] };
+  assert.deepEqual(capturePollution({ instrument: 'crawl-fullpage', asymmetric: true, note: 'stitch exit 1: boom — crawl screenshot used' }, stitched), ['origin capture polluted: crawl-fullpage fallback — stitch exit 1: boom — crawl screenshot used']);
+  assert.deepEqual(capturePollution({ instrument: 'crawl-fullpage', asymmetric: true }, stitched), ['origin capture polluted: crawl-fullpage fallback'], 'no note → no dash');
+  assert.deepEqual(capturePollution({ ...stitched, overlayLeft: 'X' }, stitched), ['origin capture polluted: overlay left — X']);
+  assert.deepEqual(capturePollution(stitched, { ...stitched, overlayLeft: 'div.modal (fixed, 92 % of the viewport)' }), ['build capture polluted: overlay left — div.modal (fixed, 92 % of the viewport)']);
+  assert.deepEqual(capturePollution({ ...stitched, overlayLeft: 'X' }, { ...stitched, overlayLeft: 'Y' }), ['origin capture polluted: overlay left — X', 'build capture polluted: overlay left — Y']);
+  assert.deepEqual(capturePollution({ instrument: 'stitch-live', url: 'https://o.test/' }, { instrument: 'stitch-live' }), [], 'legacy metas: the reuse deciders refuse them, they are not judged here');
+  assert.deepEqual(capturePollution({ instrument: 'none', error: 'stitch exit 1' }, { instrument: 'stitch-live', error: 'x', overlayLeft: 'X' }), [], 'a failed capture is an error row');
+  assert.deepEqual(capturePollution(null, undefined), []);
+});
+check('verdict: a polluted capture → INCONCLUSIVE — pixel / height null, never PASS, no override lifts it, its reasons are the pollution', () => {
+  const polluted = ['origin capture polluted: overlay left — #onetrust-banner-sdk (consent root visible)'];
+  const v = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), override: { verdict: 'tier-shift', reason: 'R-01 recorded' }, capture: { polluted, fonts: [] } });
+  assert.equal(v.inconclusive, true); assert.equal(v.pixelPass, null); assert.equal(v.heightPass, null); assert.equal(v.pixelOnlyPass, false);
+  assert.equal(v.pass, false); assert.equal(v.passWithOverride, false); assert.deepEqual(v.reasons, polluted);
+  assert.deepEqual(verdict({ pixel: px(40, 900), clip: clip(0), content: content(0, 0), capture: { polluted } }).reasons, polluted, 'no pixel / height failure named either');
+  const clean = verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0), capture: { polluted: [], fonts: [] } });
+  assert.equal(clean.inconclusive, false); assert.equal(clean.pass, true); assert.equal(clean.pixelPass, true);
+  assert.equal(verdict({ pixel: px(1.5, 0), clip: clip(0), content: content(0, 0) }).inconclusive, false, 'no capture input: as before');
+});
+check('formatSummary: an INCONCLUSIVE row — its verdict cell, "/ <n> INCONCLUSIVE" in the head only when there is one', () => {
+  const pv = { writtenAt: 'now', breakpoint: 1440, verdict: 'V' };
+  const ok = { slug: 'b', path: '/b', origin: 'stitch-live', pct: 1.5, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: true, pixelOnlyPass: true, inconclusive: false, reasons: [], override: null, error: null };
+  const bad = { ...ok, slug: 'a', path: '/a', pass: false, pixelOnlyPass: false, pixelPass: null, heightPass: null, inconclusive: true, reasons: ['origin capture polluted: overlay left — X'] };
+  const totals = { pages: 2, pass: 1, pixelOnlyPass: 1, overridePass: 0, fail: 0, error: 0, inconclusive: 1, failPixel: 0, failHeight: 0, failClip: 0, failContent: 0, contentNA: 0 };
+  const md = formatSummary({ _provenance: pv, totals, rows: [bad, ok] });
+  assert.match(md, /\*\*1 PASS \/ 0 FAIL \/ 0 error \/ 1 INCONCLUSIVE of 2\*\*/); assert.match(md, /\| `\/a` \|.*\| INCONCLUSIVE \| origin capture polluted: overlay left — X \|/);
+  const plain = formatSummary({ _provenance: pv, totals: { ...totals, pages: 1, inconclusive: 0 }, rows: [ok] });
+  assert.match(plain, /\*\*1 PASS \/ 0 FAIL \/ 0 error of 1\*\*/); assert.doesNotMatch(plain, /INCONCLUSIVE/);
 });
 check('formatSummary: header, calibration line, rows, asymmetric flag, override text', () => {
   const rows = [
@@ -284,6 +322,15 @@ check('keyChanged / skipCapture / rowKey: an EDS capture is reused only while ga
   assert.equal(rowKey(stored, { gateKey: null, parts: { build: { ...build, settings: { threshold: 12 } } } }), null, 'other criteria');
   assert.equal(rowKey(stored, { gateKey: null, parts: null }), null); assert.equal(rowKey(null, { gateKey: 'K' }), null);
 });
+check('rowReuse: a PASS row under the same key and criteria is reused whole; never an INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin', () => {
+  const opts = parseArgs(['node', 'x', '--skip-existing']);
+  const prov = { stage: 'published', threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, criteria: { clip: true, content: true } };
+  const prior = (over = {}) => ({ row: { slug: 'a', gateKey: 'K', pass: true, passWithOverride: true, inconclusive: false, originAsymmetric: false, reasons: [], ...over }, from: 'summary.json', at: T(1), prov });
+  assert.deepEqual(rowReuse({ prior: prior(), gateKey: 'K', edsPng: true, opts }).reused, { what: 'row', from: 'summary.json', at: T(1), gateKey: 'K' });
+  assert.equal(rowReuse({ prior: prior({ inconclusive: true, pass: false, passWithOverride: false }), gateKey: 'K', edsPng: true, opts }), null);
+  assert.equal(rowReuse({ prior: prior({ inconclusive: true }), gateKey: 'K', edsPng: true, opts }), null, 'whatever else the row says');
+  assert.equal(rowReuse({ prior: prior({ originAsymmetric: true }), gateKey: 'K', edsPng: true, opts }), null, 'a PASS on a crawl-fullpage origin from an older table');
+});
 if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside the boxes only, masked rows skipped', () => {
   const w = 10; const h = 10; const data = Buffer.alloc(w * h * 4);
   const red = (x, y) => { const i = (y * w + x) * 4; data[i] = 255; data[i + 1] = 0; data[i + 2] = 0; data[i + 3] = 255; };
@@ -418,7 +465,8 @@ cpSync([resolve(HERE, '../../../diff/scripts'), resolve(HERE, '../../diff')].map
 writeFileSync(join(replica, 'stitch-shot.mjs'), `import { appendFileSync, writeFileSync } from 'node:fs';
 const [url, out] = process.argv.slice(2);
 appendFileSync(process.env.STUB_COUNT, 'STITCH ' + (url.startsWith('https://origin.test') ? 'origin' : 'eds') + '\\n');
-writeFileSync(out, 'png');`);
+writeFileSync(out, 'png');
+${SHOT_RECORD("(url.startsWith('https://origin.test') ? 'ORIGIN' : 'EDS')")}`);
 writeFileSync(join(replica, 'pixel-compare.mjs'), `import { appendFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 appendFileSync(process.env.STUB_COUNT, 'COMPARE\\n');
@@ -575,7 +623,7 @@ const { freshness } = await import(pathToFileURL(join(DIFF, 'live-session.mjs'))
 const RUN = '2026-10-16T08:00:00.000Z'; const NOW = Date.parse('2026-10-16T09:00:00.000Z');
 const U = 'https://www.example.com/'; const AT = '2026-10-16T08:30:00.000Z';
 const ask = { stage: 'published', only: ['home'], recaptureEds: false, recaptureOrigin: false, url: U, width: 1440, vh: null };
-const prev = { instrument: 'stitch-live', url: U, width: 1440, locale: 'en-US', vh: null, at: AT };
+const prev = { instrument: 'stitch-live', url: U, width: 1440, locale: 'en-US', vh: null, overlayLeft: null, at: AT };
 const fr = (meta, o = {}) => freshness(meta, { runStart: RUN, maxAgeH: null, now: NOW, ...o });
 check('originReusePlan: a fix round reuses this run\'s origin; stale, no anchor, --recapture-origin, other stage or a full round recapture', () => {
   assert.deepEqual(originReusePlan(ask, prev, fr(prev)), { reuse: true, why: 'same-run' });
@@ -595,12 +643,12 @@ check('originReusePlan: url / width / vh / locale mismatches and crawl / error o
   const no = (p) => assert.equal(originReusePlan(ask, p, fr(p)).reuse, false, JSON.stringify(p));
   no({ ...prev, url: 'https://www.example.com/other' }); no({ ...prev, width: 360 }); no({ ...prev, vh: 900 }); no({ ...prev, locale: 'de-DE' });
   no({ ...prev, instrument: 'crawl-fullpage', asymmetric: true }); no({ ...prev, error: 'stitch exit 1' }); no({ ...prev, instrument: 'none' });
-  const legacy = { instrument: 'stitch-live', url: U, at: AT };
+  const legacy = { instrument: 'stitch-live', url: U, overlayLeft: null, at: AT };
   assert.equal(originReusePlan(ask, legacy, fr(legacy)).reuse, true);
   assert.equal(originReusePlan({ ...ask, vh: 900 }, legacy, fr(legacy)).reuse, false, 'a legacy capture had no --vh');
 });
 check('liveReusePlan: the archetype round\'s live.png is reused only when live.json matches every capture parameter of gate-all\'s own stitch and is fresh', () => {
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   assert.deepEqual(liveReusePlan(la, live, fr(live)), { reuse: true, why: 'same-run' });
   assert.equal(liveReusePlan(la, null, null).reuse, false, 'a legacy live.png without live.json is never reused');
@@ -619,6 +667,17 @@ check('liveReusePlan: the archetype round\'s live.png is reused only when live.j
   assert.equal(liveReusePlan(la, { ...live, dismiss: { off: false, consent: null, extra: '.modal' } }, fr(live)).reuse, false);
   assert.equal(liveReusePlan(la, { ...live, ua: 'custom' }, fr(live)).reuse, false);
 });
+check('originReusePlan / liveReusePlan: a capture taken before the overlay-left check (no overlayLeft key) or one that left an overlay is never reused', () => {
+  const unchecked = { ...prev }; delete unchecked.overlayLeft;
+  assert.deepEqual(originReusePlan(ask, unchecked, fr(unchecked)), { reuse: false, why: 'previous origin predates the overlay-left check' });
+  const left = { ...prev, overlayLeft: '#cmpbox (consent root visible)' };
+  assert.deepEqual(originReusePlan(ask, left, fr(left)), { reuse: false, why: 'previous origin left an overlay (#cmpbox (consent root visible))' });
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
+  const old = { ...live }; delete old.overlayLeft;
+  assert.deepEqual(liveReusePlan(la, old, fr(old)), { reuse: false, why: 'live.png predates the overlay-left check' });
+  assert.deepEqual(liveReusePlan(la, { ...live, overlayLeft: 'html (overflow:hidden)' }, fr(live)), { reuse: false, why: 'live.png left an overlay (html (overflow:hidden))' });
+});
 // ---- hide (F6): presence.json `hide` — the reuse deciders and the inputs / key a capture's list is part of -------------
 const HL = ['.geo-bar', '.promo-strip'];
 check('hide: originReusePlan / liveReusePlan refuse a capture taken hiding another list (absent = []), accept the same list', () => {
@@ -629,7 +688,7 @@ check('hide: originReusePlan / liveReusePlan refuse a capture taken hiding anoth
   assert.deepEqual(originReusePlan({ ...ask, hide: HL }, prev, fr(prev)), { reuse: false, why: 'hide list differs' }, 'a record without hide hid nothing');
   assert.equal(originReusePlan({ ...ask, hide: ['.geo-bar'] }, hid, fr(hid)).why, 'hide list differs', 'a shorter list');
   assert.equal(originReusePlan({ ...ask, hide: [...HL].reverse() }, hid, fr(hid)).why, 'hide list differs', 'another order');
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   assert.deepEqual(liveReusePlan({ ...la, hide: HL }, { ...live, hide: HL }, fr(live)), { reuse: true, why: 'same-run' });
   assert.deepEqual(liveReusePlan(la, { ...live, hide: [] }, fr(live)), { reuse: true, why: 'same-run' }, 'gate.sh records [] for none');
@@ -679,13 +738,14 @@ const RS = join(root, 'stardust/scripts/replica'); const DS = join(root, 'stardu
 mkdirSync(RS, { recursive: true }); cpSync(SCRIPT, join(RS, 'gate-all.mjs')); cpSync(DIFF, DS, { recursive: true });
 const STITCH_LOG = join(root, 'stitch.log'); const CP_LOG = join(root, 'cp.log');
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
-// stitch-shot: one line per call (ORIGIN = the www.example.com side, EDS = anything else), writes a PNG stand-in;
-// STUB_ORIGIN_RC makes the origin capture fail with that exit code.
+// stitch-shot: one line per call (ORIGIN = the www.example.com side, EDS = anything else), writes a PNG stand-in and its
+// --json record; STUB_ORIGIN_RC makes the origin capture fail with that exit code.
 stub(RS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
   const side = /www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS';
   appendFileSync(${JSON.stringify(STITCH_LOG)}, side + ' ' + process.argv.slice(2).join(' ') + '\\n');
   if (side === 'ORIGIN' && process.env.STUB_ORIGIN_RC) { console.error('stitch-shot error: stub exit ' + process.env.STUB_ORIGIN_RC); process.exit(Number(process.env.STUB_ORIGIN_RC)); }
-  writeFileSync(process.argv[3], 'png');`);
+  writeFileSync(process.argv[3], 'png');
+  ${SHOT_RECORD('side')}`);
 stub(RS, 'pixel-compare.mjs', `console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));`);
 // content-presence: records its argv, whether --origin-cache existed at start and the max-age env it inherited;
 // writes the cache when absent (like the real probe) and a canned content.json.
@@ -814,7 +874,7 @@ check('sandbox 6: the published stage reuses the archetype round\'s fresh live.p
   const g = join(root, 'stardust/replica/gates/about-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   opener(new Date().toISOString());
   const liveAt = new Date().toISOString();
-  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/about', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: liveAt };
+  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/about', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: liveAt };
   writeFileSync(join(g, 'live.json'), JSON.stringify(live));
   const r = gate(['--only', 'about']);
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1);
@@ -835,22 +895,26 @@ check('sandbox 7: --skip-existing keeps a stale origin (never a recapture) but r
   assert.match(runLog(), /origin home → reused \(--skip-existing\) WARN captured before this run/);
   assert.equal(read('stardust/replica/gates/all-1440/home/origin.json').policy, 'skip-existing');
 });
-check('sandbox 8: the prototype stage records the archetype round\'s live.png as a reuse with its capture time (live.json, else the PNG mtime), stale when it predates the run', () => {
+check('sandbox 8: the prototype stage records the archetype round\'s live.png as a reuse with its capture time (live.json), stale when it predates the run; a live.png whose live.json has no overlay-left record (or none at all) or names an overlay left is stitched instead', () => {
   const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   const args = ['--stage', 'prototype', '--proto-base', 'http://localhost:9', '--no-probes'];
   const row = () => read('stardust/replica/gates/prototypes-1440/summary.json').rows.find((x) => x.slug === 'home');
+  const protoLog = () => readFileSync(join(root, 'stardust/replica/gates/prototypes-1440/_run.log'), 'utf8');
   const oldAt = new Date(Date.now() - 3600e3).toISOString();
-  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: oldAt }));
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, at: oldAt }));
   const r = gate(args);
   assert.equal(r.origin, 0, r.stderr + r.stdout);
   const o = row().originReused; assert.equal(o.from, 'stardust/replica/gates/home-1440/live.png'); assert.equal(o.at, oldAt); assert.equal(o.policy, 'prototype-stage'); assert.match(o.stale, /captured before this run/);
-  assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, oldAt);
-  assert.match(readFileSync(join(root, 'stardust/replica/gates/prototypes-1440/_run.log'), 'utf8'), /origin home → stitch-live reused .*prototype-stage\) WARN captured before this run/);
-  const nowAt = new Date().toISOString(); writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: nowAt }));
+  assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, oldAt); assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').overlayLeft, null);
+  assert.match(protoLog(), /origin home → stitch-live reused .*prototype-stage\) WARN captured before this run/);
+  const nowAt = new Date().toISOString(); writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, at: nowAt }));
   gate(args); assert.deepEqual(row().originReused, { from: 'stardust/replica/gates/home-1440/live.png', at: nowAt, policy: 'prototype-stage', stale: null });
-  rmSync(join(g, 'live.json')); const mt = new Date(Math.floor((Date.now() - 7200e3) / 1000) * 1000); utimesSync(join(g, 'live.png'), mt, mt);
-  gate(args);
-  assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, mt.toISOString()); assert.equal(statSync(join(g, 'live.png')).mtime.toISOString(), mt.toISOString());
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: nowAt }));
+  assert.equal(gate(args).origin, 1); assert.match(protoLog(), /origin home → live\.png not reused \(live\.png predates the overlay-left check\)/);
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: '#cmpbox (consent root visible)', at: nowAt }));
+  assert.equal(gate(args).origin, 1); assert.match(protoLog(), /origin home → live\.png not reused \(live\.png left an overlay \(#cmpbox \(consent root visible\)\)\)/);
+  rmSync(join(g, 'live.json'));
+  assert.equal(gate(args).origin, 1, 'no live.json: no record of the check'); assert.equal(row().originReused, null);
 });
 check('sandbox 9: a failed --recapture-origin keeps the previous origin AND says so — policy recapture-failed + stale when it predates the run, a WARN line, the presence inventory stays with it', () => {
   assert.equal(gate(['--only', 'home', '--recapture-origin']).origin, 1);
@@ -932,7 +996,8 @@ stub(RS, 'stitch-shot.mjs', `import { appendFileSync, readFileSync, writeFileSyn
     writeFileSync(spec.out, JSON.stringify({ url: a[0], side: spec.side, at: new Date().toISOString(), docH: 3000, tier: 'chrome', settle: 'stitch', status: null, settlePasses: null, pageW: 1440, root: 'main', items,
       clip: { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [], findings: [] }, textBoxes: [{ x: 0, y: 40, w: 100, h: 20 }], units, spec: { presence: spec.presence, clip: spec.clip, units: spec.units } }));
   }
-  writeFileSync(a[1], 'png');`);
+  writeFileSync(a[1], 'png');
+  ${SHOT_RECORD('side')}`);
 writeFileSync(join(root, 'stardust/replica/units.json'), JSON.stringify({ cards: { origin: '.card', build: '.card', n: 2, pages: ['home'] } }));
 mkdirSync(join(root, 'stardust/current/assets/screenshots'), { recursive: true }); writeFileSync(join(root, 'stardust/current/assets/screenshots/about.png'), 'png');
 const olGate = (args, env) => { rmSync(UG_LOG, { force: true }); const g = gate(args, env); const st = lines(STITCH_LOG); return { ...g, ug: lines(UG_LOG).length, argv: (s) => st.filter((l) => l.startsWith(s)) }; };
@@ -963,7 +1028,8 @@ check('one-load 2: --one-load --only home is a fix round — 0 origin stitches, 
 });
 check('one-load 3: a --blocked origin (crawl shot) has no inventory — content-presence runs for that page, the row and _run.log say why', () => {
   const r = olGate(['--one-load', '--only', 'about', '--recapture-origin', '--blocked', 'example\\.com/about']);
-  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1); assert.equal(r.cp.length, 1);
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.row('about').inconclusive, true, 'a crawl-fullpage origin is a polluted capture: no pixel verdict');
+  assert.equal(r.origin, 0); assert.equal(r.eds, 1); assert.equal(r.cp.length, 1);
   assert.match(runLog(), /one-load about → fallback: no origin inventory \(crawl-fullpage capture\)/);
   assert.deepEqual(r.row('about').oneLoad, { via: 'probes', fallback: 'no origin inventory (crawl-fullpage capture)' });
 });
@@ -1008,7 +1074,7 @@ check('--skip-existing with origin.png gone and a fresh live.png older than the 
   opener(new Date().toISOString());
   const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   const liveAt = new Date().toISOString();
-  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, at: liveAt }));
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: liveAt }));
   const first = olGate(['--only', 'home', '--recapture-origin']); // a stitched origin, then probes (presence cache written)
   assert.equal(first.status, 0, first.stderr + first.stdout); assert.equal(first.origin, 1); assert.ok(pageJson('home', 'probes.json').at > liveAt);
   assert.ok(existsSync(join(root, presence('home'))));
@@ -1063,7 +1129,8 @@ ${argvLog("(/www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS')")}
 const a = process.argv.slice(2); const origin = /www\\.example\\.com/.test(a[0]);
 const entry = (s) => (!origin || s === '.promo-strip' ? s + ' ×0 [--hide]' : s === '.cookie-strip' ? s + " error: '" + s + "' is not a valid style rule selector [--hide]" : s + ' ×1 (88px) [--hide]');
 if (a.includes('--hide')) console.log('hidden: ' + a[a.indexOf('--hide') + 1].split(',').map(entry).join('; '));
-writeFileSync(process.argv[3], 'png');`);
+writeFileSync(process.argv[3], 'png');
+${SHOT_RECORD("(origin ? 'ORIGIN' : 'EDS')")}`);
 stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
 stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 ${argvLog("'CONTENT'")}
@@ -1086,7 +1153,7 @@ const hgate = (args) => {
 const hideArg = (l) => { const a = l.split(' '); const i = a.indexOf('--hide'); return i < 0 ? null : a[i + 1]; };
 const hjson = (slug, f, out = HOUT) => JSON.parse(readFileSync(join(out, slug, f), 'utf8'));
 const hlog = (out = HOUT) => readFileSync(join(out, '_run.log'), 'utf8');
-const liveJson = (url, hide) => ({ writtenBy: 'gate.sh', url, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, ...(hide ? { hide } : {}), headed: false, at: new Date().toISOString() });
+const liveJson = (url, hide) => ({ writtenBy: 'gate.sh', url, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, ...(hide ? { hide } : {}), headed: false, overlayLeft: null, at: new Date().toISOString() });
 setPresence({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.promo-strip'] } });
 check('hide 1: presence.json "*" + a slug\'s hide → both stitches and content-presence get --hide "*" then the slug\'s; a page without its own entry gets "*"\'s; origin.json / eds.json / probes.json inputs / the row record the list', () => {
   const r = hgate([]);
@@ -1183,5 +1250,84 @@ check('hide 9: a diff scripts dir whose live-session.mjs lacks presenceHide → 
   } finally { rmSync(join(HDS, 'live-session.mjs')); renameSync(join(HDS, 'live-session-real.mjs'), join(HDS, 'live-session.mjs')); }
 });
 rmSync(hroot, { recursive: true, force: true });
+
+// ---- gate trust sandbox: a polluted capture → an INCONCLUSIVE row ----------------------------------------------------
+// Its own project (the hide sandbox pattern): stub instruments, the real live-session.mjs and foundation-freeze.mjs.
+// stitch-shot writes its --json record from STUB_OVERLAY_* / STUB_FONTS_* (STUB_NO_JSON: no record, an older copy) and
+// fails the origin with STUB_ORIGIN_RC; pixel-compare fails the slugs in STUB_FAIL; content-presence clips 3 on the build
+// side of the slugs in STUB_CLIP_FAIL.
+const troot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-trust-')));
+const TRS = join(troot, 'stardust/scripts/replica'); const TDS = join(troot, 'stardust/scripts/diff'); const TLOG = join(troot, 'stitch.log');
+const TOUT = join(troot, 'stardust/replica/gates/all-1440');
+mkdirSync(TRS, { recursive: true }); mkdirSync(TDS, { recursive: true });
+cpSync(SCRIPT, join(TRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(TRS, 'foundation-freeze.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(TDS, 'live-session.mjs'));
+stub(TRS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
+const a = process.argv.slice(2); const side = /www\\.example\\.com/.test(a[0]) ? 'ORIGIN' : 'EDS';
+appendFileSync(${JSON.stringify(TLOG)}, side + ' ' + a.join(' ') + '\\n');
+if (side === 'ORIGIN' && process.env.STUB_ORIGIN_RC) { console.error('stitch-shot error: stub exit ' + process.env.STUB_ORIGIN_RC); process.exit(Number(process.env.STUB_ORIGIN_RC)); }
+writeFileSync(a[1], 'png');
+if (!process.env.STUB_NO_JSON) { ${SHOT_RECORD('side')} }`);
+stub(TRS, 'pixel-compare.mjs', `import { basename, dirname } from 'node:path';
+const pct = (process.env.STUB_FAIL || '').split(',').includes(basename(dirname(process.argv[2]))) ? 30 : 1.5;
+console.log(JSON.stringify({ pct, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: pct <= 10 }));`);
+stub(TDS, 'content-presence.mjs', `import { writeFileSync } from 'node:fs'; import { basename, dirname } from 'node:path';
+const a = process.argv; const out = a[a.indexOf('--json') + 1]; const n = (process.env.STUB_CLIP_FAIL || '').split(',').includes(basename(dirname(out))) ? 3 : 0;
+const counts = (total) => ({ total, textClipped: total, textHidden: 0, controlHidden: 0, controlClipped: 0 });
+writeFileSync(out, JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome' }, scope: 'root', totals: { missing: 0, hidden: 0, controlState: 0 }, eds: { clip: { counts: counts(n), groups: [] } }, origin: { clip: { counts: counts(0), groups: [] } } }));`);
+stub(TDS, 'unit-geometry.mjs', 'export function unitsFor() { return []; }');
+appendFileSync(join(troot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new Date(Date.now() - 60e3).toISOString(), skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
+const tpages = (slugs) => writeFileSync(join(troot, 'stardust/state.json'), JSON.stringify({ pages: slugs.map((slug) => ({ slug, url: `https://www.example.com/${slug}`, liveUrl: `https://main--site--org.aem.live/${slug}`, status: 'deployed', template: 'page' })) }));
+const tgate = (args, env = {}) => {
+  rmSync(TLOG, { force: true });
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) if (!(k in env)) delete e[k];
+  const r = spawnSync(process.execPath, [join(TRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: troot, env: e, encoding: 'utf8', timeout: 60e3 });
+  const run = (r.stdout.match(/run → (.*)/) || [])[1]; const s = JSON.parse(readFileSync(run ? join(troot, run) : join(TOUT, 'summary.json'), 'utf8'));
+  return { ...r, s, row: (slug) => s.rows.find((x) => x.slug === slug), md: run ? r.stdout : readFileSync(join(TOUT, 'summary.md'), 'utf8'), stitches: (side) => lines(TLOG).filter((l) => l.startsWith(`${side} `)) };
+};
+const tjson = (slug, f) => JSON.parse(readFileSync(join(TOUT, slug, f), 'utf8'));
+const tlog = () => readFileSync(join(TOUT, '_run.log'), 'utf8');
+const UNCHECKED = 'unchecked (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)';
+tpages(['a']);
+check('trust 1: an overlay left on the origin capture → the row is INCONCLUSIVE (measured, not judged), totals.inconclusive 1, fail 0, exit 2; summary.md says so; origin.json / eds.json record the stitch\'s --json record (<slug>/<side>-shot.json)', () => {
+  const r = tgate([], { STUB_OVERLAY_ORIGIN: '#cmpbox (consent root visible)' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  const row = r.row('a');
+  assert.deepEqual([row.inconclusive, row.pixelPass, row.heightPass, row.pixelOnlyPass, row.pass, row.passWithOverride, row.pct], [true, null, null, false, false, false, 1.5]);
+  assert.deepEqual(row.reasons, ['origin capture polluted: overlay left — #cmpbox (consent root visible)']);
+  const t = r.s.totals; assert.deepEqual([t.pages, t.pass, t.fail, t.error, t.inconclusive, t.failPixel, t.failHeight], [1, 0, 0, 0, 1, 0, 0]);
+  assert.match(r.md, /\*\*0 PASS \/ 0 FAIL \/ 0 error \/ 1 INCONCLUSIVE of 1\*\*/); assert.match(r.md, /\| INCONCLUSIVE \| origin capture polluted: overlay left — #cmpbox \(consent root visible\) \|/);
+  assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed, tjson('a', 'eds.json').overlayLeft], ['#cmpbox (consent root visible)', [], null]);
+  for (const [side, f] of [['ORIGIN', 'origin'], ['EDS', 'eds']]) assert.ok(r.stitches(side)[0].includes(` --json stardust/replica/gates/all-1440/a/${f}-shot.json `), r.stitches(side)[0]);
+  assert.match(tlog(), /origin a → stitch-live WARN overlay left — #cmpbox \(consent root visible\)/);
+});
+check('trust 2: a fix round never keeps an origin that left an overlay — re-stitched, logged; the clean one it takes is kept by the next', () => {
+  const r = tgate(['--only', 'a']);
+  assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.stitches('ORIGIN').length, 1);
+  assert.match(tlog(), /origin a → not reused \(previous origin left an overlay \(#cmpbox \(consent root visible\)\)\)/);
+  assert.deepEqual([r.row('a').inconclusive, r.row('a').pass], [false, true]);
+  assert.equal(tgate(['--only', 'a']).stitches('ORIGIN').length, 0);
+});
+check('trust 3: an overlay left on the build capture → "build capture polluted: overlay left — …"', () => {
+  const r = tgate([], { STUB_OVERLAY_EDS: 'div.modal (fixed, 92 % of the viewport)' });
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.row('a').inconclusive, true);
+  assert.deepEqual(r.row('a').reasons, ['build capture polluted: overlay left — div.modal (fixed, 92 % of the viewport)']);
+  assert.match(tlog(), /eds a → stitch-live WARN overlay left — div\.modal/);
+});
+check('trust 4: a crawl-fullpage origin fallback (the stitch failed, a crawl shot in --crawl-shots) → INCONCLUSIVE, the reason names the fallback and its note', () => {
+  mkdirSync(join(troot, 'shots'), { recursive: true }); writeFileSync(join(troot, 'shots/a.png'), 'png');
+  const r = tgate(['--crawl-shots', 'shots'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  const row = r.row('a'); assert.deepEqual([row.origin, row.originAsymmetric, row.inconclusive, row.pass], ['crawl-fullpage', true, true, false]);
+  assert.deepEqual(row.reasons, ['origin capture polluted: crawl-fullpage fallback — stitch exit 1: stitch-shot error: stub exit 1 — crawl screenshot used']);
+  assert.equal(r.s.totals.asymmetricOrigins, 1); assert.equal(r.s.totals.inconclusive, 1);
+});
+check('trust 5: a stitch-shot that writes no --json record (an older copy; the previous records deleted before each stitch) → both captures unchecked, INCONCLUSIVE — never clean', () => {
+  const r = tgate([], { STUB_NO_JSON: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.deepEqual(r.row('a').reasons, [`origin capture polluted: overlay left — ${UNCHECKED}`, `build capture polluted: overlay left — ${UNCHECKED}`]);
+  assert.equal(existsSync(join(TOUT, 'a/eds-shot.json')), false, 'the last run\'s record was not read');
+  assert.deepEqual([tjson('a', 'origin.json').overlayLeft, tjson('a', 'origin.json').fontsFailed], [UNCHECKED, []]);
+});
+rmSync(troot, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

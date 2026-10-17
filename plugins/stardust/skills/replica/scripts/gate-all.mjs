@@ -34,6 +34,12 @@
  * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
  * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
  * recorded beside it per page and in the totals — every run is calibration data.
+ * INCONCLUSIVE: a row measured on a polluted capture has no pixel / height verdict (`inconclusive: true`, pixelPass /
+ * heightPass null) — never PASS, never FAIL, never lifted by an override; it exits 2 like a FAIL. Polluted: a
+ * crawl-fullpage origin fallback (asymmetric), or a stitch whose capture record names an overlay left on the page
+ * after dismissal — each stitch gets `--json <slug>/<side>-shot.json` (deleted before the spawn; origin.json / eds.json
+ * record its `overlayLeft` and `fontsFailed`), and no readable record is `unchecked`, never clean. Its reasons are
+ * `<origin|build> capture polluted: …` — fix the capture (--hide / presence.json, the consent dismissal), not the page.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
  * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
@@ -45,10 +51,13 @@
  * reused as if equal (fix rounds, live.png, --skip-existing); each stitch's `hidden:` line is origin.json / eds.json
  * `hidden` (text), and a selector that matched nothing (×0) or is invalid is one _run.log line per side. Origin
  * fallback: live stitch → previous origin (--recapture-origin) → <crawl-shots>/<slug>.png (`crawl-fullpage`,
- * asymmetric, flagged).
+ * asymmetric, flagged — an INCONCLUSIVE row).
  * Origin reuse: fix rounds (--only, --recapture-eds) and the published stage (gates/<slug>-<w>/live.png + a matching
  * live.json) reuse origin captures of THIS run — at or after the last rollout A-inventory / replica extract start in
  * stardust/status.jsonl (--origin-max-age: older ones too); the row (`originReused`), origin.json and _run.log record it.
+ * A kept origin (a fix round's, either stage's live.png) must record the overlay-left check with nothing left
+ * (origin.json / live.json `overlayLeft: null`) — a capture from before the check, or one that left an overlay, is
+ * re-stitched; --skip-existing and --compare-only keep what is on disk as documented.
  *
  * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
  * page dir are reused as before; an EDS capture only while its <slug>/gate-key.json proves it current (below).
@@ -113,8 +122,9 @@
  * defaults hold with or without one; the flags raise them.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL, a refused start (no verdict) or a refused --eds-host, 1 error or an empty selection.
- * `verdict`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
+ * (overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or --eds-host, 1 error
+ * or an empty selection.
+ * `verdict`, `capturePollution`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
@@ -166,6 +176,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --vh <px>                 stitch chunk height
   --help                    this text
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
+  INCONCLUSIVE row (no pixel / height verdict, never PASS): a polluted capture — a crawl-fullpage origin fallback, or
+  an overlay left after dismissal (or no record of the check) in the stitch's --json record <slug>/<side>-shot.json.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header);
   presence.json "hide" (per slug or "*"): in-flow regions removed on both sides before measuring.
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
@@ -178,8 +190,8 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
   run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
   "no verdict" naming --timeout <estimate>; exit 2.
-Exit: 0 all PASS (overrides count), 2 any FAIL, a refused start (no verdict) or a refused --eds-host, 1 error or an
-  empty selection.`;
+Exit: 0 all PASS (overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict) or
+  --eds-host, 1 error or an empty selection.`;
 const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
 
 /**
@@ -297,10 +309,28 @@ export function emptySelection(state, { stage = 'published', only = null, stateP
 
 // ---- pure: the verdict --------------------------------------------------------------------------------
 /**
- * verdict({ pixel, clip, content, units, override, allowance }, opts) → row fields. `pixel` = pixel.json,
- * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null.
+ * capturePollution(originMeta, edsMeta) → why the capture pair cannot carry a pixel verdict (origin.json, eds.json; the EDS
+ * side is `build`): a crawl-fullpage / asymmetric origin fallback, or a stitch whose record names an overlay left after
+ * dismissal (`unchecked …` when stitch-shot wrote no record). A missing, failed or `none` capture adds nothing — that row
+ * is an error. A legacy meta without `overlayLeft` adds nothing either; the reuse deciders refuse it instead.
  */
-export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0 }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true } = {}) {
+export function capturePollution(originMeta, edsMeta) {
+  const out = [];
+  for (const [side, m] of [['origin', originMeta], ['build', edsMeta]]) {
+    if (!m || m.error || !m.instrument || m.instrument === 'none') continue;
+    if (m.instrument === 'crawl-fullpage' || m.asymmetric) out.push(`${side} capture polluted: crawl-fullpage fallback${m.note ? ` — ${m.note}` : ''}`);
+    if (m.instrument === 'stitch-live' && m.overlayLeft) out.push(`${side} capture polluted: overlay left — ${m.overlayLeft}`);
+  }
+  return out;
+}
+/**
+ * verdict({ pixel, clip, content, units, override, allowance, capture }, opts) → row fields. `pixel` = pixel.json,
+ * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null,
+ * `capture` = { polluted: capturePollution(…) } — any pollution makes the row INCONCLUSIVE: pixelPass / heightPass null,
+ * never PASS, no override lifts it, its reasons are the pollution.
+ */
+export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0, capture = { polluted: [], fonts: [] } }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true } = {}) {
+  const polluted = (capture && capture.polluted) || []; const inconclusive = polluted.length > 0;
   const compared = pixel.compared && Number.isFinite(pixel.heightDelta);
   const originH = compared ? pixel.compared.height + Math.max(0, pixel.heightDelta) : null;
   const edsH = compared ? pixel.compared.height + Math.max(0, -pixel.heightDelta) : null;
@@ -318,20 +348,20 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
   if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}`);
-  const pixelOnlyPass = !!(pixelPass && heightPass);
+  const pixelOnlyPass = !inconclusive && !!(pixelPass && heightPass);
   const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false;
-  return { originH, edsH, pixelPass: !!pixelPass, heightPass: !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!override, reasons };
+  return { originH, edsH, pixelPass: inconclusive ? null : !!pixelPass, heightPass: inconclusive ? null : !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || (!inconclusive && !!override), inconclusive, reasons: inconclusive ? [...polluted] : reasons };
 }
 
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
 export function formatSummary(summary) {
   const t = summary.totals; const p = summary._provenance;
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
     const units = r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
-    const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
+    const verdictCell = r.inconclusive ? 'INCONCLUSIVE' : r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
     rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}` : ''} | ${r.reasons.join('; ') || '-'} | ${r.reused ? `${r.reused.what} ${r.reused.at}` : '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
@@ -639,13 +669,13 @@ const sameCriteria = (prov, opts) => !!prov && prov.stage === 'published' && pro
 /**
  * rowReuse({ prior, gateKey, edsPng, override, opts }) → the prior row again, marked `reused`, or null. Only under
  * --skip-existing on the published stage without --recapture-*, with a known current key equal to the row's, a
- * PASS (not an override) from a table written under this run's criteria and the page's eds.png on disk. `at` stays
- * the time the row was measured.
+ * PASS (not an override) from a table written under this run's criteria and the page's eds.png on disk — never an
+ * INCONCLUSIVE row, never one measured on an asymmetric (crawl-fullpage) origin. `at` stays the time the row was measured.
  */
 export function rowReuse({ prior, gateKey, edsPng, override = null, opts }) {
   if (!opts.skip || opts.stage !== 'published' || opts.recaptureEds || opts.recaptureOrigin || !gateKey || !prior || !edsPng) return null;
   const { row } = prior;
-  if (row.gateKey !== gateKey || row.pass !== true || !sameCriteria(prior.prov, opts)) return null;
+  if (row.gateKey !== gateKey || row.pass !== true || row.inconclusive || row.originAsymmetric || !sameCriteria(prior.prov, opts)) return null;
   const at = row.reused && row.reused.what === 'row' ? row.reused.at : prior.at;
   return { ...row, override, passWithOverride: row.pass || !!override, reused: { what: 'row', from: prior.from, at, gateKey } };
 }
@@ -661,8 +691,14 @@ const FRESH = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'live-session
 
 // ---- origin reuse (pure): `fresh` = live-session.mjs freshness() of the capture's `at` ---------------------------
 /**
+ * A kept capture's overlay-left record (origin.json from stitch-shot's --json record, live.json from gate.sh): no
+ * `overlayLeft` key (or no record) → it predates the check; a truthy one → it left an overlay. → why not, or null.
+ */
+const overlayWhy = (meta, what) => (!meta || !('overlayLeft' in meta) ? `${what} predates the overlay-left check` : meta.overlayLeft ? `${what} left an overlay (${meta.overlayLeft})` : null);
+/**
  * May a fix round keep <out>/<slug>/origin.png? → { reuse, why } (why = the policy when reused). `hide` = this run's
- * presence.json hide list for the page; origin.json's `hide` (absent = []) must be the same list.
+ * presence.json hide list for the page; origin.json's `hide` (absent = []) must be the same list; origin.json must record
+ * the overlay-left check with nothing left (`overlayLeft: null`).
  */
 export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, url, width, vh, hide = [] }, prev, fresh) {
   const no = (why) => ({ reuse: false, why });
@@ -676,6 +712,7 @@ export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, ur
   if ((prev.locale ?? 'en-US') !== 'en-US') return no(`locale ${prev.locale}`);
   if ((prev.vh ?? null) !== (vh ?? null)) return no(`vh ${prev.vh ?? 'default'}`);
   if (!sameHide(prev.hide, hide)) return no('hide list differs');
+  const left = overlayWhy(prev, 'previous origin'); if (left) return no(left);
   if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
   return { reuse: true, why: fresh.policy };
 }
@@ -683,8 +720,8 @@ export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, ur
  * May the published stage take the archetype round's gates/<slug>-<w>/live.png? `liveMeta` = its live.json (gate.sh).
  * Symmetric capture: every parameter must be the one gate-all's own origin stitch would use (url, width, --vh, en-US,
  * --settle, the built-in dismissal only — no site consent / extra selectors —, the default UA, the same hide list: live.json
- * `hide`, absent = []). The one deliberate difference: live.png is headless bundled Chromium (the EDS side's tier),
- * recorded as `headed: false` in origin.json.
+ * `hide`, absent = []), and live.json must record the overlay-left check with nothing left. The one deliberate
+ * difference: live.png is headless bundled Chromium (the EDS side's tier), recorded as `headed: false` in origin.json.
  */
 export function liveReusePlan({ stage, recaptureOrigin, url, width, vh, hide = [] }, liveMeta, fresh) {
   const no = (why) => ({ reuse: false, why });
@@ -700,6 +737,7 @@ export function liveReusePlan({ stage, recaptureOrigin, url, width, vh, hide = [
   if (dm.consent != null || dm.extra != null) return no(`live.json dismissed site selectors (consent ${dm.consent}, extra ${dm.extra}) gate-all's stitch does not use`);
   if (liveMeta.ua != null) return no('live.json custom user agent');
   if (!sameHide(liveMeta.hide, hide)) return no('live.json hide list differs');
+  const left = overlayWhy(liveMeta, 'live.png'); if (left) return no(left);
   if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
   return { reuse: true, why: fresh.policy };
 }
@@ -798,7 +836,18 @@ async function main() {
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
-  const stitchArgs = (url, out, { inventory, hide = [] } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(inventory ? ['--inventory', inventory] : [])];
+  const stitchArgs = (url, out, { inventory, hide = [], json } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(inventory ? ['--inventory', inventory] : [])];
+  // stitch-shot's --json capture record (<slug>/<side>-shot.json, deleted before each stitch) → the meta's overlayLeft /
+  // fontsFailed; no readable record (an older stitch-shot) is unchecked — never a clean capture
+  const shotFile = (p, side) => join(dir(p), `${side}-shot.json`);
+  const shotRecord = (p, side) => {
+    const j = tryJson(shotFile(p, side));
+    if (!j || typeof j !== 'object' || !('overlayLeft' in j)) return { overlayLeft: 'unchecked (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)', fontsFailed: [] };
+    return { overlayLeft: j.overlayLeft || null, fontsFailed: Array.isArray(j.fontsFailed) ? j.fontsFailed : [] };
+  };
+  const stitch = (p, side, url, out, extra = {}, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out, { ...extra, json: shotFile(p, side) }), ...tail]); };
+  // a copied live.png carries live.json's record of the same check (the reuse deciders admit only overlayLeft: null)
+  const liveRecord = (lm) => ({ overlayLeft: lm.overlayLeft || null, fontsFailed: Array.isArray(lm.fontsFailed) ? lm.fontsFailed : [] });
   // --one-load: every stitch (both sides headed real Chrome) also takes the probes' inventories of the page it loaded;
   // --warmup needs a navigation of its own, so it turns the captures back to the probes' path.
   const OL = !!opts.oneLoad && !opts.warmup && !!DIFF_DIR;
@@ -855,21 +904,23 @@ async function main() {
     // --one-load: the archetype round's live.png is headless bundled Chromium, not a one-load capture (both stages)
     if (OL && opts.stage === 'prototype' && existsSync(cachedLive)) log(`origin ${p.slug} → live.png not reused (one-load: not a headed real-Chrome capture)`);
     // the prototype stage takes the archetype round's live.png only when it hid the same list (live.json `hide`, absent = [])
+    // and live.json records the overlay-left check with nothing left
     const protoLive = opts.stage === 'prototype' && existsSync(cachedLive) && !OL;
-    if (protoLive && !sameHide(lm && lm.hide, hide)) log(`origin ${p.slug} → live.png not reused (live.json hide list differs)`);
-    if (protoLive && sameHide(lm && lm.hide, hide)) {
+    const protoWhy = protoLive ? (!sameHide(lm && lm.hide, hide) ? 'live.json hide list differs' : overlayWhy(lm, 'live.png')) : null;
+    if (protoLive && protoWhy) log(`origin ${p.slug} → live.png not reused (${protoWhy})`);
+    if (protoLive && !protoWhy) {
       copyFileSync(cachedLive, out);
-      const lat = { at: (lm && lm.at) || statSync(cachedLive).mtime.toISOString() }; const f = fresh(lat);
-      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason, ...hideField(hide) };
+      const lat = { at: lm.at || statSync(cachedLive).mtime.toISOString() }; const f = fresh(lat);
+      r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...reuseOf(cachedLive, lat, 'prototype-stage'), stale: f.fresh ? undefined : f.reason, ...liveRecord(lm), ...hideField(hide) };
     }
-    else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)', ...hideField(hide) }; }
+    else if (lp.reuse) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', headed: false, ...reuseOf(cachedLive, lm, lp.why), note: 'archetype round capture (gate.sh; bundled Chromium — the EDS side\'s tier in legacy mode)', ...liveRecord(lm), ...hideField(hide) }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
       const t0 = new Date().toISOString();
-      const s = await run('node', [...stitchArgs(p.url, out, { hide, ...(OL ? { inventory: inventorySpec(p, 'origin') } : {}) }), '--headed']);
-      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2), ...(OL ? inventoryMeta(p, 'origin', t0) : {}), ...hideField(hide), ...stitchHidden(p, 'origin', s, hide) };
+      const s = await stitch(p, 'origin', p.url, out, { hide, ...(OL ? { inventory: inventorySpec(p, 'origin') } : {}) }, ['--headed']);
+      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, width: opts.width, locale: 'en-US', vh: opts.vh || null, headed: true, log: s.out.trim().split('\n').slice(-2), ...shotRecord(p, 'origin'), ...(OL ? inventoryMeta(p, 'origin', t0) : {}), ...hideField(hide), ...stitchHidden(p, 'origin', s, hide) };
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) {
         // the previous origin stays in use: a recorded reuse (stale when it predates the run), never a silent one
         const kept = readJson(meta); const f = fresh(kept);
@@ -885,7 +936,7 @@ async function main() {
     // image — its own freshness rule governs it
     if (r.at !== prevAt) rmSync(join(d, 'presence-origin.json'), { force: true });
     writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'origin', r);
-    const warns = [warn, r.stale].filter(Boolean);
+    const warns = [warn, r.stale, r.overlayLeft ? `overlay left — ${r.overlayLeft}` : null].filter(Boolean);
     log(`origin ${p.slug} → ${r.instrument}${r.reused ? ` reused ${r.from} (captured ${r.at}; ${r.policy})` : ''}${warns.length ? ` WARN ${warns.join('; ')}` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
   async function captureEds(p) {
@@ -894,10 +945,10 @@ async function main() {
     if (skipCapture(p, 'eds', capCtx)) { rec(p, 'eds', readJson(meta)); return; }
     if (hideMoved(p, 'eds')) log(`eds ${p.slug} → not reused (--skip-existing: hide list differs)`);
     const t0 = new Date().toISOString(); const hide = hideOf(p);
-    const s = await run('node', [...stitchArgs(edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }), ...(OL ? ['--headed'] : [])]);
-    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
+    const s = await stitch(p, 'eds', edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }, OL ? ['--headed'] : []);
+    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotRecord(p, 'eds'), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
-    log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
+    log(`eds ${p.slug} → ${r.instrument}${r.overlayLeft ? ` WARN overlay left — ${r.overlayLeft}` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
   const readSafe = (f) => { try { return readJson(f); } catch { return null; } };
   const probeCtx = { opts, edsUrl, presence: PRESENCE, unitsOf, hideOf };
@@ -1074,7 +1125,7 @@ async function main() {
   const rows = pages.map((p) => {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
-    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
+    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds) } }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
@@ -1088,8 +1139,9 @@ async function main() {
       gateKey: opts.stage === 'published' ? rowKey(storedKey(p), KEYS[p.slug], !!r.probedAt) : null, reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
   });
   const n = (f) => rows.filter(f).length;
-  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
-    failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
+  // an INCONCLUSIVE row is neither a FAIL nor an error, and has no pixel / height verdict (null) to count
+  const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.passWithOverride), fail: n((r) => !r.inconclusive && !r.pass && r.pct != null), error: n((r) => !r.inconclusive && r.pct == null), inconclusive: n((r) => r.inconclusive),
+    failPixel: n((r) => r.pct != null && r.pixelPass === false), failHeight: n((r) => r.pct != null && r.heightPass === false), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome'),
     reusedRows: n((r) => r.reused && r.reused.what === 'row'), reusedProbes: n((r) => r.reused && r.reused.what === 'probes') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
   totals.originReused = n((r) => r.originReused);
