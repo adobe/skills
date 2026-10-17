@@ -7,6 +7,8 @@
 //   content  A1: the preview's text and images against the live source (dom-equality) and the content model slot by
 //            slot (slot-coverage), with the page's declared deltas. Blocking unless the delta file says otherwise.
 //   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
+//   parity   A3: the preview held to the local reskin page with replica's instruments (stitch-shot, pixel-compare,
+//            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking; n/a on a protected preview.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
@@ -22,6 +24,7 @@ export const HELP = `Usage:
                          [--max-wait 120] [--dir stardust]
   node deployed-gate.mjs content --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
+  node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview.
 
@@ -69,12 +72,36 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. The
          token reaches donor-probe by environment, never argv. A probe that cannot run is exit 2 (a stalled
          decoration, an unreachable or protected page), 3 (a bot challenge) or 124 (no verdict).
+parity   A3. Holds the preview to the local reskin page with replica's instruments, as shipped, at 1440 and 360.
+         The reskin page (--reskin, default <dir>/reskin/pages/<slug>.html) is served by a local server for the
+         run, its own directory, never file://. Reads preview.json (no record, or one with problems, is exit 2;
+         a skipped leg prints "not run: skipped", exit 0) and needs replica's scripts beside the reskin ones
+         (stitch-shot, pixel-compare, crop-compare, chrome-parity, cap-probe; and the diff skill's live-session).
+         Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
+           pixel          pixel-compare: differing pixels at most 10%
+           height         |Δh| at most 5% of the reskin page's height (Δh = the preview's height − the reskin page's)
+           header crop    crop-compare of the header band, at most 2%: the reskin page's measured header height
+           footer crop    the same for the footer, counted from the bottom of each capture
+         a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,
+         "preview renders no <header>", where only the preview has none. At 1440 also:
+           chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
+           cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
+                          cap outside ±20px, or missing, is a FAIL
+         A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: replica's
+         capture instruments carry no site auth. Prints "PASS parity", or "FAIL parity" and one indented line per
+         failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
+         "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
+         per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
+         parity.json ({ verdict, rows: [{ check, width, value, bar, status, artifact, detail }] }), the captures and
+         diffs under parity/ and design.json beside preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124
+         on a row in error (the rows measured stay in parity.json).
 --path         the page's delivered path, without .html (/ns/home)
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
                only, never printed or recorded (preview.json says only auth: true). tokens hands it to
                donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
+--reskin <f>   the local reskin page parity holds the preview to (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
 
@@ -95,6 +122,11 @@ const SPEC = {
   },
   tokens: {
     values: ['--page', '--auth-header', '--token-env', '--dir'],
+    bools: [],
+    positional: [],
+  },
+  parity: {
+    values: ['--page', '--reskin', '--dir'],
     bools: [],
     positional: [],
   },
@@ -233,13 +265,23 @@ async function tokensStep(ctx) {
   }
 }
 
+async function parityStep(ctx) {
+  const { dir, opts, env, log } = ctx;
+  const preview = await pageRecord('parity', ctx);
+  if (!preview) return 0;
+  const { runParity, parityLines } = await helper('parity');
+  const result = await runParity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  for (const line of parityLines(result)) log(line);
+  return result.exit;
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, ...steps };
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 
