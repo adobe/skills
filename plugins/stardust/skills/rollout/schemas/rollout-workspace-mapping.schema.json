@@ -95,22 +95,33 @@
     },
     "block": {
       "type": "object",
-      "required": ["block", "variant", "variantId", "section", "instances"],
+      "required": ["block", "variant", "variantId", "section", "positions", "instances"],
       "additionalProperties": false,
       "properties": {
         "block": { "type": "string" },
         "variant": { "type": ["string", "null"], "description": "The coverage record's variant (its classes), or null." },
         "variantId": { "type": ["string", "null"], "description": "The coverage record's variantId." },
         "section": { "type": ["string", "null"], "description": "The id of the section holding it; null only for a record outside every coverage section." },
+        "positions": {
+          "type": "array",
+          "description": "The pos values of its instances across its pages (the record's place in each page's delivered.blocks), unique, ascending.",
+          "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        },
         "instances": { "type": "array", "description": "One per delivered occurrence, by slug then record pos.", "items": { "$ref": "#/$defs/instance" } }
       }
     },
     "instance": {
       "type": "object",
-      "required": ["slug", "selector", "confidence", "source", "verified"],
+      "required": ["slug", "pos", "selector", "confidence", "source", "verified"],
       "additionalProperties": false,
       "properties": {
         "slug": { "type": "string" },
+        "pos": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The block record's pos in the page's coverage row (delivered.blocks[].pos): with slug, a stable key to the delivered block."
+        },
         "selector": { "$ref": "#/$defs/selector" },
         "confidence": { "$ref": "#/$defs/confidence" },
         "source": {

@@ -646,7 +646,7 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
   }
   const skipped = [];
   const covered = (Array.isArray(row.delivered.blocks) ? row.delivered.blocks : [])
-    .filter((r) => r && (r.kind === 'block' || r.kind === 'default') && typeof r.block === 'string');
+    .filter((r) => r && (r.kind === 'block' || r.kind === 'default') && typeof r.block === 'string' && Number.isInteger(r.pos) && r.pos >= 0);
   // Each coverage record takes the next unused document record of its kind and name.
   const recs = covered.map((cov) => {
     const q = queues.get(`${cov.kind}|${cov.block}`);
@@ -789,7 +789,8 @@ function generalise(entries) {
  * One template from its mapped pages (slug order). The representative (slug = templateId, else the first)
  * gives the section list s1…sN; each other page's sections are LCS-aligned on their signature (style +
  * block names) to the list, an unmatched one inserted after the entry its predecessor matched (or first).
- * → { template, have: Map(section id → slugs of the pages that have it) }.
+ * Block entries list their instances' coverage `pos` values (positions, unique, ascending); each instance
+ * keeps its own `pos`. → { template, have: Map(section id → slugs of the pages that have it) }.
  */
 function assembleTemplate(templateId, pages) {
   const rep = pages.find((p) => p.slug === templateId) || pages[0];
@@ -840,8 +841,9 @@ function assembleTemplate(templateId, pages) {
     .sort((a, b) => sectionRank(a.entry.section) - sectionRank(b.entry.section) || a.first - b.first)
     .map((g) => ({
       ...g.entry,
+      positions: uniq(g.instances.map((i) => i.pos)).sort((a, b) => a - b),
       instances: g.instances.sort((a, b) => byStr(a.slug, b.slug) || a.pos - b.pos)
-        .map((i) => ({ slug: i.slug, selector: i.selector, confidence: i.confidence, source: i.source, verified: null })),
+        .map((i) => ({ slug: i.slug, pos: i.pos, selector: i.selector, confidence: i.confidence, source: i.source, verified: null })),
     }));
   return { template: { templateId, pages: pages.map((p) => p.slug).sort(byStr), sections, blocks }, have };
 }

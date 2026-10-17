@@ -424,7 +424,7 @@ const readMapping = (dir) => JSON.parse(readFileSync(join(dir, MAPPING), 'utf8')
 const lines = (r) => r.stdout.trimEnd().split('\n');
 const sortedKeys = (v) => (Array.isArray(v) ? v.map(sortedKeys) : v && typeof v === 'object'
   ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortedKeys(v[k])])) : v);
-const instance = (slug, selector, confidence, source, verified = null) => ({ slug, selector, confidence, source, verified });
+const instance = (slug, pos, selector, confidence, source, verified = null) => ({ slug, pos, selector, confidence, source, verified });
 
 // A hub page. Delivered: [heading+text, teaser-grid] · dark [cards with a delivered-only sentence] ·
 // [heading, an image-only media block, cards] · [an image-only hero]. Captured: the header nav repeats a
@@ -503,10 +503,10 @@ check('mapping: one page — instance selectors and confidences by text alignmen
   const text = t.blocks.filter((b) => b.instances.some((i) => i.source === 'text-alignment'));
   assert.deepEqual(text, [
     // the teaser list beats the header nav that repeats its first title
-    { block: 'teaser-grid', variant: null, variantId: variantOf('teaser-grid'), section: 's1', instances: [instance('hub', 'div.teaser-list', 1, 'text-alignment')] },
+    { block: 'teaser-grid', variant: null, variantId: variantOf('teaser-grid'), section: 's1', positions: [1], instances: [instance('hub', 1, 'div.teaser-list', 1, 'text-alignment')] },
     // cardheading (11) + acardabouttheharbour. (21) of 54: onlydeliveredsentence. (22) is delivered only
-    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's2', instances: [instance('hub', 'div.card', 0.593, 'text-alignment')] },
-    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's3', instances: [instance('hub', 'div.caption p', 1, 'text-alignment')] },
+    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's2', positions: [2], instances: [instance('hub', 2, 'div.card', 0.593, 'text-alignment')] },
+    { block: 'cards', variant: null, variantId: variantOf('cards'), section: 's3', positions: [5], instances: [instance('hub', 5, 'div.caption p', 1, 'text-alignment')] },
   ]);
   assert.deepEqual(t.blocks.map((b) => `${b.section}:${b.block}`), ['s1:teaser-grid', 's2:cards', 's3:media', 's3:cards', 's4:hero'], 'section order, then first appearance');
 });
@@ -517,9 +517,9 @@ check('mapping: an image-only block takes its position — the free child after 
   const pos = t.blocks.filter((b) => b.instances.some((i) => i.source === 'position'));
   assert.deepEqual(pos, [
     // section.gallery's children: h2 (the heading's anchor), figure (free), div.caption (the cards' anchor)
-    { block: 'media', variant: null, variantId: variantOf('media'), section: 's3', instances: [instance('hub', 'figure.frame', 0, 'position')] },
+    { block: 'media', variant: null, variantId: variantOf('media'), section: 's3', positions: [4], instances: [instance('hub', 4, 'figure.frame', 0, 'position')] },
     // a section without any anchor: the previous anchor's next element sibling, walking up (p → div.caption → section.gallery)
-    { block: 'hero', variant: 'wide', variantId: variantOf('hero', ['wide']), section: 's4', instances: [instance('hub', 'section.banner', 0, 'position')] },
+    { block: 'hero', variant: 'wide', variantId: variantOf('hero', ['wide']), section: 's4', positions: [6], instances: [instance('hub', 6, 'section.banner', 0, 'position')] },
   ]);
 });
 
@@ -583,14 +583,16 @@ check('mapping: a template of three pages — sections aligned by signature; the
     { id: 's2', selector: 'body > main > section.band', pages: ['story-one', 'story-three', 'story-two'], style: null, blocks: ['story-body'], defaultContent: [], confidence: 1 },
   ]);
   assert.deepEqual(t.blocks.map((b) => [b.section, b.block]), [['s3', 'quote'], ['s2', 'story-body']]);
+  // the story body is record 1 on story-one (no quote before it) and record 2 on the others
+  assert.deepEqual(t.blocks.map((b) => b.positions), [[1], [1, 2]]);
   assert.deepEqual(t.blocks[0].instances, [
-    instance('story-three', 'body > main > section:nth-of-type(2) > blockquote > p', 1, 'text-alignment'),
-    instance('story-two', 'blockquote.pull-quote p', 1, 'text-alignment'),
+    instance('story-three', 1, 'body > main > section:nth-of-type(2) > blockquote > p', 1, 'text-alignment'),
+    instance('story-two', 1, 'blockquote.pull-quote p', 1, 'text-alignment'),
   ]);
   assert.deepEqual(t.blocks[1].instances, [
-    instance('story-one', 'body > main > section.band:nth-of-type(2)', 1, 'text-alignment'),
-    instance('story-three', 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
-    instance('story-two', 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
+    instance('story-one', 1, 'body > main > section.band:nth-of-type(2)', 1, 'text-alignment'),
+    instance('story-three', 2, 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
+    instance('story-two', 2, 'body > main > section.band:nth-of-type(3)', 1, 'text-alignment'),
   ]);
 });
 
@@ -666,11 +668,11 @@ check('mapping: an image-only first block — the next anchor\'s previous elemen
   }]);
   ok(runMap(dir));
   // the heading+text anchors on div.inner, the first child of its section: up one level, section.lead's previous sibling
-  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', 'div.stage', 0, 'position')]);
+  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', 0, 'div.stage', 0, 'position')]);
   // the walk stops at body: head is never a block's origin
   put(join(dir, 'stardust', 'current', 'pages', 'landing.html'), '<html><head><title>Landing</title></head><body><main><h1>Landing title</h1><p>Landing intro text.</p></main></body></html>');
   ok(runMap(dir));
-  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', null, 0, 'position')]);
+  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', 0, null, 0, 'position')]);
 });
 
 check('mapping: a position fallback never takes an element another record already has (selector null when none is left)', () => {
@@ -827,6 +829,12 @@ check('mapping: the output validates against schemas/rollout-workspace-mapping.s
   bad.templates[0].blocks[0].instances[0].source = 'guess';
   bad.templates[0].sections[0].extra = 1;
   assert.equal(validate(schema, bad).length, 2, 'an unknown source and an unknown field are refused');
+  delete bad.templates[0].blocks[0].positions;
+  bad.templates[0].blocks[1].instances[0].pos = 1.5;
+  const errors = validate(schema, bad);
+  assert.equal(errors.length, 4, errors.join('\n'));
+  assert.ok(errors.includes('$.templates[0].blocks[0]: missing required positions'), errors.join('\n'));
+  assert.ok(errors.includes('$.templates[0].blocks[1].instances[0].pos: expected integer, got number'), errors.join('\n'));
 });
 
 check('mapping: runs from a project copy (stardust/scripts/rollout + stardust/scripts/diff); without diff/ exit 1', () => {
