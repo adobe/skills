@@ -356,8 +356,15 @@ export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.
-const CONSENT_CANDIDATES = [
+// Exported for the test that pins the list; every instrument goes through
+// dismissOverlays below.
+export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
+  // cmp-prefixed consent managers: the welcome box's "yes" button, its box
+  // variant and the button's text span
+  '#cmpwelcomebtnyes',
+  '.cmpboxbtnyes',
+  '#cmpbntyestxt',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
   'button:has-text("Accept")',

@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.33.1 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
+
+Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
+
+- **`replica/scripts/gate.sh` dismisses overlays on its captures the way its probes do.** The probes ran under
+  `--dismiss` while the stitched live capture had no way to receive a site-specific selector: the run captured
+  the live side with the consent banner and its scrim up, and the first pixel rounds measured them as page
+  difference (18–50 % hot bands) until `live.png` was re-taken by hand. Both captures now run the shared
+  dismissal by default, `--no-dismiss` turns it off everywhere in the round (new on `stitch-shot.mjs` as well),
+  and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
+  probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
+  the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+- **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
+  residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
+  `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
+  `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
+  and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` wraps a ledger whose top level
+  is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
+  that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
+  names the keys.
+
 ## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
 
 Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but
