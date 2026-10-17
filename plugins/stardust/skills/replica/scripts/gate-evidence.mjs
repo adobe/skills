@@ -37,7 +37,9 @@
  *                       `<tables>/all-<w>/summary.json`, written by gate-all.mjs): when a table
  *                       exists for the width, the page's row decides the gate (published row first)
  *                       and a page WITHOUT a row is OPEN: no table row — whatever a gate.sh log
- *                       says. Without any table the log rule above stands and one note names the
+ *                       says. A row gate-all marked `inconclusive` (a polluted capture) is `OPEN: INCONCLUSIVE —
+ *                       <reasons> — fix the capture (--hide / presence.json), not the page (…)` — never FAIL, never a pass.
+ *                       Without any table the log rule above stands and one note names the
  *                       missing table.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
  *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
@@ -102,7 +104,8 @@
  *   --json       the rows as a JSON array instead of the table
  *
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
- * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired) — then
+ * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired; `1440=INCONCLUSIVE` for an
+ * inconclusive table row) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
  * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
  * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
@@ -387,8 +390,15 @@ export function derive(page, jobs, o, ctx) {
       const row = (t.published && t.published[page.slug]) || (t.prototype && t.prototype[page.slug]) || null;
       if (!row) { open(`pixel-gate-${w}`, `no row in the pixel table (${[t.published && 'all', t.prototype && 'prototypes'].filter(Boolean).map((n) => `${n}-${w}`).join(', ')}) — run gate-all.mjs${t.published ? '' : ' --stage prototype'} so the page is measured`); continue; }
       const regime = t.published && t.published[page.slug] ? 'published' : 'prototype';
+      const md = relative(process.cwd(), row.file).replace(/\.json$/, '.md');
+      // a polluted capture measured nothing about the page: no verdict either way (its pct may be null)
+      if (row.inconclusive) {
+        facts.pixel[w] = { pct: row.pct ?? null, px: null, heightDelta: row.heightDelta ?? null, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: 'INCONCLUSIVE', label: 'table', regime };
+        open(`pixel-gate-${w}`, `INCONCLUSIVE — ${(row.reasons || []).join('; ') || 'no verdict'} — fix the capture (--hide / presence.json), not the page (${md}) [${regime} regime]`);
+        continue;
+      }
       facts.pixel[w] = { pct: row.pct, px: null, heightDelta: row.heightDelta, overflowX: null, clipped: row.clipped ?? null, content: row.content || null, verdict: row.pass ? 'PASS' : 'FAIL', label: 'table', regime };
-      const line = `${fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${relative(process.cwd(), row.file).replace(/\.json$/, '.md')}) [${regime} regime]`;
+      const line = `${fmtPct(row.pct)}, height delta ${row.heightDelta ?? '?'}px, clipped ${row.clipped ?? 'n/a'}, content ${row.contentNA ? 'n/a' : row.content ? `MISSING ${row.content.missing} / HIDDEN ${row.content.hidden}` : 'n/a'} (${md}) [${regime} regime]`;
       if (row.pass) pass(`pixel-gate-${w}`, line); else open(`pixel-gate-${w}`, `${(row.reasons || []).join('; ') || 'FAIL'} — ${line}`, 'FAIL');
       continue;
     }
@@ -498,7 +508,7 @@ export function buildProgress(existing, rows, { partial = false } = {}) {
 // ---- rows --------------------------------------------------------------------------------------
 const compact = (s) => (s === null || s === undefined ? '—' : String(s).replace(/ /g, ''));
 export function formatRow(r, widths) {
-  const px = widths.map((w) => `${w}=${r.pixel[w] ? `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta}${r.pixel[w].overflowX > 0 ? `/ovf+${r.pixel[w].overflowX}` : ''}` : '—'}`).join('  ');
+  const px = widths.map((w) => `${w}=${!r.pixel[w] ? '—' : r.pixel[w].verdict === 'INCONCLUSIVE' ? 'INCONCLUSIVE' : `${fmtPct(r.pixel[w].pct)}/Δ${r.pixel[w].heightDelta}${r.pixel[w].overflowX > 0 ? `/ovf+${r.pixel[w].overflowX}` : ''}`}`).join('  ');
   const cd = r.contentDiff === null ? '—' : (/^none/.test(r.contentDiff) ? 'none' : compact(r.contentDiff.replace(/ structural 🔴\)/, '🔴)')));
   return `${r.slug}  ${r.tier || '—'}  ${px}  cd=${cd}  lint=${compact(r.deliveryLint)}  media=${compact(r.media)}  gates=${r.gatesPassed.length}`;
 }

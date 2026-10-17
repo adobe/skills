@@ -9,7 +9,8 @@
 // record at its top level wrapped under types.<archetype> and refused only when it names no archetype (a ledger with
 // a `types` map is never second-guessed), the overflow assert line outranking a PASS pixel
 // line (FAIL: horizontal overflow, `/ovf+<px>` on the row, `overflowX` in the ledger), media-reconcile `n/a:` and
-// dropped from the acceptance set until the page's delivered content file exists (`--content`).
+// dropped from the acceptance set until the page's delivered content file exists (`--content`), an INCONCLUSIVE
+// pixel-table row read as OPEN (never FAIL, never a pass, a null pct tolerated).
 // Run: node plugins/stardust/skills/replica/scripts/test/gate-evidence.test.mjs   (about 2 s)
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -411,6 +412,26 @@ check('with a pixel table for the width, the row decides and a page without a ro
   assert.ok(by.home.stale.includes('pixel-gate-1440'), 'the declared gate is kept but reported stale');
   assert.ok(loadTables(join(root, 'stardust/replica/gates'), [1440, 360])[360].any === false);
   rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true });
+});
+check('an INCONCLUSIVE table row (a polluted capture) is OPEN — never FAIL, never a pass; a null pct does not throw', () => {
+  const dir = join(root, 'stardust/replica/gates/all-1440'); mkdirSync(dir, { recursive: true });
+  const reasons = ['origin capture polluted: overlay left — div#consent (fixed, 92 % of the viewport)', 'font-not-loaded:Brand Sans'];
+  writeFileSync(join(dir, 'summary.json'), JSON.stringify({ rows: [
+    { slug: 'tours-north', inconclusive: true, pass: false, passWithOverride: false, pct: null, heightDelta: null, clipped: null, content: null, reasons, override: null, fontsNotLoaded: ['Brand Sans'] },
+    { slug: 'about-history', inconclusive: true, pass: false, passWithOverride: false, pct: 3.1, heightDelta: 2, clipped: 0, content: { missing: 0, hidden: 0 }, reasons: ['build capture polluted: crawl-fullpage fallback'], override: null, fontsNotLoaded: [] },
+  ] }));
+  try {
+    const r = run('--dry-run', '--json'); assert.equal(r.code, 0, r.err);
+    const by = Object.fromEntries(JSON.parse(r.out).map((x) => [x.slug, x]));
+    assert.equal(by['tours-north'].gateEvidence['pixel-gate-1440'], `OPEN: INCONCLUSIVE — ${reasons.join('; ')} — fix the capture (--hide / presence.json), not the page (stardust/replica/gates/all-1440/summary.md) [published regime]`);
+    assert.match(by['about-history'].gateEvidence['pixel-gate-1440'], /^OPEN: INCONCLUSIVE — build capture polluted: crawl-fullpage fallback — fix the capture \(--hide \/ presence\.json\), not the page \(/);
+    for (const s of ['tours-north', 'about-history']) assert.equal(by[s].pixel['1440'].verdict, 'INCONCLUSIVE', s);
+    assert.ok(by['tours-north'].stale.includes('pixel-gate-1440'), 'a declared pass is kept but reported stale — an inconclusive row never earns it');
+    assert.ok(by['about-history'].missing.includes('pixel-gate-1440'), 'a measured pct on an inconclusive row is no pass');
+    const t = run('--dry-run', '--check'); assert.equal(t.code, 2, t.err);
+    assert.match(t.out, /^tours-north {2}sibling {2}1440=INCONCLUSIVE {2}360=\d/m);
+    assert.match(t.out, /^tours-north: stale pixel-gate-1440\b/m);
+  } finally { rmSync(join(root, 'stardust/replica/gates'), { recursive: true, force: true }); }
 });
 check('without any table the log rule stands and --check notes the missing table', () => {
   const r = run('--dry-run', '--check');
