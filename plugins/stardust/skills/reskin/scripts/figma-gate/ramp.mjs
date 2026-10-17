@@ -3,9 +3,9 @@
 // lineHeight, letterSpacing, fontFamily, color) against the Figma TEXT node's style, passed through
 // M1's normalizers and the rules' weightMap and familyEquivalence. The :root block rootTokens() derives
 // from donor-tokens.json is asserted verbatim. The assertions run through donor-probe.mjs with a
-// generated --spec, one run per width. tokenLiterals is advisory: it lists token values written as
+// generated --spec, one run per width; on a preview target it settles the EDS decoration and carries the site token
+// (see runRamp). tokenLiterals is advisory: it lists token values written as
 // literals outside the :root block. textExpect, rampSpecs and tokenLiterals are pure.
-import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,6 +14,7 @@ import { letterSpacingCss, lineHeightCss, px, weightCss } from '../figma/normali
 import { parseNormalizations } from '../figma/rules.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { findBox } from './boxes.mjs';
+import { selectorFor } from './checks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // donor-probe.mjs sits beside figma-gate.mjs in both layouts (plugin tree and project copy).
@@ -47,8 +48,9 @@ const MISSING = {
 const TOLERANCE = { lineHeight: 0.1, letterSpacing: 0.1 };
 
 // → Map<width, ProbeEntry[]>. The :root entries go once, at the first section's width. A property the
-// Figma node gives no value for is not asserted: it is pushed onto unasserted as an UNASSERTED result.
-export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted = [] }) {
+// Figma node gives no value for is not asserted: it is pushed onto unasserted as an UNASSERTED result. On a
+// preview (regime) an entry's selector is its previewSelector when it has one.
+export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted = [], regime = 'local' }) {
   const specs = new Map();
   const add = (width, entry) => {
     if (!specs.has(width)) specs.set(width, []);
@@ -65,10 +67,11 @@ export function rampSpecs({ join, checks, boxes, rootEntries, norm, unasserted =
       const box = rootBox && findBox(rootBox, entry.node);
       if (!box?.text) throw new Error(`${s.slot} ${entry.id}: ${entry.node} is not a TEXT node inside the root for width ${entry.width}`);
       const want = textExpect(box.text, norm);
-      const selector = entry.selector === ':scope' ? s.selector : `${s.selector} ${entry.selector}`;
+      const own = selectorFor(entry, regime);
+      const selector = own === ':scope' ? s.selector : `${s.selector} ${own}`;
       for (const property of PROPERTIES) {
         if (want[property] === null) {
-          unasserted.push({ slot: s.slot, id: entry.id, node: entry.node, property, status: 'UNASSERTED', detail: MISSING[property] });
+          unasserted.push({ slot: s.slot, id: entry.id, node: entry.node, root: section.roots[entry.width], property, status: 'UNASSERTED', detail: MISSING[property] });
           continue;
         }
         add(entry.width, {
@@ -136,26 +139,44 @@ export function tokenLiterals(html, rootEntries, { lengths = false } = {}) {
   return found.sort((a, b) => a.index - b.index).map(({ line, literal, token }) => ({ line, literal, token }));
 }
 
-async function pageSource(url) {
+// The page's HTML as served, for the advisory list of token literals. A protected preview gets the site token, on the
+// preview's own origin (a redirect to another origin drops it).
+async function pageSource(url, auth) {
   try {
     if (url.startsWith('file:')) return readFileSync(fileURLToPath(url), 'utf8');
-    const res = await fetch(url);
+    const res = await fetch(url, { headers: auth ? { authorization: auth } : {} });
     return res.ok ? await res.text() : '';
   } catch { return ''; }
 }
+
+const STALLED = /stalled decoration:/;
 
 // checks is validateChecks(...).sections; join is runJoin's result; rules is curation-rules.json.
 // Writes ramp-spec.<w>.json, ramp.<w>.md, ramp.<w>.json and ramp.json under out. A probe that cannot
 // run (any exit other than 0 or 1, or exit 1 without a fresh JSON) throws with its stderr: no verdict,
 // never a ramp failure. Properties Figma gives no value for are listed as UNASSERTED results; they do
-// not fail the ramp.
-export async function runRamp({ target, join: joined, checks, boxes, tokens, rules, out, donorProbe = DONOR_PROBE }) {
+// not fail the ramp. Every result carries root, the checks root its entry was measured against (null for a :root entry).
+// On a preview target the probe settles the page's EDS decoration (--wait-eds) and gets the site token (auth, the
+// Authorization header value) by environment and --token-env, never argv; a probe that stalls on the decoration is no
+// verdict (code 124), a bot challenge or token halt code 3. The probe runs as an async child, so a server in this process
+// can answer it.
+export async function runRamp({ target, join: joined, checks, boxes, tokens, rules, out, auth = null, donorProbe = DONOR_PROBE }) {
+  const preview = target.regime === 'preview';
+  const { childEnv, coded, outputOf, runChild, tokenFlags } = await import('../deployed/child.mjs');
   const norm = parseNormalizations(rules?.normalizations, []);
   const rootEntries = rootTokens(tokens).entries;
   const unasserted = [];
-  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm, unasserted });
+  const specs = rampSpecs({ join: joined, checks, boxes, rootEntries, norm, unasserted, regime: target.regime });
   const nodeOf = new Map();
-  for (const [slot, section] of Object.entries(checks)) for (const t of section.type) nodeOf.set(`${slot} ${t.id}`, t.node);
+  const rootOf = new Map();
+  for (const [slot, section] of Object.entries(checks)) {
+    for (const t of section.type) {
+      nodeOf.set(`${slot} ${t.id}`, t.node);
+      rootOf.set(`${slot} ${t.id}`, section.roots[t.width]);
+    }
+  }
+  const settle = preview ? ['--wait-eds', '--eds-timeout', String(target.edsTimeoutMs ?? 20000), ...tokenFlags(auth)] : [];
+  const env = preview ? childEnv({}, auth) : process.env;
 
   mkdirSync(out, { recursive: true });
   const tokensFile = join(out, 'ramp-tokens.json');
@@ -169,15 +190,15 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
     const jsonFile = join(out, `ramp.${width}.json`);
     writeFileSync(specFile, `${JSON.stringify(entries, null, 2)}\n`);
     rmSync(jsonFile, { force: true });
-    const r = spawnSync(process.execPath, [donorProbe, '--tokens', tokensFile, '--spec', specFile, '--rendered', target.url, '--viewport', String(width), '--no-sanity', '--report', report, '--json', jsonFile], { encoding: 'utf8' });
+    const r = await runChild(process.execPath, [donorProbe, '--tokens', tokensFile, '--spec', specFile, '--rendered', target.url, '--viewport', String(width), '--no-sanity', '--report', report, '--json', jsonFile, ...settle], { env });
     let probe = null;
     try { probe = JSON.parse(readFileSync(jsonFile, 'utf8')); } catch { /* reported below */ }
     if ((r.status !== 0 && r.status !== 1) || !probe) {
-      const why = (r.stderr || r.stdout || '').trim();
+      const why = outputOf(r, auth);
+      if (r.status === 2 && STALLED.test(why)) throw coded(124, `donor-probe at ${width}px: ${why}`);
       if (r.status === 2) throw new UsageError(`donor-probe at ${width}px: ${why}`);
-      const err = new Error(`donor-probe at ${width}px did not give a verdict (exit ${r.status}): ${why}`);
-      if (r.status === 3) err.code = 3;
-      throw err;
+      const message = `donor-probe at ${width}px did not give a verdict (exit ${r.status ?? r.signal}): ${why}`;
+      throw r.status === 3 ? coded(3, message) : new Error(message);
     }
     perWidth.push({ width, exit: r.status, report });
     const byLabel = new Map(probe.results.map((p) => [p.label, p]));
@@ -191,13 +212,13 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
         status = got.status === 'PASS' ? 'PASS' : 'FAIL';
         detail = /^selector ".*" matched nothing$/.test(got.detail) ? got.detail : `${got.detail} vs ${e.value}`;
       }
-      results.push({ slot, id, node: isRoot ? null : nodeOf.get(`${slot} ${id}`), property: e.property, status, detail });
+      results.push({ slot, id, node: isRoot ? null : nodeOf.get(`${slot} ${id}`), root: isRoot ? null : rootOf.get(`${slot} ${id}`), property: e.property, status, detail });
     }
   }
 
   results.push(...unasserted);
-  const literals = tokenLiterals(await pageSource(target.url), rootEntries);
+  const literals = tokenLiterals(await pageSource(target.url, preview ? auth : null), rootEntries);
   const result = { pass: results.every((x) => x.status !== 'FAIL'), results, perWidth, literals };
-  writeFileSync(join(out, 'ramp.json'), `${JSON.stringify(result, null, 2)}\n`);
+  writeFileSync(join(out, 'ramp.json'), `${JSON.stringify({ url: target.url, regime: target.regime, ...result }, null, 2)}\n`);
   return result;
 }

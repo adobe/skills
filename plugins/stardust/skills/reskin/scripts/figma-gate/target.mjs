@@ -107,7 +107,7 @@ async function fetchPlain(url, auth) {
 // a bot challenge code 3, a 401 or 403 a usage error. Its sections are not marked, so join.collect reads what the
 // join needs: the authored form of the page, the text of each decorated `main > div` (the page is open) and the
 // data-slot sections of the reskin page (a file or URL, opened in a second page of the same browser); join.match is
-// plain-join.mjs's plainJoin over them.
+// plain-join.mjs's plainJoin over them. edsTimeoutMs, the settle bound, is on the target so the ramp's probe uses it too.
 export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000 } = {}) {
   const url = toUrl(input);
   if (!/^https?:/i.test(url)) throw new UsageError(`--target preview needs the http(s) URL of the preview, got ${input}`);
@@ -117,6 +117,7 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
   return {
     url,
     regime: 'preview',
+    edsTimeoutMs,
     join: {
       name: '.plain.html',
       async collect(page) {

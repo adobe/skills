@@ -75,8 +75,8 @@ await check('rampSpecs: a Figma value that is absent is reported as an unasserte
   const at = rampSpecs({ join: join_, checks, boxes: bare, rootEntries, norm, unasserted }).get(1440);
   assert.equal(at.filter((e) => e.selector !== ':root').length, 4 * 6 - 2);
   assert.deepEqual(unasserted, [
-    { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'UNASSERTED', detail: 'Figma has no font size' },
-    { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' },
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'fontSize', status: 'UNASSERTED', detail: 'Figma has no font size' },
+    { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' },
   ]);
 });
 
@@ -131,11 +131,12 @@ if (playwrightOk) {
     assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), [], JSON.stringify(r.results.filter((x) => x.status !== 'PASS')));
     assert.equal(r.pass, true);
     assert.deepEqual(r.perWidth.map((w) => [w.width, w.exit]), [[1440, 0]]);
-    assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 't1' && x.property === 'fontSize'), { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'PASS', detail: '40px vs 40px' });
-    assert.deepEqual(r.results.find((x) => x.property === '--max-width'), { slot: null, id: '--max-width', node: null, property: '--max-width', status: 'PASS', detail: '1200px vs 1200px' });
+    assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 't1' && x.property === 'fontSize'), { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'fontSize', status: 'PASS', detail: '40px vs 40px' });
+    assert.deepEqual(r.results.find((x) => x.property === '--max-width'), { slot: null, id: '--max-width', node: null, root: null, property: '--max-width', status: 'PASS', detail: '1200px vs 1200px' });
     const work = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
     for (const f of ['ramp-spec.1440.json', 'ramp.1440.md', 'ramp.1440.json', 'ramp.json']) assert.ok(existsSync(join(work, f)), f);
-    assert.deepEqual(Object.keys(rampOf(p)), ['pass', 'results', 'perWidth', 'literals']);
+    assert.deepEqual(Object.keys(rampOf(p)), ['url', 'regime', 'pass', 'results', 'perWidth', 'literals']);
+    assert.deepEqual([rampOf(p).url, rampOf(p).regime], [urlOf(p), 'local']);
     assert.deepEqual(rampOf(p).results, r.results);
     assert.ok(r.literals.length > 0);
   });
@@ -210,7 +211,7 @@ if (playwrightOk) {
     nonSolid(p);
     const r = await gate(p);
     const skipped = r.results.filter((x) => x.status === 'UNASSERTED');
-    assert.deepEqual(skipped, [{ slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' }]);
+    assert.deepEqual(skipped, [{ slot: 's02', id: 't1', node: 'I1:7;5:2', root: '1:7', property: 'color', status: 'UNASSERTED', detail: 'Figma has no solid color' }]);
     assert.equal(r.results.length, total);
     assert.equal(r.pass, true);
     assert.deepEqual(rampOf(p).results.filter((x) => x.status === 'UNASSERTED'), skipped);

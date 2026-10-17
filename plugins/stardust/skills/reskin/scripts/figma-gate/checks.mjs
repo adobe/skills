@@ -1,6 +1,7 @@
 // skills/reskin/scripts/figma-gate/checks.mjs — the checks file (reskin/figma-checks/<slug>.json): the agent
 // pairs page selectors with Figma nodes, this module validates the pairing against the join, the box trees
-// and donor-tokens.json and applies the defaults. Every problem is collected, never the first only.
+// and donor-tokens.json and applies the defaults. Every problem is collected, never the first only. An entry may
+// carry previewSelector, the selector of the deployed DOM (selectorFor picks it on a preview).
 // Pure: boxes come from loadBoxes/buildBoxes (rootsNamed lists the roots to load), no I/O here.
 import { findBox } from './boxes.mjs';
 
@@ -15,6 +16,10 @@ const text = (v) => typeof v === 'string' && v.trim() !== '';
 const entries = (v) => (Array.isArray(v) ? v : []);
 
 const rootOf = (section, joined) => (text(section?.node) ? section.node : joined.node);
+
+// The selector an entry is measured by: its previewSelector on a deployed preview (EDS blocks rebuild the markup the
+// reskin page was written with), its selector otherwise. Either one is scoped to the section the join found.
+export const selectorFor = (entry, regime) => (regime === 'preview' ? entry.previewSelector ?? entry.selector : entry.selector);
 
 // The roots a checks file needs in loadBoxes: each joined module's frame (or the section's own node)
 // and every per-width root, in first-seen order.
@@ -91,6 +96,10 @@ export function validateChecks(checks, { join, boxes, tokens }) {
       if (seen.has(e.id)) problems.push(`${slot}: duplicate id ${e.id}`);
       seen.add(e.id);
       if (!text(e.selector)) problems.push(`${e.id}: selector must be a CSS selector scoped to the section`);
+      if (e.previewSelector !== undefined) {
+        if (typeof e.previewSelector !== 'string') problems.push(`${e.id}: previewSelector must be a string (a CSS selector scoped to the section)`);
+        else if (!e.previewSelector.trim()) problems.push(`${e.id}: previewSelector must not be blank`);
+      }
       return e.id;
     };
 

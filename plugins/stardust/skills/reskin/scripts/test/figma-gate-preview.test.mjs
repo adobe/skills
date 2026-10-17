@@ -1,23 +1,30 @@
 #!/usr/bin/env node
-// skills/reskin/scripts/test/figma-gate-preview.test.mjs — figma-gate on a deployed preview (M2a Task 10): the join of
-// the reskin page's data-slot sections to the preview's authored form (plainSections, plainJoin: pure), then
-// previewTarget, runJoin and the CLI `join --target preview` against the fake preview of fixtures/deployed/ (needs
-// playwright; prints a skip line otherwise). Run: node <this file>.
+// skills/reskin/scripts/test/figma-gate-preview.test.mjs — figma-gate on a deployed preview (M2a Tasks 10 and 11): the join of
+// the reskin page's data-slot sections to the preview's authored form (plainSections, plainJoin: pure), previewTarget, runJoin
+// and the CLI `join --target preview` against the fake preview of fixtures/deployed/, then previewSelector (selectorFor,
+// validateChecks, rampSpecs: pure) and geometry, ramp, pixel and all on that preview, with the site token and the settle
+// carried to donor-probe (needs playwright, pngjs and pixelmatch; prints a skip line otherwise). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { main } from '../figma-gate.mjs';
+import { parseNormalizations } from '../figma/rules.mjs';
+import { buildBoxes } from '../figma-gate/boxes.mjs';
+import { selectorFor, validateChecks } from '../figma-gate/checks.mjs';
+import { runGeometry } from '../figma-gate/geometry.mjs';
 import { includedModules, readInputs, workDir } from '../figma-gate/io.mjs';
 import { runJoin } from '../figma-gate/join.mjs';
 import { anchors, parseMapping } from '../figma-gate/mapping.mjs';
 import { plainJoin, plainSections } from '../figma-gate/plain-join.mjs';
 import { prepare } from '../figma-gate/prepare.mjs';
+import { rampSpecs, runRamp } from '../figma-gate/ramp.mjs';
 import { localAttributes, plainUrl, previewTarget } from '../figma-gate/target.mjs';
+import { rootTokens } from '../render/root-tokens.mjs';
+import { KEY, VERSION, makeProject } from './fixtures/figma-gate/setup.mjs';
 import { fixturePath, startPreviewServer, startSourceServer } from './fixtures/deployed/servers.mjs';
-import { makeProject } from './fixtures/figma-gate/setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'figma-gate.mjs');
@@ -221,6 +228,52 @@ await check('plainJoin: the reskin page\'s own drift from mapping.md is reported
 await check('plainJoin: whitespace, case and entities in the authored form do not matter', () => {
   const s = plainSections(doc('<div></div>', '<div><h1>WELCOME\n   to the   Kit</h1></div>', '<div><h2>Everything&nbsp;in one place</h2></div>'));
   assert.equal(joined({ plain: s }).pass, true);
+});
+
+const kitRead = (...p) => JSON.parse(readFileSync(join(HERE, 'fixtures', ...p), 'utf8'));
+const kit = { boxes: buildBoxes({ nodes: kitRead('figma-kit', 'nodes.json'), roots: ['1:3', '1:7'] }), tokens: kitRead('figma-gate', 'donor-tokens.json'), rules: kitRead('figma-kit', 'curation-rules.json') };
+const kitJoin = { sections: [{ slot: 's01', module: 'M1', node: '1:3', selector: 'main > div:nth-child(2)', index: 1 }, { slot: 's02', module: 'M2', node: '1:7', selector: 'main > div:nth-child(3)', index: 2 }] };
+// The M2b checks file with the deployed DOM's selectors added where the blocks rebuilt the markup.
+const PREVIEW_SELECTORS = { '.container': '.default-content-wrapper', '.btn': 'a.button', '.card': '.cards > div', '.feature': '.cards > p', '.card-label': '.badge' };
+const previewChecks = (checks = kitRead('figma-gate', 'checks.json')) => {
+  for (const section of Object.values(checks.sections)) {
+    for (const e of [...section.geometry, ...section.type]) if (PREVIEW_SELECTORS[e.selector]) e.previewSelector = PREVIEW_SELECTORS[e.selector];
+  }
+  return checks;
+};
+
+await check('selectorFor: previewSelector on a preview, the selector otherwise and when there is no previewSelector', () => {
+  const entry = { selector: '.card', previewSelector: '.cards > div' };
+  assert.equal(selectorFor(entry, 'preview'), '.cards > div');
+  assert.equal(selectorFor(entry, 'local'), '.card');
+  assert.equal(selectorFor({ selector: '.card' }, 'preview'), '.card');
+});
+
+await check('validateChecks: previewSelector must be a string; a string is kept on geometry and type entries', () => {
+  const ctx = { join: kitJoin, boxes: kit.boxes, tokens: kit.tokens };
+  const ok = validateChecks(previewChecks(), ctx);
+  assert.deepEqual(ok.problems, []);
+  assert.equal(ok.sections.s02.geometry[0].previewSelector, '.cards > div');
+  assert.equal(ok.sections.s02.type[1].previewSelector, '.badge');
+  assert.equal(ok.sections.s02.type[0].previewSelector, undefined);
+  const bad = previewChecks();
+  bad.sections.s01.geometry[0].previewSelector = 3;
+  bad.sections.s02.type[0].previewSelector = ['h2'];
+  bad.sections.s02.geometry[1].previewSelector = '  ';
+  assert.deepEqual(validateChecks(bad, ctx).problems, [
+    'g1: previewSelector must be a string (a CSS selector scoped to the section)',
+    'g2: previewSelector must not be blank',
+    't1: previewSelector must be a string (a CSS selector scoped to the section)',
+  ]);
+});
+
+await check('rampSpecs: on a preview the type entries are measured by previewSelector under the join\'s section selector; locally by selector', () => {
+  const norm = parseNormalizations(kit.rules.normalizations, []);
+  const rootEntries = rootTokens(kit.tokens).entries;
+  const { sections } = validateChecks(previewChecks(), { join: kitJoin, boxes: kit.boxes, tokens: kit.tokens });
+  const selectors = (regime) => [...new Set(rampSpecs({ join: kitJoin, checks: sections, boxes: kit.boxes, rootEntries, norm, regime }).get(1440).map((e) => e.selector))].filter((s) => s !== ':root');
+  assert.deepEqual(selectors('preview'), ['main > div:nth-child(2) h1', 'main > div:nth-child(2) a.button', 'main > div:nth-child(3) h2', 'main > div:nth-child(3) .badge']);
+  assert.deepEqual(selectors('local'), ['main > div:nth-child(2) h1', 'main > div:nth-child(2) .btn', 'main > div:nth-child(3) h2', 'main > div:nth-child(3) .card-label']);
 });
 
 let playwrightOk = false;
@@ -500,6 +553,256 @@ if (playwrightOk) {
       assert.equal(wrong.all.includes('hlxtok-wrong-0000'), false);
     });
   });
+
+  // Checks, ramp, pixel and the register on the deployed page (Task 11).
+  const previewProject = (n, checks = previewChecks()) => {
+    const p = project(n);
+    writeFileSync(join(p.dir, 'reskin', 'figma-checks', 'home.json'), `${JSON.stringify(checks, null, 2)}\n`);
+    return p;
+  };
+  const stepArgs = (step, p, url, extra = []) => [step, '--page', p.slug, '--url', url, '--target', 'preview', '--reskin', p.page, '--dir', p.dir, ...extra];
+  const stepFile = (p, name) => JSON.parse(readFileSync(join(workDir(p.dir, p.slug), name), 'utf8'));
+  const readyOn = async (p, url) => {
+    const ready = await prepare({ dir: p.dir, slug: p.slug, url, target: previewTarget(url, { reskin: p.page }) });
+    assert.equal(ready.drift, false, ready.drift ? ready.join.problems.join('\n') : '');
+    return ready;
+  };
+  const walk = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+
+  await check('geometry on a preview: previewSelector measures the deployed card (560 vs 560); the same entry with only selector ".card" is unmeasurable there', async () => {
+    await withPreview({}, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const measure = async (name, change) => {
+        const checks = previewChecks();
+        change(checks);
+        const p = previewProject(name, checks);
+        const ready = await readyOn(p, url);
+        return runGeometry({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, out: ready.out });
+      };
+      const found = await measure('geo-preview', () => {});
+      const card = found.results.find((x) => x.slot === 's02' && x.id === 'g1');
+      assert.deepEqual([card.status, card.got, card.want, card.root, card.detail], ['PASS', 560, 560, '1:7', '560 vs 560 (±1)']);
+      assert.deepEqual(found.results.filter((x) => x.status !== 'PASS'), []);
+      const lost = await measure('geo-plain', (checks) => { delete checks.sections.s02.geometry[0].previewSelector; });
+      const miss = lost.results.find((x) => x.slot === 's02' && x.id === 'g1');
+      assert.deepEqual([miss.status, miss.got, miss.detail], ['FAIL', null, 'unmeasurable: .card matched nothing in the section']);
+      assert.deepEqual(lost.results.filter((x) => x.status !== 'PASS').map((x) => x.id), ['g1']);
+    });
+  });
+
+  await check('CLI geometry --target preview: PASS 10/10, geometry.json records regime preview, the url and the root of each result', async () => {
+    await withPreview({}, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('cli-geometry');
+      const r = await run(stepArgs('geometry', p, url), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.match(r.stdout, /^geometry PASS 10\/10$/m);
+      const g = stepFile(p, 'geometry.json');
+      assert.deepEqual([g.regime, g.url, g.pass], ['preview', url, true]);
+      assert.deepEqual(g.results.map((x) => x.root), [...Array(6).fill('1:3'), ...Array(4).fill('1:7')]);
+    });
+  });
+
+  await check('CLI geometry --target preview: a selector the deployed DOM lacks is one indented unmeasurable line, exit 1', async () => {
+    await withPreview({}, async (server) => {
+      const checks = previewChecks();
+      delete checks.sections.s02.geometry[0].previewSelector;
+      const p = previewProject('cli-geometry-miss', checks);
+      const r = await run(stepArgs('geometry', p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 1, r.all);
+      assert.match(r.stdout, /^geometry FAIL 1\/10$/m);
+      assert.match(r.stdout, /^ {2}s02 g1 width \(node I1:7;5:7\): unmeasurable: \.card matched nothing in the section$/m);
+    });
+  });
+
+  // A page whose badge is 12px until its block is "loaded", 14px after: a probe that does not wait reads 12px.
+  const lateBadge = (html) => html.replace('.cards .badge { font: 500 14px/20px', '.cards .badge { font: 500 12px/20px').replace('</style>', '.cards.block[data-block-status="loaded"] .badge { font-size: 14px; }\n</style>');
+
+  await check('CLI ramp --target preview waits for the decoration (decorated 4 s after parse): the type entries pass, ramp.json records regime preview and the roots', async () => {
+    const page = customPreview('late', PLAIN, lateBadge);
+    await withPreview({ decorateDelayMs: 4000, pages: { '/ns/home': page } }, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('cli-ramp');
+      const r = await run(stepArgs('ramp', p, url), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.match(r.stdout, /^ramp PASS (\d+)\/\1$/m);
+      const j = stepFile(p, 'ramp.json');
+      assert.deepEqual([j.regime, j.url, j.pass], ['preview', url, true]);
+      const typed = j.results.filter((x) => x.slot !== null);
+      assert.ok(typed.length >= 24);
+      assert.ok(typed.every((x) => x.root === (x.slot === 's01' ? '1:3' : '1:7')), JSON.stringify(typed.find((x) => !x.root)));
+      assert.ok(j.results.filter((x) => x.slot === null).every((x) => x.root === null));
+      assert.equal(typed.find((x) => x.slot === 's02' && x.id === 't2' && x.property === 'fontSize').detail, '14px vs 14px');
+    });
+  });
+
+  const probeStub = (p, body) => {
+    const stub = join(p.root, 'probe-stub.mjs');
+    const seen = join(p.root, 'probe-seen.json');
+    writeFileSync(stub, [
+      'import { readFileSync, writeFileSync } from "node:fs";',
+      'const arg = (n) => process.argv[process.argv.indexOf(n) + 1];',
+      `writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv: process.argv.slice(2), token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null }));`,
+      body,
+    ].join('\n'));
+    return { stub, seen: () => JSON.parse(readFileSync(seen, 'utf8')) };
+  };
+  const pass = 'const spec = JSON.parse(readFileSync(arg("--spec"), "utf8")); writeFileSync(arg("--json"), JSON.stringify({ pass: true, results: spec.map((e) => ({ label: e.label, status: "PASS", detail: "x" })) }));';
+
+  await check('runRamp on a preview passes donor-probe --wait-eds and the token through its environment (--token-env), never argv; without a token an inherited variable is dropped', async () => {
+    await withPreview({}, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('ramp-stub');
+      const ready = await readyOn(p, url);
+      const probe = probeStub(p, pass);
+      const ramp = (extra) => runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, donorProbe: probe.stub, ...extra });
+      const inherited = process.env.DEPLOYED_GATE_SITE_TOKEN;
+      process.env.DEPLOYED_GATE_SITE_TOKEN = 'inherited-not-ours';
+      try {
+        await ramp({ auth: `token ${TOKEN}` });
+        const given = probe.seen();
+        assert.ok(given.argv.includes('--wait-eds'), given.argv.join(' '));
+        assert.deepEqual(given.argv.slice(given.argv.indexOf('--token-env'), given.argv.indexOf('--token-env') + 2), ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN']);
+        assert.equal(given.token, `token ${TOKEN}`);
+        assert.equal(given.argv.join(' ').includes(TOKEN), false, 'the token is in argv');
+        assert.equal(given.argv[given.argv.indexOf('--rendered') + 1], url);
+        await ramp({});
+        const none = probe.seen();
+        assert.ok(none.argv.includes('--wait-eds'));
+        assert.equal(none.argv.includes('--token-env'), false);
+        assert.equal(none.token, null, 'an inherited token variable reached the probe');
+      } finally {
+        if (inherited === undefined) delete process.env.DEPLOYED_GATE_SITE_TOKEN; else process.env.DEPLOYED_GATE_SITE_TOKEN = inherited;
+      }
+    });
+  });
+
+  await check('runRamp on a preview: a probe that stalls on the decoration is no verdict (code 124, not a usage error), its message redacted; a probe exit 3 stays code 3', async () => {
+    await withPreview({}, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('ramp-stall');
+      const ready = await readyOn(p, url);
+      const ramp = (probe, extra = {}) => runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, donorProbe: probe.stub, ...extra });
+      const stalled = probeStub(p, 'console.error(`[donor-probe] stalled decoration: block cards ${process.env.DEPLOYED_GATE_SITE_TOKEN}`); process.exit(2);');
+      await assert.rejects(ramp(stalled, { auth: `token ${TOKEN}` }), (e) => e.code === 124 && e.name !== 'UsageError' && /stalled decoration: block cards/.test(e.message) && !e.message.includes(TOKEN));
+      const challenged = probeStub(p, 'console.error("[donor-probe] bot challenge"); process.exit(3);');
+      await assert.rejects(ramp(challenged), (e) => e.code === 3 && /bot challenge/.test(e.message));
+      const setup = probeStub(p, `console.error(\`[donor-probe] no site token \${process.env.DEPLOYED_GATE_SITE_TOKEN}\`); process.exit(2);`);
+      await assert.rejects(ramp(setup, { auth: `token ${TOKEN}` }), (e) => e.name === 'UsageError' && /no site token/.test(e.message) && !e.message.includes(TOKEN));
+    });
+  });
+
+  let pngOk = false;
+  try { await import('pngjs'); await import('pixelmatch'); pngOk = true; } catch { console.log('skip  pixel --target preview (pngjs and pixelmatch are not importable here; run this test in an environment that has them)'); }
+
+  if (pngOk) {
+    const { PNG } = await import('pngjs');
+    const { cacheFor } = await import('../figma/cache.mjs');
+    // The frame image: figma-frame.html drawn at 1440×1840, as M1 would cache it for frame 1:2.
+    const frameImage = async (p) => {
+      const browser = await chromium.launch();
+      try {
+        const page = await browser.newPage({ viewport: { width: 1440, height: 1840 } });
+        await page.goto(pathToFileURL(join(p.root, 'figma-frame.html')).href);
+        const v = cacheFor(p.dir, KEY).version(VERSION);
+        mkdirSync(dirname(v.path('images/1-2.png')), { recursive: true });
+        writeFileSync(v.path('images/1-2.png'), await page.screenshot());
+        v.write('images.json', { '1:2': 'images/1-2.png' });
+      } finally { await browser.close(); }
+    };
+
+    await check('CLI pixel --target preview: advisory, the decorated section at the join selector is the screenshot, a frame whose copy differs is n/a; pixel.json records regime, root and fonts', async () => {
+      await withPreview({}, async (server) => {
+        const url = `${server.origin}/ns/home`;
+        const p = previewProject('cli-pixel');
+        await frameImage(p);
+        const r = await run(stepArgs('pixel', p, url), { cwd: p.root });
+        assert.equal(r.status, 0, r.all);
+        assert.match(r.stdout, /^pixel advisory: 2 section\(s\); uncalibrated reference/m);
+        assert.match(r.stdout, /^ {2}s01 \d+\.\d\d% \(text (\d+\.\d\d%|n\/a), Δh -?\d+\)$/m);
+        assert.match(r.stdout, /^ {2}s02 n\/a: frame content differs$/m);
+        const j = stepFile(p, 'pixel.json');
+        assert.deepEqual([j.regime, j.url], ['preview', url]);
+        const [s01, s02] = j.results;
+        assert.deepEqual([s01.slot, s01.verdict, s01.root, s02.slot, s02.verdict, s02.root], ['s01', 'advisory', '1:3', 's02', 'n/a', '1:7']);
+        assert.ok(s01.fonts.some((f) => f.family === 'Inter' && typeof f.served === 'boolean'), JSON.stringify(s01.fonts));
+        const shot = PNG.sync.read(readFileSync(join(workDir(p.dir, p.slug), 's01.page.png')));
+        assert.equal(shot.width, 1440);
+        assert.ok(shot.height > 400 && shot.height < 800, `the section screenshot is ${shot.height}px tall`);
+        assert.ok(existsSync(join(workDir(p.dir, p.slug), 's01.diff.png')));
+      });
+    });
+
+    await check('pixel --target preview, mode fixture: the section is found on the local fixture by data-slot, not by the preview\'s main > div selector', async () => {
+      await withPreview({}, async (server) => {
+        const checks = previewChecks();
+        checks.sections.s02.pixel = { mode: 'fixture', fixtureUrl: pathToFileURL(join(scratch, 'cli-pixel-fixture', 'figma-frame.html')).href };
+        const p = previewProject('cli-pixel-fixture', checks);
+        await frameImage(p);
+        const r = await run(stepArgs('pixel', p, `${server.origin}/ns/home`), { cwd: p.root });
+        assert.equal(r.status, 0, r.all);
+        const s02 = stepFile(p, 'pixel.json').results.find((x) => x.slot === 's02');
+        assert.deepEqual([s02.mode, s02.verdict, s02.pct], ['fixture', 'advisory', 0], JSON.stringify(s02));
+      });
+    });
+  }
+
+  await check('CLI all --target preview: every step runs on the deployed page; summary.json, its ledger fragment and every step file record regime preview', async () => {
+    await withPreview({}, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('cli-all');
+      const r = await run(stepArgs('all', p, url), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      for (const pattern of [/^PASS join: 2 section\(s\)/m, /^geometry PASS 10\/10$/m, /^ramp PASS (\d+)\/\1$/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, pattern);
+      const s = stepFile(p, 'summary.json');
+      assert.deepEqual([s.page, s.url, s.regime, s.ledgerFragment.regime], ['home', url, 'preview', 'preview']);
+      assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);
+      assert.deepEqual([s.ledgerFragment.join, s.ledgerFragment.geometry, s.ledgerFragment.figmaVersion], ['PASS', 'PASS 10/10', VERSION]);
+      for (const f of ['join.json', 'geometry.json', 'ramp.json', 'pixel.json', 'register.json']) assert.equal(stepFile(p, f).regime, 'preview', f);
+      assert.ok(s.invocation.includes(`--target preview --reskin ${p.page}`), s.invocation);
+      assert.equal(s.ledgerFragment.invocation, s.invocation);
+    });
+  });
+
+  await check('CLI all --target preview on a protected preview: the probe and every request carry the token; no output and no file holds it', async () => {
+    await withPreview({ token: TOKEN }, async (server) => {
+      const url = `${server.origin}/ns/home`;
+      const p = previewProject('cli-all-token');
+      const r = await run(stepArgs('all', p, url, ['--token-env', 'PREVIEW_TOKEN']), { cwd: p.root, env: { PREVIEW_TOKEN: TOKEN } });
+      assert.equal(r.status, 0, r.all.replaceAll(TOKEN, '[token]'));
+      assert.equal(r.all.includes(TOKEN), false, 'the token appears in the output');
+      assert.ok(server.requests.filter((q) => q.path === '/ns/home').length >= 4, 'the join, the geometry, the probe and the pixel step each load the page');
+      assert.ok(server.requests.every((q) => q.headers.authorization === `token ${TOKEN}`), 'a request went out without the token');
+      assert.deepEqual(walk(workDir(p.dir, p.slug)).filter((f) => readFileSync(f).includes(TOKEN)), []);
+      assert.ok(!stepFile(p, 'summary.json').invocation.includes(TOKEN));
+    });
+  });
+
+  await check('all --target preview: what summary.json records of a step that logged or threw the token is redacted', async () => {
+    await withPreview({ token: TOKEN }, async (server) => {
+      const p = previewProject('all-redact');
+      const lines = [];
+      const steps = { geometry: async ({ log }) => { log(`saw ${TOKEN} and token ${TOKEN}`); throw new Error(`no good: ${TOKEN}`); } };
+      const code = await main(stepArgs('all', p, `${server.origin}/ns/home`, ['--auth-header', `token ${TOKEN}`]), { log: (m) => lines.push(m), steps });
+      assert.equal(code, 124);
+      assert.equal(lines.some((l) => l.includes(TOKEN)), false, 'the token was printed');
+      const s = stepFile(p, 'summary.json');
+      assert.deepEqual([s.steps.geometry.verdict, s.steps.geometry.detail], ['CRASH: no good: [redacted]', ['saw [redacted] and [redacted]']]);
+      assert.equal(s.invocation.includes('--auth-header <value>'), true);
+      assert.deepEqual(walk(workDir(p.dir, p.slug)).filter((f) => readFileSync(f).includes(TOKEN)), []);
+    });
+  });
+
+  await check('CLI all --target preview on a page that never decorates: join is "ERROR (exit 124) … stalled decoration", exit 124, and the summary still records regime preview', async () => {
+    await withPreview({ stallBlock: 'cards' }, async (server) => {
+      const p = previewProject('cli-all-stall');
+      const r = await run(stepArgs('all', p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 124, r.all);
+      assert.match(r.stdout, /^ERROR \(exit 124\) join CRASH: stalled decoration: .*block cards$/m);
+      const s = stepFile(p, 'summary.json');
+      assert.deepEqual([s.regime, s.ledgerFragment.regime], ['preview', 'preview']);
+    });
+  });
 }
 
 await check('CLI usage errors: --target preview needs --reskin; a blank secret, an unset variable, a bad --target and a missing --reskin file are exit 2', async () => {
@@ -564,15 +867,25 @@ await check('a mistyped secret flag is never echoed: --auth-header=<value>, an u
   assert.match(known.stderr, /unknown flag --bogus for join/);
 });
 
-await check('--target preview is join only for now: geometry, ramp, pixel and all exit 2 "lands in a later task" before any browser', async () => {
+await check('geometry, ramp, pixel and all take --target preview like join: it needs --reskin and --reskin needs it, exit 2 before any browser; register has no --target', async () => {
   const p = makeProject(join(scratch, 'later'));
+  const url = 'http://127.0.0.1:9/ns/home';
   for (const step of ['geometry', 'ramp', 'pixel', 'all']) {
-    const r = await run([step, '--page', p.slug, '--url', 'http://127.0.0.1:9/ns/home', '--target', 'preview', '--reskin', p.page, '--dir', p.dir], { cwd: p.root });
-    assert.equal(r.status, 2, `${step}\n${r.all}`);
-    assert.match(r.stderr, new RegExp(`--target preview: ${step} lands in a later task`));
+    const bare = await run([step, '--page', p.slug, '--url', url, '--target', 'preview', '--dir', p.dir], { cwd: p.root });
+    assert.equal(bare.status, 2, `${step}\n${bare.all}`);
+    assert.match(bare.stderr, /--target preview needs --reskin/);
+    assert.doesNotMatch(bare.stderr, /later task/);
+    const local = await run([step, '--page', p.slug, '--url', url, '--reskin', p.page, '--dir', p.dir], { cwd: p.root });
+    assert.equal(local.status, 2, `${step}\n${local.all}`);
+    assert.match(local.stderr, /--reskin applies to --target preview/);
+    const secret = await run([step, '--page', p.slug, '--url', url, '--token-env', 'X', '--dir', p.dir], { cwd: p.root });
+    assert.equal(secret.status, 2, `${step}\n${secret.all}`);
+    assert.match(secret.stderr, /--token-env applies to --target preview/);
   }
   const r = await run(['register', '--page', p.slug, '--target', 'preview', '--dir', p.dir], { cwd: p.root });
   assert.equal(r.status, 2, r.all);
+  assert.match(r.stderr, /unknown flag --target for register/);
+  assert.equal(existsSync(join(workDir(p.dir, p.slug), 'summary.json')), false);
 });
 
 await check('every line the gate prints and every error it throws has the token redacted', async () => {
@@ -585,10 +898,11 @@ await check('every line the gate prints and every error it throws has the token 
   assert.deepEqual(lines, ['saw [redacted] and [redacted]']);
 });
 
-await check('--help lists --target, --reskin, --auth-header and --token-env, the preview join and its exit codes', async () => {
+await check('--help lists --target, --reskin, --auth-header and --token-env, the preview join, previewSelector and its exit codes; the preview is no longer join only', async () => {
   const r = await run(['--help']);
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['--target local|preview', '--reskin', '--auth-header', '--token-env', '.plain.html', 'plain section', 'stalled decoration', 'decorated main > div', 'note:']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['--target local|preview', '--reskin', '--auth-header', '--token-env', '.plain.html', 'plain section', 'stalled decoration', 'decorated main > div', 'note:', 'previewSelector', '--wait-eds']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  assert.equal(r.stdout.includes('later task'), false);
 });
 
 rmSync(scratch, { recursive: true, force: true });

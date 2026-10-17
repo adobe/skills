@@ -60,19 +60,22 @@ export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, fla
   const geo = geometry?.results || [];
   const typ = ramp?.results || [];
 
+  // A row points at the checks root its results were measured against. Results that carry none (step files written
+  // before roots were recorded) fall back to the join's module frame for a mandated row, to the entry's own node for a failing one.
   if (geometry && ramp && !drifted) {
     for (const s of sections.filter((x) => x.module)) {
       const g = geo.filter((r) => r.slot === s.slot && asserted(r));
       const t = typ.filter((r) => r.slot === s.slot && asserted(r));
       if (g.length + t.length && ![...g, ...t].some(failing)) {
-        row('mandated', s.slot, s.module, s.node, 'geometry and type', `${g.length} geometry and ${t.length} type entries pass`);
+        const root = [...g, ...t].find((r) => r.root)?.root ?? s.node;
+        row('mandated', s.slot, s.module, root, 'geometry and type', `${g.length} geometry and ${t.length} type entries pass`);
       }
     }
   }
-  for (const r of geo.filter(failing)) row('unmandated', r.slot, moduleOf(r.slot), r.node ?? null, `geometry ${r.id} ${r.measure}`, r.detail ?? '');
+  for (const r of geo.filter(failing)) row('unmandated', r.slot, moduleOf(r.slot), r.root ?? r.node ?? null, `geometry ${r.id} ${r.measure}`, r.detail ?? '');
   for (const r of typ.filter(failing)) {
     if (r.slot === null) row('unmandated', null, null, null, `:root ${r.id}`, r.detail ?? '');
-    else row('unmandated', r.slot, moduleOf(r.slot), r.node ?? null, `type ${r.id} ${r.property}`, r.detail ?? '');
+    else row('unmandated', r.slot, moduleOf(r.slot), r.root ?? r.node ?? null, `type ${r.id} ${r.property}`, r.detail ?? '');
   }
   for (const m of mapping.filter((x) => x.status === 'new-module')) {
     row('out-of-kit', m.slot, null, null, 'new-module', 'no Figma module to follow: the slot is composed beyond the kit');

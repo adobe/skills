@@ -6,6 +6,8 @@
 //   join   B0: every mapping.md slot that renders as a module is one section of the page, in order, with
 //          its module's Figma frame; a page that drifted from the mapping stops here. --target preview joins
 //          a deployed preview: the reskin page's slots found in the preview's authored form (.plain.html).
+//          Every step with a --url takes --target preview: the join's sections of the settled preview are what
+//          geometry, ramp and pixel measure, each checks entry by its previewSelector when it has one.
 //   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
 //   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
 //   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
@@ -33,6 +35,7 @@ export const HELP = `Usage:
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs register --page <slug> [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
+  (geometry, ramp, pixel and all take --target preview --reskin <file> [--auth-header <value> | --token-env <NAME>] like join)
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -75,7 +78,8 @@ geometry B1. Runs the join first (drift stops here, exit 1), validates the check
          Prints "geometry PASS n/n" or "geometry FAIL k/n" plus one indented line per failing entry
          ("<slot> <id> <measure> (node <id>): 540 vs 560 (±1)", or "unmeasurable: <why>" when the selector
          matched nothing, a gap has fewer than two matches or the box has no size); writes
-         <dir>/.work/reskin/gates/<slug>/figma/geometry.json; exit 1 on any FAIL.
+         <dir>/.work/reskin/gates/<slug>/figma/geometry.json; exit 1 on any FAIL. Each result carries root, the
+         checks root (the section's root node for the entry's width) it was measured against.
 ramp     B3. Runs the join first (drift stops here, exit 1), validates the checks file, then asserts through
          donor-probe.mjs (one run per width, no overflow sanity): the :root block that donor-tokens.json
          yields (every custom property verbatim, at the first section's width) and, for every type entry,
@@ -90,7 +94,9 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          (k unasserted)" with one indented "advisory" line per property.
          Token values written as literals outside :root (a color that equals a :root value) are listed in
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124; one that exits 2 (its own setup error) is exit 2 with its message,
-         and a bot challenge is exit 3.
+         and a bot challenge is exit 3. Every result carries root (null for a :root entry), the checks root its entry was
+         measured against. On --target preview the probe is given --wait-eds (the preview's decoration settles first; a
+         stall is exit 124) and the site token in its environment (DEPLOYED_GATE_SITE_TOKEN with --token-env), never in argv.
 pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates the checks file, then for
          every section crops its slice out of the cached frame image (the PNG figma-donor.mjs captured,
          taken at 1×; a size within 1px of the frame box fits, Figma rounds a fractional box up; any
@@ -99,15 +105,17 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          fails). Only where the frame's copy is the section's copy (visible text, whitespace and case
          ignored): otherwise the section is "n/a: frame content differs". Also n/a: no frame image
          (re-run figma-donor.mjs capture), a PNG of another size, pixel mode off (needs why). Mode
-         fixture screenshots the same selector on fixtureUrl instead of the page (a hand-made stand-in).
+         fixture screenshots the section's data-slot selector on fixtureUrl instead of the page (a local hand-made
+         stand-in, on a preview too).
          Prints "pixel advisory" ("ERROR (exit 124) pixel no verdict" when a comparison hit its deadline), the uncalibrated reference classes (light text 3%, inverted 3.5%,
          raster ground 4%: orientation, not a bar) and one line per section: "<slot> 0.42% (text 1.10%,
          Δh 0)" (differing pixels overall and over the frame's text boxes, height delta Figma − page)
          or "<slot> n/a: <why>"; an indented line names each first font family the section uses
          that the page does not render (no loaded @font-face, not installed; a generic family is
          served). Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
-         <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/. Exit 0,
-         or 124 when a comparison hit its deadline (no verdict: re-run).
+         <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/ (results carry root).
+         Exit 0, or 124 when a comparison hit its deadline (no verdict: re-run). On --target preview the screenshot is
+         the decorated section at the join's selector once the decoration has settled; the number stays advisory.
 register B4, the divergence register. Reads join.json and whichever of geometry.json, ramp.json and
          pixel.json the earlier steps left under <dir>/.work/reskin/gates/<slug>/figma/ (no browser, no
          --url; a missing join.json is exit 2: run the join first). A step with no file is "not run":
@@ -117,7 +125,10 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
          on its own solid ground: 4.5, or 3 for large text; gradient and image grounds are skipped)
          and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
-         Rows carry the Figma node and a file link; under --confidential the links are left out.
+         Rows carry the Figma node and a file link; under --confidential the links are left out. A row's node is the
+         checks root its results were measured against (their root), the join's module frame for a mandated section
+         whose results carry none, and the entry's own node for a failing entry with none. The register's regime is the
+         join's.
          Writes register.json and register.md (counts, rows, a "Not run" line, then the pixel results as
          an advisory block with the uncalibrated reference classes) beside the step files, prints
          "register written: mandated 1 · unmandated 1 · …" and the register.md path; exit 0.
@@ -137,7 +148,9 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json:
            { _provenance, page, url, regime, figma: { version }, steps: { <step>: { verdict, exit, detail } },
              ledgerFragment, invocation }
-         ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key):
+         ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key); with
+         --target preview its regime is "preview" and it goes to pages.<slug>.gates.deployed.figma, and the recorded
+         invocation names --target preview and --reskin (a site token flag only as a placeholder, never its value):
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
              asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
              register: the counts line, literals: <token literals outside :root>, invocation }
@@ -146,8 +159,12 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
            run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
            run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
---target local|preview  the regime of --url (default local: the reskin page). preview is for join only for now: geometry,
-         ramp, pixel and all exit 2 "--target preview: <step> lands in a later task". preview needs --reskin <file>;
+--target local|preview  the regime of --url (default local: the reskin page). preview is a deployed (aem.page) page and takes
+         every step with a --url (join, geometry, ramp, pixel, all; register has no --target, it reads the regime from
+         join.json). The sections are the join's, main > div:nth-child(k) of the decorated page, and each checks entry is
+         measured by its previewSelector, else its selector, scoped to that section: a selector that matches nothing there
+         is "unmeasurable", a FAIL, never a skip. Each of those steps opens the preview and waits for the EDS decoration
+         first (a stall is exit 124), and every step file records regime "preview". preview needs --reskin <file>;
          local takes neither --reskin nor a site token.
 --auth-header <value> | --token-env <NAME>  (preview only) the Authorization header value for a protected preview, or the
          environment variable (or .env entry) holding the token; neither may be empty. Sent to the preview origin only, on
@@ -162,10 +179,12 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
       "width"?: 1440                     default the root's width
       "roots"?: { "<width>": "<id>" }    another capture of the module, for entries with that width
       "skip"?: "<why>"                   replaces the required geometry and type entries
-      "geometry": [ { id, selector, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
-      "type": [ { id, selector, node, width? } ],
+      "geometry": [ { id, selector, previewSelector?, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
+      "type": [ { id, selector, previewSelector?, node, width? } ],
       "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
   selector is scoped to the section, ":scope" is the section itself; ids are g1.. and t1.. per section.
+  previewSelector (a string, scoped the same way) is the selector on a deployed preview (--target preview), whose blocks
+  rebuild the markup the reskin page was written with; without it the preview uses selector. --target local never reads it.
   measure: width left right top height gapX gapY paddingTop paddingRight paddingBottom paddingLeft.
   gapX and gapY take exactly two nodes; token is a path in donor-tokens.json holding one px value.
   top and height are content-dependent: they need tolerancePx and why. tolerancePx above 1 needs why.
@@ -276,22 +295,28 @@ function logJoin(result, log) {
   for (const n of result.notes ?? []) log(`  note: ${n}`);
 }
 
+// The Target of a step's --url: the reskin page (local) or a deployed preview, which carries the site token.
+async function targetFor(opts, auth) {
+  const { localTarget, previewTarget } = await helper('target');
+  return opts.target === 'preview' ? previewTarget(opts.url, { reskin: opts.reskin, auth }) : localTarget(opts.url);
+}
+
 async function joinStep({ dir, opts, log, UsageError, auth }) {
   if (!opts.page) throw new UsageError('join needs --page <slug>');
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
-  const [{ readInputs, workDir }, { runJoin }, { localTarget, previewTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
+  const [{ readInputs, workDir }, { runJoin }] = await Promise.all([helper('io'), helper('join')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
-  const target = opts.target === 'preview' ? previewTarget(opts.url, { reskin: opts.reskin, auth }) : localTarget(opts.url);
+  const target = await targetFor(opts, auth);
   const result = await runJoin({ target, inputs, out: workDir(dir, opts.page) });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
 
-async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
+async function geometryStep({ dir, opts, log, UsageError, ready: given, auth }) {
   if (!opts.page) throw new UsageError('geometry needs --page <slug>');
   if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
   const [{ prepare }, { runGeometry }] = await Promise.all([helper('prepare'), helper('geometry')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -303,16 +328,16 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   return pass ? 0 : 1;
 }
 
-async function rampStep({ dir, opts, log, UsageError, ready: given }) {
+async function rampStep({ dir, opts, log, UsageError, ready: given, auth }) {
   if (!opts.page) throw new UsageError('ramp needs --page <slug>');
   if (!opts.url) throw new UsageError('ramp needs --url <url|file>: the page to probe');
   const [{ prepare }, { runRamp }] = await Promise.all([helper('prepare'), helper('ramp')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
   }
-  const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
+  const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, auth });
   const failing = results.filter((r) => r.status === 'FAIL');
   const unasserted = results.filter((r) => r.status === 'UNASSERTED');
   const asserted = results.length - unasserted.length;
@@ -327,11 +352,11 @@ async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   return pass ? 0 : 1;
 }
 
-async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
+async function pixelStep({ dir, opts, log, UsageError, ready: given, auth }) {
   if (!opts.page) throw new UsageError('pixel needs --page <slug>');
   if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
   const [{ prepare }, { pixelHeadline, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -406,12 +431,15 @@ function pixelFragment(file) {
   }).join(', ');
 }
 
-async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
+async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, redact }) {
   if (!opts.page) throw new UsageError('all needs --page <slug>');
   if (!opts.url) throw new UsageError('all needs --url <url|file>: the page to check');
   const [{ prepare }, { workDir }, { countsLine }, { readCurrent }, { provenance, readJsonIf, writeJson }] = await Promise.all([
     helper('prepare'), helper('io'), helper('register'), helper('cache', 'figma'), helper('io', 'figma'),
   ]);
+  const target = await targetFor(opts, auth);
+  const regime = target.regime;
+  const scrub = (m) => (redact ? redact(m) : m);
   const out = workDir(dir, opts.page);
   for (const f of STALE_FILES) rmSync(join(out, f), { force: true });
 
@@ -428,16 +456,17 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     log(`${prefix} ${name} ${why}`);
   };
   // A step that threw: a bot challenge (code 3) is deterministic for the target, anything else but a setup error is a crash.
+  // What is recorded in summary.json passes through scrub: it never holds the site token.
   const failureLine = (name, verdict, exit) => `ERROR (exit ${exit}) ${name} ${verdict}`;
   const failure = (e) => (e?.code === 3
-    ? { verdict: `CHALLENGE: ${e.message}`, exit: 3 }
-    : { verdict: `CRASH: ${e?.message ?? e}`, exit: 124 });
+    ? { verdict: scrub(`CHALLENGE: ${e.message}`), exit: 3 }
+    : { verdict: scrub(`CRASH: ${e?.message ?? e}`), exit: 124 });
   // Runs one step function; its own log lines are kept as the step's detail.
   const exec = async (name, fn, extra = {}, { hide } = {}) => {
     const detail = [];
-    const stepLog = (m) => { detail.push(m); if (m !== hide) log(m); };
+    const stepLog = (m) => { detail.push(scrub(m)); if (m !== hide) log(m); };
     try {
-      const exit = await fn({ dir, opts, env, log: stepLog, warn, UsageError, ...extra });
+      const exit = await fn({ dir, opts, env, log: stepLog, warn, UsageError, auth, ...extra });
       record(name, VERDICT_WORDS[name]?.[exit] ?? `exit ${exit}`, exit, detail);
     } catch (e) {
       if (isSetup(e)) throw e;
@@ -449,9 +478,9 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
 
   let ready = null;
   try {
-    ready = await prepare({ dir, slug: opts.page, url: opts.url });
+    ready = await prepare({ dir, slug: opts.page, url: opts.url, target });
     const detail = [];
-    logJoin(ready.join, (m) => { detail.push(m); log(m); });
+    logJoin(ready.join, (m) => { detail.push(scrub(m)); log(m); });
     record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
   } catch (e) {
     if (isSetup(e)) throw e;
@@ -476,9 +505,11 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
   const files = { geometry: read('geometry.json'), ramp: read('ramp.json'), pixel: read('pixel.json'), register: read('register.json') };
   const fragmentOf = (name, make) => (/^(CRASH|CHALLENGE)/.test(recorded[name].verdict) || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
   const current = readCurrent(dir);
-  const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url} --dir ${dir}`;
+  // A site token flag is named in the invocation, never its value.
+  const preview = regime === 'preview' ? ` --target preview --reskin ${opts.reskin}${opts['auth-header'] !== undefined ? ' --auth-header <value>' : ''}${opts['token-env'] !== undefined ? ' --token-env <NAME>' : ''}` : '';
+  const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url}${preview} --dir ${dir}`;
   const ledgerFragment = {
-    regime: ready?.join.regime ?? 'local',
+    regime: ready?.join.regime ?? regime,
     figmaVersion: current?.version ?? null,
     join: recorded.join.verdict,
     geometry: fragmentOf('geometry', geometryFragment),
@@ -498,21 +529,17 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
     ledgerFragment,
     invocation,
   });
-  log(`ledger fragment for pages.${opts.page}.gates.figma in ledger.json:`);
+  log(`ledger fragment for pages.${opts.page}.gates.${regime === 'preview' ? 'deployed.figma' : 'figma'} in ledger.json:`);
   log(JSON.stringify(ledgerFragment, null, 2));
   if (files.register) log(registerPath);
   return [2, 3, 124, 1].find((c) => exits.includes(c)) ?? 0;
 }
 
-// --target names the regime of --url: local (the default) or preview. A flag of the other regime, and a step the
-// preview regime does not have yet, is a usage error.
-function checkTarget(cmd, opts, UsageError) {
+// --target names the regime of --url: local (the default) or preview. A flag of the other regime is a usage error.
+function checkTarget(opts, UsageError) {
   const regime = opts.target ?? 'local';
   if (regime !== 'local' && regime !== 'preview') throw new UsageError(`--target is local or preview, got "${opts.target}"`);
-  if (regime === 'preview') {
-    if (cmd !== 'join') throw new UsageError(`--target preview: ${cmd} lands in a later task`);
-    return;
-  }
+  if (regime === 'preview') return;
   const flag = ['reskin', 'auth-header', 'token-env'].find((f) => opts[f] !== undefined);
   if (flag) throw new UsageError(`--${flag} applies to --target preview`);
 }
@@ -536,14 +563,14 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  checkTarget(cmd, opts, UsageError);
+  checkTarget(opts, UsageError);
   const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
   const site = await siteToken(opts, UsageError);
   if (!site) return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
   try {
-    return await table[cmd]({ dir, opts, env, log: (m) => log(site.redact(m)), warn: (m) => warn(site.redact(m)), UsageError, steps: table, auth: site.auth });
+    return await table[cmd]({ dir, opts, env, log: (m) => log(site.redact(m)), warn: (m) => warn(site.redact(m)), UsageError, steps: table, auth: site.auth, redact: site.redact });
   } catch (e) {
     if (e?.message) e.message = site.redact(e.message);
     throw e;

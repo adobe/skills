@@ -10,7 +10,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { cacheFor } from '../figma/cache.mjs';
 import { UsageError } from '../figma/errors.mjs';
-import { loadChromium, loadMeasureLive, localTarget } from './target.mjs';
+import { loadChromium, loadMeasureLive, localAttributes, localTarget } from './target.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // Two layouts: the plugin tree (skills/reskin/scripts/figma-gate ↔ skills/replica/scripts) and the project
@@ -134,7 +134,7 @@ export async function runPixel({ target, join: joined, checks, boxes, dir, out, 
       if (!cfg) continue;
       const { slot } = section;
       const { mode } = cfg.pixel;
-      const done = (r) => results.push({ slot, mode, ...r });
+      const done = (r) => results.push({ slot, mode, root: cfg.root, ...r });
       const root = boxes.roots[cfg.root];
 
       if (mode === 'off') { done(na(`off: ${cfg.pixel.why}`)); continue; }
@@ -144,11 +144,13 @@ export async function runPixel({ target, join: joined, checks, boxes, dir, out, 
       const rect = cropRect(root, frame);
       if (rect.na) { done(na(rect.na)); continue; }
 
+      // A fixture is a hand-made local page: its section is found by data-slot, whatever regime the target has.
       const pageTarget = mode === 'fixture' ? localTarget(cfg.pixel.fixtureUrl) : target;
+      const selector = mode === 'fixture' ? localAttributes.selector(slot) : section.selector;
       const page = await pageFor(pageTarget, cfg.width);
-      const locator = page.locator(section.selector);
-      if (await locator.count() === 0) { done(na(`${section.selector} matched nothing on ${pageTarget.url}`)); continue; }
-      const fonts = await fontsIn(page, section.selector);
+      const locator = page.locator(selector);
+      if (await locator.count() === 0) { done(na(`${selector} matched nothing on ${pageTarget.url}`)); continue; }
+      const fonts = await fontsIn(page, selector);
       if (!comparable(root.box, await locator.first().innerText())) { done({ ...na('frame content differs'), fonts }); continue; }
 
       const files = Object.fromEntries(['figma', 'page', 'diff', 'text-boxes'].map((k) => [k, join(out, `${slot}.${k}.${k === 'text-boxes' ? 'json' : 'png'}`)]));
@@ -163,6 +165,6 @@ export async function runPixel({ target, join: joined, checks, boxes, dir, out, 
     for (const page of pages.values()) await page.context().close();
     if (browser) await browser.close();
   }
-  writeFileSync(join(out, 'pixel.json'), `${JSON.stringify({ results }, null, 2)}\n`);
+  writeFileSync(join(out, 'pixel.json'), `${JSON.stringify({ url: target.url, regime: target.regime, results }, null, 2)}\n`);
   return { results };
 }

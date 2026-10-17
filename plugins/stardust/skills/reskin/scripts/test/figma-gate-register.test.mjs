@@ -107,6 +107,35 @@ check('buildRegister: one class per kind, counts, and Figma links on the rows wi
   assert.equal(reg.regime, 'local');
 });
 
+check('buildRegister: a result carrying root points its rows at the checks root: node and link of the unmandated and the mandated row', () => {
+  const rooted = {
+    geometry: { results: [
+      { slot: 's01', id: 'g1', node: '1:4', root: '7:7', measure: 'width', status: 'PASS' },
+      { slot: 's02', id: 'g1', node: 'I1:7;5:7', root: '9:9', measure: 'width', status: 'FAIL', detail: '540 vs 560 (±1)' },
+    ] },
+    ramp: { results: [
+      { slot: 's01', id: 't1', node: '1:5', root: '7:7', property: 'fontSize', status: 'PASS' },
+      { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '9:9', property: 'fontSize', status: 'FAIL', detail: '16px vs 14px' },
+      { slot: null, id: '--max-width', node: null, root: null, property: '--max-width', status: 'FAIL', detail: '1px vs 2px' },
+    ] },
+  };
+  const reg = buildRegister({ ...base, ...rooted });
+  const un = reg.rows.filter((r) => r.class === 'unmandated');
+  assert.deepEqual(un.map((r) => [r.slot, r.node, r.check]), [['s02', '9:9', 'geometry g1 width'], ['s02', '9:9', 'type t1 fontSize'], [null, null, ':root --max-width']]);
+  assert.ok(un.slice(0, 2).every((r) => /node-id=9-9$/.test(r.link)), JSON.stringify(un.map((r) => r.link)));
+  assert.equal(un[2].link, null);
+  const ok = buildRegister({ ...base, geometry: { results: [rooted.geometry.results[0]] }, ramp: { results: [rooted.ramp.results[0]] } });
+  const man = ok.rows.find((r) => r.class === 'mandated' && r.slot === 's01');
+  assert.deepEqual([man.node, man.module], ['7:7', 'M1']);
+  assert.match(man.link, /node-id=7-7$/);
+});
+
+check('buildRegister: a mandated section with no root in its results keeps the join frame, a failing entry its own node', () => {
+  const reg = buildRegister(base);
+  assert.equal(reg.rows.find((r) => r.class === 'mandated').node, '1:3');
+  assert.equal(reg.rows.find((r) => r.class === 'unmandated').node, 'I1:7;5:7');
+});
+
 check('buildRegister: a failing type entry is unmandated too; UNASSERTED is ignored', () => {
   const r = { results: [
     { slot: 's01', id: 't1', node: '1:5', property: 'fontSize', status: 'FAIL', detail: '16px vs 14px' },
@@ -231,6 +260,22 @@ check('register reads the step files, writes register.json and register.md, prin
   assert.deepEqual(reg.notRun, []);
   assert.match(reg.rows.find((x) => x.class === 'unmandated').link, /^https:\/\/www\.figma\.com\/design\/KITKEY\?node-id=/);
   assert.match(readFileSync(md, 'utf8'), /carried verbatim/);
+});
+
+check('register on step files whose results carry root: the rows and register.md link to the root, the regime comes from join.json', () => {
+  const p = project();
+  put(p, 'join.json', { ...joined, regime: 'preview' });
+  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] });
+  put(p, 'ramp.json', { pass: true, results: [] });
+  const r = run(['register', '--page', 'home'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  const out = workDir(p.dir, p.slug);
+  const reg = JSON.parse(readFileSync(join(out, 'register.json'), 'utf8'));
+  assert.equal(reg.regime, 'preview');
+  const un = reg.rows.find((x) => x.class === 'unmandated');
+  assert.deepEqual([un.node, un.link], ['9:9', 'https://www.figma.com/design/KITKEY?node-id=9-9']);
+  assert.match(readFileSync(join(out, 'register.md'), 'utf8'), /regime preview/);
+  assert.match(readFileSync(join(out, 'register.md'), 'utf8'), /\[Figma\]\(https:\/\/www\.figma\.com\/design\/KITKEY\?node-id=9-9\)/);
 });
 
 check('register without geometry/ramp/pixel files: those steps are "not run", nothing mandated, exit 0, no ledger needed', () => {

@@ -94,8 +94,20 @@ if (playwrightOk) {
     assert.equal(r.results.length, 10);
     assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), []);
     assert.equal(r.pass, true);
-    assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 'g3'), { slot: 's02', id: 'g3', node: 'I1:7;5:3', measure: 'gapX', want: 80, got: 80, status: 'PASS', detail: '80 vs 80 (±1)' });
+    assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 'g3'), { slot: 's02', id: 'g3', measure: 'gapX', node: 'I1:7;5:3', root: '1:7', want: 80, got: 80, status: 'PASS', detail: '80 vs 80 (±1)' });
+    assert.deepEqual(r.results.map((x) => [x.slot, x.root]), [...Array(6).fill(['s01', '1:3']), ...Array(4).fill(['s02', '1:7'])]);
     assert.deepEqual(geometryOf(p).results, r.results);
+  });
+
+  await check('on a local page previewSelector is not used: the entry is measured by its selector', async () => {
+    const p = project('local-ignores');
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.s02.geometry[0].previewSelector = '.cards > div';
+    writeFileSync(file, JSON.stringify(checks));
+    const r = await gate(p);
+    assert.equal(r.results.find((x) => x.slot === 's02' && x.id === 'g1').status, 'PASS');
+    assert.deepEqual(r.results.filter((x) => x.status !== 'PASS'), []);
   });
 
   await check('a token entry measured at another width opens the page at that width', async () => {
