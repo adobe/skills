@@ -84,8 +84,9 @@
 #            side probed once per run, later rounds reuse it; older only under
 #            STARDUST_ORIGIN_MAX_AGE_H; delete to re-probe (retaking live.png drops
 #            them too, and live.json — every round's record of how live.png was
-#            taken, its overlay check included (overlayLeft, fontsFailed), which
-#            gate-all reads before it reuses live.png). Needs the diff skill's
+#            taken, its capture checks included (overlayLeft; fontsFailed — a
+#            list = checked, null = not checked), which gate-all reads before it
+#            reuses live.png). Needs the diff skill's
 #            scripts at stardust/scripts/diff/ (Setup step 4). The build URL may be
 #            a served prototype or the published/preview origin — the published-
 #            origin gate is the same command with the preview URL (pass --marker
@@ -329,13 +330,14 @@ fi
 # settles the same way; STITCH_OPTS: the round's overlay dismissal, header
 # § Overlay dismissal). Never swallow the output — exit 3 here means
 # "blocked, escalate --headed", not "skip".
-# live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, overlayLeft, fontsFailed,
-# at) — gate-all reads it before reusing live.png; it goes with live.png when the capture is retaken (live.png keeps its
-# delete-to-retake rule), and so do the --full probes' live caches (content-, visual-, presence-live.json; chrome-live.json
-# keeps its own rule). live.png is reused only when live.json records the same hide list (missing field or unreadable
-# record = []; ordered lists after the same dedupe) AND the overlay check (overlayLeft present, null); anything else is
-# retaken with one line — the hide-list line when the list is what differs (no live.json + hides: nothing says the bar
-# was hidden on that capture), else the overlay one (no live.json or no overlayLeft: it predates the check).
+# live.json records how live.png was taken (url, width, locale, settle, dismissal, hide list, overlayLeft, fontsFailed
+# — a list = checked, null = not checked —, at) — gate-all reads it before reusing live.png; it goes with live.png when
+# the capture is retaken (live.png keeps its delete-to-retake rule), and so do the --full probes' live caches (content-,
+# visual-, presence-live.json; chrome-live.json keeps its own rule). live.png is reused only when live.json records the
+# same hide list (missing field or unreadable record = []; ordered lists after the same dedupe) AND the overlay check
+# (overlayLeft present, null); anything else is retaken with one line — the hide-list line when the list is what differs
+# (no live.json + hides: nothing says the bar was hidden on that capture), else the overlay one (no live.json or no
+# overlayLeft: it predates the check).
 # One node call reads both: the hide list, a newline, then checked | unchecked | left <descriptor>.
 RETAKE=0
 if [ -f "$DIR/live.png" ]; then
@@ -389,11 +391,15 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
     exit 1
   fi
   # argv-passed values, JSON.stringify — never shell-interpolated JSON; a failed write only costs gate-all's reuse.
-  # overlayLeft: null — the capture printed no overlay-left line (above); fontsFailed from its record (none readable → []).
+  # overlayLeft: null — the capture printed no overlay-left line (above). fontsFailed is three-valued: the record's list
+  # (checked; [] = every declared face loaded) or null = not checked — the record's own null (its check could not run)
+  # or no readable record (one stderr note). Never [] for an unchecked capture: downstream [] reads as "all loaded".
   node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at] = process.argv.slice(1);
-    let fontsFailed = null;
-    try { const j = JSON.parse(fs.readFileSync(rec, "utf8")); if (Array.isArray(j.fontsFailed)) fontsFailed = j.fontsFailed.filter((s) => typeof s === "string"); } catch (e) { fontsFailed = null; }
-    if (!fontsFailed) { fontsFailed = []; fs.writeSync(2, `gate.sh: the live capture left no readable record (${rec}) — live.json records fontsFailed: [] (the failed fonts are unknown)\n`); }
+    let fontsFailed = null; let read = false;
+    try { const j = JSON.parse(fs.readFileSync(rec, "utf8"));
+      if (Array.isArray(j.fontsFailed)) { fontsFailed = j.fontsFailed.filter((s) => typeof s === "string"); read = true; } else if (j.fontsFailed === null) read = true;
+    } catch (e) { read = false; }
+    if (!read) fs.writeSync(2, `gate.sh: the live capture left no readable record (${rec}) — live.json records fontsFailed: null (not checked)\n`);
     fs.writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
       dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [],
       overlayLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \

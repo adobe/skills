@@ -46,8 +46,9 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // STUB_OVERFLOW px over the --width viewport; STUB_NO_OVERFLOW_LINE drops it; a fail-once attempt prints o =
 // STUB_OVERFLOW_FIRST when set, before its exit 1). A successful capture prints `overlay-left: <STUB_OVERLAY_<side>>`
 // first when set (exit 0, as stitch-shot does) and writes its --json record (overlayLeft, fontsFailed = the comma list
-// STUB_FONTS_<side>; STUB_NO_JSON_<side> writes none). measure: a call counter only (STUB_MEASURE_COUNT) — a round
-// launches none.
+// STUB_FONTS_<side>, or null + fontCheck "failed: …" under STUB_FONTS_NULL_<side> — a font check that could not run;
+// STUB_NO_JSON_<side> writes none, STUB_BAD_JSON_<side> an unreadable one). measure: a call counter only
+// (STUB_MEASURE_COUNT) — a round launches none.
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 const ARGV_LOG = "console.log('argv ' + process.argv.slice(2).join(' ')); console.log('argv-json ' + JSON.stringify(process.argv.slice(2)));";
 stub(replica, 'stitch-shot.mjs', `
@@ -68,10 +69,12 @@ stub(replica, 'stitch-shot.mjs', `
   const o = Number(process.env.STUB_OVERFLOW || 0);
   writeFileSync(out, 'png'); ovf(o);
   const json = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
-  if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: w, vh: null, settle: process.argv.includes('--settle'),
+  const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' }
+    : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
+  if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
+  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: w, vh: null, settle: process.argv.includes('--settle'),
     dismissed: process.argv.includes('--no-dismiss') ? null : { consent: null, extra: [], marketing: [] }, overlayLeft,
-    fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean), hidden: [], height: 2000,
-    overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
+    ...fonts, hidden: [], height: 2000, overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
   console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
@@ -380,7 +383,8 @@ check('retaking live.png drops content-, visual- and presence-live.json; chrome-
 // gives no verdict — exit 1 with one stderr line naming the side, never retried. A live one drops live.png, live.json
 // and the probes' live caches before any build capture; a build one stops before pixel-compare and the overflow line.
 // Both captures write their record (--json <gate dir>/<live|build>-shot.json); live.json records overlayLeft: null and
-// the record's fontsFailed (no readable record → [] and one stderr note).
+// the record's fontsFailed — a list = checked, null = not checked (the record's own null, or no readable record → null
+// and one stderr note).
 const OVL = 'div#promo-modal (fixed, 92 % of the viewport)';
 const ovlLine = (side) => `gate.sh: overlay left on the ${side} capture — ${OVL} — no verdict: fix the capture (--consent / --dismiss / --hide), not the page`;
 const flagValue = (argv, f) => (argv && argv.indexOf(f) > 0 ? argv[argv.indexOf(f) + 1] : undefined);
@@ -396,8 +400,21 @@ check('the live capture\'s stdout is kept as live-capture.txt and still printed'
   && r.stdout.includes(`stitched ${gdir('ovl1')}/live.png\n`), evidence('ovl1', 'live-capture.txt'));
 r = await gate(['ovl2', 'https://live.example/ovl2', buildUrl, '1440', 'o2', '--marker', 'home-proposed'], { STUB_NO_JSON_LIVE: '1' });
 lj = liveJson('ovl2') ? JSON.parse(liveJson('ovl2')) : {};
-check('a live capture with no readable record: live.json fontsFailed [] and one stderr note naming the record', r.status === 0 && lj.overlayLeft === null
-  && Array.isArray(lj.fontsFailed) && lj.fontsFailed.length === 0 && (r.stderr.match(/^gate\.sh: .*live-shot\.json.*$/gm) || []).length === 1, `status ${r.status} ${liveJson('ovl2')} ${r.stderr}`);
+const notCheckedNote = /^gate\.sh: the live capture left no readable record \(stardust\/replica\/gates\/[a-z0-9]+-1440\/live-shot\.json\) — live\.json records fontsFailed: null \(not checked\)$/m;
+check('a live capture with no record: live.json fontsFailed null (not checked) and one stderr note naming the record', r.status === 0 && lj.overlayLeft === null
+  && Object.hasOwn(lj, 'fontsFailed') && lj.fontsFailed === null && notCheckedNote.test(r.stderr) && (r.stderr.match(/live-shot\.json/g) || []).length === 1, `status ${r.status} ${liveJson('ovl2')} ${r.stderr}`);
+r = await gate(['fbad', 'https://live.example/fbad', buildUrl, '1440', 'f1', '--marker', 'home-proposed'], { STUB_BAD_JSON_LIVE: '1' });
+lj = liveJson('fbad') ? JSON.parse(liveJson('fbad')) : {};
+check('an unreadable record: fontsFailed null and the same one note', r.status === 0 && Object.hasOwn(lj, 'fontsFailed') && lj.fontsFailed === null
+  && notCheckedNote.test(r.stderr) && (r.stderr.match(/live-shot\.json/g) || []).length === 1, `status ${r.status} ${liveJson('fbad')} ${r.stderr}`);
+r = await gate(['fnull', 'https://live.example/fnull', buildUrl, '1440', 'f2', '--marker', 'home-proposed'], { STUB_FONTS_NULL_LIVE: '1' });
+lj = liveJson('fnull') ? JSON.parse(liveJson('fnull')) : {};
+check('a record whose font check could not run (fontsFailed null): live.json fontsFailed null, no note — never [] (all loaded)', r.status === 0
+  && Object.hasOwn(lj, 'fontsFailed') && lj.fontsFailed === null && !/live-shot\.json/.test(r.stderr), `status ${r.status} ${liveJson('fnull')} ${r.stderr}`);
+r = await gate(['fnone', 'https://live.example/fnone', buildUrl, '1440', 'f3', '--marker', 'home-proposed']);
+lj = liveJson('fnone') ? JSON.parse(liveJson('fnone')) : {};
+check('a record whose check ran and found nothing: fontsFailed [] carried as checked', r.status === 0 && Array.isArray(lj.fontsFailed) && lj.fontsFailed.length === 0
+  && !/live-shot\.json/.test(r.stderr), `status ${r.status} ${liveJson('fnone')} ${r.stderr}`);
 mkdirSync(join(root, gdir('ovl3')), { recursive: true });
 probeCaches.forEach((f) => writeFileSync(join(root, gdir('ovl3'), f), '{}'));
 resetCount();
