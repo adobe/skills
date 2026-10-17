@@ -87,7 +87,8 @@ configuration-service write; the sheet-backed interim index only when the branch
 
 Write `stardust/dynamics/parity.json` (`reference/parity-report.md`) with replayable checks from the
 closed set; `node skills/dynamics/scripts/dynamics-check.mjs --origin <published origin> [--auth-header … | --token-env SITE_TOKEN]`
-writes `stardust/qa/dynamics-report.md`. **Flows, not presence.** A `search-query` check compares the
+writes `stardust/qa/dynamics-report.md` and exits 2 when any check FAILs (0 all passed, 1 usage).
+**Flows, not presence.** A `search-query` check compares the
 result COUNT and the top titles with the source's recorded values — a count mismatch fails. The site
 secret rides an origin-scoped route filter only; third-party request statuses are recorded next to
 every assertion.
