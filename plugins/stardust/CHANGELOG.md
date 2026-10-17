@@ -17,15 +17,16 @@ register to the file; probed later, the recorded selector matched nothing on eit
 in-flow block above the header), and chrome-parity had printed `hidden live: … ×0` and carried on. Numbered 0.35.6
 provisionally, stacked on 0.35.5.
 
-- **Fix rounds are counted by the instrument (#134, extends #126).** Every `gate-all --only` run that yields a
-  verdict counts one round per page in `<out>/<slug>/rounds.json` (an INCONCLUSIVE row does not count, a reused row
-  does); a fourth round is refused before any capture — `gate-all: refused to start, no verdict — cap reached —
-  re-prototype decision: <slug> 3/3 @<w> …`, exit 2, nothing written. Only the re-prototype decision starts a new
-  count: `--round-reset "<reason>"`, recorded in rounds.json `resets` and the row's `roundReset`; `--max-rounds`
-  (1..3) may only lower the cap. Concurrent rounds of one page are refused through `<slug>/rounds.lock`; a project
-  without rounds.json is seeded from its run tables. Rows carry `round`; gate-triage reads the same count (`rounds
-  n/max` per row in triage.md, `cap reached (<slug>@<w> n/max): re-prototype decision now`) instead of counting
-  tables, and `update-coverage --gate` records it per width in `delivery.gate.rounds`.
+- **Fix rounds are counted by the instrument (#134, extends #126).** gate-all counts 3 fix rounds per page in
+  `<out>/<slug>/rounds.json` — a fix round is a measured `--only` verdict of a page that already has one; the first
+  gating and a row reused whole are not rounds (nor is an INCONCLUSIVE row); a fourth round is refused before any
+  capture — `gate-all: refused to start, no verdict — cap reached — re-prototype decision: <slug> 3/3 @<w> …`, exit
+  2, nothing written. Only the re-prototype decision starts a new count: `--round-reset "<reason>"`, recorded in
+  rounds.json `resets` and the row's `roundReset`; `--max-rounds` (1..3) may only lower the cap. Concurrent rounds
+  of one page are refused through `<slug>/rounds.lock`; a project without rounds.json is seeded from its tables (the
+  measured verdict rows less one). Rows carry `round`; gate-triage reads the same count (`rounds n/max` per row in
+  triage.md, `cap reached (<slug>@<w> n/max): re-prototype decision now`) instead of counting tables, and
+  `update-coverage --gate` records it per width in `delivery.gate.rounds`.
 - **One height bar per regime.** Without a pixel table, gate-evidence judges a `gate.sh` round at |Δh| ≤ 8 px in
   the prototype regime and ≤ 5 % of the origin height in the published regime — gate-all's bar; a table row, either
   stage, still decides at 5 %. The origin height comes from pixel-compare's `A <w>x<h>`; a round whose log has none

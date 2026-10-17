@@ -949,9 +949,10 @@ re-render the affected siblings; § Pass bar item 4's re-prototype trigger (a ba
 flattened) → RE-PROTOTYPE: the page leaves the template — the variance probe across the template's
 other pages decides a new archetype (two or more share the composition: craft, gate, deploy, migrate
 its siblings) or a standalone prototype (an archetype of one); tier and template change in
-`state.json`, the redirect row stays. Cap: 3 fix rounds per page at the published origin, then this
-decision — mechanical (#134): gate-all counts each `--only` verdict in `<out>/<slug>/rounds.json`
-and refuses a fourth (exit 2, `cap reached — re-prototype decision`) until
+`state.json`, the redirect row stays. Cap: 3 fix rounds per page at the published origin — a fix
+round is a measured `--only` verdict of a page that already has one; the first gating and a row
+reused whole are not rounds — then this decision, mechanical (#134): gate-all counts them in
+`<out>/<slug>/rounds.json` and refuses a fourth (exit 2, `cap reached — re-prototype decision`) until
 `--round-reset "<reason>"` records the decision — a brief cannot reset it. `gate-triage.mjs` applies
 this paragraph across the rows: `triage.md` lists the groups (each row's `rounds n/max`) and the
 re-gate scope (never smaller than the rows), and frozen-foundation causes become
