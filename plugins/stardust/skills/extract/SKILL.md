@@ -94,8 +94,7 @@ Additional checks for this sub-command:
    server, before crawling. The
    `--legacy-peer-deps` flag is required on `aem-boilerplate` targets
    (their pinned `eslint@8` makes a plain `npm i` exit `ERESOLVE`
-   before playwright is even considered). Don't trust the CLI
-   probe alone.
+   before playwright is even considered).
 
    **`--no-save` installs are ephemeral.** Any later real `npm i` (e.g. a setup step
    adding a devDependency) prunes non-manifest packages, silently
@@ -107,7 +106,12 @@ Additional checks for this sub-command:
    **Script location matters.** ESM resolves `import 'playwright'`
    from the *script's* directory and the plugin tree ships no
    `node_modules`: copy every script byte-identical into the project
-   (`stardust/scripts/…`) and run the copy.
+   (`stardust/scripts/…`) and run the copy. `crawl.mjs` dismisses
+   consent from the diff skill's `live-session.mjs` table: copy that
+   file into the same directory as the `crawl.mjs` copy, or keep the
+   `stardust/scripts/extract/` ↔ `stardust/scripts/diff/` layout.
+   Without it a consent-dismissing crawl stops with exit 2;
+   `--no-consent-dismiss` runs without it.
 
    **Bundled crawler.** `skills/extract/scripts/crawl.mjs` is a
    runnable reference implementation of this whole sub-command —
