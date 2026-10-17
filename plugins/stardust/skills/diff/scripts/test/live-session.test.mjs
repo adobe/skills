@@ -4,7 +4,10 @@
 // no duplicates, the OneTrust id first), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
 // late-modal poll on EDS build/preview hosts), waitEdsDelayedPhase never throwing (stub page), and the one
 // navigation timeout (env → the crawl's p95 × 2 → the caller's default; gotoLive and visit take it per call), and the
-// per-width deadline helpers (withDeadline, isContextDestroyed). No browser:
+// per-width deadline helpers (withDeadline, isContextDestroyed), and the 2xx denial page (the vendor signatures in
+// order, normalizeDenialText, denialMarker per signature / the 2 KB rule / the one-error-heading rule, and gotoLive on
+// stub pages: a denial throws BotChallengeError "origin blocked", a >= 400 is never probed, a failing probe is one
+// "skipped" stderr line, the solve window clears on a clean reload, the header-marker message unchanged). No browser:
 // dismissOverlays itself runs inside stitch-shot / the diff probes against a page (stitch-shot.test.mjs runs the
 // EDS single sweep against a late consent banner).
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
@@ -20,9 +23,12 @@ const check = (name, fn) => { checks += 1; try { fn(); console.log(`✓ ${name}`
 
 check('the exported surface the instruments import', () => {
   for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'isEdsHost', 'lateWindowFor', 'waitEdsDelayedPhase', 'defaultWaitUntil', 'newLiveContext', 'gotoLive', 'dismissOverlays', 'launchStealthHeaded', 'browserTier',
-    'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed']) assert.ok(name in session, `${name} exported`);
+    'NAV_TIMEOUT_ENV', 'CRAWL_LOG', 'NAV_TIMEOUT_DEFAULT_MS', 'NAV_TIMEOUT_MIN_MS', 'NAV_TIMEOUT_MAX_MS', 'navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed',
+    'DENIAL_TEXT_MAX_BYTES', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   assert.equal(typeof session.dismissOverlays, 'function');
-  for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed']) assert.equal(typeof session[name], 'function', name);
+  for (const name of ['navTimeout', 'resolveNavTimeoutMs', 'withDeadline', 'isContextDestroyed', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'pageDenial', 'botChallengeError']) assert.equal(typeof session[name], 'function', name);
+  assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
+  assert.ok(session.DENIAL_ERROR_HEADING instanceof RegExp && session.DENIAL_ERROR_HEADING.flags.includes('i'), 'a case-insensitive RegExp');
   assert.equal(typeof session.waitEdsDelayedPhase, 'function');
 });
 check('consent candidates: OneTrust first, the cmp-prefixed consent-manager buttons present, text fallbacks last, no duplicates', () => {
@@ -60,6 +66,8 @@ check('lateWindowFor: the caller\'s window on live source sites, 0 on EDS build/
 });
 
 const checkAsync = async (name, fn) => { checks += 1; try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+// what denialProbeInPage returns on an ordinary page — every stub page gotoLive probes after a < 400 gets it
+const CLEAN_PROBE = Object.freeze({ title: 'Home', text: 'Welcome to the store. '.repeat(400), bytes: 8800, headings: Object.freeze(['Welcome', 'New arrivals']), frames: Object.freeze([]) });
 await checkAsync('waitEdsDelayedPhase: polls loadEventEnd + afterLoadMs under the timeout and never throws (timeout or closed page)', async () => {
   const calls = [];
   const page = (fail) => ({ waitForFunction: async (fn, arg, opts) => { calls.push({ fn, arg, opts }); if (fail) throw new Error('Timeout 6000ms exceeded.'); } });
@@ -163,7 +171,8 @@ await checkAsync('gotoLive and measure-live visit take the navigation timeout pe
   const page = {
     goto: async (u, o) => { timeouts.push(o.timeout); return resp; },
     waitForTimeout: async () => {},
-    evaluate: async () => ({ h: 100, empty: 0, pending: 0 }),
+    // gotoLive's denial-page probe gets a clean page; visit's settle reads get their own shape
+    evaluate: async (fn) => (fn === session.denialProbeInPage ? CLEAN_PROBE : { h: 100, empty: 0, pending: 0 }),
   };
   const url = 'https://www.example.com/';
   const both = async () => {
@@ -183,6 +192,185 @@ await checkAsync('gotoLive and measure-live visit take the navigation timeout pe
     await withProcessEnv('4321', () => session.gotoLive(page, url, { settleMs: 0, timeoutMs: 1000 }));
     assert.deepEqual(timeouts, [1000], 'an explicit timeoutMs always wins');
   } finally { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }); }
+});
+
+// The 2xx denial page (V2): a vendor wall answering 200 with its denial text is a bot challenge. Pure: denialMarker on
+// hand-built probes, gotoLive on stub pages (denialProbeInPage itself runs in a page — stitch-shot / the probes).
+const probe = (o = {}) => ({ title: '', text: '', bytes: 400, headings: [], frames: [], ...o });
+// one small page per signature, natural case; no page carries an EARLIER signature's phrases (first match wins)
+const SIGNATURE_PAGES = {
+  'cant-process': probe({ text: 'We\'re sorry, we can’t process your request right now. Please try again later. Incident Number: 18.abc' }),
+  'access-denied': probe({ title: 'Access Denied', text: 'Access Denied You don\'t have permission to access "http://www.example.com/" on this server. Reference #18.2f1c3b17.1700000000.4a5b6c' }),
+  'just-a-moment': probe({ title: 'Just a moment…', text: 'Checking your browser before accessing www.example.com.' }),
+  'press-and-hold': probe({ text: 'Press & Hold to confirm you are a human (and not a bot).' }),
+  incapsula: probe({ text: 'Request unsuccessful. Incapsula incident ID: 1234' }),
+  // the vendor's captcha iframe; protocol-relative because the site-names lint reads any http(s) host in code as a site
+  datadome: probe({ text: 'Please enable JS and disable any ad blocker', frames: ['//geo.captcha-delivery.com/captcha/?initialCid=abc&cid=def'] }),
+  'request-unsuccessful': probe({ text: 'Request unsuccessful. Your request could not be completed.' }),
+  'system-down': probe({ title: 'System Down', text: 'System Down. Please try again later.' }),
+};
+const phrasesOccur = (page, sig) => {
+  const hay = session.normalizeDenialText([page.title, page.text, ...page.frames].join(' '));
+  return sig.all.every((el) => (Array.isArray(el) ? el : [el]).some((p) => hay.includes(p)));
+};
+
+check('DENIAL_SIGNATURES: the eight vendor signatures in order, frozen (array, entries, phrase lists), labels and normalised phrases', () => {
+  const sigs = session.DENIAL_SIGNATURES;
+  assert.deepEqual(sigs.map((s) => s.id), ['cant-process', 'access-denied', 'just-a-moment', 'press-and-hold', 'incapsula', 'datadome', 'request-unsuccessful', 'system-down']);
+  assert.deepEqual(sigs.map((s) => s.label), ['"can\'t process your request" + "Incident Number"', '"Access Denied" + "Reference #"', '"Just a moment…"', '"Press & Hold"', '"Incapsula"', '"DataDome"', '"Request unsuccessful"', '"System Down"']);
+  assert.deepEqual(sigs.map((s) => s.all), [["can't process your request", 'incident number'], ['access denied', 'reference #'], ['just a moment...'], ['press & hold'], ['incapsula'], [['datadome', 'captcha-delivery.com']], ['request unsuccessful'], ['system down']]);
+  assert.ok(Object.isFrozen(sigs), 'the array is frozen');
+  for (const s of sigs) {
+    assert.ok(Object.isFrozen(s) && Object.isFrozen(s.all) && s.all.every((el) => !Array.isArray(el) || Object.isFrozen(el)), `${s.id} frozen`);
+    for (const p of s.all.flat()) assert.equal(p, session.normalizeDenialText(p), `${s.id}: "${p}" is written normalised`);
+  }
+});
+for (const [i, sig] of session.DENIAL_SIGNATURES.entries()) {
+  check(`denialMarker: the ${sig.id} signature on a 400 B page in natural case → its label (no earlier signature on the page)`, () => {
+    const page = SIGNATURE_PAGES[sig.id];
+    assert.ok(phrasesOccur(page, sig), 'the fixture carries its own phrases');
+    // first match wins: an earlier signature on the page would mask this one (a real vendor page may carry a LATER
+    // one — the Incapsula page says "Request unsuccessful")
+    assert.deepEqual(session.DENIAL_SIGNATURES.slice(0, i).filter((s) => phrasesOccur(page, s)).map((s) => s.id), [], 'no earlier signature occurs');
+    assert.equal(session.denialMarker(page), `denial page — ${sig.label}`);
+  });
+}
+check('denialMarker: a pair signature with one half only is no denial page; both halves match anywhere (title + text, any size)', () => {
+  for (const text of ['Access Denied to the archive for guests.', 'Reference #18.2f1c3b17 for your order.', 'We can’t process your request right now.', 'Incident Number: 18.abc']) {
+    assert.equal(session.denialMarker(probe({ text })), null, text);
+  }
+  assert.equal(session.denialMarker(probe({ title: 'Access Denied', text: 'Reference #18.2f1c3b17' })), 'denial page — "Access Denied" + "Reference #"', 'one half in the title, one in the text');
+  assert.equal(session.denialMarker(probe({ bytes: 20000, text: `${'Our catalogue. '.repeat(50)} Access Denied … Reference #18.2f` })), 'denial page — "Access Denied" + "Reference #"', 'a pair on a 20000 B page');
+});
+check('denialMarker: a single phrase counts in the text / an iframe src only under 2048 B of text, in the title on any page', () => {
+  const big = { bytes: 20000, headings: ['Welcome'] };
+  assert.equal(session.denialMarker(probe({ ...big, title: 'Voice notes', text: 'Press & hold the button to record a voice note.' })), null, 'a 20000 B page that mentions it');
+  assert.equal(session.denialMarker(probe({ ...big, title: 'Press & Hold', text: 'Our catalogue.' })), 'denial page — "Press & Hold"', 'the same phrase in the title');
+  assert.equal(session.denialMarker(probe({ ...big, frames: ['//geo.captcha-delivery.com/captcha/?initialCid=abc'] })), null, 'an iframe src on a 20000 B page');
+  assert.equal(session.denialMarker(probe({ bytes: 2047, text: 'System Down' })), 'denial page — "System Down"', '2047 B is small');
+  assert.equal(session.denialMarker(probe({ bytes: 2048, text: 'System Down' })), null, '2048 B is not');
+});
+check('denialMarker: the generic rule — under 2048 B of text, exactly ONE heading, an error heading → bytes and the heading', () => {
+  const blocked = { bytes: 300, text: 'Access is blocked. Your request was refused.', headings: ['Access is blocked'] };
+  assert.equal(session.denialMarker(probe(blocked)), 'denial page — 300 B of text under one error heading "Access is blocked"');
+  assert.equal(session.denialMarker(probe({ ...blocked, headings: ['Access is blocked', 'Contact us'] })), null, 'two headings');
+  assert.equal(session.denialMarker(probe({ ...blocked, headings: ['Welcome'] })), null, 'one non-error heading');
+  assert.equal(session.denialMarker(probe({ ...blocked, bytes: 5000 })), null, '5000 B of text');
+  assert.equal(session.denialMarker(probe({ ...blocked, headings: [] })), null, 'no heading');
+  for (const h of ['Something went wrong', 'Are you a human?', 'Verify you are human', 'Page Not Found', 'We can’t find that page', 'Error 403', 'Please complete the security check', 'hCaptcha']) {
+    assert.equal(session.denialMarker(probe({ ...blocked, headings: [h] })), `denial page — 300 B of text under one error heading "${h}"`, h);
+  }
+  assert.equal(session.denialMarker(probe({ ...blocked, headings: ['Robotics lab'] })), null, 'word-bounded: robotics is not robot');
+  const long = `Sorry, ${'x'.repeat(100)}`;
+  assert.equal(session.denialMarker(probe({ ...blocked, headings: [long] })), `denial page — 300 B of text under one error heading "${long.slice(0, 80)}"`, 'the heading is cut at 80 chars');
+});
+check('denialMarker: null, {} and a probe with missing or mistyped fields → null', () => {
+  for (const p of [null, undefined, {}, 'Just a moment…', 42, { title: 'Just a moment…' }, { title: 'Just a moment…', text: '', bytes: 10 }, probe({ title: 'Just a moment…', bytes: '10' }), probe({ title: 'Just a moment…', frames: null })]) {
+    assert.equal(session.denialMarker(p), null, JSON.stringify(p));
+  }
+});
+check('normalizeDenialText: lower-case, curly apostrophes → \', … → ..., every whitespace run → one space, trimmed', () => {
+  assert.equal(session.normalizeDenialText('  We Can’t ‘Go’ ʼHere…\n\t\u00a0Now  '), "we can't 'go' 'here... now");
+  assert.equal(session.normalizeDenialText('Just a moment…'), 'just a moment...');
+  for (const [v, want] of [[null, ''], [undefined, ''], [42, '42']]) assert.equal(session.normalizeDenialText(v), want, String(v));
+});
+
+// gotoLive on stub pages: `probes` = what successive evaluate calls return (the last repeats); `reload` = the
+// status/headers a reload answers with.
+const LIVE_URL = 'https://www.example.com/';
+const stubPage = ({ status = 200, headers = {}, probes = [CLEAN_PROBE], evaluateError = null, reload = { status: 200, headers: {} } } = {}) => {
+  const calls = { goto: 0, reload: 0, evaluate: 0, waits: [] };
+  const response = (s, h) => ({ status: () => s, headers: () => h, url: () => LIVE_URL });
+  const page = {
+    calls,
+    last: null,
+    goto: async () => { calls.goto += 1; page.last = response(status, headers); return page.last; },
+    reload: async () => { calls.reload += 1; page.last = response(reload.status, reload.headers); return page.last; },
+    waitForTimeout: async (t) => { calls.waits.push(t); },
+    evaluate: async (fn) => {
+      assert.equal(fn, session.denialProbeInPage, 'gotoLive only evaluates the denial probe');
+      calls.evaluate += 1;
+      if (evaluateError) throw evaluateError;
+      return probes[Math.min(calls.evaluate, probes.length) - 1];
+    },
+  };
+  return page;
+};
+const stderrOf = async (fn) => {
+  const lines = []; const saved = console.error;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  try { await fn(); } finally { console.error = saved; }
+  return lines;
+};
+const HEADER_MESSAGE = (marker) => `bot challenge at ${LIVE_URL}: ${marker} — the live side served an edge interstitial, NOT the page; refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the gate cannot run against it headless.`;
+
+await checkAsync('gotoLive: a 200 whose page is a denial page throws BotChallengeError — "HTTP 200 denial page — …", origin blocked, --headed; regardless of httpError', async () => {
+  for (const [page, opts, marker] of [
+    [stubPage({ probes: [SIGNATURE_PAGES['system-down']] }), {}, 'HTTP 200 denial page — "System Down"'],
+    [stubPage({ probes: [SIGNATURE_PAGES['access-denied']] }), { httpError: 'measure' }, 'HTTP 200 denial page — "Access Denied" + "Reference #"'],
+    [stubPage({ status: 203, probes: [probe({ bytes: 300, headings: ['Access is blocked'] })] }), {}, 'HTTP 203 denial page — 300 B of text under one error heading "Access is blocked"'],
+  ]) {
+    await assert.rejects(session.gotoLive(page, LIVE_URL, { settleMs: 0, ...opts }), (e) => {
+      assert.equal(e.name, 'BotChallengeError');
+      assert.ok(e instanceof Error);
+      assert.equal(e.marker, marker);
+      assert.ok(e.marker.startsWith(`HTTP ${marker.slice(5, 8)} denial page — `));
+      assert.equal(e.url, LIVE_URL);
+      assert.equal(e.message, `bot challenge at ${LIVE_URL}: ${marker} — origin blocked: the live side served a denial page, NOT the page; refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the gate cannot run against it headless.`);
+      assert.ok(e.message.includes('origin blocked') && e.message.includes('--headed') && !e.message.includes('\n'), 'one line naming the block and the escalation');
+      return true;
+    });
+    assert.deepEqual([page.calls.goto, page.calls.reload, page.calls.evaluate], [1, 0, 1], 'plain headless: one hit, no reload');
+  }
+});
+await checkAsync('gotoLive: an entry status >= 400 is never probed — a 404 under httpError measure is returned (its warning only), a 404 under throw is a LiveHTTPError', async () => {
+  const measured = stubPage({ status: 404, probes: [SIGNATURE_PAGES['access-denied']] });
+  let resp;
+  const lines = await stderrOf(async () => { resp = await session.gotoLive(measured, LIVE_URL, { settleMs: 0, httpError: 'measure' }); });
+  assert.equal(resp.status(), 404);
+  assert.equal(measured.calls.evaluate, 0, 'no denial probe on a >= 400');
+  assert.deepEqual(lines, [`[live-session] WARNING: HTTP 404 at ${LIVE_URL} — measuring the error page; flags will reflect it`]);
+  const thrown = stubPage({ status: 404, probes: [SIGNATURE_PAGES['access-denied']] });
+  await assert.rejects(session.gotoLive(thrown, LIVE_URL, { settleMs: 0 }), { name: 'LiveHTTPError', status: 404 });
+  assert.equal(thrown.calls.evaluate, 0);
+});
+await checkAsync('gotoLive: a probe that fails twice returns the response with ONE "denial-page check skipped" stderr line (retried once after 500 ms)', async () => {
+  const page = stubPage({ evaluateError: new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation\n    at denialProbeInPage') });
+  let resp;
+  const lines = await stderrOf(async () => { resp = await session.gotoLive(page, LIVE_URL, { settleMs: 0 }); });
+  assert.equal(resp.status(), 200);
+  assert.equal(page.calls.evaluate, 2, 'one retry');
+  assert.deepEqual(page.calls.waits, [500]);
+  assert.deepEqual(lines, [`[live-session] denial-page check skipped at ${LIVE_URL}: page.evaluate: Execution context was destroyed, most likely because of a navigation`]);
+  const flaky = stubPage({ probes: [SIGNATURE_PAGES['system-down']] });
+  const evaluate = flaky.evaluate;
+  let first = true;
+  flaky.evaluate = async (fn) => { if (first) { first = false; throw new Error('Execution context was destroyed'); } return evaluate(fn); };
+  assert.deepEqual(await session.pageDenial(flaky), { marker: 'denial page — "System Down"', skipped: null }, 'the retry reads the page');
+});
+await checkAsync('gotoLive solveWindow: a denial page clean after the first reload returns the reloaded response; still denied after 3 reloads, or reloads answered by an edge challenge, it throws', async () => {
+  const cleared = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE] });
+  const resp = await session.gotoLive(cleared, LIVE_URL, { settleMs: 0, solveWindow: true });
+  assert.equal(resp, cleared.last, 'the reloaded response');
+  assert.deepEqual([cleared.calls.reload, cleared.calls.evaluate], [1, 2], 'one reload, then clean');
+  assert.deepEqual(cleared.calls.waits, [4000]);
+  const stuck = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment']] });
+  await assert.rejects(session.gotoLive(stuck, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
+  assert.deepEqual([stuck.calls.reload, stuck.calls.evaluate], [3, 4], 'the 3-attempt window');
+  const edge = stubPage({ probes: [SIGNATURE_PAGES['just-a-moment'], CLEAN_PROBE], reload: { status: 403, headers: { server: 'AkamaiGHost' } } });
+  await assert.rejects(session.gotoLive(edge, LIVE_URL, { settleMs: 0, solveWindow: true }), { name: 'BotChallengeError', marker: 'HTTP 200 denial page — "Just a moment…"' });
+  assert.deepEqual([edge.calls.reload, edge.calls.evaluate], [3, 1], 'an edge-challenged reload never re-reads the page as cleared');
+});
+await checkAsync('gotoLive: the header-marker message is unchanged (botChallengeError builds it) and a header challenge is never probed', async () => {
+  const page = stubPage({ status: 403, headers: { server: 'AkamaiGHost' } });
+  await assert.rejects(session.gotoLive(page, LIVE_URL, { settleMs: 0 }), (e) => {
+    assert.deepEqual([e.name, e.marker, e.url], ['BotChallengeError', 'HTTP 403 + Akamai edge signature', LIVE_URL]);
+    assert.equal(e.message, HEADER_MESSAGE('HTTP 403 + Akamai edge signature'));
+    return true;
+  });
+  assert.equal(page.calls.evaluate, 0);
+  const built = session.botChallengeError(LIVE_URL, 'cf-mitigated: challenge');
+  assert.deepEqual([built.name, built.marker, built.url, built.message], ['BotChallengeError', 'cf-mitigated: challenge', LIVE_URL, HEADER_MESSAGE('cf-mitigated: challenge')]);
 });
 
 // Per-width deadlines (D1): withDeadline bounds a whole width read; isContextDestroyed picks the one retryable failure.
