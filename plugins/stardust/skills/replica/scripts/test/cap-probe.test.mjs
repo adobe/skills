@@ -362,7 +362,7 @@ if (pwProbe.status !== 0) {
       assert.equal(j._provenance.partial, true); assert.deepEqual(Object.keys(j.pages), [`${base}/live`]);
       assert.deepEqual([j.aggregate.containerMaxWidth, j.aggregate.shellMaxWidth], ['1600px', 1920]);
       assert.equal(readFileSync(design, 'utf8'), before, 'a partial model never reaches DESIGN.json — qa-gate and compare --design read it as complete');
-      assert.deepEqual(j._provenance.designWrite, { file: design, skipped: 'partial capture — 1 of 2 pages probed; re-run the failed URL(s)' });
+      assert.deepEqual(j._provenance.designWrite, { file: design, skipped: 'partial capture — 1 of 2 pages probed; re-run the capture with every URL once the failed page reads' });
       assert.match(r.err, /DESIGN-partial\.json NOT written — partial capture — 1 of 2 pages probed/);
     });
     await check('e2e compare against a build that hangs: NO VERDICT, exit 124 (never 0 or 2), the attempt recorded under --slug without a verdict', async () => {

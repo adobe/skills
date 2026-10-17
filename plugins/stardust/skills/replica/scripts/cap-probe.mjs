@@ -674,7 +674,7 @@ async function main(argv) {
       if (o.writeDesign && partial) {
         // A partial model never reaches DESIGN.json: qa-gate and compare --design read it as complete, and the unprobed
         // page is the one that could have shown a differing cap (a register item) or needed a wider probe width.
-        const skipped = `partial capture — ${Object.keys(pages).length} of ${o.urls.length} pages probed; re-run the failed URL(s)`;
+        const skipped = `partial capture — ${Object.keys(pages).length} of ${o.urls.length} pages probed; re-run the capture with every URL once the failed page reads`;
         result._provenance.designWrite = { file: o.writeDesign, skipped };
         console.error(`cap-probe: ${o.writeDesign} NOT written — ${skipped}`);
       } else if (o.writeDesign && aggregate) {
