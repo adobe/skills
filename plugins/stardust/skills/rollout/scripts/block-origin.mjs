@@ -566,8 +566,8 @@ function defaultRoles(recs, eds) {
  * is not itself a record's anchor: among S's element children (claimed when holding a record's element),
  * the first free child after the one holding the previous record (same section), else the last free one
  * before the one holding the next, else the first free one, else S. Otherwise: the previous record's next
- * element sibling, else the next record's previous element sibling — each walking up the ancestors until
- * one exists — else null.
+ * element sibling, else the next record's previous element sibling — each walking up the ancestors (up to,
+ * not past, body) until one exists — else null.
  */
 function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
   const near = (list) => list.find((x) => sec && sectionOf.get(x) === sec && anchorOf(x)) || list.find((x) => anchorOf(x)) || null;
@@ -586,7 +586,7 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
     return k >= 0 ? kids[k] : S;
   }
   const sibling = (from, step) => {
-    for (let a = from; a; a = parentEl(index, a)) {
+    for (let a = from; a && a !== index.body; a = parentEl(index, a)) {
       const sib = elementSibling(index, a, step);
       if (sib) return sib;
     }

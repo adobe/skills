@@ -651,6 +651,10 @@ check('mapping: an image-only first block — the next anchor\'s previous elemen
   ok(runMap(dir));
   // the heading+text anchors on div.inner, the first child of its section: up one level, section.lead's previous sibling
   assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', 'div.stage', 0, 'position')]);
+  // the walk stops at body: head is never a block's origin
+  put(join(dir, 'stardust', 'current', 'pages', 'landing.html'), '<html><head><title>Landing</title></head><body><main><h1>Landing title</h1><p>Landing intro text.</p></main></body></html>');
+  ok(runMap(dir));
+  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', null, 0, 'position')]);
 });
 
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
