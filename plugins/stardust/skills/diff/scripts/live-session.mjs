@@ -46,7 +46,7 @@
  *     contributor into the live capture that no prototype fidelity could
  *     null out). The mouse is parked afterwards (bottom-left) so no
  *     :hover-styled element under the resting cursor captures in hover state.
- *     What no sweep removed (a consent root still shown, a full-viewport
+ *     What no sweep removed (a consent banner still shown, a full-viewport
  *     backdrop, a scroll lock) is reported as `overlayLeft`, never captured silently.
  *   - `--locale` determinism: geo-redirecting sites (a car brand → /ch-de/,
  *     a fashion brand → /ww/) capture a different locale per run unless
@@ -487,7 +487,8 @@ export function consentLabelSweepInPage(table) {
  * What a capture would still show after the sweeps, run in the page: `page.evaluate(detectOverlayLeftInPage,
  * { roots, coverage })` (self-contained). "Shown" = displayed, not visibility-hidden, opacity > 0 (ancestors too, via
  * checkVisibility where the browser has it) and a 2×2 box. In order:
- *   1. a consent root (`roots`) still shown — the element or anything in its open shadow root →
+ *   1. a consent root (`roots`) still shown and banner-sized — the element or anything in its open shadow root whose
+ *      box covers ≥ 5 % of the viewport area or ≥ 50 % of its width (a persistent privacy trigger does not) →
  *      `<root> (consent root visible)`;
  *   2. the first shown fixed/sticky element (document order, open shadow roots included) with a non-negative z-index
  *      that paints (background colour alpha > 0, a background image or a backdrop filter) over ≥ `coverage` of the
@@ -514,10 +515,17 @@ export function detectOverlayLeftInPage({ roots, coverage }) {
     }
     return null;
   };
+  // banner-sized: the box covers ≥ 5 % of the viewport area or ≥ half its width — a consent manager's persistent
+  // privacy trigger (a small fixed button left after consent) is not the banner
+  const banner = (el) => {
+    if (!shown(el)) return false;
+    const r = el.getBoundingClientRect();
+    return r.width * r.height >= 0.05 * vw * vh || r.width >= 0.5 * vw;
+  };
   for (const sel of roots) {
     let els = [];
     try { els = [...document.querySelectorAll(sel)]; } catch { /* not a selector here — skip it */ }
-    if (els.some((el) => shown(el) || (el.shadowRoot && find(el.shadowRoot, shown)))) return `${sel} (consent root visible)`;
+    if (els.some((el) => banner(el) || (el.shadowRoot && find(el.shadowRoot, banner)))) return `${sel} (consent root visible)`;
   }
   const alpha = (c) => {
     const m = /\(([^)]*)\)/.exec(c || '');
