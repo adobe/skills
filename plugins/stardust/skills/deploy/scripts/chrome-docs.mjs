@@ -13,7 +13,9 @@
  *   --content  root of the authored content tree (default: content)
  *   --prefix   a locale folder such as fr or ca/en (leading/trailing / stripped; segments lower-case [a-z0-9-],
  *              as EDS serves them) → <content>/<prefix>/nav.html and footer.html, served at /<prefix>/nav, /<prefix>/footer
- *   --check    write nothing: compare the built documents with the files on disk
+ *   --check    write nothing: compare the built documents with the files on disk — byte for byte, so it is
+ *              meaningful right after a build, before localize-links.mjs and the logo re-host edit the documents;
+ *              after delivery never re-build over them without re-running both
  *
  * Document shape: the body fragment of deploy Step 9 (<body>, empty <header>, <main> of <div> sections, empty
  * <footer>), 2-space indentation, attributes href → src → alt, text and attribute values escaped (& < > ")
