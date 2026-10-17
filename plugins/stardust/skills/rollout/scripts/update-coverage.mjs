@@ -40,8 +40,9 @@
  *   entry); `width` = the table's `_provenance.breakpoint`.
  *   `pass` is the verdict of the row applied last, whatever its width; `delivery.gate.passByWidth`
  *   ({"<width>": bool | null}, keys as atByWidth) keeps each width's own verdict (a valid override passes it; an
- *   INCONCLUSIVE row records null — no verdict, never false, never true): the row sets its table's width, other
- *   widths' entries are kept, a skipped older row touches none, a table without a breakpoint none. done-check.mjs
+ *   INCONCLUSIVE row records null — no verdict, never a new false, never true — and keeps an earlier false):
+ *   the row sets its table's width, other widths' entries are kept, a skipped older row touches none, a table
+ *   without a breakpoint none. done-check.mjs
  *   proves a page only when every width is true, and lists it in pages_failed while any recorded width is false.
  *   `delivery.gate.rounds` ({"<width>": n}) = the row's fix-round count (`round`, a non-negative integer) per
  *   width, merged across ingests like `atByWidth` (the newest applied row of a width sets it, also a lower count
@@ -306,9 +307,10 @@ if (gateArg) {
       const ov = r.override ? { verdict: r.override.verdict ?? null, reason: r.override.reason ?? null, valid: r.override.valid === true } : null;
       const pass = !r.inconclusive && !!(r.pass || (ov && ov.valid));
       const passByWidth = { ...((rec && rec.passByWidth) || {}) };
-      // an inconclusive row has no verdict at its width: null, never false (done-check: gates_inconclusive, not
-      // pages_failed) and never true (unit_unproven needs every width true)
-      if (width != null) passByWidth[String(width)] = r.inconclusive ? null : pass;
+      // an inconclusive row has no verdict at its width: it keeps an earlier false (no measured verdict cleared that
+      // failure), else null — never a new false (done-check: gates_inconclusive, not pages_failed) and never true
+      // (unit_unproven needs every width true)
+      if (width != null) passByWidth[String(width)] = r.inconclusive ? (passByWidth[String(width)] === false ? false : null) : pass;
       const widthFailed = Object.values(passByWidth).some((v) => v === false);
       p.delivery.gate = { pass, pct: r.pct, heightDelta: r.heightDelta, clipped: r.clipped ?? null, content: r.content || null, reasons: r.reasons || [], inconclusive: r.inconclusive ? (r.reasons || []).join('; ') || 'no verdict' : null, override: ov, table: gateFile, at, width, atByWidth, passByWidth, rounds, host: originOf(r.host) ?? tableHost };
       if (r.inconclusive) inconclusive += 1;

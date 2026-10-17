@@ -461,7 +461,7 @@ await check('--gate records an INCONCLUSIVE row as pass false with its reasons a
   assert.match((await run(['--help'], proj)).out, /inconclusive/);
 });
 
-await check('--gate records an INCONCLUSIVE width as passByWidth null — never false, never true — and flips no status either way', async () => {
+await check('--gate records an INCONCLUSIVE width as passByWidth null — never a new false, never true; an earlier false stands — and flips no status either way; a later passing width does not lift that failure', async () => {
   const { proj, out } = fixture();
   for (const r of await Promise.all([run(['page-0', '--status', 'verified'], proj), run(['page-1', '--status', 'deployed'], proj)])) assert.equal(r.code, 0, r.err);
   let r = await run(['--gate', gateTable(proj, 'desk.json', T1, 1440, [passRow('page-0'), failRow('page-1')])], proj); assert.equal(r.code, 0, r.err);
@@ -474,8 +474,12 @@ await check('--gate records an INCONCLUSIVE width as passByWidth null — never 
   assert.deepEqual(ok.gate.passByWidth, { 1440: null, 360: true }, 'the passing 1440 verdict is replaced by no verdict, not kept true');
   assert.equal(ok.status, 'verified', 'no verdict never fails a page'); assert.equal(ok.error, null);
   const bad = gateOf(out, 'page-1');
-  assert.deepEqual(bad.gate.passByWidth, { 1440: null, 360: true }, 'the failing 1440 verdict is replaced by no verdict, not passed');
+  assert.deepEqual(bad.gate.passByWidth, { 1440: false, 360: true }, 'the failing 1440 verdict stands: no verdict never clears it');
   assert.equal(bad.status, 'failed', 'no verdict never lifts a gate failure'); assert.equal(bad.error, 'gate: pixel 12% > 10%');
+  r = await run(['--gate', gateTable(proj, 'mob-later.json', T3, 360, [passRow('page-1')])], proj); assert.equal(r.code, 0, r.err);
+  const after = gateOf(out, 'page-1');
+  assert.deepEqual(after.gate.passByWidth, { 1440: false, 360: true }, 'a later 360 pass leaves the 1440 failure in place');
+  assert.equal(after.status, 'failed', 'a polluted 1440 row between a 1440 failure and a later 360 pass never launders the failure');
 });
 
 await check('--gate copies the validated override {verdict, reason, valid}; only valid: true passes a failing row — a raw override without valid is not valid', async () => {
