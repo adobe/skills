@@ -642,6 +642,17 @@ check('mapping: --encode <dir>; an unreadable encoder map is ignored with one li
   assert.equal(r.stderr.trim(), `block-origin: ${note}`);
 });
 
+check('mapping: an image-only first block — the next anchor\'s previous element sibling, walking up the ancestors', () => {
+  const dir = project('map-first', [{
+    slug: 'landing', path: '/landing', templateId: 'landing',
+    content: '<main><div><div class="hero"><div><div><picture><img src="h.jpg" alt=""></picture></div></div></div></div><div><h1>Landing title</h1><p>Landing intro text.</p></div></main>',
+    capture: '<html><body><main><div class="stage"><img src="h.jpg" alt=""></div><section class="lead"><div class="inner"><h1>Landing title</h1><p>Landing intro text.</p></div></section></main></body></html>',
+  }]);
+  ok(runMap(dir));
+  // the heading+text anchors on div.inner, the first child of its section: up one level, section.lead's previous sibling
+  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('landing', 'div.stage', 0, 'position')]);
+});
+
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.
 const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
 
