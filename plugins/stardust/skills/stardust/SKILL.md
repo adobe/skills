@@ -418,7 +418,10 @@ the shipped instrument did not serve, where the replacement lives — and
 noted in the journal entry. An unrecorded parallel pipeline is a defect,
 not initiative: three recorded migrations rebuilt the import pipeline by
 hand (one a 60 KB importer) beside skills that shipped it, and their
-fidelity numbers were never comparable to the gate's.
+fidelity numbers were never comparable to the gate's. An agent-written
+roster builder for gate-all (a hand-built state or roster file) is a
+deviation to record, not a tool to write: gate-all reads the rollout
+coverage.
 
 The journal is **append-only**. If a prior entry turns out wrong, write a
 new entry that corrects it; do not edit history. This preserves the

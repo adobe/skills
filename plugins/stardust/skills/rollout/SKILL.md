@@ -397,8 +397,10 @@ present), a rotating carousel advances without interaction.
 
 **Published-origin gate over the roster (#125).** `verify` proves the pages render; the
 DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content per deployed page,
-`../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate).
-`update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` writes each row into
+`../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate). Its roster
+is the coverage: rows `deployed` / `verified` with a `deployedUrl`, and `failed` by the gate so a
+fix round re-gates them — no state file, no hand-built roster.
+`update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` feeds each row back into
 `delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
 gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
 the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).

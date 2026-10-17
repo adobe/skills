@@ -465,9 +465,10 @@ had one section for the whole run).
   mid-wave.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
-  first (`PUT → preview`); the archetype's published row of record is the
-  C-archetype unit's `gate-all.mjs --only <archetype> --eds-host <preview
-  host>` row — the evidence the roster later reuses. `gate.sh <slug> "$LIVE"
+  first (`PUT → preview`, its coverage row recorded `deployed`); the
+  archetype's published row of record is the C-archetype unit's
+  `gate-all.mjs --only <archetype> --eds-host <preview host>` row — the
+  evidence the roster later reuses. `gate.sh <slug> "$LIVE"
   "<preview-url>" <width> pub<N> --full --marker "<brand or domain string>"`
   through `run-bg.mjs` stays the fix-round instrument inside that unit, never
   a second verdict, in the ordinary `gates/<slug>-<width>/` dir (a new dir
@@ -477,7 +478,11 @@ had one section for the whole run).
   number alone** (`reference/source-fidelity-gate.md` § The all-pages
   published-origin gate, #125): `node stardust/scripts/replica/gate-all.mjs
   [--only <slug,…>] [--skip-existing] [--eds-host <host>]` through `run-bg.mjs`.
-  A `--only` fix round reuses this run's origin capture (`--recapture-origin`
+  Its roster is the rollout coverage (`stardust/rollout/coverage/pages.json`
+  rows `deployed` / `verified`, and `failed` by the gate so a fix round
+  re-gates them) — no state file, no hand-built roster; `--eds-host` takes a
+  bare host or `https://<host>`. A `--only` fix round reuses this run's
+  origin capture (`--recapture-origin`
   when the source changed; reference § Iteration discipline, Evidence
   freshness); opt-in `--one-load` reads the probes off the stitched pages.
   DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls

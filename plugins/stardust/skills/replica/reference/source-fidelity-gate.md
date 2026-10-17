@@ -825,12 +825,16 @@ small text inside otherwise matching shapes (the text-only number, `--text-boxes
 Element presence and legibility are checkable — so `gate-all.mjs` checks them.
 
 `node stardust/scripts/replica/gate-all.mjs` (project root; through `run-bg.mjs`) runs, for
-every `deployed` page in `stardust/state.json`, the stitched captures and pixel-compare of the
+every page of its roster, the stitched captures and pixel-compare of the
 archetype gate PLUS two DOM probes that load both pages in the same window-free real-Chrome tier
 and settle them the same way (`measure-live.mjs`; under the opt-in `--one-load`, taken from the stitched
 page itself — one navigation per side, both sides on real Chrome), and writes
 `stardust/replica/gates/all-<width>/<slug>/{origin,eds,diff}.png + pixel.json + content.json +
-clip.json [+ units.json]` and `summary.{json,md}`. **Verdict, per page — all four:**
+clip.json [+ units.json]` and `summary.{json,md}`. The roster is the rollout coverage (`--coverage`,
+default `stardust/rollout/coverage/pages.json`): rows `deployed` / `verified`, and `failed` by the
+gate so a fix round re-gates them, each gated at its `deployedUrl` against its `source.sourceUrl`;
+without a coverage file, the `deployed` pages with a `liveUrl` in `stardust/state.json`; the run's
+first line names the source. **Verdict, per page — all four:**
 
 1. **pixel** — overlap % ≤ `--threshold` (default 10).
 2. **height** — |Δh| ≤ `--height-tol` × origin height (default 5 %). The overlap crop cannot see
@@ -886,7 +890,8 @@ installed; every probe writes the tier it actually ran (`chrome` | `chromium-fal
 `chromium`) into its JSON, `summary.md` carries a `browser` column and the calibration line
 counts degraded pages — a run that quietly lost its origin measurements on a bot-managed site is
 visible in the artifact. Sites without bot management measure identically on both tiers.
-`--eds-host` gates a code branch against the same content (branch hosts
+`--eds-host` gates a code branch against the same content (a bare host or `https://<host>`; a path
+is refused, exit 2; branch hosts
 serve the LITERAL branch name — `fix/x` → push a mirror `fix-x`). Read a finding as one crop of
 the two captures at the row's band, never the whole pages.
 
