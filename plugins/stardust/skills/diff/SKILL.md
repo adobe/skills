@@ -44,7 +44,9 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 # root: ESM resolves from the script.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
 # AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94).
-# Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
+# Prereq: a RENDERABLE source. Static → serve from its own dir:
+# python3 -m http.server <port> --bind 127.0.0.1 (loopback only: the default binds every
+# interface, exposing the tree, and can crash on a long container host name).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 # ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
 curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free

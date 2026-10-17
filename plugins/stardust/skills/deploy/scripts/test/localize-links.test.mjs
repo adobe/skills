@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// skills/deploy/scripts/test/localize-links.test.mjs — the redirects reader: TSV with comments, JSON array and map, the published DA sheet, JSON Lines with src/target; incomplete rows skipped.
+// skills/deploy/scripts/test/localize-links.test.mjs — the redirects reader: TSV with comments, JSON array and map, the published DA sheet, JSON Lines with src/target; incomplete rows skipped; a missing --redirects file is a note, an unreadable one exit 1.
 // Run: node plugins/stardust/skills/deploy/scripts/test/localize-links.test.mjs
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
@@ -46,4 +46,27 @@ check("a content tree: links to a folder index get /x/, links to a leaf lose .ht
   rmSync(root, { recursive: true });
 });
 check("--help prints usage", () => { const r = spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--help"], { encoding: "utf8" }); assert.equal(r.status, 0); assert.match(r.stdout + r.stderr, /localize-links/); });
+check("a missing --redirects file is a note: links still localized, --check as without it, --json redirectsFound false; a directory stays exit 1", () => {
+  const root = mkdtempSync(join(tmpdir(), "localize-m-")); const c = join(root, "content", "en"); mkdirSync(c, { recursive: true });
+  const page = '<a href="https://example.com/en/b.html">b</a>';
+  writeFileSync(join(c, "a.html"), page); writeFileSync(join(c, "b.html"), "");
+  const missing = join(root, "redirects.tsv");
+  const run = (...extra) => spawnSync(process.execPath, [join(HERE, "..", "localize-links.mjs"), "--source-host", "example.com", "--content", join(root, "content"), ...extra], { encoding: "utf8" });
+  const note = `localize-links: note: --redirects ${missing} not found — no redirect pairs read (seed-redirects.mjs writes it when the spec knowledge exists); continuing with the content tree only`;
+  const checkWithout = run("--check"); const checkMissing = run("--check", "--redirects", missing);
+  assert.equal(checkWithout.status, 2, checkWithout.stderr);
+  assert.equal(checkMissing.status, checkWithout.status); assert.equal(checkMissing.stdout, checkWithout.stdout); assert.equal(checkMissing.stderr.trim(), note);
+  assert.equal(readFileSync(join(c, "a.html"), "utf8"), page);
+  const json = run("--json", "--dry-run", "--redirects", missing);
+  assert.equal(json.status, 0, json.stderr); assert.equal(JSON.parse(json.stdout).redirectsFound, false);
+  assert.equal(JSON.parse(run("--json", "--dry-run").stdout).redirectsFound, null);
+  const r = run("--redirects", missing);
+  assert.equal(r.status, 0, r.stderr); assert.equal(r.stderr.trim(), note);
+  assert.equal(readFileSync(join(c, "a.html"), "utf8"), '<a href="/en/b">b</a>');
+  writeFileSync(missing, "/en/old\t/en/b\n");
+  assert.equal(JSON.parse(run("--json", "--dry-run", "--redirects", missing).stdout).redirectsFound, true);
+  const dir = run("--redirects", join(root, "content"));
+  assert.equal(dir.status, 1); assert.match(dir.stderr, /--redirects .* cannot be read/);
+  rmSync(root, { recursive: true });
+});
 process.exit(failed ? 1 : 0);

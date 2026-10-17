@@ -13,16 +13,24 @@
  *                    tree or a local export) — checks existence + content
  *
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
- * (#75 broken-image ingestion), every internal href="/…" resolves to a page
- * in coverage, and `delivery.gate.pass` is not false (the pixel table's verdict,
- * written by `update-coverage.mjs --gate` — #125).
+ * (#75 broken-image ingestion), a page renders exactly one <h1>, every internal href="/…"
+ * resolves to a page in coverage, and `delivery.gate.pass` is not false (the pixel table's
+ * verdict, written by `update-coverage.mjs --gate` — #125).
+ *
+ * A page that renders no <h1> while its source capture (<current>/pages/<slug>.json, extract's
+ * crawl) records headings without an h1 is NOT failed: the source's trait is kept — content is
+ * never edited to satisfy a verifier — and the page is verified with a stdout line
+ * `note: <slug>: source has no h1 (recorded source trait)`. More than one <h1>, a missing
+ * capture, or a capture with an h1 → the page fails as before.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
- *   --out defaults to stardust/rollout
+ *        [--current <dir>]
+ *   --out defaults to stardust/rollout; --current (the source capture) to stardust/current
  *
  * Writes (under <out>/): coverage/pages.json (each checked page flipped to verified | failed),
  * coverage/templates.json (roll-up) and rollout.json (lastRun) when they exist. The per-page
- * result lines go to stdout.
+ * result lines go to stdout; the summary line gains `· <n> note(s)` when there are notes.
+ * Exit: 0 = no checked page failed, 1 = a page failed (or no pages.json), 2 = no --base/--root.
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,6 +49,7 @@ const OUT = arg('out', 'stardust/rollout');
 const ROOT = arg('root', null);
 const onlySlug = arg('slug', null);
 const ALL = process.argv.includes('--all');
+const CURRENT = arg('current', 'stardust/current');
 
 const pagesPath = join(OUT, 'coverage', 'pages.json');
 const config = readJSON(join(OUT, 'rollout.json'), {});
@@ -101,10 +110,18 @@ function artifactType(p) {
   return 'page';
 }
 
+// The source capture records the page's headings; one without an h1 is a source trait the page keeps.
+function sourceLacksH1(slug) {
+  const cap = slug ? readJSON(join(CURRENT, 'pages', `${slug}.json`)) : null;
+  return !!cap && Array.isArray(cap.headings) && !cap.headings.some((h) => h && String(h.tag).toLowerCase() === 'h1');
+}
+
 // Typed render-truth: returns a failure reason or null. Pages must render one
-// <h1> and carry no about:error; fragments skip the <h1> rule; indexes must be
-// valid JSON with rows. Link integrity applies to pages and fragments.
-function renderCheck(type, body) {
+// <h1> (none only when the source has none — a note) and carry no about:error;
+// fragments skip the <h1> rule; indexes must be valid JSON with rows. Link
+// integrity applies to pages and fragments.
+const notes = [];
+function renderCheck(type, body, slug) {
   if (type === 'index') {
     // a valid index with zero rows is a legitimate state (nothing published yet),
     // not a failure — only malformed JSON or a missing data[] array fails.
@@ -115,7 +132,8 @@ function renderCheck(type, body) {
   if (/about:error/.test(body)) return 'about:error in body (#75 broken image)';
   if (type === 'page') {
     const h1 = (body.match(/<h1[\s>]/gi) || []).length;
-    if (h1 !== 1) return `page should render exactly one <h1>, found ${h1}`;
+    if (h1 === 0 && sourceLacksH1(slug)) notes.push(`note: ${slug}: source has no h1 (recorded source trait)`);
+    else if (h1 !== 1) return `page should render exactly one <h1>, found ${h1}`;
   }
   const broken = checkLinks(body);
   if (broken.length) return `broken internal links: ${broken.slice(0, 5).join(', ')}`;
@@ -135,7 +153,7 @@ for (const p of target) {
   const type = artifactType(p);
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
-  else { reason = renderCheck(type, r.body); if (reason) status = 'failed'; }
+  else { reason = renderCheck(type, r.body, p.slug); if (reason) status = 'failed'; }
   // #125: a page the pixel table failed is not verified (update-coverage.mjs --gate wrote delivery.gate)
   if (status === 'verified' && p.delivery && p.delivery.gate && p.delivery.gate.pass === false) { status = 'failed'; reason = `gate: ${(p.delivery.gate.reasons || []).join('; ') || 'FAIL'}`; }
   p.delivery = p.delivery || {};
@@ -158,7 +176,8 @@ const bad = results.filter((r) => r.status === 'failed');
 const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; return a; }, {});
 console.log(`rollout verify (${ROOT ? `root:${ROOT}` : BASE})`);
 console.log('='.repeat(60));
-console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
+console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed${notes.length ? ` · ${notes.length} note(s)` : ''} · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
 for (const r of bad) console.log(`  ✗ ${r.slug} (${r.type}): ${r.reason}`);
+for (const n of notes) console.log(n);
 if (!target.length) console.log('Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 process.exit(bad.length ? 1 : 0);

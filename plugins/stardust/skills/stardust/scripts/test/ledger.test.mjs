@@ -5,14 +5,16 @@
 // and last output, --next / --owner, the value-flag swallow rule, an explicit --dir that must exist,
 // usage errors, the start guard (an end needs an open start: warning, or exit 2 under --strict with
 // nothing written) and the journal check on end (a journal.md without a "## " heading naming the
-// phase warns, never changes the exit code). Run: node <this file>.
+// phase warns, never changes the exit code), unpairedEnds (the start guard's own pairing rule over
+// the whole ledger, re-recorded by a later start + end) and `check` (physical line numbers, the
+// summary line, --json, exit 0 / 1). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkPhase, normaliseSkill, formatTail } from '../ledger.mjs';
+import { PHASES, buildLine, canonicalPhase, checkJournalSection, checkOpenStart, checkPhase, normaliseSkill, formatTail, unpairedEnds } from '../ledger.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'ledger.mjs');
@@ -273,6 +275,95 @@ check('journal check on end: no journal → silent; "## " headings that do not n
   const ok = runIn(jdir, 'replica', 'preserve-direction', 'end', '--strict', '--detail', 'x'); assert.equal(ok.code, 0, ok.err); assert.equal(ok.err, '');
   assert.equal(runIn(jdir, 'replica', 'extract', 'start').code, 0);
   const ok2 = runIn(jdir, 'replica', 'Extract', 'end', '--detail', 'x'); assert.equal(ok2.code, 0, ok2.err); assert.doesNotMatch(ok2.err, /journal\.md|matching start/);
+});
+
+// ---- unpairedEnds and `check` (every end without an open start, listed) ---------------------------------
+check('unpairedEnds: clean pairs → []; an end without a start is listed, re-recorded only by a later start + end; alias and case forms pair; blocked keeps it open; start, end, end → the second end; positions of non-objects count', () => {
+  const L = (skill, phase, event, ts = 't') => ({ ts, skill, phase, event });
+  const R = 'stardust:rollout';
+  assert.deepEqual(unpairedEnds([]), []);
+  assert.deepEqual(unpairedEnds([L(R, 'C-deliver', 'start'), L(R, 'C-deliver', 'end'), L(R, 'D-site', 'start'), L(R, 'D-site', 'end')]), [], 'clean pairs');
+  const lone = [L(R, 'C-deliver', 'end', 't1')];
+  assert.deepEqual(unpairedEnds(lone), [{ index: 0, ts: 't1', skill: R, phase: 'C-deliver', reRecorded: false }]);
+  assert.deepEqual(unpairedEnds([...lone, L(R, 'C-deliver', 'start')]).map((u) => u.reRecorded), [false], 'a later start alone is no repair');
+  assert.deepEqual(unpairedEnds([...lone, L(R, 'D-site', 'start'), L(R, 'D-site', 'end')]).map((u) => u.reRecorded), [false], 'another phase\'s pair is no repair');
+  assert.deepEqual(unpairedEnds([...lone, L(R, 'c-deliver', 'start'), L(R, 'C-deliver', 'end')]), [{ index: 0, ts: 't1', skill: R, phase: 'C-deliver', reRecorded: true }], 'a later start + end re-records it');
+  assert.deepEqual(unpairedEnds([L(R, 'i-dashboard', 'start'), L(R, 'I-dashboard', 'end')]), [], 'alias / case forms pair');
+  assert.deepEqual(unpairedEnds([L('stardust:replica', 'gate', 'start'), L('stardust:replica', 'source-fidelity-gate', 'end')]), [], 'an alias pairs with the canonical end');
+  assert.deepEqual(unpairedEnds([L(R, 'C-deliver', 'start'), L(R, 'C-deliver', 'blocked'), L(R, 'C-deliver', 'end')]), [], 'blocked keeps the start open');
+  assert.deepEqual(unpairedEnds([L(R, 'C-deliver', 'start'), L(R, 'C-deliver', 'end'), L(R, 'C-deliver', 'end', 't3')]), [{ index: 2, ts: 't3', skill: R, phase: 'C-deliver', reRecorded: false }], 'start, end, end → the second end');
+  assert.deepEqual(unpairedEnds([L('stardust:migrate', 'plan', 'start'), L('stardust:prototype', 'plan', 'end')]).map((u) => u.skill), ['stardust:prototype'], 'another skill\'s start does not pair');
+  assert.deepEqual(unpairedEnds([null, 'x', 7, { ts: 't' }, L(R, 'C-deliver', 'end')]).map((u) => u.index), [4], 'non-objects ignored, their positions count');
+  assert.deepEqual(unpairedEnds([{ event: 'end' }]), [{ index: 0, ts: null, skill: null, phase: null, reRecorded: false }], 'a bare end is still listed');
+});
+check('unpairedEnds and checkOpenStart share one pairing rule: an end is listed exactly when the guard would have refused it', () => {
+  const L = (skill, phase, event) => ({ ts: 't', skill, phase, event });
+  const R = 'stardust:rollout';
+  const seq = [L(R, 'C-deliver', 'end'), L(R, 'c-deliver', 'start'), L(R, 'C-deliver', 'blocked'), L(R, 'C-deliver', 'end'), L(R, 'C-deliver', 'end'),
+    L('stardust:replica', 'gate', 'start'), L('stardust:replica', 'GATE', 'end'), L(R, 'i-dashboard', 'start'), L(R, 'D-site', 'end'), L(R, 'I-dashboard', 'end')];
+  const listed = new Set(unpairedEnds(seq).map((u) => u.index));
+  seq.forEach((l, i) => {
+    if (l.event !== 'end') return;
+    const refused = checkOpenStart(seq.slice(0, i), l.skill, canonicalPhase(l.skill, l.phase)) !== null;
+    assert.equal(listed.has(i), refused, `line ${i}: listed ${listed.has(i)}, guard refused ${refused}`);
+  });
+  assert.deepEqual([...listed], [0, 4, 8]);
+});
+const cdir = join(root, 'check'); mkdirSync(cdir);
+const cfile = join(cdir, 'status.jsonl');
+const J = (ts, phase, event) => JSON.stringify({ ts: `2026-01-01T00:0${ts}:00Z`, skill: 'stardust:rollout', phase, event });
+check('check: physical line numbers with a blank and a malformed line present, one summary line, malformed count on stderr, exit 1, writes nothing', () => {
+  writeFileSync(cfile, [J(0, 'C-deliver', 'start'), J(1, 'C-deliver', 'end'), '', 'not json', J(2, 'D-site', 'end'), J(3, 'i-dashboard', 'start'), J(4, 'I-dashboard', 'end'), J(5, 'I-dashboard', 'end')].join('\n') + '\n');
+  const before = readFileSync(cfile, 'utf8');
+  const r = runIn(cdir, 'check');
+  assert.equal(r.code, 1, r.err);
+  assert.deepEqual(r.out.trimEnd().split('\n'), [
+    'unpaired end: 2026-01-01T00:02:00Z stardust:rollout D-site (line 5)',
+    'unpaired end: 2026-01-01T00:05:00Z stardust:rollout I-dashboard (line 8)',
+    'ledger check: 2 end line(s) without an open start (0 re-recorded) of 4',
+  ]);
+  assert.match(r.err, /^ledger: 1 malformed line\(s\) skipped in .*status\.jsonl$/m);
+  assert.equal(readFileSync(cfile, 'utf8'), before, 'check writes nothing');
+});
+check('check --json: {ends, open, unpaired: [{line, ts, skill, phase, reRecorded}]}; a later start + end re-records (exit stays 1 while another is open, 0 once none is)', () => {
+  const j = runIn(cdir, 'check', '--json');
+  assert.equal(j.code, 1);
+  const o = JSON.parse(j.out);
+  assert.deepEqual(Object.keys(o), ['ends', 'open', 'unpaired']);
+  assert.deepEqual(o, { ends: 4, open: 2, unpaired: [
+    { line: 5, ts: '2026-01-01T00:02:00Z', skill: 'stardust:rollout', phase: 'D-site', reRecorded: false },
+    { line: 8, ts: '2026-01-01T00:05:00Z', skill: 'stardust:rollout', phase: 'I-dashboard', reRecorded: false },
+  ] });
+  assert.equal(runIn(cdir, 'rollout', 'D-site', 'start').code, 0);
+  assert.equal(runIn(cdir, 'rollout', 'D-site', 'end', '--detail', 'x').code, 0);
+  const half = runIn(cdir, 'check');
+  assert.equal(half.code, 1);
+  assert.match(half.out, /^unpaired end: 2026-01-01T00:02:00Z stardust:rollout D-site \(line 5\) — re-recorded later$/m);
+  assert.match(half.out, /^unpaired end: 2026-01-01T00:05:00Z stardust:rollout I-dashboard \(line 8\)$/m);
+  assert.match(half.out, /^ledger check: 2 end line\(s\) without an open start \(1 re-recorded\) of 5$/m);
+  assert.equal(JSON.parse(runIn(cdir, 'check', '--json').out).open, 1);
+  assert.equal(runIn(cdir, 'rollout', 'I-dashboard', 'start').code, 0);
+  assert.equal(runIn(cdir, 'rollout', 'I-dashboard', 'end', '--detail', 'x').code, 0);
+  const done = runIn(cdir, 'check');
+  assert.equal(done.code, 0, done.out);
+  assert.match(done.out, /^ledger check: 2 end line\(s\) without an open start \(2 re-recorded\) of 6$/m);
+  const dj = runIn(cdir, 'check', '--json'); assert.equal(dj.code, 0);
+  assert.deepEqual(JSON.parse(dj.out).unpaired.map((u) => [u.line, u.reRecorded]), [[5, true], [8, true]]);
+});
+check('check: a clean ledger → "every end has an open start", exit 0; an absent ledger → "no lines", exit 0; usage errors exit 2; --help names check', () => {
+  const clean = join(root, 'clean'); mkdirSync(clean);
+  writeFileSync(join(clean, 'status.jsonl'), `${[J(0, 'C-deliver', 'start'), J(1, 'C-deliver', 'blocked'), J(2, 'C-deliver', 'end'), J(3, 'D-site', 'start')].join('\n')}\n`);
+  const c = runIn(clean, 'check'); assert.equal(c.code, 0, c.out); assert.equal(c.out, 'ledger check: every end has an open start (1 end lines)\n'); assert.equal(c.err, '');
+  assert.deepEqual(JSON.parse(runIn(clean, 'check', '--json').out), { ends: 1, open: 0, unpaired: [] });
+  const none = join(root, 'none'); mkdirSync(none);
+  const a = runIn(none, 'check'); assert.equal(a.code, 0); assert.match(a.out, /^ledger check: no lines in .*status\.jsonl\n$/);
+  const aj = runIn(none, 'check', '--json'); assert.equal(aj.code, 0); assert.deepEqual(JSON.parse(aj.out), { ends: 0, open: 0, unpaired: [] }); assert.match(aj.err, /no lines in/);
+  assert.ok(!existsSync(join(none, 'status.jsonl')), 'check creates no ledger');
+  assert.equal(runIn(none, 'check', 'extra').code, 2);
+  const tj = runIn(clean, 'tail', '--json'); assert.equal(tj.code, 2); assert.match(tj.err, /--json applies to check only/);
+  assert.equal(runIn(join(root, 'missing'), 'check').code, 2, 'an explicit --dir that does not exist');
+  const h = runIn(none, '--help'); assert.equal(h.code, 0); assert.match(h.out, /node ledger\.mjs check \[--dir <d>\] \[--json\]/); assert.match(h.out, /1 check found an end without an\nopen start/);
+  assert.equal(spawnSync(process.execPath, [SCRIPT, '--bogus', '--help'], { encoding: 'utf8' }).status, 0, '--help answers before any argument parsing');
 });
 
 rmSync(root, { recursive: true, force: true });

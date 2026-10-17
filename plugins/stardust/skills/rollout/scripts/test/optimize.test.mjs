@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // skills/rollout/scripts/test/optimize.test.mjs — the source-parity contract of optimize.mjs: a baseline
 // finding whose condition the SOURCE capture shares (same <title>, no description on the source either, no
-// JSON-LD on the source either, the same title shared by the same pages) is tagged `fixability:
+// JSON-LD on the source either, no <h1> on the source either (0 delivered, capture headings without an
+// h1), the same title shared by the same pages) is tagged `fixability:
 // out-of-scope` with the `source parity: ` evidence prefix and autofix unavailable; such findings are
 // listed in their own report section, excluded from the health score and the open P1/P2/P3 counts and
 // never gate; a finding the source does NOT share keeps its routing; without a capture nothing is tagged
@@ -169,5 +170,35 @@ check('a prior open finding becomes parity-tagged on the run that finds the capt
 });
 
 rmSync(proj, { recursive: true, force: true });
+
+check('single-h1: 0 delivered <h1> with a capture whose headings carry no h1 is source parity; a capture with an h1 or 2 <h1> stays a plain P1', () => {
+  const p = mkdtempSync(join(tmpdir(), 'optimize-h1-'));
+  const o = join(p, 'stardust', 'rollout'); mkdirSync(join(o, 'coverage'), { recursive: true }); mkdirSync(join(o, 'site'));
+  const rt = join(p, 'delivered'); mkdirSync(rt);
+  const cu = join(p, 'stardust', 'current'); mkdirSync(join(cu, 'pages'), { recursive: true });
+  writeFileSync(join(o, 'site', 'sitemap.xml'), '<urlset/>'); writeFileSync(join(o, 'rollout.json'), '{}');
+  const slugs = ['none-none', 'none-has', 'two-none'];
+  writeFileSync(join(o, 'coverage', 'pages.json'), JSON.stringify({ pages: slugs.map((slug) => ({ slug, path: `/${slug}`, delivery: { status: 'deployed' } })) }));
+  const body = (h1s) => `<!doctype html><html><head><title>A page title of decent length</title></head><body><main>${'<h1>T</h1>'.repeat(h1s)}<h2>S</h2></main></body></html>`;
+  writeFileSync(join(rt, 'none-none.html'), body(0));
+  writeFileSync(join(rt, 'none-has.html'), body(0));
+  writeFileSync(join(rt, 'two-none.html'), body(2));
+  const capH = (slug, tags) => writeFileSync(join(cu, 'pages', `${slug}.json`), JSON.stringify({ slug, title: 'A page title of decent length', headings: tags.map((tag) => ({ tag, text: 'x' })) }));
+  capH('none-none', ['h2', 'h3']); capH('none-has', ['h1', 'h2']); capH('two-none', ['h2']);
+  const r = run(p, rt, cu);
+  assert.equal(r.status, 1, 'the two plain P1s still gate');
+  const F = findings(o).findings;
+  const parity = byCheck(F, 'single-h1', ['none-none']);
+  assert.ok(isSourceParity(parity), parity.evidence); assert.equal(parity.severity, 'P1'); assert.equal(parity.autofix.available, false);
+  assert.match(parity.evidence, /0 <h1> \(expected exactly 1\) — the source page has no <h1> either$/);
+  for (const slug of ['none-has', 'two-none']) {
+    const f = byCheck(F, 'single-h1', [slug]);
+    assert.equal(isSourceParity(f), false, `${slug}: ${f.evidence}`); assert.equal(f.fixability, 'platform-migration'); assert.equal(f.autofix.available, true);
+  }
+  assert.equal(scorecard(o).current.severity.P1, 2, 'only the two plain single-h1 findings count as open P1');
+  assert.match(r.stdout, /✗ GATE: 2 open P1 finding\(s\)/);
+  rmSync(p, { recursive: true, force: true });
+});
+
 console.log(failed ? `\noptimize: ${failed} check(s) failed` : '\noptimize: all checks passed');
 process.exit(failed ? 1 : 0);

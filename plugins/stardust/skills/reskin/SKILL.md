@@ -109,8 +109,10 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   `DESIGN.md` + `DESIGN.json`, and stamps
   `state.json.designSource = { url, capturedAt, path }` — see
   `../extract/SKILL.md` § Cross-site brand sources.
-- **Local prototype dir** (`--donor-dir <path>`): serve the directory
-  on localhost (`python3 -m http.server <port> --directory <path>`)
+- **Local prototype dir** (`--donor-dir <path>`): serve the directory on
+  loopback only (`python3 -m http.server <port> --bind 127.0.0.1 --directory <path>`;
+  the default binds every interface, exposing the tree, and can crash on
+  a long container host name)
   and run the **same** `--design-source` capture path against the
   localhost origin. Record the real provenance (localhost serve of
   `<path>`) in `canon-source/_crawl-log.json`. Recipe details —
