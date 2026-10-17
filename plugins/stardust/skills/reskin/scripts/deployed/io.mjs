@@ -17,3 +17,9 @@ export function readPreview(dir, slug) {
     throw new UsageError(`${path} is not valid JSON (${e.message}): re-run deployed-gate preview --page ${slug}`);
   }
 }
+
+// An input file a step needs, as JSON; missing or unreadable is a setup error naming the file and what writes it.
+export function readInput(path, what) {
+  if (!existsSync(path)) throw new UsageError(`missing ${path}: ${what}`);
+  try { return readJson(path); } catch (e) { throw new UsageError(`${path} is not valid JSON (${e.message})`); }
+}

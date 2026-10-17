@@ -4,6 +4,8 @@
 //   preview  A0: the branch preview of the page: the project can have one, its authored form (.plain.html) and
 //            delivered page answer 200, and the page keeps to its namespace in a shared repo (its path, and the
 //            nav and footer metas of its head). Writes preview.json.
+//   content  A1: the preview's text and images against the live source (dom-equality) and the content model slot by
+//            slot (slot-coverage), with the page's declared deltas. Blocking unless the delta file says otherwise.
 //   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/.
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
@@ -18,6 +20,7 @@ export const HELP = `Usage:
   node deployed-gate.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path </ns/slug>
                          (--namespace <ns> | --sandbox) [--auth-header <value> | --token-env <NAME>]
                          [--max-wait 120] [--dir stardust]
+  node deployed-gate.mjs content --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview.
@@ -37,6 +40,22 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          --sandbox (a repo of one's own) waives both and is recorded; give --namespace or --sandbox, not both.
          Prints "PASS preview <url>". Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
            { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, checkedAt, problems? }
+content  A1. Checks the preview's content against the live source, through two gates run one after the other, each with the
+         decoration settled first (--wait-eds): dom-equality (the text and images of the preview's main against the
+         source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
+         <dir>/reskin/normalize/<slug>.mjs when that file exists) and slot-coverage (the content model slot by slot,
+         with the metadata). Reads preview.json (no record, or one with problems, is exit 2; a skipped leg prints
+         "not run: skipped", exit 0), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
+         when it exists, the page's declared differences <dir>/reskin/deltas/<slug>.json, handed to both gates as
+         --deltas. Without that file nothing is allowed for and a failed check blocks; with it, "blocking": false
+         makes a failed check advisory and the key left out means true. Prints "PASS content", "ADVISORY content:
+         <gate> …" (exit 0: a check failed, deltas.blocking is false) or "FAIL content: <gate> …" (exit 1) for each
+         gate that failed, with the report and its findings, then one "WARNING unused delta <id>" per declared
+         entry that matched nothing in either gate. Writes content-dom-equality.md, content-slot-coverage.md and
+         content.json ({ verdict, domEquality: { exit, report }, slotCoverage: { exit, report }, unusedDeltas })
+         beside preview.json. A gate that cannot run is exit 2 (a stalled decoration, an unreachable or protected
+         page, an invalid delta file), 3 (a bot challenge) or 124 (no verdict). The token reaches the gates by
+         environment, never argv.
 tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
          settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
          on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
@@ -54,8 +73,8 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Sent to the preview origin
                only, never printed or recorded (preview.json says only auth: true). tokens hands it to
-               donor-probe as the variable DEPLOYED_GATE_SITE_TOKEN, which puts "token " in front of a value
-               that starts with neither "token " nor "bearer ".
+               donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
+               which puts "token " in front of a value that starts with neither "token " nor "bearer ".
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
 
@@ -67,6 +86,11 @@ const SPEC = {
   preview: {
     values: ['--page', '--org', '--repo', '--branch', '--path', '--namespace', '--auth-header', '--token-env', '--max-wait', '--dir'],
     bools: ['--sandbox'],
+    positional: [],
+  },
+  content: {
+    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    bools: [],
     positional: [],
   },
   tokens: {
@@ -160,14 +184,42 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
   }
 }
 
-async function tokensStep({ dir, opts, env, log, UsageError }) {
-  if (!opts.page) throw new UsageError('tokens needs --page <slug>');
+// The record of `deployed-gate preview` for --page, or null once the leg is skipped (`not run: skipped`). Every step after
+// preview starts here.
+async function pageRecord(step, { dir, opts, log, UsageError }) {
+  if (!opts.page) throw new UsageError(`${step} needs --page <slug>`);
   if (!NAME.test(opts.page)) throw new UsageError(`--page must be a slug (letters, digits, . _ -), got "${opts.page}"`);
   const { readPreview } = await helper('io');
   const preview = readPreview(dir, opts.page);
-  if (preview.skipped) { log('not run: skipped'); return 0; }
+  if (preview.skipped) { log('not run: skipped'); return null; }
   if (preview.problems?.length) throw new UsageError(`preview has problems: run deployed-gate preview again (${preview.problems.length} recorded in preview.json)`);
+  return preview;
+}
 
+async function contentStep(ctx) {
+  const { dir, opts, env, log, UsageError } = ctx;
+  const preview = await pageRecord('content', ctx);
+  if (!preview) return 0;
+  const { runContent } = await helper('content');
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
+  try {
+    const result = await runContent({ dir, slug: opts.page, preview, auth, env });
+    if (result.verdict === 'PASS') say('PASS content');
+    for (const g of result.gates.filter((x) => x.exit === 1 || x.advisory)) {
+      say(g.advisory ? `ADVISORY content: ${g.name} — report ${g.report} (deltas.blocking false: reported, not enforced)` : `FAIL content: ${g.name} — report ${g.report}`);
+      for (const line of g.lines) say(`  ${line.trim()}`);
+    }
+    for (const id of result.unusedDeltas) say(`WARNING unused delta ${id}`);
+    return result.verdict === 'FAIL' ? 1 : 0;
+  } catch (e) {
+    throw scrub(e);
+  }
+}
+
+async function tokensStep(ctx) {
+  const { dir, opts, env, log, UsageError } = ctx;
+  const preview = await pageRecord('tokens', ctx);
+  if (!preview) return 0;
   const { runTokens } = await helper('eds-spec');
   const { auth, say, scrub } = await siteToken(opts, log, UsageError);
   try {
@@ -187,7 +239,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, tokens: tokensStep, ...steps };
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 

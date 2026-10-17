@@ -11,20 +11,19 @@
 //                                         an error with code 3 (bot challenge) or code 124 (no verdict).
 // The labels are donor-probe's DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5.
 // The site token reaches the probe by environment (never argv) and never appears in a message, report or record.
-import { spawn } from 'node:child_process';
-import { existsSync, rmSync } from 'node:fs';
+import { rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { readJson, writeJson } from '../figma/io.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { redact } from './eds.mjs';
-import { deployedDir } from './io.mjs';
+import { authHint, childEnv, coded, outputOf, runChild, setupError, tokenFlags } from './child.mjs';
+import { deployedDir, readInput } from './io.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // donor-probe.mjs sits beside deployed-gate.mjs in both layouts (plugin tree and project copy).
 const DONOR_PROBE = resolve(HERE, '..', 'donor-probe.mjs');
-const TOKEN_ENV = 'DEPLOYED_GATE_SITE_TOKEN';
 const BUTTON = 'main a.button.primary';
 const PRIMARY_CLASS = /\.button\.primary(?![\w-])/;
 
@@ -67,26 +66,6 @@ export function edsSpec({ tokens, runtimeContract }) {
   return [...rows, ...root.map((e) => ({ label: `:root ${e.name}`, selector: ':root', property: e.name, value: e.value }))];
 }
 
-function readInput(path, what) {
-  if (!existsSync(path)) throw new UsageError(`missing ${path}: ${what}`);
-  try { return readJson(path); } catch (e) { throw new UsageError(`${path} is not valid JSON (${e.message})`); }
-}
-
-const coded = (code, message) => Object.assign(new Error(message), { code });
-
-// The probe as a child process, collected; async, so a server in this process can answer it.
-function runProbe(args, env) {
-  return new Promise((done, fail) => {
-    const child = spawn(process.execPath, args, { env, stdio: ['ignore', 'pipe', 'pipe'] });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8').on('data', (d) => { stdout += d; });
-    child.stderr.setEncoding('utf8').on('data', (d) => { stderr += d; });
-    child.on('error', fail);
-    child.on('close', (status, signal) => done({ status, signal, stdout, stderr }));
-  });
-}
-
 const SELECTOR_NOTHING = /^selector ".*" matched nothing$/;
 
 // preview is the record of `deployed-gate preview`; auth the Authorization header value, or null. The sheet is
@@ -106,28 +85,18 @@ export async function runTokens({ dir, slug, preview, auth = null, env = process
   const want = new Map(spec.map((e) => [e.label, e.value]));
   writeJson(files.spec, spec);
 
-  const args = [donorProbe, '--tokens', sheetPath, '--spec', files.spec, '--rendered', preview.url, '--wait-eds', '--no-sanity', '--report', files.report, '--json', files.json];
-  const childEnv = { ...process.env, ...env };
-  delete childEnv[TOKEN_ENV];
-  if (auth) {
-    args.push('--token-env', TOKEN_ENV);
-    childEnv[TOKEN_ENV] = auth;
-  }
+  const args = [donorProbe, '--tokens', sheetPath, '--spec', files.spec, '--rendered', preview.url, '--wait-eds', '--no-sanity', '--report', files.report, '--json', files.json, ...tokenFlags(auth)];
   let r;
-  try { r = await runProbe(args, childEnv); } catch (e) { throw coded(124, redact(`donor-probe did not start: ${e.message}`, auth)); }
-  const why = redact((r.stderr || r.stdout).trim(), auth);
-  if (r.status === 2) {
-    const hint = preview.auth && !auth ? '\npreview.json says the preview was reached with a site token: pass --auth-header or --token-env' : '';
-    throw new UsageError(`${why || 'donor-probe exited 2'}${hint}`);
-  }
-  if (r.status === 3) throw coded(3, why || 'donor-probe exited 3: bot challenge');
+  try { r = await runChild(process.execPath, args, { env: childEnv(env, auth) }); } catch (e) { throw coded(124, redact(`donor-probe did not start: ${e.message}`, auth)); }
+  const stop = setupError(r, { name: 'donor-probe', auth, hint: authHint(preview, auth) });
+  if (stop) throw stop;
 
   let probe = null;
   if (r.status === 0 || r.status === 1) { try { probe = readJson(files.json); } catch { /* no verdict, reported below */ } }
   const scored = Array.isArray(probe?.results) ? probe.results.filter((x) => x.status === 'PASS' || x.status === 'FAIL') : null;
   const bad = scored?.filter((x) => x.status === 'FAIL') ?? [];
   if (!scored || (r.status === 0) !== (bad.length === 0)) {
-    throw coded(124, `donor-probe did not give a verdict (exit ${r.status ?? r.signal}): ${why}`);
+    throw coded(124, `donor-probe did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r, auth)}`);
   }
   const failures = bad.map((x) => {
     const label = x.label ?? x.check;
