@@ -5,7 +5,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
-- `deploy/chrome-docs.mjs` — canon header/footer → `content/nav.html` + `footer.html` — `[--prefix <locale>] [--check]`; exit 2 = differs
+- `deploy/chrome-docs.mjs` — canon chrome → `content/nav.html` + `footer.html` — `[--canon <dir>] [--prefix <locale>] [--check]`; exit 2 = differs
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <under media/> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
@@ -42,7 +42,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — crawler → pages, screenshots, `_crawl-log.json#captureGaps` (+ entry-locale `scope`) — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
-- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline, re-runnable — `[--max-bytes <n>]`
+- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar; forks A′ from the archetype — `render <slug…|--all> [--accept-variance "<r>"]`; `gate|deviation|variant|modules <slug>`
