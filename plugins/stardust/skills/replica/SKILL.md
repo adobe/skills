@@ -26,8 +26,7 @@ Two properties make this a different animal from the redesign pipeline:
 
 Validated end-to-end (a typographic retail home page, 2026-07-03): 8.31% → 2.93% → **1.31%**
 pixel diff in 3 measured iterations, height Δ 0, content-diff "findings:
-none" (198/198 nodes). Every fix came off the instruments, never off
-eyeballing.
+none" (198/198 nodes).
 
 ## Inputs
 
@@ -75,19 +74,25 @@ eyeballing.
    from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
    keep the two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
-   § Artifacts, the write boundary). `run-bg.mjs` takes one slot of a
-   machine-wide browser budget per browser job (`browser-lock.mjs`, slot
-   files in `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (default
-   3, `0` = off) is the machine budget, `RUN_BG_SLOTS` paces one project's
-   jobs inside it. A job waits for its slot queued, without a limit unless
-   `STARDUST_BROWSER_WAIT` (seconds) is set; no slot within it → exit 124:
-   no verdict, re-run, never a FAIL. In one recorded parallel run,
-   contention between jobs, not the origin, was the dominant delay.
+   § Artifacts, the write boundary). `run-bg.mjs` takes one machine-wide
+   browser slot per browser job (`browser-lock.mjs`, slot files in
+   `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (default 3, `0` =
+   off) concurrent browser jobs across projects, `RUN_BG_SLOTS` paces one
+   project's jobs inside them. A job holding a slot gets
+   `STARDUST_BROWSERS_PER_SLOT` = max(1, floor(`STARDUST_BROWSER_BUDGET`
+   (default 3) / `STARDUST_BROWSER_SLOTS`)): the contract's 3 browsers =
+   budget 3 across all jobs; a larger machine raises `STARDUST_BROWSER_BUDGET`
+   (and the slots with it, up to the budget). gate-all clamps its pools to it
+   (captures sequential at 1) and sizes its roster estimate accordingly;
+   gate.sh runs its `--full` probes that many at a time — their times add up,
+   hence `--timeout 1800` on a `--full` round (examples below). A job
+   waits for its slot queued, without a limit unless `STARDUST_BROWSER_WAIT`
+   (seconds) is set; no slot within it → exit 124: no verdict, re-run, never
+   a FAIL.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
-step prints is re-read on every later model call (recorded: 750k characters
-of tool output in one 77-minute session). The rules in one line each:
+step prints is re-read on every later model call. The rules in one line each:
 reference docs by section (`section.mjs <doc> --list`, then one heading, one
 section per call); captured CSS through `css-rules.mjs`, capture JSON through
 `json-query.mjs` (values that feed a command from `--tsv`/`--path`, never the
@@ -266,11 +271,11 @@ LIVE="https://<site>/<path>"
 # CONFIRMATION round after the last fix run `--full` (pixel probe — stitched captures, NEVER
 # fullPage:true — plus content-diff, visual-diff and chrome-parity under deadlines, one verdict
 # line each, reports in the gate dir); rounds in between are pixel rounds. Never hand-write a
-# wrapper around the instruments (a recorded one lost the deadlines; a round took 15 minutes).
+# wrapper around the instruments (gate doc § Iteration discipline, Instrument deadlines).
 # content-diff inside --full compares --main AND the header/footer roots by default — no chrome flag.
-node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 -- \
+node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 --timeout 1800 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter1 --full --main "<content-root>"
-node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
+node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 --timeout 1800 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
@@ -308,7 +313,9 @@ a verdict; 0 only when all four ran and passed).
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,
   top-down; everything below it is offset-contaminated);
-- height delta **|Δ| ≤ 8px** (pixel-compare's own warning bar);
+- height delta **|Δh| ≤ 8 px in the prototype regime, 5 % of origin height in
+  the published regime** (a pixel-table row — gate-all, either stage — is
+  judged at 5 % and decides when it exists);
 - **content-cap row: `cap-probe.mjs … --against` prints `cap-probe: PASS`**
   (gate doc § Pass bar item 6 — every live cap held within ±20 px by kind,
   nothing capped only on the prototype; a ✗ names the sizing rule, no pixel iteration;
@@ -340,10 +347,9 @@ source of record: a prototype without a row is ungated.
 iteration's fixes come off the instruments, never off eyeballing. After 3,
 log the residuals in the ledger and move on — a documented 2% residual beats
 an undocumented fourth loop. **No single step waits longer than the context
-cache lives:** long instruments go through `run-bg.mjs` (`start`, then `wait`
-in ≤ 100-second slices), main agent and subagents alike — a long instrument
-in the foreground, or two as parallel tool calls in one turn, is the same
-blocked step (reference doc § Iteration discipline).
+cache lives:** long instruments go through `run-bg.mjs` (`start`, then
+`wait`), main agent and subagents alike (the master skill's wait discipline;
+reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
@@ -486,9 +492,8 @@ had one section for the whole run).
   when the source changed; reference § Iteration discipline, Evidence
   freshness); opt-in `--one-load` reads the probes off the stitched pages.
   DELIVERED = pixel % ≤ 10 AND |Δh| ≤ 5 % AND 0 clipped text / controls
-  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`);
-  a recorded page passed the pixel bar with all of its cards clipped. Evidence
-  and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
+  (`clip-probe`) AND 0 MISSING / HIDDEN links / headings (`content-presence`).
+  Evidence and sidecars: `stardust/replica/gates/all-<width>/`; with the Phase 4
   `prototypes-<width>/` table it is the pair `gate-evidence.mjs` reads (a page
   without a row is ungated). Each cluster subagent runs `--only` over its own
   pages inside the fan-out; cluster re-runs and C-final's roster run (unit
@@ -504,7 +509,7 @@ had one section for the whole run).
   (advisory) groups the failing rows by shared cause in
   `gates/all-<width>/triage.md` — act on causes with rows on your own pages:
   fix each cause once and re-gate the scope it names; the rows stay the
-  verdict and the 3-round cap stays.
+  verdict.
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —
