@@ -3,8 +3,9 @@
 // `overflow:` line → exit 2 over a PASS pixel line; no measure.mjs launched in a round), the one capture retry on
 // exit 1 (live, build; 3 / 4 / 124 final; the retried attempt's overflow line decides), the --full probe fan-out
 // and its exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both
-// captures, the diff probes and chrome-parity), --hide and gate-all's presence.json `hide` ("*" then <slug>) reaching
-// both captures and every probe as one effective list (chrome-parity: the flag list + --presence), live.json's `hide`
+// captures, the diff probes and chrome-parity), --hide and gate-all's presence.json `hide` ("*" then <slug>; the
+// site-wide stardust/replica/presence.json merged under it, the gate dir winning per field) reaching both captures and
+// every probe as one effective list (chrome-parity: the flag list + --presence), live.json's `hide`
 // record and the live retake on a changed list, the overlay-left rule (a capture that leaves an overlay gives no verdict:
 // exit 1, a live one drops live.png / live.json / the live caches), both captures' --json record, live.json's overlayLeft
 // / fontsFailed and the retake of a live.png that predates the overlay check, a project stitch-shot.mjs that predates
@@ -154,7 +155,8 @@ check('--help exits 0', r.status === 0, `status ${r.status}`);
 check('--help prints the usage block', /Usage:/.test(r.stdout) && /--full/.test(r.stdout));
 check('--help names the overflow assert and the capture retry', /Horizontal-overflow assert/.test(r.stdout) && /Capture retry/.test(r.stdout) && /overflow-<label>\.txt/.test(r.stdout));
 check('--help documents the overlay flags', /Overlay dismissal/.test(r.stdout) && /--consent <sel>/.test(r.stdout) && /--dismiss <sel,…>/.test(r.stdout) && /--no-dismiss/.test(r.stdout), r.stdout.slice(0, 400));
-check('--help documents --hide and presence.json reaching chrome-parity', /\[--hide <sel,…>\]/.test(r.stdout) && /^ {2}--hide <sel,…> /m.test(r.stdout) && /presence\.json/.test(r.stdout));
+check('--help documents --hide and presence.json (the site-wide file merged under the gate dir\'s) reaching chrome-parity', /\[--hide <sel,…>\]/.test(r.stdout) && /^ {2}--hide <sel,…> /m.test(r.stdout) && /presence\.json/.test(r.stdout)
+  && /--presence stardust\/replica\/presence\.json/.test(r.stdout));
 check('--help documents the overlay-left rule: no verdict, exit 1', /overlay-left: <descriptor>/.test(r.stdout) && /overlay left on the <live\|build> capture/.test(r.stdout) && /an overlay left on either capture/.test(r.stdout), r.stdout.slice(0, 400));
 
 // Plain pixel round (no --full): verdict lines, evidence, exit = pixel rc.
@@ -671,6 +673,30 @@ check('a malformed presence.json: exit 1 with one stderr line naming the file, b
   && /^gate\.sh: presence\.json stardust\/replica\/gates\/prototypes-1440\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
   && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
 unlinkSync(join(root, presenceFile('prototypes')));
+// The site-wide stardust/replica/presence.json merges UNDER the gate-dir file: per top-level key, per field, the gate
+// dir's value wins; keys / fields only one file has are kept. chrome-parity gets --presence <gate-dir file>, else the
+// site file. A malformed site file is refused like a gate-dir one: exit 1 naming it, before any capture.
+const SITE = 'stardust/replica/presence.json';
+writeFileSync(join(root, SITE), JSON.stringify({ '*': { hide: ['.geo-bar'] }, sitep: { hide: ['.promo-strip'] } }));
+resetArgv();
+r = await gate(['sitep', 'https://live.example/sitep', buildUrl, '1440', 'sp1', '--full', '--marker', 'home-proposed', '--hide', '.location-bar'], { GATE_REGIME: 'published', STUB_STITCH_ARGV: argvFile });
+check('site file only: its "*" then <slug> `hide` follow --hide on both captures and live.json', r.status === 0 && stitchArgv().length === 2
+  && stitchArgv().every((a) => hideArg(a) === '.location-bar,.geo-bar,.promo-strip') && JSON.stringify(JSON.parse(liveJson('sitep') || '{}').hide) === '[".location-bar",".geo-bar",".promo-strip"]', `status ${r.status} ${JSON.stringify(stitchArgv())} ${r.stderr}`);
+check('… and content-diff, visual-diff, clip-probe and content-presence', PROBE_FILES('sp1').every((f) => hideArg(argvIn(evidence('sitep', f))) === '.location-bar,.geo-bar,.promo-strip'), PROBE_FILES('sp1').map((f) => evidence('sitep', f)).join(' | '));
+check('… chrome-parity gets the flag list, then --presence stardust/replica/presence.json --slug sitep', new RegExp(`--hide \\.location-bar --presence ${SITE} --slug sitep$`, 'm').test(evidence('sitep', 'chrome-parity-sp1.txt')), evidence('sitep', 'chrome-parity-sp1.txt'));
+writeFileSync(join(root, presenceFile('prototypes')), JSON.stringify({ '*': { hide: ['.location-bar'] }, sitep: { variable: ['.hero-media'] } }));
+resetArgv();
+r = await gate(['sitep', 'https://live.example/sitep', buildUrl, '1440', 'sp2', '--full', '--marker', 'home-proposed'], { STUB_STITCH_ARGV: argvFile });
+check('gate dir wins per field: its "*".hide replaces the site\'s, the site\'s <slug>.hide stays (the gate entry has none)', r.status === 0 && stitchArgv().length === 2
+  && stitchArgv().every((a) => hideArg(a) === '.location-bar,.promo-strip') && PROBE_FILES('sp2').filter((f) => !f.startsWith('content-presence')).every((f) => hideArg(argvIn(evidence('sitep', f))) === '.location-bar,.promo-strip'), `status ${r.status} ${JSON.stringify(stitchArgv())} ${r.stderr}`);
+check('… chrome-parity gets --presence <gate-dir file> --slug sitep', (() => { const a = argvIn(evidence('sitep', 'chrome-parity-sp2.txt')); return Boolean(a) && hideArg(a) === undefined && a.join(' ').endsWith(`--presence ${presenceFile('prototypes')} --slug sitep`); })(), evidence('sitep', 'chrome-parity-sp2.txt'));
+writeFileSync(join(root, SITE), '{ "*": { "hide": [".geo-bar"');
+resetCount();
+r = await gate(['sitep', 'https://live.example/sitep', buildUrl, '1440', 'sp3', '--full', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('a malformed site file (beside a valid gate-dir file): exit 1 with one stderr line naming it, before any capture', r.status === 1 && r.stderr.trim().split('\n').length === 1
+  && /^gate\.sh: presence\.json stardust\/replica\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
+  && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
+unlinkSync(join(root, SITE)); unlinkSync(join(root, presenceFile('prototypes')));
 
 // A stale project copy of stitch-shot (from before the capture record: it rejects the flag, exit 1 — twice, read as
 // "re-queue the round"): no verdict before any capture, one stderr line naming the file and the fix.
