@@ -4,6 +4,37 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.1 — block provenance: the export carries the source selector of every delivered block
+
+Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
+from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
+the element), so nothing in the export said which element a block was built from.
+
+- **`rollout/block-origin.mjs`** writes `stardust/rollout/workspace/mapping.json` (`formatVersion` 0.1.0): per
+  template its sections, aligned across its pages with one selector that generalises over them and the pages it
+  resolves on, and for every delivered block instance the CSS selector of its origin element in the page's captured
+  source DOM, a confidence (the share of the block's text the element holds; image alt text never counts) and its
+  source: the template's encoder map first, else text alignment, else the block's place next to its aligned
+  neighbours (image-only blocks, confidence 0). An encoder-map selector that would point at another block is never
+  emitted. Selectors are derived from and checked against the capture as stardust's own parser reads it, with no
+  browser. Pages and blocks it could not map are listed under `skipped`; keys are sorted and `generatedAt` is copied
+  from the coverage, so unchanged inputs give the same bytes.
+- **`--verify`** re-reads every capture and records per instance whether its selector resolves to exactly one element
+  (`verified` true or false; without the flag null, recorded as skipped). It checks uniqueness, not that the element
+  is the right one.
+- **The rule:** clients read selectors only from mapping.json and only when its sha256 is listed in manifest.json
+  outputs. `workspace-manifest.mjs` hash-lists `workspace/mapping.json` under `outputs` when present (and so in
+  `_provenance.readArtifacts`); nothing else in the manifest changes.
+- **The export step** (Phase I, opt-in, non-gating) runs `block-origin.mjs --verify` before the final
+  `workspace-manifest.mjs`. `reference/coverage-contract.md` gains "mapping — the source side" and no longer
+  declares source selectors absent; schema `schemas/rollout-workspace-mapping.schema.json`. rollout `lib.mjs` gains
+  `walkDelivered` (the delivered records with their nodes); `parseDelivered` returns what it did.
+- No gate changed: verdict criteria, the capture discipline, the foundation freeze and `done-check` are as they were.
+- Folded: the contract's exit-code list and judgement-draft details point to the scripts' `--help`.
+- Tests (synthetic fixtures) cover text alignment, the position fallback, encoder maps, `--verify`, skipped pages and
+  records, byte-identical re-runs, the schema and the project-copy layout; the manifest test covers the new `outputs`
+  entry and that nothing else changes.
+
 ## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#133)
 
 Field learning: a hands-off replica of a travel-brand site (64 pages in 11 locales, 8 templates, 12 blocks) ended
