@@ -408,6 +408,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
 | `rollout/` except `qa/` | yes | rollout | `rollout.json`, `coverage/`, `optimize/`, `plan.json`, `site/`, `dashboard/` |
+| `rollout/workspace/**` | yes | rollout | opt-in migration manifest + judgement; client-readable, see `skills/rollout/reference/coverage-contract.md` |
 | `rollout/chrome-map.json` | yes | deploy | nav/footer pair + lang per page prefix (`chrome-map.mjs`, Step 6); an encoder input |
 | `deploy/media-ledger.json` | yes | deploy | DA media path → `contentUrl` + `sources[]` (`da-media-upload.mjs`); an encoder input |
 | `deploy/asset-ledger.json` | yes | deploy | source document URL → `/docs/<file>` (`rehost-docs.mjs`); an encoder input. Schemas of all three: `skills/deploy/schemas/` |

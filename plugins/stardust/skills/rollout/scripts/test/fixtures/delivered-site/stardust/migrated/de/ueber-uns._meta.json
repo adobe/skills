@@ -1,0 +1,19 @@
+{
+  "slug": "de-ueber-uns",
+  "type": "article",
+  "fidelityTier": "sibling",
+  "archetypeSource": "about-us",
+  "template": "about-us",
+  "source": {
+    "url": "https://www.example.com/de/ueber-uns.html"
+  },
+  "metadata": {
+    "title": "Über uns",
+    "lang": "de-DE",
+    "canonical": "https://main--fixture-site--fixture-org.aem.page/de/ueber-uns"
+  },
+  "modules": [
+    "hero-banner",
+    "link-list"
+  ]
+}

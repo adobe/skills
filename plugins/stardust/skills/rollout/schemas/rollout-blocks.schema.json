@@ -2,12 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://stardust.dev/schemas/rollout-blocks.schema.json",
   "title": "stardust rollout/coverage/blocks.json",
-  "description": "The dedup unit. One row per DISTINCT block across the site (matched by a signature derived from canon / migrated sections). rollout converts each block to an EDS block once and reuses it across every page that composes it. Records the EDS mapping + delivery status. Owned by stardust:rollout; deploy is never modified.",
+  "description": "The dedup unit. One row per DISTINCT block across the site (matched by a signature derived from canon / migrated sections). rollout converts each block to an EDS block once and reuses it across every page that composes it. Records the EDS mapping + delivery status and, on module rows, what the delivered pages show of the block: option classes, variants with stable ids, the code's description and content contract, a base type and the judged purpose, reuse guidance and colour scheme. Owned by stardust:rollout; deploy is never modified. Part of the coverage contract a client reads: strict here because it describes exactly what stardust writes.",
   "type": "object",
   "required": ["_provenance", "blocks"],
   "additionalProperties": false,
   "properties": {
     "_provenance": { "$ref": "#/$defs/provenance" },
+    "formatVersion": { "$ref": "#/$defs/formatVersion" },
     "generatedAt": { "type": "string", "format": "date-time" },
     "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } }
   },
@@ -19,11 +20,26 @@
         "writtenBy": { "type": "string", "examples": ["stardust:rollout"] },
         "writtenAt": { "type": "string", "format": "date-time" },
         "readArtifacts": { "type": "array", "items": { "type": "string" } },
-        "stardustVersion": { "type": "string" }
+        "stardustVersion": { "type": "string" },
+        "inputs": {
+          "type": "object",
+          "description": "Hashes of the files blocks.mjs read (judgement.json, the conversion log, blocks/<n>/<n>.{js,css}), keyed by project-relative POSIX path, so the workspace manifest can refuse coverage older than its inputs.",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
       }
+    },
+    "formatVersion": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "examples": ["0.1.0"],
+      "description": "Coverage format version (semver). Before 1.0.0 a release may still change the shape; from 1.0.0 (declared once a client has shipped against it) a minor release only adds fields, clients ignore fields they do not know, and removing or renaming a field is a major release. Writers since stardust 0.34.0 always emit it; files written earlier lack it."
     },
     "block": {
       "type": "object",
+      "description": "optionClasses, variants, description, contract and baseType are present on module rows whose EDS name is not default-content (written since stardust 0.34.0); purpose, reuseGuidance and colorScheme only when judged.",
       "required": ["id", "signature", "delivery"],
       "additionalProperties": false,
       "properties": {
@@ -61,7 +77,57 @@
             "blockPath": { "type": ["string", "null"], "description": "Delivered block path / fragment path." },
             "convertedAt": { "type": ["string", "null"], "format": "date-time" }
           }
-        }
+        },
+        "optionClasses": {
+          "type": "array",
+          "description": "Option classes of the delivered instances plus those the block's CSS styles, unique and sorted.",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "variants": {
+          "type": "array",
+          "description": "Distinct class combinations of the block in the pages' delivered records, sorted by their joined classes.",
+          "items": { "$ref": "#/$defs/variant" }
+        },
+        "description": { "type": ["string", "null"], "description": "First sentence of the doc comment in the block's JavaScript, or null." },
+        "contract": { "type": ["string", "null"], "description": "The block's content contract from the conversion log, or null." },
+        "baseType": {
+          "type": "string",
+          "description": "Judged base type, else the standard block the name matches, else unknown.",
+          "examples": ["hero", "cards", "columns", "carousel", "tabs", "accordion", "unknown"]
+        },
+        "purpose": { "type": "string", "description": "Judged purpose; present only when judged." },
+        "reuseGuidance": {
+          "type": "object",
+          "description": "Judged reuse guidance; present only when judged.",
+          "required": ["suitableFor", "notSuitableFor"],
+          "additionalProperties": false,
+          "properties": {
+            "suitableFor": { "type": "array", "items": { "type": "string" } },
+            "notSuitableFor": { "type": "array", "items": { "type": "string" } }
+          }
+        },
+        "colorScheme": { "type": "string", "description": "Judged colour scheme; present only when judged.", "examples": ["light", "dark"] }
+      }
+    },
+    "variant": {
+      "type": "object",
+      "required": ["id", "classes", "pages", "instances"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^v_[0-9a-f]{12}$",
+          "description": "The records' variantId (pages.json delivered.blocks[].variantId)."
+        },
+        "classes": {
+          "type": "array",
+          "description": "Option classes, unique and sorted.",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "pages": { "type": "integer", "minimum": 0, "description": "Number of distinct pages using the variant." },
+        "instances": { "type": "integer", "minimum": 0, "description": "Number of instances across all pages." }
       }
     }
   }

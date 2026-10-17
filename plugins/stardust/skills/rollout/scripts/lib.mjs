@@ -1,10 +1,12 @@
 /**
  * rollout/lib.mjs — shared IO + roll-up helpers so every script derives the same
  * counts from the same per-unit truth (counts are always recomputed, never
- * incremented).
+ * incremented). Also the delivered-structure reader, identity scrub and coverage
+ * writer behind coverage format 0.1.0 (reference/coverage-contract.md).
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { createHash } from 'node:crypto';
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
@@ -255,4 +257,378 @@ export function computeScorecard(findings, runId, now) {
     severity: { P1: sev(open, 'P1'), P2: sev(open, 'P2'), P3: sev(open, 'P3') },
     fixed: { P1: sev(fixed, 'P1'), P2: sev(fixed, 'P2'), P3: sev(fixed, 'P3') },
   };
+}
+
+// --- coverage 0.1.0: delivered structure, block code, identity, judgement, writes ----------------
+// Pure helpers for inventory.mjs, blocks.mjs and workspace-manifest.mjs (writeCoverage is the only I/O).
+// Deterministic: no clock, code-unit sorting, records in document order.
+export const COVERAGE_FORMAT_VERSION = '0.1.0';
+export const byStr = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+export const sha256 = (data) => `sha256:${createHash('sha256').update(data).digest('hex')}`;
+const uniqSorted = (xs) => [...new Set(xs)].sort(byStr);
+const nonEmpty = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export const variantIdentity = (name, classes) => `${name}|${uniqSorted(classes || []).join(' ')}`;
+export const variantId = (name, classes) =>
+  `v_${createHash('sha256').update(`stardust-variant:${variantIdentity(name, classes)}`).digest('hex').slice(0, 12)}`;
+
+/** identity → variantId from a prior pages.json (`pages[].delivered.blocks`), so an id a client stored never changes. */
+export function priorVariantIds(pagesDoc) {
+  const ids = new Map();
+  for (const p of Array.isArray(pagesDoc) ? pagesDoc : (pagesDoc && pagesDoc.pages) || []) {
+    for (const r of (p && p.delivered && p.delivered.blocks) || []) {
+      const key = r && r.kind === 'block' && r.variantId && variantIdentity(r.block, r.classes);
+      if (key && !ids.has(key)) ids.set(key, r.variantId);
+    }
+  }
+  return ids;
+}
+
+const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
+const RAW = new Set(['script', 'style']);
+const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+const TAG_NAME = /[a-zA-Z][^\s/>]*/y;
+const ATTR = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+
+const decode = (t) => t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
+  if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+  const cp = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
+  return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
+});
+
+function parseAttrs(body) {
+  const attrs = {};
+  for (const m of body.matchAll(ATTR)) {
+    const key = m[1].toLowerCase();
+    if (!(key in attrs)) attrs[key] = decode(m[2] ?? m[3] ?? m[4] ?? '');
+  }
+  return attrs;
+}
+
+/** Index of the `>` that ends the tag opened at `lt`; a `>` inside a quoted value does not count. */
+function tagEnd(s, lt) {
+  for (let j = lt + 1; j < s.length; j++) {
+    if (s[j] === '>') return j;
+    if (s[j] !== '=') continue;
+    let k = j + 1;
+    while (/\s/.test(s[k] || '')) k++;
+    if (s[k] === '"' || s[k] === "'") { j = s.indexOf(s[k], k + 1); if (j === -1) return -1; }
+  }
+  return -1;
+}
+
+/**
+ * Tolerant HTML tree: elements `{ tag, attrs, children }`, text `{ tag: '#text', text }` (entities decoded).
+ * Comments, doctype and script/style bodies are skipped; void and `/>` tags take no children; a closer pops to
+ * the nearest open match (a stray one is ignored); unclosed tags close with their parent.
+ */
+export function parseHtml(html) {
+  const s = String(html ?? '');
+  const lower = s.toLowerCase();
+  const root = { tag: '#root', attrs: {}, children: [] };
+  const stack = [root];
+  const text = (t) => {
+    if (!t) return;
+    const kids = stack[stack.length - 1].children;
+    const last = kids[kids.length - 1];
+    if (last && last.tag === '#text') last.text += decode(t); else kids.push({ tag: '#text', text: decode(t) });
+  };
+  let i = 0;
+  while (i < s.length) {
+    const lt = s.indexOf('<', i);
+    if (lt === -1) { text(s.slice(i)); break; }
+    text(s.slice(i, lt));
+    if (s.startsWith('<!--', lt)) { const e = s.indexOf('-->', lt + 4); i = e === -1 ? s.length : e + 3; continue; }
+    if (s[lt + 1] === '!' || s[lt + 1] === '?') { const e = s.indexOf('>', lt); i = e === -1 ? s.length : e + 1; continue; }
+    const close = s[lt + 1] === '/';
+    TAG_NAME.lastIndex = lt + (close ? 2 : 1);
+    const name = (TAG_NAME.exec(s) || [])[0];
+    if (!name) { text('<'); i = lt + 1; continue; }
+    const gt = tagEnd(s, lt);
+    if (gt === -1) { text(s.slice(lt)); break; }
+    const tag = name.toLowerCase();
+    i = gt + 1;
+    if (close) {
+      const at = stack.findLastIndex((n) => n.tag === tag);
+      if (at > 0) stack.length = at;
+      continue;
+    }
+    const body = s.slice(lt + 1 + name.length, gt);
+    const selfClosing = /\/\s*$/.test(body);
+    if (RAW.has(tag)) {
+      if (!selfClosing) { const e = lower.indexOf(`</${tag}`, i); const g = e === -1 ? -1 : s.indexOf('>', e); i = g === -1 ? s.length : g + 1; }
+      continue;
+    }
+    const node = { tag, attrs: parseAttrs(selfClosing ? body.replace(/\/\s*$/, '') : body), children: [] };
+    stack[stack.length - 1].children.push(node);
+    if (!selfClosing && !VOID.has(tag)) stack.push(node);
+  }
+  return root;
+}
+
+const elements = (n) => (n.children || []).filter((c) => c.tag !== '#text');
+const classList = (n) => String((n.attrs && n.attrs.class) || '').split(/\s+/).filter(Boolean);
+const textOf = (n) => (n.tag === '#text' ? n.text : (n.children || []).map(textOf).join(''));
+const cellText = (n) => (n ? textOf(n).replace(/\s+/g, ' ').trim() : '');
+const hasText = (n) => (n.children || []).some((c) => c.tag === '#text' && c.text.trim());
+// the single element child of `n` when `n` holds nothing else (whitespace aside), else null
+const onlyChild = (n) => { const els = elements(n); return els.length === 1 && !hasText(n) ? els[0] : null; };
+const isLink = (n) => !!n && (n.tag === 'a' || ((n.tag === 'strong' || n.tag === 'em') && !!onlyChild(n) && onlyChild(n).tag === 'a'));
+
+function findTag(n, tag) {
+  for (const c of n.children || []) { const hit = c.tag === tag ? c : findTag(c, tag); if (hit) return hit; }
+  return null;
+}
+
+/** key/value rows of a metadata-style block: lower-cased first cell → text of the second; first wins. */
+function readRows(div, into = {}) {
+  for (const row of elements(div)) {
+    const [k, v] = elements(row);
+    const key = cellText(k).toLowerCase();
+    if (key && !(key in into)) into[key] = cellText(v);
+  }
+  return into;
+}
+
+/** The default-content part one element contributes (the spec's vocabulary). */
+function partOf(n) {
+  if (/^h[1-6]$/.test(n.tag)) return 'heading';
+  if (n.tag === 'hr') return 'separator';
+  if (n.tag === 'picture' || n.tag === 'img') return 'image';
+  if (n.tag === 'video') return 'video';
+  if (n.tag === 'p') {
+    const els = elements(n);
+    if (els.length === 1 && (els[0].tag === 'picture' || els[0].tag === 'img')) return 'image';
+    if (isLink(onlyChild(n))) return 'button';
+  }
+  if ((n.tag === 'ul' || n.tag === 'ol') && elements(n).length
+    && elements(n).every((li) => li.tag === 'li' && isLink(onlyChild(li)))) return 'link-list';
+  return 'text';
+}
+
+/**
+ * A delivered page's records in document order: block divs (`kind 'block'`) and runs of consecutive default
+ * elements merged into one `default-content` record (`kind 'default'`, variant = parts joined by `+`). Sections
+ * without a record are dropped; metadata/section-metadata and chrome (header/footer/nav) divs are not records.
+ * `variantId` is null here: the caller assigns it (carry-forward needs the prior pages.json).
+ */
+export function parseDelivered(html) {
+  const root = parseHtml(html);
+  const main = findTag(root, 'main') || findTag(root, 'body') || root;
+  const [records, sections, metadata] = [[], [], {}];
+  for (const sec of elements(main).filter((n) => n.tag === 'div')) {
+    const own = [];
+    let [style, run] = [null, null];
+    for (const el of elements(sec)) {
+      const [name, ...rest] = el.tag === 'div' ? classList(el) : [];
+      if (!name) {
+        const part = partOf(el);
+        if (!run) own.push(run = { parts: [] });
+        if (!run.parts.includes(part)) run.parts.push(part);
+        continue;
+      }
+      run = null;
+      if (name === 'metadata') readRows(el, metadata);
+      else if (name === 'section-metadata') style = style || nonEmpty(readRows(el).style);
+      else if (!CHROME_IDS.has(name.toLowerCase())) {
+        const rows = elements(el);
+        own.push({ block: name, classes: uniqSorted(rest), rows: rows.length, cells: rows.map((r) => elements(r).length) });
+      }
+    }
+    if (!own.length) continue;
+    const s = { pos: sections.length, style, blocks: [] };
+    for (const r of own) {
+      const pos = records.length;
+      s.blocks.push(pos);
+      records.push(r.parts
+        ? { pos, block: DEFAULT_CONTENT, variant: r.parts.join('+'), kind: 'default', section: style, sectionPos: s.pos, classes: [], variantId: null, rows: null, cells: null }
+        : { pos, block: r.block, variant: r.classes.join(' ') || null, kind: 'block', section: style, sectionPos: s.pos, classes: r.classes, variantId: null, rows: r.rows, cells: r.cells });
+    }
+    sections.push(s);
+  }
+  return { records, sections, metadata };
+}
+
+/** Content file (relative to the content dir) of a delivered path: `index.html` for `/`, else `<p>.html`, `<p>/index.html`. */
+export function contentFileFor(deliveredPath, exists) {
+  if (deliveredPath == null) return null;
+  const has = typeof exists === 'function' ? exists
+    : (k) => !!exists && (typeof exists.has === 'function' ? exists.has(k) : Object.hasOwn(exists, k));
+  const p = String(deliveredPath).replace(/^\/+|\/+$/g, '');
+  return (p ? [`${p}.html`, `${p}/index.html`] : ['index.html']).find((k) => has(k)) || null;
+}
+
+/** Classes chained to `.name` in one compound selector (`.teaser.list` → list); pseudo-classes ignored. */
+export function cssOptionClasses(name, css) {
+  if (!css || !name) return [];
+  const selectors = css.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\{[^{}]*\}/g, '{}');
+  const out = new Set();
+  for (const compound of selectors.match(/[^\s,>+~{}]+/g) || []) {
+    const bare = compound.replace(/::?[\w-]+(\([^)]*\))?/g, ' ').replace(/\[[^\]]*\]/g, ' ');
+    const classes = [...bare.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1]);
+    if (classes.includes(name)) classes.filter((c) => c !== name).forEach((c) => out.add(c));
+  }
+  return [...out].sort(byStr);
+}
+
+/**
+ * First sentence of a block's JSDoc: the `/** … *\/` right before `export default` (whitespace between allowed),
+ * else the first one; cut at the first `@tag` line; no sentence end → the cut text. At most 400 characters.
+ */
+export function blockDescription(js) {
+  const comments = [...String(js || '').matchAll(/\/\*\*([\s\S]*?)\*\/(\s*export\s+default\b)?/g)];
+  if (!comments.length) return null;
+  const lines = (comments.find((m) => m[2]) || comments[0])[1].split('\n').map((l) => l.replace(/^\s*\*?\s?/, '').trim());
+  const tag = lines.findIndex((l) => l.startsWith('@'));
+  const flat = (tag === -1 ? lines : lines.slice(0, tag)).join(' ').replace(/\s+/g, ' ').trim();
+  const first = (/^(.+?[.!?])(?=\s|$)/.exec(flat) || [null, flat])[1];
+  return first.slice(0, 400).trim() || null;
+}
+
+/** `- **name**` bullets (with continuation lines) under any "Content contract" heading; joined by "\n". */
+export function contractFor(log, name) {
+  if (!log || !name) return null;
+  const [hits, head] = [[], `- **${name}**`];
+  let [level, fence, cur] = [0, false, null];
+  const flush = () => { if (cur) hits.push(cur.join(' ').replace(/\s+/g, ' ').trim()); cur = null; };
+  for (const line of log.split(/\r?\n/)) {
+    if (/^\s*```/.test(line)) fence = !fence;
+    const h = fence ? null : /^(#{1,6})\s+(.*)$/.exec(line);
+    if (h) {
+      flush();
+      if (level && h[1].length <= level) level = 0;
+      if (!level && /content contract/i.test(h[2])) level = h[1].length;
+    } else if (!line.trim()) flush();
+    else if (/^\s*[-*+]\s/.test(line)) {
+      flush();
+      if (level && line.trimStart().startsWith(head)) cur = [line.trimStart().slice(2)];
+    } else if (cur) cur.push(line);
+  }
+  flush();
+  return hits.length ? hits.join('\n') : null;
+}
+
+const STANDARD_BLOCKS = new Set(['accordion', 'cards', 'carousel', 'columns', 'embed', 'form', 'fragment', 'hero', 'modal', 'quote', 'search', 'table', 'tabs', 'video', 'breadcrumbs']);
+const BLOCK_ALIASES = { breadcrumb: 'breadcrumbs' };
+export function baseTypeOf(name) {
+  const n = String(name || '').toLowerCase();
+  const t = BLOCK_ALIASES[n] || n;
+  return STANDARD_BLOCKS.has(t) ? t : 'unknown';
+}
+
+export const kebab = (s) => String(s ?? '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+
+const originOf = (url) => { try { const o = new URL(url).origin; return o && o !== 'null' ? o : null; } catch { return null; } };
+const hostOf = (v) => { try { return new URL(v.includes('://') ? v : `https://${v}`).host; } catch { return null; } };
+
+/**
+ * Project identity strings (longest first): DA org/site (≥ 3 chars), `org/site`, `main--site--org`, live/preview
+ * hosts, the deploy host, and `owner/repo` + `ref--repo--owner` read from any `<ref>--<repo>--<owner>` host.
+ */
+export function identityTokens({ rollout, state } = {}) {
+  const site = (rollout && rollout.site) || {};
+  const org = nonEmpty((site.da || {}).org);
+  const name = nonEmpty((site.da || {}).site);
+  const raw = [org, name, ...(org && name ? [`${org}/${name}`, `main--${name}--${org}`] : [])];
+  const hosts = [site.liveHost, site.previewHost].map(nonEmpty).filter(Boolean);
+  raw.push(...hosts);
+  const deploy = nonEmpty(state && state.site && state.site.deployUrl);
+  for (const h of [...hosts, deploy].filter(Boolean).map(hostOf).filter(Boolean)) {
+    raw.push(h);
+    const parts = h.toLowerCase().split('.')[0].split('--');
+    if (parts.length === 3 && parts.every((p) => /^[a-z0-9-]+$/.test(p))) raw.push(`${parts[2]}/${parts[1]}`, parts.join('--'));
+  }
+  const origin = originOf(state && state.site && state.site.originUrl) || originOf(site.sourceUrl);
+  const sourceHost = origin ? new URL(origin).host.toLowerCase() : '';
+  const tokens = new Map();
+  for (const t of raw.map(nonEmpty)) {
+    // the source site is migrated on purpose, so nothing its host contains can count as project identity
+    if (t && t.length >= 3 && !sourceHost.includes(t.toLowerCase()) && !tokens.has(t.toLowerCase())) tokens.set(t.toLowerCase(), t);
+  }
+  return [...tokens.values()].sort((a, b) => b.length - a.length || byStr(a, b));
+}
+
+// Identity shapes caught whatever the tokens are: repository URLs, EDS project hosts, DA content paths.
+// Non-global, so `.test()` is stateless; scrubbing uses global copies.
+const IDENTITY_RULES = [
+  [/(?:https?:\/\/)?(?:www\.)?github\.com\/[^\s/"'<>)]+\/[^\s/"'<>)#?]+[^\s"'<>)]*/i, '<repo-url>'],
+  // a segment never holds `--` and a match starts only at a label boundary, so this stays linear on `-`/`a--` runs
+  [/(?<![a-z0-9-])(?:[a-z0-9]|-(?!-))+--(?:[a-z0-9]|-(?!-))+--(?:[a-z0-9]|-(?!-))+\.(?:aem|hlx)\.(?:page|live)/i, '<host>'],
+  [/(?:content|admin)\.da\.live\/[^\s/"'<>)]+\/[^\s/"'<>)]+[^\s"'<>)]*/i, '<da-path>'],
+];
+export const IDENTITY_PATTERNS = IDENTITY_RULES.map(([re]) => re);
+const SITE_PLACEHOLDER = '<site>';
+const PLACEHOLDERS = /(<(?:site|repo-url|host|da-path)>)/;
+
+/** Free text with identity patterns replaced (`<repo-url>`, `<host>`, `<da-path>`), then each token (longest first) by `<site>`. */
+export function scrubIdentity(text, tokens) {
+  if (typeof text !== 'string' || !text) return text;
+  let out = IDENTITY_RULES.reduce((s, [re, label]) => s.replace(new RegExp(re.source, 'gi'), label), text);
+  const list = (tokens || []).filter(Boolean).sort((a, b) => b.length - a.length || byStr(a, b));
+  // one pass; a placeholder already written is matched first and kept as is
+  if (list.length) out = out.replace(new RegExp(`${PLACEHOLDERS.source}|${list.map(escapeRe).join('|')}`, 'gi'), (m, kept) => kept || SITE_PLACEHOLDER);
+  return out;
+}
+
+/** JSON paths of every string (key or value) holding a token; a key holding one shows as `*`, so no token is returned. */
+export function findIdentity(value, tokens) {
+  const list = (tokens || []).filter(Boolean).map((t) => t.toLowerCase());
+  if (!list.length) return [];
+  const hit = (s) => { const v = s.split(SITE_PLACEHOLDER).join('\u0000').toLowerCase(); return list.some((t) => v.includes(t)); };
+  const hits = [];
+  const walk = (v, path) => {
+    if (typeof v === 'string') { if (hit(v)) hits.push(path); return; }
+    if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${path}[${i}]`)); return; }
+    for (const [k, x] of Object.entries(v && typeof v === 'object' ? v : {})) {
+      const at = `${path}.${hit(k) ? '*' : k}`;
+      if (hit(k)) hits.push(at);
+      walk(x, at);
+    }
+  };
+  walk(value, '$');
+  return hits;
+}
+
+/** A judged free-text value: the trimmed string, or null when absent/empty. */
+export const judgedText = (v) => nonEmpty(v);
+
+/** Judged reuse guidance: both lists trimmed, de-duplicated and sorted; null unless one holds an entry. */
+export function judgedGuidance(v) {
+  if (!v || typeof v !== 'object') return null;
+  const list = (xs) => uniqSorted((Array.isArray(xs) ? xs : []).map(nonEmpty).filter(Boolean));
+  const g = { suitableFor: list(v.suitableFor), notSuitableFor: list(v.notSuitableFor) };
+  return g.suitableFor.length || g.notSuitableFor.length ? g : null;
+}
+
+/**
+ * Set each template row's judged `name`/`description` (scrubbed) right after `id`, or remove them when not judged;
+ * every other key keeps its place. Mutates the rows; returns whether any row changed.
+ */
+export function applyTemplateJudgement(templates, judgement, tokens) {
+  const judged = judgement && judgement.templates && typeof judgement.templates === 'object' ? judgement.templates : {};
+  let changed = false;
+  for (const row of Array.isArray(templates) ? templates : []) {
+    const j = (Object.hasOwn(judged, row.id) && judged[row.id]) || {};
+    const name = scrubIdentity(judgedText(j.name), tokens);
+    const description = scrubIdentity(judgedText(j.description), tokens);
+    const rest = Object.entries(row).filter(([k]) => k !== 'id' && k !== 'name' && k !== 'description');
+    const next = { id: row.id, ...(name ? { name } : {}), ...(description ? { description } : {}), ...Object.fromEntries(rest) };
+    if (JSON.stringify(next) === JSON.stringify(row)) continue;
+    for (const k of Object.keys(row)) delete row[k];
+    Object.assign(row, next);
+    changed = true;
+  }
+  return changed;
+}
+
+/** writeJSON unless the file already holds `doc` apart from `_provenance.writtenAt` and `generatedAt`; true when written. */
+export function writeCoverage(path, doc) {
+  const stable = (d) => JSON.stringify(d && typeof d === 'object'
+    ? { ...d, generatedAt: undefined, _provenance: d._provenance ? { ...d._provenance, writtenAt: undefined } : d._provenance }
+    : d);
+  if (existsSync(path) && stable(readJSON(path)) === stable(doc)) return false;
+  writeJSON(path, doc);
+  return true;
 }

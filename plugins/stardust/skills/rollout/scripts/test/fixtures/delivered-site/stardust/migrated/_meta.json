@@ -1,0 +1,20 @@
+{
+  "slug": "home",
+  "type": "home",
+  "fidelityTier": "archetype",
+  "renderBranch": "A",
+  "template": null,
+  "source": {
+    "url": "https://www.example.com/"
+  },
+  "metadata": {
+    "title": "Home",
+    "lang": "en-US",
+    "canonical": "https://main--fixture-site--fixture-org.aem.page/"
+  },
+  "modules": [
+    "hero-banner",
+    "link-list",
+    "three-up"
+  ]
+}

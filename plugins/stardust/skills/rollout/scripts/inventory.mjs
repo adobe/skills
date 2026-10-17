@@ -62,19 +62,29 @@
  * sibling, or why it was skipped) is copied verbatim to the row's `source.variance`;
  * the key is absent when the sidecar carries no such object.
  *
+ * Delivered structure: every row's `delivered` holds what the page's content file (<content>/index.html
+ * for /, else <path>.html or <path>/index.html) is made of — blocks and default content in document
+ * order with sections, lang, source snapshot and contentHash — or null while it has no content file.
+ * Coverage files carry `formatVersion` (reference/coverage-contract.md); unchanged inputs leave them untouched.
+ *
  * Usage:
- *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
- *   defaults: --migrated stardust/migrated  --out stardust/rollout
+ *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>] [--content <dir>] [--export <name>]
+ *   defaults: --migrated stardust/migrated  --out stardust/rollout  --content content
+ *   --export migration-workspace opts this project into rollout's migration workspace (Phase I: manifest and
+ *   judgement draft under stardust/rollout/workspace/); the name is added once to rollout.json `exports`, which
+ *   survives every re-run. Another name exits 2 before any write.
  *
  * Exit: 0 coverage written · 1 the migrated tree is not found (message on stderr, nothing written), or an
- *   unexpected read/write failure.
+ *   unexpected read/write failure · 2 an unknown --export name (message on stderr, nothing written).
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
-import { acquireLock } from './lib.mjs';
+import {
+  COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileFor, variantIdentity, variantId, priorVariantIds,
+  identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock,
+} from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -93,6 +103,21 @@ const MIGRATED = arg('migrated', 'stardust/migrated');
 const OUT = arg('out', 'stardust/rollout');
 const SITE_URL = arg('site-url', null);
 const STATE = arg('state', null);
+const CONTENT = arg('content', 'content');
+
+/** Every value of a repeatable flag, in order; a flag with no value yields ''. */
+function args(name) {
+  return process.argv.flatMap((a, i) => (a === `--${name}` ? [process.argv[i + 1] || ''] : []));
+}
+
+// Opt-in exports (rollout.json `exports`, schemas/rollout-config.schema.json); `migration-workspace-files` is reserved.
+const EXPORT_NAMES = ['migration-workspace', 'migration-workspace-files'];
+const EXPORTS = args('export');
+for (const name of EXPORTS) {
+  if (EXPORT_NAMES.includes(name)) continue;
+  console.error(`rollout inventory: --export needs one of ${EXPORT_NAMES.join(', ')}${name ? ` (got "${name}")` : ''}.`);
+  process.exit(2);
+}
 
 const STARDUST_VERSION = (() => {
   try {
@@ -101,8 +126,6 @@ const STARDUST_VERSION = (() => {
     return pj.version || '0.0.0';
   } catch { return '0.0.0'; }
 })();
-
-function sha256(buf) { return `sha256:${createHash('sha256').update(buf).digest('hex')}`; }
 
 /** Recursively collect *.html under dir, skipping the assets/ bundle. */
 function walkHtml(dir, root = dir, acc = []) {
@@ -176,6 +199,7 @@ function readJSON(path, fallback = null) {
 
 /** The page that IS the template: migrate's Path A (fidelityTier `archetype`, renderBranch `A`). */
 const isArchetype = (meta) => meta.fidelityTier === 'archetype' || meta.renderBranch === 'A';
+const nonEmpty = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
 if (!existsSync(MIGRATED)) {
   console.error(`rollout inventory: migrated tree not found at "${MIGRATED}". Run \`stardust migrate\` first.`);
@@ -193,12 +217,21 @@ const configPath = join(OUT, 'rollout.json');
 try { acquireLock(join(OUT, '.coverage')); } catch (e) { console.error(`rollout inventory: ${e.message}`); process.exit(1); }
 const priorPages = readJSON(pagesPath, { pages: [] });
 const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
+const priorConfig = readJSON(configPath, null);
 
 // --- Inventory the migrated tree -----------------------------------------------
 const htmlFiles = walkHtml(MIGRATED).sort();
 // the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
 const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
-const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
+const stateDoc = stateFile ? readJSON(stateFile, { pages: [] }) : null;
+const statePages = (stateDoc && Array.isArray(stateDoc.pages) ? stateDoc.pages : []).filter((p) => p && p.slug);
+const stateUrls = new Map(statePages.filter((p) => p.url).map((p) => [p.slug, p.url]));
+// identity (DA org/site, project hosts) a free-text field must not carry; the source origin is not identity
+const tokens = identityTokens({
+  rollout: { site: { ...((priorConfig && priorConfig.site) || {}), ...(SITE_URL ? { sourceUrl: SITE_URL } : {}) } },
+  state: stateDoc,
+});
+const sidecars = new Map();
 const pages = [];
 
 // "Is this sidecar an encoded page?" and "is it the current clean encode?" are migrate's (encode/provenance.mjs
@@ -225,6 +258,7 @@ for (const relHtml of htmlFiles) {
   if (encoder && encoder.encodedPageOf(meta, { hasHtml: true })) continue; // an encoded sibling: listed below, from its sidecar
   const path = deliveredPath(relHtml);
   const slug = meta.slug || (path === '/' ? 'home' : path.replace(/^\//, ''));
+  sidecars.set(slug, meta);
 
   const prior = priorBySlug.get(slug);
   let delivery;
@@ -370,9 +404,49 @@ for (const prior of (priorPages.pages || [])) {
   migratedPaths.add(prior.path);
 }
 
+// --- Delivered structure: what each page's content file is made of (null while it has none) ---
+// A block record's variantId is minted from its identity (block + classes), unless the prior pages.json
+// already gave that identity another id: an id a client stored never changes.
+const priorIds = priorVariantIds(priorPages);
+const inContent = (rel) => !rel.split('/').includes('..') && existsSync(join(CONTENT, rel)) && statSync(join(CONTENT, rel)).isFile();
+const styleOf = (s) => (s == null ? null : scrubIdentity(s, tokens));
+function deliveredFor(p) {
+  const file = typeof p.path === 'string' ? contentFileFor(p.path, inContent) : null;
+  if (!file) return null;
+  const bytes = readFileSync(join(CONTENT, file));
+  const { records, sections } = parseDelivered(bytes.toString('utf8'));
+  const meta = sidecars.get(p.slug) || {};
+  const snapshot = join(dirname(OUT), 'current', 'pages', `${p.slug}.html`);
+  return {
+    blocks: records.map((r) => ({
+      ...r,
+      section: styleOf(r.section),
+      variantId: r.kind === 'block' ? priorIds.get(variantIdentity(r.block, r.classes)) || variantId(r.block, r.classes) : null,
+    })),
+    sections: sections.map((s) => ({ ...s, style: styleOf(s.style) })),
+    lang: nonEmpty(meta.metadata && meta.metadata.lang),
+    sourceSnapshot: existsSync(snapshot) ? snapshot : null,
+    contentHash: sha256(bytes),
+  };
+}
+/** The row with `delivered` right after `blocks` (a row carried over may hold a previous one). */
+function withDelivered(row, delivered) {
+  const out = {};
+  for (const [k, v] of Object.entries(row)) {
+    if (k === 'delivered') continue;
+    if (k === 'delivery' && !('delivered' in out)) out.delivered = delivered;
+    out[k] = v;
+    if (k === 'blocks') out.delivered = delivered;
+  }
+  if (!('delivered' in out)) out.delivered = delivered;
+  return out;
+}
+for (let i = 0; i < pages.length; i++) pages[i] = withDelivered(pages[i], deliveredFor(pages[i]));
+
 pages.sort((a, b) => a.slug.localeCompare(b.slug));
 
 // --- Derive the template grouping ----------------------------------------------
+const stateTypes = new Map(statePages.map((p) => [p.slug, p.type]));
 const tmap = new Map();
 for (const p of pages) {
   const id = p.templateId || 'untyped';
@@ -387,11 +461,16 @@ const templates = [...tmap.values()].map((t) => {
   // The representative is the migrated archetype that converts the blocks — never a
   // content-pending sibling (which pushes no document).
   const rep = tp.find((p) => p.slug === t.id) || tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
+  const repUrl = (rep && nonEmpty(rep.source && rep.source.sourceUrl)) || null;
+  const urls = [...new Set(tp.map((p) => nonEmpty(p.source && p.source.sourceUrl)).filter((u) => u && u !== repUrl))].sort(byStr);
   return {
     id: t.id,
+    type: (rep && (nonEmpty((sidecars.get(rep.slug) || {}).type) || nonEmpty(stateTypes.get(rep.slug)))) || null,
     representativeSlug: (rep && rep.slug) || null,
+    representativeUrl: repUrl,
     pages: t.pages.sort(),
     pageCount: t.pages.length,
+    urls: repUrl ? [repUrl, ...urls] : urls,
     blocks: [...t.blocks].sort(),
     delivery: {
       verified: count('verified'),
@@ -418,14 +497,19 @@ const counts = {
 const now = new Date().toISOString();
 mkdirSync(coverageDir, { recursive: true });
 
-const prov = (writtenBy) => ({
-  writtenBy, writtenAt: now, readArtifacts: STATE ? [MIGRATED, STATE] : [MIGRATED], stardustVersion: STARDUST_VERSION,
-});
+const readArtifacts = [MIGRATED, ...(STATE ? [STATE] : []), ...(existsSync(CONTENT) ? [CONTENT] : [])];
+const prov = (writtenBy) => ({ writtenBy, writtenAt: now, readArtifacts, stardustVersion: STARDUST_VERSION });
 
-writeFileSync(pagesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, pages }, null, 2)}\n`);
-writeFileSync(templatesPath, `${JSON.stringify({ _provenance: prov('stardust:rollout/inventory'), generatedAt: now, templates }, null, 2)}\n`);
+// judged template names and descriptions (the Phase I judgement pass) survive every re-run
+applyTemplateJudgement(templates, readJSON(join(OUT, 'workspace', 'judgement.json'), null), tokens);
+// unchanged coverage is not rewritten, so a re-run with unchanged inputs leaves both files byte-identical
+const wrote = [
+  writeCoverage(pagesPath, { _provenance: prov('stardust:rollout/inventory'), formatVersion: COVERAGE_FORMAT_VERSION, generatedAt: now, pages }),
+  writeCoverage(templatesPath, { _provenance: prov('stardust:rollout/inventory'), formatVersion: COVERAGE_FORMAT_VERSION, generatedAt: now, templates }),
+];
 
-const priorConfig = readJSON(configPath, null);
+// The opt-in `exports` key is not derived from the tree: carry it forward (strings, once each, in order), then add --export.
+const priorExports = priorConfig && Array.isArray(priorConfig.exports) ? priorConfig.exports.filter((e) => typeof e === 'string') : [];
 const config = {
   _provenance: { writtenBy: 'stardust:rollout/inventory', writtenAt: now, stardustVersion: STARDUST_VERSION },
   target: 'aem-eds',
@@ -434,6 +518,7 @@ const config = {
     da: (priorConfig && priorConfig.site && priorConfig.site.da) || { org: '', site: '', ref: 'main' },
     liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
   },
+  exports: [...new Set([...priorExports, ...EXPORTS])],
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -444,6 +529,8 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+const delivered = pages.filter((p) => p.delivered).length;
+console.log(`Delivered   ${delivered}/${pages.length} pages parsed from ${CONTENT}${delivered < pages.length ? ` · ${pages.length - delivered} without a content file (delivered: null)` : ''}${wrote.some(Boolean) ? '' : ' · coverage unchanged, not rewritten'}`);
 if (notCurrent.length) console.log(`Not current ${notCurrent.length} encoded page(s) — deploy stages none of them until each encodes clean; the row keeps the last clean encode's hash: ${notCurrent.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);

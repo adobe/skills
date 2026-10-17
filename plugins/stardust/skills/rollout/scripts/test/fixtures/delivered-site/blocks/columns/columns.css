@@ -1,0 +1,11 @@
+.columns > div {
+  display: flex;
+}
+
+.columns.wide > div {
+  gap: 2rem;
+}
+
+.columns.stacked > div {
+  flex-direction: column;
+}

@@ -32,6 +32,13 @@
         "liveHost": { "type": ["string", "null"], "description": "Resolved aem.live host, e.g. main--site--org.aem.live." }
       }
     },
+    "exports": {
+      "type": "array",
+      "items": { "type": "string", "enum": ["migration-workspace", "migration-workspace-files"] },
+      "uniqueItems": true,
+      "default": [],
+      "description": "Opt-in outputs rollout writes for a client: `migration-workspace` is the manifest and judgement draft under stardust/rollout/workspace/ (reference/coverage-contract.md); `migration-workspace-files` is reserved."
+    },
     "lastRun": {
       "type": ["object", "null"],
       "description": "Summary of the most recent rollout run (the dashboard headline reads this).",

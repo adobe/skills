@@ -1,6 +1,6 @@
 # Scripts index — `<skill>/<script>` — what — key flags
 
-Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate invocations: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else their default.
+Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not named here. Deploy/rollout/migrate calls: `../../replica/reference/handoff-contract.md` § 4. Without a flag, measure, cap-probe, stitch-shot, style-census, crawl's page goto and the probes on live-session's `gotoLive`/`visit()` defaults navigate under `STARDUST_NAV_TIMEOUT_MS`, else 2 × `crawl.navMs.p95` of `stardust/current/_crawl-log.json` (20–180 s), else their default.
 
 - `deploy/ai-readability.mjs` — readability — `--origin <o> [--paths <f>]`
 - `deploy/block-roundtrip.mjs` — round-trip + EW — `<protoURL> <p>.html [--blocks a,b] --ew`
@@ -26,27 +26,27 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
 - `deploy/stage-content.mjs` — encoded → content/ — `--template <a>|--paths <f> [--record]`
 - `deploy/style-fingerprint.mjs` — variant groups — `"file:///abs/<proto>.html"`
-- `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json); exit 2 = undecided error
+- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json); exit 2 = undecided error
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json)
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory] [--hide <sel,…>]`; exit 2 = clipped > 0
-- `diff/content-diff.mjs` — structural + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>] [--hide <sel,…>]`
-- `diff/content-presence.mjs` — origin vs served visible content per band + control state — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
+- `diff/content-diff.mjs` — structure + attribute/icon diff, main + chrome — `<protoURL> <edsURL> [--main <sel,…>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>] [--hide <sel,…>]`
+- `diff/content-presence.mjs` — visible content per band + control state — `<origin> <served> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
 - `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`
-- `diff/unit-geometry.mjs` — repeated-unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>) [--n 1] [--tol 4]`; exit 2 = required unit off/hidden/missing
+- `diff/unit-geometry.mjs` — repeated-unit Δ — `<origin> <served> (--unit <selO>=<selE> | --families <f> --slug <s>) [--n 1] [--tol 4]`; exit 2 = required unit off/hidden/missing
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>] [--hide <sel,…>]`
-- `dynamics/dynamics-check.mjs` — replay parity checks (search-query count + top titles) — `--origin <h> [--parity <json>] [--out stardust/qa]`
-- `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json] [--reuse-if-fresh]`
+- `dynamics/dynamics-check.mjs` — replay parity (search-query count + top titles) — `--origin <h> [--parity <json>] [--out <dir>]`
+- `dynamics/dynamics-detect.mjs` — dynamic features — `--urls a,b [--from-state <state.json>] [--reuse-if-fresh]`
 - `dynamics/dynamics-plan.mjs` — triage draft — `[--in <json>] [--out <dir>] [--target-origin <h>] [--martech [dir]] [--knowledge]`
 - `dynamics/lib.mjs` — library, no CLI
 - `dynamics/martech.mjs` — library (contract, hand-off), no CLI
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`) — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
+- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
@@ -87,20 +87,21 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <live-origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
-- `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
+- `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>] [--blocks <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--coverage <json>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units, sidecars, ledger pairs proven — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
-- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`
+- `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`
 - `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
-- `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <captureDir>]`
+- `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>` (records `host`)
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
+- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft — `[--out <dir>] [--draft-judgement] [--force] [--dry-run]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`

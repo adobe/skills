@@ -68,14 +68,15 @@ least the archetype pages first. For a single page, use `stardust deploy` direct
 
 ```bash
 node skills/rollout/scripts/inventory.mjs --site-url <source-url>
-# defaults: --migrated stardust/migrated  --out stardust/rollout
+# defaults: --migrated stardust/migrated  --out stardust/rollout  --content content
 # archetypes-only mode: add the full page roster from state.json
 node skills/rollout/scripts/inventory.mjs --site-url <source-url> --state stardust/state.json
 ```
 
-Writes `coverage/pages.json` (one row per page: slug, delivered `path`,
-`templateId`, `blocks`, `sourceHash`, `delivery` status), `coverage/templates.json`
-(pages grouped by template), and `rollout.json` (target + DA config + `lastRun`).
+Writes `coverage/pages.json` (one row per page: slug, delivered `path`, `templateId`,
+`blocks`, `sourceHash`, `delivery` status, and `delivered`: the page's blocks in document
+order from `content/`), `coverage/templates.json` (pages grouped by template), and
+`rollout.json` (target + DA config + `lastRun`). Coverage files carry `formatVersion`.
 
 **Archetypes-only mode** (`--state`): pages with a `_meta.json` are seeded as in
 full mode; pages present only in `state.json` are seeded with `templateId` from
@@ -97,7 +98,8 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
   the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
   reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
+  `instanceCount`; module rows also carry option classes, variants, description,
+  contract and base type. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
   authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
   archetypes-only mode the archetype sidecars fully determine the
   block set; `content-pending` pages add none. A module that maps to EDS **default
@@ -590,15 +592,28 @@ by the most-advanced lifecycle stage it reached:
 identified → prototyped → deployed → optimised
 ```
 
-The stage spans `state.json` (`rostered/extracted/directed` → identified,
-`prototyped/approved/migrated` → prototyped), rollout coverage
-(`deployed`/`verified` → deployed), and optimize (`optimised` = verified **and** no
-open findings). A `content-pending` sibling stays at `identified` (it's in the
-ledger so delivery can be tracked, but has no designed document yet). Legend counts
-are **cumulative**. **Template archetypes** are badged `T`; a page with open
-findings shows a red count. Also a templates table + the quality scorecard.
+Stage rules, legend and badges: `dashboard.mjs --help`.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
+
+**Migration manifest (opt-in).** When `rollout.json` `exports` lists `migration-workspace`,
+run these after `dashboard.mjs` and before the `I-dashboard` end line (format:
+`reference/coverage-contract.md`):
+
+```bash
+node skills/rollout/scripts/inventory.mjs <Phase A flags> && node skills/rollout/scripts/blocks.mjs
+node skills/rollout/scripts/workspace-manifest.mjs --draft-judgement  # once: empty fields to fill
+# fill judgement.json (below), then write the judged names and base types into coverage:
+node skills/rollout/scripts/blocks.mjs
+node skills/rollout/scripts/workspace-manifest.mjs  # → workspace/manifest.json: hashes, handover state
+```
+
+Fill `stardust/rollout/workspace/judgement.json` in one short pass: per template a name and a
+one-sentence description; per block a base type (`hero`, `cards`, `columns`, … or `unknown`),
+a purpose and reuse guidance. Nothing else is model-authored, and a re-run never asks again.
+`workspace-manifest.mjs` refuses coverage older than content, block code or the judgement
+(exit 1 names what to re-run). The step does not gate completion: a failure goes into the
+`I-dashboard` end line's `--detail` and the journal, never `blocked`.
 
 **Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
 exits 0; otherwise it prints one gap per line.
@@ -612,6 +627,7 @@ exits 0; otherwise it prints one gap per line.
 | `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
+| `content/**`, `blocks/`, `stardust/eds-conversion-log.md` | `deploy` | per-page delivered block structure (inventory), option classes, descriptions and contracts (blocks); read-only |
 
 ## Outputs
 
@@ -626,6 +642,7 @@ exits 0; otherwise it prints one gap per line.
 | `stardust/rollout/rollout.json` | config + `lastRun` summary (schema: `schemas/rollout-config.schema.json`) |
 | `stardust/rollout/site/{sitemap.xml,robots.txt,manifest.json}` | site-level assembly artifacts |
 | `stardust/rollout/dashboard/{index.html,data.json}` | self-contained progress dashboard + snapshot |
+| `stardust/rollout/workspace/{manifest,judgement}.json` | opt-in manifest (hashes, handover state) and judgement (contract: `reference/coverage-contract.md`) |
 | edits to the **EDS project** (`content/**`, `styles/`) | applied by `autofix-aem` (the only files rollout writes outside `stardust/rollout/`) |
 | the delivered EDS site | produced by `deploy` per page (blocks/, content/, fragments — owned by `deploy`) |
 
@@ -678,6 +695,8 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
 - `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
+- `scripts/workspace-manifest.mjs` — opt-in: the manifest (hashes, handover; refuses after
+  handover, exit 3) and the judgement draft.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
 
 ## References
