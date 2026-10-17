@@ -43,9 +43,11 @@
 // was pushed (a rebase rewrites it). A merge or rebase in progress, or unmerged index entries, refuse
 // the run before anything is staged — staging a file with conflict markers would commit them.
 // Every git step is bounded (fetch, pull, push 60 s; local steps 300 s) and runs in its own process
-// group: a timed-out step's group is ended and the step failed (a timed-out rebase is aborted). No
-// network step (fetch, pull, push, a retry's) starts later than 180 s after the script started (the
-// lock wait included): past that the run stops, the local commit kept and named, not pushed.
+// group: a timed-out step's group is ended and the step failed (a timed-out rebase is aborted). Every
+// network step (fetch, pull, push, a retry's) and every backoff also runs for at most the time left
+// until 170 s after the script started (the lock wait included); with none left it is not started and
+// the run stops, the local commit kept and named, not pushed — so --push returns under 240 s (the
+// bound and its arithmetic: the comment at NET_DEADLINE_MS).
 // SIGINT / SIGTERM / SIGHUP are handled after the current git step (a terminal's Ctrl-C reaches this
 // script, not the step): the run stops at the next check with its exit-2 line and releases the lock;
 // a second signal ends the running git step. Exactly one status line on stdout in every outcome;
@@ -80,9 +82,19 @@ export const DEFAULT_WAIT_S = 120;
 export const PUSH_RETRIES = 3;
 export const NET_TIMEOUT_MS = 60_000; // fetch, pull, push
 export const LOCAL_TIMEOUT_MS = 300_000; // add, commit (hooks), reset, …
-export const NET_DEADLINE_MS = 180_000; // no network step starts later than this after the script started
+export const KILL_GRACE_MS = 5_000; // a timed-out step's process group: SIGTERM, then SIGKILL this much later
+// The --push bound. The deadline counts from the script's start, the lock wait included, so it holds from
+// the first git step too (only a --wait-s over 170 s lets the wait itself run longer — then no network
+// step starts at all). Every network step and every backoff runs for netBudget() = min(its own limit, the
+// time left until NET_DEADLINE_MS) and none starts with 0 left, so the last one's timer fires by 170 s;
+// ending its process group takes ≤ KILL_GRACE_MS more: 170 s + 5 s = 175 s (worstPushSchedule()). What
+// follows is local (a rev-list or rev-parse, a rebase --abort, the sha) with 240 − 175 = 65 s to spare:
+// --push returns under 240 s, the 4-minute tool-call limit. (At 180 s with an uncapped 60 s step it was
+// 180 + 60 + 5 = 245 s.) Local git steps keep their own LOCAL_TIMEOUT_MS: a hung commit hook is not cut.
+export const NET_DEADLINE_MS = 170_000;
 const HEARTBEAT_MS = 30_000;
 const BACKOFF_MS = 750;
+const JITTER_MS = 250; // a retry's backoff: BACKOFF_MS × attempt + up to this much at random
 const GIT_LOCK_RETRIES = 20; // × 500 ms: another git command in the same work tree holding index.lock / a ref lock
 const SIGNALS = ['SIGINT', 'SIGTERM', 'SIGHUP'];
 const PAGES_REL = 'stardust/rollout/coverage/pages.json';
@@ -134,10 +146,15 @@ Steps: git add -- <set>; nothing in the set differs from HEAD → exit 2 "nothin
   Refused before staging: a merge or rebase in progress, unmerged files in the index.
 Time limits: fetch, pull and push ${NET_TIMEOUT_MS / 1000} s each, local git steps ${LOCAL_TIMEOUT_MS / 1000} s; a step over its limit
   failed — its process group (git, hooks, transport) is ended; a timed-out rebase is aborted.
-  Deadline: no network step (fetch, pull, push, a retry's) starts later than ${NET_DEADLINE_MS / 1000} s after the
-  script started, the lock wait included → exit 2 "push deadline reached; local commit <sha7> kept,
-  not pushed" (lock released). Worst case with --push: one network step started just before
-  ${NET_DEADLINE_MS / 1000} s runs its ${NET_TIMEOUT_MS / 1000} s, +5 s to end its process group — about ${(NET_DEADLINE_MS + NET_TIMEOUT_MS) / 1000 + 5} s, local steps aside.
+  Deadline: ${NET_DEADLINE_MS / 1000} s after the script started, the lock wait included. Every network step (fetch,
+  pull, push, a retry's) and every backoff runs for at most min(its own limit, the time left until
+  the deadline); with no time left it is not started → exit 2 "push deadline reached; local commit
+  <sha7> kept, not pushed" (lock released).
+  Bound with --push: the last network step's timer fires by ${NET_DEADLINE_MS / 1000} s, and ending a timed-out step's
+  process group takes ≤ ${KILL_GRACE_MS / 1000} s more: ${NET_DEADLINE_MS / 1000} s + ${KILL_GRACE_MS / 1000} s = ${(NET_DEADLINE_MS + KILL_GRACE_MS) / 1000} s; the local steps after it (a rev-list
+  or rev-parse, a rebase --abort, the sha) have the remaining ${(240_000 - NET_DEADLINE_MS - KILL_GRACE_MS) / 1000} s — --push returns under 240 s,
+  the 4-minute tool-call limit. A --wait-s over ${NET_DEADLINE_MS / 1000} s can stretch only the lock wait (no network
+  step starts after it); a hung local step (a commit hook) is bounded by its own ${LOCAL_TIMEOUT_MS / 1000} s.
 Signals: SIGINT / SIGTERM / SIGHUP are handled after the current git step (each step runs in its
   own process group, so a terminal's Ctrl-C does not cut it short) — the run stops at the next
   check with its exit-2 line (the set unstaged, or the local commit kept and named) and releases
@@ -193,8 +210,32 @@ export function filesUnder(dir) {
   return out;
 }
 
-/** May a network step start now? Not once `limitMs` have passed since the script started. Pure. */
-export const pastNetDeadline = (startedMs, nowMs, limitMs = NET_DEADLINE_MS) => nowMs - startedMs >= limitMs;
+/**
+ * The timeout a network step (or a backoff sleep) gets: min(its own limit `stepMs`, the time left until
+ * `limitMs` after the script started); 0 = no time left, the step is not started. Pure.
+ */
+export const netBudget = (startedMs, nowMs, stepMs, limitMs = NET_DEADLINE_MS) => Math.max(0, Math.min(stepMs, startedMs + limitMs - nowMs));
+
+/**
+ * The worst-case --push network schedule, in pullAndPush's order (per attempt: a backoff before a retry,
+ * fetch, pull, push): every step runs its whole netBudget and every git step then needs KILL_GRACE_MS to
+ * end its process group (an upper bound — a step that finishes or fails sooner leaves more time).
+ * `firstMs` = when the first network step may start, ms after the script started. Pure.
+ * Returns { steps: [{ step, attempt, startMs, ms }], endMs } — endMs when the last one has ended.
+ */
+export function worstPushSchedule(firstMs = 0, limitMs = NET_DEADLINE_MS) {
+  const steps = [];
+  let t = firstMs;
+  for (let attempt = 0; attempt <= PUSH_RETRIES; attempt += 1) {
+    for (const step of [...(attempt ? ['backoff'] : []), 'fetch', 'pull', 'push']) {
+      const ms = netBudget(0, t, step === 'backoff' ? BACKOFF_MS * attempt + JITTER_MS : NET_TIMEOUT_MS, limitMs);
+      if (!ms) { if (step === 'backoff') continue; return { steps, endMs: t }; }
+      steps.push({ step, attempt, startMs: t, ms });
+      t += ms + (step === 'backoff' ? 0 : KILL_GRACE_MS);
+    }
+  }
+  return { steps, endMs: t };
+}
 
 /** The content documents a path key may live in. */
 export const contentDocs = (key) => (key === '/' ? ['content/index.html'] : [`content${key}.html`, `content${key}/index.html`]);
@@ -338,8 +379,9 @@ const RUN = { child: null, signal: null }; // the running git step; the first si
 const LOCKED_RE = /index\.lock|cannot lock ref|unable to create '[^']*\.lock'/i;
 
 // One git step, bounded: past timeoutMs its whole process group (git, its hooks, its transport) gets
-// SIGTERM, SIGKILL 5 s later, and the step counts as failed. Each step runs in its own process group,
-// so a terminal's Ctrl-C reaches this script only — the step finishes unless a second signal stops it.
+// SIGTERM, SIGKILL KILL_GRACE_MS later, and the step counts as failed. Each step runs in its own
+// process group, so a terminal's Ctrl-C reaches this script only — the step finishes unless a second
+// signal stops it.
 const GROUPS = process.platform !== 'win32';
 function gitOnce(args, input, timeoutMs) {
   return new Promise((done, fail) => {
@@ -350,7 +392,7 @@ function gitOnce(args, input, timeoutMs) {
       if (killedBy) return;
       killedBy = why;
       signalTree('SIGTERM');
-      setTimeout(() => { if (child.exitCode === null && child.signalCode === null) signalTree('SIGKILL'); }, 5000).unref();
+      setTimeout(() => { if (child.exitCode === null && child.signalCode === null) signalTree('SIGKILL'); }, KILL_GRACE_MS).unref();
     };
     RUN.child = { stop: stopStep };
     child.stdout.setEncoding('utf8').on('data', (d) => { out += d; });
@@ -399,21 +441,23 @@ const upstreamOf = async () => { const r = await git(['rev-parse', '--abbrev-ref
 // retries. Returns { ok, sha } (sha = the commit as pushed) or { fail, err, why }.
 async function pullAndPush(stop) {
   let err = '';
-  const late = () => pastNetDeadline(STARTED, Date.now());
+  const left = (stepMs) => netBudget(STARTED, Date.now(), stepMs); // 0 → the step is not started
   for (let attempt = 0; attempt <= PUSH_RETRIES; attempt += 1) {
-    if (attempt) await sleep(BACKOFF_MS * attempt + Math.floor(Math.random() * 250));
+    if (attempt) { const pause = left(BACKOFF_MS * attempt + Math.floor(Math.random() * JITTER_MS)); if (pause) await sleep(pause); }
     let why = stop();
     if (why) return { fail: 'stopped', why };
-    if (late()) return { fail: 'deadline', err };
-    const fetch = await git(['fetch', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+    let ms = left(NET_TIMEOUT_MS);
+    if (!ms) return { fail: 'deadline', err };
+    const fetch = await git(['fetch', '-q'], { timeoutMs: ms });
     if (fetch.code !== 0) { err = fetch.err; continue; }
     const behind = await git(['rev-list', '--count', 'HEAD..@{u}']);
     if (behind.code !== 0) { err = behind.err; continue; }
     if (Number(behind.out.trim()) > 0) {
       why = stop();
       if (why) return { fail: 'stopped', why };
-      if (late()) return { fail: 'deadline', err };
-      const pull = await git(['pull', '--rebase', '--autostash', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+      ms = left(NET_TIMEOUT_MS);
+      if (!ms) return { fail: 'deadline', err };
+      const pull = await git(['pull', '--rebase', '--autostash', '-q'], { timeoutMs: ms });
       if (await rebasing()) {
         const abort = await git(['rebase', '--abort']);
         if (abort.code !== 0 || await rebasing()) return { fail: 'abort-failed', err: abort.err || pull.err };
@@ -425,9 +469,10 @@ async function pullAndPush(stop) {
     }
     why = stop();
     if (why) return { fail: 'stopped', why };
-    if (late()) return { fail: 'deadline', err };
     const sha = await sha7(); // the commit as it is pushed — after a rebase it is not the one committed
-    const push = await git(['push', '-q'], { timeoutMs: NET_TIMEOUT_MS });
+    ms = left(NET_TIMEOUT_MS);
+    if (!ms) return { fail: 'deadline', err };
+    const push = await git(['push', '-q'], { timeoutMs: ms });
     if (push.code === 0) return { ok: true, sha };
     err = push.err;
   }

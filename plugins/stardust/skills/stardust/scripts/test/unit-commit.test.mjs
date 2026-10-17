@@ -2,7 +2,9 @@
 // skills/stardust/scripts/test/unit-commit.test.mjs — the unit-commit.mjs contract, with real git in
 // temp dirs (a bare remote + clones; children get HOME=<tmp>, GIT_CONFIG_NOSYSTEM=1 and a ceiling so
 // no user or system config leaks in): the pure helpers (paths parsing, sidecar naming, the candidate
-// set, lock judgement, the 180 s network deadline); --help writes nothing, and answers in a copy without
+// set, lock judgement, the 170 s network deadline — every network step and backoff capped to the time
+// left, none started with none left, the worst-case --push schedule under 240 s); --help writes nothing
+// and states that bound, and answers in a copy without
 // deploy's eds-path.mjs beside it (a run there exits 2); usage errors; a missing .paths stages nothing; a unit
 // commits exactly its set while an unrelated pre-staged file stays staged and out of the commit;
 // --code blocks/<name> adds exactly that block directory's non-ignored files (header, footer and
@@ -21,7 +23,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSyn
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { codeDir, judgeLock, NET_DEADLINE_MS, parseOwner, parsePaths, pastNetDeadline, safeRel, sidecarFor, stageCandidates, STALE_MS } from '../unit-commit.mjs';
+import { codeDir, judgeLock, KILL_GRACE_MS, NET_DEADLINE_MS, NET_TIMEOUT_MS, netBudget, parseOwner, parsePaths, safeRel, sidecarFor, stageCandidates, STALE_MS, worstPushSchedule } from '../unit-commit.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -112,14 +114,32 @@ check('stageCandidates: content docs per pathKey, the matching row\'s schema + s
   ]);
   assert.equal(notes.length, 1); assert.match(notes[0], /\.\. segment/);
 });
-check('pastNetDeadline: a network step may start until 180 s after the script started, not at or after it', () => {
-  assert.equal(NET_DEADLINE_MS, 180_000);
+check('netBudget: a network step or backoff gets min(its own limit, the time left until 170 s after the start); none is started with 0 left', () => {
+  assert.equal(NET_DEADLINE_MS, 170_000);
   const t0 = 1_000_000;
-  assert.equal(pastNetDeadline(t0, t0), false);
-  assert.equal(pastNetDeadline(t0, t0 + 179_999), false);
-  assert.equal(pastNetDeadline(t0, t0 + 180_000), true);
-  assert.equal(pastNetDeadline(t0, t0 + 120_000 + 4 * 60_000), true, 'a 120 s lock wait plus rounds never starts a step past the deadline');
-  assert.equal(pastNetDeadline(t0, t0 + 5_000, 5_000), true);
+  assert.equal(netBudget(t0, t0, NET_TIMEOUT_MS), 60_000, 'early: the step\'s own limit');
+  assert.equal(netBudget(t0, t0 + 110_000, NET_TIMEOUT_MS), 60_000, 'exactly enough left');
+  assert.equal(netBudget(t0, t0 + 150_000, NET_TIMEOUT_MS), 20_000, 'late: capped to the time left');
+  assert.equal(netBudget(t0, t0 + 169_999, NET_TIMEOUT_MS), 1);
+  assert.equal(netBudget(t0, t0 + 169_500, 1_000), 500, 'a backoff sleep is capped too');
+  assert.equal(netBudget(t0, t0 + 170_000, NET_TIMEOUT_MS), 0, 'no time left → not started');
+  assert.equal(netBudget(t0, t0 + 120_000 + 4 * 60_000, NET_TIMEOUT_MS), 0, 'a 120 s lock wait plus rounds never starts a step past the deadline');
+  assert.equal(netBudget(t0, t0 + 5_000, NET_TIMEOUT_MS, 5_000), 0, 'the deadline is a parameter');
+});
+check('worstPushSchedule: every --push network step runs its whole capped budget plus the kill grace — it ends by 175 s, under 240 s, wherever it starts', () => {
+  const w = worstPushSchedule(0);
+  assert.deepEqual(w.steps.map(({ step, attempt, startMs, ms }) => [step, attempt, startMs, ms]), [
+    ['fetch', 0, 0, 60_000], ['pull', 0, 65_000, 60_000], ['push', 0, 130_000, 40_000],
+  ], 'the push gets the 40 s left, not its 60 s');
+  assert.equal(w.endMs, NET_DEADLINE_MS + KILL_GRACE_MS);
+  assert.ok(w.endMs < 240_000, `${w.endMs / 1000} s`);
+  // the first network step starts after the lock wait and the local steps; nothing starts at or past 170 s
+  for (let at = 0; at <= 240_000; at += 250) {
+    const s = worstPushSchedule(at);
+    for (const x of s.steps) assert.ok(x.ms > 0 && x.startMs + x.ms <= NET_DEADLINE_MS, `from ${at} ms: ${x.step} ${x.startMs}+${x.ms} runs past the deadline`);
+    if (at < NET_DEADLINE_MS) assert.ok(s.steps.length > 0 && s.endMs <= NET_DEADLINE_MS + KILL_GRACE_MS && s.endMs < 240_000, `from ${at} ms: ends at ${s.endMs} ms`);
+    else assert.deepEqual(s, { steps: [], endMs: at }, `from ${at} ms: no network step started`);
+  }
 });
 check('safeRel: clean relative paths inside the tree; escapes and blanks → null', () => {
   assert.equal(safeRel('stardust/./migrated/a._meta.json', root), 'stardust/migrated/a._meta.json');
@@ -186,6 +206,8 @@ try {
     const r = run(empty, '--help');
     assert.equal(r.code, 0);
     assert.match(r.out, /Usage:/); assert.match(r.out, /stardust\/\.work\/git\.lock/); assert.match(r.out, /Writes:/); assert.match(r.out, /Exit codes:/);
+    assert.match(r.out, /170 s \+ 5 s = 175 s\b.*returns under 240 s/s, 'the --push bound and its arithmetic');
+    assert.doesNotMatch(r.out, /245 s/);
     assert.deepEqual(readdirSync(empty), []);
     assert.equal(run(empty, 'c1', '-h').code, 0);
     assert.deepEqual(readdirSync(empty), []);
