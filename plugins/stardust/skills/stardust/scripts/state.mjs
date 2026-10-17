@@ -26,8 +26,8 @@
 // --force re-inits only while every page in it is still `extracted` and keeps its top-level keys
 // other than _provenance, site and pages in place. Invalid JSON or a non-array `pages` is refused.
 // The written shape follows state-machine.md § File: `direction: null` unless the file has one;
-// site { originUrl, deployUrl, extractedAt, pageCap (--page-cap or null), totalDiscovered
-// (_crawl-log.json#discovery.count, else the input count), crawled, captureGaps? }.
+// site { originUrl, deployUrl, extractedAt, pageCap (--page-cap or null), totalDiscovered (see
+// siteTotalDiscovered: the crawl log's count only where the cap did not cut it), crawled, captureGaps? }.
 // set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing.
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
@@ -106,12 +106,16 @@ init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages
          ${TYPE_RE.source}; a slug not in the input is a usage error); other pages get type null.
          Writes _provenance (writtenBy stardust:extract), site { originUrl (origin of --site-url,
          else of the first URL), deployUrl null, extractedAt, pageCap (--page-cap, an integer >= 0,
-         0 = no cap as crawl --max 0; else null), totalDiscovered (<current>/_crawl-log.json
-         #discovery.count when it has one, else the number of input URLs), crawled (the number of
-         input URLs), captureGaps (the roots of <current>/_crawl-log.json#captureGaps, when it lists
+         0 = no cap as crawl --max 0; else null), totalDiscovered, crawled (the number of input
+         URLs), captureGaps (the roots of <current>/_crawl-log.json#captureGaps, when it lists
          any) }, direction null (unless the file already has a direction, which is kept) and
          pages[] (status extracted, one history entry, currentStatePath
          <current>/pages/<slug>.json). Duplicate slugs in the input are a usage error.
+         totalDiscovered: the crawl log's #discovery.count is the count AFTER the crawl's --max
+         cap, so pass that --max as --page-cap. With --page-cap 0, or a count below the cap (the
+         cap did not bite), it is the count; with a count >= the cap, null (the cap bit and the
+         crawl logs no pre-cap total); without --page-cap, the count as logged; without a logged
+         count, the number of input URLs.
          An existing ${FILE_NAME} with no pages (no pages key or an empty
          pages[], e.g. flow / handsOff stamped before extract) is filled without --force: its other
          top-level keys stay in place and stdout adds "· kept <keys>". One with pages exits 2;
@@ -159,7 +163,7 @@ export function pluginVersion() {
 
 export function readState(dir) {
   const file = statePath(dir);
-  if (!existsSync(file)) throw new UsageError(`${file} does not exist — create it with \`state.mjs init --pages <urls>\` after the crawl; advance and set only change pages that are already in it`);
+  if (!existsSync(file)) throw new UsageError(`${file} does not exist — create it with \`state.mjs init --pages <url-file|->\` after the crawl; advance and set only change pages that are already in it`);
   let state;
   try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message})`); }
   if (!state || typeof state !== 'object' || !Array.isArray(state.pages)) throw new UsageError(`${file} has no pages[] array`);
@@ -461,12 +465,25 @@ export function readCaptureGapRoots(current) {
   return Array.isArray(roots) && roots.length ? structuredClone(roots) : null;
 }
 
-// <current>/_crawl-log.json#discovery.count (the URLs the crawl discovered), when it is an
-// integer >= 0; else null.
+// <current>/_crawl-log.json#discovery.count, when it is an integer >= 0; else null. crawl.mjs logs
+// it AFTER slicing the discovered URLs to --max, so it is a total only where the cap did not bite
+// (see siteTotalDiscovered).
 export function readDiscoveryCount(current) {
   const r = readJson(join(current, '_crawl-log.json'));
   const n = r.value && r.value.discovery && r.value.discovery.count;
   return Number.isInteger(n) && n >= 0 ? n : null;
+}
+
+// site.totalDiscovered from the crawl log's post-cap count:
+// - no logged count → the number of input URLs;
+// - no --page-cap → the count as logged (HELP asks for the crawl's --max as --page-cap so a capped
+//   count is not mistaken for the total);
+// - --page-cap 0 (no cap) or a count below the cap (the cap did not bite) → the count;
+// - a count >= the cap → null: the cap bit and the crawl logs no pre-cap total.
+export function siteTotalDiscovered({ count = null, pageCap = null, inputCount }) {
+  if (count === null) return inputCount;
+  if (pageCap === null || pageCap === 0 || count < pageCap) return count;
+  return null;
 }
 
 // --page-cap: an integer >= 0 (0 = no cap, as crawl --max 0); absent → null.
@@ -479,7 +496,7 @@ export function parsePageCap(raw) {
 // Builds the state object init writes. `prev` (an existing file without pages, or the --force
 // case) keeps its top-level keys other than _provenance, site and pages in place, `direction`
 // included; without one, direction is null (unresolved until direct runs).
-export function buildInitState({ pages, types = new Map(), siteUrl = null, pageCap = null, totalDiscovered = null, captureGaps = null, current, prev = null, at = nowIso() }) {
+export function buildInitState({ pages, types = new Map(), siteUrl = null, pageCap = null, discoveryCount = null, captureGaps = null, current, prev = null, at = nowIso() }) {
   const rows = pages.map(({ slug, input, record = {} }) => ({
     slug,
     url: record.url || input,
@@ -493,7 +510,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
     prototypePath: null,
     migratedPath: null,
   }));
-  const site = { originUrl: new URL(siteUrl || rows[0].url).origin, deployUrl: null, extractedAt: at, pageCap, totalDiscovered: totalDiscovered ?? rows.length, crawled: rows.length };
+  const site = { originUrl: new URL(siteUrl || rows[0].url).origin, deployUrl: null, extractedAt: at, pageCap, totalDiscovered: siteTotalDiscovered({ count: discoveryCount, pageCap, inputCount: rows.length }), crawled: rows.length };
   if (captureGaps) site.captureGaps = captureGaps;
   const base = prev && typeof prev === 'object' ? { ...prev } : {};
   // A new key lands last; writeState's orderTopLevel moves direction to its TOP_ORDER place.
@@ -585,7 +602,7 @@ function runInit(opts, rest) {
   const { pages, failures } = resolvePages(inputs, current);
   const types = parseTypes(opts.types, pages.map((p) => p.slug));
   if (failures.length) throw new UsageError([`init refused — ${failures.length} of ${pages.length} page(s) have no valid crawl record under ${posix.join(current, 'pages')}; nothing written`, ...failures].join('\n'));
-  const state = buildInitState({ pages, types, siteUrl, pageCap, totalDiscovered: readDiscoveryCount(current), captureGaps: readCaptureGapRoots(current), current, prev, at });
+  const state = buildInitState({ pages, types, siteUrl, pageCap, discoveryCount: readDiscoveryCount(current), captureGaps: readCaptureGapRoots(current), current, prev, at });
   mkdirSync(opts.dir, { recursive: true });
   writeState(file, state);
   console.log(`state: init ${pages.length} page(s) from ${opts.pages === '-' ? 'stdin' : opts.pages} · ${types.size} typed${kept && kept.length ? ` · kept ${kept.join(', ')}` : ''} · written by ${state._provenance.writtenBy}`);

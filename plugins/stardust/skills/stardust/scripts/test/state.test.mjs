@@ -13,7 +13,7 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
+import { ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -192,7 +192,7 @@ check('usage: missing --to, bad --to, no slug, unknown command, unknown option, 
   const g = run('advance', 'home', '--to', 'approved', '--gate', 'x.json'); assert.equal(g.code, 2); assert.match(g.err, /--gate is not accepted: a state.json history entry carries status, at and approvedBy only/);
   const n = run('advance', 'home', '--to', 'approved', '--note', 'why'); assert.equal(n.code, 2); assert.match(n.err, /journal\.md/);
   const none = spawnSync(process.execPath, [SCRIPT], { encoding: 'utf8' }); assert.equal(none.status, 2); assert.match(none.stderr, /Usage:/);
-  const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — create it with `state\.mjs init --pages <urls>` after the crawl/);
+  const missing = spawnSync(process.execPath, [SCRIPT, 'summary', '--dir', join(root, 'nowhere')], { encoding: 'utf8' }); assert.equal(missing.status, 2); assert.match(missing.stderr, /does not exist — create it with `state\.mjs init --pages <url-file\|->` after the crawl/);
   const h = run('--help'); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs advance <slug…> --to </); assert.match(h.out, /node state\.mjs summary \[--slugs\]/); assert.match(h.out, /--history-only/);
 });
 check('advance and summary still refuse the init / set flags as unknown options', () => {
@@ -373,16 +373,31 @@ check('init: a pages-less file with a direction keeps it as is (named in · kept
   const s = readIn(p.d);
   assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'pages']); assert.deepEqual(s.direction, direction);
 });
-check('init --page-cap sets site.pageCap (0 = no cap); _crawl-log.json#discovery.count sets totalDiscovered; site key order with captureGaps', () => {
-  const p = project();
-  writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { fetchTechnique: 'sitemap', count: 38 }, captureGaps: { roots: [{ root: '/de', slug: 'de', linked: 1, uncaptured: ['/de/a'] }], detail: '' } }));
-  const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/about-us\n'), '--page-cap', '25']);
-  assert.equal(r.code, 0, r.err); const site = readIn(p.d).site;
-  assert.deepEqual(Object.keys(site), ['originUrl', 'deployUrl', 'extractedAt', 'pageCap', 'totalDiscovered', 'crawled', 'captureGaps']);
-  assert.equal(site.pageCap, 25); assert.equal(site.totalDiscovered, 38); assert.equal(site.crawled, 2);
+check('siteTotalDiscovered: the post-cap crawl count is a total only where the cap did not bite', () => {
+  assert.equal(siteTotalDiscovered({ count: 38, pageCap: 0, inputCount: 2 }), 38, '--page-cap 0: no cap');
+  assert.equal(siteTotalDiscovered({ count: 38, pageCap: 50, inputCount: 2 }), 38, 'count below the cap');
+  assert.equal(siteTotalDiscovered({ count: 25, pageCap: 25, inputCount: 2 }), null, 'count at the cap: the cap bit');
+  assert.equal(siteTotalDiscovered({ count: 30, pageCap: 25, inputCount: 2 }), null, 'count above the cap');
+  assert.equal(siteTotalDiscovered({ count: 25, pageCap: null, inputCount: 2 }), 25, 'no --page-cap: the count as logged');
+  assert.equal(siteTotalDiscovered({ count: null, pageCap: 25, inputCount: 2 }), 2, 'no logged count: the input count');
+});
+check('init --page-cap sets site.pageCap and decides totalDiscovered from _crawl-log.json#discovery.count; site key order with captureGaps', () => {
+  const pages = 'https://www.example.com/blog\nhttps://www.example.com/about-us\n';
+  const initWith = (count, cap, gaps = false) => {
+    const p = project();
+    writeFileSync(join(p.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { fetchTechnique: 'sitemap', count }, ...(gaps ? { captureGaps: { roots: [{ root: '/de', slug: 'de', linked: 1, uncaptured: ['/de/a'] }], detail: '' } } : {}) }));
+    const r = runIn(p.d, ['init', '--pages', p.list('pages.txt', pages), ...(cap === null ? [] : ['--page-cap', cap])]);
+    assert.equal(r.code, 0, r.err); return readIn(p.d).site;
+  };
+  const bit = initWith(25, '25', true);
+  assert.deepEqual(Object.keys(bit), ['originUrl', 'deployUrl', 'extractedAt', 'pageCap', 'totalDiscovered', 'crawled', 'captureGaps']);
+  assert.equal(bit.pageCap, 25); assert.equal(bit.totalDiscovered, null, 'count >= --page-cap: the cap bit, no pre-cap total logged'); assert.equal(bit.crawled, 2);
+  const under = initWith(18, '25'); assert.equal(under.totalDiscovered, 18, 'count < --page-cap: the cap did not bite');
+  const nocap = initWith(38, '0'); assert.equal(nocap.pageCap, 0, '0 = no cap, as crawl --max 0'); assert.equal(nocap.totalDiscovered, 38);
+  const nopc = initWith(25, null); assert.equal(nopc.pageCap, null); assert.equal(nopc.totalDiscovered, 25, 'no --page-cap: the count as logged');
   const q = project(); writeFileSync(join(q.d, 'current', '_crawl-log.json'), JSON.stringify({ discovery: { count: '38' } }));
-  assert.equal(runIn(q.d, ['init', '--pages', q.list('pages.txt', 'https://www.example.com/blog\n'), '--page-cap', '0']).code, 0);
-  assert.equal(readIn(q.d).site.pageCap, 0, '0 = no cap, as crawl --max 0'); assert.equal(readIn(q.d).site.totalDiscovered, 1, 'a non-integer count falls back to the input count');
+  assert.equal(runIn(q.d, ['init', '--pages', q.list('pages.txt', 'https://www.example.com/blog\n'), '--page-cap', '25']).code, 0);
+  assert.equal(readIn(q.d).site.totalDiscovered, 1, 'no integer count logged: the input count');
 });
 check('init --page-cap that is not an integer >= 0 is a usage error, nothing written; advance refuses --page-cap', () => {
   const p = project(); const list = p.list('pages.txt', 'https://www.example.com/blog\n');
