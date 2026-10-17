@@ -438,6 +438,8 @@ check('nav: a mega menu whose first column is an inner heading over its own list
         </li>
       </ul>`);
   assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 0 });
+  const wrapped = `<li><a href="/products">Products</a><div class="mega"><h3>Featured</h3><div><ul><li><a href="/f1">F1</a></li></ul></div>${COL_W}${COL_G}${COL_T}</div></li>`;
+  assert.equal(navOf(wrapped), sectionsOf(r.doc)[1]);
 });
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');
