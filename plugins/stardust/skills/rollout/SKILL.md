@@ -400,8 +400,9 @@ DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content pe
 `../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate). Its roster
 is the coverage: rows `deployed` / `verified` with a `deployedUrl`, and `failed` by the gate so a
 fix round re-gates them — no state file, no hand-built roster.
-`update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` feeds each row back into
-`delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
+`update-coverage.mjs --gate <table | dir>` (the roster `summary.json`, an `--only` run's
+`runs/<ts>-<slug>.json`, or the gate dir `stardust/replica/gates/all-<w>/`) feeds each row back into
+`delivery.gate` (with the `host` measured) and flips a failing page to `failed`; `verify` never marks it `verified` while the
 gate fails — completion derives from one place, never from the pixel number alone. An INCONCLUSIVE
 row (a polluted capture) is no pass: `--gate` leaves the status alone and records
 `delivery.gate.inconclusive`, and `verify` reads it as not passed until a measured row replaces it; an

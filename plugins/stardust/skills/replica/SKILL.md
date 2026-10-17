@@ -89,6 +89,9 @@ none" (198/198 nodes).
    waits for its slot queued, without a limit unless `STARDUST_BROWSER_WAIT`
    (seconds) is set; no slot within it → exit 124: no verdict, re-run, never
    a FAIL.
+5. Seed the site-wide hide list: `node stardust/scripts/replica/presence.mjs seed`
+   writes the runner's overlay selectors (`stardust/.labs/run.json`
+   `siteOverlays`, env `STARDUST_SITE_OVERLAYS`) into `stardust/replica/presence.json`.
 
 **Reading and inspection discipline — the context is the budget**
 (`reference/reading-discipline.md`, read it once at Setup). Every byte a
@@ -179,7 +182,11 @@ Full contract: `reference/preserve-direction.md`. Summary:
    design findings (run audit only if the user wants improvement candidates)
    and/or user-supplied items (`--register`). Every entry needs captured
    evidence + the minimal change + a status. **Empty register = pure
-   replica** — that is a valid and common outcome, not a failure.
+   replica** — that is a valid and common outcome, not a failure. A
+   per-visitor in-flow region's entry (`kind: per-visitor-region`) carries its
+   `selector`; write it with `node stardust/scripts/replica/presence.mjs add --hide <sel> --reason <R-nn> --verify <url>`
+   — refused with candidates when it matches nothing live (`presence.mjs suggest <url>`
+   lists them: the in-flow blocks above the header).
 4. **Target breakpoints (only with `--target-breakpoints`)**, before any
    CSS exists (`reference/preserve-direction.md` § 4): persist the list, map
    each source breakpoint to a step by intent in
@@ -279,8 +286,8 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 --timeout
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
 # A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
 # round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
-# In-flow per-visitor bar above the header (location suggestion): declare it once as "*".hide in
-# gates/{prototypes,all}-<w>/presence.json (or --hide "<sel>") — both captures and the probes hide it.
+# In-flow per-visitor bar above the header: captures and probes hide stardust/replica/presence.json's
+# list (Phase 2 writes it; a hide that matched nothing prints a WARNING naming candidates).
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
