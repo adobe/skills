@@ -62,10 +62,25 @@
  *       [--auth-header <value>]    Authorization header for the rendered origin
  *                                  only (a protected preview); never printed
  *       [--token-env <NAME>]       the same, read from the variable NAME
+ *       [--deltas <json>]          the page's declared source → preview differences
+ *                                  (reskin/deltas/<slug>.json, deployed/deltas.mjs):
+ *                                  text.allow entries rewrite each slot's model text;
+ *                                  `images` swaps (3) for a per-slot count + alt + width
+ *                                  comparison (slot s owns the next k rendered images in
+ *                                  document order, k = its model images; (3b) paint stays);
+ *                                  links.localize also accepts a CTA's href as deploy
+ *                                  localizes it onto the --rendered origin; metadata.ignore
+ *                                  keys skip their check, jsonLd "ignore" the count,
+ *                                  metadata.absent keys are asserted NOT carried. The report
+ *                                  gains a "Declared deltas" section (applied with counts,
+ *                                  ignored, unused: a declared entry that matched nothing,
+ *                                  also a WARNING line). "blocking": false makes a failed
+ *                                  check exit 0 with an ADVISORY line. Absent, nothing above
+ *                                  changes.
  *
  * Exit: 0 all checks pass, 1 any fail, 2 setup error (incl. a stalled
- *       decoration), 3 bot challenge / blocked live target (fail loud, never
- *       measured).
+ *       decoration, an invalid --deltas file), 3 bot challenge / blocked live
+ *       target (fail loud, never measured).
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -75,7 +90,7 @@ function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --rendered-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env']);
+  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env', 'deltas']);
   // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
   const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
@@ -85,7 +100,7 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || ((AUTH_FLAGS.has(a.slice(2)) || a === '--deltas') && !v.trim())) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
     else {
@@ -105,7 +120,7 @@ if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
   console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
-  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>] [--deltas <json>]');
   console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
   console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
   console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
@@ -115,6 +130,8 @@ if (args.help || !args.model || !args.rendered) {
   console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
   console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing. --auth-header /');
   console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
+  console.log('--deltas <json> applies the page\'s declared source → preview differences (text, images, localized links,');
+  console.log('metadata) and reports each one applied or unused; "blocking": false in it makes a failure advisory (exit 0).');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never measured).');
   process.exit(args.help ? 0 : 2);
 }
@@ -158,6 +175,18 @@ const die = (m, c = 2) => { console.error(`[slot-coverage] ${redact(m, auth)}`);
 if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
+// --deltas: loaded here, after the --help guard, and validated before a browser starts.
+let deltasLib = null; let deltas = null;
+if (args.deltas) {
+  try {
+    deltasLib = await import('./deployed/deltas.mjs');
+    deltas = deltasLib.loadDeltas(args.deltas);
+    if (deltas.links.localize) deltasLib.requireEdsPath();
+  } catch (e) {
+    if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+    die(e.message);
+  }
+}
 const model = JSON.parse(readFileSync(resolve(args.model), 'utf8'));
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
@@ -225,6 +254,8 @@ const rendered = await page.evaluate((scopeSel) => {
     hrefs: Array.from(scope.querySelectorAll('a[href]')).map((a) => ({ href: a.href, text: norm(a.innerText) })),
     imgs: Array.from(scope.querySelectorAll('img')).map((i) => ({
       src: i.currentSrc || i.src,
+      alt: i.getAttribute('alt') ?? '',
+      width: Math.round(i.getBoundingClientRect().width),
       painted: i.complete && i.naturalWidth > 0,
     })),
   };
@@ -232,55 +263,86 @@ const rendered = await page.evaluate((scopeSel) => {
 if (rendered.error) { await browser.close(); die(`${rendered.error}${navErr ? ` (navigation failed: ${navErr.message.split('\n')[0]})` : ''}`); }
 
 const normPath = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
-for (const s of model.sections) {
-  R('slot-coverage', `${s.slot} text present`, rendered.text.includes(s.visibleText), s.visibleText.slice(0, 50));
+const squash = (t) => t.replace(/\s+/g, ' ').trim();
+// (3b) PAINT (F-R4): src-string presence is not rendering. A rendered content image that never painted
+// (naturalWidth=0 — e.g. the source CDN 403s hotlinked requests) is a broken page the string gate cannot see.
+const paintCheck = (label, painted) => {
+  const hint = painted ? '' : 'naturalWidth=0 — never painted; origin-locked source CDN? localize assets (Phase 6, gates.md § Image paint)';
+  if (!painted && args.paint === 'warn') {
+    console.log(redact(`  WARN paint: ${label} — ${hint}`, auth));
+    R('paint', `${label} painted (WARN-downgraded)`, true, hint);
+  } else {
+    R('paint', `${label} painted`, painted, hint);
+  }
+};
+// --deltas: each slot's model text after the text.allow entries (counted once across all slots), the CTA hrefs'
+// localization onto the rendered origin, and the images taken slot by slot in document order.
+const textDeltas = deltas ? deltasLib.applyTexts(model.sections.map((s) => s.visibleText), deltas) : null;
+const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin } : null;
+let nextImg = 0;
+for (const [si, s] of model.sections.entries()) {
+  const text = textDeltas ? squash(textDeltas.texts[si]) : s.visibleText;
+  R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
   for (const c of s.ctas) {
-    const hit = rendered.hrefs.find((h) => h.href === c.absHref && h.text.includes(c.text));
+    const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
+    const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(c.text));
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
+  }
+  if (deltas?.images) {
+    // count + alt + width: slot s owns the next s.images.length rendered images, so a missing, extra or reordered
+    // image fails the slot where the page diverges.
+    const owned = rendered.imgs.slice(nextImg, nextImg + s.images.length);
+    nextImg += s.images.length;
+    if (s.images.length) {
+      const cmp = deltasLib.compareImages(s.images, owned, deltas.images);
+      R('slot-coverage', `${s.slot} images (${deltas.images})`, cmp.pass, cmp.detail);
+      owned.forEach((r2, i) => paintCheck(`${s.slot} image ${s.images[i].alt ? JSON.stringify(s.images[i].alt.slice(0, 40)) : `#${i + 1}`}`, r2.painted));
+    }
+    continue;
   }
   for (const im of s.images) {
     const matches = rendered.imgs.filter((r2) => normPath(r2.src) === normPath(im.currentSrc));
     R('slot-coverage', `${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, matches.length > 0);
-    if (matches.length > 0) {
-      // (3b) PAINT (F-R4): src-string presence is not rendering. A rendered
-      // content image that never painted (naturalWidth=0 — e.g. the source
-      // CDN 403s hotlinked requests) is a broken page the string gate
-      // cannot see.
-      const painted = matches.some((r2) => r2.painted);
-      const hint = painted ? '' : 'naturalWidth=0 — never painted; origin-locked source CDN? localize assets (Phase 6, gates.md § Image paint)';
-      if (!painted && args.paint === 'warn') {
-        console.log(redact(`  WARN paint: ${s.slot} image …${normPath(im.currentSrc).slice(-50)} — ${hint}`, auth));
-        R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted (WARN-downgraded)`, true, hint);
-      } else {
-        R('paint', `${s.slot} image …${normPath(im.currentSrc).slice(-50)} painted`, painted, hint);
-      }
-    }
+    if (matches.length > 0) paintCheck(`${s.slot} image …${normPath(im.currentSrc).slice(-50)}`, matches.some((r2) => r2.painted));
   }
 }
 
 // ---- (4) metadata carried verbatim -------------------------------------------
 const meta = await page.evaluate(() => {
   const og = {}; const tw = {}; let description = '';
+  const carried = [];
   document.querySelectorAll('meta').forEach((m) => {
     const p = m.getAttribute('property') || ''; const n = m.getAttribute('name') || '';
     const c = m.getAttribute('content'); if (c === null) return;
+    carried.push(...[p, n].filter(Boolean));
     if (p.startsWith('og:')) og[p] = c;
     if (n.startsWith('twitter:') || p.startsWith('twitter:')) tw[n || p] = c;
     if (n === 'description') description = c;
   });
+  const canonical = document.querySelector('link[rel="canonical"]')?.getAttribute('href') || null;
+  if (canonical) carried.push('canonical');
+  if (document.title) carried.push('title');
   return {
-    title: document.title, description,
-    canonical: document.querySelector('link[rel="canonical"]')?.getAttribute('href') || null,
+    title: document.title, description, canonical, carried,
     og, tw, jsonLdCount: document.querySelectorAll('script[type="application/ld+json"]').length,
   };
 });
 const md0 = model.metadata;
-R('metadata', 'title', meta.title === md0.title, meta.title);
-R('metadata', 'description', meta.description === md0.description);
-R('metadata', 'canonical', meta.canonical === md0.canonical, `${meta.canonical}`);
-for (const [k, v] of Object.entries(md0.ogTags)) R('metadata', `og ${k}`, meta.og[k] === v);
-for (const [k, v] of Object.entries(md0.twitterTags)) R('metadata', `tw ${k}`, meta.tw[k] === v);
-R('metadata', 'jsonLd block count', meta.jsonLdCount === md0.jsonLd.length, `${meta.jsonLdCount}/${md0.jsonLd.length}`);
+// --deltas: an ignored key skips its check; a key the page must not carry is asserted absent instead of equal.
+const plan = deltas ? deltasLib.metadataPlan(deltas) : null;
+const ignored = new Set();
+const metaCheck = (key, label, pass, detail = '') => {
+  if (plan?.ignore.has(key)) ignored.add(key);
+  else if (!plan?.absent.has(key)) R('metadata', label, pass, detail);
+};
+metaCheck('title', 'title', meta.title === md0.title, meta.title);
+metaCheck('description', 'description', meta.description === md0.description);
+metaCheck('canonical', 'canonical', meta.canonical === md0.canonical, `${meta.canonical}`);
+for (const [k, v] of Object.entries(md0.ogTags)) metaCheck(k, `og ${k}`, meta.og[k] === v);
+for (const [k, v] of Object.entries(md0.twitterTags)) metaCheck(k, `tw ${k}`, meta.tw[k] === v);
+if (plan?.jsonLd === 'ignore') ignored.add('jsonLd');
+else R('metadata', 'jsonLd block count', meta.jsonLdCount === md0.jsonLd.length, `${meta.jsonLdCount}/${md0.jsonLd.length}`);
+for (const k of plan?.absent ?? []) R('metadata', `absent ${k}`, !meta.carried.includes(k), meta.carried.includes(k) ? 'the rendered page carries it' : '');
 
 await browser.close();
 
@@ -297,6 +359,20 @@ for (const [gate, rs] of Object.entries(byGate)) {
   md += `\n`;
 }
 md += `**Overall: ${allPass ? 'PASS' : 'FAIL'}**\n`;
+// deltas: what applied, what was ignored, and what matched nothing (a declared entry nothing needed, or an ignore
+// key that names no check); blocking false turns a failure into an advisory.
+const advisory = !!deltas && !allPass && !deltasLib.isBlocking(deltas);
+const applied = textDeltas?.applied ?? [];
+const ignoredKeys = [...ignored];
+const unused = deltas ? [...textDeltas.unused, ...[...plan.ignore].filter((k) => !ignored.has(k)).map((k) => `metadata.ignore ${JSON.stringify(k)}`)] : [];
+if (deltas) {
+  const notes = [];
+  if (deltas.images) notes.push(`Images: ${deltas.images}, per slot (slot s takes the next k rendered images in document order)`);
+  if (deltas.links.localize) notes.push(localize ? `Links: CTA hrefs on \`${deltas.links.localize.sourceHost}\` also match as localized onto \`${localize.renderedOrigin}\`` : 'Links: localize not applied (the rendered target is not an http(s) origin)');
+  if (deltas.metadata.jsonLd === 'count-only') notes.push('JSON-LD: count-only (the block count is compared, not the content)');
+  if (advisory) md += `\n${deltasLib.ADVISORY}: the failed checks above are reported, the exit code is 0\n`;
+  md += `\n${deltasLib.reportSection(deltas, { file: args.deltas, applied, unused, ignored: ignoredKeys, notes })}`;
+}
 if (args.report) {
   mkdirSync(dirname(resolve(args.report)), { recursive: true });
   writeFileSync(args.report, redact(md, auth));
@@ -304,4 +380,10 @@ if (args.report) {
 const failLines = results.filter((r) => !r.pass);
 console.log(redact(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`, auth));
 for (const f of failLines.slice(0, 15)) console.log(redact(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`, auth));
-process.exit(allPass ? 0 : 1);
+if (deltas) {
+  console.log(redact(`  deltas applied: ${applied.length ? applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`, auth));
+  if (ignoredKeys.length) console.log(redact(`  ignored by delta: ${ignoredKeys.join(', ')}`, auth));
+  for (const line of deltasLib.warningLines(deltas, unused)) console.log(redact(`  ${line}`, auth));
+  if (advisory) console.log(redact(`[slot-coverage] ${deltasLib.ADVISORY}: ${failLines.length} failed check(s) reported, not enforced — exit 0`, auth));
+}
+process.exit(allPass || advisory ? 0 : 1);

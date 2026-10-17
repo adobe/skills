@@ -53,12 +53,21 @@
  *     [--auth-header <value>]        Authorization header for the RENDERED origin only
  *                                    (a protected preview); never printed
  *     [--token-env <NAME>]           the same, read from the environment variable NAME
+ *     [--deltas <json>]              the page's declared source → preview differences
+ *                                    (reskin/deltas/<slug>.json, deployed/deltas.mjs): text.allow
+ *                                    entries rewrite the SOURCE text before it is compared, and
+ *                                    `images` swaps the host+path image list for count + alt +
+ *                                    width (the rendered widths above 0). The report gains a
+ *                                    "Declared deltas" section (applied with counts; unused = a
+ *                                    declared entry that matched nothing, also a WARNING line on
+ *                                    stdout). "blocking": false makes a failed check exit 0 with an
+ *                                    ADVISORY line on stdout. Absent, nothing above changes.
  *
  * Writes: the markdown report to --report <path> (parent directories are created);
  * nothing else. The PASS/FAIL line goes to stderr.
  *
- * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error (incl. a stalled decoration),
- *       3 bot challenge / blocked live source (fail loud, never measured).
+ * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error (incl. a stalled decoration, an invalid
+ *       --deltas file), 3 bot challenge / blocked live source (fail loud, never measured).
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -68,7 +77,7 @@ function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env']);
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env', 'deltas']);
   // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
   const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
@@ -78,7 +87,7 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || ((AUTH_FLAGS.has(a.slice(2)) || a === '--deltas') && !v.trim())) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
     else {
@@ -97,7 +106,7 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
-  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>] [--deltas <json>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
@@ -105,6 +114,8 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
   console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing. --auth-header /');
   console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
+  console.log('--deltas <json> applies the page\'s declared source → preview differences (text, images) and reports each one');
+  console.log('applied or unused; "blocking": false in it makes a failure advisory (exit 0, ADVISORY on stdout).');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live source (never measured).');
   process.exit(args.help ? 0 : 2);
 }
@@ -151,6 +162,17 @@ const die = (m, c = 2) => { console.error(`[dom-equality] ${redact(m, auth)}`); 
 if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
+// --deltas: loaded here, after the --help guard, and validated before a browser starts.
+let deltasLib = null; let deltas = null;
+if (args.deltas) {
+  try {
+    deltasLib = await import('./deployed/deltas.mjs');
+    deltas = deltasLib.loadDeltas(args.deltas);
+  } catch (e) {
+    if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+    die(e.message);
+  }
+}
 const { script: NORMALIZE, source: normalizeSource } = await loadNormalize(args.normalize);
 
 const browser = args.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
@@ -209,6 +231,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
       tagSequence: all.map((e) => e.tagName.toLowerCase() + ((typeof e.className === 'string' && e.className.trim()) ? '.' + e.className.trim().split(/\s+/)[0] : '')),
       visibleText: norm(scopes.map((sc) => sc.innerText || '').join(' ')),
       imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.currentSrc || i.src || '')),
+      images: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => ({ alt: i.getAttribute('alt') ?? '', width: Math.round(i.getBoundingClientRect().width) }))),
     };
   }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE });
   await page.close();
@@ -221,6 +244,11 @@ const src = await capture(toUrl(args.source), args['source-scope'], true);
 console.error(redact(`[dom-equality] capturing rendered ${args.rendered} scope=${args['rendered-scope']}`, auth));
 const rnd = await capture(renderedUrl, args['rendered-scope'], false, true);
 await browser.close();
+
+// --deltas: a text delta maps the source's text to what the preview renders, so it rewrites the SOURCE side before
+// the comparison (everything below, the report's source length and divergence snippet included, reads that text).
+const textDeltas = deltas ? deltasLib.applyText(src.visibleText, deltas) : null;
+if (textDeltas) src.visibleText = textDeltas.text.replace(/\s+/g, ' ').trim();
 
 // --- PRIMARY: visible text (byte-identical after whitespace normalization) ---
 const textMatch = src.visibleText === rnd.visibleText;
@@ -237,15 +265,19 @@ if (!textMatch) {
 }
 
 // --- PRIMARY: visible image srcs (ordered; URL-normalized to host+path) -----
+// With deltas.images: count + alt + rendered width instead (deployed/deltas.mjs compareImages).
 const normSrc = (u) => { try { const x = new URL(u, 'http://x'); return x.hostname + x.pathname; } catch { return u; } };
 const srcImgs = src.imageSrcs.map(normSrc);
 const rndImgs = rnd.imageSrcs.map(normSrc);
 const imgDiffs = [];
-if (srcImgs.length !== rndImgs.length) imgDiffs.push({ type: 'count', source: srcImgs.length, rendered: rndImgs.length });
-for (let i = 0; i < Math.min(srcImgs.length, rndImgs.length); i += 1) {
-  if (srcImgs[i] !== rndImgs[i]) imgDiffs.push({ type: 'mismatch', index: i, source: srcImgs[i], rendered: rndImgs[i] });
+const imageCheck = deltas?.images ? deltasLib.compareImages(src.images, rnd.images, deltas.images) : null;
+if (!imageCheck) {
+  if (srcImgs.length !== rndImgs.length) imgDiffs.push({ type: 'count', source: srcImgs.length, rendered: rndImgs.length });
+  for (let i = 0; i < Math.min(srcImgs.length, rndImgs.length); i += 1) {
+    if (srcImgs[i] !== rndImgs[i]) imgDiffs.push({ type: 'mismatch', index: i, source: srcImgs[i], rendered: rndImgs[i] });
+  }
 }
-const imageMatch = imgDiffs.length === 0;
+const imageMatch = imageCheck ? imageCheck.pass : imgDiffs.length === 0;
 
 // --- INFORMATIONAL: structure ----------------------------------------------
 const countDelta = rnd.elementCount - src.elementCount;
@@ -262,14 +294,18 @@ md += `- Generated: ${new Date().toISOString()}\n\n`;
 md += `## Primary checks (gating)\n\n`;
 md += `| Check | Source | Rendered | Status |\n|---|---|---|---|\n`;
 md += `| Visible text (normalized chars) | ${src.visibleText.length} | ${rnd.visibleText.length} | ${tick(textMatch)} |\n`;
-md += `| Visible image srcs (ordered) | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n\n`;
+md += `| ${imageCheck ? `Visible images (${deltas.images})` : 'Visible image srcs (ordered)'} | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n\n`;
 md += `**Overall: ${pass ? 'PASS' : 'FAIL'}**\n\n`;
+// deltas: blocking false turns a failure into an advisory (the exit code stays 0).
+const advisory = !!deltas && !pass && !deltasLib.isBlocking(deltas);
+if (advisory) md += `${deltasLib.ADVISORY}: the failed checks are reported, the exit code is 0\n\n`;
 if (textDiff) {
   md += `### Text divergence\n\nFirst divergent char at ${textDiff.firstDivergence} (source ${textDiff.sourceLen} / rendered ${textDiff.renderedLen} chars).\n\n`;
   md += `Source:\n\n> …${textDiff.sourceSnippet}…\n\nRendered:\n\n> …${textDiff.renderedSnippet}…\n\n`;
 }
 if (!imageMatch) {
   md += `### Image divergences\n\n`;
+  if (imageCheck) md += `- ${imageCheck.detail.split('; ').slice(0, 20).join('\n- ')}\n`;
   imgDiffs.slice(0, 20).forEach((d) => {
     md += d.type === 'count'
       ? `- count: source=${d.source} rendered=${d.rendered}\n`
@@ -280,9 +316,19 @@ if (!imageMatch) {
 md += `## Informational (non-gating — a reskin re-structures markup by design)\n\n`;
 md += `- Element count: source=${src.elementCount} rendered=${rnd.elementCount} (delta ${countDelta >= 0 ? '+' : ''}${countDelta})\n`;
 md += `- Tag+class sequence: ${firstTagDivergence === -1 && src.tagSequence.length === rnd.tagSequence.length ? 'identical' : `diverges at position ${firstTagDivergence === -1 ? minT : firstTagDivergence} of ${minT}`}\n`;
+if (deltas) {
+  const notes = ['The source text above is the text after the declared deltas'];
+  if (deltas.images) notes.push(`Images: ${deltas.images} — the ${rnd.images.length} visible rendered image(s) against the ${src.images.length} on the source`);
+  md += `\n${deltasLib.reportSection(deltas, { file: args.deltas, applied: textDeltas.applied, unused: textDeltas.unused, notes })}`;
+}
 
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, redact(md, auth));
 console.error(redact(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`, auth));
 if (textDiff) console.error(redact(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`, auth));
-process.exit(pass ? 0 : 1);
+if (deltas) {
+  console.log(redact(`  deltas applied: ${textDeltas.applied.length ? textDeltas.applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`, auth));
+  for (const line of deltasLib.warningLines(deltas, textDeltas.unused)) console.log(redact(`  ${line}`, auth));
+  if (advisory) console.log(redact(`[dom-equality] ${deltasLib.ADVISORY}: the failed checks are reported, not enforced — exit 0`, auth));
+}
+process.exit(pass || advisory ? 0 : 1);
