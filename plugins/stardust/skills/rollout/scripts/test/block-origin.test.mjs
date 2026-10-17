@@ -642,6 +642,20 @@ check('mapping: a block the encoder map has no k-th match for falls through to t
   ]);
 });
 
+check('mapping: an encoder map applies only under its root — a root missing from the page or unparseable leaves every block to its text; no root: page-wide', () => {
+  // `.intro` also matches the header note, first in the document: a map whose root is not on the page must not pick it
+  ['main#content', 'main:has(h1)', 42].forEach((root, k) => {
+    const dir = hubProject(`map-root-${k}`, { encode: { hub: { root, markers: [{ sel: '.intro', emitter: 'block:teaser-grid' }] } } });
+    ok(runMap(dir));
+    assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances.map((i) => [i.selector, i.confidence, i.source]), [['div.teaser-list', 1, 'text-alignment']], String(root));
+  });
+  [{}, { root: null }].forEach((extra, k) => {
+    const dir = hubProject(`map-root-none-${k}`, { encode: { hub: { ...extra, markers: [{ sel: '.teaser-list', emitter: 'block:teaser-grid' }] } } });
+    ok(runMap(dir));
+    assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances.map((i) => [i.selector, i.confidence, i.source]), [['div.teaser-list', 1, 'encoder-map']], JSON.stringify(extra));
+  });
+});
+
 check('mapping: --encode <dir>; an unreadable encoder map is ignored with one line (stderr under --json)', () => {
   const dir = project('map-encode-bad', STORY_PAGES);
   put(join(dir, 'stardust', 'import', 'story', 'vocabulary.json'), '{ "root": "main", "markers": ');

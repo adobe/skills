@@ -41,8 +41,10 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
   --eds-schema <dir>  per-page eds-schema <slug>.json: the roles of a section's default content (default
                       stardust/eds-schema; optional: without a page's file, the delivered default parts)
   --encode <dir>      encoder maps <dir>/<templateId>/vocabulary.json (root, markers[] with sel and emitter
-                      block:<name>), taken before the text (default stardust/migrate/encode; optional; the
-                      shipped encoder keeps its maps under stardust/import: pass --encode stardust/import)
+                      block:<name>), taken before the text; markers apply under the root (page-wide without
+                      one; not at all on a page where the root matches nothing or does not parse) (default
+                      stardust/migrate/encode; optional; the shipped encoder keeps its maps under
+                      stardust/import: pass --encode stardust/import)
   --out <file>        default stardust/rollout/workspace/mapping.json
   --verify            re-read and re-index every capture and count each selector's hits: an instance is
                       verified true (exactly one element) or false; a section's pages are re-resolved
@@ -636,18 +638,21 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
   });
   // An encoder map's marker first (the k-th block of a name takes the marker's k-th match); a block it has no
   // element for falls through to its text, then its position, as without a map.
-  const rootEls = map && map.root ? safeQuery(index, map.root) : [];
+  // Without a root the markers apply page-wide; a root that matches nothing here (or does not parse) means
+  // the map does not apply on this page.
+  const rootEls = map && map.root !== null ? safeQuery(index, map.root) : null;
+  const applies = !!map && (rootEls === null || rootEls.length > 0);
   const matchesOf = new Map();
   const matches = (m) => {
     if (!matchesOf.has(m)) {
       const all = safeQuery(index, m.sel);
-      matchesOf.set(m, rootEls.length ? all.filter((el) => rootEls.some((r) => r !== el && contains(index, r, el))) : all);
+      matchesOf.set(m, rootEls ? all.filter((el) => rootEls.some((r) => r !== el && contains(index, r, el))) : all);
     }
     return matchesOf.get(m);
   };
   for (const r of recs) {
     if (!r.doc) continue;
-    const marker = map && r.cov.kind === 'block' ? map.markers.find((m) => m.emitter === `block:${r.cov.block}`) : null;
+    const marker = applies && r.cov.kind === 'block' ? map.markers.find((m) => m.emitter === `block:${r.cov.block}`) : null;
     const el = marker ? matches(marker)[occurrence.get(r.doc)] : null;
     if (el) {
       Object.assign(r, { anchor: el, selector: stableSelector(index, el), confidence: 1, source: 'encoder-map' });
@@ -825,9 +830,10 @@ function assembleTemplate(templateId, pages) {
 export const MAPPING_FORMAT_VERSION = '0.1.0';
 
 /**
- * A template's encoder map `<dir>/<templateId>/vocabulary.json` → { root (string or null), markers (those
- * with a sel and an emitter) }; null when absent. One line in `notes` when it exists but does not parse
- * or has no markers[] (it is then ignored).
+ * A template's encoder map `<dir>/<templateId>/vocabulary.json` → { root (null when absent or null: the
+ * markers apply page-wide; else the given root as a string, '' when it is not one, which never parses),
+ * markers (those with a sel and an emitter) }; null when absent. One line in `notes` when it exists but
+ * does not parse or has no markers[] (it is then ignored).
  */
 function loadEncoderMap(dir, shownDir, templateId, notes) {
   if (!dir || !pathSafe(templateId)) return null;
@@ -840,7 +846,7 @@ function loadEncoderMap(dir, shownDir, templateId, notes) {
     return null;
   }
   return {
-    root: typeof map.root === 'string' && map.root.trim() ? map.root.trim() : null,
+    root: map.root == null ? null : typeof map.root === 'string' ? map.root.trim() : '',
     markers: map.markers.filter((m) => m && typeof m.sel === 'string' && m.sel.trim() && typeof m.emitter === 'string')
       .map((m) => ({ sel: m.sel.trim(), emitter: m.emitter })),
   };
