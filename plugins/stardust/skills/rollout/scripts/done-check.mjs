@@ -48,7 +48,8 @@
  *                                  ledger.mjs is not found beside the rollout scripts
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
- * probe under --offline, units without progress.json, redirects of delivered rows without source.sourceUrl.
+ * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
+ * of delivered rows without source.sourceUrl.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -74,6 +75,7 @@ const gateOf = (p) => (p && p.delivery && p.delivery.gate) || null;
 const gatedAt = (gate, widths) => widths.every((w) => !!(gate && gate.atByWidth && gate.atByWidth[String(w)]));
 const contentLines = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 const decoded = (s) => { try { return decodeURI(s); } catch { return s; } };
+const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 /** The rows that should answer on the live host. */
 // probed at the URL EDS serves (a folder index at `/a/`): `/a` 404s on a plain site (some add a 301; neither is 200)
@@ -156,13 +158,14 @@ export function overrideGap({ pages = [], register = '', readTable = () => null 
 
 /**
  * unit_unproven gaps, one per done unit (kind not foundation / final), units by name: `{ gaps[], skipped[] }`.
- * `progress` = progress.json (null when absent → skipped), `unitPaths` = { <unit>: .paths text, or null when the
- * file is absent }, `pathKey` = deploy's eds-path key. A page is proven when its coverage row passes the gate with
- * a recorded time at every width. Pure.
+ * `progress` = progress.json (null when absent; skipped, as is a record without a `units` map), `unitPaths` =
+ * { <unit>: .paths text, or null when the file is absent }, `pathKey` = deploy's eds-path key. A page is proven
+ * when its coverage row passes the gate with a recorded time at every width. Pure.
  */
 export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths = DEFAULT_WIDTHS, pathKey, out = 'stardust/rollout' } = {}) {
-  if (!progress) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
-  const units = progress.units && typeof progress.units === 'object' ? progress.units : {};
+  if (progress == null) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
+  if (!isMap(progress) || !isMap(progress.units)) return { gaps: [], skipped: [`unit_unproven: ${join(out, 'progress.json')} has no units map`] };
+  const { units } = progress;
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
   // every coverage row behind the key must be proven: two rows on one key never let the passing one vouch for the other
@@ -313,15 +316,18 @@ async function main() {
   const tables = new Map();
   const readTable = (f) => { if (!tables.has(f)) tables.set(f, readJSON(f)); return tables.get(f); };
   const progressFile = join(OUT, 'progress.json');
-  const progress = readJSON(progressFile);
+  const NOT_JSON = Symbol('not JSON');
+  const progressExists = existsSync(progressFile);
+  const progress = progressExists ? readJSON(progressFile, NOT_JSON) : null;
   const unitPaths = Object.create(null);
-  for (const name of Object.keys((progress && progress.units) || {})) {
+  for (const name of Object.keys(isMap(progress) && isMap(progress.units) ? progress.units : {})) {
     const f = join(OUT, 'units', `${name}.paths`);
     unitPaths[name] = UNIT_NAME.test(name) && existsSync(f) ? readFileSync(f, 'utf8') : null;
   }
-  const units = progress || !existsSync(progressFile)
-    ? unitGaps({ progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT })
-    : { gaps: [], skipped: [`unit_unproven: ${progressFile} is not JSON`] };
+  const units = progress === NOT_JSON
+    ? { gaps: [], skipped: [`unit_unproven: ${progressFile} is not JSON`] }
+    // a file holding JSON null exists: a record without a units map, never "no progress.json"
+    : unitGaps({ progress: progressExists && progress === null ? {} : progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT });
   const sidecars = sidecarGap({ pages, widths: WIDTHS, schemaExists: (slug) => typeof slug === 'string' && slug !== '' && existsSync(join(SCHEMAS, `${slug}.json`)), redirects: textOf(REDIRECTS) });
 
   const findings = (readJSON(join(OUT, 'optimize', 'findings.json'), {}) || {}).findings || [];

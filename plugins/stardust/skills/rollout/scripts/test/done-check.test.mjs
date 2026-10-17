@@ -191,6 +191,14 @@ check('unit_unproven: without progress.json no unit is judged and the check is l
   assert.deepEqual(units({ progress: null, out: 'x/rollout' }), { gaps: [], skipped: ['unit_unproven: no x/rollout/progress.json'] });
 });
 
+check('unit_unproven: a progress.json without a units map is listed as skipped, never passed silently', () => {
+  const noMap = { gaps: [], skipped: ['unit_unproven: x/rollout/progress.json has no units map'] };
+  for (const progress of [{ status: 'done', kind: 'archetype', templates: ['article'], pages: 2 }, { units: null }, { units: 'x' }, { units: [PROGRESS.units['cluster-news']] }, [PROGRESS], 'done']) {
+    assert.deepEqual(units({ progress, out: 'x/rollout' }), noMap, JSON.stringify(progress));
+  }
+  assert.deepEqual(units({ progress: { units: {} } }), { gaps: [], skipped: [] });
+});
+
 const SIDE_PAGES = [proven(row('home', '/', 'verified')), proven(row('about', '/about', 'verified')), { ...proven(row('news', '/news', 'deployed')), source: { sourceUrl: 'https://example.com/news/', migratedHtml: 'stardust/migrated/news/index.html' } }, row('draft', '/draft', 'pending')];
 const withSource = (r, sourceUrl) => ({ ...r, source: { ...r.source, sourceUrl } });
 const sidecars = (pages, over = {}) => sidecarGap({ pages, widths: ['1440', '360'], schemaExists: () => true, redirects: '', ...over });
@@ -380,9 +388,14 @@ check('CLI: --widths, --register, --schemas and --redirects point the checks els
   rmSync(proj, { recursive: true, force: true });
 });
 
-check('CLI: an unreadable progress.json is named as skipped; a done unit whose name is not a unit name has no .paths to read', () => {
+check('CLI: an unreadable progress.json, or one without a units map, is named as skipped; a done unit whose name is not a unit name has no .paths to read', () => {
   const broken = project({ files: { 'stardust/rollout/progress.json': '{"units": ' } });
   assert.deepEqual(JSON.parse(run(broken, ['--offline', '--json']).stdout).skipped, [OFFLINE_SKIP, 'unit_unproven: stardust/rollout/progress.json is not JSON']);
+  for (const body of [{ status: 'done', kind: 'archetype' }, 'null']) {
+    const bare = project({ files: { 'stardust/rollout/progress.json': body } });
+    assert.deepEqual(JSON.parse(run(bare, ['--offline', '--json']).stdout).skipped, [OFFLINE_SKIP, 'unit_unproven: stardust/rollout/progress.json has no units map'], JSON.stringify(body));
+    rmSync(bare, { recursive: true, force: true });
+  }
   const odd = project({ files: { 'stardust/rollout/progress.json': { units: { '../x': { status: 'done', kind: 'cluster' } } }, 'stardust/rollout/x.paths': '/\n' } });
   assert.deepEqual(JSON.parse(run(odd, ['--offline', '--json']).stdout).gaps, ['unit_unproven:../x: no stardust/rollout/units/../x.paths']);
   [broken, odd].forEach((p) => rmSync(p, { recursive: true, force: true }));
