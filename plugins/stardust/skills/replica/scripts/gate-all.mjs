@@ -115,7 +115,14 @@
  * from state: pass --coverage / --state from the project root or deploy first; exit 1, nothing written.
  *
  * Roster estimate: each run's first status line (stdout and _run.log) is `roster: <n> page(s) × 1 width @<w> (<stage>) —
- * estimated <s> s (25 s per page per width)` (`ESTIMATE_SEC_PER_PAGE` × pages × widths; one width per process) plus
+ * estimated <s> s (25 s per page per width[ × <f>: <why>])` (`ESTIMATE_SEC_PER_PAGE` × pages × widths × f; one width per
+ * process). 25 s was measured with the default pools (origin 2, both capture pools side by side); f (`estimateFactor`) =
+ * ceil((2 / origin pool) × (2 when the capture pools run sequentially)), at least 1 — per browser slot 1 → × 4 (`× 4: 1
+ * browser per slot, captures sequential`), 2 → × 2, ≥ 3 or no slot → × 1 (the text as before) — erring high: an
+ * over-estimate only lengthens a deadline, an under-estimate kills the run. main() takes f from its own pools;
+ * `rosterEstimate` (run-bg sizes a gate-all job's deadline with it, in run-bg's env before the job holds a slot) from the
+ * pools the job would run with: an inherited STARDUST_BROWSER_SLOT as is, STARDUST_BROWSER_SLOTS=0 (lock off) → no slot,
+ * else run-bg's own `browsersPerSlot` (run-bg.mjs beside this file; absent → 1), with the argv's pool flags. Then
  * `; run-bg deadline <d> s` when one is known, then `; source: coverage <path> (<q> of <N> row(s) qualified)` or
  * `; source: state <path> (<q> of <M> page(s) qualified)` (<q> before --only) — a recorded 99-page roster at one width
  * needed 2152 s and was killed by run-bg's 900 s default deadline. Deadline guard: RUN_BG_DEADLINE_SEC (env, seconds —
@@ -170,7 +177,7 @@
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
- * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools`, `estimateFactor` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
  * `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
@@ -252,11 +259,14 @@ Empty selection → one stderr line: published — the coverage and state paths 
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
   the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
   (roster from coverage: coverage wins — record deployed pages with update-coverage.mjs, or pass --coverage); exit 1.
-First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n> s (25 s per
-  page per width)[; run-bg deadline <d> s]; source: coverage|state <path> (<q> of <N> row(s) / page(s) qualified,
-  before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
-  run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
-  "no verdict" naming --timeout <estimate>; exit 2.
+First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stage>) — estimated <25·n·f> s (25 s per
+  page per width[ × f: <why>])[; run-bg deadline <d> s]; source: coverage|state <path> (<q> of <N> row(s) / page(s)
+  qualified, before --only). f = ceil((2 / origin pool) × (2 when the capture pools run sequentially)), at least 1:
+  1 browser per slot → × 4, 2 → × 2, ≥ 3 or no slot → × 1 (25 s was measured with the default pools; it errs high).
+  run-bg sizes a gate-all job's deadline with the same estimate (rosterEstimate, from run-bg's env: the slot it will
+  take — run-bg's browsersPerSlot — unless STARDUST_BROWSER_SLOTS=0; the argv's pool flags). RUN_BG_DEADLINE_SEC
+  (env, seconds: the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → refused before the
+  out dir or any capture: one stderr line "no verdict" naming --timeout <estimate>; exit 2.
 Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg
   deadline, a page at the round cap, a round of the page in progress) or --eds-host, 1 error, a usage error (an unknown
   flag or a bad value) or an empty selection.`;
@@ -377,24 +387,55 @@ function rosterSource({ stage = 'published', coverage = null, state = 'stardust/
   const cov = stage === 'published' && (coverage || existsSync(resolve(cwd, DEFAULT_COVERAGE))) ? load(coverage || DEFAULT_COVERAGE) : null;
   return { cov, st: load(state) };
 }
-// One width per process: widths stays 1 here, explicit so run-bg can sum invocations (pages × widths).
-const roster = (pages, { width, stage }) => { const widths = 1; return { pages, widths, width, stage, estimatedSeconds: ESTIMATE_SEC_PER_PAGE * pages * widths }; };
-const rosterText = (r) => `${r.pages} page(s) × ${r.widths} width${r.widths === 1 ? '' : 's'} @${r.width} (${r.stage})`;
+// The per-page figure was measured with the default pools: origin 2, the two capture pools side by side.
+const ESTIMATE_ORIGIN_POOL = 2;
 /**
- * rosterEstimate(argv, { cwd }) → { pages, widths: 1, width, stage, source: 'coverage', coverage, estimatedSeconds } |
- * { …, source: 'state', state, … } | { error } for gate-all's own argv (no node / script path): reads only --coverage,
- * --state, --stage, --proto-base, --only, --width (other flags and --help are skipped, never an exit or a print) and the
- * roster's files resolved against cwd as main() does (a state.json that does not parse beside a coverage: ignored) — no other I/O.
+ * estimateFactor(pools) → { factor, why }: how much slower than the measured default pools a run with these pools
+ * (browserPools' result) is taken to be — ceil((2 / origin pool) × (2 when the capture pools run sequentially)), at least
+ * 1 — erring high (an over-estimate only lengthens a deadline; an under-estimate kills the run): per slot 1 → 4, 2 → 2,
+ * ≥ 3 or no slot (default flags) → 1. `why` names it (null at 1). Pure.
  */
-export function rosterEstimate(argv, { cwd = process.cwd() } = {}) {
-  const o = { coverage: null, state: 'stardust/state.json', stage: 'published', protoBase: null, only: null, width: 1440 };
-  const KEY = { '--coverage': 'coverage', '--state': 'state', '--stage': 'stage', '--proto-base': 'protoBase', '--only': 'only', '--width': 'width' };
+export function estimateFactor(pools) {
+  const factor = Math.max(1, Math.ceil((ESTIMATE_ORIGIN_POOL / pools.oc) * (pools.sequential ? 2 : 1)));
+  if (factor === 1) return { factor, why: null };
+  const why = [pools.perSlot != null ? `${pools.perSlot} browser${pools.perSlot === 1 ? '' : 's'} per slot` : null, pools.sequential ? 'captures sequential' : `origin pool ${pools.oc}`].filter(Boolean).join(', ');
+  return { factor, why };
+}
+// One width per process: widths stays 1 here, explicit so run-bg can sum invocations (pages × widths).
+const roster = (pages, { width, stage }, { factor = 1, why = null } = {}) => { const widths = 1; return { pages, widths, width, stage, estimatedSeconds: ESTIMATE_SEC_PER_PAGE * pages * widths * factor, factor, factorWhy: why }; };
+const rosterText = (r) => `${r.pages} page(s) × ${r.widths} width${r.widths === 1 ? '' : 's'} @${r.width} (${r.stage})`;
+// `(25 s per page per width[ × <factor>: <why>])` — byte-identical to the unfactored text at × 1.
+const estimateText = (r) => `${ESTIMATE_SEC_PER_PAGE} s per page per width${r.factor > 1 ? ` × ${r.factor}: ${r.factorWhy}` : ''}`;
+/**
+ * The pools a job started by run-bg will run with, from run-bg's env before the job holds a slot: an inherited
+ * STARDUST_BROWSER_SLOT → exactly what main() will see; STARDUST_BROWSER_SLOTS 0 (the lock off) → no slot; else the slot
+ * run-bg will take, with run-bg's own browsersPerSlot (run-bg.mjs beside this file; absent → 1, erring high).
+ */
+function wouldBePools(flags, env) {
+  if (env.STARDUST_BROWSER_SLOT) return browserPools(flags, env);
+  const slots = String(env.STARDUST_BROWSER_SLOTS ?? '').trim();
+  if (slots !== '' && Number(slots) === 0) return browserPools(flags, {});
+  return browserPools(flags, { STARDUST_BROWSER_SLOT: 'run-bg', STARDUST_BROWSERS_PER_SLOT: String(RUN_BG && typeof RUN_BG.browsersPerSlot === 'function' ? RUN_BG.browsersPerSlot(env) : 1) });
+}
+/**
+ * rosterEstimate(argv, { cwd, env }) → { pages, widths: 1, width, stage, source: 'coverage', coverage, estimatedSeconds,
+ * factor, factorWhy } | { …, source: 'state', state, … } | { error } for gate-all's own argv (no node / script path): reads
+ * only --coverage, --state, --stage, --proto-base, --only, --width and the pool flags (other flags, a bad pool value and
+ * --help are skipped, never an exit or a print) and the roster's files resolved against cwd as main() does (a state.json
+ * that does not parse beside a coverage: ignored) — no other I/O. estimatedSeconds carries estimateFactor of the pools the
+ * job would run with in `env` (run-bg's, before it takes the job's slot — wouldBePools).
+ */
+export function rosterEstimate(argv, { cwd = process.cwd(), env = process.env } = {}) {
+  const o = { coverage: null, state: 'stardust/state.json', stage: 'published', protoBase: null, only: null, width: 1440, oc: '2', ec: '4', pc: '2' };
+  const KEY = { '--coverage': 'coverage', '--state': 'state', '--stage': 'stage', '--proto-base': 'protoBase', '--only': 'only', '--width': 'width', '--origin-concurrency': 'oc', '--eds-concurrency': 'ec', '--probe-concurrency': 'pc' };
   const a = argv || [];
   for (let i = 0; i < a.length; i += 1) if (KEY[a[i]] && a[i + 1] != null) { o[KEY[a[i]]] = String(a[i + 1]); i += 1; }
   if (!['published', 'prototype'].includes(o.stage)) return { error: `--stage must be published or prototype (got ${o.stage})` };
   const only = o.only == null ? null : o.only.split(',').map((s) => s.trim()).filter(Boolean); const width = Number(o.width);
+  const pool = (v, d) => { const n = Number(v); return Number.isInteger(n) && n >= 1 ? n : d; };
+  const factor = estimateFactor(wouldBePools({ oc: pool(o.oc, 2), ec: pool(o.ec, 4), pc: pool(o.pc, 2) }, env || {}));
   const { cov, st } = rosterSource(o, cwd); const bad = (f) => (f.missing ? `${f.abs} not found` : `${f.abs} unreadable: ${f.error}`);
-  const est = (coverage) => roster(selectPages(st.doc || null, { stage: o.stage, protoBase: o.protoBase && o.protoBase.replace(/\/$/, ''), only, coverage }).length, { width, stage: o.stage });
+  const est = (coverage) => roster(selectPages(st.doc || null, { stage: o.stage, protoBase: o.protoBase && o.protoBase.replace(/\/$/, ''), only, coverage }).length, { width, stage: o.stage }, factor);
   if (cov) return cov.doc ? { ...est(cov.doc), source: 'coverage', coverage: cov.abs } : { error: bad(cov) };
   return st.doc ? { ...est(null), source: 'state', state: st.abs } : { error: bad(st) };
 }
@@ -918,6 +959,10 @@ const PIXEL = join(HERE, 'pixel-compare.mjs');
 const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
 const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
 const FRESH = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'live-session.mjs')).href) : null;
+// run-bg's own per-slot rule (browsersPerSlot) for rosterEstimate. run-bg imports this file only dynamically, inside a
+// gate-all job's sizing, and has no import-time side effects (its CLI runs only as the entry), so there is no cycle;
+// dynamic + guarded so a copy of this file without run-bg.mjs beside it still loads.
+const RUN_BG = existsSync(join(HERE, 'run-bg.mjs')) ? await import(pathToFileURL(join(HERE, 'run-bg.mjs')).href) : null;
 
 // ---- origin reuse (pure): `fresh` = live-session.mjs freshness() of the capture's `at` ---------------------------
 /**
@@ -1071,8 +1116,8 @@ async function main() {
   const qualified = selectPages(state, { ...opts, coverage: covDoc, only: null }).length;
   const sourceText = cov ? `coverage ${cov.path} (${qualified} of ${pagesOf(covDoc).length} row(s) qualified)` : `state ${opts.state} (${qualified} of ${pagesOf(state).length} page(s) qualified)`;
   // Deadline guard: a run-bg deadline below the estimate would kill the job mid-roster — refuse before any write.
-  const R = roster(pages.length, opts);
-  if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
+  const R = roster(pages.length, opts, estimateFactor(opts.pools));
+  if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${estimateText(R)}), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
   // Fix rounds (--only): reserve every selected page's round, then the cap — refused before the out dir and any write.
   const slugs = [...new Set(pages.map((p) => p.slug))].sort();
   const lockNotes = opts.only ? reserveRounds(opts.out, slugs) : [];
@@ -1089,7 +1134,7 @@ async function main() {
   const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
   const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
-  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${ESTIMATE_SEC_PER_PAGE} s per page per width)${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}`);
+  log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${estimateText(R)})${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;

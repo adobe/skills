@@ -6,13 +6,15 @@
 // defaults and --out derived from --width; --eds-host (edsOrigin table: a bare host or an origin URL, a path refused —
 // the CLI exits 2 writing nothing; a sandbox run stitches https://<host><path> and records the origin); --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
 // an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
-// rosterEstimate table, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
+// rosterEstimate table — its pool factor (estimateFactor; run-bg's browsersPerSlot from the env, STARDUST_BROWSER_SLOTS=0,
+// an inherited slot, the argv's pool flags) —, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
 // state, --coverage, a coverage-only project's CLI run, missing / malformed files), else the state.
 // Reuse under --skip-existing: probeReuse (the capture pair rule), the gate key (stable across key order, changed by
 // one block / content / frozen-file byte or a mask edit, null on a freeze mismatch), the deploy-state guard's
 // content half; then the CLI over stub instruments in a sandbox project with a git remote and a deploy ledger.
 // Origin reuse (originReusePlan / liveReusePlan tables, --origin-max-age, the pool flags — integers >= 1 — and their clamp
-// inside a machine browser slot: browserPools, per slot 1 → every origin capture before any EDS one) and a sandbox
+// inside a machine browser slot: browserPools, per slot 1 → every origin capture before any EDS one, the estimate × 4 in
+// the status line and the deadline guard) and a sandbox
 // runner with stub instruments (no browser): fix rounds reuse this run's origin, a new run recaptures, every reuse
 // is in the row, origin.json and _run.log. --one-load (C8): inventoryWhy / oneLoadKeep tables, then the sandbox with a
 // stitch stub that writes a canned inventory: one stitch per side per page, no probe spawns, fix rounds 0 origin / 1 EDS,
@@ -47,7 +49,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -539,6 +541,15 @@ check('CLI: neither roster file → one stderr line naming both; an explicit --c
   rmSync(cwd, { recursive: true, force: true });
 });
 // ---- the roster: selectPages / rosterEstimate (run-bg sizes a gate-all job's deadline with them), the deadline env ---
+const LOCK_OFF = { STARDUST_BROWSER_SLOTS: '0' }; // no machine browser slot: the estimate's factor is 1
+check('estimateFactor: relative to the measured default pools — per slot 1 → × 4 (captures sequential), 2 → × 2, 3 → × 1, no slot → × 1; a lower origin flag raises it, never below 1', () => {
+  const D = { oc: 2, ec: 4, pc: 2 }; const f = (env, flags = D) => estimateFactor(browserPools(flags, env));
+  const slot = (n) => ({ STARDUST_BROWSER_SLOT: '/locks/slot-1', STARDUST_BROWSERS_PER_SLOT: n });
+  assert.deepEqual(f(slot('1')), { factor: 4, why: '1 browser per slot, captures sequential' });
+  assert.deepEqual(f(slot('2')), { factor: 2, why: '2 browsers per slot, origin pool 1' });
+  assert.deepEqual(f(slot('3')), { factor: 1, why: null }); assert.deepEqual(f({}), { factor: 1, why: null });
+  assert.deepEqual(f({}, { ...D, oc: 1 }), { factor: 2, why: 'origin pool 1' }); assert.deepEqual(f({}, { ...D, oc: 6 }), { factor: 1, why: null });
+});
 check('selectPages / rosterEstimate: published vs prototype, --only, the state resolved against cwd, other flags and --help tolerated, a missing or unreadable state → error; RUN_BG_DEADLINE_SEC > 0 is the deadline', () => {
   const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-roster-'))); mkdirSync(join(cwd, 'stardust'));
   const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'deployed', liveUrl: 'https://e.test/a', prototypePath: 'stardust/prototypes/a.html' },
@@ -549,12 +560,23 @@ check('selectPages / rosterEstimate: published vs prototype, --only, the state r
   assert.deepEqual(slugs({ stage: 'published' }), ['a', 'b']); assert.deepEqual(slugs({ stage: 'published', only: ['b', 'z'] }), ['b']);
   assert.deepEqual(selectPages(st, { stage: 'prototype', protoBase: 'http://localhost:9' }).map((p) => [p.slug, p.liveUrl]), [['a', 'http://localhost:9/a.html'], ['c', 'http://localhost:9/c.html']]);
   assert.equal(selectPages(st, { stage: 'prototype' })[0].liveUrl, 'http://localhost:8791/a.html'); assert.deepEqual(selectPages({}, { stage: 'published' }), []);
-  const state = join(cwd, 'stardust/state.json');
-  assert.deepEqual(rosterEstimate([], { cwd }), { pages: 2, widths: 1, width: 1440, stage: 'published', source: 'state', state, estimatedSeconds: 50 });
-  assert.deepEqual(rosterEstimate(['--stage', 'prototype', '--width', '360', '--proto-base', 'http://localhost:9/', '--only', 'c,z'], { cwd }), { pages: 1, widths: 1, width: 360, stage: 'prototype', source: 'state', state, estimatedSeconds: 25 });
-  assert.deepEqual(rosterEstimate(['--skip-existing', '--out', 'x', '--bogus', 'y', '--help', '--state', 'gate.json', '--threshold', '5'], { cwd }), { pages: 1, widths: 1, width: 1440, stage: 'published', source: 'state', state: join(cwd, 'gate.json'), estimatedSeconds: 25 });
+  const state = join(cwd, 'stardust/state.json'); const x1 = { factor: 1, factorWhy: null };
+  assert.deepEqual(rosterEstimate([], { cwd, env: LOCK_OFF }), { pages: 2, widths: 1, width: 1440, stage: 'published', source: 'state', state, estimatedSeconds: 50, ...x1 });
+  assert.deepEqual(rosterEstimate(['--stage', 'prototype', '--width', '360', '--proto-base', 'http://localhost:9/', '--only', 'c,z'], { cwd, env: LOCK_OFF }), { pages: 1, widths: 1, width: 360, stage: 'prototype', source: 'state', state, estimatedSeconds: 25, ...x1 });
+  assert.deepEqual(rosterEstimate(['--skip-existing', '--out', 'x', '--bogus', 'y', '--help', '--state', 'gate.json', '--threshold', '5'], { cwd, env: LOCK_OFF }), { pages: 1, widths: 1, width: 1440, stage: 'published', source: 'state', state: join(cwd, 'gate.json'), estimatedSeconds: 25, ...x1 });
   assert.match(rosterEstimate(['--state', 'nope.json'], { cwd }).error, /nope\.json not found/); assert.match(rosterEstimate(['--state', 'bad.json'], { cwd }).error, /bad\.json unreadable/);
   assert.match(rosterEstimate(['--stage', 'draft'], { cwd }).error, /--stage must be published or prototype/);
+  // the pools the job would run with (run-bg's env, before it takes the slot): run-bg's browsersPerSlot, the argv's pool flags
+  const x = (env, argv = []) => { const e = rosterEstimate(argv, { cwd, env }); return [e.estimatedSeconds, e.factor, e.factorWhy]; };
+  assert.deepEqual(x({}), [200, 4, '1 browser per slot, captures sequential'], 'run-bg defaults: budget 3 / slots 3 → 1 per slot');
+  assert.deepEqual(x({ STARDUST_BROWSER_BUDGET: '3', STARDUST_BROWSER_SLOTS: '3' }), [200, 4, '1 browser per slot, captures sequential']);
+  assert.deepEqual(x({ STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '3' }), [100, 2, '2 browsers per slot, origin pool 1']);
+  assert.deepEqual(x({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: '3' }), [50, 1, null]);
+  assert.deepEqual(x({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: '3' }, ['--origin-concurrency', '1']), [100, 2, '3 browsers per slot, origin pool 1'], 'a lower origin flag');
+  assert.deepEqual(x(LOCK_OFF), [50, 1, null], 'STARDUST_BROWSER_SLOTS=0: the lock off, no slot');
+  assert.deepEqual(x(LOCK_OFF, ['--origin-concurrency', '1']), [100, 2, 'origin pool 1']); assert.deepEqual(x(LOCK_OFF, ['--origin-concurrency', '4']), [50, 1, null], 'never below 1');
+  assert.deepEqual(x(LOCK_OFF, ['--origin-concurrency', 'x']), [50, 1, null], 'a bad value: the default (gate-all itself refuses it)');
+  assert.deepEqual(x({ STARDUST_BROWSER_SLOT: '/locks/slot-1', STARDUST_BROWSERS_PER_SLOT: '2', STARDUST_BROWSER_SLOTS: '0' }), [100, 2, '2 browsers per slot, origin pool 1'], 'an inherited slot: what main() will see');
   assert.deepEqual(['900', '0', '-5', 'x', undefined].map((v) => parseArgs(['node', 'x'], v === undefined ? {} : { RUN_BG_DEADLINE_SEC: v }).deadlineSec), [900, null, null, null, null]);
   rmSync(cwd, { recursive: true, force: true });
 });
@@ -578,15 +600,15 @@ check('rosterEstimate over the coverage: the default file beside a state wins (s
   const st = { pages: [{ slug: 'a', url: 'https://o.test/a', status: 'deployed', liveUrl: 'https://e.test/a', prototypePath: 'p/a.html' }, { slug: 'x', url: 'https://o.test/x', status: 'deployed', liveUrl: 'https://e.test/x', prototypePath: 'p/x.html' }] };
   writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify(st)); writeFileSync(join(cwd, COV_PATH), JSON.stringify(COV));
   writeFileSync(join(cwd, 'other.json'), JSON.stringify({ pages: COV.pages.slice(1) })); writeFileSync(join(cwd, 'bad.json'), '{');
-  const coverage = join(cwd, COV_PATH); const state = join(cwd, 'stardust/state.json'); const est = (pages) => ({ pages, widths: 1, width: 1440, estimatedSeconds: 25 * pages });
-  assert.deepEqual(rosterEstimate([], { cwd }), { ...est(3), stage: 'published', source: 'coverage', coverage });
-  assert.deepEqual(rosterEstimate(['--only', 'a,z'], { cwd }), { ...est(1), stage: 'published', source: 'coverage', coverage });
-  assert.deepEqual(rosterEstimate(['--coverage', 'other.json'], { cwd }), { ...est(2), stage: 'published', source: 'coverage', coverage: join(cwd, 'other.json') });
-  assert.deepEqual(rosterEstimate(['--coverage', 'missing.json'], { cwd }), { error: `${join(cwd, 'missing.json')} not found` });
-  const bad = rosterEstimate(['--coverage', 'bad.json'], { cwd }).error; assert.ok(bad.startsWith(`${join(cwd, 'bad.json')} unreadable: `), bad);
-  for (const c of [[], ['--coverage', 'missing.json'], ['--coverage', 'bad.json']]) assert.deepEqual(rosterEstimate(['--stage', 'prototype', ...c], { cwd }), { ...est(2), stage: 'prototype', source: 'state', state });
+  const coverage = join(cwd, COV_PATH); const state = join(cwd, 'stardust/state.json'); const est = (pages) => ({ pages, widths: 1, width: 1440, estimatedSeconds: 25 * pages, factor: 1, factorWhy: null });
+  assert.deepEqual(rosterEstimate([], { cwd, env: LOCK_OFF }), { ...est(3), stage: 'published', source: 'coverage', coverage });
+  assert.deepEqual(rosterEstimate(['--only', 'a,z'], { cwd, env: LOCK_OFF }), { ...est(1), stage: 'published', source: 'coverage', coverage });
+  assert.deepEqual(rosterEstimate(['--coverage', 'other.json'], { cwd, env: LOCK_OFF }), { ...est(2), stage: 'published', source: 'coverage', coverage: join(cwd, 'other.json') });
+  assert.deepEqual(rosterEstimate(['--coverage', 'missing.json'], { cwd, env: LOCK_OFF }), { error: `${join(cwd, 'missing.json')} not found` });
+  const bad = rosterEstimate(['--coverage', 'bad.json'], { cwd, env: LOCK_OFF }).error; assert.ok(bad.startsWith(`${join(cwd, 'bad.json')} unreadable: `), bad);
+  for (const c of [[], ['--coverage', 'missing.json'], ['--coverage', 'bad.json']]) assert.deepEqual(rosterEstimate(['--stage', 'prototype', ...c], { cwd, env: LOCK_OFF }), { ...est(2), stage: 'prototype', source: 'state', state });
   writeFileSync(join(cwd, 'stardust/state.json'), '{');
-  assert.deepEqual(rosterEstimate([], { cwd }), { ...est(3), stage: 'published', source: 'coverage', coverage });
+  assert.deepEqual(rosterEstimate([], { cwd, env: LOCK_OFF }), { ...est(3), stage: 'published', source: 'coverage', coverage });
   rmSync(cwd, { recursive: true, force: true });
 });
 
@@ -1061,16 +1083,24 @@ check('--eds-host in the sandbox: a bare host and its https://<host>/ form both 
   }
   rmSync(eroot, { recursive: true, force: true });
 });
-check('pools inside a machine browser slot: per slot 1 → _run.log names 1 / 1 / 1 clamped from 2/4/2, sequential, and every ORIGIN capture precedes every EDS one; per slot 3 → 2 / 1 / 2, not sequential', () => {
+check('pools inside a machine browser slot: per slot 1 → _run.log names 1 / 1 / 1 clamped from 2/4/2, sequential, and every ORIGIN capture precedes every EDS one; the estimate × 4 in the status line and the deadline guard; per slot 3 → 2 / 1 / 2, not sequential, the estimate × 1', () => {
   const slot = { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') };
   const one = gate(['--out', 'stardust/replica/gates/pools1-1440'], { ...slot, STARDUST_BROWSERS_PER_SLOT: '1' });
   assert.equal(one.status, 0, one.stderr + one.stdout); assert.equal(one.origin, 2); assert.equal(one.eds, 2);
   assert.deepEqual(lines(STITCH_LOG).map((l) => l.split(' ')[0]), ['ORIGIN', 'ORIGIN', 'EDS', 'EDS'], 'the origin pool, then the EDS pool');
   const log1 = readFileSync(join(root, 'stardust/replica/gates/pools1-1440/_run.log'), 'utf8');
   assert.match(log1, /; pools origin 1 \/ eds 1 \/ probe 1 \(machine browser slot held; 1 browser\(s\) per slot — clamped from 2\/4\/2; capture pools sequential\)$/m);
+  // the estimate follows the pools: × 4 at one browser per slot — in the status line and the deadline guard
+  const est4 = /^\S+ roster: 2 page\(s\) × 1 width @1440 \(published\) — estimated 200 s \(25 s per page per width × 4: 1 browser per slot, captures sequential\); source: state /;
+  assert.match(one.stdout.split('\n')[0], est4); assert.match(log1.split('\n')[0], est4);
+  const short = gate(['--out', 'stardust/replica/gates/pools1d-1440'], { ...slot, STARDUST_BROWSERS_PER_SLOT: '1', RUN_BG_DEADLINE_SEC: '120' });
+  assert.equal(short.status, 2, short.stderr + short.stdout); assert.equal(short.stdout, ''); assert.equal(short.origin + short.eds, 0);
+  assert.match(short.stderr, /^gate-all: refused to start, no verdict — 2 page\(s\) × 1 width @1440 \(published\) need an estimated 200 s \(25 s per page per width × 4: 1 browser per slot, captures sequential\), above this job's run-bg deadline of 120 s .*--timeout 200 /);
+  assert.equal(existsSync(join(root, 'stardust/replica/gates/pools1d-1440')), false, 'a deadline between the unclamped (50 s) and the clamped (200 s) estimate is refused before the out dir');
   const three = gate(['--out', 'stardust/replica/gates/pools3-1440'], { ...slot, STARDUST_BROWSERS_PER_SLOT: '3' });
   assert.equal(three.status, 0, three.stderr + three.stdout); assert.equal(three.origin + three.eds, 4);
   assert.match(readFileSync(join(root, 'stardust/replica/gates/pools3-1440/_run.log'), 'utf8'), /; pools origin 2 \/ eds 1 \/ probe 2 \(machine browser slot held; 3 browser\(s\) per slot — clamped from 2\/4\/2\)$/m);
+  assert.match(three.stdout.split('\n')[0], / — estimated 50 s \(25 s per page per width\); source: /, 'per slot 3 keeps the origin pool at 2: × 1, the text as before');
   for (const d of ['pools1-1440', 'pools3-1440']) rmSync(join(root, 'stardust/replica/gates', d), { recursive: true, force: true });
 });
 check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot without a per-slot value (an older run-bg) → pools 1 / 1 / 1, named', () => {
