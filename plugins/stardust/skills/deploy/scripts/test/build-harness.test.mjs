@@ -319,6 +319,18 @@ test('idempotent: rebuilding from its own output leaves the document unchanged (
   assert.equal(readFileSync(join(dir, 'out', 'h2.html'), 'utf8'), first.doc);
 });
 
+test('the output directory is created when missing (deploy SKILL\'s stardust/.work/harness/ path in a fresh project)', () => {
+  const dir = mkdtempSync(join(BASE, 'fresh-'));
+  writeFileSync(join(dir, 'page.html'), PAGE);
+  const r = run(['page.html', 'stardust/.work/harness/page.html', '--root', dir], dir);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^harness written: stardust\/\.work\/harness\/page\.html \(\d+ bytes\)$/m);
+  assert.match(readFileSync(join(dir, 'stardust', '.work', 'harness', 'page.html'), 'utf8'), /<main>[\s\S]*<\/main>/);
+  const bad = run(['missing.html', 'stardust/.work/other/page.html', '--root', dir], dir);
+  assert.notEqual(bad.code, 0);
+  assert.equal(existsSync(join(dir, 'stardust', '.work', 'other')), false);
+});
+
 test('usage: missing positional or dangling flag → exit 1 with the usage line, nothing written', () => {
   const dir = project();
   const cases = [[], ['page.html'], ['page.html', 'out/h.html', '--root'], ['page.html', 'out/h.html', '--media-ledger']];
