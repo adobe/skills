@@ -20,8 +20,8 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
-- `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json); exit 2 = undecided error
-- `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json)
+- `diff/chrome-compare.mjs` — header parity vs the contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json); exit 2 = undecided error
+- `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json)
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory] [--hide <sel,…>]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structural + attribute/icon diff, main + chrome roots — `<protoURL> <edsURL> [--main <sel[,sel]>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>] [--hide <sel,…>]`
 - `diff/content-presence.mjs` — origin vs served visible content per band + control state — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
@@ -50,7 +50,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps or source switch points — `[--target 600,900,1200]` | `--inventory <file|dir…>`
 - `replica/cap-probe.mjs` — content caps: capture or live vs build — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--slug <s>]`; exit 2 = FAIL, 0 = PASS or INCONCLUSIVE (under half the modules pair; `○` unpaired)
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
-- `replica/chrome-parity.mjs` — header/footer style parity; warns on a live hide ×0, hints a bar — `<liveURL> <buildURL> [--width] [--live-cache <json>] [--hide <sel,…>] [--slug <s>] [--presence <json>]` (+ site presence.json)
+- `replica/chrome-parity.mjs` — header/footer style parity; warns on a live hide ×0, hints a bar — `<liveURL> <buildURL> [--width] [--live-cache <json>] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json)
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
