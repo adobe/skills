@@ -61,8 +61,10 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          naming /<ns>/nav and /<ns>/footer (a full URL on the preview origin is the same path; EDS strips the
          metadata block from the authored form and emits head metas): "FAIL preview: <problem>" per finding, exit 1.
          --sandbox (a repo of one's own) waives both and is recorded; give --namespace or --sandbox, not both.
-         Prints "PASS preview <url>". Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
-           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, checkedAt, problems? }
+         Prints "PASS preview <url>" (with DEPLOY_VERIFY_ORIGIN set, "… (origin override: DEPLOY_VERIFY_ORIGIN, not the
+         branch preview)"). Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
+           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, originOverride?,
+             checkedAt, problems? }
          auth is whether the preview refused an anonymous request, the one fact the later steps read a protected
          preview from (parity, sanity, qa-gate and ai-readability are n/a on it; content, tokens, inherited and all
          need the token).
@@ -205,11 +207,13 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
            ADVISORY <step> …      an advisory content gate; n/a: protected preview; not run: skipped, no figma checks
          then "summary written: <path>". Exit: the first present of 2, 3, 124, 1, 0.
          Writes <deployed>/summary.json:
-           { _provenance, page, url, regime: "preview", steps: { <step>: { verdict, exit, detail } },
+           { _provenance, page, url, regime: "preview", originOverride?, steps: { <step>: { verdict, exit, detail } },
              ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
-           { regime: "preview", url, content, tokens, parity, sanity: { verdict, hard: true }, inherited, figma,
-             invocation }
+           { regime: "preview", url, originOverride?, content, tokens, parity, sanity: { verdict, hard: true },
+             inherited, figma, invocation }
+         originOverride is preview.json's, { env: "DEPLOY_VERIFY_ORIGIN", origin }, and only when the measured origin
+         was not the branch preview's.
          Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "PASS (n/a: <checks>)" (it passed, but
          those checks were n/a: their reasons are in steps.<step>.detail), "FAIL k/n" (k of the n measured failing: gates
          for content, assertions for tokens, rows for the rest), "FAIL stalled decoration: <what>", "ADVISORY <gates>
@@ -243,7 +247,9 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
-DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook.
+DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, never a real preview. It is recorded:
+               preview.json's originOverride, the "(origin override: …)" ending of the PASS preview line, and summary.json
+               and the ledger fragment of all.
 
 Evidence, all under <dir>/.work/reskin/gates/<slug>/deployed/: preview.json (preview); content.json,
 content-dom-equality.md, content-slot-coverage.md; tokens.json, tokens-spec.json, tokens-probe.md,
@@ -383,7 +389,7 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
     const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, auth, maxWaitSec, env });
     if (record.skipped) { say(`SKIPPED deployed leg: ${record.reason}`); return 0; }
     if (record.problems) { for (const p of record.problems) say(`FAIL preview: ${p}`); return 1; }
-    say(`PASS preview ${record.url}`);
+    say(`PASS preview ${record.url}${record.originOverride ? ` (origin override: ${record.originOverride.env}, not the branch preview)` : ''}`);
     return 0;
   } catch (e) {
     if (e?.code === 124) {
@@ -681,11 +687,12 @@ async function allStep(ctx) {
 
   const invocation = invocationOf(argv);
   const url = preview.url ?? null;
-  const ledgerFragment = { regime: 'preview', url, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, figma: ledger.figma, invocation };
+  const override = preview.originOverride ? { originOverride: preview.originOverride } : {};
+  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, figma: ledger.figma, invocation };
   const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json'].filter((f) => existsSync(join(deployed, f)));
   const summary = {
     _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
-    page: slug, url, regime: 'preview', steps: recorded, ledgerFragment, invocation,
+    page: slug, url, regime: 'preview', ...override, steps: recorded, ledgerFragment, invocation,
   };
   // The text of every step went through redact already; the whole record does once more, whatever a child put in its fragment.
   writeJson(join(deployed, 'summary.json'), JSON.parse(redact(JSON.stringify(summary))));

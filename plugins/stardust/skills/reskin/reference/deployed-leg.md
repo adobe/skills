@@ -96,6 +96,9 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
   "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
 
+A leg pointed at another origin by the test hook `DEPLOY_VERIFY_ORIGIN` also records `originOverride: { env, origin }` in
+`preview.json`, `summary.json` and the fragment: it is not a branch-preview run.
+
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
 measured nothing: the step fails and the run goes on, `sanity` records its own hard decoration FAIL),

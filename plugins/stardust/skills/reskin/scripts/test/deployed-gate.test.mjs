@@ -21,7 +21,7 @@ import { runChild } from '../deployed/child.mjs';
 import { runContent } from '../deployed/content.mjs';
 import { runTokens } from '../deployed/eds-spec.mjs';
 import { deployedDir, readPreview } from '../deployed/io.mjs';
-import { eligibility, headMetadata, isolation, previewOrigin } from '../deployed/preview.mjs';
+import { eligibility, headMetadata, isolation, previewOrigin, runPreview } from '../deployed/preview.mjs';
 import { runSanity } from '../deployed/sanity.mjs';
 import { VERDICT_RE } from '../../../replica/scripts/run-bg.mjs';
 import { fixturePath, loadSourceModel, solidPng, startPreviewServer, startSourceServer } from './fixtures/deployed/servers.mjs';
@@ -57,6 +57,8 @@ const project = (name, { skip = [] } = {}) => {
   for (const [rel, body] of Object.entries(files)) if (!skip.includes(rel)) writeFileSync(join(root, rel), body);
   return root;
 };
+// The PASS line of a run pointed at a fake origin by DEPLOY_VERIFY_ORIGIN says so.
+const OVERRIDE = ' (origin override: DEPLOY_VERIFY_ORIGIN, not the branch preview)';
 const PAGE = ['--page', 'home', '--org', 'o', '--repo', 'r', '--branch', 'b', '--path', '/ns/home'];
 const preview = (root, origin, extra = ['--namespace', 'ns'], opts = {}) => run(['preview', ...PAGE, ...extra], { cwd: root, ...opts, env: { DEPLOY_VERIFY_ORIGIN: origin, ...opts.env } });
 const recordOf = (root) => JSON.parse(readFileSync(join(deployedDir(join(root, 'stardust'), 'home'), 'preview.json'), 'utf8'));
@@ -226,7 +228,7 @@ await check('preview against the fake preview, in an eligible project: PASS <url
     const root = project('pass');
     const r = await preview(root, server.origin);
     assert.equal(r.status, 0, r.all);
-    assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home`);
+    assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home${OVERRIDE}`);
     const rec = recordOf(root);
     assert.ok(rec.url.endsWith('/ns/home'), rec.url);
     assert.deepEqual({ ...rec, checkedAt: typeof rec.checkedAt }, {
@@ -237,6 +239,7 @@ await check('preview against the fake preview, in an eligible project: PASS <url
       namespace: 'ns',
       sandbox: false,
       auth: false,
+      originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin },
       checkedAt: 'string',
     });
     assert.ok(!Number.isNaN(Date.parse(rec.checkedAt)));
@@ -244,6 +247,34 @@ await check('preview against the fake preview, in an eligible project: PASS <url
     assert.deepEqual(server.requests.map((q) => q.path), ['/ns/home.plain.html', '/ns/home'], 'the authored form, then the delivered page for its head');
     assert.ok(server.requests.every((q) => q.method === 'GET'));
   } finally { await server.close(); }
+});
+
+await check('an origin override is in the record: preview.json says DEPLOY_VERIFY_ORIGIN stood in for the branch preview, and so does the PASS line; with no override the record has no such key', async () => {
+  const server = await startPreviewServer();
+  try {
+    const root = project('override');
+    const r = await preview(root, server.origin);
+    assert.equal(r.status, 0, r.all);
+    assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home${OVERRIDE}`);
+    assert.deepEqual(recordOf(root).originOverride, { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin });
+    const withPath = await preview(root, server.origin, ['--namespace', 'ns'], { env: { DEPLOY_VERIFY_ORIGIN: `${server.origin}/ignored/path` } });
+    assert.equal(withPath.status, 0, withPath.all);
+    assert.deepEqual(recordOf(root).originOverride, { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, 'the origin of the value, as measured');
+  } finally { await server.close(); }
+  // No override: the branch preview's own origin, asked for through a stand-in for fetch (no network).
+  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
+  const page = readFileSync(fixturePath('home.html'), 'utf8');
+  const asked = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { asked.push(String(url)); return new Response(String(url).endsWith('.plain.html') ? plain : page, { status: 200 }); };
+  try {
+    const root = project('no-override');
+    const record = await runPreview({ dir: join(root, 'stardust'), slug: 'home', org: 'o', repo: 'r', branch: 'b', path: '/ns/home', namespace: 'ns', env: {} });
+    assert.deepEqual(asked, ['https://b--r--o.aem.page/ns/home.plain.html', 'https://b--r--o.aem.page/ns/home']);
+    assert.equal(record.origin, 'https://b--r--o.aem.page');
+    assert.equal('originOverride' in record, false);
+    assert.equal('originOverride' in recordOf(root), false);
+  } finally { globalThis.fetch = realFetch; }
 });
 
 await check('the project root is the parent of --dir: --dir <project>/stardust works from any cwd, and a parent without the files is skipped', async () => {
@@ -295,7 +326,7 @@ await check('the chrome comes from the delivered page\'s head: absent metas fail
     assert.match(none.stdout, /^FAIL preview: .*footer.*absent.*\/ns\/footer/m);
     const full = await at('full');
     assert.equal(full.status, 0, full.all);
-    assert.equal(full.stdout.trim(), `PASS preview ${server.origin}/ns/full`);
+    assert.equal(full.stdout.trim(), `PASS preview ${server.origin}/ns/full${OVERRIDE}`);
     const away = await at('away');
     assert.equal(away.status, 1, away.all);
     assert.match(away.stdout, /^FAIL preview: .*nav.*other\.test/m);
@@ -334,7 +365,7 @@ await check('a page outside the namespace fails naming the path; --sandbox waive
     assert.equal(recordOf(root).problems.length, 2);
     const waived = await run([...flat, '--sandbox'], { cwd: root, env });
     assert.equal(waived.status, 0, waived.all);
-    assert.equal(waived.stdout.trim(), `PASS preview ${server.origin}/home`);
+    assert.equal(waived.stdout.trim(), `PASS preview ${server.origin}/home${OVERRIDE}`);
     const rec = recordOf(root);
     assert.equal(rec.sandbox, true);
     assert.equal(rec.namespace, null);
@@ -416,7 +447,7 @@ await check('a folder path (/ns/) is polled at its index.plain.html, as figma-ga
     const origin = `http://127.0.0.1:${server.address().port}`;
     const r = await run(['preview', ...PAGE.slice(0, 8), '--path', '/ns/', '--namespace', 'ns', '--max-wait', '5'], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: origin } });
     assert.equal(r.status, 0, r.all);
-    assert.equal(r.stdout.trim(), `PASS preview ${origin}/ns/`);
+    assert.equal(r.stdout.trim(), `PASS preview ${origin}/ns/${OVERRIDE}`);
     assert.equal(recordOf(root).plain, `${origin}/ns/index.plain.html`);
     assert.deepEqual(asked, ['/ns/index.plain.html', '/ns/']);
   } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
@@ -477,7 +508,7 @@ await check('a token given for a public preview is recorded as unused: auth: fal
       const root = project(name);
       const r = await preview(root, server.origin, ['--namespace', 'ns', ...extra], { env });
       assert.equal(r.status, 0, `${name}: ${r.all}`);
-      assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home`);
+      assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home${OVERRIDE}`);
       const rec = recordOf(root);
       assert.equal(rec.auth, false, `${name}: auth means the preview refused an anonymous request`);
       assert.equal(rec.tokenUnused, true, name);
@@ -705,6 +736,21 @@ await check('all: content, tokens, parity, sanity, inherited, then figma-gate as
     token: null,
   }]);
   assert.equal(r.args.content.auth, null);
+});
+
+await check('all: an origin override in preview.json is carried into summary.json and the ledger fragment, and left out of both otherwise', async () => {
+  const override = { env: 'DEPLOY_VERIFY_ORIGIN', origin: 'http://127.0.0.1:9' };
+  const root = allRoot('all-override', { record: { originOverride: override } });
+  const r = await runAll(root);
+  assert.equal(r.code, 0, r.lines.join('\n'));
+  const s = summaryAt(root);
+  assert.deepEqual(s.originOverride, override);
+  assert.deepEqual(s.ledgerFragment.originOverride, override);
+  assert.deepEqual(Object.keys(s.ledgerFragment).slice(0, 3), ['regime', 'url', 'originOverride']);
+  const plainRoot = allRoot('all-no-override');
+  assert.equal((await runAll(plainRoot)).code, 0);
+  assert.equal('originOverride' in summaryAt(plainRoot), false);
+  assert.equal('originOverride' in summaryAt(plainRoot).ledgerFragment, false);
 });
 
 await check('all: --reskin reaches parity, sanity and figma-gate and the invocation; without a checks file figma is "not run: no figma checks" and no child starts', async () => {
@@ -1182,7 +1228,7 @@ if (playwrightOk) {
       };
       assert.equal(passWith('inherited.json'), 'PASS (n/a: qa-gate)', 'qa-gate has no schema to read here');
       assert.deepEqual(s.ledgerFragment, {
-        regime: 'preview', url: `${server.origin}/ns/home`, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), figma: 'not run: no figma checks', invocation: s.invocation,
+        regime: 'preview', url: `${server.origin}/ns/home`, originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), figma: 'not run: no figma checks', invocation: s.invocation,
       });
       assert.equal(s.invocation, `deployed-gate.mjs all --page home --reskin ${reskin}`);
       for (const f of ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'summary.json']) assert.ok(existsSync(join(out, f)), f);
