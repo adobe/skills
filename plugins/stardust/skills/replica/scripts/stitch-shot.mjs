@@ -98,7 +98,9 @@
  *     decide).
  *     --json <file> writes the capture record once the PNG is written: the
  *     sweeps' dismissals, overlayLeft, fontsFailed (the font-load
- *     assertion's families), the hide records, height and the overflow line.
+ *     assertion's families — an array when it ran, null when it could not,
+ *     with fontCheck "failed: <msg>"), the hide records, height and the
+ *     overflow line.
  *
  * Usage:
  *   node skills/replica/scripts/stitch-shot.mjs <url> <out.png> [options]
@@ -172,7 +174,8 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle, dismissed
                     ({ consent, extra, marketing } over the sweeps; null under --no-dismiss), overlayLeft (null when
-                    clean), fontsFailed (families of declared faces that failed to load), hidden, height, overflow
+                    clean), fontsFailed ([] or the families whose face failed; null = the check could not run, then
+                    fontCheck "failed: <msg>" follows), hidden, height, overflow
   --help            this text
 
 Prints \`overlay-left: <sel> (<why>)\` once — after the last dismissal sweep and --hide, before the capture, also under
@@ -258,6 +261,15 @@ export function overflowLine(root) {
 export function fontFamilies(list) {
   const names = (list || []).filter((s) => typeof s === 'string').map((s) => s.trim().replace(/^["']+|["']+$/g, '').trim());
   return [...new Set(names.filter(Boolean))].sort();
+}
+
+/** The font-load check's outcome for the --json record: its family list → { fontsFailed } (checked; [] = every
+ * declared face loaded); an evaluate error, or no list → { fontsFailed: null, fontCheck: 'failed: <first line>' } —
+ * a check that could not run is recorded as not checked, never as []. */
+export function fontCheckOutcome(result, error) {
+  if (error == null && Array.isArray(result)) return { fontsFailed: fontFamilies(result) };
+  const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no family list returned';
+  return { fontsFailed: null, fontCheck: `failed: ${why}` };
 }
 
 async function main() {
@@ -390,11 +402,17 @@ async function main() {
     // 6669→6518 after the fix) from a face that genuinely fails for real
     // browsers too (capture-state — fallback is then the truthful capture).
     // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
-    // decision procedure; this warning is what triggers it.
+    // decision procedure; this warning is what triggers it. A check that
+    // could not run (the evaluate threw) is recorded as not checked —
+    // fontsFailed null + fontCheck in the --json record, its own warning —
+    // never as "every face loaded".
+    let fontError = null;
     const failedFonts = await page.evaluate(async () => {
       await document.fonts.ready;
       return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
-    }).catch(() => []);
+    }).catch((e) => { fontError = e; return []; });
+    const fonts = fontCheckOutcome(failedFonts, fontError);
+    if (fonts.fontCheck) console.error(`stitch-shot WARNING: font-load check failed (${fonts.fontCheck.slice('failed: '.length)}) — the record says fontsFailed: null (not checked)`);
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
@@ -476,7 +494,7 @@ async function main() {
     // --json: the capture record, only once the PNG is written (a failed capture leaves none).
     if (opts.json) {
       mkdirSync(dirname(opts.json), { recursive: true });
-      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, fontsFailed: fontFamilies(failedFonts), hidden, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
+      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, ...fonts, hidden, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
     }
     console.log(overflowLine(root));
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);

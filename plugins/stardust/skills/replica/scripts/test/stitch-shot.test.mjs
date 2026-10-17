@@ -21,9 +21,10 @@
 // control → one `overlay-left: div.backdrop (fixed, 100 % of the viewport)` line before the overflow line, exit 0, the
 // record's overlayLeft (also under --no-dismiss, where dismissed is null); hidden with --hide → no line, null; a clean
 // page's record exactly (key order, height = the PNG's); a declared face that 404s → fontsFailed ['Brand Sans'] beside
-// the WARNING; dismissed across the --settle sweeps (consent = last non-null, marketing = union); a consent-sweep
-// click that leaves the page → overlayLeft `(consent sweep navigated to <url>)`; a failed capture (HTTP 404) writes no
-// record.
+// the WARNING; a font check that cannot run (fontCheckOutcome; e2e document.fonts throws) → fontsFailed null +
+// fontCheck "failed: <msg>" and its own WARNING — skipped, never []; dismissed across the --settle sweeps (consent =
+// last non-null, marketing = union); a consent-sweep click that leaves the page → overlayLeft `(consent sweep
+// navigated to <url>)`; a failed capture (HTTP 404) writes no record.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -32,7 +33,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { fontFamilies, overflowLine, parseArgs } from '../stitch-shot.mjs';
+import { fontCheckOutcome, fontFamilies, overflowLine, parseArgs } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -90,6 +91,17 @@ await check('fontFamilies: surrounding quotes stripped, trimmed, empties dropped
   assert.deepEqual(fontFamilies([' "Z" ', 'Brand Sans', '"Brand Sans"']), ['Brand Sans', 'Z']);
   assert.deepEqual(fontFamilies([]), []);
 });
+await check('fontCheckOutcome: a family list → { fontsFailed } (checked); an evaluate error → { fontsFailed: null, fontCheck: "failed: <first line>" } — never []', () => {
+  const ok = fontCheckOutcome(['"Brand Sans"', 'Brand Sans'], null);
+  assert.deepEqual(ok, { fontsFailed: ['Brand Sans'] });
+  assert.ok(!('fontCheck' in ok), 'fontCheck only when the check failed');
+  assert.deepEqual(fontCheckOutcome([], null), { fontsFailed: [] });
+  const bad = fontCheckOutcome(null, new Error('page.evaluate: Execution context was destroyed\n    at main'));
+  assert.deepEqual(bad, { fontsFailed: null, fontCheck: 'failed: page.evaluate: Execution context was destroyed' });
+  assert.deepEqual(Object.keys(bad), ['fontsFailed', 'fontCheck'], 'fontCheck right after fontsFailed');
+  assert.deepEqual(fontCheckOutcome(undefined, 'timeout'), { fontsFailed: null, fontCheck: 'failed: timeout' });
+  assert.deepEqual(fontCheckOutcome({ not: 'a list' }, null), { fontsFailed: null, fontCheck: 'failed: no family list returned' });
+});
 await check('--json: --help names it and the overlay-left line; a missing value (end of argv or a flag next) is a usage error, exit 1, nothing written', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'stitch-json-'));
   try {
@@ -97,6 +109,7 @@ await check('--json: --help names it and the overlay-left line; a missing value 
     assert.equal(h.status, 0, h.stderr);
     assert.match(h.stdout, /--json <file> +after the PNG, write the capture record/);
     assert.match(h.stdout, /overlay-left: <sel>/);
+    assert.match(h.stdout, /fontsFailed \(\[\] or the families .*; null = the check could not run/);
     for (const tail of [['--json'], ['--json', '--settle']]) {
       const r = spawnSync(process.execPath, [SCRIPT, 'http://127.0.0.1:9/', 'x.png', ...tail], { cwd, encoding: 'utf8', timeout: 15000 });
       assert.equal(r.status, 1, `${tail.join(' ')}: ${r.stderr}`);
@@ -151,6 +164,8 @@ if (chromium) {
   Object.assign(pages, {
     '/backdrop': page('<section><p style="margin:0;padding-top:430px;font:40px/40px sans-serif;text-align:center">Page content beneath the backdrop</p></section><section></section><div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"></div>'),
     '/font-fail': page('<section>Brand type</section><section></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/missing.woff2)}body{font-family:"Brand Sans",sans-serif}</style>'),
+    // a page whose document.fonts throws: the font-load check cannot run
+    '/fonts-unreadable': page('<section>Text</section><section></section>', '<script>Object.defineProperty(document, \'fonts\', { configurable: true, get() { throw new Error(\'fonts unavailable\'); } });</script>'),
     '/consent-popup': page('<div id="banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><button id="onetrust-accept-btn-handler" onclick="this.parentNode.remove()">OK</button></div><section></section><section></section>', popupLate),
     // a consent banner whose "Accept" is a link to another path: the label sweep's click leaves the page
     '/consent-link': page('<div id="cookie-banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><a href="/fit">Accept</a></div><section></section><section></section>'),
@@ -273,6 +288,7 @@ if (chromium) {
       hidden: run([`${base}/backdrop`, 'backdrop-hide.png', '--hide', '.backdrop', '--json', 'backdrop-hide.json'], work),
       fit: run([`${base}/fit`, 'fit-rec.png', '--json', 'fit-rec.json'], work),
       font: run([`${base}/font-fail`, 'font.png', '--json', 'font.json'], work),
+      fontUnread: run([`${base}/fonts-unreadable`, 'font-unread.png', '--json', 'font-unread.json'], work),
       sweeps: run([`${base}/consent-popup`, 'sweeps.png', '--settle', '--json', 'sweeps.json'], work),
       navigated: run([`${base}/consent-link`, 'nav.png', '--json', 'nav.json'], work),
       failed: run([`${base}/no-such-page`, 'failed.png', '--json', 'failed.json'], work),
@@ -322,6 +338,20 @@ if (chromium) {
       assert.equal(warnings.length, 1, r.stderr);
       assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) "?Brand Sans"?/);
       assert.deepEqual(record('font.json').fontsFailed, ['Brand Sans']);
+      assert.ok(!('fontCheck' in record('font.json')), 'a check that ran carries no fontCheck');
+    });
+    await check('e2e --json: a font-load check that cannot run (document.fonts throws) → fontsFailed null + fontCheck right after it, one stderr WARNING, exit 0', async () => {
+      const r = await shots.fontUnread;
+      assert.equal(r.status, 0, r.stderr);
+      const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
+      assert.equal(warnings.length, 1, r.stderr);
+      assert.match(warnings[0], /^stitch-shot WARNING: font-load check failed \(.*fonts unavailable.*\) — the record says fontsFailed: null \(not checked\)$/);
+      const j = record('font-unread.json');
+      assert.equal(j.fontsFailed, null);
+      assert.match(j.fontCheck, /^failed: .*fonts unavailable/);
+      assert.doesNotMatch(j.fontCheck, /\n/);
+      const keys = Object.keys(j);
+      assert.equal(keys[keys.indexOf('fontsFailed') + 1], 'fontCheck', keys.join(','));
     });
     await check('e2e --json dismissed across the --settle sweeps: consent kept from the first (the settle sweep finds none), the popup the settle sweep closed', async () => {
       const r = await shots.sweeps;
