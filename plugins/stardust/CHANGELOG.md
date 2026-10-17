@@ -25,10 +25,11 @@ version; numbers marked "local" are integration-only and renumbered by the maint
 - `stardust/rollout-run-followups` — 0.35.7 (#143 local); it tracks the gate's JSON sidecars under
   `replica/gates/`, which replaced the local stand-in.
 - `stardust/handover-followups` — 0.35.9 (#144 local).
+- `stardust/capture-dialogs-and-denials` — 0.35.8 (#145 local).
 - Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
-  its delivered `lang` in the rollout inventory; the master card's Versioning line names the tracked gate
-  sidecars; the renumbering above.
-- Not in this image: `stardust/capture-dialogs-and-denials` (0.35.8, still in progress).
+  its delivered `lang` in the rollout inventory; an INCONCLUSIVE gate row keeps a width's earlier failing
+  verdict; the master card's Versioning line names the tracked gate sidecars; a crawl loader comment; the
+  renumbering above.
 
 ## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
 
@@ -126,7 +127,7 @@ re-renders once; each earlier variance acceptance is refused once, quoting its r
 Provisional version, renumbered at merge; stacks on 0.35.4 (the handover-tools branch); 0.35.7 and 0.35.8 are other
 branches.
 
-## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#138)
+## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#145)
 
 Pre-run probes: a large logistics site served the headless browser a 900 px denial page with status 200, and
 `stitch-shot.mjs` wrote it as a capture with exit 0. In headed stealth Chrome the page rendered fully, but an open modal
@@ -191,7 +192,7 @@ is released only after the dialog pass closed a dialog and none survives — a l
 own layout and a lock over a survivor stays, so the scroll stall still fails loud on both. A denial page gives no
 verdict, never a false pass: every live instrument exits 3, and the crawl captures none. gate-all is untouched: a
 stitch exit 3 takes its existing blocked path, and the INCONCLUSIVE `origin blocked` row arrives with the gate-trust
-merge; provisional: version and #138 renumbered at merge.
+merge; provisional: version and #145 renumbered at merge.
 
 ## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#143)
 
