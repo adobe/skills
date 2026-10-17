@@ -64,6 +64,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/motion-compare.mjs` — live vs build motion, advisory (exit 0) — `<live.json> <build.json> [--tolerance-ms]`
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
+- `replica/presence.mjs` — site-wide hide list `stardust/replica/presence.json` — `add --hide <sel,…> [--slug <s>] [--reason <R-nn>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
 - `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
