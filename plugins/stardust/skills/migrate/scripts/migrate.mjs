@@ -149,12 +149,15 @@
  *   previous sidecar `variance` (else, with no sidecar record, its row's source.variance in
  *   <dirname(state)>/rollout/coverage/pages.json, read once per run) carries `accepted` and equals
  *   this render's record on archetype, verdict, missing, extra, deltas (the count) and deltaKinds
- *   (the deltas' fingerprint: each kind, with its probe when it names one, sorted — never the
- *   message), lists in any order → rendered without the flag,
+ *   (the deltas' fingerprint, sorted: each kind, with its probe when it names one, and its message
+ *   — `COUNT(card): 3 → 4 matches`, so a grown COUNT, CLUSTERS or SECTIONS delta is a changed row;
+ *   SECTION HEIGHTS and PROBE keep the kind and probe only, their pixel and style values move
+ *   between probes), lists in any order → rendered without the flag,
  *   `accepted` (and `acceptedAt` when the earlier record has one) kept, one run summary line
  *   `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged variance (…)`; a
- *   changed row — or an earlier record without archetype / deltaKinds — is refused naming each
- *   changed field and quoting the earlier reason. More than half
+ *   changed row — or an earlier record without archetype / deltaKinds, or whose deltaKinds lack
+ *   the messages (refused once) — is refused naming each changed field and quoting the earlier
+ *   reason. More than half
  *   of the archetype's current clones differ → refused even with --accept-variance or an earlier
  *   acceptance (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
  *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
@@ -923,11 +926,17 @@ export function varianceGate(run, page, archetype, old = null) {
   throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
 }
 // An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order): the
-// archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds.
+// archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds, and
+// one whose fingerprint lacks the messages is refused once.
 const VARIANCE_FIELDS = ['verdict', 'archetype', 'missing', 'extra', 'deltas', 'deltaKinds'];
-// The deltas' fingerprint: each delta's kind, with its probe when it names one ("COUNT(card)", "SECTIONS"), sorted. Never the
-// message — SECTION HEIGHTS carries pixel values that move on every probe.
-const deltaKindsOf = (deltas) => (Array.isArray(deltas) ? deltas : []).map((d) => (d && typeof d === 'object' ? `${d.kind}${d.probe != null ? `(${d.probe})` : ''}` : String(d))).sort();
+// The deltas' fingerprint, sorted: each delta's kind, with its probe when it names one, and its message ("COUNT(card): 3 → 4
+// matches") — the message carries the amount of a COUNT, CLUSTERS or SECTIONS delta, so a grown variance is a changed one.
+// SECTION HEIGHTS and PROBE keep the kind (and probe) only: their messages carry pixel and style values that move between
+// identical probes.
+const MOVING_MESSAGES = new Set(['SECTION HEIGHTS', 'PROBE']);
+const deltaKindsOf = (deltas) => (Array.isArray(deltas) ? deltas : []).map((d) => (d && typeof d === 'object'
+  ? `${d.kind}${d.probe != null ? `(${d.probe})` : ''}${d.msg == null || MOVING_MESSAGES.has(d.kind) ? '' : `: ${d.msg}`}`
+  : String(d))).sort();
 const varianceKey = (v) => JSON.stringify(Array.isArray(v) ? v.map((x) => JSON.stringify(x)).sort() : v ?? null);
 // The variance record an earlier render left: the page's previous sidecar `variance`, else (no sidecar record) its row's
 // source.variance in <dirname(state)>/rollout/coverage/pages.json — the rollout inventory's verbatim copy, read once per run.
