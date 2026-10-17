@@ -69,10 +69,10 @@ none" (198/198 nodes).
    skill's `../migrate/scripts/` (migrate.mjs) to `stardust/scripts/migrate/`,
    AND the whole
    `../diff/scripts/` dir to `stardust/scripts/diff/` (the diff scripts
-   import diff-profiles.mjs, and ALL live-target hardening — including
-   stitch-shot's — lives in its live-session.mjs; stitch-shot resolves it
-   from `stardust/scripts/diff/` next to `stardust/scripts/replica/`, so
-   keep the two dirs siblings). Never copy into the project-root
+   import diff-profiles.mjs, and ALL live-target hardening lives in its
+   live-session.mjs, which the replica instruments resolve from
+   `stardust/scripts/diff/` next to `stardust/scripts/replica/` — keep the
+   two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary). `run-bg.mjs` takes one machine-wide
    browser slot per browser job (`browser-lock.mjs`, slot files in
@@ -306,7 +306,7 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # apart, capped), never a fixed sleep.
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
-node stardust/scripts/replica/run-bg.mjs wait      # returns within 100 s; full output: run-bg.mjs log <job> --grep <re>
+node stardust/scripts/replica/run-bg.mjs wait      # your agent process's jobs (--all: every agent's; agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg call); full output: run-bg.mjs log <job> --grep <re>
 # Content-cap row — once per archetype after the 1440 pass, at DESIGN.json's derived probeWidth (never a pinned 1920)
 node stardust/scripts/replica/cap-probe.mjs "$LIVE" --against "$PROTO" --design DESIGN.json --slug <slug> --main "<content-root>"
 ```
@@ -360,8 +360,7 @@ reference doc § Iteration discipline).
 
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
-headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked
+headers** on every capture; a challenge/blocked
 interstitial **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
 `domcontentloaded` on live targets, never `networkidle`;
@@ -382,6 +381,16 @@ The live-target hardening ships as flags on the diff scripts (`--ua`,
 backed by `live-session.mjs` — copy the scripts and pass flags; a project
 copy carrying hand-edits is a defect
 (`reference/source-fidelity-gate.md` § Script adaptations).
+`measure.mjs`, `cap-probe.mjs`, `stitch-shot.mjs` and the probes on
+live-session's `gotoLive`/`visit()` defaults (e.g. anchor, chrome-parity,
+sibling-variance, clip-probe, content-presence, unit-geometry) navigate
+under one timeout — `STARDUST_NAV_TIMEOUT_MS`, else 2 × the crawl's
+`crawl.navMs.p95` (20–180 s), else their own default, a flag winning;
+measure and cap-probe race each width read against it, re-read once on a
+fresh page when the page navigated under a read, and exit 124 (no verdict)
+only when every width read failed (cap-probe capture: every page's probe
+failed a read; compare: any), else 0 with `_provenance.partial` and a
+`PARTIAL` first line.
 
 **After the static gate passes, interaction parity is a REQUIRED gate
 output per archetype — not a post-pass**

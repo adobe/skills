@@ -158,6 +158,58 @@ read as a pass. Costs: one extra origin capture per page whose record
 predates the check, a slower settled build capture in gate.sh. crawl.mjs keeps its own label list until its owner
 imports the shared table (a live-session test fails if the two drift).
 
+## 0.35.2 — instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#135)
+
+Recorded hands-off runs: `measure.mjs` hung 8× at 900 s on a site that navigates after load — after a resize or a
+consent click — because it reused one page across widths with no deadline on the reads. The live instruments'
+navigation defaults ranged from 20 to 90 s with no shared value. A bare `run-bg.mjs wait` in one agent waited on every
+other agent's jobs, and `--timeout` on `wait` was silently ignored. A stitched capture of a page whose in-flow header
+shrinks on scroll stopped as a scroll stall; the workaround was a different `--vh`.
+
+- **One navigation timeout.** `diff/scripts/live-session.mjs` resolves it: env `STARDUST_NAV_TIMEOUT_MS` (ms, used as
+  given; an invalid value is ignored with one stderr warning), else 2 × `crawl.navMs.p95` from
+  `stardust/current/_crawl-log.json` clamped to 20–180 s, else the instrument's current default. `gotoLive` (60 s) and
+  `measure-live.mjs` `visit()` (90 s) default to it (e.g. anchor, chrome-parity, sibling-variance, clip-probe,
+  content-presence, unit-geometry rely on those defaults); `measure.mjs` (20 s), `cap-probe.mjs` (30 s),
+  `style-census.mjs` (20 s) and `stitch-shot.mjs` (60 s) take it when their flag is not given — an explicit flag
+  always wins — and the crawl's per-page goto (45 s) always. Callers that pass their own timeout keep it
+  (e.g. motion-observe, visual-diff, content-diff: 60 s). measure and cap-probe record `navTimeout: {ms, source}` in
+  `_provenance`.
+- **The crawl measures the figure.** `crawl.mjs` records each page's `navMs` (its goto to `domcontentloaded`) in the
+  page record, and `crawl.navMs` {n, p50, p95, max} and `crawl.navTimeout` {ms, source} in `_crawl-log.json`; it names
+  its page goto timeout on one stderr line; the entry probe, the challenge reload and the slash retry keep their
+  constants. Without `live-session.mjs` beside it the crawl keeps 45 s and says so.
+- **Every width read races `--timeout-ms` (measure, cap-probe).** A page that navigated under a read (execution context
+  destroyed) is re-read once on a fresh page in the same browser context, cookies and consent kept; a deadline is
+  never retried (a second would double the wait). A width that still fails is recorded as `{url, width, error}` in
+  `_provenance.failed`, `_provenance.partial` turns true and the next width starts on a fresh page; a bot challenge
+  still exits 3. cap-probe's reads form one model per page, so its retry re-probes the whole page.
+- **Exit 124 = no verdict — never a PASS or FAIL from half a measurement.** measure exits 124 only when every width
+  read failed, else 0 with a first line `measure: PARTIAL — <k> of <n> width read(s) failed: …` (stderr under
+  `--json`); precedence 3 > 1 > 124 > 0. A cap-probe capture exits 124 only when every page's probe failed a read
+  (a load failure exits 1), else 0 with `PARTIAL`, and a partial capture never merges into `--write-design` (the skip
+  is recorded in `_provenance.designWrite`); a cap-probe compare with a failed read on either side prints `NO VERDICT`,
+  exit 124.
+- **`run-bg.mjs wait` and `status` cover the caller's own jobs.** `start` records `ownerPid`: `RUN_BG_OWNER`, else the
+  nearest ancestor that is not a shell or wrapper — the agent process behind the tool call's shell (where agents share
+  one process, a fan-out subagent names its jobs or prefixes each run-bg call with `RUN_BG_OWNER=<unit>`). Bare
+  `wait`/`status` select the caller's jobs, `--all` every owner's, `<job>…` names those; the report's first line names
+  the selection and its count. `--timeout` on `wait`/`status` is a usage error (exit 125) naming `--max`. A job state
+  without an owner is reached by name or `--all`.
+- **A header that shrinks on scroll is a morph, not a scroll stall (`stitch-shot.mjs`).** A shortfall the document's
+  own shrink explains continues the stitch at the shrunk height and records `headerMorph: <px>` in a new sidecar
+  `<stem>.capture.json` beside the PNG (`writtenBy, url, width, vh, height, chunks, headerMorph, overflow, at`); the
+  `stitched` line ends ` — header morph <px> px` when it is above 0. A no-op scroll with the height unchanged still
+  exits 1; no `--vh` workaround is needed.
+- **Docs:** the scripts index rows, one sentence each in the extract and replica skills, handoff contract § Fan-out
+  discipline (`wait`'s scope), source-fidelity gate hardening rule 13 (`headerMorph`).
+
+Patch: no verdict, threshold, criterion, gate-row or pairing change; the new states only add caution — a width not
+measured is recorded as not measured, and a compare that could not measure both sides never exits with a PASS or FAIL
+code; touches #124 (cap-probe). One contract touch: a bare `run-bg.mjs wait`/`status` now selects the caller's own
+jobs and handoff contract § Fan-out discipline says so — the 0.35.0 entry counted such an edit as minor, so patch vs
+minor is decided at merge with the renumbering — 0.35.2 and #135 are provisional.
+
 ## 0.35.1 — gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
 
 Two recorded hands-off runs, a 100-page and a 10-page one, each hand-wrote a script that built a gate state file

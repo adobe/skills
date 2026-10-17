@@ -8,18 +8,25 @@
 // the rendition an <img> selects at 360 and a 500 px box that overflows B at 360 (rects, props,
 // --against deltas, the --all-matches cap, a selector missing on one side, --json / --out, root +
 // rootDeltas, a page that fails to load). The end-to-end part runs where playwright is importable
-// and prints a skip line otherwise. Run: node <this file>.
+// and prints a skip line otherwise. Also the per-width deadline: the width-read orchestration with
+// fakes (a destroyed context re-read once on a fresh page, a deadline recorded at once, the next width
+// on a fresh page, a bot challenge rethrown), the exit code and status line, a failed width in the
+// deltas and the table; end-to-end a page that navigates once on resize, one that navigates on every
+// scroll and one that hangs on resize. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { DEFAULT_PROPS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, shortValue } from '../measure.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, exitCodeFor, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, readWidths, shortValue, statusLine } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
+// The real deadline race and context classification (pure helpers) from live-session, in either layout.
+const LIVE_SESSION = [join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(HERE, '..', '..', 'diff', 'live-session.mjs')].find((p) => existsSync(p));
+const { withDeadline, isContextDestroyed } = await import(pathToFileURL(LIVE_SESSION).href);
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 
@@ -34,7 +41,7 @@ await check('parseArgs: selectors split on commas, widths repeatable + comma-sep
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('backgroundColor') + 1], 'backgroundImage', 'backgroundImage sits right after backgroundColor');
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('position') + 1], 'boxSizing', 'boxSizing is a default prop — the box model is a lifted value the gate compares per box'); assert.equal(DEFAULT_PROPS.length, 24);
   assert.equal(o.against, null); assert.equal(o.allMatches, false); assert.equal(o.json, false); assert.equal(o.out, null);
-  assert.equal(o.timeoutMs, 20000); assert.match(o.ua, /Chrome\//);
+  assert.equal(o.timeoutMs, null, 'no --timeout-ms: main resolves the shared navigation timeout'); assert.equal(DEFAULT_TIMEOUT_MS, 20000, 'the fallback stays the old default'); assert.match(o.ua, /Chrome\//);
   assert.deepEqual(parseArgs(['http://a/', '--selectors', 'h1']).widths, [1440]);
 });
 await check('parseArgs: --props replaces the default list; --against, --all-matches, --json, --out, --timeout-ms, --ua', () => {
@@ -53,6 +60,8 @@ await check('parseArgs: usage errors (code 2) — no url, no selectors, unknown 
   usage(['http://a/', '--selectors', '.x', '--width', 'wide'], /--width/);
   usage(['http://a/', '--selectors'], /--selectors needs a value/);
   usage(['http://a/', '--selectors', '.x', '--props', ','], /--props/);
+  usage(['http://a/', '--selectors', '.x', '--timeout-ms', '0'], /--timeout-ms must be a positive number/);
+  usage(['http://a/', '--selectors', '.x', '--timeout-ms', 'soon'], /--timeout-ms must be a positive number/);
 });
 await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
   for (const [flag, ...tail] of [['--width'], ['--against'], ['--out'], ['--timeout-ms'], ['--ua'], ['--consent'], ['--dismiss'], ['--locale'], ['--width', '--json'], ['--against', '--all-matches'], ['--dismiss', '--headed'], ['--locale', '--json']]) {
@@ -191,6 +200,111 @@ await check('formatTable: --against — A/B rect lines, the Δ line, MISSING wit
   assert.match(th, /\n {2}✗ http:\/\/b\/ failed to load — HTTP 404\n/);
   assert.match(th, /deltas not computed — a side failed to load$/);
 });
+// ---- pure: per-width deadline — orchestration, exit code, status line, a failed width in deltas + table ----
+const destroyed = (how = 'Execution context was destroyed, most likely because of a navigation') => new Error(`page.evaluate: ${how}\nCall log:\n  - waiting`);
+// Fake pages: outcomes[width] lists what each successive read at that width does — an Error rejects, 'hang' never
+// settles, anything else (or nothing listed) measures. Every read and reopen is logged in order.
+const fakePages = (outcomes = {}, { reopen } = {}) => {
+  const log = []; const n = {};
+  return {
+    log,
+    deps: {
+      read: (width) => {
+        log.push(`read ${width}`);
+        n[width] = (n[width] ?? -1) + 1;
+        const out = (outcomes[width] || [])[n[width]];
+        if (out === 'hang') return new Promise(() => {});
+        if (out instanceof Error) return Promise.reject(out);
+        return Promise.resolve({ width, attempt: n[width] });
+      },
+      reopen: async (width, bound) => { log.push(`reopen ${width}`); if (reopen) await reopen(width, bound); },
+      deadlineMs: 40, withDeadline, isContextDestroyed, label: (width) => `u @${width}`,
+    },
+  };
+};
+await check('readWidths: a read the page navigated under is re-read once on a fresh page opened at that width — measured, listed as retried; the next width stays on that page', async () => {
+  const f = fakePages({ 360: [destroyed()] });
+  const r = await readWidths([1440, 360, 768], f.deps);
+  assert.deepEqual(r.failed, []); assert.deepEqual(r.retried, [360]);
+  assert.deepEqual(r.byWidth, { 1440: { width: 1440, attempt: 0 }, 360: { width: 360, attempt: 1 }, 768: { width: 768, attempt: 0 } });
+  assert.deepEqual(f.log, ['read 1440', 'read 360', 'reopen 360', 'read 360', 'read 768']);
+});
+await check('readWidths: destroyed twice → recorded with the second error\'s first line, never measured; the next width starts on a fresh page', async () => {
+  const f = fakePages({ 360: [destroyed(), destroyed('Frame was detached')] });
+  const r = await readWidths([360, 1440], f.deps);
+  assert.deepEqual(r.failed, [{ width: 360, error: 'page.evaluate: Frame was detached' }]); assert.deepEqual(r.retried, []);
+  assert.deepEqual(Object.keys(r.byWidth), ['1440']);
+  assert.deepEqual(f.log, ['read 360', 'reopen 360', 'read 360', 'reopen 1440', 'read 1440']);
+});
+await check('readWidths: a read past the deadline is recorded at once and never retried; any other error likewise; each next width gets a fresh page', async () => {
+  const f = fakePages({ 360: ['hang'], 768: [new Error('page.setViewportSize: Target crashed\nstack')] });
+  const t0 = Date.now();
+  const r = await readWidths([1440, 360, 768, 1024], f.deps);
+  assert.ok(Date.now() - t0 < 2000, 'the hung read cost its deadline, not more');
+  assert.deepEqual(r.failed, [{ width: 360, error: 'u @360: deadline 40 ms exceeded' }, { width: 768, error: 'page.setViewportSize: Target crashed' }]);
+  assert.deepEqual(r.retried, []); assert.deepEqual(Object.keys(r.byWidth), ['1024', '1440']);
+  assert.deepEqual(f.log, ['read 1440', 'read 360', 'reopen 768', 'read 768', 'reopen 1024', 'read 1024']);
+});
+await check('readWidths: a fresh-page step that never settles is bounded by reopenDeadlineMs and recorded; a BotChallengeError from a fresh page is rethrown, never recorded', async () => {
+  const hung = fakePages({ 360: [destroyed()] }, { reopen: (width, bound) => bound(new Promise(() => {})) });
+  const r = await readWidths([360, 1440], { ...hung.deps, reopenDeadlineMs: 30 });
+  assert.deepEqual(r.failed, [{ width: 360, error: 'u @360 fresh page: deadline 30 ms exceeded' }, { width: 1440, error: 'u @1440 fresh page: deadline 30 ms exceeded' }]);
+  const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
+  const bot = fakePages({ 360: [destroyed()] }, { reopen: async () => { throw challenge; } });
+  await assert.rejects(readWidths([1440, 360], bot.deps), (e) => e === challenge);
+  const botAfterDeadline = fakePages({ 360: ['hang'] }, { reopen: async () => { throw challenge; } });
+  await assert.rejects(readWidths([360, 1440], botAfterDeadline.deps), (e) => e === challenge, 'the next width\'s fresh page meets the challenge');
+});
+await check('readWidths: a fresh page\'s navigation is never raced — a slow one (a headed challenge-solve window) is measured, and a BotChallengeError it throws past every deadline still propagates, never recorded as a deadline', async () => {
+  const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
+  const challenge = Object.assign(new Error('bot challenge at u: edge interstitial'), { name: 'BotChallengeError' });
+  // bound steps settle at once; the navigation between them takes 150 ms — past deadlineMs (40) and reopenDeadlineMs (30)
+  const slow = (outcome) => async (width, bound) => { await bound(Promise.resolve()); await sleep(150); if (outcome) throw outcome; await bound(Promise.resolve()); };
+  const solved = fakePages({ 360: [destroyed()] }, { reopen: slow() });
+  const r = await readWidths([1440, 360], { ...solved.deps, reopenDeadlineMs: 30 });
+  assert.deepEqual(r.failed, []); assert.deepEqual(r.retried, [360]); assert.deepEqual(r.byWidth[360], { width: 360, attempt: 1 });
+  for (const outcomes of [{ 360: [destroyed()] }, { 360: ['hang'] }]) {
+    const late = fakePages(outcomes, { reopen: slow(challenge) });
+    await assert.rejects(readWidths([360, 1440], { ...late.deps, reopenDeadlineMs: 30 }), (e) => e === challenge, JSON.stringify(Object.keys(outcomes)));
+  }
+});
+const done = (pages, failed = []) => ({ _provenance: { urls: Object.keys(pages), failed }, pages });
+await check('exitCodeFor: 0 complete or partial, 124 every attempted width read failed, 1 a page failed to load (before 124)', () => {
+  assert.equal(exitCodeFor(done({ a: { 1440: {}, 360: {} } })), 0);
+  assert.equal(exitCodeFor(done({ a: { 1440: {} } }, [{ url: 'a', width: 360, error: 'x' }])), 0, 'partial is still 0 — a measurement, not a gate');
+  assert.equal(exitCodeFor(done({ a: {} }, [{ url: 'a', width: 1440, error: 'x' }, { url: 'a', width: 360, error: 'y' }])), 124);
+  assert.equal(exitCodeFor(done({ a: {}, b: {} }, [{ url: 'a', width: 360, error: 'x' }, { url: 'b', width: 360, error: 'y' }])), 124);
+  assert.equal(exitCodeFor(done({ a: {} }, [{ url: 'b', error: 'HTTP 404' }, { url: 'a', width: 360, error: 'x' }])), 1);
+  assert.equal(exitCodeFor(done({ a: { 360: {} } }, [{ url: 'b', error: 'HTTP 404' }])), 1);
+});
+await check('statusLine: null without a failed width; PARTIAL k of n; NO VERDICT (exit 124) when every width read failed', () => {
+  assert.equal(statusLine(done({ a: { 1440: {}, 360: {} } })), null);
+  assert.equal(statusLine(done({ a: { 360: {} } }, [{ url: 'b', error: 'HTTP 404' }])), null, 'a load failure alone keeps the output unchanged');
+  assert.equal(statusLine(done({ a: { 1440: {} }, b: { 1440: {}, 360: {} } }, [{ url: 'a', width: 360, error: 'a @360: deadline 3000 ms exceeded' }])), 'measure: PARTIAL — 1 of 4 width read(s) failed: a @360 (a @360: deadline 3000 ms exceeded)');
+  assert.equal(statusLine(done({ a: {} }, [{ url: 'a', width: 1440, error: 'e1' }, { url: 'a', width: 360, error: 'e2' }])), 'measure: NO VERDICT — every width read failed (exit 124): a @1440 (e1); a @360 (e2)');
+});
+const failedAt = (url, width) => ({ url, width, error: `${url} @${width}: deadline 3000 ms exceeded` });
+await check('buildDeltas: a width either side has no read at is null — never a MISSING delta', () => {
+  const result = { widths: [1440, 360], selectors: ['.hero'], pages: { a: { 1440: { '.hero': A }, 360: { '.hero': A } }, b: { 1440: { '.hero': B } } } };
+  const d = buildDeltas(result, 'a', 'b');
+  assert.equal(d[360], null); assert.equal(d[1440]['.hero'].status, 'ok');
+  assert.deepEqual(buildDeltas({ ...result, pages: { a: {}, b: result.pages.b } }, 'a', 'b'), { 1440: null, 360: null });
+});
+await check('formatTable: a failed width — the status line first, ✗ <url> @<w> not measured in the header list and its width block; with --against that width prints each measured side under "Δ not computed"', () => {
+  const one = formatTable({ _provenance: prov(['http://a/'], { failed: [failedAt('http://a/', 360)], partial: true }), widths: [1440, 360], selectors: ['.hero'], pages: { 'http://a/': { 1440: { '.hero': A } } } });
+  const lines = one.split('\n');
+  assert.equal(lines[0], 'measure: PARTIAL — 1 of 2 width read(s) failed: http://a/ @360 (http://a/ @360: deadline 3000 ms exceeded)');
+  assert.equal(lines[1], 'measure  http://a/');
+  assert.equal(lines.filter((l) => l === '  ✗ http://a/ @360 not measured — http://a/ @360: deadline 3000 ms exceeded').length, 2, one);
+  assert.match(one, /\n@ 360px\n {2}✗ http:\/\/a\/ @360 not measured — [^\n]*$/);
+  const result = { _provenance: prov(['http://a/', 'http://b/'], { failed: [failedAt('http://b/', 360)], partial: true }), widths: [1440, 360], selectors: ['.hero'], root: { 'http://a/': { 1440: ROOT(1440, 900, 1440), 360: ROOT(360, 1200) }, 'http://b/': { 1440: ROOT(1440, 900, 1440) } }, pages: { 'http://a/': { 1440: { '.hero': A }, 360: { '.hero': A } }, 'http://b/': { 1440: { '.hero': B } } } };
+  result.deltas = buildDeltas(result, 'http://a/', 'http://b/');
+  const two = formatTable(result);
+  assert.match(two, /^measure: PARTIAL — 1 of 4 width read\(s\) failed: http:\/\/b\/ @360 /);
+  assert.match(two, /\n@ 360px\n {2}✗ http:\/\/b\/ @360 not measured — [^\n]*\n {2}root\n {4}A {2}scrollWidth {3}360[^\n]*\n {2}Δ not computed at 360 — a side was not measured\n {2}\.hero\n {4}A {2}x {5}0 {2}y {4}120[^\n]*\n {6}padding: 64px 0px/);
+  assert.match(two, /\n@ 1440px\n[\s\S]*\n {4}Δ {2}Δx \+12 Δy -4 Δw 0 Δh \+12/, 'the measured width keeps its Δ');
+  assert.doesNotMatch(two, /MISSING|deltas not computed — a side failed to load/);
+});
 await check('--help and -h: exit 0, the usage header on stdout, nothing written in an empty cwd', () => {
   for (const flag of ['--help', '-h']) {
     const cwd = mkdtempSync(join(tmpdir(), 'measure-help-'));
@@ -199,6 +313,7 @@ await check('--help and -h: exit 0, the usage header on stdout, nothing written 
     assert.equal(r.status, 0, `${flag} exit ${r.status}: ${r.stderr}`);
     assert.match(r.stdout, /Usage:/); assert.match(r.stdout, /--against <url2>/); assert.match(r.stdout, /Writes: nothing/);
     assert.match(r.stdout, /root: \{ \[url\]: \{ \[width\]: \{ viewport, clientWidth, scrollWidth,/); assert.match(r.stdout, /◄◄ OVERFLOW \+<n>px/); assert.match(r.stdout, /img\?: \{ naturalWidth,/); assert.match(r.stdout, /boxSizing, width,/);
+    assert.match(r.stdout, /--timeout-ms <ms> +per-page navigation timeout AND per-width deadline \(default:\s+STARDUST_NAV_TIMEOUT_MS/); assert.match(r.stdout, /124 every width\s+read failed/); assert.match(r.stdout, /failed: \[ \{ url, width\?, error \} \]/);
     assert.deepEqual(wrote, []);
   }
 });
@@ -221,10 +336,17 @@ if (playwrightOk) {
     </style></head><body><section class="hero"><h1>Welcome to the fixture page with a long heading that exceeds forty characters</h1></section>
     <div class="shift">S</div><ul>${Array.from({ length: 15 }, (_, i) => `<li class="item">item ${i + 1}</li>`).join('')}</ul>${extra}<p class="hidden">hidden</p>${photo}${tail}</body></html>`;
   const svg = (w, h) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="#888"/></svg>`;
+  const scripted = (script) => `<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0} .hero{height:300px} .tall{height:2400px}</style></head><body><section class="hero"><h1>Scripted fixture</h1></section><div class="tall"></div><script>${script}</script></body></html>`;
   const pages = {
     '/a.html': fixture('padding:64px 0;background:rgb(10, 20, 30)', 'left:40px;top:200px', '<p class="only-a">Only on A</p>', '<img class="photo" src="/r-1600.svg" srcset="/r-400.svg 400w, /r-1600.svg 1600w" sizes="100vw" alt="">'),
     '/b.html': fixture('padding:48px 0;background:rgb(200, 20, 30)', 'left:52px;top:236px', '', '<img class="photo" src="/r-1600.svg?v=2" alt="">', '<div class="wide"></div>'),
     '/r-400.svg': svg(400, 300), '/r-1600.svg': svg(1600, 1200),
+    // The per-width deadline fixtures: a page that navigates once on resize (a flag in localStorage — shared by a
+    // fresh page in the same context), one that navigates on every scroll (the settle scrolls), one whose resize
+    // handler busy-loops (the renderer never answers the read).
+    '/nav-once.html': scripted("addEventListener('resize', () => { if (localStorage.getItem('navigated')) return; localStorage.setItem('navigated', '1'); setTimeout(() => location.reload(), 150); });"),
+    '/nav-scroll.html': scripted("history.scrollRestoration = 'manual'; addEventListener('scroll', () => location.reload(), { once: true });"),
+    '/hang.html': scripted("addEventListener('resize', () => { for (;;) { /* wedge the renderer */ } });"),
   };
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0];
@@ -235,12 +357,15 @@ if (playwrightOk) {
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const base = `http://127.0.0.1:${server.address().port}`;
   const urlA = `${base}/a.html`; const urlB = `${base}/b.html`;
-  // Asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running.
-  const run = (args, cwd) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+  // Asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running. A run past
+  // `killAfterMs` is killed (status null) so a hang fails its check instead of stalling the suite.
+  const run = (args, cwd, env = process.env, killAfterMs = 0) => new Promise((resolve) => {
+    const t0 = Date.now();
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env, encoding: 'utf8' });
+    const timer = killAfterMs ? setTimeout(() => child.kill('SIGKILL'), killAfterMs) : null;
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
-    child.on('close', (status) => resolve({ status, stdout, stderr }));
+    child.on('close', (status) => { clearTimeout(timer); resolve({ status, stdout, stderr, ms: Date.now() - t0 }); });
   });
   const SELS = '.hero,.shift,.item,.only-a,.hidden,.nope';
   const work = mkdtempSync(join(tmpdir(), 'measure-e2e-'));
@@ -328,6 +453,69 @@ if (playwrightOk) {
     assert.equal(j._provenance.warnings.length, 1, JSON.stringify(j._provenance.warnings)); assert.match(j._provenance.warnings[0], /selector "!bad"/);
     assert.match(r.stderr, /measure: [^\n]*selector "!bad"/);
     assert.deepEqual(j.pages[urlA][1440]['!bad'], []); assert.equal(j.pages[urlA][1440]['.hero'].length, 1);
+  });
+  await check('e2e: one navigation timeout — no flag: the crawl log\'s p95 × 2 (clamped), else the env; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
+    const proj = mkdtempSync(join(tmpdir(), 'measure-nav-'));
+    mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
+    writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
+    const noEnv = { ...process.env }; delete noEnv.STARDUST_NAV_TIMEOUT_MS;
+    try {
+      const nav = async (args, env) => { const r = await run([urlA, '--selectors', '.hero', '--props', 'display', '--json', ...args], proj, env); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)._provenance.navTimeout; };
+      assert.deepEqual(await nav([], noEnv), { ms: 30000, source: 'crawl' });
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' });
+      assert.deepEqual(await nav(['--timeout-ms', '7000'], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 7000, source: 'flag' });
+    } finally { rmSync(proj, { recursive: true, force: true }); }
+  });
+  const navOnce = `${base}/nav-once.html`; const navScroll = `${base}/nav-scroll.html`; const hang = `${base}/hang.html`;
+  await check('e2e: a page that navigates once on resize — the destroyed read is re-read on a fresh page: both widths measured, a re-read warning, not partial, exit 0', async () => {
+    const r = await run([navOnce, '--selectors', '.hero', '--width', '1440,360', '--props', 'display', '--timeout-ms', '3000', '--json'], work, process.env, 60000);
+    assert.equal(r.status, 0, r.stderr);
+    const j = JSON.parse(r.stdout);
+    assert.equal(j._provenance.partial, false); assert.deepEqual(j._provenance.failed, []);
+    assert.deepEqual(j._provenance.warnings, [`${navOnce} @360: execution context destroyed (the page navigated) — re-read on a fresh page`]);
+    assert.match(r.stderr, /measure: [^\n]*nav-once\.html @360: execution context destroyed \(the page navigated\) — re-read on a fresh page/);
+    assert.equal(j.pages[navOnce][1440]['.hero'][0].rect.w, 1440); assert.equal(j.pages[navOnce][360]['.hero'][0].rect.w, 360);
+    assert.equal(j.root[navOnce][360].viewport, 360);
+    assert.doesNotMatch(r.stderr, /PARTIAL|NO VERDICT/);
+  });
+  await check('e2e: a page that navigates on every scroll — every width recorded as failed with its width, NO VERDICT first, exit 124', async () => {
+    const out = join(work, 'nav-scroll.json');
+    const r = await run([navScroll, '--selectors', '.hero', '--width', '1440,360', '--props', 'display', '--timeout-ms', '3000', '--out', out], work, process.env, 60000);
+    assert.equal(r.status, 124, r.stderr);
+    const first = r.stdout.split('\n')[0];
+    assert.match(first, /^measure: NO VERDICT — every width read failed \(exit 124\): http:\/\/127\.0\.0\.1:\d+\/nav-scroll\.html @1440 \([^)]*Execution context was destroyed[^)]*\); [^\n]*nav-scroll\.html @360 \(/, first);
+    const j = JSON.parse(readFileSync(out, 'utf8'));
+    assert.equal(j._provenance.partial, true); assert.deepEqual(j.pages[navScroll], {});
+    assert.deepEqual(j._provenance.failed.map((f) => [f.url, f.width]), [[navScroll, 1440], [navScroll, 360]]);
+    for (const f of j._provenance.failed) assert.match(f.error, /Execution context was destroyed/);
+    assert.match(r.stdout, /\n@ 360px\n {2}✗ [^\n]*nav-scroll\.html @360 not measured — /);
+    assert.match(r.stderr, /measure: [^\n]*nav-scroll\.html @1440 not measured — /);
+  });
+  await check('e2e: a page that hangs on resize — 1440 measured, 360 recorded on its deadline, the other side measured, Δ not computed at 360, PARTIAL first, exit 0, bounded runtime', async () => {
+    const out = join(work, 'hang.json');
+    const r = await run([hang, '--against', urlA, '--selectors', '.hero', '--width', '1440,360', '--props', 'display', '--timeout-ms', '3000', '--out', out], work, process.env, 60000);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.ms < 30000, `took ${r.ms} ms — a hung width costs its deadline, not 900 s`);
+    assert.equal(r.stdout.split('\n')[0], `measure: PARTIAL — 1 of 4 width read(s) failed: ${hang} @360 (${hang} @360: deadline 3000 ms exceeded)`);
+    const j = JSON.parse(readFileSync(out, 'utf8'));
+    assert.equal(j._provenance.partial, true);
+    assert.deepEqual(j._provenance.failed, [{ url: hang, width: 360, error: `${hang} @360: deadline 3000 ms exceeded` }]);
+    assert.deepEqual(Object.keys(j.pages[hang]), ['1440']); assert.equal(j.pages[hang][1440]['.hero'][0].rect.w, 1440);
+    assert.deepEqual(Object.keys(j.pages[urlA]), ['360', '1440']);
+    assert.equal(j.deltas[360], null); assert.equal(j.deltas[1440]['.hero'].status, 'ok'); assert.equal(j.rootDeltas[360], null);
+    assert.match(r.stdout, /\n@ 360px\n {2}✗ [^\n]*hang\.html @360 not measured — [^\n]*\n {2}root\n {4}B {2}[^\n]*\n {2}Δ not computed at 360 — a side was not measured\n {2}\.hero\n {4}B {2}x/);
+    assert.doesNotMatch(r.stdout, /MISSING/);
+  });
+  await check('e2e: --json with a page that hangs on resize — stdout stays pure JSON, the PARTIAL line goes to stderr; 768 after 360\'s deadline is measured on a fresh page; bounded runtime', async () => {
+    const r = await run([hang, '--selectors', '.hero', '--width', '1440,360,768', '--props', 'display', '--timeout-ms', '3000', '--json'], work, process.env, 60000);
+    assert.equal(r.status, 0, r.stderr);
+    assert.ok(r.ms < 30000, `took ${r.ms} ms`);
+    const j = JSON.parse(r.stdout);
+    assert.match(r.stderr, /^measure: PARTIAL — 1 of 3 width read\(s\) failed: http:\/\/127\.0\.0\.1:\d+\/hang\.html @360 \([^\n]*deadline 3000 ms exceeded\)$/m);
+    assert.doesNotMatch(r.stdout, /PARTIAL/);
+    assert.deepEqual(j._provenance.failed, [{ url: hang, width: 360, error: `${hang} @360: deadline 3000 ms exceeded` }]); assert.equal(j._provenance.partial, true);
+    assert.deepEqual(Object.keys(j.pages[hang]), ['768', '1440']);
+    assert.equal(j.pages[hang][768]['.hero'][0].rect.w, 768); assert.equal(j.root[hang][768].viewport, 768);
   });
   server.close();
   assert.equal(existsSync(join(work, 'deep', 'a.json')), true);

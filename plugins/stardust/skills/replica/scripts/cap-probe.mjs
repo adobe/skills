@@ -41,11 +41,15 @@
  *     --design <file>        compare: read extensions.breakpoints.probeWidth (and containerMaxWidth)
  *                            so every skill probes at the width extract derived
  *     --write-design <file>  capture: merge the model into <file> extensions.breakpoints —
- *                            containerMaxWidth ("1600px" | null), probeWidth, caps[], modules[]
+ *                            containerMaxWidth ("1600px" | null), probeWidth, caps[], modules[];
+ *                            a partial capture leaves <file> as it is (_provenance.designWrite)
  *     --slug <s>             compare: evidence to stardust/replica/gates/<slug>-<probeWidth>/
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
- *     --timeout-ms, --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
+ *     --timeout-ms <ms>      per-page navigation timeout AND per-width deadline (default:
+ *                            STARDUST_NAV_TIMEOUT_MS, else stardust/current/_crawl-log.json
+ *                            crawl.navMs.p95 × 2 clamped to 20–180 s, else 30000)
+ *     --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
  *
  * Output (capture): per URL the probe width and its derivation, one line per cap origin (kind, px,
  * via, selector, tier, share), a modules line (capped values × count, full-bleed count); then across
@@ -61,13 +65,32 @@
  * modules scored <s> of <n>[, <u> unpaired]`. INCONCLUSIVE: fewer than half the modules pair, so
  * no module row is scored (a note says to check --main / --build-main); a failing
  * wrapper/content-cap row still FAILs. A ✗ names the sizing rule to fix (deploy Step 3 scaffold);
- * never iterate pixels on it.
+ * never iterate pixels on it. The JSON's `_provenance` records `navTimeout: { ms, source }`,
+ * `failed` (`{ url, error }` a page failed to load, `{ url, width, error }` a read failed),
+ * `partial`, `warnings` (a re-probe that recovered) and `designWrite` (a skipped --write-design).
  *
- * Exit codes: 0 pass / INCONCLUSIVE / measured, 2 compare FAIL, 1 a page failed to load or
- * playwright missing, 3 bot challenge on the live side (escalate --headed), 125 usage. probePage
- * and the pure functions (classifyCaps, deriveProbeWidth, aggregateCaps, pairPlausible,
- * compareCaps, formatCapture, formatCompare, parseArgs) are exported — the contract test runs
- * them without a browser.
+ * Deadlines (why: a recorded hands-off run hung 8× at 900 s in the reads after the goto, on a site
+ * that navigates after a resize or a consent click): every read — resize + settle + evaluate at the
+ * base width, the probe width, 0.9 × the probe width, a re-derived re-read — races --timeout-ms.
+ * The reads are ONE model per page (a fresh page has not got the base pass's boxes), so a page that
+ * navigated under a read (execution context destroyed) is re-probed once, whole, on a fresh page in
+ * the same browser context (cookies and consent kept); a deadline is not retried (a second would
+ * double the wait). A failed read ends that page's probe: `{ url, width, error }`, `partial: true`.
+ * Capture goes on with the next URL and aggregates the pages it probed, but never merges a partial
+ * model into --write-design (the unprobed page could carry a differing cap or a wider probe width
+ * — qa-gate and compare --design read DESIGN.json as complete); compare gives NO VERDICT
+ * (no `compare` key; --slug still records the attempt) — half a measurement is never a PASS, a
+ * FAIL or an INCONCLUSIVE. Then the first stdout line (stderr with --json) is `cap-probe: PARTIAL —
+ * <k> of <n> page probe(s) failed: <url> @<w> (<error>); …`, or `cap-probe: NO VERDICT — …: …`
+ * when no page (in compare: not both sides) was probed.
+ *
+ * Exit codes: 0 pass / INCONCLUSIVE / measured (a capture may be partial — _provenance.partial),
+ * 2 compare FAIL, 1 a page failed to load or playwright missing, 3 bot challenge on the live side
+ * (escalate --headed), 124 no verdict — every page's probe failed a read (capture) or a side's did
+ * (compare), the run-capped "deadline, no verdict" convention —, 125 usage. probePage,
+ * probeWithRetry (the re-probe, browser-free) and the pure functions (classifyCaps,
+ * deriveProbeWidth, aggregateCaps, pairPlausible, compareCaps, formatCapture, formatCompare,
+ * statusLine, exitCodeFor, parseArgs) are exported — the contract test runs them without a browser.
  * Requires playwright importable from this file's location and the diff skill's live-session.mjs
  * (../../diff/scripts/ or ../diff/ — replica SKILL.md § Setup copies both dirs as siblings).
  */
@@ -90,8 +113,10 @@ export const PROBE_FACTOR = 1.25;
 export const CAP_TOLERANCE = 20;
 export const WRAPPER_SHARE = 0.9;
 export const PAIR_WIDTH_RATIO = 0.4;
+export const DEFAULT_TIMEOUT_MS = 30000; // the navigation timeout / per-read deadline when neither the env nor a crawl figure gives one
 const VIEWPORT_H = 900;
 const EDGE = 8; // px: a box this close to the viewport is full width
+const CLOSE_MS = 5000; // closing a page wedged by a busy loop can hang too — bounded, the final browser.close() kills the rest
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 125; } }
 
@@ -104,9 +129,10 @@ async function loadLiveSession() {
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
+const firstLine = (e) => String((e && e.message) || e).split('\n')[0];
 
 export function parseArgs(argv) {
-  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: 30000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  const o = { urls: [], against: null, width: BASE_WIDTH, probeWidth: null, tolerance: CAP_TOLERANCE, main: null, buildMain: 'main', design: null, writeDesign: null, slug: null, label: 'iter', json: false, out: null, timeoutMs: null, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   const int = (v, flag) => { const n = Number(v); if (!Number.isInteger(n) || n <= 0) throw new UsageError(`${flag} must be a positive integer, got ${v}`); return n; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -162,9 +188,11 @@ function basePassInPage({ rootSel }) {
   return { viewport: document.documentElement.clientWidth, candidates: els.length, rootMatched, rootIsBody: root === document.body };
 }
 
-// Pass 2 at the probe width: the same boxes, with everything the classifier needs.
+// Pass 2 at the probe width: the same boxes, with everything the classifier needs. null when the
+// base pass's state is gone — the page navigated since (a fresh document has none of its boxes).
 function probePassInPage() {
   const S = window.__capProbe;
+  if (!S) return null;
   const vw = document.documentElement.clientWidth;
   const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
   const cssPath = (el) => {
@@ -220,8 +248,9 @@ function probePassInPage() {
   });
   return { viewport: vw, root: { selector: cssPath(root), isBody: root === document.body, leaves: leaves.length, w2: Math.round(root.getBoundingClientRect().width) }, sections: sections.map(({ selector, w, h }) => ({ selector, w, h })), boxes };
 }
-// Pass 3 at 0.9 × the probe width: the same boxes' widths only, by index.
+// Pass 3 at 0.9 × the probe width: the same boxes' widths only, by index (null as in pass 2).
 function wideReadInPage() {
+  if (!window.__capProbe) return null;
   return window.__capProbe.els.map((el) => (el.isConnected ? Math.round(el.getBoundingClientRect().width) : null));
 }
 /* eslint-enable no-undef */
@@ -392,6 +421,36 @@ export function compareCaps(live, build, tol = CAP_TOLERANCE) {
   return { probeWidth: live.probeWidth, rows, fails, pass: verdict !== 'FAIL', verdict, modules: { total: n, scored: inconclusive ? 0 : paired, unpaired: n - paired }, note };
 }
 
+// ---- verdict, status line (pure) ------------------------------------------------------------------
+// A read failure carries the width it was reading; a page that failed to load has none.
+const widthFailures = (result) => (((result && result._provenance) || {}).failed || []).filter((f) => Number.isFinite(f.width));
+const isCapture = (result) => !!result && Object.prototype.hasOwnProperty.call(result, 'pages');
+
+// Exit code of a finished run (the bot challenge, 3, leaves by throw): 1 a page failed to load (as
+// before) > 124 no verdict — capture: every URL's probe failed a read; compare: either side's did,
+// half a measurement is never a PASS (0) or a FAIL (2) > 0 / 2.
+export function exitCodeFor(result) {
+  const prov = result._provenance || {};
+  if ((prov.failed || []).some((f) => !Number.isFinite(f.width))) return 1;
+  const byWidth = widthFailures(result);
+  if (!isCapture(result)) return byWidth.length || !result.compare ? 124 : (result.compare.pass ? 0 : 2);
+  return byWidth.length && byWidth.length >= (prov.urls || []).length ? 124 : 0;
+}
+
+// The first line of the text output when a read failed (stderr with --json); null otherwise — the
+// output of a run without a failed read is unchanged.
+export function statusLine(result) {
+  const fails = widthFailures(result);
+  if (!fails.length) return null;
+  const list = fails.map((f) => `${f.url} @${f.width} (${f.error})`).join('; ');
+  if (!isCapture(result)) return `cap-probe: NO VERDICT — a side's probe failed, compare needs both (exit 124): ${list}`;
+  if (exitCodeFor(result) === 124) return `cap-probe: NO VERDICT — every page's probe failed (exit 124): ${list}`;
+  const n = result._provenance.urls.length;
+  // Nothing probed, yet not 124: the other pages failed to load (exit 1) — no model at all, so never "partial".
+  if (!Object.keys(result.pages || {}).length) return `cap-probe: NO VERDICT — no page probed (${fails.length} of ${n} failed a read, the rest failed to load): ${list}`;
+  return `cap-probe: PARTIAL — ${fails.length} of ${n} page probe(s) failed: ${list}`;
+}
+
 // ---- formatting (pure) ----------------------------------------------------------------------------
 const pxs = (v) => (v === null || v === undefined ? 'fluid' : `${v}px`);
 export function formatModel(m) {
@@ -407,8 +466,10 @@ export function formatModel(m) {
   return lines.join('\n');
 }
 export function formatCapture(result) {
-  const out = [];
+  const status = statusLine(result);
+  const out = status ? [status] : [];
   for (const [url, m] of Object.entries(result.pages)) { out.push(`${url}  base ${m.baseWidth} → probe ${m.probeWidth}${m.probeNote ? ` (${m.probeNote})` : ''}`); out.push(formatModel(m)); }
+  for (const f of widthFailures(result)) out.push(`✗ ${f.url} @${f.width} not probed — ${f.error}`);
   const a = result.aggregate;
   if (a) {
     out.push(`contentMaxWidth: ${a.containerMaxWidth ?? 'null (fluid)'}  shellMaxWidth: ${pxs(a.shellMaxWidth)}  probeWidth: ${a.probeWidth}  consistent: ${a.consistent ? 'yes' : 'NO'}`);
@@ -417,11 +478,23 @@ export function formatCapture(result) {
   return out.join('\n');
 }
 export function formatCompare(result) {
-  const out = [`cap-probe  base ${result.live.baseWidth} → probe ${result.live.probeWidth} (${result.probeNote})`, `live   ${result.urls[0]}`, formatModel(result.live), `build  ${result.urls[1]}`, formatModel(result.build), 'rows'];
+  const status = statusLine(result);
+  const prov = result._provenance || {};
+  // A side without a model: its failed read, or why it was not probed at all.
+  const side = (m, url) => {
+    if (m) return formatModel(m);
+    const f = widthFailures(result).find((x) => x.url === url); if (f) return `  ✗ not probed @${f.width} — ${f.error}`;
+    const s = (prov.skipped || []).find((x) => x.url === url); return `  - not probed — ${s ? s.reason : 'no model'}`;
+  };
+  const baseWidth = result.live ? result.live.baseWidth : prov.baseWidth; const probeWidth = result.live ? result.live.probeWidth : prov.probeWidth;
+  const out = [...(status ? [status] : []), `cap-probe  base ${baseWidth} → probe ${probeWidth} (${result.probeNote})`, `live   ${result.urls[0]}`, side(result.live, result.urls[0]), `build  ${result.urls[1]}`, side(result.build, result.urls[1])];
+  const evidence = result.evidence ? ` (evidence ${result.evidence})` : '';
+  if (!result.compare) { out.push(`cap-probe: NO VERDICT at ${probeWidth} — no rows compared, a side was not probed (exit 124)${evidence}`); return out.join('\n'); }
+  out.push('rows');
   const c = result.compare;
   for (const r of c.rows) out.push(`  ${r.unpaired ? '○' : (r.ok ? (r.advisory ? '⚠' : '✓') : '✗')} ${r.label}: ${r.detail}`);
   const mods = c.modules ? `; modules scored ${c.modules.scored} of ${c.modules.total}${c.modules.unpaired ? `, ${c.modules.unpaired} unpaired` : ''}` : '';
-  out.push(`cap-probe: ${c.verdict || (c.pass ? 'PASS' : 'FAIL')} at ${result.live.probeWidth} — ${c.fails} of ${c.rows.length} rows failed${mods}${c.note ? ` — ${c.note}` : ''}${result.evidence ? ` (evidence ${result.evidence})` : ''}`);
+  out.push(`cap-probe: ${c.verdict || (c.pass ? 'PASS' : 'FAIL')} at ${result.live.probeWidth} — ${c.fails} of ${c.rows.length} rows failed${mods}${c.note ? ` — ${c.note}` : ''}${evidence}`);
   return out.join('\n');
 }
 
@@ -442,51 +515,106 @@ async function settle(page) {
 
 // The two-pass read on an OPEN page (qa-gate.mjs calls this on its own page). Returns the classified
 // model; `probeWidth` pins the width, otherwise it derives from what the first wide read found.
-export async function probePage(page, { rootSel = null, baseWidth = BASE_WIDTH, probeWidth = null } = {}) {
-  await page.setViewportSize({ width: baseWidth, height: VIEWPORT_H });
-  await settle(page);
-  const base = await page.evaluate(basePassInPage, { rootSel });
-  if (!base.rootMatched) console.error(`cap-probe: root selector "${rootSel}" matched nothing — probing under main (else body)`);
+// `deadlineMs` (the CLI passes --timeout-ms) races every read — resize + settle + evaluate — so a page
+// that wedges on a resize cannot hang the run; without it the reads are unbounded, as before. A failed
+// read leaves with `width` (the viewport it was reading) and `probeWidth` (the probe it was reading for).
+export async function probePage(page, { rootSel = null, baseWidth = BASE_WIDTH, probeWidth = null, deadlineMs = null } = {}) {
+  const race = deadlineMs ? (await loadLiveSession()).withDeadline : (p) => p;
   let width = probeWidth || MIN_PROBE_WIDTH; let note = probeWidth ? 'pinned' : `derived: max(${MIN_PROBE_WIDTH}, largest cap × ${PROBE_FACTOR})`;
-  const wideReads = async (w) => {
-    await page.setViewportSize({ width: w, height: VIEWPORT_H });
-    await settle(page);
-    const pass = await page.evaluate(probePassInPage);
-    await page.setViewportSize({ width: Math.round(w * 0.9), height: VIEWPORT_H });
-    await settle(page);
-    const w3 = await page.evaluate(wideReadInPage);
-    for (const b of pass.boxes) b.w3 = w3[b.i];
-    return classifyCaps(pass, { baseWidth, probeWidth: w });
+  const read = async (w, pass, evaluate) => {
+    try {
+      return await race((async () => {
+        await page.setViewportSize({ width: w, height: VIEWPORT_H });
+        await settle(page);
+        const r = await evaluate();
+        if (r === null) throw navigatedError();
+        return r;
+      })(), deadlineMs, pass);
+    } catch (e) { throw Object.assign(e instanceof Error ? e : new Error(String(e)), { width: w, probeWidth: width }); }
   };
-  let model = await wideReads(width);
+  const base = await read(baseWidth, 'base read', () => page.evaluate(basePassInPage, { rootSel }));
+  if (!base.rootMatched) console.error(`cap-probe: root selector "${rootSel}" matched nothing — probing under main (else body)`);
+  const wideReads = async (w, pass) => {
+    const p = await read(w, pass, () => page.evaluate(probePassInPage));
+    const w3 = await read(Math.round(w * 0.9), `0.9 × ${pass}`, () => page.evaluate(wideReadInPage));
+    for (const b of p.boxes) b.w3 = w3[b.i];
+    return classifyCaps(p, { baseWidth, probeWidth: w });
+  };
+  let model = await wideReads(width, 'probe read');
   const derived = deriveProbeWidth(model.maxCap);
   if (!probeWidth && derived > width) {
     width = derived; note = `derived: ${model.maxCap} × ${PROBE_FACTOR} → ${width}, re-read once`;
-    model = await wideReads(width);
+    model = await wideReads(width, 'probe re-read');
   }
   return { ...model, probeNote: note, candidates: base.candidates };
 }
 
-async function openAndProbe(browser, url, o, session, { rootSel, probeWidth }) {
+// The page navigated since the base pass: the boxes it remembered went with the old document. It IS a
+// destroyed execution context, seen after the fact (the navigation landed between two evaluates).
+function navigatedError() { return Object.assign(new Error('the page navigated after the base pass — the boxes it read are gone'), { name: 'PageNavigatedError' }); }
+
+// One page's probe and its one re-probe (R6). The reads at base, probe, 0.9 × probe and a re-derived
+// width are ONE model per page — a fresh page has none of the base pass's boxes — so a page that
+// navigated under a read (live-session's `isContextDestroyed`, or the base pass's boxes gone) is
+// probed again, whole, on a fresh page from `open()` (same browser context: cookies and consent
+// kept). Anything else — a deadline (a second would double the wait), a second failure — leaves at
+// once with the read's `width`. The first open failing is "a page failed to load" (no width); a
+// re-open failing is the retried read's failure; a BotChallengeError always leaves as itself.
+// `onRetry(e)` runs before the re-probe, `onRecovered(e)` only once it succeeded. Every page opened is closed.
+export async function probeWithRetry({ open, probe, close, isContextDestroyed, onRetry = () => {}, onRecovered = () => {} }) {
+  let page = await open();
+  try {
+    try { return await probe(page); } catch (e) {
+      if (!(e && (e.name === 'PageNavigatedError' || isContextDestroyed(e)))) throw e;
+      onRetry(e);
+      const old = page; page = null; await close(old);
+      try { page = await open(); } catch (re) {
+        if (re && re.name === 'BotChallengeError') throw re;
+        throw Object.assign(new Error(`re-open on a fresh page failed — ${firstLine(re)}`), { width: e.width, probeWidth: e.probeWidth });
+      }
+      const model = await probe(page);
+      onRecovered(e);
+      return model;
+    }
+  } finally {
+    if (page) await close(page);
+  }
+}
+
+async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, warnings = [] }) {
   const live = isLiveHttpUrl(url);
   const viewport = { width: o.width, height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const context = live
     ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
-  const page = await context.newPage();
+  const bounded = (p) => session.withDeadline(p, CLOSE_MS, 'close').catch(() => {});
+  // A page at the base width (the context's viewport), opened the one way this URL is opened.
+  const open = async () => {
+    const page = await context.newPage();
+    try {
+      if (live) {
+        await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
+        const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
+        for (const sel of [d.consent, ...d.extra, ...d.marketing].filter(Boolean)) console.error(`cap-probe: overlay dismissed via ${sel}`);
+      } else {
+        const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
+        if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
+      }
+      return page;
+    } catch (e) { await bounded(page.close()); throw e; }
+  };
   try {
-    if (live) {
-      await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), timeoutMs: o.timeoutMs, settleMs: 1500, solveWindow: o.headed });
-      const d = await session.dismissOverlays(page, { extra: [...(o.consent ? [o.consent] : []), ...o.dismiss], lateWindowMs: 6000 });
-      for (const sel of [d.consent, ...d.extra, ...d.marketing].filter(Boolean)) console.error(`cap-probe: overlay dismissed via ${sel}`);
-    } else {
-      const resp = await page.goto(url, { waitUntil: 'networkidle', timeout: o.timeoutMs });
-      if (resp && resp.status() >= 400) throw new Error(`HTTP ${resp.status()}`);
-    }
-    return await probePage(page, { rootSel, baseWidth: o.width, probeWidth });
+    return await probeWithRetry({
+      open,
+      probe: (page) => probePage(page, { rootSel, baseWidth: o.width, probeWidth, deadlineMs: o.timeoutMs }),
+      close: (page) => bounded(page.close()),
+      isContextDestroyed: session.isContextDestroyed,
+      onRetry: (e) => { console.error(`cap-probe: ${url} @${e.width}: execution context destroyed (the page navigated) — re-probe attempted on a fresh page`); },
+      onRecovered: (e) => { warnings.push(`${url} @${e.width}: execution context destroyed (the page navigated) — re-probed on a fresh page`); },
+    });
   } finally {
-    await context.close().catch(() => {});
+    await bounded(context.close());
   }
 }
 
@@ -517,50 +645,78 @@ async function main(argv) {
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
   const session = await loadLiveSession();
-  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
+  // An explicit --timeout-ms wins; else session.resolveNavTimeoutMs's chain (env → crawl p95 × 2 → 30000), with its source.
+  const nav = o.timeoutMs ? { ms: o.timeoutMs, source: 'flag' } : session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS });
+  o.timeoutMs = nav.ms;
+  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width, navTimeout: { ms: nav.ms, source: nav.source } };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let result; let code = 0;
+  const failed = []; const warnings = [];
+  // A read that failed ends that page's probe and is recorded; a bot challenge (exit 3) and, in
+  // compare, a page that failed to load (exit 1, as before) leave by throw.
+  const widthFailed = (e, url) => {
+    if (e.name === 'BotChallengeError') { e.code = 3; throw e; }
+    if (!Number.isFinite(e.width)) return false;
+    const error = firstLine(e); failed.push({ url, width: e.width, error }); console.error(`cap-probe: ${url} @${e.width} not probed — ${error}`);
+    return true;
+  };
   try {
     if (o.against) {
       const design = readDesignSizing(o.design);
       if (o.design && !design) console.error(`cap-probe: --design ${o.design} not found — deriving the probe width from the live side`);
       const pinned = o.probeWidth || (design && design.probeWidth) || null;
-      const live = await openAndProbe(browser, o.urls[0], o, session, { rootSel: o.main, probeWidth: pinned });
-      const build = await openAndProbe(browser, o.against, o, session, { rootSel: o.buildMain, probeWidth: live.probeWidth });
-      const compare = compareCaps(live, build, o.tolerance);
-      const probeNote = o.probeWidth ? 'pinned by --probe-width' : (design && design.probeWidth ? `from ${o.design}` : live.probeNote);
-      result = { _provenance: { ...provenance, urls: [o.urls[0], o.against], probeWidth: live.probeWidth, probeNote, tolerance: o.tolerance }, urls: [o.urls[0], o.against], probeNote, live, build, compare };
-      if (design && design.containerMaxWidth !== null && live.contentMaxWidth !== null && Math.abs(design.containerMaxWidth - live.contentMaxWidth) > o.tolerance) console.error(`cap-probe: DESIGN.json containerMaxWidth ${design.containerMaxWidth}px differs from the live content cap ${live.contentMaxWidth}px — re-run capture with --write-design`);
+      const urls = [o.urls[0], o.against]; const skipped = [];
+      let live = null; let build = null; let attempted = pinned || MIN_PROBE_WIDTH;
+      try { live = await openAndProbe(browser, urls[0], o, session, { rootSel: o.main, probeWidth: pinned, warnings }); } catch (e) { if (!widthFailed(e, urls[0])) throw e; attempted = e.probeWidth || attempted; }
+      // The build is probed at the live side's probe width; without a live model there is none and no verdict either.
+      if (live) { try { build = await openAndProbe(browser, urls[1], o, session, { rootSel: o.buildMain, probeWidth: live.probeWidth, warnings }); } catch (e) { if (!widthFailed(e, urls[1])) throw e; } }
+      else skipped.push({ url: urls[1], reason: 'the live side was not probed — no width to probe the build at, no verdict either way' });
+      const probeWidth = live ? live.probeWidth : attempted;
+      const probeNote = o.probeWidth ? 'pinned by --probe-width' : (design && design.probeWidth ? `from ${o.design}` : (live ? live.probeNote : 'not derived — the live side was not probed'));
+      const partial = failed.length > 0;
+      result = { _provenance: { ...provenance, urls, probeWidth, probeNote, tolerance: o.tolerance, failed, partial, ...(skipped.length ? { skipped } : {}), ...(warnings.length ? { warnings } : {}) }, urls, probeNote, live, build };
+      // Any failed read on either side = no verdict: no `compare` key, never a PASS or a FAIL from half a measurement.
+      if (!partial) result.compare = compareCaps(live, build, o.tolerance);
+      if (design && design.containerMaxWidth !== null && live && live.contentMaxWidth !== null && Math.abs(design.containerMaxWidth - live.contentMaxWidth) > o.tolerance) console.error(`cap-probe: DESIGN.json containerMaxWidth ${design.containerMaxWidth}px differs from the live content cap ${live.contentMaxWidth}px — re-run capture with --write-design`);
       if (o.slug) {
-        const dir = `stardust/replica/gates/${o.slug}-${live.probeWidth}`;
+        // A no-verdict attempt is recorded too (failed + partial, no `compare`) — the gate dir shows it was tried.
+        const dir = `stardust/replica/gates/${o.slug}-${probeWidth}`;
         mkdirSync(dir, { recursive: true });
         result.evidence = `${dir}/cap-${o.label}.json`;
         writeFileSync(result.evidence, JSON.stringify(result, null, 2));
         writeFileSync(`${dir}/cap-${o.label}.txt`, `${formatCompare(result)}\n`);
       }
-      code = compare.pass ? 0 : 2;
     } else {
-      const pages = {}; const failed = [];
+      const pages = {};
       for (const url of o.urls) {
-        try { pages[url] = await openAndProbe(browser, url, o, session, { rootSel: o.main, probeWidth: o.probeWidth }); } catch (e) {
-          if (e.name === 'BotChallengeError') { e.code = 3; throw e; }
-          const msg = String(e.message || e).split('\n')[0]; failed.push({ url, error: msg }); console.error(`cap-probe: ${url} failed to load — ${msg}`);
+        try { pages[url] = await openAndProbe(browser, url, o, session, { rootSel: o.main, probeWidth: o.probeWidth, warnings }); } catch (e) {
+          if (widthFailed(e, url)) continue;
+          const msg = firstLine(e); failed.push({ url, error: msg }); console.error(`cap-probe: ${url} failed to load — ${msg}`);
         }
       }
+      const partial = failed.some((f) => Number.isFinite(f.width));
       const aggregate = Object.keys(pages).length ? aggregateCaps(pages, o.tolerance) : null;
-      result = { _provenance: { ...provenance, urls: o.urls, failed, pinned: o.probeWidth }, pages, aggregate };
-      if (o.writeDesign && aggregate) {
+      result = { _provenance: { ...provenance, urls: o.urls, failed, partial, pinned: o.probeWidth, ...(warnings.length ? { warnings } : {}) }, pages, aggregate };
+      if (o.writeDesign && partial) {
+        // A partial model never reaches DESIGN.json: qa-gate and compare --design read it as complete, and the unprobed
+        // page is the one that could have shown a differing cap (a register item) or needed a wider probe width.
+        const skipped = `partial capture — ${Object.keys(pages).length} of ${o.urls.length} pages probed; re-run the capture with every URL once the failed page reads`;
+        result._provenance.designWrite = { file: o.writeDesign, skipped };
+        console.error(`cap-probe: ${o.writeDesign} NOT written — ${skipped}`);
+      } else if (o.writeDesign && aggregate) {
         const text = existsSync(o.writeDesign) ? readFileSync(o.writeDesign, 'utf8') : '{}\n';
         mkdirSync(dirname(resolvePath(o.writeDesign)), { recursive: true });
         writeFileSync(o.writeDesign, mergeDesign(text, aggregate, { ...provenance, urls: Object.keys(pages) }));
         console.error(`cap-probe: ${o.writeDesign} extensions.breakpoints ← containerMaxWidth ${aggregate.containerMaxWidth}, probeWidth ${aggregate.probeWidth}, ${aggregate.caps.length} caps, ${aggregate.modules.length} modules`);
       }
-      code = failed.length ? 1 : 0;
     }
+    code = exitCodeFor(result);
   } finally {
     await browser.close().catch(() => {});
   }
   if (o.out) { mkdirSync(dirname(resolvePath(o.out)), { recursive: true }); writeFileSync(o.out, JSON.stringify(result, null, 2)); }
+  const status = statusLine(result);
+  if (o.json && status) console.error(status); // stdout stays pure JSON; the text output carries it as its first line
   console.log(o.json ? JSON.stringify(result, null, 2) : (o.against ? formatCompare(result) : formatCapture(result)));
   return code;
 }

@@ -664,13 +664,13 @@ rather than erroring.
     cannot measure them.** On pages where `html`/`body` are
     `overflow:hidden` and an inner container scrolls, the document reports
     the full content height but `window.scrollTo` is a no-op — every chunk
-    would capture the top viewport and the rows below would stitch as
-    zero-filled black: a silently fictitious pixel diff. stitch-shot now
-    detects the stall and exits 1 with the signature `stitch-shot error:
-    scroll stall at chunk target …px: window scroll is a no-op
-    (window.scrollY stuck at …px) while the document reports …px`.
-    Capturing the inner scroller is future work; for now record the page as
-    gate-blocked for the pixel probe and rely on content-diff/visual-diff.
+    would capture the top viewport, the rows below stitch as black: a
+    fictitious pixel diff. stitch-shot exits 1 (`stitch-shot error: scroll
+    stall at chunk target …px`); record the page as gate-blocked for the
+    pixel probe and rely on content-diff/visual-diff (capturing the inner
+    scroller is future work). A shortfall the document's own shrink explains
+    (a header that shrinks on scroll) is no stall: `headerMorph` in
+    `<stem>.capture.json` records it and the stitch continues.
 14. **Captures assert fonts loaded — a silent font fork is a false
     measurement.** A webfont that fails to fetch renders the ENTIRE live
     capture in fallback type: wrong wraps, wrong line counts, wrong section

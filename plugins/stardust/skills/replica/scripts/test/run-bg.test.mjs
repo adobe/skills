@@ -8,15 +8,17 @@
 // STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
 // (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT); the job's deadline exported as
 // RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout) — × 1
-// with the lock off, × 4 at the default one browser per slot.
-// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 25 s)
+// with the lock off, × 4 at the default one browser per slot; whose jobs a bare wait/status covers — the caller's own
+// (ownerPid: RUN_BG_OWNER, else callerOwner's ancestry walk), --all every owner's, a state without ownerPid only by name
+// or --all — the report's first line naming the selection, and --timeout refused on wait/status (exit 125).
+// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 35 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, gateAllTimeout, isBrowserJob, lockWaitS } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -26,12 +28,15 @@ const lockRoot = mkdtempSync(join(tmpdir(), 'run-bg-lock-test-'));
 const LOCKS = join(lockRoot, 'locks');
 const env = { ...process.env, RUN_BG_POLL_MS: '100', STARDUST_BROWSER_LOCK_DIR: LOCKS, STARDUST_BROWSER_POLL_MS: '100' };
 delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT;
+// No RUN_BG_OWNER: every job started here is owned by this process — run-bg's parent, the nearest non-shell ancestor.
+delete env.RUN_BG_OWNER;
 const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const bg = (sub, ...args) => run({}, sub, ...args);
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
-// A state file as the wrapper would leave it, with the identity fields the caller sets.
-const fakeState = (name, fields) => { const q = new Date(Date.now() - 60000).toISOString(); writeFileSync(join(dir, `${name}.json`), JSON.stringify({ name, cmd: 'true', args: [], cwd: dir, timeoutSec: 0, slots: 1, queuedAt: q, wrapperPid: null, wrapperStart: null, launchedAt: q, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false, ...fields })); writeFileSync(join(dir, `${name}.log`), ''); };
+// A state file as the wrapper would leave it (owned by this process, like the jobs bg() starts), with the identity fields the caller sets.
+const fakeState = (name, fields) => { const q = new Date(Date.now() - 60000).toISOString(); writeFileSync(join(dir, `${name}.json`), JSON.stringify({ name, ownerPid: process.pid, cmd: 'true', args: [], cwd: dir, timeoutSec: 0, slots: 1, queuedAt: q, wrapperPid: null, wrapperStart: null, launchedAt: q, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false, ...fields })); writeFileSync(join(dir, `${name}.log`), ''); };
 const state = (name) => JSON.parse(readFileSync(join(dir, `${name}.json`), 'utf8'));
+const firstLine = (out) => out.split('\n')[0];
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
 
 let failed = 0;
@@ -92,6 +97,7 @@ await check('VERDICT_RE covers the gate.sh --full verdict lines and motion-compa
 await check('wait to completion reports verdict lines only, deadline as no-verdict', () => {
   const r = bg('wait', '--max', '20', 'a', 'b', 'c', 'w');
   assert.equal(r.code, 0, r.out);
+  assert.equal(firstLine(r.out), 'run-bg: wait — named: 4 job(s)', 'the first line names the selection and its count');
   assert.match(r.out, /^w {2}done exit=0/m);
   assert.match(r.out, /^a {2}done exit=2 in \ds$/m); assert.match(r.out, /^ {2}differing pixels: 12 \/ 100 = 12\.00%.*FAIL$/m); assert.match(r.out, /hot band/);
   assert.match(r.out, /^b {2}done exit=0/m); assert.match(r.out, /→ PASS$/m);
@@ -115,6 +121,13 @@ await check('log is bounded: --tail and --grep', () => {
 await check('wait names an unknown job instead of hanging on it', () => {
   const r = bg('wait', '--max', '1', 'ghost');
   assert.equal(r.code, 0); assert.match(r.out, /^ghost {2}no such job/m);
+});
+await check('--timeout is a start flag: on wait or status it is a usage error naming --max (exit 125, no report) — never silently ignored', () => {
+  for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
+    const r = bg(...args);
+    assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 100, at most 110); status reports at once', args.join(' '));
+  }
 });
 await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
   assert.equal(MAX_CEILING_SEC, 110, 'the agent\'s shell tool\'s default timeout is about two minutes and applies only to a call that declares none; 110 s returns inside it even when none is declared');
@@ -168,20 +181,23 @@ await check('a stored pid that now names another process (recycled) is lost, not
   assert.match(bg('status', 'spawning').out, /^spawning {2}queued/m, 'a pid-less state younger than the spawn grace is still spawning');
   rmSync(join(dir, 'spawning.json')); rmSync(join(dir, 'spawning.log'));
 });
-await check('with no names and nothing going, wait/status report the latest batch — --all shows every job on disk', () => {
-  const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // an earlier session's finished job
-  writeFileSync(join(dir, 'old.json'), JSON.stringify({ name: 'old', cmd: 'true', args: [], cwd: dir, timeoutSec: 0, slots: 1, queuedAt: old, wrapperPid: null, launchedAt: old, endedAt: old, exit: 0, timedOut: false }));
+await check('with no names and nothing going, wait/status report the caller\'s latest batch — the earlier job folds into the first line; --all shows every job on disk', () => {
+  const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // an earlier session's finished job, this caller's
+  writeFileSync(join(dir, 'old.json'), JSON.stringify({ name: 'old', ownerPid: process.pid, cmd: 'true', args: [], cwd: dir, timeoutSec: 0, slots: 1, queuedAt: old, wrapperPid: null, launchedAt: old, endedAt: old, exit: 0, timedOut: false }));
   writeFileSync(join(dir, 'old.log'), 'differing pixels: 0 / 1 = 0.00%  (threshold 10%) → PASS\n');
-  const s = bg('status'); assert.equal(s.code, 0); assert.doesNotMatch(s.out, /^old {2}/m, s.out); assert.match(s.out, /^a {2}done exit=2/m); assert.match(s.out, /run-bg: 1 earlier job\(s\) not shown — `status --all`$/m);
-  const w = bg('wait'); assert.equal(w.code, 0); assert.doesNotMatch(w.out, /^old {2}/m, w.out); assert.match(w.out, /1 earlier job\(s\) not shown/);
-  const all = bg('status', '--all'); assert.match(all.out, /^old {2}done exit=0/m, all.out); assert.doesNotMatch(all.out, /not shown/);
-  const named = bg('status', 'old'); assert.match(named.out, /^old {2}done exit=0/m); assert.doesNotMatch(named.out, /not shown/);
+  const jobs = readdirSync(dir).filter((f) => f.endsWith('.json')).length;
+  const s = bg('status'); assert.equal(s.code, 0); assert.doesNotMatch(s.out, /^old {2}/m, s.out); assert.match(s.out, /^a {2}done exit=2/m);
+  assert.equal(firstLine(s.out), `run-bg: status — yours (owner ${process.pid}), latest batch: ${jobs - 1} job(s); 1 other job(s) not shown — --all`, s.out);
+  assert.doesNotMatch(s.out, /earlier job\(s\) not shown/, 'no trailing line: it folded into the first');
+  const w = bg('wait'); assert.equal(w.code, 0); assert.doesNotMatch(w.out, /^old {2}/m, w.out); assert.equal(firstLine(w.out), `run-bg: wait — yours (owner ${process.pid}), latest batch: ${jobs - 1} job(s); 1 other job(s) not shown — --all`);
+  const all = bg('status', '--all'); assert.match(all.out, /^old {2}done exit=0/m, all.out); assert.doesNotMatch(all.out, /not shown/); assert.equal(firstLine(all.out), `run-bg: status — all owners, on disk: ${jobs} job(s)`);
+  const named = bg('status', 'old'); assert.match(named.out, /^old {2}done exit=0/m); assert.doesNotMatch(named.out, /not shown/); assert.equal(firstLine(named.out), 'run-bg: status — named: 1 job(s)');
 });
 await check('clean removes ended and lost jobs; wait on an empty dir says so', () => {
   const r = bg('clean');
   assert.equal(r.code, 0); assert.match(r.out, /removed a/); assert.match(r.out, /removed w/); assert.match(r.out, /removed z/); assert.match(r.out, /removed lost/); assert.match(r.out, /removed stale2/);
   assert.equal(readdirSync(dir).length, 0, readdirSync(dir).join(','));
-  const w = bg('wait'); assert.equal(w.code, 0); assert.match(w.out, /no jobs in/);
+  const w = bg('wait'); assert.equal(w.code, 0); assert.match(w.out, /no jobs in/); assert.equal(firstLine(w.out), `run-bg: wait — yours (owner ${process.pid}): 0 job(s)`);
 });
 await check('clean --all stops a running job — wrapper and instrument — and only then removes its files', async () => {
   assert.equal(bg('start', '--name', 'busy', '--timeout', '0', '--', process.execPath, '-e', 'setInterval(()=>{},1000)').code, 0);
@@ -440,6 +456,70 @@ await check('start without --timeout on a gate-all.mjs job: deadline = the estim
     assert.equal(stateIn(d, name).timeoutSec, timeoutSec, name); assert.equal(stateIn(d, name).exit, 0, name);
     assert.match(logIn(d, name), new RegExp(`^deadline=${seen}$`, 'm'), `${name}: ${logIn(d, name)}`);
   }
+});
+
+// ---- whose jobs a bare wait/status covers: the caller's own (ownerPid) ------------------------------------------
+await check('callerOwner: RUN_BG_OWNER as given, else the nearest ancestor that is not a shell or wrapper — the agent behind the shell, whether or not the shell exec\'d node; the parent pid when no process table answers', () => {
+  const table = new Map([
+    [100, { ppid: 1, command: 'node /opt/agent/cli.js --session x' }], // the agent
+    [200, { ppid: 100, command: '/bin/bash -c node run-bg.mjs wait' }], // the tool call's shell
+    [210, { ppid: 100, command: '-zsh' }], // a login shell
+    [300, { ppid: 210, command: 'timeout 120 node run-bg.mjs wait' }],
+    [310, { ppid: 200, command: '/usr/bin/env node run-bg.mjs wait' }],
+    [500, { ppid: 100, command: 'python3 runner.py' }], // a non-shell between the agent and the shell: the nearest wins
+    [510, { ppid: 500, command: 'sh -c node run-bg.mjs wait' }],
+  ]);
+  const info = (pid) => table.get(pid) ?? null;
+  assert.equal(callerOwner({}, { ppid: 200, info }), 100, 'shell → agent');
+  assert.equal(callerOwner({}, { ppid: 100, info }), 100, 'the shell exec\'d node: run-bg\'s parent is the agent');
+  assert.equal(callerOwner({}, { ppid: 300, info }), 100, 'timeout → login shell (-zsh) → agent');
+  assert.equal(callerOwner({}, { ppid: 310, info }), 100, 'env → shell → agent');
+  assert.equal(callerOwner({}, { ppid: 510, info }), 500, 'the nearest non-shell ancestor, not the root');
+  assert.equal(callerOwner({}, { ppid: 200, info: () => null }), 200, 'no ps (and no /proc) → the parent pid');
+  assert.equal(callerOwner({ RUN_BG_OWNER: 'agent-a' }, { ppid: 200, info }), 'agent-a');
+  assert.equal(callerOwner({ RUN_BG_OWNER: '4242' }, { ppid: 200, info }), '4242', 'stored as given — a string');
+  assert.equal(callerOwner({ RUN_BG_OWNER: '' }, { ppid: 200, info }), 100, 'empty = unset');
+});
+await check('start records ownerPid: RUN_BG_OWNER as given, else this test process — run-bg\'s caller, directly and through sh -c alike', () => {
+  const d = join(lockRoot, 'owner-id', 'bg');
+  assert.equal(bgIn(d, {}, 'start', '--name', 'direct', '--', 'true').code, 0);
+  const sh = spawnSync('/bin/sh', ['-c', `"${process.execPath}" "${SCRIPT}" start --dir "${d}" --name viash -- true; :`], { encoding: 'utf8', env }); // `; :` keeps the shell from exec'ing node
+  assert.equal(sh.status, 0, sh.stderr);
+  assert.equal(bgIn(d, { RUN_BG_OWNER: 'agent-a' }, 'start', '--name', 'given', '--', 'true').code, 0);
+  assert.equal(stateIn(d, 'direct').ownerPid, process.pid); assert.equal(stateIn(d, 'viash').ownerPid, process.pid, 'the shell is skipped'); assert.equal(stateIn(d, 'given').ownerPid, 'agent-a');
+  assert.equal(bgIn(d, {}, 'wait', '--all', '--max', '20').code, 0);
+});
+await check('two owners in one dir: a bare wait/status covers the caller\'s own jobs only — it returns without blocking on the other\'s; --all selects both; a state without ownerPid only by name or --all; the first line names the selection and the count', () => {
+  const d = join(lockRoot, 'owners', 'bg'); mkdirSync(d, { recursive: true });
+  const A = { RUN_BG_OWNER: 'agent-a' }; const B = { RUN_BG_OWNER: 'agent-b' }; const C = { RUN_BG_OWNER: 'agent-c' };
+  const ended = (name, fields, ago) => { const t = new Date(Date.now() - ago).toISOString(); writeFileSync(join(d, `${name}.json`), JSON.stringify({ name, cmd: 'true', args: [], cwd: d, timeoutSec: 0, slots: 1, queuedAt: t, wrapperPid: null, launchedAt: t, endedAt: t, exit: 0, timedOut: false, ...fields })); writeFileSync(join(d, `${name}.log`), 'differing pixels: 0 / 1 = 0.00%  (threshold 10%) → PASS\n'); };
+  ended('legacy', {}, 120000); // an older run's state: no ownerPid — nobody's
+  ended('a0', { ownerPid: 'agent-a' }, 3 * 3600 * 1000); // agent-a's earlier session: outside its latest batch
+  // agent-a's jobs outlast the starts and the wait's own startup on a loaded host; agent-b's outlasts agent-a's wait
+  for (const n of ['a1', 'a2']) assert.equal(bgIn(d, A, 'start', '--name', n, '--', process.execPath, '-e', 'setTimeout(()=>{},2500)').code, 0);
+  assert.equal(bgIn(d, B, 'start', '--name', 'b1', '--', process.execPath, '-e', 'setTimeout(()=>{},7000)').code, 0);
+  const wa = bgIn(d, A, 'wait', '--max', '20'); const back = Date.now();
+  assert.equal(wa.code, 0, wa.out);
+  assert.equal(firstLine(wa.out), 'run-bg: wait — yours (owner agent-a), unfinished: 2 job(s); 1 other job(s) not shown — --all', wa.out);
+  assert.match(wa.out, /^a1 {2}done exit=0/m); assert.match(wa.out, /^a2 {2}done exit=0/m); assert.doesNotMatch(wa.out, /^(?:b1|legacy|a0) {2}/m); assert.match(wa.out, /run-bg: all 2 ended/);
+  const sa = bgIn(d, A, 'status');
+  assert.equal(firstLine(sa.out), 'run-bg: status — yours (owner agent-a), latest batch: 2 job(s); 1 other job(s) not shown — --all', sa.out);
+  const sb = bgIn(d, B, 'status');
+  assert.equal(firstLine(sb.out), 'run-bg: status — yours (owner agent-b), unfinished: 1 job(s)', sb.out); assert.match(sb.out, /^b1 {2}(?:queued|running)/m); assert.doesNotMatch(sb.out, /^(?:a\d|legacy) {2}/m);
+  const sAll = bgIn(d, A, 'status', '--all');
+  assert.equal(firstLine(sAll.out), 'run-bg: status — all owners, unfinished: 1 job(s)', sAll.out); assert.match(sAll.out, /^b1 {2}/m);
+  const wb = bgIn(d, B, 'wait', '--max', '20');
+  assert.equal(wb.code, 0, wb.out); assert.equal(firstLine(wb.out), 'run-bg: wait — yours (owner agent-b), unfinished: 1 job(s)', wb.out); assert.match(wb.out, /^b1 {2}done exit=0/m);
+  assert.ok(Date.parse(stateIn(d, 'b1').endedAt) > back, 'agent-a\'s wait returned while agent-b\'s job still ran');
+  const all = bgIn(d, C, 'status', '--all');
+  assert.equal(firstLine(all.out), 'run-bg: status — all owners, on disk: 5 job(s)', all.out);
+  for (const n of ['a0', 'a1', 'a2', 'b1', 'legacy']) assert.match(all.out, new RegExp(`^${n} {2}done exit=0`, 'm'), n);
+  assert.equal(firstLine(bgIn(d, A, 'status').out), 'run-bg: status — yours (owner agent-a), latest batch: 2 job(s); 3 other job(s) not shown — --all');
+  const wc = bgIn(d, C, 'wait', '--max', '20');
+  assert.equal(wc.code, 0, wc.out); assert.equal(firstLine(wc.out), 'run-bg: wait — yours (owner agent-c): 0 job(s); 5 other job(s) not shown — --all', wc.out);
+  assert.match(wc.out, /^run-bg: no jobs of yours in /m); assert.doesNotMatch(wc.out, /^legacy {2}/m);
+  const named = bgIn(d, C, 'status', 'legacy');
+  assert.equal(firstLine(named.out), 'run-bg: status — named: 1 job(s)'); assert.match(named.out, /^legacy {2}done exit=0/m);
 });
 
 rmSync(dir, { recursive: true, force: true });

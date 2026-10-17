@@ -3,7 +3,8 @@
 // aggregate (colour parsing + clustering, roles and sources, type families/sizes/levels, motifs, hover
 // deltas, the logo chain, icon font, order independence), argument parsing and the page list — no
 // browser. Part (b): end-to-end against a fixture site served from this process (two pages, known
-// colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo), and a project copy whose
+// colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page for the shared
+// navigation timeout — env STARDUST_NAV_TIMEOUT_MS when --timeout-ms is not given), and a project copy whose
 // live-session.mjs predates the shared consent table refused — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -13,7 +14,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA } from '../style-census.mjs';
+import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -114,7 +115,7 @@ await check('aggregate is deterministic: reversed page/width key order gives a d
   assert.deepEqual(aggregate(reversed), agg);
 });
 await check('parseArgs: defaults, repeatable + comma widths deduped, usage errors', () => {
-  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, 20000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
+  const d = parseArgs([]); assert.equal(d.pages, DEFAULTS.pages); assert.equal(d.out, DEFAULTS.out); assert.deepEqual(d.widths, [1440]); assert.equal(d.concurrency, 1, 'one live page at a time — the census is a full live pass'); assert.equal(d.maxPages, Infinity); assert.equal(d.timeoutMs, null, 'not given: main resolves the shared navigation timeout'); assert.equal(DEFAULT_TIMEOUT_MS, 20000, 'its fallback'); assert.equal(parseArgs(['--timeout-ms', '5000']).timeoutMs, 5000); assert.equal(d.ua, DEFAULT_UA); assert.match(DEFAULT_UA, /^Mozilla\/5\.0 \(Macintosh.*Chrome\/\d+/);
   assert.deepEqual(d.dismiss, []); assert.equal(d.headed, false); assert.equal(d.locale, null);
   assert.deepEqual(parseArgs(['--width', '360,1440', '--width', '1440']).widths, [360, 1440]);
   assert.deepEqual(parseArgs(['--urls', 'https://a.test/, https://b.test/x']).urls, ['https://a.test/', 'https://b.test/x']);
@@ -143,6 +144,7 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
+  assert.match(h.out, /--timeout-ms <ms> .*STARDUST_NAV_TIMEOUT_MS/, 'the env is named on the --timeout-ms line'); assert.match(h.out, /crawl\.navMs\.p95 from\s+stardust\/current\/_crawl-log\.json/, 'the crawl figure is named');
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
 });
@@ -168,12 +170,14 @@ if (playwrightOk) {
   const server = createServer((req, res) => {
     if (req.url === '/') return res.setHeader('content-type', 'text/html').end(html('Home headline', consent));
     if (req.url === '/about') return res.setHeader('content-type', 'text/html').end(html('About headline', promo));
+    // answers after 2.5 s — past a 1000 ms navigation timeout, inside an explicit --timeout-ms 10000
+    if (req.url === '/slow') return setTimeout(() => { if (!res.destroyed) res.setHeader('content-type', 'text/html').end(html('Slow headline', '')); }, 2500);
     res.statusCode = 404; return res.end('nope');
   });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${server.address().port}`;
-  const runAsync = (args) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: root });
+  const runAsync = (args, env = process.env) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: root, env });
     let out = ''; let err = '';
     child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { err += d; });
     const timer = setTimeout(() => child.kill('SIGKILL'), 180000);
@@ -232,6 +236,15 @@ if (playwrightOk) {
     const out = join(box, 'out.json');
     const r = spawnSync(process.execPath, [join(box, 'style-census.mjs'), '--urls', `${origin}/`, '--out', out], { encoding: 'utf8', cwd: box, timeout: 60000 });
     assert.equal(r.status, 2, r.stderr); assert.match(r.stderr, /live-session\.mjs predates the shared consent table — re-copy it/); assert.equal(existsSync(out), false);
+  });
+  await check('e2e navigation timeout: without --timeout-ms, env STARDUST_NAV_TIMEOUT_MS bounds the goto (a 2.5 s page fails at 1000 ms); an explicit --timeout-ms wins over the env', async () => {
+    const env = { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' };
+    const [byEnv, byFlag] = await Promise.all([
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], env),
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '10000'], env),
+    ]);
+    assert.equal(byEnv.code, 1, byEnv.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-env.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
+    assert.equal(byFlag.code, 0, byFlag.err); assert.match(byFlag.out, /^style-census: 1 pages × 1 widths → /);
   });
   server.close();
 }

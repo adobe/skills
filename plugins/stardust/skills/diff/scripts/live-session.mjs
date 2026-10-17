@@ -66,6 +66,14 @@
  * Escalation ladder (documented in replica/reference/source-fidelity-gate.md):
  *   headers+UA (default) → --headed (launchStealthHeaded) → if STILL blocked,
  *   the site needs crawl.mjs-class capture and the gate must fail, not degrade.
+ *
+ * Navigation timeout (navTimeout / resolveNavTimeoutMs): ONE value for every
+ * live navigation — env STARDUST_NAV_TIMEOUT_MS (as given) → the crawl's
+ * measured origin latency (stardust/current/_crawl-log.json crawl.navMs.p95
+ * × 2, clamped 20–180 s) → 60000. Callers pass their own fallback (their
+ * current default) for the last step; an explicit timeout always wins.
+ * withDeadline bounds a whole per-width read; isContextDestroyed names the
+ * one failure worth a retry on a fresh page.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -285,6 +293,93 @@ export function isChallengeResponse(response) {
   return challengeMarker(response) !== null;
 }
 
+// ---- navigation timeout: one value, from the operator, else the origin's measured latency ----------
+// A recorded hands-off run's measure.mjs hung 8× at 900 s on a site that navigates after load, while the
+// instruments carried 20–90 s navigation defaults with no shared value and no origin-latency figure. One
+// resolution now feeds them all: the operator's env, else twice the crawl's p95 page-load time (a slow
+// origin gets more room, a fast one fails sooner), else the caller's own default.
+export const NAV_TIMEOUT_ENV = 'STARDUST_NAV_TIMEOUT_MS';
+export const CRAWL_LOG = 'stardust/current/_crawl-log.json'; // relative to the cwd (project root), like LEDGER
+export const NAV_TIMEOUT_DEFAULT_MS = 60000;
+export const NAV_TIMEOUT_MIN_MS = 20000;
+export const NAV_TIMEOUT_MAX_MS = 180000;
+let navEnvWarned = false; // one warning per process, not one per navigation
+
+/**
+ * The navigation timeout → { ms, source: 'env' | 'crawl' | 'default', detail }. Never throws; reads only `crawlLog`.
+ *   1. env STARDUST_NAV_TIMEOUT_MS: trimmed, a finite number that rounds to >= 1 ms → used as given (no clamp —
+ *      the operator's figure wins). Set but invalid → ignored, with one stderr warning per process. Empty = unset.
+ *   2. `crawlLog` JSON `crawl.navMs.p95` (a finite number > 0) → round(p95 × 2) clamped to 20000–180000. A missing,
+ *      unreadable or malformed file or field is skipped silently (a crawl log from before the timing has no figure).
+ *   3. `fallback` (the caller's current default; 60000 unless given).
+ */
+export function navTimeout({ env = process.env, crawlLog = CRAWL_LOG, fallback = NAV_TIMEOUT_DEFAULT_MS } = {}) {
+  const raw = env && env[NAV_TIMEOUT_ENV] != null ? String(env[NAV_TIMEOUT_ENV]).trim() : '';
+  if (raw) {
+    const n = Number(raw);
+    // Math.round(0.4) is 0, and a 0 ms timeout means "no timeout" to playwright — the hang this exists to stop
+    if (Number.isFinite(n) && Math.round(n) >= 1) return { ms: Math.round(n), source: 'env', detail: `${NAV_TIMEOUT_ENV}=${raw}` };
+    if (!navEnvWarned) {
+      navEnvWarned = true;
+      console.error(`[live-session] ${NAV_TIMEOUT_ENV}=${raw} is not a positive number of ms — ignored`);
+    }
+  }
+  if (crawlLog) {
+    let p95 = null;
+    try { p95 = JSON.parse(readFileSync(crawlLog, 'utf8')).crawl.navMs.p95; } catch { /* no crawl figure — fall through */ }
+    if (Number.isFinite(p95) && p95 > 0) {
+      const ms = Math.min(NAV_TIMEOUT_MAX_MS, Math.max(NAV_TIMEOUT_MIN_MS, Math.round(p95 * 2)));
+      return { ms, source: 'crawl', detail: `crawl.navMs.p95 ${p95} ms × 2, clamped to ${NAV_TIMEOUT_MIN_MS}–${NAV_TIMEOUT_MAX_MS} ms (${crawlLog})` };
+    }
+  }
+  const envNote = raw ? `no valid ${NAV_TIMEOUT_ENV} (${raw} ignored)` : `no ${NAV_TIMEOUT_ENV}`;
+  return { ms: fallback, source: 'default', detail: `${envNote} and no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'}` };
+}
+
+/** navTimeout(opts).ms — the default every navigation helper takes when its caller passes no timeout. */
+export function resolveNavTimeoutMs(opts = {}) {
+  return navTimeout(opts).ms;
+}
+
+// ---- per-width deadlines: a navigation timeout bounds the goto, not the reads after it --------------
+// The recorded 900 s hangs were in the reads after the goto (one page reused across widths on a site that
+// navigates after load). Instruments race each width's whole read against a deadline and retry only a
+// destroyed context (isContextDestroyed), once, on a fresh page.
+
+// node fires a setTimeout longer than 2^31 − 1 ms after 1 ms: an (unclamped) env figure that large would fail every read at once
+const MAX_TIMER_MS = 2 ** 31 - 1;
+
+/**
+ * Race `promise` against `ms`: on expiry reject with an Error named 'DeadlineError', message
+ * `${label}: deadline ${ms} ms exceeded`. The timer is cleared when the promise settles first; the abandoned
+ * promise gets a no-op catch (its late rejection is not an unhandled rejection). `ms` not a finite number > 0,
+ * or above setTimeout's 2^31 − 1 ms ceiling → `promise` itself, unchanged (no deadline).
+ */
+export function withDeadline(promise, ms, label = 'step') {
+  if (!(Number.isFinite(ms) && ms > 0 && ms <= MAX_TIMER_MS)) return promise;
+  const work = Promise.resolve(promise);
+  work.catch(() => {});
+  let timer;
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label}: deadline ${ms} ms exceeded`);
+      err.name = 'DeadlineError';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
+// The playwright messages for "the page's execution context / frame went away under a navigation".
+const CONTEXT_DESTROYED_RE = /Execution context was destroyed|Cannot find context with specified id|[Ff]rame (?:was|got) detached/;
+
+/** Did this playwright error come from the page navigating away under a read (the one retryable failure)? A
+ * BotChallengeError or a DeadlineError never is, whatever its message quotes — neither is ever retried. */
+export function isContextDestroyed(err) {
+  if (!err || err.name === 'BotChallengeError' || err.name === 'DeadlineError') return false;
+  return CONTEXT_DESTROYED_RE.test(String(err.message ?? err));
+}
+
 /**
  * Navigate + settle, with the full fail-loud contract:
  *   - challenge/blocked interstitial → per `solveWindow`:
@@ -309,9 +404,11 @@ export function isChallengeResponse(response) {
  *         the diff probes' advisory contract (a 404 build side is normal on
  *         aem.page before preview propagation; the probe's flags carry the
  *         signal, exit stays 0).
+ * `timeoutMs` (goto and each reload) defaults to resolveNavTimeoutMs() per call —
+ * env, then the crawl's p95 × 2, then 60000.
  * Returns the response.
  */
-export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
+export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = resolveNavTimeoutMs(), settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
   let resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
   if (!resp) {
     const err = new Error(`no response navigating to ${url} — network-level failure or non-HTTP navigation`);

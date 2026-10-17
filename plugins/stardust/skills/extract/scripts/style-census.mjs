@@ -33,7 +33,10 @@
  *     --concurrency <n>    parallel browser contexts (default 1 — one live page at a time; raise
  *                          it only on an origin known to have no bot management)
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
- *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
+ *     --timeout-ms <ms>    per-page navigation timeout (default: env STARDUST_NAV_TIMEOUT_MS as given,
+ *                          else the crawl figure — 2 × crawl.navMs.p95 from
+ *                          stardust/current/_crawl-log.json, clamped to 20000–180000 — else 20000;
+ *                          the flag always wins)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
  *                          configuration calls for — the same value the live-session helper uses)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
@@ -94,7 +97,10 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 // Current stable desktop Chrome on macOS — the platform token and minor version are frozen by
 // Chrome's UA reduction, so only the major matters.
 export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
-export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: 20000, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
+// timeoutMs null = not given: main() resolves the shared navigation timeout (live-session navTimeout — env, then
+// the crawl figure, then DEFAULT_TIMEOUT_MS), so a slow origin's measured p95 reaches this pass too.
+export const DEFAULT_TIMEOUT_MS = 20000;
+export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: null, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
 const SETTLE_MS = 2500;
 const VIEWPORT_H = 900;
 const OCCLUDER_COVERAGE = 0.4;
@@ -429,6 +435,7 @@ async function main(argv) {
   }
   const session = await loadLiveSession();
   if (typeof session.consentLabelSweepInPage !== 'function' || !session.CONSENT_LABEL_SWEEP) throw new UsageError('live-session.mjs predates the shared consent table — re-copy it alongside this script (extract/SKILL.md § Setup)');
+  if (o.timeoutMs == null) o.timeoutMs = session.resolveNavTimeoutMs({ fallback: DEFAULT_TIMEOUT_MS });
   const jobs = [];
   for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
   const pages = {};

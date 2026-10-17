@@ -20,14 +20,15 @@
  *
  * Usage:
  *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] [--lock|--no-lock] -- <cmd> [args…]
- *   node run-bg.mjs wait   [--max <s>] [--tail <n>] [--grep <re>] [<job>…]
- *   node run-bg.mjs status [--tail <n>] [--grep <re>] [<job>…]
+ *   node run-bg.mjs wait   [--max <s>] [--all] [--tail <n>] [--grep <re>] [<job>…]
+ *   node run-bg.mjs status [--all] [--tail <n>] [--grep <re>] [<job>…]
  *   node run-bg.mjs log    <job> [--tail <n>] [--grep <re>]
  *   node run-bg.mjs clean  [--all]
  *   (every form: [--dir <d>], default stardust/.work/replica/bg, env RUN_BG_DIR)
  *   A value flag (--name --dir --timeout --slots --max --tail --grep) followed by
  *   nothing or by another --flag is a usage error (exit 125) naming the flag —
- *   never a silently swallowed value.
+ *   never a silently swallowed value. --timeout is a start flag: on wait or
+ *   status it is a usage error (exit 125) naming --max, never silently ignored.
  *
  * start  returns at once. The job runs detached under run-capped.mjs
  *        (default --timeout 900 s — a background job without a deadline is the
@@ -84,9 +85,11 @@
  *        slot is the floor): the job logs one `run-bg:` line saying so — set
  *        STARDUST_BROWSER_SLOTS to the budget to hold it. Without
  *        browser-lock.mjs the job runs unlocked after one log line saying so.
- * wait   polls until the named jobs (default: every job unfinished when the
- *        wait began; if none, the latest batch — jobs ended within 10 min of the
- *        newest; --all: every job on disk) have ended, or --max seconds pass
+ * wait   polls until the selected jobs have ended — the named ones; bare, the
+ *        caller's own (Owner, below): those unfinished when the wait began, if
+ *        none its latest batch (jobs ended within 10 min of its newest); --all:
+ *        every owner's (every job unfinished when the wait began; if none, every
+ *        job on disk) — or --max seconds pass
  *        (default 100; clamped to 110 — the agent's shell tool's default timeout
  *        is about two minutes and applies only to a call that declares none, so
  *        110 s returns inside that default even when the agent forgets to declare
@@ -94,14 +97,16 @@
  *        waits of 179–181 s under a declared 200 s. 110 s also leaves node
  *        startup and the report their room, and still returns well inside the
  *        context cache's five minutes from the start of the previous model
- *        request), then prints
+ *        request), then prints a first line naming the selection and its count
+ *        (`run-bg: wait — yours (owner 4242), unfinished: 2 job(s); 3 other
+ *        job(s) not shown — --all`: the jobs --all would add), then
  *        one line per job and, for ended jobs, its verdict lines: log lines
  *        matching --grep (default: the gate instruments' verdict vocabulary),
  *        else the last --tail (8) lines.
- *        Exit 0 = every named job ended; 75 = some still queued/running —
+ *        Exit 0 = every selected job ended; 75 = some still queued/running —
  *        run `wait` again as your NEXT step. Never loop on it inside one
  *        command; that recreates the blocked step this tool removes.
- * status one pass of the same report, without waiting.
+ * status one pass of the same report (the same selection), without waiting.
  * log    a bounded view of one job's log: the last --tail lines (default
  *        40) or the --grep matches (at most 200).
  * clean  deletes ended and lost jobs' files; --all also stops queued/running
@@ -112,6 +117,20 @@
  *        lost job (wrapper gone) whose instrument still runs is stopped the same
  *        way through the recorded childPid. Nothing is ever signalled unless its
  *        identity matches (below).
+ *
+ * Owner: start records the caller in the job state as ownerPid — RUN_BG_OWNER
+ * when set (non-empty, stored as given), else the nearest ancestor of run-bg
+ * (from its parent pid) whose command is not a shell or wrapper (sh bash zsh
+ * dash ksh mksh ash fish tcsh csh env nohup timeout nice; a login shell's `-`
+ * stripped): the agent process behind the tool call's shell, the same whether
+ * that shell exec'd node or not; the parent pid itself where no process table
+ * answers. The owner is a process: where agents share one (in-process
+ * subagents), a fan-out subagent names its jobs (`wait <job>…`) or prefixes
+ * each of its run-bg calls with RUN_BG_OWNER=<unit>. A
+ * bare wait/status selects the jobs whose ownerPid is the caller's; a state
+ * without one (older runs) is nobody's — reached by name or --all. Why: in a
+ * recorded hands-off run a bare wait in one agent blocked on every other
+ * agent's jobs, and --timeout on wait was silently ignored.
  *
  * Liveness: a job's state records the wrapper pid AND its process start time
  * (`ps -o lstart`, the same on macOS and procps Linux) — a bare pid names a
@@ -133,7 +152,7 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -234,11 +253,18 @@ export async function gateAllTimeout(cmd, args = [], { cwd = process.cwd(), give
 
 const HELP = `Usage:
   node run-bg.mjs start --name <job> [--timeout <s>=${DEFAULT_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] [--lock|--no-lock] -- <cmd> [args…]
-  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [--all] [<job>…]
-  node run-bg.mjs status [--tail <n>] [--grep <re>] [--all] [<job>…]
+  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--all] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
+  node run-bg.mjs status [--all] [--tail <n>] [--grep <re>] [<job>…]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
   (all: [--dir <d>], default ${DEFAULT_DIR})
+  Selection (wait, status): <job>… = those; bare = the caller's own jobs — unfinished, else its latest batch; --all =
+  every owner's — unfinished, else every job on disk. The report's first line names the selection and its count. The
+  owner, recorded by start: RUN_BG_OWNER, else the nearest ancestor that is not a shell or wrapper — the agent process
+  behind the tool call's shell (agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg
+  call); a job state without one is reached by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
+  --timeout is a start flag: on wait or status a usage error (exit 125), no longer silently ignored — wait takes --max
+  (at most ${MAX_CEILING_SEC} s).
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
   --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
   logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
@@ -251,7 +277,9 @@ const HELP = `Usage:
   contract's 3 browsers = budget 3 across all jobs; a larger machine raises STARDUST_BROWSER_BUDGET, and
   STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent browser jobs — RUN_BG_SLOTS above the slots adds
   none. A budget below the slots cannot be held (one browser per slot is the floor): one run-bg: line says so — set
-  STARDUST_BROWSER_SLOTS to the budget to hold it.`;
+  STARDUST_BROWSER_SLOTS to the budget to hold it.
+  Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step · 2 (start) the name
+  is still queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -313,6 +341,35 @@ function childOf(ppid) {
 }
 function signal(pid, sig, { group = false } = {}) { try { process.kill(group && process.platform !== 'win32' ? -pid : pid, sig); return true; } catch { return false; } }
 
+// ---- the caller (a job's owner) ----------------------------------------------------------------
+// A bare wait/status covers the caller's own jobs: in a recorded hands-off run a bare wait in one agent blocked on every
+// other agent's jobs. The caller is the agent process behind the tool call's shell — the shell (and any wrapper in front
+// of node) is skipped, so the answer is the same whether the shell exec'd node or not.
+const OWNER_SKIP = new Set(['sh', 'bash', 'zsh', 'dash', 'ksh', 'mksh', 'ash', 'fish', 'tcsh', 'csh', 'env', 'nohup', 'timeout', 'nice']);
+const commandName = (command) => basename(String(command ?? '').trim().split(/\s+/)[0].replace(/^-/, '')); // a login shell runs as `-zsh`
+// One ancestor for the walk: the snapshot when one is fresh, else `ps -p` of that pid alone — start needs no full table
+// for a new name, and the full `ps -e` costs several times more — else procInfo (the full table, or /proc).
+function parentOf(pid) {
+  if (procCache.table && Date.now() - procCache.at < PROC_TTL_MS) return procCache.table.get(Number(pid)) || null;
+  const r = spawnSync('ps', ['-ww', '-o', 'ppid=,command=', '-p', String(pid)], { encoding: 'utf8' });
+  const m = r.status === 0 ? /^\s*(\d+)\s+(.*\S)/.exec(r.stdout) : null;
+  return m ? { ppid: Number(m[1]), command: m[2] } : procInfo(pid);
+}
+// → RUN_BG_OWNER (non-empty: stored as given — agents sharing one process prefix each run-bg call with it), else the pid
+// of the nearest ancestor, starting at `ppid`, whose command is not in OWNER_SKIP; `ppid` itself when no process table
+// answers (no ps, no /proc). `info(pid)` → { ppid, command } | null; tests inject one.
+export function callerOwner(env = process.env, { ppid = process.ppid, info = parentOf } = {}) {
+  const given = env.RUN_BG_OWNER;
+  if (given !== undefined && String(given).trim() !== '') return given;
+  let pid = ppid;
+  for (let hop = 0; hop < 64; hop += 1) { // a bound, not a depth anyone reaches: a malformed table never loops
+    const p = info(pid);
+    if (!p || !OWNER_SKIP.has(commandName(p.command)) || !p.ppid || p.ppid === pid) return pid;
+    pid = p.ppid;
+  }
+  return pid;
+}
+
 // queued: waiting for a slot (or still spawning) · running · ended: wrote an exit · lost: the wrapper died without
 // writing one (kill -9, reboot) or the stored pid now names some other process.
 export function phase(st) {
@@ -326,7 +383,7 @@ const isPending = (st) => ['queued', 'running'].includes(phase(st));
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
 
 // ---- start -------------------------------------------------------------------------------------
-export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS, lock = 'auto' } = {}) {
+export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS, lock = 'auto', owner = callerOwner() } = {}) {
   if (!name || !NAME_RE.test(name)) throw new UsageError(`run-bg: --name must match ${NAME_RE} (got "${name}")\n${HELP}`);
   if (!cmd) throw new UsageError(`run-bg: start needs a command after --\n${HELP}`);
   if (!Number.isFinite(timeoutSec) || timeoutSec < 0) throw new UsageError(`run-bg: --timeout must be a number of seconds (0 disables)\n${HELP}`);
@@ -335,8 +392,8 @@ export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, 
   mkdirSync(dir, { recursive: true });
   const prev = readState(dir, name);
   if (prev && isPending(prev)) throw new UsageError(`run-bg: ${name} is still ${phase(prev)} (wrapper pid ${prev.wrapperPid}) — pick another --name, or \`clean --all\` to stop it`, 2);
-  // Written once, before the spawn; from here on the wrapper is the file's only writer.
-  const st = { name, cmd, args, cwd: process.cwd(), timeoutSec, slots, lock, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  // Written once, before the spawn; from here on the wrapper is the file's only writer. ownerPid: the caller (callerOwner).
+  const st = { name, ownerPid: owner, cmd, args, cwd: process.cwd(), timeoutSec, slots, lock, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
   writeState(dir, st);
   const fd = openSync(logPath(dir, name), 'w');
   const child = spawn(process.execPath, [SELF, '__run', '--dir', dir, '--name', name], { detached: true, stdio: ['ignore', fd, fd], cwd: process.cwd(), env: process.env });
@@ -458,8 +515,10 @@ export function describe(st) {
   return st.timedOut ? `${st.name}  deadline ${st.timeoutSec}s exceeded (exit ${DEADLINE_EXIT}: no verdict — re-run, or raise --timeout for a legitimately huge page)${took}` : `${st.name}  done exit=${st.exit}${took}`;
 }
 
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, hidden = 0, elapsedSec = 0, ceilingSec = 0 } = {}) {
-  const lines = []; let pending = 0;
+// The first line names the selection and its count — `sub`: wait | status, `scope`: pickNames' — plus `hidden`, the jobs
+// --all would add (it folds in the former trailing "earlier job(s) not shown" line).
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0 } = {}) {
+  const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}`]; let pending = 0;
   for (const name of names) {
     const st = readState(dir, name);
     if (!st) { lines.push(`${name}  no such job in ${dir}`); continue; }
@@ -467,40 +526,53 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, hidden = 
     lines.push(describe(st));
     if (!isPending(st)) for (const l of verdictLines(logPath(dir, name), { tail, grep })) lines.push(`  ${l}`);
   }
-  if (!names.length) lines.push(`run-bg: no jobs in ${dir}`);
+  if (!names.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
-  if (hidden) lines.push(`run-bg: ${hidden} earlier job(s) not shown — \`status --all\``);
   return { text: lines.join('\n'), pending };
 }
 
-function pickNames(dir, requested, { all = false } = {}) {
-  if (requested.length) return { names: requested, hidden: 0 };
-  const jobs = listJobs(dir).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
-  const unfinished = jobs.filter(isPending);
-  if (unfinished.length) return { names: unfinished.map((j) => j.name), hidden: 0 };
-  if (all || !jobs.length) return { names: jobs.map((j) => j.name), hidden: 0 };
+// Among `jobs` (queue order): the unfinished ones, else every job (`onDisk`), else the latest batch — the jobs that ended
+// within RECENT_WINDOW_SEC of the newest ending.
+function current(jobs, pending, { onDisk = false } = {}) {
+  const unfinished = jobs.filter((j) => pending.has(j.name));
+  if (unfinished.length) return { picked: unfinished, what: 'unfinished' };
+  if (onDisk || !jobs.length) return { picked: jobs, what: 'on disk' };
   const at = (j) => new Date(j.endedAt || j.queuedAt).getTime();
   const newest = Math.max(...jobs.map(at));
-  const recent = jobs.filter((j) => newest - at(j) <= RECENT_WINDOW_SEC * 1000);
-  return { names: recent.map((j) => j.name), hidden: jobs.length - recent.length };
+  return { picked: jobs.filter((j) => newest - at(j) <= RECENT_WINDOW_SEC * 1000), what: 'latest batch' };
 }
 
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false } = {}) {
+// wait/status → { names, scope, hidden }: named → those; --all → every owner's (unfinished, else every job on disk);
+// bare → the caller's own (unfinished, else its latest batch). A state without ownerPid (older runs) is nobody's: by name
+// or --all only. hidden = the jobs --all would add.
+function pickNames(dir, requested, { all = false, owner = null } = {}) {
+  if (requested.length) return { names: requested, scope: 'named', hidden: 0 };
+  const jobs = listJobs(dir).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
+  const pending = new Set(jobs.filter(isPending).map((j) => j.name)); // one phase per job: both selections see the same
+  const everyone = current(jobs, pending, { onDisk: true });
+  if (all) return { names: everyone.picked.map((j) => j.name), scope: `all owners, ${everyone.what}`, hidden: 0 };
+  const mine = jobs.filter((j) => j.ownerPid != null && j.ownerPid === owner);
+  const own = current(mine, pending);
+  const shown = new Set(own.picked.map((j) => j.name));
+  return { names: [...shown], scope: `yours (owner ${owner})${mine.length ? `, ${own.what}` : ''}`, hidden: everyone.picked.filter((j) => !shown.has(j.name)).length };
+}
+
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false, owner = callerOwner() } = {}) {
   if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
   let ceilingSec = maxSec;
   if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — the agent's shell tool's default timeout is about two minutes and applies to a call that declares none; ${MAX_CEILING_SEC} s returns inside it and leaves startup and the report their room (a declared longer timeout is honoured, but a step must still return before the context cache expires)`); }
-  const { names, hidden } = pickNames(dir, requested, { all });
+  const { names, scope, hidden } = pickNames(dir, requested, { all, owner });
   const t0 = Date.now();
   for (;;) {
     const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
     if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec });
+  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec });
 }
 
-export function status(dir, requested, { tail, grep, all = false } = {}) { const { names, hidden } = pickNames(dir, requested, { all }); return report(dir, names, { tail, grep, hidden }); }
+export function status(dir, requested, { tail, grep, all = false, owner = callerOwner() } = {}) { const { names, scope, hidden } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden }); }
 
 export function showLog(dir, name, { tail = 40, grep = null } = {}) {
   if (!name) throw new UsageError(`run-bg: log needs a <job>\n${HELP}`);
@@ -561,7 +633,11 @@ function parse(argv) {
     if (a === '--') { o.cmd = rest.slice(i + 1); break; }
     if (a === '--dir') o.dir = value();
     else if (a === '--name') o.name = value();
-    else if (a === '--timeout') { o.timeoutSec = num(a, value()); o.timeoutGiven = true; }
+    else if (a === '--timeout') {
+      // wait/status once ignored it silently; wait's bound is --max, status never waits.
+      if (sub === 'wait' || sub === 'status') throw new UsageError(`run-bg: --timeout is a start flag — wait takes --max <s> (default ${DEFAULT_MAX_SEC}, at most ${MAX_CEILING_SEC}); status reports at once\n${HELP}`);
+      o.timeoutSec = num(a, value()); o.timeoutGiven = true;
+    }
     else if (a === '--slots') o.slots = num(a, value());
     else if (a === '--max') o.maxSec = num(a, value());
     else if (a === '--tail') o.tail = num(a, value());
