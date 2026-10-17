@@ -56,7 +56,8 @@ export function matchSections({ dom, mapping, anchors: anchorOf, modules, select
   return { pass: problems.length === 0, sections, problems };
 }
 
-// Opens the target at the module width, joins it, and writes <out>/join.json (out = the page's work dir).
+// Opens the target at the module width, joins it, and writes <out>/join.json (out = the page's work dir). A target
+// whose sections are not found in its own DOM (a preview) names its matcher: join.match, over what join.collect read.
 export async function runJoin({ target, inputs, out }) {
   const [chromium, { openBrowser }] = await Promise.all([loadChromium(), loadMeasureLive()]);
   const browser = await openBrowser(chromium, { tier: 'plain' });
@@ -65,7 +66,7 @@ export async function runJoin({ target, inputs, out }) {
     const page = await target.open(browser, WIDTH);
     dom = await target.join.collect(page);
   } finally { await browser.close(); }
-  const matched = matchSections({
+  const matched = await (target.join.match ?? matchSections)({
     dom,
     mapping: parseMapping(inputs.mapping),
     anchors: anchors(inputs.contentModel),

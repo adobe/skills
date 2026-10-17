@@ -10,11 +10,11 @@ import { runJoin } from './join.mjs';
 import { localTarget } from './target.mjs';
 
 // → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, out }, where
-// rules is curation-rules.json and checks is validateChecks(...).sections.
-export async function prepare({ dir, slug, url }) {
+// rules is curation-rules.json and checks is validateChecks(...).sections. target is the regime to measure: the
+// local page at url by default, or a built Target (previewTarget for a deployed preview).
+export async function prepare({ dir, slug, url, target = localTarget(url) }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug);
-  const target = localTarget(url);
   const join = await runJoin({ target, inputs, out });
   if (!join.pass) return { drift: true, join, out };
   const boxes = loadBoxes(dir, rootsNamed(inputs.checks, join));

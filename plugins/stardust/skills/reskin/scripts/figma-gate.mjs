@@ -4,7 +4,8 @@
 //   boxes  the Figma box trees of the included modules, built once from the cached capture
 //          (.work/reskin/figma/, never the network) and cached in .work/reskin/gates/figma-boxes/.
 //   join   B0: every mapping.md slot that renders as a module is one section of the page, in order, with
-//          its module's Figma frame; a page that drifted from the mapping stops here.
+//          its module's Figma frame; a page that drifted from the mapping stops here. --target preview joins
+//          a deployed preview: the reskin page's slots found in the preview's authored form (.plain.html).
 //   geometry  B1: the sizes, offsets, gaps and paddings the checks file pairs with Figma nodes or tokens.
 //   ramp   B3: the :root token block and the type of every Type entry, through donor-probe.mjs.
 //   pixel  B2: advisory pixel share of each section against its slice of the frame image, where the
@@ -25,6 +26,8 @@ const SELF = fileURLToPath(import.meta.url);
 export const HELP = `Usage:
   node figma-gate.mjs boxes [--module Mn | --node <id>] [--depth 3] [--dir stardust]
   node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
+  node figma-gate.mjs join --page <slug> --url <preview url> --target preview --reskin <file>
+                           [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
@@ -51,6 +54,15 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          carried-invisible rows need no section. Each problem starts "section drift:". Writes
          <dir>/.work/reskin/gates/<slug>/figma/join.json (each section's slot, module, Figma frame, selector
          and document index), prints one PASS or FAIL line and exits 1 on drift.
+         --target preview joins a deployed preview instead: --url is its http(s) URL, --reskin the reskin page (the file
+         whose data-slot sections mapping.md describes). The preview is opened and settled first (a block that never
+         decorates is exit 124 "stalled decoration: ..."). The reskin page is joined to mapping.md as above; then each slot
+         is found in the preview's authored form (<url>.plain.html, read as text) as the first non-empty top-level <div>
+         after the previous slot's whose text holds the slot's first heading (a split sub-slot has its parent's and may
+         share one), and takes that section's decorated position: selector "main > div:nth-child(k)", index k - 1. A
+         <div> holding nothing, or only a metadata or section-metadata block, is empty and keeps its index. A slot with
+         no authored section, a slot found before the previous one and a non-empty authored section no slot took are
+         "section drift: ..." ("section drift: plain section 3 matches no slot"). join.json records regime "preview".
 geometry B1. Runs the join first (drift stops here, exit 1), validates the checks file, then measures every
          geometry entry on the page (one page load per width) against the same measure taken from its Figma
          node (relative to the module root) or its token: width, height, left, right, top, gapX, gapY and
@@ -129,6 +141,13 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
            run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
            run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
+--target local|preview  the regime of --url (default local: the reskin page). preview is for join only for now: geometry,
+         ramp, pixel and all exit 2 "--target preview: <step> lands in a later task". preview needs --reskin <file>;
+         local takes neither --reskin nor a site token.
+--auth-header <value> | --token-env <NAME>  (preview only) the Authorization header value for a protected preview, or the
+         environment variable (or .env entry) holding the token; neither may be empty. Sent to the preview origin only, on
+         the page and on its .plain.html, never printed (every line the gate prints has it redacted) and never written.
+         HTTP 401 or 403 from the preview is exit 2.
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
   { "version": 1, "page": "<slug>", "sections": { "<slot>": {
@@ -151,14 +170,18 @@ Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing inp
             · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out; re-run once, the
             same 124 twice is a residual (needs-owner), never a fix iteration.`;
 
+// The regime and site-token flags of the steps that take a --url.
+const TARGET_VALUES = ['--target', '--reskin', '--auth-header', '--token-env'];
+const SECRET_FLAGS = new Set(['--auth-header', '--token-env']);
+
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
-  join: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
-  geometry: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
-  ramp: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
-  pixel: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  join: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
+  geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
+  ramp: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
+  pixel: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
   register: { values: ['--page', '--dir'], bools: [], positional: [] },
-  all: { values: ['--page', '--url', '--dir'], bools: [], positional: [] },
+  all: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -172,7 +195,8 @@ export function parseArgs(argv, UsageError) {
     const a = rest[i];
     if (spec.values.includes(a)) {
       const val = rest[i + 1];
-      if (val === undefined || val.startsWith('--')) throw new UsageError(`${a} needs a value`);
+      // A blank secret never falls back to $SITE_TOKEN or a .env entry: it is a missing value.
+      if (val === undefined || val.startsWith('--') || (SECRET_FLAGS.has(a) && !val.trim())) throw new UsageError(`${a} needs a value`);
       opts[a.slice(2)] = val;
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
@@ -236,12 +260,13 @@ function logJoin(result, log) {
   log(`PASS join: ${result.sections.length} section(s) joined to Figma modules (${result.sections.map((s) => `${s.slot} → ${s.module ?? 'new module'}`).join(', ')})`);
 }
 
-async function joinStep({ dir, opts, log, UsageError }) {
+async function joinStep({ dir, opts, log, UsageError, auth }) {
   if (!opts.page) throw new UsageError('join needs --page <slug>');
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
-  const [{ readInputs, workDir }, { runJoin }, { localTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
+  const [{ readInputs, workDir }, { runJoin }, { localTarget, previewTarget }] = await Promise.all([helper('io'), helper('join'), helper('target')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
-  const result = await runJoin({ target: localTarget(opts.url), inputs, out: workDir(dir, opts.page) });
+  const target = opts.target === 'preview' ? previewTarget(opts.url, { reskin: opts.reskin, auth }) : localTarget(opts.url);
+  const result = await runJoin({ target, inputs, out: workDir(dir, opts.page) });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
@@ -463,16 +488,48 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
   return [2, 3, 124, 1].find((c) => exits.includes(c)) ?? 0;
 }
 
+// --target names the regime of --url: local (the default) or preview. A flag of the other regime, and a step the
+// preview regime does not have yet, is a usage error.
+function checkTarget(cmd, opts, UsageError) {
+  const regime = opts.target ?? 'local';
+  if (regime !== 'local' && regime !== 'preview') throw new UsageError(`--target is local or preview, got "${opts.target}"`);
+  if (regime === 'preview') {
+    if (cmd !== 'join') throw new UsageError(`--target preview: ${cmd} lands in a later task`);
+    return;
+  }
+  const flag = ['reskin', 'auth-header', 'token-env'].find((f) => opts[f] !== undefined);
+  if (flag) throw new UsageError(`--${flag} applies to --target preview`);
+}
+
+// The site token the run was given (--auth-header or --token-env), or null, with the function that takes it out of a
+// text: nothing the gate prints or throws may carry it. The token goes to the preview origin through previewTarget only.
+async function siteToken(opts, UsageError) {
+  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return null;
+  const eds = await helper('eds', 'deployed');
+  await eds.loadLiveSession();
+  const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
+  if (!auth?.trim()) throw new UsageError(`no site token: --token-env ${opts['token-env']} is not set in the environment or .env`);
+  return { auth, redact: (text) => eds.redact(text, auth) };
+}
+
 // steps lets a test replace a step function.
 export async function main(argv, { env = process.env, log = console.log, warn = (m) => process.stderr.write(`${m}\n`), steps = {} } = {}) {
   if (argv.includes('--help') || argv.includes('-h')) { log(HELP); return 0; }
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
+  checkTarget(cmd, opts, UsageError);
   const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
-  return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
+  const site = await siteToken(opts, UsageError);
+  if (!site) return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
+  try {
+    return await table[cmd]({ dir, opts, env, log: (m) => log(site.redact(m)), warn: (m) => warn(site.redact(m)), UsageError, steps: table, auth: site.auth });
+  } catch (e) {
+    if (e?.message) e.message = site.redact(e.message);
+    throw e;
+  }
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
