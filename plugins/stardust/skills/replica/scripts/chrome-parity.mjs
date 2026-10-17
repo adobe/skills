@@ -78,13 +78,17 @@
  * (inFlowRegionsAboveHeader; `none found above the header` when there are none). A
  * warning — never silent, never a verdict or exit-code change.
  *
- * Offset hint: when every matched chrome text pair shows the same vertical offset on
- * one side (≥ 3 pairs, |Δy| > tolerance, all within tolerance of each other) — an
+ * Offset hint: when the probed `header` region is offset as a whole on one side — its
+ * box's Δy (build − live) beyond the tolerance and every header text pair's Δy within
+ * the tolerance of it, at least 3 samples counting the box (so ≥ 2 header texts) — an
  * in-flow region above the header that only one side has — one line names the
  * candidate to hide:
  *   hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>
- * the in-flow block above the header on the side whose content sits lower whose height
- * is closest to |Δy| (the first on a tie), read off that side's DOM;
+ * Only the header is read: rects are page-absolute, so footer and --region pairs carry
+ * every body-height difference; no `header` region probed (--no-defaults without one)
+ * → no hint. The candidate is the in-flow block above the header on the side whose
+ * content sits lower whose height is closest to |Δy| (the first on a tie), read off
+ * that side's DOM;
  * ` (0px now — a block that grows later is still hidden by the persistent
  * display:none !important rule)` follows a 0-px one, and with no block found it reads
  * `… --hide <selector> (no in-flow block found above the header on the <side> side)`.
@@ -114,7 +118,7 @@
  * Requires: playwright, and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both); both are imported
  * inside main(), so --help and the exported pure functions (parseArgs,
- * hideLists, cacheKey, compareRegion, pairOffsets, uniformOffset, offsetHint,
+ * hideLists, cacheKey, compareRegion, headerOffsets, uniformOffset, offsetHint,
  * chromeHint, liveHideMiss) need neither (the async readPresence
  * loads live-session). Each run is one live
  * navigation — budget it like any live probe; --json records both sides as
@@ -165,9 +169,10 @@ presence.json (either file) is an error naming it, before any navigation.
 On the live page the hide matches are recounted right before measuring; a selector that matched nothing
 (×0 at the hide pass and at the measurement) prints one line naming the in-flow blocks above the header:
   WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
-a warning, never a verdict. When every paired chrome text is offset by the same Δy on one side (≥ 3 pairs,
-|Δy| > tolerance, all within tolerance of each other), one line names the block to hide — the in-flow block
-above the header on the lower side whose height is closest to |Δy|:
+a warning, never a verdict. When the header region is offset as a whole on one side (its box's |Δy| >
+tolerance, every header text within tolerance of it, ≥ 2 header texts; footer and --region pairs are not
+read — they carry body-height differences), one line names the block to hide — the in-flow block above the
+header on the lower side whose height is closest to |Δy|:
   hint: an in-flow region above the header — presence.mjs add --hide <candidate selector>
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (also a malformed presence.json),
@@ -366,28 +371,26 @@ export function compareRegion(name, L, B, tol) {
 
 // ------------------------------------------- offset hint and live hide misses
 
-/** Every matched chrome text pair's vertical offset (build − live, document px — diffRect's Δy sign) across the named
- * regions found on both sides, paired by text like compareRegion → [{ region, text, dy }]. */
-export function pairOffsets(L, B, names) {
-  const out = [];
-  for (const name of names) {
-    const l = L && L[name]; const b = B && B[name];
-    if (!l || !b || !l.found || !b.found) continue;
-    for (const [x, y] of pairAtoms(l.atoms || [], b.atoms || []).pairs) out.push({ region: name, text: x.text, dy: y.rect.y - x.rect.y });
-  }
-  return out;
+/** The probed `header` region's vertical offsets (build − live, document px — diffRect's Δy sign) → { box, texts:
+ * [{ text, dy }] } | null: `box` = the region box's Δy, `texts` = each header text pair's (paired by text like
+ * compareRegion). Only the header: rects are page-absolute, so footer and --region pairs carry every body-height
+ * difference. No `header` region in either measurement, or not found on a side → null. */
+export function headerOffsets(L, B) {
+  const l = L && L.header; const b = B && B.header;
+  if (!l || !b || !l.found || !b.found || !l.rect || !b.rect) return null;
+  const texts = pairAtoms(l.atoms || [], b.atoms || []).pairs.map(([x, y]) => ({ text: x.text, dy: y.rect.y - x.rect.y }));
+  return { box: b.rect.y - l.rect.y, texts };
 }
 
-/** The same vertical offset on every pair → { dy, side, pairs } | null: at least 3 pairs, every |dy| > tol and all
- * within tol of each other (so one sign). `dy` = the lower median (a measured value); `side` = the side whose content
- * sits lower — `live` for a negative dy (live y larger), `build` for a positive one. */
+/** The header offset as a whole → { dy, side, samples } | null: the box's |Δy| > tol, every header text's Δy within
+ * tol of the box's, and at least 3 samples counting the box (≥ 2 texts). `dy` = the box's Δy; `side` = the side whose
+ * content sits lower — `live` for a negative dy (live y larger), `build` for a positive one. A header-internal change
+ * (padding: box Δy 0, texts moved) is no offset. */
 export function uniformOffset(offsets, tol) {
-  const dys = (offsets || []).map((o) => o.dy);
-  if (dys.length < 3 || dys.some((d) => !(Math.abs(d) > tol))) return null;
-  const sorted = [...dys].sort((a, b) => a - b);
-  if (sorted[sorted.length - 1] - sorted[0] > tol) return null;
-  const dy = sorted[Math.floor((sorted.length - 1) / 2)];
-  return { dy, side: dy < 0 ? 'live' : 'build', pairs: dys.length };
+  if (!offsets || !Number.isFinite(offsets.box)) return null;
+  const { box } = offsets; const texts = offsets.texts || [];
+  if (!(Math.abs(box) > tol) || texts.length + 1 < 3 || texts.some((t) => !(Math.abs(t.dy - box) <= tol))) return null;
+  return { dy: box, side: box < 0 ? 'live' : 'build', samples: texts.length + 1 };
 }
 
 const HINT = 'hint: an in-flow region above the header — presence.mjs add --hide';
@@ -407,10 +410,11 @@ export function offsetHint(offset, candidates) {
   return `${HINT} ${best.selector}${Number(best.height) === 0 ? ZERO_PX : ''}`;
 }
 
-/** Both sides' measurements → the hint line | null: pairOffsets over the region names, uniformOffset at `tol`, then
- * offsetHint with `above[<side>]` (the in-flow blocks above the header on the side whose content sits lower). */
-export function chromeHint(L, B, names, tol, above) {
-  const offset = uniformOffset(pairOffsets(L, B, names), tol);
+/** Both sides' measurements (keyed by region name) → the hint line | null: headerOffsets, uniformOffset at `tol`, then
+ * offsetHint with `above[<side>]` (the in-flow blocks above the header on the side whose content sits lower). No
+ * `header` region probed → null. */
+export function chromeHint(L, B, tol, above) {
+  const offset = uniformOffset(headerOffsets(L, B), tol);
   return offset ? offsetHint(offset, (above || {})[offset.side]) : null;
 }
 
@@ -496,7 +500,7 @@ async function main(args) {
     const regions = opts.regions.map((reg) => compareRegion(reg.name, L[reg.name], B[reg.name], opts.tolerance));
     total = regions.reduce((n, r) => n + r.findings.length, 0);
     const { hideMiss, warning } = liveHideMiss(hidden.live, liveSide.above, session);
-    const hint = chromeHint(L, B, opts.regions.map((r) => r.name), opts.tolerance, { live: liveSide.above, build: buildSide.above });
+    const hint = chromeHint(L, B, opts.tolerance, { live: liveSide.above, build: buildSide.above });
     if (opts.json) {
       // stdout stays one JSON document: the warning and the hint (also recorded below) go to stderr
       if (warning) console.error(warning);

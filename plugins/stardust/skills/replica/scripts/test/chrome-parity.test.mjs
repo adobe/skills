@@ -4,7 +4,7 @@
 // presence.json read (selO=selE halves, list entries joined, a missing slug / file hides nothing; `hide` with "*" on
 // both sides), the site-wide stardust/replica/presence.json read by default and merged under --presence's file (its
 // selectors attributed `site presence.json`; a malformed one exits 1 naming it), the --live-cache key (unchanged
-// without hides), the region diff, the offset hint (pairOffsets / uniformOffset / offsetHint / chromeHint), the live
+// without hides), the region diff, the offset hint (headerOffsets / uniformOffset / offsetHint / chromeHint), the live
 // hide-miss warning (liveHideMiss over live-session's hideMisses / hideMissLine), and --help / usage errors from a copy
 // with no playwright and no diff dir beside it. Part (b): end-to-end against fixture pages served from this process —
 // a live page with an in-flow 88 px bar above <header>, one whose script re-renders a NEW bar two frames after the
@@ -19,7 +19,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, pairOffsets, uniformOffset, offsetHint, chromeHint, liveHideMiss, UsageError } from '../chrome-parity.mjs';
+import { parseArgs, cacheKey, compareRegion, readPresence, hideLists, headerOffsets, uniformOffset, offsetHint, chromeHint, liveHideMiss, UsageError } from '../chrome-parity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'chrome-parity.mjs');
@@ -138,45 +138,53 @@ await check('compareRegion: a region pushed down on the live side reads as a ver
   assert.match(r.findings[0].msg, /^Δy -88px \(88→0\)$/);
 });
 
-// both sides' measurements as probeRegion records: header texts at y0 + 30, the footer's at y0 + 600 (+ footerShift)
+// both sides' measurements as probeRegion records: the header box at y0, its texts at y0 + 30 (+ text: a header-internal
+// move such as padding), the footer's text at y0 + 600 (+ footer: a body-height difference); `texts` header labels
 const atom = (text, y) => ({ key: text.toLowerCase(), text, tag: 'a', rect: { x: 20, y, w: 40, h: 20 }, box: { x: 20, y, w: 40, h: 20 }, boxTag: 'a', style: {}, boxStyle: null });
-const sides = (y0, footerShift = 0) => ({
-  header: { found: true, sel: 'header', rect: { x: 0, y: y0, w: 1440, h: 80 }, atoms: ['Home', 'Products', 'Contact'].map((t) => atom(t, y0 + 30)), icons: [] },
-  footer: { found: true, sel: 'footer', rect: { x: 0, y: y0 + 580, w: 1440, h: 80 }, atoms: [atom('Footer text', y0 + 600 + footerShift)], icons: [] },
+const sides = (y0, { footer = 0, text = 0, texts = ['Home', 'Products', 'Contact'] } = {}) => ({
+  header: { found: true, sel: 'header', rect: { x: 0, y: y0, w: 1440, h: 80 }, atoms: texts.map((t) => atom(t, y0 + 30 + text)), icons: [] },
+  footer: { found: true, sel: 'footer', rect: { x: 0, y: y0 + 580 + footer, w: 1440, h: 80 }, atoms: [atom('Footer text', y0 + 600 + footer)], icons: [] },
 });
 const HINT = 'hint: an in-flow region above the header — presence.mjs add --hide';
 const ZERO = ' (0px now — a block that grows later is still hidden by the persistent display:none !important rule)';
 
-await check('pairOffsets + uniformOffset: every matched text pair\'s Δy (build − live); one offset on ≥ 3 pairs, |Δy| > tol, all within tol → the lower side', () => {
-  const offs = pairOffsets(sides(88), sides(0), ['header', 'footer']);
-  assert.deepEqual(offs, [{ region: 'header', text: 'Home', dy: -88 }, { region: 'header', text: 'Products', dy: -88 }, { region: 'header', text: 'Contact', dy: -88 }, { region: 'footer', text: 'Footer text', dy: -88 }]);
-  assert.deepEqual(uniformOffset(offs, 1), { dy: -88, side: 'live', pairs: 4 });
-  assert.deepEqual(uniformOffset(pairOffsets(sides(0), sides(40), ['header', 'footer']), 1), { dy: 40, side: 'build', pairs: 4 });
-  assert.deepEqual(uniformOffset([-88, -87, -88].map((dy) => ({ dy })), 1), { dy: -88, side: 'live', pairs: 3 }, 'within tol of each other');
-  assert.equal(uniformOffset(pairOffsets(sides(88), sides(0, 180), ['header', 'footer']), 1), null, 'the footer offset by more → not one offset');
-  assert.equal(uniformOffset([-88, -88].map((dy) => ({ dy })), 1), null, 'fewer than 3 pairs');
-  assert.equal(uniformOffset([-1, -1, -1].map((dy) => ({ dy })), 1), null, '|Δy| within tolerance is parity');
-  assert.equal(uniformOffset([], 1), null);
-  assert.deepEqual(pairOffsets({ header: { found: false, sel: 'header' } }, sides(0), ['header']), [], 'a region missing on one side pairs nothing');
+await check('headerOffsets + uniformOffset: the header box\'s Δy and its text pairs\' only; |box Δy| > tol, every text within tol of it, ≥ 3 samples counting the box → the lower side', () => {
+  const offs = headerOffsets(sides(88, { footer: 180 }), sides(0));
+  assert.deepEqual(offs, { box: -88, texts: [{ text: 'Home', dy: -88 }, { text: 'Products', dy: -88 }, { text: 'Contact', dy: -88 }] }, 'the footer is not read');
+  assert.deepEqual(uniformOffset(offs, 1), { dy: -88, side: 'live', samples: 4 });
+  assert.deepEqual(uniformOffset(headerOffsets(sides(0), sides(40)), 1), { dy: 40, side: 'build', samples: 4 });
+  assert.deepEqual(uniformOffset({ box: -88, texts: [{ dy: -87 }, { dy: -89 }] }, 1), { dy: -88, side: 'live', samples: 3 }, '2 texts + the box, within tol of the box');
+  assert.equal(uniformOffset({ box: -88, texts: [{ dy: -88 }] }, 1), null, 'one text + the box: fewer than 3 samples');
+  assert.equal(uniformOffset({ box: -88, texts: [{ dy: -88 }, { dy: -60 }] }, 1), null, 'a text off the box\'s Δy');
+  assert.equal(uniformOffset({ box: -1, texts: [{ dy: -1 }, { dy: -1 }] }, 1), null, '|box Δy| within tolerance is parity');
+  assert.equal(uniformOffset(headerOffsets(sides(0), sides(0, { text: 20 })), 1), null, 'only the build header\'s padding differs: box Δy 0, texts +20');
+  assert.equal(uniformOffset(null, 1), null);
+  assert.equal(headerOffsets({ header: { found: false, sel: 'header' } }, sides(0)), null, 'the header missing on one side');
+  assert.equal(headerOffsets({ footer: sides(88).footer }, { footer: sides(0).footer }), null, 'no header region probed');
 });
 
 await check('offsetHint: the lower side\'s in-flow block whose height is closest to |Δy| (first on a tie); a 0-px one says so; none → the placeholder naming the side', () => {
   const c = (selector, tag, height) => ({ tag, id: null, classes: [], top: 0, height, selector });
-  const live = { dy: -88, side: 'live', pairs: 4 };
+  const live = { dy: -88, side: 'live', samples: 4 };
   assert.equal(offsetHint(live, [c('div.promo', 'div', 40), c('section.bar__wrapper', 'section', 88), c('#notice', 'div', 20)]), `${HINT} section.bar__wrapper`);
   assert.equal(offsetHint(live, [c('div.a', 'div', 80), c('div.b', 'div', 96)]), `${HINT} div.a`, 'a tie keeps document order');
   assert.equal(offsetHint(live, [c('section.bar__wrapper', 'section', 0)]), `${HINT} section.bar__wrapper${ZERO}`);
   assert.equal(offsetHint(live, []), `${HINT} <selector> (no in-flow block found above the header on the live side)`);
-  assert.equal(offsetHint({ dy: 40, side: 'build', pairs: 3 }, [c(null, 'div', 40)]), `${HINT} <selector> (no in-flow block found above the header on the build side)`, 'an entry without a selector is no candidate');
+  assert.equal(offsetHint({ dy: 40, side: 'build', samples: 3 }, [c(null, 'div', 40)]), `${HINT} <selector> (no in-flow block found above the header on the build side)`, 'an entry without a selector is no candidate');
   assert.equal(offsetHint(null, [c('div.a', 'div', 88)]), null);
 });
 
-await check('chromeHint: the offset side picks its own candidate list; no uniform offset → null', () => {
+await check('chromeHint: the header alone decides (a footer offset by another Δy still hints); the offset side picks its own candidate list; no header region / offset → null', () => {
   const above = { live: [{ tag: 'section', id: null, classes: ['bar__wrapper'], top: 0, height: 88, selector: 'section.bar__wrapper' }], build: [] };
-  assert.equal(chromeHint(sides(88), sides(0), ['header', 'footer'], 1, above), `${HINT} section.bar__wrapper`);
-  assert.equal(chromeHint(sides(0), sides(88), ['header', 'footer'], 1, above), `${HINT} <selector> (no in-flow block found above the header on the build side)`);
-  assert.equal(chromeHint(sides(0), sides(0), ['header', 'footer'], 1, above), null);
-  assert.equal(chromeHint(sides(88), sides(0), ['header'], 1, null), `${HINT} <selector> (no in-flow block found above the header on the live side)`);
+  assert.equal(chromeHint(sides(88), sides(0), 1, above), `${HINT} section.bar__wrapper`);
+  assert.equal(chromeHint(sides(88, { footer: 180 }), sides(0), 1, above), `${HINT} section.bar__wrapper`, 'the footer carries a body-height difference too');
+  assert.equal(chromeHint(sides(0), sides(88), 1, above), `${HINT} <selector> (no in-flow block found above the header on the build side)`);
+  assert.equal(chromeHint(sides(0), sides(0), 1, above), null);
+  assert.equal(chromeHint(sides(0), sides(0, { text: 20 }), 1, above), null, 'a header-internal padding change is no above-header region');
+  assert.equal(chromeHint(sides(88, { texts: ['Home'] }), sides(0, { texts: ['Home'] }), 1, above), null, 'one header text + the box: too few samples');
+  const noHeader = (s) => ({ footer: s.footer });
+  assert.equal(chromeHint(noHeader(sides(88)), noHeader(sides(0)), 1, above), null, 'no header region probed (--no-defaults without one)');
+  assert.equal(chromeHint(sides(88), sides(0), 1, null), `${HINT} <selector> (no in-flow block found above the header on the live side)`);
 });
 
 await check('liveHideMiss: ×0 at the hide pass AND at the measurement is a miss → hideMiss { sels, candidates } + one WARNING line (live-session\'s text)', () => {
@@ -229,7 +237,11 @@ if (pwProbe.status !== 0) {
   const lookup = '<script>addEventListener("load", () => setTimeout(() => { document.querySelector(".bar__wrapper").innerHTML = \'<div class="region-strip">Use the site for your region?</div>\'; }, 300));</script>';
   // A bar injected the moment the hide rule lands (after the hide pass counted ×0): the rule hides it, the recount counts it.
   const inject = '<script>new MutationObserver((ms, mo) => { if (!document.querySelector("style[data-stardust-hide]")) return; mo.disconnect(); const bar = document.createElement("div"); bar.className = "geo-bar"; bar.textContent = "Use the site for your region?"; document.querySelector("header").before(bar); }).observe(document.head, { childList: true });</script>';
-  const pages = { '/live': page(geoBar), '/live-late': page(geoBar, rerender), '/live-delayed': page(wrapper, lookup), '/live-inject': page('', inject), '/build': page('') };
+  // the header-only hint: a live main 180 px taller (the footer moves by more than the header), and a build whose header
+  // differs only by its padding (box in place, texts 20 px lower)
+  const longer = (html) => html.replace('<p>Body copy.</p>', '<p>Body copy.</p><div style="height:180px"></div>');
+  const padded = page('').replace('</style>', 'header{padding-top:40px}</style>');
+  const pages = { '/live': page(geoBar), '/live-late': page(geoBar, rerender), '/live-delayed': page(wrapper, lookup), '/live-delayed-long': longer(page(wrapper, lookup)), '/live-inject': page('', inject), '/build': page(''), '/build-padded': padded };
   const server = createServer((req, res) => { const body = pages[req.url.split('?')[0]]; if (!body) { res.writeHead(404); res.end(); return; } res.writeHead(200, { 'content-type': 'text/html' }); res.end(body); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
@@ -301,12 +313,22 @@ if (pwProbe.status !== 0) {
       assert.deepEqual(JSON.parse(readFileSync(c, 'utf8')).above, []);
     });
     // the delayed bar, live side only: hint (E10b), live ×0 warning (E14), the site-wide presence.json by default (E9)
-    await check('e2e delayed bar: every chrome text offset by −88 on live → the hint names the wrapper the lookup filled (exit 2, no warning)', async () => {
+    await check('e2e delayed bar: the header and its texts offset by −88 on live → the hint names the wrapper the lookup filled (exit 2, no warning)', async () => {
       const r = await runAsync([`${base}/live-delayed`, `${base}/build`]);
       assert.equal(r.code, 2, r.out + r.err);
       assert.match(r.out, /REGION BOX +Δy -88px \(88→0\)/);
       assert.match(r.out, /\n\nhint: an in-flow region above the header — presence\.mjs add --hide section\.bar__wrapper\n\n✗ \d+ delta\(s\) — /);
       assert.doesNotMatch(r.out, /WARNING/);
+    });
+    await check('e2e hint reads the header alone: a taller live main moves the footer by −268 and still hints; a build header\'s padding alone does not', async () => {
+      const r = await runAsync([`${base}/live-delayed-long`, `${base}/build`]);
+      assert.equal(r.code, 2, r.out + r.err);
+      assert.match(r.out, /■ footer:[^\n]*\n {2}REGION BOX +Δy -268px /);
+      assert.match(r.out, /^hint: an in-flow region above the header — presence\.mjs add --hide section\.bar__wrapper$/m);
+      const p = await runAsync([`${base}/build`, `${base}/build-padded`]);
+      assert.equal(p.code, 2, p.out + p.err);
+      assert.match(p.out, /PAIR +"Home" +[^\n]*Δy \+20px/);
+      assert.doesNotMatch(p.out, /hint:/);
     });
     await check('e2e delayed bar + a stale --hide: WARNING naming the candidates and the missed selector after the hidden lines; never an exit change', async () => {
       const r = await runAsync([`${base}/live-delayed`, `${base}/build`, '--hide', '.geo-bar']);
