@@ -744,8 +744,9 @@ check('mapping: an encoder-map marker outside the engine\'s grammar selects noth
   ]);
 });
 
-// An encoder map for the story template: its quote marker matches on story-two only.
-const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote', kind: 'quote', emitter: 'block:quote' }] };
+// An encoder map for the story template: its quote marker matches on story-two only (the quote's p, the
+// element its section is on there, as on story-three).
+const STORY_MAP = { root: 'main', markers: [{ sel: '.pull-quote p', kind: 'quote', emitter: 'block:quote' }] };
 
 check('mapping: --verify — every selector resolves once (story-three\'s quote, without its map match, falls through); without it null and skipped', () => {
   const dir = project('map-verify', STORY_PAGES, { encode: { story: STORY_MAP } });
@@ -760,7 +761,7 @@ check('mapping: --verify — every selector resolves once (story-three\'s quote,
   const t = readMapping(dir).templates[0];
   assert.deepEqual(t.blocks.map((b) => [b.block, b.instances.map((i) => [i.slug, i.selector, i.source, i.verified, i.confidence])]), [
     // story-three: as without a map (its text-alignment result)
-    ['quote', [['story-three', 'body > main > section:nth-of-type(2) > blockquote > p', 'text-alignment', true, 1], ['story-two', 'blockquote.pull-quote', 'encoder-map', true, 1]]],
+    ['quote', [['story-three', 'body > main > section:nth-of-type(2) > blockquote > p', 'text-alignment', true, 1], ['story-two', 'blockquote.pull-quote p', 'encoder-map', true, 1]]],
     ['story-body', [
       ['story-one', 'body > main > section.band:nth-of-type(2)', 'text-alignment', true, 1],
       ['story-three', 'body > main > section.band:nth-of-type(3)', 'text-alignment', true, 1],
@@ -786,11 +787,15 @@ check('verifyMapping (what --verify runs): a selector that no longer resolves is
   const dir = project('map-verify-fresh', STORY_PAGES);
   const coverage = JSON.parse(readFileSync(join(dir, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8'));
   const captures = join(dir, 'stardust', 'current', 'pages');
-  const { mapping, have } = bo.buildMapping(coverage, { content: join(dir, 'content'), captures });
+  const { mapping } = bo.buildMapping(coverage, { content: join(dir, 'content'), captures });
   // a broken selector: story-three's quote replaced in the mapping by one its capture does not have
   const quote = mapping.templates[0].blocks.find((b) => b.block === 'quote').instances.find((i) => i.slug === 'story-three');
   quote.selector = 'blockquote.gone p';
-  bo.verifyMapping(mapping, have, captures);
+  // a section page left out at mapping time is never added back, though its selector hits one element there
+  const s1 = mapping.templates[0].sections.find((s) => s.id === 's1');
+  s1.pages = ['story-one', 'story-two'];
+  bo.verifyMapping(mapping, captures);
+  assert.deepEqual(s1.pages, ['story-one', 'story-two']);
   assert.deepEqual(mapping.templates[0].blocks.flatMap((b) => b.instances.map((i) => [b.block, i.slug, i.verified])), [
     ['quote', 'story-three', false], ['quote', 'story-two', true],
     ['story-body', 'story-one', true], ['story-body', 'story-three', true], ['story-body', 'story-two', true],
@@ -798,16 +803,36 @@ check('verifyMapping (what --verify runs): a selector that no longer resolves is
   const c = bo.countsOf(mapping, true);
   assert.deepEqual([c.verified, c.verifiedPct], [4, 80], 'the status line would read verified 80.0 %');
   put(join(captures, 'story-two.html'), storyCapture('two', 'classed').replace('<section class="band">', '<section class="band"><h1>Moved</h1></section><section class="band">'));
-  bo.verifyMapping(mapping, have, captures);
+  bo.verifyMapping(mapping, captures);
   const t = mapping.templates[0];
   const body = t.blocks.find((b) => b.block === 'story-body').instances;
   assert.deepEqual(body.map((i) => [i.slug, i.verified]), [['story-one', true], ['story-three', true], ['story-two', true]], 'story-two: :nth-of-type(3) is still one element');
   assert.deepEqual(t.sections.find((s) => s.id === 's2').pages, ['story-one', 'story-three'], 'two section.band in main on story-two now');
   assert.deepEqual(t.sections.find((s) => s.id === 's3').pages, ['story-three', 'story-two']);
   rmSync(join(captures, 'story-three.html'));
-  bo.verifyMapping(mapping, have, captures);
+  bo.verifyMapping(mapping, captures);
   assert.deepEqual(t.blocks.flatMap((b) => b.instances.filter((i) => i.slug === 'story-three').map((i) => i.verified)), [false, false], 'a capture gone: false');
   assert.deepEqual(t.sections.find((s) => s.id === 's3').pages, ['story-two']);
+});
+
+// A two-page template: the representative's teaser sits at `div.promo p`; page b's at `#lead p`, with an
+// unrelated sidebar `div.promo p` that the representative's selector also hits once.
+const PROMO_PAGES = [
+  { slug: 'promo', path: '/promo', templateId: 'promo', content: '<main><div><div class="teaser"><div><div><p>Promo text one.</p></div></div></div></div></main>',
+    capture: '<html><body><main><div class="promo"><p>Promo text one.</p></div></main></body></html>' },
+  { slug: 'promo-b', path: '/promo-b', templateId: 'promo', content: '<main><div><div class="teaser"><div><div><p>Promo text two.</p></div></div></div></div></main>',
+    capture: '<html><body><main><div id="lead"><p>Promo text two.</p></div><aside><div class="promo"><p>Sidebar note.</p></div></aside></main></body></html>' },
+];
+
+check('mapping: a section lists a page only when its selector hits that page\'s own section element; --verify never adds one', () => {
+  const dir = project('map-own-section', PROMO_PAGES);
+  for (const args of [[], ['--verify']]) {
+    ok(runMap(dir, args));
+    const t = readMapping(dir).templates[0];
+    // `div.promo p` hits one element on promo-b too, the sidebar's, not its section: promo-b is left out
+    assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.pages]), [['s1', 'div.promo p', ['promo']]], args.join(' ') || 'no flag');
+    assert.deepEqual(t.blocks[0].instances.map((i) => [i.slug, i.selector]), [['promo', 'div.promo p'], ['promo-b', '#lead p']]);
+  }
 });
 
 // Pages that cannot be mapped, and a coverage block the delivered document no longer has.

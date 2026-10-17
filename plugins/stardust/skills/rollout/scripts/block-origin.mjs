@@ -47,7 +47,8 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
                       stardust/import: pass --encode stardust/import)
   --out <file>        default stardust/rollout/workspace/mapping.json
   --verify            re-read and re-index every capture and count each selector's hits: an instance is
-                      verified true (exactly one element) or false; a section's pages are re-resolved
+                      verified true (exactly one element) or false; a section's pages are re-checked (a
+                      page may drop, none is added)
   --json              one JSON object on stdout instead of the status lines: { status, out, counts: { templates,
                       blocks, instances, verified, verifiedPct, sources, confidence: { high, medium, low, none },
                       positionBlocks }, skipped }; notes go to stderr
@@ -61,10 +62,11 @@ an element another record already has). A section takes the lowest common ancest
 (confidence = the share of their text it holds, the lowest over the pages); its default-content roles are
 the page's eds-schema roles of its text (an equal text, else the shorter of the two, 8+ characters, inside
 the other), else its delivered default parts. A template's sections are aligned across its pages by style
-and block names; a section's selector is the generalisation that resolves to exactly one element on the
-most of its pages (its pages lists them). Text is compared normalised (NFKC, lower case, typographic
-quotes and dashes folded) with whitespace removed; selectors follow lib.mjs parseHtml's tree (no inserted
-tbody, no auto-closed p). Without --verify every instance records verified null (skipped).
+and block names; a section's selector is the generalisation that resolves to that page's own section
+element (its one hit) on the most of its pages (its pages lists them). Text is compared normalised
+(NFKC, lower case, typographic quotes and dashes folded) with whitespace removed; selectors follow lib.mjs
+parseHtml's tree (no inserted tbody, no auto-closed p). Without --verify every instance records verified
+null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
@@ -539,6 +541,11 @@ const uniq = (xs) => [...new Set(xs)];
 // A selector count that never throws: outside the grammar, or too deep a document to match, is 0 hits.
 const hitsOf = (index, sel) => { try { return countMatches(index, sel); } catch (e) { if (e instanceof RangeError) return 0; throw e; } };
 const safeQuery = (index, sel) => { try { return querySelectorAll(index, sel); } catch (e) { if (e && e.name === 'UnsupportedSelector') return []; throw e; } };
+// Whether `sel` hits exactly one element of the page and it is `el` (a page too deep to match: no).
+const hitsOnly = (index, sel, el) => {
+  if (!el) return false;
+  try { const hits = safeQuery(index, sel); return hits.length === 1 && hits[0] === el; } catch (e) { if (e instanceof RangeError) return false; throw e; }
+};
 const elementSibling = (index, el, step) => {
   const m = index.meta.get(el);
   return m && m.parent ? elements(m.parent)[m.index - 1 + step] || null : null;
@@ -614,7 +621,7 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
 /**
  * One page: coverage row `row` (with delivered), its delivered document `contentHtml`, its capture's
  * `index`, the template's encoder map `map` ({ root, markers } or null) and the page's eds-schema items.
- * → { slug, index, sections: [{ pos, style, sig, names, selector, confidence, defaultContent }],
+ * → { slug, index, sections: [{ pos, style, sig, names, anchor, selector, confidence, defaultContent }],
  * instances: [{ pos, block, variant, variantId, sectionPos, selector, confidence, source }], skipped }.
  */
 function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
@@ -692,7 +699,7 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
   return {
     slug,
     index,
-    sections: sections.map(({ own, anchor, ...s }) => ({ ...s, selector: stableSelector(index, anchor) })),
+    sections: sections.map(({ own, ...s }) => ({ ...s, selector: stableSelector(index, s.anchor) })),
     instances: recs.filter((r) => r.doc && r.cov.kind === 'block').map((r) => ({
       pos: r.cov.pos, block: r.cov.block, variant: r.cov.variant ?? null, variantId: r.cov.variantId ?? null,
       sectionPos: sectionOf.has(r) ? sectionOf.get(r).pos : null, selector: r.selector, confidence: r.confidence, source: r.source,
@@ -748,10 +755,12 @@ function mergeSteps(sels) {
 }
 
 /**
- * A section's template-level selector over `entries` ([{ slug, index, selector }], the pages that have it,
- * representative first, then slug order): the first candidate — the common selector, the per-step
- * generalisation, the representative's, the others' — resolving to exactly one element on every page,
- * else the one resolving on the most (ties → earlier). → { selector, pages (sorted slugs it resolved on) }.
+ * A section's template-level selector over `entries` ([{ slug, index, selector, anchor }], the pages that
+ * have it, representative first, then slug order; anchor = that page's own section element): the first
+ * candidate — the common selector, the per-step generalisation, the representative's, the others' —
+ * resolving on every page, else the one resolving on the most (ties → earlier); a candidate resolves on a
+ * page only when its one hit there is that page's own section element. → { selector, pages (sorted slugs
+ * it resolved on) }.
  */
 function generalise(entries) {
   const sels = entries.map((e) => e.selector).filter(Boolean);
@@ -759,7 +768,7 @@ function generalise(entries) {
   const cands = uniq([...(sels.every((s) => s === sels[0]) ? [sels[0]] : []), mergeSteps(sels), ...sels].filter(Boolean));
   let best = null;
   for (const c of cands) {
-    const pages = entries.filter((e) => hitsOf(e.index, c) === 1).map((e) => e.slug);
+    const pages = entries.filter((e) => hitsOnly(e.index, c, e.anchor)).map((e) => e.slug);
     if (!best || pages.length > best.pages.length) best = { selector: c, pages };
     if (pages.length === entries.length) break;
   }
@@ -771,7 +780,7 @@ function generalise(entries) {
  * gives the section list s1…sN; each other page's sections are LCS-aligned on their signature (style +
  * block names) to the list, an unmatched one inserted after the entry its predecessor matched (or first).
  * Block entries list their instances' coverage `pos` values (positions, unique, ascending); each instance
- * keeps its own `pos`. → { template, have: Map(section id → slugs of the pages that have it) }.
+ * keeps its own `pos`. → the template entry.
  */
 function assembleTemplate(templateId, pages) {
   const rep = pages.find((p) => p.slug === templateId) || pages[0];
@@ -795,11 +804,9 @@ function assembleTemplate(templateId, pages) {
     });
     ids.set(p, own);
   }
-  const have = new Map();
   const sections = list.map(({ id }) => {
     const on = order.map((p) => ({ p, s: p.sections.find((s) => ids.get(p).get(s.pos) === id) })).filter((x) => x.s);
-    have.set(id, on.map((x) => x.p.slug).sort(byStr));
-    const g = generalise(on.map(({ p, s }) => ({ slug: p.slug, index: p.index, selector: s.selector })));
+    const g = generalise(on.map(({ p, s }) => ({ slug: p.slug, index: p.index, selector: s.selector, anchor: s.anchor })));
     return {
       id, selector: g.selector, pages: g.pages, style: on[0].s.style,
       blocks: uniq(on.flatMap((x) => x.s.names)),
@@ -826,7 +833,7 @@ function assembleTemplate(templateId, pages) {
       instances: g.instances.sort((a, b) => byStr(a.slug, b.slug) || a.pos - b.pos)
         .map((i) => ({ slug: i.slug, pos: i.pos, selector: i.selector, confidence: i.confidence, source: i.source, verified: null })),
     }));
-  return { template: { templateId, pages: pages.map((p) => p.slug).sort(byStr), sections, blocks }, have };
+  return { templateId, pages: pages.map((p) => p.slug).sort(byStr), sections, blocks };
 }
 
 // --- the run -----------------------------------------------------------------------------------------
@@ -857,9 +864,8 @@ function loadEncoderMap(dir, shownDir, templateId, notes) {
 
 /**
  * The mapping from a coverage document (formatVersion checked by the caller) and resolved directories
- * { content, captures, eds, encode, encodeShown }; lines for stdout go to `notes`.
- * → { mapping, have: Map(templateId → Map(section id → slugs)) }. A page that cannot be indexed or mapped
- * is skipped, never fatal.
+ * { content, captures, eds, encode, encodeShown }; lines for stdout go to `notes`. → { mapping }. A page
+ * that cannot be indexed or mapped is skipped, never fatal.
  */
 export function buildMapping(coverage, dirs, notes = []) {
   const rows = (Array.isArray(coverage.pages) ? coverage.pages : []).filter((p) => p && typeof p.slug === 'string' && p.slug)
@@ -879,7 +885,6 @@ export function buildMapping(coverage, dirs, notes = []) {
     groups.get(id).push({ row: p, file: join(dirs.content, file), capture });
   }
   const templates = [];
-  const have = new Map();
   for (const id of [...groups.keys()].sort(byStr)) {
     const map = loadEncoderMap(dirs.encode, dirs.encodeShown || dirs.encode, id, notes);
     const mapped = [];
@@ -896,24 +901,21 @@ export function buildMapping(coverage, dirs, notes = []) {
       skipped.push(...page.skipped);
       mapped.push(page);
     }
-    if (!mapped.length) continue;
-    const t = assembleTemplate(id, mapped);
-    templates.push(t.template);
-    have.set(id, t.have);
+    if (mapped.length) templates.push(assembleTemplate(id, mapped));
   }
   skipped.sort((a, b) => byStr(a.slug, b.slug) || (a.pos ?? -1) - (b.pos ?? -1));
   const generatedAt = typeof coverage.generatedAt === 'string' ? coverage.generatedAt : null;
-  return { mapping: { formatVersion: MAPPING_FORMAT_VERSION, generatedAt, skipped, templates }, have };
+  return { mapping: { formatVersion: MAPPING_FORMAT_VERSION, generatedAt, skipped, templates } };
 }
 
 /**
  * --verify: re-reads and re-indexes every mapped page's capture (<captures>/<slug>.html) and counts each
  * selector's hits. An instance is verified true when its selector resolves to exactly one element, else
- * false (a null selector, syntax outside the grammar, a capture gone or not indexable); a section's pages
- * become those of `have` (the pages that have it) where its selector resolves to exactly one element.
- * Mutates and returns `mapping`.
+ * false (a null selector, syntax outside the grammar, a capture gone or not indexable); a section keeps
+ * in pages only those where its selector still resolves to exactly one element (a page may drop, none is
+ * added). Mutates and returns `mapping`.
  */
-export function verifyMapping(mapping, have, captures) {
+export function verifyMapping(mapping, captures) {
   for (const t of mapping.templates) {
     const indices = new Map();
     const indexOf = (slug) => {
@@ -926,8 +928,7 @@ export function verifyMapping(mapping, have, captures) {
     };
     const once = (slug, sel) => { const index = sel ? indexOf(slug) : null; return !!index && hitsOf(index, sel) === 1; };
     for (const b of t.blocks) for (const i of b.instances) i.verified = once(i.slug, i.selector);
-    const on = (have && have.get(t.templateId)) || new Map();
-    for (const s of t.sections) s.pages = (on.get(s.id) || []).filter((slug) => once(slug, s.selector)).sort(byStr);
+    for (const s of t.sections) s.pages = s.pages.filter((slug) => once(slug, s.selector));
   }
   return mapping;
 }
@@ -1025,11 +1026,11 @@ export function main(argv) {
   }
   const notes = [];
   const captures = resolve(opts.captures);
-  const { mapping, have } = buildMapping(coverage, {
+  const { mapping } = buildMapping(coverage, {
     content: resolve(opts.content), captures, eds: resolve(opts['eds-schema']), encode: resolve(opts.encode), encodeShown: opts.encode,
   }, notes);
   const verify = !!opts.verify;
-  if (verify) verifyMapping(mapping, have, captures);
+  if (verify) verifyMapping(mapping, captures);
   const text = serialize(mapping);
   const file = resolve(opts.out);
   let status = 'unchanged';

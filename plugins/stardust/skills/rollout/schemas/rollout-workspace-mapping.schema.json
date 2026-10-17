@@ -80,9 +80,9 @@
         "id": { "type": "string", "pattern": "^s[1-9][0-9]*$", "description": "s1…sN: the representative's sections in order, then sections other pages add." },
         "selector": {
           "$ref": "#/$defs/selector",
-          "description": "The generalisation of the section's per-page selector (the lowest common ancestor of its records) that resolved to exactly one element on the most of its pages; null when no page had an anchor."
+          "description": "The generalisation of the section's per-page selector (the lowest common ancestor of its records) that resolved to that page's own section element on the most of its pages; null when no page had an anchor."
         },
-        "pages": { "type": "array", "description": "Sorted slugs where selector resolved to exactly one element.", "items": { "type": "string" } },
+        "pages": { "type": "array", "description": "Sorted slugs where selector's one hit is that page's own section element; --verify may drop a page, never adds one.", "items": { "type": "string" } },
         "style": { "type": ["string", "null"], "description": "The delivered section style (section-metadata), or null." },
         "blocks": { "type": "array", "description": "The section's block names, unique, in order.", "items": { "type": "string" } },
         "defaultContent": {
