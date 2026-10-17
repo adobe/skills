@@ -313,6 +313,9 @@ async function denialAt(args, page, resp, url) {
   if (d.skipped) console.error(`[crawl] denial-page check skipped at ${url}: ${d.skipped}`);
   return d.marker || null;
 }
+// A page's denial marker → the failure crawl.failures lists. The crawl has no --headed flag: it escalates headed at its
+// entry only (main()'s entry probe), so the message names that and leaves --headed to the live instruments.
+const denialError = (status, marker) => Object.assign(new Error(`bot challenge: HTTP ${status} ${marker} — not the page; not captured (the crawl escalates headed at its entry only; the live instruments escalate with --headed)`), { errorClass: 'BotChallengeError' });
 
 // ---- URL normalization: one canonical form for entry, --pages, sitemap, BFS ----
 // resolve against base, strip hash, keep query, normalize trailing slash
@@ -932,7 +935,7 @@ async function capturePage(context, url, slug, args) {
   // a 2xx denial page is a bot challenge, not content: fail it HERE, before consent, scroll, record and screenshot,
   // so crawl.failures names it and no page record or screenshot of it exists (gate-all's crawl-shot fallback included).
   const denial = await denialAt(args, page, resp, resolvedUrl);
-  if (denial) throw Object.assign(new Error(`bot challenge: HTTP ${status} ${denial} — a denial page, not the page; not captured (escalate: the crawl's headed fallback / --headed)`), { errorClass: 'BotChallengeError' });
+  if (denial) throw denialError(status, denial);
 
   if (args.consent) await dismissConsent(page);
   await page.waitForTimeout(WAIT_MS[args.wait] || WAIT_MS.medium);
@@ -954,7 +957,7 @@ async function capturePage(context, url, slug, args) {
   // a denial page a script rendered after domcontentloaded: read again before the record, so it too is a failure
   // with no page record and no screenshot
   const late = await denialAt(args, page, resp, resolvedUrl);
-  if (late) throw Object.assign(new Error(`bot challenge: HTTP ${status} ${late} — a denial page, not the page; not captured (escalate: the crawl's headed fallback / --headed)`), { errorClass: 'BotChallengeError' });
+  if (late) throw denialError(status, late);
 
   const rec = await page.evaluate(capture);
   // dynamic surface (opt-in): network recorder + DOM-side evidence → one `dynamic` section

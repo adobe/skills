@@ -243,7 +243,7 @@ if (playwrightOk) {
       assert.deepEqual(records.map((r) => r.slug), ['hub', 'ok']);
       const failures = [...log.crawl.failures].sort((a, b) => a.slug.localeCompare(b.slug));
       assert.deepEqual(failures.map((f) => [f.slug, f.errorClass]), [['denied', 'BotChallengeError'], ['late', 'BotChallengeError']], JSON.stringify(log.crawl.failures));
-      assert.equal(failures[0].message, 'bot challenge: HTTP 200 denial page — "Access Denied" + "Reference #" — a denial page, not the page; not captured (escalate: the crawl\'s headed fallback / --headed)');
+      assert.equal(failures[0].message, 'bot challenge: HTTP 200 denial page — "Access Denied" + "Reference #" — not the page; not captured (the crawl escalates headed at its entry only; the live instruments escalate with --headed)');
       assert.equal(failures[1].message, failures[0].message, 'the late one: the same marker and message');
       assert.deepEqual(readdirSync(join(out, 'pages')).sort(), ['hub.html', 'hub.json', 'ok.html', 'ok.json']);
       assert.deepEqual(readdirSync(join(out, 'assets', 'screenshots')).sort(), ['hub.png', 'ok.png']);
