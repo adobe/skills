@@ -53,7 +53,9 @@
  *                          of the first; with --against matches are paired by index
  *     --json               the full structure on stdout instead of the table
  *     --out <file>         also write that JSON to <file> (directories created)
- *     --timeout-ms <ms>    per-page navigation timeout (default 20000)
+ *     --timeout-ms <ms>    per-page navigation timeout (default: STARDUST_NAV_TIMEOUT_MS, else
+ *                          stardust/current/_crawl-log.json crawl.navMs.p95 × 2 clamped to 20–180 s,
+ *                          else 20000)
  *     --ua <string>        user agent (default: the real-Chrome desktop UA)
  *     --consent <sel>      extra consent-accept selector (live side; clicked, never removed)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; marketing modals etc.)
@@ -81,7 +83,8 @@
  * In the table a backgroundImage `url("https://host/long/path/flag-de.svg")`
  * prints as `url(…/flag-de.svg)` so a row stays one line (the JSON keeps the
  * full value). --json: { _provenance: { writtenBy, writtenAt, urls[], widths[],
- * selectors[], props[], allMatches, failed[], warnings[] }, widths[],
+ * selectors[], props[], allMatches, navTimeout: { ms, source: flag | env | crawl |
+ * default }, failed[], warnings[] }, widths[],
  * selectors[], root: { [url]: { [width]: { viewport, clientWidth, scrollWidth,
  * scrollHeight, overflowX } } }, pages: { [url]: { [width]: { [selector]: [ {
  * index, of, rect: { x, y, w, h }, visible, text, props, img?: { naturalWidth,
@@ -124,6 +127,8 @@ export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Apple
 export const DEFAULT_PROPS = ['display', 'position', 'boxSizing', 'width', 'height', 'maxWidth', 'margin', 'padding', 'gap', 'backgroundColor', 'backgroundImage', 'color', 'fontFamily', 'fontSize', 'fontWeight', 'lineHeight', 'letterSpacing', 'textTransform', 'textAlign', 'borderRadius', 'border', 'boxShadow', 'opacity', 'objectFit'];
 export const MATCH_CAP = 12;
 export const TEXT_MAX = 40;
+// The navigation timeout when neither --timeout-ms, STARDUST_NAV_TIMEOUT_MS nor a crawl latency figure gives one.
+export const DEFAULT_TIMEOUT_MS = 20000;
 const VIEWPORT_H = 900;
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 2; } }
@@ -143,7 +148,7 @@ async function loadLiveSession() {
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
 
 export function parseArgs(argv) {
-  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: 20000, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
+  const o = { url: null, against: null, selectors: [], widths: [], props: DEFAULT_PROPS, allMatches: false, json: false, out: null, timeoutMs: null, ua: DEFAULT_UA, consent: null, dismiss: [], headed: false, locale: null };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, flag) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${flag} needs a value`); return argv[i + 1]; };
   for (let i = 0; i < argv.length; i += 1) {
@@ -170,7 +175,8 @@ export function parseArgs(argv) {
   if (!o.widths.length) o.widths = [1440];
   if (o.widths.some((w) => !Number.isInteger(w) || w <= 0)) throw new UsageError(`--width must be positive integers, got ${o.widths.join(',')}`);
   if (!o.props.length) throw new UsageError('--props must name at least one property');
-  if (!Number.isFinite(o.timeoutMs) || o.timeoutMs <= 0) throw new UsageError('--timeout-ms must be a positive number');
+  // null = not given: main resolves the shared navigation timeout (live-session) — the flag always wins.
+  if (o.timeoutMs !== null && (!Number.isFinite(o.timeoutMs) || o.timeoutMs <= 0)) throw new UsageError('--timeout-ms must be a positive number');
   o.widths = [...new Set(o.widths)];
   return o;
 }
@@ -278,7 +284,10 @@ async function main(argv) {
   }
   const urls = o.against ? [o.url, o.against] : [o.url];
   const session = await loadLiveSession();
-  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
+  // One navigation timeout across the instruments: the flag, else env, else the crawl's p95 × 2, else 20000.
+  const nav = o.timeoutMs === null ? session.navTimeout({ fallback: DEFAULT_TIMEOUT_MS }) : { ms: o.timeoutMs, source: 'flag' };
+  o.timeoutMs ??= nav.ms;
+  const result = { _provenance: { writtenBy: 'skills/replica/scripts/measure.mjs', writtenAt: new Date().toISOString(), urls, widths: o.widths, selectors: o.selectors, props: o.props, allMatches: o.allMatches, navTimeout: { ms: nav.ms, source: nav.source }, failed: [], warnings: [] }, widths: o.widths, selectors: o.selectors, root: {}, pages: {} };
   // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   try {

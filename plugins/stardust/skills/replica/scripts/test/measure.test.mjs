@@ -11,12 +11,12 @@
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_PROPS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, shortValue } from '../measure.mjs';
+import { DEFAULT_PROPS, DEFAULT_TIMEOUT_MS, MATCH_CAP, UsageError, buildDeltas, buildRootDeltas, computeDeltas, fileOf, formatDelta, formatRoot, formatTable, isLiveHttpUrl, parseArgs, shortValue } from '../measure.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'measure.mjs');
@@ -34,7 +34,7 @@ await check('parseArgs: selectors split on commas, widths repeatable + comma-sep
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('backgroundColor') + 1], 'backgroundImage', 'backgroundImage sits right after backgroundColor');
   assert.equal(DEFAULT_PROPS[DEFAULT_PROPS.indexOf('position') + 1], 'boxSizing', 'boxSizing is a default prop — the box model is a lifted value the gate compares per box'); assert.equal(DEFAULT_PROPS.length, 24);
   assert.equal(o.against, null); assert.equal(o.allMatches, false); assert.equal(o.json, false); assert.equal(o.out, null);
-  assert.equal(o.timeoutMs, 20000); assert.match(o.ua, /Chrome\//);
+  assert.equal(o.timeoutMs, null, 'no --timeout-ms: main resolves the shared navigation timeout'); assert.equal(DEFAULT_TIMEOUT_MS, 20000, 'the fallback stays the old default'); assert.match(o.ua, /Chrome\//);
   assert.deepEqual(parseArgs(['http://a/', '--selectors', 'h1']).widths, [1440]);
 });
 await check('parseArgs: --props replaces the default list; --against, --all-matches, --json, --out, --timeout-ms, --ua', () => {
@@ -53,6 +53,8 @@ await check('parseArgs: usage errors (code 2) — no url, no selectors, unknown 
   usage(['http://a/', '--selectors', '.x', '--width', 'wide'], /--width/);
   usage(['http://a/', '--selectors'], /--selectors needs a value/);
   usage(['http://a/', '--selectors', '.x', '--props', ','], /--props/);
+  usage(['http://a/', '--selectors', '.x', '--timeout-ms', '0'], /--timeout-ms must be a positive number/);
+  usage(['http://a/', '--selectors', '.x', '--timeout-ms', 'soon'], /--timeout-ms must be a positive number/);
 });
 await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
   for (const [flag, ...tail] of [['--width'], ['--against'], ['--out'], ['--timeout-ms'], ['--ua'], ['--consent'], ['--dismiss'], ['--locale'], ['--width', '--json'], ['--against', '--all-matches'], ['--dismiss', '--headed'], ['--locale', '--json']]) {
@@ -236,8 +238,8 @@ if (playwrightOk) {
   const base = `http://127.0.0.1:${server.address().port}`;
   const urlA = `${base}/a.html`; const urlB = `${base}/b.html`;
   // Asynchronous spawn: the fixture origin lives in this process, so the event loop must keep running.
-  const run = (args, cwd) => new Promise((resolve) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+  const run = (args, cwd, env = process.env) => new Promise((resolve) => {
+    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env, encoding: 'utf8' });
     let stdout = ''; let stderr = '';
     child.stdout.on('data', (d) => { stdout += d; }); child.stderr.on('data', (d) => { stderr += d; });
     child.on('close', (status) => resolve({ status, stdout, stderr }));
@@ -328,6 +330,18 @@ if (playwrightOk) {
     assert.equal(j._provenance.warnings.length, 1, JSON.stringify(j._provenance.warnings)); assert.match(j._provenance.warnings[0], /selector "!bad"/);
     assert.match(r.stderr, /measure: [^\n]*selector "!bad"/);
     assert.deepEqual(j.pages[urlA][1440]['!bad'], []); assert.equal(j.pages[urlA][1440]['.hero'].length, 1);
+  });
+  await check('e2e: one navigation timeout — no flag: the crawl log\'s p95 × 2 (clamped), else the env; --timeout-ms wins over both; _provenance.navTimeout names the source', async () => {
+    const proj = mkdtempSync(join(tmpdir(), 'measure-nav-'));
+    mkdirSync(join(proj, 'stardust', 'current'), { recursive: true });
+    writeFileSync(join(proj, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { navMs: { p95: 15000 } } }));
+    const noEnv = { ...process.env }; delete noEnv.STARDUST_NAV_TIMEOUT_MS;
+    try {
+      const nav = async (args, env) => { const r = await run([urlA, '--selectors', '.hero', '--props', 'display', '--json', ...args], proj, env); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout)._provenance.navTimeout; };
+      assert.deepEqual(await nav([], noEnv), { ms: 30000, source: 'crawl' });
+      assert.deepEqual(await nav([], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 45000, source: 'env' });
+      assert.deepEqual(await nav(['--timeout-ms', '7000'], { ...noEnv, STARDUST_NAV_TIMEOUT_MS: '45000' }), { ms: 7000, source: 'flag' });
+    } finally { rmSync(proj, { recursive: true, force: true }); }
   });
   server.close();
   assert.equal(existsSync(join(work, 'deep', 'a.json')), true);
