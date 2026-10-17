@@ -104,14 +104,17 @@
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load]
+ * --eds-host takes a bare host (https:// added) or an http(s) origin URL and is normalised to `<protocol>//<host>`
+ * (`edsOrigin`; the summary's `edsHostOverride` records it); a path, query or hash → one stderr line and the usage
+ * line, exit 2, before any I/O.
  * Two browser budgets, kept apart: the origin pool (2) is the source's bot budget; the EDS / probe pools (4 / 2) carry
  * no bot risk, but each of their slots is a Chromium — raising them raises this job's Chromium peak (measured: 6 / 4
  * took an 8-page job from 6 to 8 at once). A machine-wide browser slot (run-bg) bounds jobs, not browsers, so the
  * defaults hold with or without one; the flags raise them.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection. `verdict`,
- * `formatSummary`, `parseArgs`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
+ * (overrides count), 2 any FAIL, a refused start (no verdict) or a refused --eds-host, 1 error or an empty selection.
+ * `verdict`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
@@ -145,7 +148,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --recapture-origin        re-shoot origin.png even when fresh (previous kept on failure)
   --origin-max-age <h>      also reuse origin captures from earlier runs up to <h> hours old (env
                             STARDUST_ORIGIN_MAX_AGE_H; default: this run's captures only)
-  --eds-host <host>         gate a code branch host against the same content
+  --eds-host <host>         gate a code branch host against the same content: a bare host or https://<host>
+                            (https:// added when no scheme); a path, query or hash is refused (exit 2)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -174,7 +178,21 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   before --only). RUN_BG_DEADLINE_SEC (env, seconds: the job's --timeout, exported by
   run-bg; absent or ≤ 0 = none) below the estimate → refused before the out dir or any capture: one stderr line
   "no verdict" naming --timeout <estimate>; exit 2.
-Exit: 0 all PASS (overrides count), 2 any FAIL or a refused start (no verdict), 1 error or an empty selection.`;
+Exit: 0 all PASS (overrides count), 2 any FAIL, a refused start (no verdict) or a refused --eds-host, 1 error or an
+  empty selection.`;
+const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
+
+/**
+ * edsOrigin(value) → { origin } | { error }: --eds-host as a bare host (https:// added when there is no scheme) or an
+ * http(s) origin URL; a path other than `/`, a query or a hash is refused. origin = `<protocol>//<host>` (URL-normalised:
+ * lower-case host, a non-default port kept). Pure.
+ */
+export function edsOrigin(value) {
+  const raw = String(value ?? '').trim(); const error = `--eds-host takes a host or an origin URL (https://<host>), not a path — got ${value ?? ''}`;
+  let u; try { u = new URL(/^[a-z][a-z0-9+.-]*:\/\//i.test(raw) ? raw : `https://${raw}`); } catch { return { error }; }
+  if (!/^https?:$/.test(u.protocol) || u.pathname !== '/' || /[?#]/.test(raw) || u.username || u.password) return { error };
+  return { origin: `${u.protocol}//${u.host}` };
+}
 
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
@@ -187,7 +205,7 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--coverage') o.coverage = v(); else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
     else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
-    else if (a === '--eds-host') o.edsHost = v().replace(/\/$/, ''); else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
+    else if (a === '--eds-host') { const e = edsOrigin(v()); if (e.error) { console.error(`gate-all: ${e.error}\n${USAGE}`); process.exit(2); } o.edsHost = e.origin; } else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
     else if (a === '--origin-max-age') { o.originMaxAge = Number(v()); if (!(o.originMaxAge >= 0)) { console.error(`--origin-max-age must be a number of hours >= 0\n\n${HELP}`); process.exit(1); } }
     else if (a === '--origin-concurrency') o.oc = Number(v()); else if (a === '--eds-concurrency') o.ec = Number(v()); else if (a === '--probe-concurrency') o.pc = Number(v());
     else if (a === '--threshold') o.threshold = Number(v()); else if (a === '--height-tol') o.heightTol = Number(v()); else if (a === '--clip-max') o.clipMax = Number(v()); else if (a === '--unit-tol') o.unitTol = Number(v());

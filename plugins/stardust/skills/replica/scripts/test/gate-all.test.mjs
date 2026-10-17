@@ -3,7 +3,8 @@
 // criteria (pixel, height, clip + allowance, content), n/a content never fails a page, required vs advisory
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag, the reused cell); parseArgs
-// defaults and --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
+// defaults and --out derived from --width; --eds-host (edsOrigin table: a bare host or an origin URL, a path refused —
+// the CLI exits 2 writing nothing; a sandbox run stitches https://<host><path> and records the origin); --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff;
 // an empty selection names its cause (emptySelection table, the CLI exits 1 writing nothing); the roster (selectPages /
 // rosterEstimate table, the RUN_BG_DEADLINE_SEC deadline) and its source — the rollout coverage (coveragePages, beside a
 // state, --coverage, a coverage-only project's CLI run, missing / malformed files), else the state.
@@ -28,7 +29,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { codeDeployed, contentDeployed, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, foundationPart, formatSummary, gateKeyOf, gateKeyParts, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, rosterEstimate, rowKey, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -99,6 +100,20 @@ check('parseArgs: defaults, --out derived from --width, --no-probes drops both p
   assert.equal(p.out, 'stardust/replica/gates/all-360');
   const q = parseArgs(['node', 'x', '--stage', 'prototype', '--proto-base', 'http://localhost:8791/']);
   assert.equal(q.out, 'stardust/replica/gates/prototypes-1440'); assert.equal(q.content, false, 'no content-presence at the prototype stage'); assert.equal(q.clip, true); assert.equal(q.protoBase, 'http://localhost:8791'); assert.equal(p.clip, false); assert.equal(p.content, false); assert.deepEqual(p.only, ['a', 'b']); assert.equal(p.edsHost, 'https://fix-x--r--o.aem.live');
+});
+const EDS_ERR = (v) => `--eds-host takes a host or an origin URL (https://<host>), not a path — got ${v}`;
+check('edsOrigin / --eds-host: a bare host gets https://, an origin URL is normalised (trailing /, case, a non-default port kept); a path, query, hash or another scheme is refused — the CLI exits 2 before any I/O: the error line, then the usage line', () => {
+  for (const [v, origin] of [['main--site--org.aem.page', 'https://main--site--org.aem.page'], ['https://main--site--org.aem.page/', 'https://main--site--org.aem.page'], ['http://localhost:3000', 'http://localhost:3000'],
+    [' Main--Site--Org.aem.page ', 'https://main--site--org.aem.page'], ['h.test:8443/', 'https://h.test:8443'], ['https://h.test:443', 'https://h.test']]) assert.deepEqual(edsOrigin(v), { origin }, v);
+  for (const v of ['main--site--org.aem.page/en/x', 'https://h.test/x?y', 'https://h.test/?y', 'https://h.test/#top', 'ftp://h.test', '']) assert.deepEqual(edsOrigin(v), { error: EDS_ERR(v) }, v);
+  assert.equal(parseArgs(['node', 'x', '--eds-host', 'fix-x--r--o.aem.live']).edsHost, 'https://fix-x--r--o.aem.live', 'host-only form');
+  const cwd = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-edshost-'))); mkdirSync(join(cwd, 'stardust'));
+  writeFileSync(join(cwd, 'stardust/state.json'), JSON.stringify({ pages: [{ slug: 'a', url: 'https://o.test/a', liveUrl: 'https://main--site--org.aem.page/a', status: 'deployed' }] }));
+  const before = readdirSync(cwd, { recursive: true }).sort();
+  const r = spawnSync(process.execPath, [SCRIPT, '--eds-host', 'main--site--org.aem.page/en/x'], { cwd, encoding: 'utf8', env: { ...process.env, RUN_BG_DEADLINE_SEC: '' } });
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.stdout, '');
+  assert.deepEqual(r.stderr.trim().split('\n'), [`gate-all: ${EDS_ERR('main--site--org.aem.page/en/x')}`, 'Usage: node gate-all.mjs [options]   (from the project root)']);
+  assert.deepEqual(readdirSync(cwd, { recursive: true }).sort(), before); rmSync(cwd, { recursive: true, force: true });
 });
 check('formatSummary: the reused cell per row and the head clause only when something was reused', () => {
   const base = { slug: 'a', path: '/a', pct: 2, heightDelta: 0, clipped: 0, content: { missing: 0, hidden: 0 }, units: null, pass: true, pixelOnlyPass: true, reasons: [] };
@@ -744,6 +759,22 @@ check('coverage-only project (no state.json): the rollout coverage is the roster
   assert.equal(m.stderr.split('\n').filter((l) => l.startsWith('gate-all: ')).length, 1, m.stderr);
   assert.match(m.stderr, /^gate-all: stardust\/state\.json unreadable \(.+\) — roster from coverage without state enrichment$/m);
   rmSync(croot, { recursive: true, force: true });
+});
+check('--eds-host in the sandbox: a bare host and its https://<host>/ form both stitch and probe https://<host><path> and record the origin as _provenance.edsHostOverride', () => {
+  const eroot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-eds-'))); mkdirSync(join(eroot, 'stardust'));
+  writeFileSync(join(eroot, 'stardust/state.json'), JSON.stringify({ pages: [pages[1]] }));
+  const host = 'fix-x--site--org.aem.page';
+  for (const flag of [host, `https://${host}/`]) {
+    for (const f of [STITCH_LOG, CP_LOG]) rmSync(f, { force: true });
+    const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+    const r = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--eds-host', flag], { cwd: eroot, env: e, encoding: 'utf8', timeout: 60e3 });
+    assert.equal(r.status, 0, r.stderr + r.stdout);
+    assert.deepEqual(lines(STITCH_LOG).filter((l) => l.startsWith('EDS ')).map((l) => l.split(' ')[1]), [`https://${host}/about`], flag);
+    assert.deepEqual(lines(CP_LOG).map((l) => JSON.parse(l).argv[1]), [`https://${host}/about`], flag);
+    const { _provenance: pv } = JSON.parse(readFileSync(join(eroot, 'stardust/replica/gates/all-1440/summary.json'), 'utf8'));
+    assert.deepEqual([pv.edsHostOverride, pv.eds], [`https://${host}`, `https://${host}`], flag);
+  }
+  rmSync(eroot, { recursive: true, force: true });
 });
 check('sandbox 2: --only home is a fix round — 0 origin navigations, the row / origin.json / _run.log record the reuse, presence cache passed; a held browser slot leaves the pools at 2 / 4 / 2', () => {
   const r = gate(['--only', 'home'], { STARDUST_BROWSER_SLOT: join(root, 'slot-1.json') });
