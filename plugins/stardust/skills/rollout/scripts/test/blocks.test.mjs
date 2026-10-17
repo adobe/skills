@@ -2,9 +2,10 @@
 // skills/rollout/scripts/test/blocks.test.mjs — the blocks.mjs contract for blocks the export can see:
 // every subdirectory of the project's blocks/ that holds <name>.js or <name>.css is a delivered block
 // and gets a ledger row even when no page lists it (source `blocks-dir`, status converted; a chrome name
-// delivers as a fragment); a directory equal to a planned block's id or edsBlockName is not duplicated;
-// a prior delivery (a block recorded not-delivered with its reason) survives a re-run; a re-run writes
-// the same bytes but timestamps; a missing blocks dir is a note, never an error.
+// delivers as a fragment); a directory equal to a planned block's id or edsBlockName is not
+// duplicated; a prior delivery (a block recorded not-delivered with
+// its reason) survives a re-run; a re-run writes the same bytes but timestamps; a missing blocks dir is a
+// note, never an error; every key written is declared in the (closed) rollout schemas.
 // Run: node plugins/stardust/skills/rollout/scripts/test/blocks.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -118,6 +119,37 @@ check('a missing blocks dir is a note, not an error; --blocks <dir> reads anothe
   assert.equal(r.status, 0, r.stderr);
   assert.deepEqual(ledger(out).map((b) => b.id), ['hero', 'promo']);
   assert.match(r.stdout, /^Registered {2}1 block\(s\) from eds\/blocks\/ that no page lists: promo$/m, r.stdout);
+});
+
+// The schemas are closed (additionalProperties: false): every key written must be declared there.
+const SCHEMAS = join(HERE, '..', '..', 'schemas');
+const schema = (f) => JSON.parse(readFileSync(join(SCHEMAS, f), 'utf8'));
+const undeclared = (obj, props) => Object.keys(obj).filter((k) => !(k in props));
+
+check('every key blocks.mjs writes is declared in the rollout schemas — a blocks-dir row, a not-delivered row with its reason, lastRun.blocks.notDelivered', () => {
+  const prior = [{ id: 'promo', label: 'promo', kind: 'module', signature: 'module:promo', source: 'blocks-dir', usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'not-delivered', edsBlockName: 'promo', blockPath: null, convertedAt: null, reason: 'kept for a later campaign' } }];
+  const { proj, out } = project({ pages: [page('home', ['hero', 'header'])], dirBlocks: { promo: ['promo.js'], teaser: ['teaser.css'], footer: ['footer.js'] }, priorBlocks: prior });
+  const r = run(proj);
+  assert.equal(r.status, 0, r.stderr);
+  const bs = schema('rollout-blocks.schema.json');
+  const doc = JSON.parse(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8'));
+  assert.deepEqual(undeclared(doc, bs.properties), []);
+  const blockDef = bs.$defs.block; const deliveryDef = blockDef.properties.delivery;
+  assert.deepEqual(doc.blocks.map((b) => b.id), ['footer', 'header', 'hero', 'promo', 'teaser']);
+  for (const b of doc.blocks) {
+    assert.deepEqual(undeclared(b, blockDef.properties), [], b.id);
+    for (const k of blockDef.required) assert.ok(k in b, `${b.id} lacks ${k}`);
+    assert.ok(blockDef.properties.kind.enum.includes(b.kind), `${b.id} kind ${b.kind}`);
+    assert.deepEqual(undeclared(b.delivery, deliveryDef.properties), [], `${b.id} delivery`);
+    assert.ok(deliveryDef.properties.status.enum.includes(b.delivery.status), `${b.id} status ${b.delivery.status}`);
+    if (b.delivery.status === 'not-delivered') assert.ok(deliveryDef.then.required.includes('reason') && b.delivery.reason, `${b.id}: not-delivered carries its reason`);
+  }
+  const cs = schema('rollout-config.schema.json');
+  const lastRun = JSON.parse(readFileSync(join(out, 'rollout.json'), 'utf8')).lastRun;
+  const blocksDef = cs.properties.lastRun.properties.blocks.properties;
+  assert.deepEqual(undeclared(lastRun, cs.properties.lastRun.properties), []);
+  assert.deepEqual(undeclared(lastRun.blocks, blocksDef), []);
+  assert.deepEqual(lastRun.blocks, { total: 5, converted: 2, notDelivered: 1, pending: 2 });
 });
 
 for (const d of made) rmSync(d, { recursive: true, force: true });

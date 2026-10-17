@@ -45,6 +45,7 @@
           "properties": {
             "total": { "type": "integer", "minimum": 0 },
             "converted": { "type": "integer", "minimum": 0 },
+            "notDelivered": { "type": "integer", "minimum": 0, "description": "Blocks recorded `not-delivered` (intentionally, with a reason); pending = total − converted − notDelivered." },
             "pending": { "type": "integer", "minimum": 0 }
           }
         },

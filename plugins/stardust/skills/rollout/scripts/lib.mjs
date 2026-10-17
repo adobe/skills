@@ -119,7 +119,7 @@ export function rollupConfig(config, pages, blocks, now) {
     ...(config.lastRun || {}),
     at: now,
     pages: counts,
-    blocks: blocks ? blockCounts(blocks) : (config.lastRun && config.lastRun.blocks) || { total: 0, converted: 0, pending: 0 },
+    blocks: blocks ? blockCounts(blocks) : (config.lastRun && config.lastRun.blocks) || { total: 0, converted: 0, notDelivered: 0, pending: 0 },
     verifyFailures: counts.failed,
   };
 }
