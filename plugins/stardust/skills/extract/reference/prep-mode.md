@@ -1,7 +1,6 @@
 # Prep mode (`--prep`) — full procedure
 
-Relocated from `SKILL.md` § Prep mode. Read this whole file before
-running any `--prep` extraction.
+Read this whole file before running any `--prep` extraction.
 
 When invoked with `--prep`, extract runs an extended pass that
 prepares the inventory for migration. Discovery-mode runs (without
@@ -28,11 +27,9 @@ large), the sub-agent prompt **must**:
 1. **Forbid synthesis by name.** The literal sentence
    *"do not synthesize a page record from `_brand-extraction.json`
    + URL patterns + captured photos; every page must be a live
-   Playwright render"* must appear in the prompt. The earlier
-   wording *"must actually invoke Playwright per page"* was
-   satisfiable in spirit by synthesis-with-photo-reuse and
-   produced the e-commerce-run failure. Naming the shortcut explicitly
-   closes that loophole.
+   Playwright render"* must appear in the prompt — a softer
+   "must actually invoke Playwright per page" let synthesis with
+   reused photos through.
 2. **Require a per-page evidence table in the return.** Columns:
    `slug | waitMode | waitMs | fetchedAt | httpStatus`. The
    parent agent reads this table on completion and aborts if
@@ -147,7 +144,11 @@ section that identifies content slots per page-type:
   content shape
 
 Schema additions live in `current-state-schema.md`
-§ Typed slots (extend that doc separately).
+§ Typed slots (extend that doc separately). Once the rollout block
+mapping covers a template's archetype, migrate's A′ fork reads its
+siblings' slots through it
+(`skills/migrate/reference/template-and-module-rendering.md` § Path A′
+Step 2); typed slots kept here still override the mapped values.
 
 ## 5. Prep summary
 

@@ -19,9 +19,12 @@
  *   node migrate.mjs render <slug…|--all> [--force] [--state stardust/state.json]
  *        [--proto-dir stardust/prototypes] [--current stardust/current] [--out stardust/migrated]
  *        [--canon-css <file>] [--inline-canon] [--source <slug>=<file>]…
- *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--slots mapping|page-json]
  *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
  *        [--variance-dir <dir>] [--stardust-version <v>]
+ *   node migrate.mjs plan <slug…|--all> [--force] [--encoder <file>] [--source <slug>=<file>]…
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
+ *                                                                    → stardust/migrate/encode/<template>.json
  *   node migrate.mjs gate <slug> <gate-name> [--evidence "…"]          → gatesPassed[] / gateEvidence
  *   node migrate.mjs deviation <slug> --kind <k> [--source <s>] [--target <t>] --reason <r>
  *                                                                    → contentDeviations[]
@@ -48,7 +51,7 @@
  *   rewritten. Siblings whose shape passedOn covers inherit the launches (rollout plan.mjs
  *   needsHarness, gate-evidence.mjs).
  *
- * Flow guard (state-machine.md § Flow keys, plugin 0.23.0): `render` refuses (exit 2) when the state
+ * Flow guard (state-machine.md § Flow keys, plugin 0.23.0): `render` and `plan` refuse (exit 2) when the state
  *   file exists but has no top-level `flow` — the master skill stamps flow / flowChosenAt / flowSource
  *   when its routing resolves the two-flow question (skills/stardust/SKILL.md § Routing, § Two
  *   migration flows); either flow value passes. The sidecar-only subcommands (gate, deviation,
@@ -73,10 +76,36 @@
  *   proposed HTML at <path>`.
  *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
  *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
- *   n sections)` (a fork adds `fork of <archetype>; `), `unchanged` when the recorded shas and
- *   the variance record match (--force overrides), `passthrough` for a non-HTML leaf,
+ *   n sections)` (a fork adds `fork of <archetype>; `, with --slots mapping `fork of <archetype> via the
+ *   block mapping; `), `unchanged` when the recorded shas, the variance record and the slot source match
+ *   (--force overrides), `passthrough` for a non-HTML leaf,
  *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
+ *
+ * plan — Phase 1 (SKILL.md § Phase 1 — Plan): render's page set (--all prints the same `skip` lines) and each
+ *   page's branch as render chooses it (the same flags; a strict branch / source refusal is printed as render
+ *   prints it, on stderr); nothing rendered, no sidecar, state.json untouched. Lines: `plan: <n> page(s) — A <a> ·
+ *   A' <s> on <t> template(s) · B <b> · passthrough <p> · refused <r>`, `A  <n> page(s): <slug, …>`, per template
+ *   `A' <template>: <n> sibling(s): <slug> (fork), <slug>, …`, `B  <n> page(s): …`, `passthrough <n> page(s): …`.
+ *   Then the encode attempt (encode-attempt.mjs) of every template with A' siblings in the set — the attempt
+ *   decides how a template's siblings are built, so an A page without siblings and a B page get none: an existing
+ *   record (any verdict) is kept, --force re-records; else recordAttempt runs the encoder (encode.mjs beside
+ *   encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error) and writes
+ *   stardust/migrate/encode/<template>.json under the project root (the cwd). One line per template
+ *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, with ` (kept from <at>; --force re-records)`
+ *   when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
+ *   `encode-attempt <t>: not recorded — <why>`. The LAST stdout line is the count for the plan unit's ledger
+ *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted)`, plus ` · <k> without a
+ *   record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
+ *   page is refused or a template is left without a record.
+ *
+ * Encode-attempt gate (every A' page, own file or fork; before the sidecar and variance checks): the template (the
+ *   archetype's slug) needs an attempt record, stardust/migrate/encode/<template>.json under the project root, that
+ *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted): the gate is that the
+ *   attempt was made, not that it encoded. None (or an invalid one) → refused, nothing written, `refused <slug>:
+ *   strict encode-attempt — template <t> has no encode attempt record (stardust/migrate/encode/<t>.json) — run: node
+ *   stardust/scripts/migrate/encode-attempt.mjs record --template <t>` (migrate.mjs plan records it too). A and B
+ *   pages are never checked.
  *
  * A' fork (template-and-module-rendering.md § Path A′; data-attributes.md § Slot identity): the
  *   archetype's source HTML is copied in-process and every `data-slot` inside its <main> takes
@@ -109,14 +138,45 @@
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
+ * Fork slot source (--slots mapping|page-json). Default: page-json when <dirname(state)>/rollout/workspace/mapping.json is
+ *   absent; mapping when it is usable (below), has a verified selector for the archetype and both captures exist; else
+ *   page-json, never silently — one run line per archetype and reason `slots: archetype <a> — mapping not used
+ *   (<reason>); page JSON slots` and the sidecar slotMapSkipped <reason>. An explicit --slots mapping refuses instead.
+ *   page-json: the page JSON slots above. mapping (slot-map.mjs): the rollout block mapping (the rollout skill's
+ *   coverage-contract.md § mapping), read only when rollout/workspace/manifest.json lists its sha256 under outputs
+ *   and its generatedAt equals rollout/coverage/pages.json's. Each data-slot of the archetype's <main> is found in the
+ *   archetype's capture (<current>/pages/<archetype>.html) inside an anchor of the archetype — a block instance verified
+ *   true, or a section that resolved on it — by its text (an image by its file name, a link by its text); the same anchor
+ *   and child path on this page's capture (<current>/pages/<slug>.html) give its value (<img> image, <a> link, block
+ *   children html, else text). A name in the page JSON slots keeps that value (explicit beats derived); the page JSON is
+ *   never written. Refused (strict slots, nothing written): with an explicit --slots mapping, the mapping unusable (the
+ *   reason; re-run block-origin.mjs --verify, or --slots page-json), no verified selector for the archetype or a missing
+ *   capture; in mapping mode, a slot without a mapped source (or with an ambiguous one: its text in separate places of
+ *   the archetype's mapped capture, its image file name on more than one image there), or whose anchor does not match
+ *   exactly one element of this page's capture, whose path leads nowhere, whose link has no text, or a repeated slot
+ *   with more items than the archetype's, and no page JSON value for it. sourceForked names the mapping and the capture.
+ *
  * Variance gate (every A' page, own file or fork): <variance-dir>/<archetype-slug>.json, the
  *   replica/sibling-variance.mjs record (--variance-dir, default <dirname(state)>/rollout/variance).
  *   No file, or no row for the page → sidecar variance { status: skipped, reason } and one run
  *   summary line `variance: <n> A′ page(s) rendered without a variance probe row — recorded as
  *   skipped (…)`; verdict same → recorded; differs → refused (strict variance) unless
- *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted); more
- *   than half of the archetype's current clones differ → refused even with --accept-variance
- *   (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
+ *   --accept-variance "<reason>" (every differing page of this run; recorded as accepted; a new
+ *   reason replaces an earlier one) or an earlier acceptance of the same row holds: the page's
+ *   previous sidecar `variance` (else, with no sidecar record, its row's source.variance in
+ *   <dirname(state)>/rollout/coverage/pages.json, read once per run) carries `accepted` and equals
+ *   this render's record on archetype, verdict, missing, extra, deltas (the count) and deltaKinds
+ *   (the deltas' fingerprint, sorted: each kind, with its probe when it names one, and its message
+ *   — `COUNT(card): 3 → 4 matches`, so a grown COUNT, CLUSTERS or SECTIONS delta is a changed row;
+ *   SECTION HEIGHTS and PROBE keep the kind and probe only, their pixel and style values move
+ *   between probes), lists in any order → rendered without the flag,
+ *   `accepted` (and `acceptedAt` when the earlier record has one) kept, one run summary line
+ *   `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged variance (…)`; a
+ *   changed row — or an earlier record without archetype / deltaKinds, or whose deltaKinds lack
+ *   the messages (refused once) — is refused naming each changed field and quoting the earlier
+ *   reason. More than half
+ *   of the archetype's current clones differ → refused even with --accept-variance or an earlier
+ *   acceptance (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
  *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
  *   else (none) the archetype's type and not the archetype itself; rows of other slugs (moved to a
  *   sub-archetype, not in the state) count on neither side. Re-type the template: sub-archetypes by
@@ -128,7 +188,10 @@
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
- *                                    (`variance`: null on A / B, the variance record on A');
+ *                                    (`variance`: null on A / B, the variance record on A'; `slotSource`: mapping |
+ *                                    page-json on a fork, else null; `slotMap`: { mapping, generatedAt, anchors,
+ *                                    slots: { name: anchor selector } } of the mapped values, else null;
+ *                                    `slotMapSkipped`: why a default fork did not use the mapping, else null);
  *                                    a re-render carries the recorded judgments, encode.mjs's
  *                                    `encode` / `audit` keys and `passedOn` over (sourceCurrentSha stays
  *                                    this script's)
@@ -141,12 +204,16 @@
  *   gate/deviation/decision/variant/modules rewrite one sidecar (a malformed sidecar is a usage
  *   error naming the file, not overwritten); harness rewrites the archetype's sidecar (passedOn)
  *   only when the record changes; summary and pagemap write nothing.
- * Exit: 0 clean · 2 any page refused, the flow guard or a refused harness record · 1 usage error (message on stderr).
+ *   stardust/migrate/encode/<t>.json  plan only: the template's encode attempt record (encode-attempt.mjs --help)
+ * Exit: 0 clean · 2 any page refused, a template left without an encode attempt record (plan), the flow guard or a
+ *   refused harness record · 1 usage error (message on stderr).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
+import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -165,8 +232,10 @@ const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
 // `encode` / `audit` are written by encode.mjs (encode/provenance.mjs creates a sidecar in this key order when none exists);
 // `passedOn` (the archetype's) by `harness`
 export const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
-  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'encode', 'audit', 'passedOn', 'variance'];
+  'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'encode', 'audit', 'passedOn', 'variance', 'slotSource', 'slotMap', 'slotMapSkipped'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations', 'encode', 'audit', 'passedOn'];
+// The encode-attempt records live under the project root — the cwd, where encode-attempt.mjs's record command runs too.
+const PROJECT_ROOT = '.';
 const SELF = fileURLToPath(import.meta.url);
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
@@ -258,7 +327,7 @@ export function rewriteLinks(html, ctx) {
     else if (entry) { next = `${ctx.origin}${c.pathname}${c.search}${c.hash}`; reason = 'in-inventory-not-migrated'; } // partial-inventory carve-out
     else { next = `${prefix}${outputPathFor(c.pathname).outputPath}${c.search}${c.hash}`; reason = 'not-in-inventory'; }
     if (reason) broken.push({ href, reason });
-    let a = attrs.replace(hm[0], `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
+    let a = attrs.replace(hm[0], () => `href=${hm[1]}${hadAmp ? next.replace(/&/g, '&amp;') : next}${hm[1]}`);
     if (reason && !/(?<![\w-])data-broken-link=/.test(a)) a += ' data-broken-link="true"';
     return `<${tag}${a}>`;
   });
@@ -402,22 +471,23 @@ export function provenanceComment(f) {
   return `<!-- stardust:migrate\n${rows.join('\n')}\n-->`;
 }
 // Resolves title / description / canonical / lang / JSON-LD against the capture, rewrites canonical +
-// og:url to the deploy host when set, and inserts the provenance + :root <style> (+ defaults) first.
+// og:url to the deploy host when set, and inserts the provenance + :root <style> (+ defaults) first. Capture text and URLs reach
+// the HTML through function replacers only, so a `$&` / `$1` / `$$` in a title stays verbatim.
 export function composeHead(html, h) {
   const headOpen = html.match(/<head\b[^>]*>/i);
   if (!headOpen) return null;
   const tm = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
   let title = tm ? tm[1].trim() : '';
   const inserts = [];
-  if (!title && h.capture?.title) { title = String(h.capture.title).trim(); if (tm) html = html.replace(tm[0], `<title>${esc(title)}</title>`); else inserts.push(`<title>${esc(title)}</title>`); }
+  if (!title && h.capture?.title) { title = String(h.capture.title).trim(); if (tm) html = html.replace(tm[0], () => `<title>${esc(title)}</title>`); else inserts.push(`<title>${esc(title)}</title>`); }
   const descTag = tagWith(html, 'meta', /(?<![\w-])name\s*=\s*["']description["']/i);
   let description = attrOf(descTag, 'content');
   if (description == null && h.capture?.metaDescription) { description = String(h.capture.metaDescription); inserts.push(`<meta name="description" content="${esc(description)}">`); }
   let canonical = attrOf(tagWith(html, 'link', /(?<![\w-])rel\s*=\s*["']canonical["']/i), 'href');
   if (h.deployHost) {
     canonical = `https://${h.deployHost}/${urlFormOf(h.outputPath)}`;
-    html = html.replace(/<link\b[^>]*>/gi, (m) => (/(?<![\w-])rel\s*=\s*["']canonical["']/i.test(m) ? m.replace(/((?<![\w-])href\s*=\s*["'])[^"']*/i, `$1${canonical}`) : m));
-    html = html.replace(/<meta\b[^>]*>/gi, (m) => (/(?<![\w-])property\s*=\s*["']og:url["']/i.test(m) ? m.replace(/((?<![\w-])content\s*=\s*["'])[^"']*/i, `$1${canonical}`) : m));
+    html = html.replace(/<link\b[^>]*>/gi, (m) => (/(?<![\w-])rel\s*=\s*["']canonical["']/i.test(m) ? m.replace(/((?<![\w-])href\s*=\s*["'])[^"']*/i, (x, pre) => `${pre}${canonical}`) : m));
+    html = html.replace(/<meta\b[^>]*>/gi, (m) => (/(?<![\w-])property\s*=\s*["']og:url["']/i.test(m) ? m.replace(/((?<![\w-])content\s*=\s*["'])[^"']*/i, (x, pre) => `${pre}${canonical}`) : m));
     if (!tagWith(html, 'link', /(?<![\w-])rel\s*=\s*["']canonical["']/i)) inserts.push(`<link rel="canonical" href="${canonical}">`);
     if (!tagWith(html, 'meta', /(?<![\w-])property\s*=\s*["']og:url["']/i)) inserts.push(`<meta property="og:url" content="${canonical}">`);
   }
@@ -719,6 +789,11 @@ export function resolveCanon(o) {
 export function renderPage(run, page, entry) {
   const { slug } = page; const { outputPath, outputPathDefault } = entry;
   const { branch, tier, archetype, source, fork } = chooseBranch(run, page);
+  // encode-attempt gate — every A' page, own file or fork: its template's attempt must be on record (any verdict)
+  if (branch === "A'") {
+    const missing = requireEncodeAttempt(PROJECT_ROOT, archetype.slug);
+    if (missing) throw new Refusal(slug, 'encode-attempt', `template ${archetype.slug} has no encode attempt record (stardust/migrate/encode/${archetype.slug}.json)`, missing.slice(missing.indexOf('run: ')));
+  }
   const outFile = join(run.outDir, outputPath); const sideRel = sidecarFor(outputPath); const sideFile = join(run.outDir, sideRel);
   const capturePath = join(run.currentDir, 'pages', `${slug}.json`); const capture = readJson(capturePath);
   const archetypeSource = archetype ? sourceFor(run, archetype) : null;
@@ -726,13 +801,20 @@ export function renderPage(run, page, entry) {
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
   const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
-  let forked = null; let sourceHtml;
-  if (fork) { forked = forkFromArchetype(readFileSync(archetypeSource, 'utf8'), capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) }); sourceHtml = forked.html; } else sourceHtml = readFileSync(source, 'utf8');
+  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null;
+  if (fork) {
+    const archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    slotPlan = slotSourceFor(run, page, archetype);
+    if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
+    forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
+    sourceHtml = forked.html;
+  } else sourceHtml = readFileSync(source, 'utf8');
   const canonDir = join(dirname(run.stateFile), 'canon');
   const ownSlice = (tag) => { const m = sourceHtml.match(new RegExp(`<${tag}\\b[\\s\\S]*?<\\/${tag}>`, 'i')); return m ? sha(m[0]) : null; };
   const canonShas = { header: fsha(join(canonDir, 'header.html')) ?? ownSlice('header'), footer: fsha(join(canonDir, 'footer.html')) ?? ownSlice('footer'), css: run.canon.sha };
-  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance };
-  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record) equal the current set
+  const keys = { designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, sourceCurrentSha: fsha(capturePath), sourceProposedSha: sha(sourceHtml), canonShas, archetypeSha: archetype ? fsha(archetypeSource) : null, driverVersion: DRIVER_VERSION, variance,
+    slotSource: slotPlan ? slotPlan.mode : null, slotMap: mapped ? mapped.record : null, slotMapSkipped: slotPlan ? slotPlan.skipped : null };
+  // idempotent skip (migration-procedure.md § Idempotent skip) — the recorded input shas (and variance record, slot source) equal the current set
   if (!run.force && old && isFile(outFile) && JSON.stringify(Object.fromEntries(Object.keys(keys).map((k) => [k, old[k] ?? null]))) === JSON.stringify(keys)) return { status: 'unchanged', outputPath };
   // placeholder gate — no bypass flag
   if (/(?<![\w-])data-placeholder(?![\w-])/.test(sourceHtml)) throw new Refusal(slug, 'placeholder-gate', '[data-placeholder] present in the source', 'fill the missing content in the source file, then re-run');
@@ -757,7 +839,7 @@ export function renderPage(run, page, entry) {
   if (!run.inlineCanon && !report.refs.has(run.canon.subpath)) { run.bundler.ensure(run.canon.subpath, [run.canon.file]); report.refs.add(run.canon.subpath); canonLink = `${prefix}assets/${run.canon.subpath}`; }
   // <head>
   const at = nowIso();
-  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots` : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
+  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? (mapped ? `${toPosix(archetypeSource)} + ${mapped.record.mapping} on ${mapped.capture}${mapped.pageJson ? ` + ${toPosix(capturePath)}#slots` : ''}` : `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots`) : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
   const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type });
   if (!head) throw new Refusal(slug, 3, 'no <head> element', 'add <head> to the source');
   html = head.html;
@@ -772,7 +854,48 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped' };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped', varianceHeld: variance?.verdict === 'differs' && !run.acceptVariance };
+}
+// The fork's slot source for a page → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
+// explicit mapping refuses in mappedSlots when unusable); by default the page JSON when there is no mapping file, the mapping
+// when readMapping finds it usable, it has a verified selector for the archetype and both captures (the archetype's, this
+// page's) exist, else the page JSON with the reason (sidecar slotMapSkipped, one run summary line per archetype and reason —
+// never a silent fallback).
+function slotSourceFor(run, page, archetype) {
+  if (run.slotFlag) return { mode: run.slotFlag, skipped: null };
+  if (!run.mappingPresent) return { mode: 'page-json', skipped: null };
+  const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${page.slug}.html`));
+  const skipped = !m.mapping ? m.reason : !anchorsFor(m.mapping, null, archetype.slug).length ? `${m.file} has no verified selector for archetype ${archetype.slug}`
+    : !isFile(archCapture) ? `no capture HTML of archetype ${archetype.slug} at ${archCapture}` : !isFile(ownCapture) ? `no capture HTML at ${ownCapture}` : null;
+  if (skipped) { if (!run.slotFallbacks.has(archetype.slug)) run.slotFallbacks.set(archetype.slug, new Set()); run.slotFallbacks.get(archetype.slug).add(skipped); }
+  return { mode: skipped ? 'page-json' : 'mapping', skipped };
+}
+// --slots mapping (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors in the rollout
+// block mapping; a name in the page JSON slots keeps that value. → { slots (array form: the page JSON entries, then the mapped
+// names), record (the sidecar slotMap), capture, pageJson (the page JSON has slots) }; throws Refusal (strict slots) when the
+// mapping cannot be used or a slot gets no value. Recipes are built once per archetype source per run.
+function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath) {
+  const { slug } = page; const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+  if (!m.mapping) throw new Refusal(slug, 'slots', `the block mapping is unusable: ${m.reason}`, "re-run the rollout skill's block-origin.mjs --verify, then workspace-manifest.mjs, or pass --slots page-json");
+  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${slug}.html`));
+  const anchors = anchorsFor(m.mapping, null, archetype.slug);
+  if (!anchors.length) throw new Refusal(slug, 'slots', `${m.file} has no verified selector for archetype ${archetype.slug}`, `map the archetype with the rollout skill's block-origin.mjs --verify (its capture: ${archCapture}), or pass --slots page-json`);
+  if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to find its slots in`, 're-capture the archetype (extract), or pass --slots page-json');
+  if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the mapped slots from`, 're-capture the page (extract), or pass --slots page-json');
+  const key = `${archetype.slug}\n${sha(archetypeHtml)}`;
+  if (!run.recipeCache.has(key)) run.recipeCache.set(key, slotRecipes(archetypeHtml, readFileSync(archCapture, 'utf8'), anchors));
+  const recipes = run.recipeCache.get(key);
+  const { slots: derived, unresolved } = mappedSlotValues(recipes, readFileSync(ownCapture, 'utf8'));
+  const own = capture?.slots; const explicit = slotValues(own).map; const problems = [];
+  for (const [name, r] of Object.entries(recipes)) { const none = (Array.isArray(r) ? r : [r]).find((x) => !x.anchor); if (none && !explicit.has(name)) problems.push(`${name} (no recipe: ${none.reason})`); }
+  for (const u of unresolved) if (!explicit.has(u.slot)) problems.push(`${u.slot} (${u.reason})`);
+  if (problems.length) throw new Refusal(slug, 'slots', `the block mapping gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, `add each name to ${capturePath}#slots (a page value wins over the mapped one), or pass --slots page-json`);
+  const names = Object.keys(derived).filter((n) => !explicit.has(n)).sort();
+  const entries = Array.isArray(own) ? [...own] : own && typeof own === 'object' ? Object.entries(own).map(([name, value]) => ({ name, value })) : [];
+  for (const name of names) entries.push({ name, value: derived[name] });
+  const anchorOf = (r) => { const sels = [...new Set((Array.isArray(r) ? r : [r]).map((x) => x.anchor))]; return sels.length === 1 ? sels[0] : sels; };
+  return { slots: entries, capture: ownCapture, pageJson: explicit.size > 0, record: { mapping: m.file, generatedAt: m.generatedAt, anchors: anchors.length, slots: Object.fromEntries(names.map((n) => [n, anchorOf(recipes[n])])) } };
 }
 // The fork's media lookups: the media map and the ledger are read once per run, on the first slot value that names media.
 function mediaSource(run, which, slug) {
@@ -790,8 +913,9 @@ function mediaResolver(run, slug, capture) {
   return (ref) => mediaRefFor(ref, { base, map: mediaSource(run, 'map', slug), ledger: mediaSource(run, 'ledger', slug), protoDir: run.protoDir, bundles });
 }
 // The variance gate (replica/sibling-variance.mjs record, <variance-dir>/<archetype-slug>.json) → the sidecar `variance` record:
-// { status: 'skipped', reason } | { verdict, file, at, missing, extra, deltas, accepted }. Throws Refusal (strict variance) on a
-// differing page without --accept-variance, on any page of a template whose current clones mostly differ, and on a malformed file.
+// { status: 'skipped', reason } | { verdict, file, at, archetype, missing, extra, deltas, deltaKinds, accepted[, acceptedAt] }. Throws Refusal (strict
+// variance) on a differing page without --accept-variance or an earlier acceptance of the unchanged row, on any page of a template
+// whose current clones mostly differ, and on a malformed file.
 export function varianceGate(run, page, archetype, old = null) {
   const file = join(run.varianceDir, `${archetype.slug}.json`); const rel = toPosix(file);
   if (!run.varianceCache.has(file)) run.varianceCache.set(file, isFile(file) ? readJson(file) : undefined);
@@ -802,7 +926,7 @@ export function varianceGate(run, page, archetype, old = null) {
   const row = rows.find((s) => s.slug === page.slug);
   if (!row) return { status: 'skipped', reason: `${rel} has no row for ${page.slug}` };
   const list = (v) => (Array.isArray(v) ? v : []);
-  const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, accepted: null };
+  const rec = { verdict: row.verdict, file: rel, at: doc.at ?? null, archetype: archetype.slug, missing: list(row.missing), extra: list(row.extra), deltas: list(row.deltas).length, deltaKinds: deltaKindsOf(row.deltas), accepted: null };
   if (row.verdict === 'same') return rec;
   if (row.verdict !== 'differs') throw new Refusal(page.slug, 'variance', `${rel} gives ${page.slug} the verdict ${JSON.stringify(row.verdict ?? null)} (same or differs expected)`, `re-run replica/sibling-variance.mjs for archetype ${archetype.slug}, then re-run`);
   // The majority counts the current clones only: rows whose page clones this archetype now (a row left behind by a page moved
@@ -815,11 +939,38 @@ export function varianceGate(run, page, archetype, old = null) {
   const differ = clones.filter((s) => s.verdict === 'differs').length;
   const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica/sibling-variance.mjs); the re-typing is recorded as a deviation (migrate.mjs decision <slug> --kind re-type …, or deviation), never a mechanical clone`;
   if (differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
-  if (!run.acceptVariance) {
-    const prior = old?.variance?.accepted ? ` (an earlier render accepted it: "${old.variance.accepted}")` : '';
-    throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)`, `check the clone against the archetype and re-run with --accept-variance "<reason>"${prior}, or re-type it: ${retype}`);
+  if (run.acceptVariance) return { ...rec, accepted: run.acceptVariance };
+  const prior = priorVariance(run, page.slug, old);
+  const reason = prior && typeof prior.accepted === 'string' && prior.accepted.trim() ? prior.accepted : null;
+  const changed = reason ? VARIANCE_FIELDS.filter((k) => varianceKey(prior[k]) !== varianceKey(rec[k])) : [];
+  if (reason && !changed.length) return { ...rec, accepted: reason, ...(prior.acceptedAt != null ? { acceptedAt: prior.acceptedAt } : {}) };
+  const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : v == null ? '(not recorded)' : String(v));
+  const since = reason ? `; changed since an earlier render accepted it ("${reason}"): ${changed.map((k) => `${k} ${shown(prior[k])} → ${shown(rec[k])}`).join('; ')}` : '';
+  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
+}
+// An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order): the
+// archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds, and
+// one whose fingerprint lacks the messages is refused once.
+const VARIANCE_FIELDS = ['verdict', 'archetype', 'missing', 'extra', 'deltas', 'deltaKinds'];
+// The deltas' fingerprint, sorted: each delta's kind, with its probe when it names one, and its message ("COUNT(card): 3 → 4
+// matches") — the message carries the amount of a COUNT, CLUSTERS or SECTIONS delta, so a grown variance is a changed one.
+// SECTION HEIGHTS and PROBE keep the kind (and probe) only: their messages carry pixel and style values that move between
+// identical probes.
+const MOVING_MESSAGES = new Set(['SECTION HEIGHTS', 'PROBE']);
+const deltaKindsOf = (deltas) => (Array.isArray(deltas) ? deltas : []).map((d) => (d && typeof d === 'object'
+  ? `${d.kind}${d.probe != null ? `(${d.probe})` : ''}${d.msg == null || MOVING_MESSAGES.has(d.kind) ? '' : `: ${d.msg}`}`
+  : String(d))).sort();
+const varianceKey = (v) => JSON.stringify(Array.isArray(v) ? v.map((x) => JSON.stringify(x)).sort() : v ?? null);
+// The variance record an earlier render left: the page's previous sidecar `variance`, else (no sidecar record) its row's
+// source.variance in <dirname(state)>/rollout/coverage/pages.json — the rollout inventory's verbatim copy, read once per run.
+function priorVariance(run, slug, old) {
+  const isRecord = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  if (isRecord(old?.variance)) return old.variance;
+  if (!run.coverageVariance) {
+    const doc = readJson(join(run.rolloutDir || join(dirname(run.stateFile), 'rollout'), 'coverage', 'pages.json'));
+    run.coverageVariance = new Map((Array.isArray(doc?.pages) ? doc.pages : []).filter((p) => p && typeof p.slug === 'string' && isRecord(p.source?.variance)).map((p) => [p.slug, p.source.variance]));
   }
-  return { ...rec, accepted: run.acceptVariance };
+  return run.coverageVariance.get(slug) || null;
 }
 
 // ---- the run -----------------------------------------------------------------------------------
@@ -847,18 +998,63 @@ export function flowGuard(state, file) {
   if (typeof state.flow === 'string' && state.flow.trim()) return;
   throw new RunRefusal(`refused: ${toPosix(file)} has no top-level flow — stamp flow / flowChosenAt / flowSource before migrating (the master skill's routing does this: skills/stardust/SKILL.md § Routing → § Two migration flows — pick one, never mix; state-machine.md § Flow keys)`);
 }
+// The page set of render and plan: --all = every renderable page (a `skip` line for the others), else the named slugs.
+function pageSet(o, pages, bySlug, cmd) {
+  if (o.all) { const set = []; for (const p of pages) { if (RENDERABLE.has(p.status)) set.push(p.slug); else console.log(`skip ${p.slug}: status ${p.status}`); } return set; }
+  const unknown = o.slugs.filter((s) => !bySlug.has(s));
+  if (unknown.length) throw new UsageError(`unknown slug(s): ${unknown.join(', ')}`);
+  if (!o.slugs.length) throw new UsageError(`${cmd} needs <slug…> or --all`);
+  return [...new Set(o.slugs)];
+}
+const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
+// plan (Phase 1): each page's branch as render chooses it, then per template with A′ siblings in the set its encode attempt
+// (kept when recorded, unless --force), the count last. Writes the attempt records only.
+export function planRun(o) {
+  const state = loadState(o.state); const pages = state.pages; const bySlug = new Map(pages.map((p) => [p.slug, p]));
+  flowGuard(state, o.state);
+  if (o.encoder && !isFile(o.encoder)) throw new UsageError(`--encoder ${o.encoder} does not exist`);
+  const set = pageSet(o, pages, bySlug, 'plan');
+  const pageMap = buildPageMap(pages, state.site?.originUrl || null);
+  const run = { stateFile: o.state, pages, bySlug, protoDir: o.protoDir, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), fromArchetype: !!o.fromArchetype };
+  const groups = { A: [], B: [], passthrough: [], refused: [] }; const siblings = new Map(); let nSiblings = 0;
+  for (const slug of set) {
+    if (pageMap.bySlug.get(slug).passthrough) { groups.passthrough.push(slug); continue; }
+    let b;
+    try { b = chooseBranch(run, bySlug.get(slug)); } catch (e) { if (!(e instanceof Refusal)) throw e; console.error(e.message); groups.refused.push(slug); continue; }
+    if (b.branch !== "A'") { groups[b.branch].push(slug); continue; }
+    if (!siblings.has(b.archetype.slug)) siblings.set(b.archetype.slug, []);
+    siblings.get(b.archetype.slug).push(b.fork ? `${slug} (fork)` : slug); nSiblings++;
+  }
+  const templates = [...siblings.keys()].sort(byStr);
+  console.log(`plan: ${set.length} page(s) — A ${groups.A.length} · A' ${nSiblings} on ${templates.length} template(s) · B ${groups.B.length} · passthrough ${groups.passthrough.length} · refused ${groups.refused.length}`);
+  if (groups.A.length) console.log(`A  ${groups.A.length} page(s): ${groups.A.join(', ')}`);
+  for (const t of templates) console.log(`A' ${t}: ${siblings.get(t).length} sibling(s): ${siblings.get(t).join(', ')}`);
+  if (groups.B.length) console.log(`B  ${groups.B.length} page(s): ${groups.B.join(', ')}`);
+  if (groups.passthrough.length) console.log(`passthrough ${groups.passthrough.length} page(s): ${groups.passthrough.join(', ')}`);
+  const records = [];
+  for (const t of templates) {
+    const kept = o.force ? null : readAttempt(PROJECT_ROOT, t);
+    let rec = kept;
+    if (!rec) {
+      try { rec = recordAttempt(PROJECT_ROOT, t, o.encoder ? { encoder: o.encoder } : {}); } catch (e) {
+        if (e instanceof AttemptUsageError) console.error(`encode-attempt ${t}: not recorded — ${e.message}`);
+        else if (e.code) console.error(`encode-attempt ${t}: not recorded — could not write stardust/migrate/encode/${t}.json (${e.code})`);
+        else throw e;
+        records.push(null); continue;
+      }
+    }
+    console.log(`encode-attempt ${t}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; --force re-records)` : ''}`);
+    records.push(rec);
+  }
+  console.log(summaryLine(records));
+  return groups.refused.length || records.includes(null) ? 2 : 0;
+}
 export function renderRun(o) {
   const state = loadState(o.state); const pages = state.pages; const bySlug = new Map(pages.map((p) => [p.slug, p]));
   flowGuard(state, o.state);
   const originUrl = state.site?.originUrl || null;
   const pageMap = buildPageMap(pages, originUrl);
-  let set;
-  if (o.all) { set = []; for (const p of pages) { if (RENDERABLE.has(p.status)) set.push(p.slug); else console.log(`skip ${p.slug}: status ${p.status}`); } } else {
-    const unknown = o.slugs.filter((s) => !bySlug.has(s));
-    if (unknown.length) throw new UsageError(`unknown slug(s): ${unknown.join(', ')}`);
-    if (!o.slugs.length) throw new UsageError('render needs <slug…> or --all');
-    set = [...new Set(o.slugs)];
-  }
+  let set = pageSet(o, pages, bySlug, 'render');
   const counts = { rendered: [], unchanged: [], refused: [], passthrough: [] };
   for (const [folded, slugs] of pageMap.collisions) for (const s of slugs) if (set.includes(s)) {
     const own = pageMap.bySlug.get(s).outputPath; const others = slugs.filter((x) => x !== s).map((x) => { const op = pageMap.bySlug.get(x).outputPath; return op === own ? x : `${x} (${op})`; });
@@ -869,6 +1065,8 @@ export function renderRun(o) {
   for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
   if (o.varianceDir && !existsSync(o.varianceDir)) throw new UsageError(`--variance-dir ${o.varianceDir} does not exist`);
   if (o.acceptVariance != null && !String(o.acceptVariance).trim()) throw new UsageError('--accept-variance needs a non-empty reason');
+  if (o.slotSource != null && !['mapping', 'page-json'].includes(o.slotSource)) throw new UsageError(`--slots takes mapping or page-json (got ${o.slotSource})`);
+  const rolloutDir = join(dirname(o.state), 'rollout');
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
   let origin = 'https://origin.invalid'; const originHosts = new Set();
   if (originUrl) { try { const u = new URL(originUrl); origin = u.origin; originHosts.add(normHost(u.host)); } catch { /* keep the placeholder origin */ } }
@@ -879,8 +1077,9 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
+    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
-  const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = [];
+  const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = []; const varianceHeld = [];
   for (const slug of set) {
     const page = bySlug.get(slug); const entry = pageMap.bySlug.get(slug);
     if (entry.passthrough) { console.log(`passthrough ${slug}: ${entry.outputPath} (non-HTML leaf; no render, no sidecar)`); counts.passthrough.push(slug); continue; }
@@ -891,7 +1090,8 @@ export function renderRun(o) {
     for (const m of r.missing) missing.push({ slug, ...m });
     if (r.modulesEmpty) modulesEmpty.push(slug);
     if (r.varianceSkipped) varianceSkipped.push(slug);
-    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
+    if (r.varianceHeld) varianceHeld.push(slug);
+    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}${r.mapped ? ' via the block mapping' : ''}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
   const pageRecs = new Map((prev.pages || []).map((p) => [p.slug, p]));
@@ -903,6 +1103,8 @@ export function renderRun(o) {
   if (missing.length) console.log(`missing assets: ${missing.length} reference(s) left as is — ${[...new Set(missing.map((m) => m.subpath))].slice(0, 6).join(', ')}`);
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
+  if (varianceHeld.length) console.log(`variance: ${varianceHeld.length} A′ page(s) rendered on an earlier acceptance of an unchanged variance (${varianceHeld.slice(0, 6).join(', ')}${varianceHeld.length > 6 ? ', …' : ''})`);
+  for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }
@@ -1020,7 +1222,7 @@ export function pagemapCmd(o) {
 const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null, encoder: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1033,11 +1235,11 @@ export function parseArgs(argv) {
     if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
-    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir' }[name] || name;
+    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir', slots: 'slotSource' }[name] || name;
     if (!(key in o)) throw new UsageError(`unknown flag --${name}`);
     o[key] = val;
   }
-  if (positional[0] === 'render') {
+  if (positional[0] === 'render' || positional[0] === 'plan') {
     for (const name of REPEAT) for (const v of raw[name]) { const m = v.match(/^([^=]+)=(.+)$/); if (!m) throw new UsageError(`--${name} takes slug=value`); o[`${name}s`][m[1]] = m[2]; }
   } else if (raw.source.length) o.source = raw.source.join(' ');
   return { o, positional };
@@ -1047,6 +1249,7 @@ export function main(argv) {
   const [cmd, ...rest] = positional;
   switch (cmd) {
     case 'render': o.slugs = rest; return renderRun(o);
+    case 'plan': o.slugs = rest; return planRun(o);
     case 'gate': return gateCmd(o, rest[0], rest[1]);
     case 'deviation': return deviationCmd(o, rest[0]);
     case 'decision': return decisionCmd(o, rest[0]);

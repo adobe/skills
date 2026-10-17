@@ -2,7 +2,10 @@
 // canon; every subcommand is driven through the CLI (execFileSync/spawnSync); foldPath is imported for
 // the pure check. Also: importing the module is silent, the flow guard, the merged state.json.migrate
 // block, AEM-folded output-path collisions, a malformed sidecar refused, the value-flag swallow rule, the A′ fork
-// from the archetype's typed slots (media map, media ledger, refusals) and the sibling-variance gate.
+// from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate (an earlier acceptance holds
+// while the probe row is unchanged; sidecar, else the coverage row), the fork's
+// slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/) and plan's encode
+// attempt per template with A′ siblings (a fake encoder; kept, --force, the production default, refusals).
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -11,7 +14,8 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { foldPath, forkFromArchetype, forkHead } from '../migrate.mjs';
+import { composeHead, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
+import { recordAttempt } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -85,6 +89,9 @@ write(`${P}/assets/img/hero.jpg`, 'HERO');
 write(`${P}/assets/img/hero@2x.jpg`, 'HERO2X');
 write(`${P}/assets/fonts/a.woff2`, 'FONT');
 write('stardust/current/assets/img/bg.png', 'BG');
+// The A′ renders below need their template's encode attempt record (the A′ gate; plan's section tests it): an owner's
+// not-attempted record per template, as encode-attempt.mjs record --not-attempted writes it.
+for (const t of ['tours', 'guides', 'guides-b', 'notes', 'city', 'trips']) recordAttempt(tmp, t, { notAttempted: 'fixture: siblings rendered from the archetype' });
 
 // ---- flow guard (state-machine.md § Flow keys) -------------------------------------------------
 console.log('flow guard');
@@ -167,7 +174,7 @@ check('sidecar: branches, template, tiers, archetype fields, key order and sha s
 check('variance gate: an A′ page with no probe file is rendered, recorded as skipped and named in one summary line; A / B record null', () => {
   assert.match(r1.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(tours-north\)$/m);
   assert.deepEqual(json(`${OUT}/tours/north/_meta.json`).variance, { status: 'skipped', reason: 'no variance probe file stardust/rollout/variance/tours.json' });
-  assert.equal(homeMeta.variance, null); assert.equal(Object.keys(homeMeta).at(-1), 'variance');
+  assert.equal(homeMeta.variance, null); assert.deepEqual(Object.keys(homeMeta).slice(-4), ['variance', 'slotSource', 'slotMap', 'slotMapSkipped']);
 });
 check('state.json.migrate: page map from all 7 pages, sorted bundledAssets; pages[].status and site untouched', () => {
   const s = json(STATE);
@@ -545,6 +552,14 @@ check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); 
   const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });
   assert.equal(h.slice(h.indexOf('<head>'), h.indexOf('</head>') + 7), '<head><title>Save $$ and $&amp; more</title>\n<meta name="description" content="From $\' on">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head>');
 });
+check('composeHead / rewriteLinks (pure): $ sequences in a capture title, a deploy canonical and an internal href stay literal', () => {
+  const src = '<html><head><title></title><link rel="canonical" href="https://example.test/old/"><meta property="og:url" content="https://example.test/old/"></head><body><main></main></body></html>';
+  const h = composeHead(src, { prov: '<!-- p -->', rootBlock: ':root{}', capture: { title: 'Save $& $1 $$' }, deployHost: 'www.example-live.test', outputPath: 'deals/$&-$1/index.html', pageUrl: 'https://example.test/deals/', type: 'page' });
+  assert.equal(h.metadata.title, 'Save $& $1 $$'); assert.match(h.html, /<title>Save \$&amp; \$1 \$\$<\/title>/);
+  assert.match(h.html, /<link rel="canonical" href="https:\/\/www\.example-live\.test\/deals\/\$&-\$1\/">/); assert.match(h.html, /<meta property="og:url" content="https:\/\/www\.example-live\.test\/deals\/\$&-\$1\/">/);
+  const l = rewriteLinks('<a href="/deals/?q=$&x=$1">Deals</a>', { base: 'https://example.test/', originHosts: new Set(['example.test']), origin: 'https://example.test', byPath: new Map([['/deals/', { slug: 'deals', outputPath: 'deals/index.html' }]]), depth: 0, available: () => true });
+  assert.equal(l.html, '<a href="./deals/index.html?q=$&x=$1">Deals</a>');
+});
 check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal', () => {
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),
     /^Error: refused s: strict slots — slot value\(s\) the archetype a cannot take: pic \(text value on <img>\); box \(image value on <div> without an <img>\) — /);
@@ -566,17 +581,17 @@ write(VAR, varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['he
 check('verdict same → recorded (the changed variance record re-renders the page); a page with no row → skipped with the reason', () => {
   const r = run(['render', 'guide-alpha', 'howto-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^A' guide-alpha → /m); assert.match(r.out, /^variance: 1 A′ page\(s\) rendered without a variance probe row — recorded as skipped \(howto-one\)$/m);
-  assert.deepEqual(json(`${OUT}/guides/alpha/_meta.json`).variance, { verdict: 'same', file: VAR, at: '2026-10-01T00:00:00Z', missing: [], extra: [], deltas: 0, accepted: null });
+  assert.deepEqual(json(`${OUT}/guides/alpha/_meta.json`).variance, { verdict: 'same', file: VAR, at: '2026-10-01T00:00:00Z', archetype: 'guides', missing: [], extra: [], deltas: 0, deltaKinds: [], accepted: null });
   assert.deepEqual(json(`${OUT}/howto/one/_meta.json`).variance, { status: 'skipped', reason: `${VAR} has no row for howto-one` });
 });
-check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted', () => {
+check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted; a plain re-run holds it (unchanged)', () => {
   const before = read(`${OUT}/guides/beta/_meta.json`);
   const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
   assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
   const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
-  assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', missing: ['hero'], extra: ['card'], deltas: 2, accepted: 'the hero is a page-level promo' });
-  const again = run(['render', 'guide-beta']); assert.equal(again.status, 2); assert.match(again.err, /--accept-variance "<reason>" \(an earlier render accepted it: "the hero is a page-level promo"\)/);
+  assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card'], deltas: 2, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent'], accepted: 'the hero is a page-level promo' });
+  const again = run(['render', 'guide-beta']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged guide-beta → /m);
   const empty = run(['render', 'guide-beta', '--accept-variance', '']); assert.equal(empty.status, 1); assert.match(empty.err, /^usage error: --accept-variance needs a non-empty reason/);
 });
 check('more than half of the current clones differ → strict variance refusal even with --accept-variance (re-typing named); --variance-dir is honoured', () => {
@@ -586,6 +601,81 @@ check('more than half of the current clones differ → strict variance refusal e
   assert.ok(!/a recorded deviation/.test(r.err), 'a recorded deviation is never offered as a way to unlock the page');
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
+});
+check('an earlier acceptance holds while the probe row is unchanged on archetype, verdict, missing, extra, deltas and their fingerprint (sidecar, else the coverage row; lists in any order); a changed row is refused quoting it; --accept-variance sets a new reason', () => {
+  const BETA = `${OUT}/guides/beta/_meta.json`; const COVERAGE = 'stardust/rollout/coverage/pages.json';
+  const reprobe = (at, missing, extra, deltas = null, file = VAR, template = 'guides') => write(file, `${JSON.stringify({ template, at, siblings: [sib('guide-alpha', 'same'), { ...sib('guide-beta', 'differs', missing, extra), ...(deltas ? { deltas } : {}) }, sib('guide-gamma', 'same')] }, null, 2)}\n`);
+  // a re-probe: new at, the same deltas in another order → held
+  reprobe('2026-10-05T00:00:00Z', ['hero'], ['card'], [{ kind: 'extra', probe: 'card', msg: 'card extra' }, { kind: 'missing', probe: 'hero', msg: 'hero absent' }]);
+  const held = run(['render', 'guide-beta']); assert.equal(held.status, 0, held.err); assert.match(held.out, /^A' guide-beta → /m);
+  assert.match(held.out, /^variance: 1 A′ page\(s\) rendered on an earlier acceptance of an unchanged variance \(guide-beta\)$/m);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-05T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card'], deltas: 2, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent'], accepted: 'the hero is a page-level promo' });
+  const heldMeta = read(BETA);
+  // only the deltas' kinds change (same count, missing and extra) → refused, quoting the earlier reason
+  reprobe('2026-10-05T00:00:00Z', ['hero'], ['card'], [{ kind: 'SECTIONS', msg: '5 vs 7 top-level sections — a different template family' }, { kind: 'SECTION HEIGHTS', msg: 'hero 410 → 380px' }]);
+  const kindsOnly = run(['render', 'guide-beta']); assert.equal(kindsOnly.status, 2);
+  assert.match(kindsOnly.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent\] → \[SECTION HEIGHTS, SECTIONS: 5 vs 7 top-level sections — a different template family\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.equal(read(BETA), heldMeta, 'nothing written');
+  // re-typed to another archetype: the same row probed against guides-b does not carry the acceptance made against guides
+  reprobe('2026-10-05T00:00:00Z', ['hero'], ['card']);
+  const stateText = read(STATE); const sx = json(STATE); sx.pages.push(page('guides-b', '/guides-b/', 'approved', 'guide-b'));
+  write(STATE, `${JSON.stringify(sx, null, 2)}\n`); write(`${P}/guides-b-proposed.html`, read(`${P}/guides-proposed.html`));
+  reprobe('2026-10-05T00:00:00Z', ['hero'], ['card'], null, 'stardust/rollout/variance/guides-b.json', 'guides-b');
+  try {
+    const retyped = run(['render', 'guide-beta', ...['guide-alpha', 'guide-beta', 'guide-gamma'].flatMap((s) => ['--archetype', `${s}=guides-b`])]); assert.equal(retyped.status, 2);
+    assert.match(retyped.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides-b\.json\) found guide-beta differs from archetype guides-b: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): archetype guides → guides-b — /m);
+    assert.equal(read(BETA), heldMeta, 'nothing written');
+  } finally {
+    write(STATE, stateText); rmSync(join(tmp, 'stardust/rollout/variance/guides-b.json')); rmSync(join(tmp, P, 'guides-b-proposed.html'));
+  }
+  // no sidecar any more: the coverage row (the rollout inventory's verbatim copy) carries the acceptance — one recorded
+  // before the archetype and the delta kinds were does not hold (refused once, quoting it)
+  reprobe('2026-10-06T00:00:00Z', ['hero', 'map'], ['card']); rmSync(join(tmp, BETA));
+  const coverage = (variance) => write(COVERAGE, `${JSON.stringify({ formatVersion: '0.1.0', pages: [{ slug: 'guide-alpha', source: {} }, { slug: 'guide-beta', source: { variance } }] }, null, 2)}\n`);
+  const legacy = { verdict: 'differs', file: VAR, at: '2026-10-04T00:00:00Z', missing: ['map', 'hero'], extra: ['card'], deltas: 3, accepted: 'the hero and the map are page-level promos', acceptedAt: '2026-10-04T09:00:00Z' };
+  coverage(legacy);
+  const unfingerprinted = run(['render', 'guide-beta']); assert.equal(unfingerprinted.status, 2);
+  assert.match(unfingerprinted.err, /3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): archetype \(not recorded\) → guides; deltaKinds \(not recorded\) → \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] — /m);
+  assert.ok(!has(BETA), 'nothing written');
+  coverage({ ...legacy, archetype: 'guides', deltaKinds: ['missing(map): map absent', 'extra(card): card extra', 'missing(hero): hero absent'] });
+  const viaCoverage = run(['render', 'guide-beta']); assert.equal(viaCoverage.status, 0, viaCoverage.err); assert.match(viaCoverage.out, /^A' guide-beta → /m);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-06T00:00:00Z', archetype: 'guides', missing: ['hero', 'map'], extra: ['card'], deltas: 3, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent', 'missing(map): map absent'], accepted: 'the hero and the map are page-level promos', acceptedAt: '2026-10-04T09:00:00Z' });
+  // the sidecar's record shadows the coverage row (here a stale one that would match); a changed row is refused, naming what
+  // changed and quoting the earlier reason
+  reprobe('2026-10-07T00:00:00Z', ['hero'], ['card', 'quote']); const before = read(BETA);
+  coverage({ verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['quote', 'card'], deltas: 3, deltaKinds: ['missing(hero): hero absent', 'extra(quote): quote extra', 'extra(card): card extra'], accepted: 'a stale coverage acceptance' });
+  const changed = run(['render', 'guide-beta']); assert.equal(changed.status, 2);
+  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\]; deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] → \[extra\(card\): card extra, extra\(quote\): quote extra, missing\(hero\): hero absent\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.equal(read(BETA), before, 'nothing written');
+  const fresh = run(['render', 'guide-beta', '--accept-variance', 'the quote is a page-level promo']); assert.equal(fresh.status, 0, fresh.err);
+  assert.doesNotMatch(fresh.out, /earlier acceptance/);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card', 'quote'], deltas: 3, deltaKinds: ['extra(card): card extra', 'extra(quote): quote extra', 'missing(hero): hero absent'], accepted: 'the quote is a page-level promo' });
+  rmSync(join(tmp, COVERAGE));
+});
+check('the fingerprint carries the COUNT message: an acceptance of 3 → 4 cards does not hold at 3 → 20 (refused, quoting it); an identical re-probe holds, SECTION HEIGHTS and PROBE messages may move', () => {
+  const BETA = `${OUT}/guides/beta/_meta.json`;
+  const reprobe = (at, count, px) => write(VAR, `${JSON.stringify({ template: 'guides', at, siblings: [sib('guide-alpha', 'same'), { ...sib('guide-beta', 'differs'),
+    deltas: [{ kind: 'COUNT', probe: 'card', msg: `3 → ${count} matches` }, { kind: 'SECTION HEIGHTS', msg: `hero 410→${px}` }, { kind: 'PROBE', probe: 'card', msg: `padding 16px → ${px - 360}px` }] }, sib('guide-gamma', 'same')] }, null, 2)}\n`);
+  const kinds = (count) => [`COUNT(card): 3 → ${count} matches`, 'PROBE(card)', 'SECTION HEIGHTS'];
+  reprobe('2026-10-08T00:00:00Z', 4, 380);
+  const accepted = run(['render', 'guide-beta', '--accept-variance', 'one more card is a page-level promo']); assert.equal(accepted.status, 0, accepted.err);
+  assert.deepEqual(json(BETA).variance, { verdict: 'differs', file: VAR, at: '2026-10-08T00:00:00Z', archetype: 'guides', missing: [], extra: [], deltas: 3, deltaKinds: kinds(4), accepted: 'one more card is a page-level promo' });
+  reprobe('2026-10-09T00:00:00Z', 4, 384);
+  const held = run(['render', 'guide-beta']); assert.equal(held.status, 0, held.err);
+  assert.match(held.out, /^variance: 1 A′ page\(s\) rendered on an earlier acceptance of an unchanged variance \(guide-beta\)$/m);
+  assert.deepEqual(json(BETA).variance.deltaKinds, kinds(4)); const heldMeta = read(BETA);
+  reprobe('2026-10-10T00:00:00Z', 20, 384);
+  const grown = run(['render', 'guide-beta']); assert.equal(grown.status, 2);
+  assert.match(grown.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[\], extra \[\], 3 delta\(s\); changed since an earlier render accepted it \("one more card is a page-level promo"\): deltaKinds \[COUNT\(card\): 3 → 4 matches, PROBE\(card\), SECTION HEIGHTS\] → \[COUNT\(card\): 3 → 20 matches, PROBE\(card\), SECTION HEIGHTS\] — /m);
+  assert.doesNotMatch(grown.out, /unchanged variance/);
+  assert.equal(read(BETA), heldMeta, 'nothing written');
+  // an earlier record whose fingerprint has the kinds only (no messages) is refused once
+  const meta = json(BETA); meta.variance.deltaKinds = ['COUNT(card)', 'PROBE(card)', 'SECTION HEIGHTS']; write(BETA, `${JSON.stringify(meta, null, 2)}\n`);
+  reprobe('2026-10-09T00:00:00Z', 4, 384);
+  const kindsOnly = run(['render', 'guide-beta']); assert.equal(kindsOnly.status, 2);
+  assert.match(kindsOnly.err, /changed since an earlier render accepted it \("one more card is a page-level promo"\): deltaKinds \[COUNT\(card\), PROBE\(card\), SECTION HEIGHTS\] → \[COUNT\(card\): 3 → 4 matches, PROBE\(card\), SECTION HEIGHTS\] — /m);
+  const again = run(['render', 'guide-beta', '--accept-variance', 'one more card is a page-level promo']); assert.equal(again.status, 0, again.err);
+  assert.deepEqual(json(BETA).variance.deltaKinds, kinds(4));
 });
 // Rows left behind by siblings that moved to a sub-archetype (and by slugs not in the state) are not current clones.
 const s4 = json(STATE);
@@ -614,6 +704,235 @@ check('the majority counts current clones only: 7 of 10 refused; once the fr-* s
 check('--archetype <slug>=<a> makes a row a current clone again (5 of 8 → refused even with --accept-variance)', () => {
   const r = run(['render', 'de-1', '--accept-variance', 'x', '--archetype', 'fr-1=city', '--archetype', 'fr-2=city', '--archetype', 'fr-3=city']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused de-1: strict variance — 5 of 8 current clone\(s\) of archetype city differ in /m);
+});
+
+// ---- A′ fork, slots from the rollout block mapping (--slots mapping|page-json) ----------------------------
+console.log("A' fork, slots from the block mapping");
+const FIX = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'slot-map');
+const fixture = (name) => readFileSync(join(FIX, name), 'utf8');
+const s5 = json(STATE);
+s5.pages.push(page('trips', '/trips/', 'approved', 'trip'), page('trip-one', '/trips/one/', 'directed', 'trip'), page('trip-two', '/trips/two/', 'directed', 'trip'), page('trip-twice', '/trips/twice/', 'directed', 'trip'));
+write(STATE, `${JSON.stringify(s5, null, 2)}\n`);
+write(`${P}/trips-proposed.html`, fixture('trips-proposed.html'));
+for (const s of ['trips', 'trip-one', 'trip-two', 'trip-twice']) write(`stardust/current/pages/${s}.html`, fixture(`${s}.html`));
+const tripCap = (slug, title, extra = {}) => write(`stardust/current/pages/${slug}.json`, JSON.stringify({ url: `https://example.test/trips/${slug.replace(/^trip-/, '')}/`, title, metaDescription: `${title}.`, _provenance: { unsourcedContent: [] }, ...extra }));
+tripCap('trips', 'Trips'); tripCap('trip-one', 'Northern lights'); tripCap('trip-two', 'Coastal walks'); tripCap('trip-twice', 'Lake district');
+const RW = 'stardust/rollout/workspace'; const MAPPING = `${RW}/mapping.json`; const MAPPED = fixture('rollout/workspace/mapping.json');
+// The mapping as the rollout publishes it: workspace-manifest.mjs lists its sha256 under outputs; block-origin.mjs copies pages.json's generatedAt.
+const publish = (text = MAPPED, pagesAt = '2026-10-01T08:00:00.000Z') => {
+  write(MAPPING, text);
+  write(`${RW}/manifest.json`, `${JSON.stringify({ formatVersion: '0.1.0', outputs: { [MAPPING]: `sha256:${createHash('sha256').update(text).digest('hex')}` } }, null, 2)}\n`);
+  write('stardust/rollout/coverage/pages.json', `${JSON.stringify({ formatVersion: '0.1.0', generatedAt: pagesAt, pages: [] }, null, 2)}\n`);
+};
+check('without a mapping a fork reads the page JSON slots (slotSource page-json); --slots mapping is then refused; a bad --slots value is a usage error', () => {
+  assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotSource, 'page-json'); assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotMap, null);
+  assert.equal(json(`${OUT}/_meta.json`).slotSource, null, 'an A page records no slot source');
+  const r = run(['render', 'trip-one', '--slots', 'mapping']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is absent — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
+  assert.ok(!has(`${OUT}/trips/one/index.html`) && !has(`${OUT}/trips/one/_meta.json`));
+  const bad = run(['render', 'trip-one', '--slots', 'pagejson']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --slots takes mapping or page-json \(got pagejson\)/);
+  const plain = run(['render', 'guide-alpha', '--force']); assert.equal(plain.status, 0, plain.err);
+  assert.doesNotMatch(plain.out, /^slots:/m, 'no mapping in the project: the page JSON path, silently'); assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotMapSkipped, null);
+});
+publish();
+const pageJsonBefore = ['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`));
+const k1 = run(['render', 'trip-one', 'trip-two']);
+const tripOne = has(`${OUT}/trips/one/index.html`) ? read(`${OUT}/trips/one/index.html`) : ''; const tripTwo = has(`${OUT}/trips/two/index.html`) ? read(`${OUT}/trips/two/index.html`) : '';
+check('a hash-listed, fresh mapping is the default: each sibling takes its own text, image, link and HTML from its capture; no page JSON slots written', () => {
+  assert.equal(k1.status, 0, k1.err);
+  assert.match(k1.out, /^A' trip-one → trips\/one\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  assert.match(k1.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  const one = mainOf(tripOne); const two = mainOf(tripTwo);
+  assert.match(one, /<h1 data-slot="headline">Northern lights<\/h1>/);
+  assert.match(one, /<img data-slot="hero" src="https:\/\/example\.test\/content\/media\/north\.jpg" alt="Aurora over the fjord" srcset="https:\/\/example\.test\/content\/media\/north\.jpg 1x, https:\/\/example\.test\/content\/media\/north-2x\.jpg 2x">/);
+  assert.match(one, /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/north">Book the north<\/a>/);
+  assert.match(one, /<div data-slot="body" class="prose"><p>North body one\.<\/p>\n {6}<p>North body <b>two<\/b>\.<\/p><\/div>/);
+  assert.match(two, /<h1 data-slot="headline">Coastal walks &amp; cliffs<\/h1>/);
+  assert.match(two, /<img data-slot="hero" src="https:\/\/example\.test\/content\/media\/coast\.jpg" alt="Cliffs &amp; sea">/);
+  assert.match(two, /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/coast\?from=trips&amp;lang=en">Book the coast<\/a>/);
+  assert.match(two, /<div data-slot="body" class="prose"><p>Coast body\.<\/p><\/div>/);
+  assert.ok(!/Archetype/.test(one) && !/Archetype/.test(two), 'no archetype content left in <main>');
+  assert.deepEqual(['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`)), pageJsonBefore, 'the page JSON is never written');
+});
+check('mapped fork sidecar: slotSource mapping, slotMap { mapping, generatedAt, anchors, slots: {name: anchor} }; provenance names the mapping; a re-run is unchanged', () => {
+  const m = json(`${OUT}/trips/one/_meta.json`);
+  assert.equal(m.slotSource, 'mapping'); assert.equal(m.slotMapSkipped, null);
+  assert.deepEqual(m.slotMap, { mapping: MAPPING, generatedAt: '2026-10-01T08:00:00.000Z', anchors: 2, slots: { body: 'div.article', cta: 'div.hero-banner', headline: 'div.hero-banner', hero: 'div.hero-banner' } });
+  assert.deepEqual(m.migrationDecisions.find((d) => d.kind === 'archetype-fork'), { kind: 'archetype-fork', archetype: 'trips', slots: ['body', 'cta', 'headline', 'hero'], _driver: true });
+  assert.match(tripOne, /^ {2}sourceForked: {5}stardust\/prototypes\/trips-proposed\.html \+ stardust\/rollout\/workspace\/mapping\.json on stardust\/current\/pages\/trip-one\.html$/m);
+  const again = run(['render', 'trip-one']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged trip-one → /m);
+});
+check('a sibling whose anchor matches twice is refused (strict slots) naming every slot under it; nothing written', () => {
+  const r = run(['render', 'trip-twice']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-twice: strict slots — the block mapping gives no value for slot\(s\) cta \(anchor "div\.hero-banner" matches 2 elements\); headline \(anchor "div\.hero-banner" matches 2 elements\); hero \(anchor "div\.hero-banner" matches 2 elements\) of archetype trips — add each name to stardust\/current\/pages\/trip-twice\.json#slots \(a page value wins over the mapped one\), or pass --slots page-json$/m);
+  assert.ok(!has(`${OUT}/trips/twice/index.html`) && !has(`${OUT}/trips/twice/_meta.json`));
+});
+check('a page JSON value wins over the mapped one for its name, and fills a slot the mapping cannot resolve', () => {
+  tripCap('trip-one', 'Northern lights', { slots: { headline: 'Explicit headline' } });
+  tripCap('trip-twice', 'Lake district', { slots: { headline: 'Lake district', hero: { src: '/content/media/lake.jpg', alt: 'Lake' }, cta: { href: 'https://booking.example.org/lake', text: 'Book the lake' } } });
+  const r = run(['render', 'trip-one', 'trip-twice']); assert.equal(r.status, 0, r.err);
+  const one = read(`${OUT}/trips/one/index.html`);
+  assert.match(mainOf(one), /<h1 data-slot="headline">Explicit headline<\/h1>/); assert.match(mainOf(one), /<a data-slot="cta" class="button" href="https:\/\/booking\.example\.org\/north">Book the north<\/a>/);
+  assert.deepEqual(json(`${OUT}/trips/one/_meta.json`).slotMap.slots, { body: 'div.article', cta: 'div.hero-banner', hero: 'div.hero-banner' });
+  assert.match(one, /^ {2}sourceForked: {5}stardust\/prototypes\/trips-proposed\.html \+ stardust\/rollout\/workspace\/mapping\.json on stardust\/current\/pages\/trip-one\.html \+ stardust\/current\/pages\/trip-one\.json#slots$/m);
+  const tw = mainOf(read(`${OUT}/trips/twice/index.html`));
+  assert.match(tw, /<h1 data-slot="headline">Lake district<\/h1>/); assert.match(tw, /<div data-slot="body" class="prose"><p>Lake body\.<\/p><\/div>/);
+  assert.deepEqual(json(`${OUT}/trips/twice/_meta.json`).slotMap.slots, { body: 'div.article' });
+});
+check('--slots page-json keeps the page JSON path with a mapping present (today\'s refusal for a missing value; slotSource page-json, slotMap null)', () => {
+  const r = run(['render', 'trip-twice', '--slots', 'page-json']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused trip-twice: strict slots — stardust\/current\/pages\/trip-twice\.json#slots has no value for slot\(s\) body of archetype trips — /m);
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Paged headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Paged body.</p>' } } });
+  const ok = run(['render', 'trip-two', '--slots', 'page-json']); assert.equal(ok.status, 0, ok.err);
+  assert.match(ok.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+  assert.match(mainOf(read(`${OUT}/trips/two/index.html`)), /<h1 data-slot="headline">Paged headline<\/h1>/);
+  const m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMap, null);
+  tripCap('trip-two', 'Coastal walks');
+});
+check('default (no --slots): a stale mapping, or one without a verified selector for the archetype, is not used — the page JSON slots, one run line per archetype, the reason in the sidecar', () => {
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Fallback headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Fallback body.</p>' } } });
+  publish(MAPPED, '2026-10-05T00:00:00.000Z');
+  const stale = run(['render', 'trip-two']); assert.equal(stale.status, 0, stale.err);
+  const staleWhy = 'stardust/rollout/workspace/mapping.json is stale: generatedAt 2026-10-01T08:00:00.000Z, stardust/rollout/coverage/pages.json generatedAt 2026-10-05T00:00:00.000Z';
+  assert.match(stale.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+  assert.deepEqual(stale.out.split('\n').filter((l) => l.startsWith('slots:')), [`slots: archetype trips — mapping not used (${staleWhy}); page JSON slots`]);
+  assert.match(mainOf(read(`${OUT}/trips/two/index.html`)), /<h1 data-slot="headline">Fallback headline<\/h1>/);
+  let m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMap, null); assert.equal(m.slotMapSkipped, staleWhy);
+  const other = JSON.parse(MAPPED); other.templates = other.templates.filter((t) => t.templateId !== 'trip');
+  publish(`${JSON.stringify(other, null, 2)}\n`);
+  const without = run(['render', 'trip-two']); assert.equal(without.status, 0, without.err);
+  const noneWhy = 'stardust/rollout/workspace/mapping.json has no verified selector for archetype trips';
+  assert.match(without.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m, 'the changed reason re-renders the page');
+  assert.deepEqual(without.out.split('\n').filter((l) => l.startsWith('slots:')), [`slots: archetype trips — mapping not used (${noneWhy}); page JSON slots`]);
+  m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMapSkipped, noneWhy);
+  tripCap('trip-two', 'Coastal walks'); publish();
+});
+check('an explicit --slots mapping refuses an unusable mapping (changed after the manifest, stale against pages.json), naming --slots page-json and the block-origin re-run; nothing written', () => {
+  const before = read(`${OUT}/trips/one/_meta.json`);
+  write(MAPPING, `${MAPPED}\n`);
+  const changed = run(['render', 'trip-one', '--force', '--slots', 'mapping']); assert.equal(changed.status, 2);
+  assert.match(changed.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json changed after stardust\/rollout\/workspace\/manifest\.json was written \(its sha256 is not the one listed under outputs\) — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
+  publish(MAPPED, '2026-10-05T00:00:00.000Z');
+  const stale = run(['render', 'trip-one', '--force', '--slots', 'mapping']); assert.equal(stale.status, 2);
+  assert.match(stale.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is stale: generatedAt 2026-10-01T08:00:00\.000Z, stardust\/rollout\/coverage\/pages\.json generatedAt 2026-10-05T00:00:00\.000Z — /m);
+  assert.equal(read(`${OUT}/trips/one/_meta.json`), before);
+  publish();
+});
+check('no verified selector for the archetype (explicit --slots mapping), a slot without a recipe, a missing sibling capture: strict slots refusals', () => {
+  const noSections = JSON.parse(MAPPED); noSections.templates[0].sections = [];
+  publish(`${JSON.stringify(noSections, null, 2)}\n`);
+  const norecipe = run(['render', 'trip-two', '--force']); assert.equal(norecipe.status, 2);
+  assert.match(norecipe.err, /^refused trip-two: strict slots — the block mapping gives no value for slot\(s\) body \(no recipe: its text is inside no mapped element of the archetype capture\) of archetype trips — /m);
+  const unverified = structuredClone(noSections); unverified.templates[0].blocks[0].instances[0].verified = false;
+  publish(`${JSON.stringify(unverified, null, 2)}\n`);
+  const none = run(['render', 'trip-two', '--force', '--slots', 'mapping']); assert.equal(none.status, 2);
+  assert.match(none.err, /^refused trip-two: strict slots — stardust\/rollout\/workspace\/mapping\.json has no verified selector for archetype trips — map the archetype with the rollout skill's block-origin\.mjs --verify \(its capture: stardust\/current\/pages\/trips\.html\), or pass --slots page-json$/m);
+  publish();
+  rmSync(join(tmp, 'stardust/current/pages/trip-two.html'));
+  const nocap = run(['render', 'trip-two', '--force', '--slots', 'mapping']); assert.equal(nocap.status, 2);
+  assert.match(nocap.err, /^refused trip-two: strict slots — no capture HTML at stardust\/current\/pages\/trip-two\.html to read the mapped slots from — re-capture the page \(extract\), or pass --slots page-json$/m);
+  write('stardust/current/pages/trip-two.html', fixture('trip-two.html'));
+});
+check('default (no --slots): a missing capture (the sibling\'s or the archetype\'s) falls back to the page JSON slots with the reason, never a refusal', () => {
+  tripCap('trip-two', 'Coastal walks', { slots: { headline: 'Paged headline', hero: { src: '/content/media/coast.jpg' }, cta: { href: 'https://booking.example.org/coast' }, body: { html: '<p>Paged body.</p>' } } });
+  const slotLines = (out) => out.split('\n').filter((l) => l.startsWith('slots:'));
+  for (const [file, why] of [['trip-two.html', 'no capture HTML at stardust/current/pages/trip-two.html'], ['trips.html', 'no capture HTML of archetype trips at stardust/current/pages/trips.html']]) {
+    rmSync(join(tmp, `stardust/current/pages/${file}`));
+    const r = run(['render', 'trip-two', '--force']); assert.equal(r.status, 0, r.err);
+    assert.match(r.out, /^A' trip-two → trips\/two\/index\.html {2}\(trip; fork of trips; /m);
+    assert.deepEqual(slotLines(r.out), [`slots: archetype trips — mapping not used (${why}); page JSON slots`]);
+    const m = json(`${OUT}/trips/two/_meta.json`); assert.equal(m.slotSource, 'page-json'); assert.equal(m.slotMapSkipped, why);
+    write(`stardust/current/pages/${file}`, fixture(file));
+  }
+  tripCap('trip-two', 'Coastal walks');
+});
+// Later sections keep the page-JSON default: no mapping in the project.
+rmSync(join(tmp, RW), { recursive: true, force: true }); rmSync(join(tmp, 'stardust/rollout/coverage'), { recursive: true, force: true });
+
+// ---- the encode attempt: plan records it per template with A′ siblings ------------------------------------
+console.log('plan: the encode attempt per template');
+const s6 = json(STATE);
+s6.pages.push(page('events', '/events/', 'approved', 'event'), page('event-one', '/events/one/', 'directed', 'event'), page('event-two', '/events/two/', 'directed', 'event'),
+  page('venues', '/venues/', 'approved', 'venue'), page('venue-one', '/venues/one/', 'directed', 'venue'), page('shows', '/shows/', 'approved', 'show'), page('show-one', '/shows/one/', 'directed', 'show'),
+  page('press', '/press/', 'directed', 'press'), page('odd!', '/odd/', 'approved', 'odd'), page('odd-one', '/odd/one/', 'directed', 'odd'));
+write(STATE, `${JSON.stringify(s6, null, 2)}\n`);
+write(`${P}/events-proposed.html`, minimal('Events').replace('<h1>Events</h1>', '<h1 data-slot="headline">Events</h1>'));
+for (const s of ['event-two', 'venues', 'venue-one', 'shows', 'show-one', 'press', 'odd!', 'odd-one']) write(`${P}/${s}-proposed.html`, minimal(s));
+for (const s of ['events', 'event-two', 'venues', 'venue-one', 'shows', 'show-one', 'press', 'odd-one']) capture(s, s, `${s} description.`);
+write('stardust/current/pages/event-one.json', JSON.stringify({ url: 'https://example.test/events/one/', title: 'Event one', _provenance: { unsourcedContent: [] }, slots: { headline: 'Event one' } }));
+for (const t of ['events', 'venues']) write(`stardust/import/${t}/vocabulary.json`, '{}\n');
+const ENC = (t) => `stardust/migrate/encode/${t}.json`;
+const ENC_RUNS = 'encoder-runs.log';
+const encRuns = () => (has(ENC_RUNS) ? read(ENC_RUNS).split('\n').filter(Boolean) : []);
+// A fake encoder: events round-trips, venues does not; every run appends one line to encoder-runs.log in the project.
+write('fake-encode.mjs', `import { appendFileSync } from 'node:fs';
+const a = process.argv.slice(2); const mode = a[0]; const t = a[a.indexOf('--template') + 1];
+appendFileSync('${ENC_RUNS}', mode + ' ' + t + '\\n');
+if (mode === '--lint') { console.log('lint ' + t + ': 0 findings · 0 notes'); process.exit(0); }
+if (t === 'events') { console.log('roundtrip events at text: equal — content/events.html'); process.exit(0); }
+console.log('roundtrip ' + t + ' at text: not equal (2 differences) — content/' + t + '.html'); process.exit(2);
+`);
+const PLAN = ['plan', 'home', 'events', 'event-one', 'event-two', 'venues', 'venue-one', 'press', '--branch-b', 'press', '--encoder', 'fake-encode.mjs'];
+check('render keeps the A′ path closed without the template\'s encode attempt record (fork or own file; an invalid record is none), naming the command; A and B pages render', () => {
+  write(ENC('venues'), `${JSON.stringify({ template: 'venues', verdict: 'maybe' })}\n`);
+  const r = run(['render', 'events', 'event-one', 'event-two', 'venue-one', 'press', '--branch-b', 'press']); assert.equal(r.status, 2);
+  for (const [s, t] of [['event-one', 'events'], ['event-two', 'events'], ['venue-one', 'venues']]) {
+    assert.match(r.err, new RegExp(`^refused ${s}: strict encode-attempt — template ${t} has no encode attempt record \\(stardust/migrate/encode/${t}\\.json\\) — run: node stardust/scripts/migrate/encode-attempt\\.mjs record --template ${t}$`, 'm'));
+    assert.ok(!has(`${OUT}/${t}/${s.split('-')[1]}/index.html`) && !has(`${OUT}/${t}/${s.split('-')[1]}/_meta.json`), `nothing written for ${s}`);
+  }
+  assert.match(r.out, /^A {2}events → events\/index\.html /m); assert.match(r.out, /^B {2}press → press\/index\.html /m);
+  assert.match(r.out, /^rendered 2, unchanged 0, refused 3, passthrough 0 /m);
+});
+check('plan records one encode attempt per template with A′ siblings (not for an A page without siblings, nor B) and prints the count last', () => {
+  const r = run(PLAN); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+  assert.deepEqual(r.out.trim().split('\n'), [
+    "plan: 7 page(s) — A 3 · A' 3 on 2 template(s) · B 1 · passthrough 0 · refused 0",
+    'A  3 page(s): home, events, venues',
+    "A' events: 2 sibling(s): event-one (fork), event-two",
+    "A' venues: 1 sibling(s): venue-one",
+    'B  1 page(s): press',
+    'encode-attempt events: encoded — roundtrip events at text: equal — content/events.html',
+    'encode-attempt venues: no-roundtrip — roundtrip venues at text: not equal (2 differences) — content/venues.html',
+    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)',
+  ]);
+  const ev = json(ENC('events'));
+  assert.equal(ev.template, 'events'); assert.equal(ev.verdict, 'encoded'); assert.deepEqual(ev.lint, { exit: 0, line: 'lint events: 0 findings · 0 notes' }); assert.match(ev.at, /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(json(ENC('venues')).verdict, 'no-roundtrip');
+  for (const t of ['home', 'press', 'event']) assert.ok(!has(ENC(t)), `no record for ${t}`);
+  assert.deepEqual(encRuns(), ['--roundtrip events', '--lint events', '--roundtrip venues', '--lint venues']);
+  assert.ok(!has(`${OUT}/events/one/index.html`) && !has(`${OUT}/venues/one/index.html`), 'plan renders nothing');
+});
+check('a re-run keeps an existing record (the encoder is not run again); --force re-records', () => {
+  const at = json(ENC('events')).at;
+  const r = run(PLAN); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, new RegExp(`^encode-attempt events: encoded — roundtrip events at text: equal — content/events\\.html \\(kept from ${at.replace(/\./g, '\\.')}; --force re-records\\)$`, 'm'));
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)');
+  assert.equal(encRuns().length, 4, 'nothing run'); assert.equal(json(ENC('events')).at, at);
+  const f = run([...PLAN, '--force']); assert.equal(f.status, 0, f.err);
+  assert.doesNotMatch(f.out, /kept from/); assert.equal(encRuns().length, 8);
+});
+check('the production default encoder (encode.mjs beside encode-attempt.mjs): a template without a map is recorded not-attempted, nothing run', () => {
+  const r = run(['plan', 'show-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+  assert.equal(json(ENC('shows')).verdict, 'not-attempted');
+});
+check('any recorded verdict opens the A′ path: encoded (events), no-roundtrip (venues), not-attempted (shows)', () => {
+  const r = run(['render', 'event-one', 'event-two', 'venue-one', 'show-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' event-one → events\/one\/index\.html {2}\(event; fork of events; /m); assert.match(mainOf(read(`${OUT}/events/one/index.html`)), /<h1 data-slot="headline">Event one<\/h1>/);
+  assert.match(r.out, /^A' event-two → events\/two\/index\.html {2}\(event; \d+ assets/m); assert.match(r.out, /^A' venue-one → venues\/one\/index\.html /m); assert.match(r.out, /^A' show-one → shows\/one\/index\.html /m);
+});
+check('plan refusals: a missing --encoder is a usage error; a template name the record cannot take is one clean line, exit 2; a branch refusal is named and the count still printed last', () => {
+  const bad = run(['plan', 'venue-one', '--encoder', 'nope.mjs', '--force']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --encoder nope\.mjs does not exist/);
+  const odd = run(['plan', 'odd-one']); assert.equal(odd.status, 2);
+  assert.equal(odd.err, 'encode-attempt odd!: not recorded — template "odd!" is not a template name (letters, digits, _ . - and not only dots)\n');
+  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  const all = run(['plan', '--all', '--encoder', 'fake-encode.mjs']); assert.equal(all.status, 2);
+  assert.match(all.err, /^refused faq: strict branch — /m); assert.match(all.out, /^skip contact: status extracted$/m); assert.match(all.out.trim().split('\n').at(-1), /^encode: \d+ encoded · /);
+});
+check('plan is flow-guarded like render', () => {
+  const s = json(STATE); const keep = read(STATE); delete s.flow; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  try { const r = run(['plan', 'event-one']); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/); assert.equal(r.out, ''); } finally { write(STATE, keep); }
 });
 
 // ---- --help ---------------------------------------------------------------------------------

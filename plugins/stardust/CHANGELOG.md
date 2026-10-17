@@ -30,6 +30,102 @@ version; numbers marked "local" are integration-only and renumbered by the maint
 - Not in this image: `stardust/handover-followups` (0.35.9, awaiting its nav fix) and
   `stardust/capture-dialogs-and-denials` (0.35.8, still in progress).
 
+## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#NNN provisional)
+
+A recorded hands-off run never invoked the encoder: it hand-built every A′ sibling, wrote each sibling's slot data by
+hand, and its plan ledger could not say how many templates were encoded. Review of the 0.35.4 handover tools left open
+items: `site.totalDiscovered` stayed null whenever the `--max` cap bit; the entry-locale scope of an entry redirected
+to another origin did not say it read the landed URL, and any two-letter second path segment narrowed the entry locale;
+a re-render refused a variance the owner had already accepted, and representatives could link in a cycle; page-probe
+always hid through its local fallback, counted an element matched by two selectors twice and let `--sbs` overwrite
+`--shot`; chrome-docs labelled a mega-menu item with its first column heading and decoded `&constructor;` from the
+object prototype; media-harvest fetched video of any size and wrote its map only at the end; a `$&` in a captured
+title was expanded; and every probe screenshot was written at full resolution, to be read at full cost.
+
+- **The encoder is attempted before any A′ sibling is built.** `migrate/scripts/encode-attempt.mjs` (`record` /
+  `check` / `summary`) runs the encoder's `--roundtrip` and `--lint` once per template and writes
+  `stardust/migrate/encode/<template>.json`: `encoded`, `no-roundtrip` (its reason recorded) or `not-attempted` (no
+  encoder beside it, no `stardust/import/<t>/vocabulary.json` map, or an owner's `--not-attempted "<reason>"`); a
+  `--encoder <file>` that does not exist is a usage error (exit 2, nothing written), never `not-attempted`. A new,
+  minimal `migrate.mjs plan <slug…|--all>` prints render's branch partition (A, A′ per template, B, passthrough,
+  refused; nothing rendered, state untouched), records the attempt of every template with A′ siblings in the set (an
+  existing record kept, `--force` re-records, `--encoder <file>`) and ends with the count line for the plan unit's
+  ledger detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted)`. `render` refuses an A′ page,
+  own file or fork, whose template has no record (strict `encode-attempt`, naming
+  `node stardust/scripts/migrate/encode-attempt.mjs record --template <t>`); A and B pages are never checked.
+- **Crawl totals and scope:** `_crawl-log.json#discovery.total` is the count before the `--max` cap, beside `count`;
+  `captureGaps.scope.totalDiscovered` carries it and `state.mjs init` takes it for `site.totalDiscovered`. After an
+  origin redirect the entry-locale scope still reads the landed URL, and now says so: the detail adds `(from the
+  landed URL <landed>, redirected from <entry>)` and `scope.landedFrom` keeps the asked URL. A two-letter second path
+  segment is part of the locale only when it is a known language or region code: `extract/scripts/locale-codes.json`
+  (ISO 639-1 languages, ISO 3166-1 alpha-2 regions), copied beside `crawl.mjs`; without it no second segment narrows,
+  said once on stderr.
+- **A′ forks fill their slots without hand-written data, and their decisions hold:**
+  - `render --from-archetype` fills slots through the block mapping (`--slots mapping|page-json`,
+    `migrate/scripts/slot-map.mjs`): each `data-slot` of the archetype's prototype is located under a verified
+    mapping selector in the archetype's capture and read at the same path in the sibling's; a value in the sibling's
+    page JSON wins. The mapping is read only while `stardust/rollout/workspace/manifest.json` lists its sha256 and
+    its `generatedAt` matches coverage `pages.json`. By default the mapping is used when it is usable, covers the
+    archetype and both captures exist; else the page JSON slots — silently with no `mapping.json`; when one is present
+    but not used, the run line `slots: archetype <a> — mapping not used (<reason>); page JSON slots` and the sidecar's
+    `slotMapSkipped` give the reason. Strict slots refusals: an explicit `--slots mapping` with an unusable mapping, an
+    uncovered archetype or a missing capture; a slot without a recipe (an ambiguous one included: its text in separate
+    places of the archetype's capture, or its image file name on more than one image — never the first place for every
+    such slot), or a mapped slot that does not resolve (an anchor not matching exactly one element, a path that leads
+    nowhere, a link without text, a list longer than the archetype's or whose items cannot be counted), with no page
+    JSON value. The sidecar gains `slotSource`, `slotMap` and `slotMapSkipped`.
+  - An accepted variance holds while the archetype and the deltas are unchanged: the earlier record (the page's
+    sidecar, else coverage `source.variance`) must match on `archetype`, verdict, `missing`, `extra`, the delta
+    count and `deltaKinds` (each delta's kind, its probe and its message — `COUNT(card): 3 → 4 matches`, so a grown
+    COUNT, CLUSTERS or SECTIONS delta is a change; SECTION HEIGHTS and PROBE keep the kind only, their pixel values
+    move between probes; lists in any order). The page then renders without `--accept-variance`, keeps `accepted`
+    (and `acceptedAt`) and is named on `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged
+    variance (…)`. A changed row is refused, naming each changed field and quoting the earlier reason; a record
+    written before `archetype` and `deltaKinds` existed, or whose `deltaKinds` lack the messages, is refused once that
+    way. The majority refusal stays, accepted or not.
+  - `state.mjs set --representative` refuses a cycle (exit 2, nothing written, the chain named, e.g.
+    `a → c → b → a`); `set <slug…> --clear-representative` unlinks pages (with `--representative`: a usage error).
+- **The handover tools' open items:**
+  - page-probe `--hide` runs through live-session's `hideEntries` / `hideRegions` when they are exported (stderr
+    names the path, else the local fallback), `hidden <n>` counts an element once, and an `--sbs` output that is the
+    `--shot` file is written beside it as `<name>-sbs`.
+  - chrome-docs nests a list item made only of nav columns under the item's own label, never its first column
+    heading (without a label, the columns' entries stand at that level); the item's own label also heads every column
+    after the list it heads (a dropdown's own link over two columns keeps both), while a heading inside a mega menu
+    heads only its own list and the columns after it stay siblings; a Back or Close control at the top of a
+    panel is skipped, a dropdown wrapper's own trigger keeps its label. Its entity and implied-tag maps have no
+    prototype, so `&constructor;` stays literal.
+  - media-harvest caps video at 50 MiB without `--max-bytes` (which caps every file); an over-cap file is recorded
+    `too-large`, never written. `media-map.json` is saved after every finished download, so a killed run keeps every
+    finished entry; an unchanged re-run leaves it byte-identical.
+  - migrate's `composeHead` keeps `$&`, `$1` and `$$` in a captured title literal, as do the canonical, `og:url` and
+    link rewrites.
+  - `reading-discipline.md` names `page-probe.mjs` as the one ad-hoc browser tool.
+- **page-probe writes capped images:** `--shot` and `--sbs` write a JPEG fitted within 1400 × 1000 (aspect kept,
+  never upscaled) at quality 80, as `<name>.jpg` beside the given `.png` path; `--full-res` also keeps the
+  full-resolution PNG at that path; the output lines name every file written. `--sbs` composes PNG or JPEG inputs.
+
+Rulings: the default slot source falls back to the page JSON (when a `mapping.json` is present but not used, with the
+reason on a run line and in `slotMapSkipped`), and only an explicit `--slots mapping` refuses; any encode-attempt
+verdict (`encoded`, `no-roundtrip`, `not-attempted`) opens render's gate, which asks that the attempt was made, not
+that it encoded; `--clear-representative` writes `representative: null`, the key kept.
+
+`migrate.mjs` now imports `slot-map.mjs` and `encode-attempt.mjs` beside it, so a project copies migrate's whole
+scripts dir. The extract, migrate and replica docs, the handoff contract, `state-machine.md`, `artifact-map.md` and
+`scripts-index.md` name the changes; touches #137, #126. The scripts-index lint cap is now 14016 bytes (was 13312),
+raised for the new rows with none trimmed — a maintainer question.
+
+Patch: no verdict, threshold, criterion or gate row moved; the new refusals (an A′ page without an attempt record, an
+unresolved or ambiguous mapped slot, a changed accepted variance, a representative cycle, a mistyped `--encoder`) only
+add caution, and page-probe's images are for looking, never gate evidence. Upgrade: the sidecar's shape changed
+(`slotSource`, `slotMap`, `slotMapSkipped`; the variance record's `archetype` and `deltaKinds`), so every A′ fork
+re-renders once; each earlier variance acceptance is refused once, quoting its reason, and takes one
+`--accept-variance`; an A′ page whose template has no attempt record is refused until `migrate.mjs plan` (or
+`encode-attempt.mjs record`) writes one; `page-probe.mjs --shot x.png` now writes `x.jpg` (`--full-res` keeps the PNG).
+
+Provisional version, renumbered at merge; stacks on 0.35.4 (the handover-tools branch); 0.35.7 and 0.35.8 are other
+branches.
+
 ## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#143)
 
 A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,

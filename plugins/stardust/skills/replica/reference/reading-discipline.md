@@ -41,6 +41,12 @@ print the part that matters, capped, and say what they left out:
   <prototype-url> --selectors "<css>,…" [--width 1440,360]` — rect +
   computed values per selector, one delta line per box (Phase 3); never an
   authored probe or a one-off `node -e` evaluate.
+- **Any other look at a page**: `page-probe.mjs <url> [--hide <sel>]
+  [--click <sel>] [--eval <expr>] [--shot <png>]`, `--sbs <a> <b> <out>`
+  — the one ad-hoc browser tool (the gate's navigation and consent
+  handling; `--hide` through live-session's hide helpers when exported,
+  `hidden <n>` counting distinct elements; capped JPEGs, `../SKILL.md`
+  Phase 3 (b)); for looking, never gate evidence.
 - **Images**: one crop per fact, never a full stitched page (it is
   downscaled past legibility and costs a step), never the live/build/diff
   triplet — the diff crop of the first hot band (`crop-compare.mjs`) is the
@@ -58,14 +64,13 @@ print the part that matters, capped, and say what they left out:
   480 px or narrower under its size cap; a line with a crop share below
   100 is followed by its `--offset` slice) — the whole page per archetype,
   never the raw capture.
-- **Script flags**: every shipped CLI script — replica, diff, master, deploy,
-  rollout, dynamics, qa, extract, reskin — answers `--help` (and `-h`) with
+- **Script flags**: every shipped CLI script answers `--help` (and `-h`) with
   its usage header before it parses anything, touches a file or opens a
   browser; the header names the flags, the exit codes and, for a script that
-  writes artifacts, a `Writes:` block listing every path (the
-  `script-help` lint keeps this true). The Phase 5 contract card's usage
-  table (`reference/handoff-contract.md` § 4) remains the one place with the
-  full invocation shape per deploy and rollout script. Never `sed`/`head`/
+  writes artifacts, a `Writes:` block listing every path. The Phase 5
+  contract card's usage table (`reference/handoff-contract.md` § 4) remains
+  the one place with the full invocation shape per deploy and rollout
+  script. Never `sed`/`head`/
   `grep` a script's source to learn its flags or what it writes (16 such
   reads in one recorded session, four greps over one crawler in another):
   run it with `--help`. **Index first:** `../stardust/reference/scripts-index.md`

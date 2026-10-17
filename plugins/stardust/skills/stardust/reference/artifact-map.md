@@ -398,7 +398,7 @@ replaces that line with the three `replica/gates` lines of
 | `canon/**` | yes | prototype | the design canon |
 | `canon-source/**` except `assets/screenshots/` | yes | extract | donor capture |
 | `current/` text: `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`, `_brand-extraction.json`, `_crawl-log.json`, `_dynamics.json`, `brand-review.html`, `pages/*.json`, `pages/*.html` | yes | extract | `pages/*.json` feeds nine skills; the substrate of the pipeline |
-| `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media; `migrate`/`deploy` need it → re-run extract on a clone |
+| `current/assets/**` | **no** | extract | 50 MB screenshots rewritten on every extract + source media (consequence below) |
 | `current/brand-sources/*/assets/screenshots/` | **no** | extract | screenshots |
 | `prototypes/**` incl. `assets/` | yes | prototype / replica | approved design; `assets/` is source media, not screenshots |
 | `validation/**` | **no** | master / prototype | clean-pass screenshots |
@@ -409,6 +409,7 @@ replaces that line with the three `replica/gates` lines of
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
 | `import/**`, `encoded/**`, `patches/**` | yes | deploy (map) / migrate | a template's map + manifest, the encoded documents, per-page patches |
+| `migrate/encode/<template>.json` | yes | migrate | the template's encode attempt (`{verdict: encoded\|no-roundtrip\|not-attempted, lint, at}`, `migrate.mjs plan`); an A′ render requires it |
 | `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |

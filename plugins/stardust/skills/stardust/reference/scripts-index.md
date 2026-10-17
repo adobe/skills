@@ -35,7 +35,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
 - `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
-- `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`
+- `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`; images are capped JPEGs, `--full-res` keeps the PNG
 - `diff/unit-geometry.mjs` — repeated-unit Δ — `<origin> <served> (--unit <selO>=<selE> | --families <f> --slug <s>) [--n 1] [--tol 4]`; exit 2 = required unit off/hidden/missing
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>] [--main <sel>] [--hide <sel,…>]`
 - `dynamics/dynamics-check.mjs` — replay parity (search-query count + top titles) — `--origin <h> [--parity <json>] [--out <dir>]`; exit 2 = any FAIL
@@ -46,12 +46,14 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `dynamics/snapshot-api.mjs` — record same-origin API calls — `--origin <h> --calls calls.json [--out <dir>]`
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
-- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`
-- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]`
+- `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`
+- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
+- `migrate/encode-attempt.mjs` — per-template encoder try → `stardust/migrate/encode/<t>.json` — `record --template <t,…> [--encoder <f>] [--not-attempted "<r>"]`; `check --template <t,…>`; `summary [--json]`; exit 1 = I/O, 2 = usage or no record
 - `migrate/encode.mjs` — sibling encoder — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
-- `migrate/migrate.mjs` — render + sidecar; forks A′ from the archetype — `render <slug…|--all> [--accept-variance "<r>"]`; `gate|deviation|variant|modules|harness <slug>`
+- `migrate/migrate.mjs` — render + sidecar; forks A′ from the archetype, refused without its encode attempt — `plan <slug…|--all>` (records encode attempts; prints the count); `render <slug…|--all> [--slots mapping|page-json] [--accept-variance "<r>"]`; `gate|deviation|variant|modules|harness <slug>`
+- `migrate/slot-map.mjs` — library (`--slots mapping` values), imported by migrate.mjs, no CLI
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
@@ -123,6 +125,6 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
 - `stardust/progress.mjs` — unit recorder for the rollout/migrate/replica progress ledger, locked, one line per write — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>]`
-- `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--type <t>`; `summary [--slugs]`
+- `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `summary [--slugs]`
 - `stardust/token-ledger.mjs` — usage per phase/unit, advisory; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping by path, under a lock — `<unit> [--code blocks/<name>]… [--push] [--wait-s 120]`; exit 2 = refused or failed, nothing half-done; `--push` returns under 240 s

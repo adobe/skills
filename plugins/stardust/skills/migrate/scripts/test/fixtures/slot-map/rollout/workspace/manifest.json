@@ -1,0 +1,8 @@
+{
+  "_provenance": { "writtenBy": "stardust:rollout/workspace-manifest", "writtenAt": "2026-10-01T08:00:00.000Z", "readArtifacts": [], "stardustVersion": null },
+  "formatVersion": "0.1.0",
+  "outputs": {
+    "stardust/rollout/coverage/pages.json": "sha256:f9ef51748e3afc1c871643a96db28f5d8538c5496ac2b89da62b1caf5f1d37f3",
+    "stardust/rollout/workspace/mapping.json": "sha256:6cc653f357fd571c243112b2c41c59d94a1f4f9b89ec312c9151641b585bff14"
+  }
+}

@@ -64,7 +64,10 @@ that order. `_provenance` is always the first key. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
-§ Flow keys). `site.captureGaps` (optional, copied by `state.mjs init`
+§ Flow keys). `site.totalDiscovered` is the crawl's pre-cap
+`_crawl-log.json#discovery.total` (from an older log with only the capped
+`discovery.count`: null when that count reached a non-zero `pageCap`).
+`site.captureGaps` (optional, copied by `state.mjs init`
 from `_crawl-log.json#captureGaps.roots`): `[{ root, slug, linked, uncaptured:
 [<path>…] }]` per captured locale root — uncaptured targets never become
 `pages[]` rows.
@@ -182,7 +185,9 @@ brand modules.
 
 **Representative.** A sibling's optional `representative` key names the
 archetype slug it clones (`state.mjs set <slug…> --representative
-<archetype-slug>`): `migrate.mjs render` forks that archetype when no
+<archetype-slug>`; `--clear-representative` nulls it; a link chain
+that leads back to a named page is a cycle, refused with the chain
+named): `migrate.mjs render` forks that archetype when no
 `--archetype` is given, and rollout's `inventory.mjs --state` keys a
 pending sibling to it before its `type`.
 
@@ -194,10 +199,8 @@ When `$stardust direct` resolves a new direction that differs from
 the prior one, stale-flagging is **content-aware**, not blanket:
 each page in `prototyped`, `approved`, or `migrated` state is
 flagged stale only if the new direction's changes actually affect
-that page's deployment. The earlier blanket rule (every prior-state
-page goes stale on every re-direct) over-invalidated work and
-forced the user to re-render
-pages whose composition was unchanged by the direction edit.
+that page's deployment (the earlier blanket rule — every prior-state
+page stale on every re-direct — over-invalidated work).
 
 The rule:
 

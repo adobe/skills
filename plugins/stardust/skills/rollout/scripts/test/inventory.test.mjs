@@ -146,9 +146,9 @@ check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else nu
   assert.equal(bySlug.about, 'https://example.com/about-us'); assert.equal(bySlug['tours-bali'], 'https://example.com/tours/bali.html'); assert.equal(bySlug.faq, null);
 });
 
-check('a sidecar\'s variance object lands verbatim in the row\'s source.variance; variance null or absent → no key', () => {
+check('a sidecar\'s variance object lands verbatim in the row\'s source.variance (an acceptance and its date included); variance null or absent → no key', () => {
   const vRoot = join(root, 'variance'); const vMigrated = join(vRoot, 'migrated'); const vOut = join(vRoot, 'rollout');
-  const differs = { verdict: 'differs', file: 'stardust/rollout/variance/tours-bali.json', at: '2026-01-02T03:04:05Z', missing: ['card'], extra: [], deltas: 2, accepted: null };
+  const differs = { verdict: 'differs', file: 'stardust/rollout/variance/tours-bali.json', at: '2026-01-02T03:04:05Z', missing: ['card'], extra: [], deltas: 2, accepted: 'the card row is a page-level promo', acceptedAt: '2026-01-03T00:00:00Z' };
   const skipped = { status: 'skipped', reason: 'no live archetype URL' };
   const sidecars = { 'utah.html': { slug: 'tours-utah', template: 'tours-bali', variance: differs }, 'alps.html': { slug: 'tours-alps', template: 'tours-bali', variance: skipped }, 'bali.html': { slug: 'tours-bali', renderBranch: 'A', template: null, variance: null }, 'faq.html': { slug: 'faq', renderBranch: 'B' } };
   mkdirSync(vMigrated, { recursive: true });
@@ -157,6 +157,7 @@ check('a sidecar\'s variance object lands verbatim in the row\'s source.variance
   assert.equal(r.status, 0, r.stderr);
   const rows = Object.fromEntries(JSON.parse(readFileSync(join(vOut, 'coverage', 'pages.json'), 'utf8')).pages.map((p) => [p.slug, p.source]));
   assert.deepEqual(rows['tours-utah'].variance, differs); assert.deepEqual(rows['tours-alps'].variance, skipped);
+  assert.deepEqual([rows['tours-utah'].variance.accepted, rows['tours-utah'].variance.acceptedAt], ['the card row is a page-level promo', '2026-01-03T00:00:00Z'], 'an accepted variance reaches coverage, so a re-render can honour it');
   assert.equal('variance' in rows['tours-bali'], false, 'variance null → no key'); assert.equal('variance' in rows.faq, false, 'no variance → no key');
 });
 

@@ -20,8 +20,10 @@
  *                                                             (default stardust/current/assets/media)
  *     --map <file>        the media map, created or extended (default stardust/current/assets/media-map.json)
  *     --concurrency <n>   parallel downloads                                              (default 4)
- *     --max-bytes <n>     per-file cap: a declared content-length over it, or a body that streams
- *                         past it, is recorded `too-large` and nothing is written   (default: no cap)
+ *     --max-bytes <n>     per-file cap, video included: a declared content-length over it, or a body
+ *                         that streams past it, is recorded `too-large` and nothing is written
+ *                         (default: no cap, except video — 52428800 bytes = 50 MiB; video is a video/*
+ *                         answer or a .mp4/.webm/.mov/.m4v/.ogv URL)
  *     --timeout <s>       per-request timeout in seconds, body included; decimals allowed (default 30)
  *     --help, -h          this header
  *
@@ -43,8 +45,8 @@
  * audio/*, application/octet-stream or binary/octet-stream (the type before `;`, any case — an
  * HTML page behind an <iframe data-src>, say) is `not-media`: its contentType recorded, no
  * file written (a missing content-type downloads as any media); a network failure, a timeout
- * or an empty body is `error` with an `error` message; --max-bytes overruns are `too-large`.
- * Failures are recorded in the map and never fatal.
+ * or an empty body is `error` with an `error` message; an overrun of --max-bytes (or, without it,
+ * of the video default) is `too-large`. Failures are recorded in the map and never fatal.
  *
  * File name: <base>-<hash8>.<ext>
  *   base   the URL path's basename, percent-decoded, extension removed, lowercased, runs of
@@ -65,8 +67,9 @@
  *           keyed by absolute source URL, keys sorted, 2-space JSON + newline; `local` is <out>
  *           joined with the file name, posix separators, as given (project-relative by default);
  *           `contentType` is set on ok and not-media entries, null on the other failures.
- *           Entries for URLs this run did not see are kept. Written atomically, and only when its
- *           content changes — a run that changes nothing leaves it byte-identical. An existing
+ *           Entries for URLs this run did not see are kept. Written after every finished download
+ *           (tmp + rename), and only when its content changes — a killed run keeps every entry it
+ *           finished, and a run that changes nothing leaves it byte-identical. An existing
  *           map that is not a JSON object is refused (exit 2), never overwritten.
  *
  * Re-runs: a URL whose map entry is `ok` and whose `local` file exists at the recorded `bytes`
@@ -109,6 +112,9 @@ export const DEFAULTS = Object.freeze({
   concurrency: 4, maxBytes: null, timeout: 30,
 });
 export const MAX_FAIL_LINES = 10;
+// The cap a video is held to when --max-bytes is absent. The body is held in memory to hash it, and a
+// page's hero loop or teaser runs a few MB — past 50 MiB it is a long-form film to link, not to re-host.
+export const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
 const SYNOPSIS = 'usage: node media-harvest.mjs [--pages <dir>] [--out <dir>] [--map <file>] [--concurrency 4] [--max-bytes <n>] [--timeout 30]  (--help for the full header)';
 
 // A URL extension in this set names the file as is (lowercased); anything else falls back to the content-type.
@@ -290,6 +296,16 @@ export function baseName(url) {
 }
 export function urlExt(url) { const e = posix.extname(pathBasename(url)).slice(1).toLowerCase(); return KNOWN_EXT.has(e) ? e : null; }
 export function extFor(url, contentType) { return urlExt(url) || TYPE_EXT[mediaType(contentType)] || 'bin'; }
+export const VIDEO_EXT = new Set(['mp4', 'webm', 'mov', 'm4v', 'ogv']);
+// Video = a video/* answer, or a video extension on the URL (an octet-stream or untyped clip counts).
+export function isVideo(url, type) { return /^video\//.test(type ?? '') || VIDEO_EXT.has(urlExt(url)); }
+// The byte cap one answer is held to, with the name its too-large error gives it: --max-bytes for every
+// file when given; without it VIDEO_MAX_BYTES for video and no cap for the rest.
+export function byteCap(url, type, maxBytes, videoMaxBytes = VIDEO_MAX_BYTES) {
+  if (maxBytes) return { bytes: maxBytes, label: `--max-bytes ${maxBytes}` };
+  if (videoMaxBytes && isVideo(url, type)) return { bytes: videoMaxBytes, label: `video cap ${videoMaxBytes} (the default without --max-bytes)` };
+  return null;
+}
 export const hash8 = (bytes) => createHash('sha256').update(bytes).digest('hex').slice(0, 8);
 export function mediaFileName(url, bytes, contentType) { return `${baseName(url)}-${hash8(bytes)}.${extFor(url, contentType)}`; }
 export const localPath = (out, name) => posix.join(String(out).split(sep).join('/'), name);
@@ -328,7 +344,7 @@ function errMessage(e, timeout) {
 }
 
 // One GET: { status: 'ok', bytes, contentType } | { status: 'not-media', contentType } | { status: 'http-<code>' | 'too-large' | 'error', error? }.
-export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = null, ua = DEFAULT_UA } = {}) {
+export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = null, videoMaxBytes = VIDEO_MAX_BYTES, ua = DEFAULT_UA } = {}) {
   let res;
   let referer = '';
   try { referer = `${new URL(url).origin}/`; } catch { /* resolveRef only yields valid URLs */ }
@@ -339,10 +355,11 @@ export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = nul
   if (!res.ok) { await drop(); return { status: `http-${res.status}` }; }
   const type = mediaType(res.headers.get('content-type'));
   if (type !== null && !isMediaType(type)) { await drop(); return { status: 'not-media', contentType: type }; }
+  const cap = byteCap(url, type, maxBytes, videoMaxBytes);
   const declared = res.headers.get('content-length');
-  if (maxBytes && declared !== null && Number(declared) > maxBytes) {
+  if (cap && declared !== null && Number(declared) > cap.bytes) {
     await drop();
-    return { status: 'too-large', error: `content-length ${Number(declared)} > --max-bytes ${maxBytes}` };
+    return { status: 'too-large', error: `content-length ${Number(declared)} > ${cap.label}` };
   }
   const chunks = [];
   let n = 0;
@@ -353,9 +370,9 @@ export async function download(url, { timeout = DEFAULTS.timeout, maxBytes = nul
         const { done, value } = await reader.read();
         if (done) break;
         n += value.byteLength;
-        if (maxBytes && n > maxBytes) {
+        if (cap && n > cap.bytes) {
           try { await reader.cancel(); } catch { /* closed */ }
-          return { status: 'too-large', error: `body passed --max-bytes ${maxBytes} while streaming` };
+          return { status: 'too-large', error: `body passed ${cap.label} while streaming` };
         }
         chunks.push(value);
       }
@@ -440,10 +457,15 @@ async function main(argv) {
   for (const u of urls) {
     if (Object.hasOwn(prev, u) && isReusable(prev[u])) { results[u] = prev[u]; reused += 1; } else todo.push(u);
   }
-  await pool(todo, o.concurrency, async (u) => { results[u] = await harvestOne(u, o); });
-
-  const text = serializeMap(mergeMap(prev, results));
-  if (text !== prevText) writeAtomic(o.map, text);
+  // The map is saved after every finished download, so a killed run keeps every entry it finished. Each
+  // save runs to completion before another worker resumes, so saves never interleave.
+  let saved = prevText;
+  const saveMap = () => {
+    const text = serializeMap(mergeMap(prev, results));
+    if (text !== saved) { writeAtomic(o.map, text); saved = text; }
+  };
+  await pool(todo, o.concurrency, async (u) => { results[u] = await harvestOne(u, o); saveMap(); });
+  saveMap();
 
   const failures = todo.filter((u) => results[u].status !== 'ok').map((u) => ({ url: u, status: results[u].status }));
   const lines = summarize({ urls: urls.length, pages, downloaded: todo.length - failures.length, reused, failures, map: o.map, unresolved, unresolvedPages });

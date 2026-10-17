@@ -4,8 +4,9 @@
 // (same-origin links on the root page under its own path, minus what the crawl captured; query, hash and
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
 // detail string, both link-list shapes, the entry-locale scope (the entry URL's leading two-letter locale
-// segments, and whether fewer than half of the captured pages lie under them) — and that importing the module or
-// asking --help starts no crawl and writes nothing. One consent table: consentTable() hands back live-session's
+// segments — a second one only when locale-codes.json knows its head — and whether fewer than half of the
+// captured pages lie under them), the locale table itself — and that importing the module or asking --help
+// starts no crawl and writes nothing. One consent table: consentTable() hands back live-session's
 // CONSENT_CANDIDATES (the same array object, resolved in the plugin tree and in the project-copy layouts —
 // scripts/extract ↔ scripts/diff, flat, and a crawl.mjs in stardust/scripts/ beside replica's
 // stardust/scripts/diff/), crawl.mjs keeps no selector list of its own, and a copy without live-session beside it
@@ -23,7 +24,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { captureGaps, consentTable, entryLocalePrefix, localeRootPath, maxPages } from '../crawl.mjs';
+import { capDiscovered, captureGaps, consentTable, discoveryLog, entryLocalePrefix, localeCodes, localeRootPath, maxPages } from '../crawl.mjs';
 import { navMsSummary } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -300,6 +301,87 @@ await checkAsync('project copies: consentTable() resolves live-session beside th
     const stale = await import(pathToFileURL(join(root, 'stale', 'crawl.mjs')).href);
     await assert.rejects(stale.consentTable(), /stale\/live-session\.mjs exports no CONSENT_CANDIDATES — copy live-session\.mjs beside the extract scripts again \(extract\/SKILL\.md § Setup\)/);
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// 30 discovered pages, one of them the entry again (trailing slash) and one a hash variant: 29 distinct with the entry
+const FOUND = [...Array.from({ length: 28 }, (_, i) => `https://example.test/p${i}`), 'https://example.test', 'https://example.test/p3/#team'];
+check('capDiscovered: the entry first, slash- and hash-insensitive dedupe, then the --max cap; total is the count BEFORE the cap — the cap bites: count 25 of total 29; no cap or a cap that does not bite: total === count', () => {
+  const capped = capDiscovered('https://example.test/', FOUND, 25);
+  assert.equal(capped.urls.length, 25); assert.equal(capped.total, 29);
+  assert.equal(capped.urls[0], 'https://example.test/'); assert.equal(capped.urls[24], 'https://example.test/p23');
+  for (const max of [Infinity, 29, 40]) { const r = capDiscovered('https://example.test/', FOUND, max); assert.equal(r.urls.length, 29, String(max)); assert.equal(r.total, r.urls.length, String(max)); }
+  assert.deepEqual(capDiscovered('https://example.test/', [], 25), { urls: ['https://example.test/'], total: 1 });
+});
+check('discoveryLog: _crawl-log.json#discovery carries count (after the --max cap) and total (before it) side by side; botBlock and originRedirect only when set', () => {
+  const { urls, total } = capDiscovered('https://example.test/', FOUND, 25);
+  assert.deepEqual(discoveryLog({ technique: 'headless', count: urls.length, total, concurrency: 4 }), { fetchTechnique: 'headless', count: 25, total: 29, concurrency: 4 });
+  const redirect = { from: 'https://example.test', to: 'https://www.example.test' };
+  const r = discoveryLog({ technique: 'headed-chrome-stealth', count: 3, total: 3, concurrency: 2, botBlock: 'challenge', originRedirect: redirect });
+  assert.deepEqual(Object.keys(r), ['fetchTechnique', 'count', 'total', 'concurrency', 'botBlock', 'originRedirect']);
+  assert.equal(r.total, r.count); assert.deepEqual(r.originRedirect, redirect);
+});
+check('captureGaps scope: carries totalDiscovered (= discovery.total) when the crawl passes it; no scope → no totalDiscovered anywhere; not passed → no key', () => {
+  const r = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', totalDiscovered: 31 });
+  assert.deepEqual(r.scope, { entryLocale: '/de', inside: 1, outside: 9, totalDiscovered: 31 });
+  assert.equal(r.detail, 'uncaptured first-level targets: de 0, en 0; entry locale /de but 9 of 10 captured pages outside it');
+  const none = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/', totalDiscovered: 31 });
+  assert.deepEqual(none, captureGaps(DE_ENTRY_EN_PLAN));
+  assert.equal('totalDiscovered' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/' }).scope, false);
+});
+check('captureGaps scope: an entry that redirected to another origin is scoped at the LANDED URL — scope.landedFrom names the requested URL and the detail names both; a same-origin, unparsable or absent landedFrom changes nothing', () => {
+  // requested at another origin's /en/, landed on /de/: the landed /de decides (the requested /en would hold 9 of 10 inside)
+  const r = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', landedFrom: 'https://example.org/en/', totalDiscovered: 12 });
+  assert.deepEqual(r.scope, { entryLocale: '/de', inside: 1, outside: 9, totalDiscovered: 12, landedFrom: 'https://example.org/en/' });
+  assert.equal(r.detail, 'uncaptured first-level targets: de 0, en 0; entry locale /de (from the landed URL https://example.test/de/, redirected from https://example.org/en/) but 9 of 10 captured pages outside it');
+  assert.deepEqual(r.roots, captureGaps(DE_ENTRY_EN_PLAN).roots);
+  for (const landedFrom of ['https://example.test/en/', 'not a url', undefined, null]) {
+    assert.deepEqual(captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', landedFrom }), captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/' }), String(landedFrom));
+  }
+  // the landed URL has no locale: no scope, whatever the requested URL said
+  assert.equal('scope' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/', landedFrom: 'https://example.org/de/' }), false);
+});
+
+// Counts checked against the ISO 639-2 registration authority's code list (its alpha-2 column) and the IANA
+// language subtag registry for languages, and three ISO 3166-1 alpha-2 country lists plus the IANA registry for
+// regions. The 184 languages keep `bh`, which IANA deprecated in 2026; `BH` is also a region (Bahrain), so a
+// second segment reads the same either way.
+const TABLE_FILE = join(HERE, '..', 'locale-codes.json');
+check('locale-codes.json: 184 ISO 639-1 languages and 249 ISO 3166-1 alpha-2 regions — sorted, unique, lower-case two-letter; de, en, fr, ch, us, gb in; the deprecated iw/in/ji/jw/mo/sh and reserved region codes out', () => {
+  const table = JSON.parse(readFileSync(TABLE_FILE, 'utf8'));
+  assert.deepEqual(Object.keys(table), ['_source', 'languages', 'regions']);
+  assert.equal(table._source, 'ISO 639-1 language codes and ISO 3166-1 alpha-2 region codes, lower case');
+  for (const [key, n] of [['languages', 184], ['regions', 249]]) {
+    const list = table[key];
+    assert.equal(list.length, n, key); assert.equal(new Set(list).size, n, key);
+    assert.ok(list.every((c) => /^[a-z]{2}$/.test(c)), key); assert.deepEqual(list, [...list].sort(), key);
+  }
+  for (const c of ['de', 'en', 'fr', 'ch', 'uk', 'eu', 'zh']) assert.ok(table.languages.includes(c), `language ${c}`);
+  for (const c of ['de', 'fr', 'ch', 'us', 'gb', 'ai', 'in']) assert.ok(table.regions.includes(c), `region ${c}`);
+  for (const c of ['iw', 'in', 'ji', 'jw', 'mo', 'sh']) assert.equal(table.languages.includes(c), false, `deprecated language ${c}`);
+  // UK, EU, CQ: exceptionally reserved, not assigned; XK, ZZ: user-assigned; AN, YU: withdrawn
+  for (const c of ['uk', 'eu', 'cq', 'xk', 'zz', 'an', 'yu']) assert.equal(table.regions.includes(c), false, `region ${c}`);
+  for (const c of ['zz', 'xk', 'qq']) assert.equal(table.languages.includes(c), false, `language ${c}`);
+});
+check('entryLocalePrefix: a second segment joins the locale only when its two-letter head is a known language or region code — /de/ai (Anguilla) narrows, /de/zz stops at /de; the first segment keeps its rule (case kept)', () => {
+  for (const [u, want] of [
+    ['https://x.example/de/ai/produkte', '/de/ai'], ['https://x.example/de/zz/produkte', '/de'], ['https://x.example/en-us/x', '/en-us'], ['https://x.example/en-us/zz/x', '/en-us'],
+    ['https://x.example/de/ch/x', '/de/ch'], ['https://x.example/de/CH/', '/de/CH'], ['https://x.example/ca/en-gb/x', '/ca/en-gb'], ['https://x.example/ca/zh_hant/x', '/ca/zh_hant'],
+    ['https://x.example/de/zz-yy/x', '/de'], ['https://x.example/de/QQ_hant', '/de'], ['https://x.example/zz/ai/x', '/zz/ai'], ['https://x.example/zz/qq/x', '/zz'],
+  ]) assert.equal(entryLocalePrefix(u), want, u);
+});
+check('captureGaps scope: a /de/zz/… entry scopes at /de, so a /de capture raises no warning; a /de/ai/… entry still narrows to /de/ai', () => {
+  const dePlan = [page('/de/'), page('/de/produkte'), page('/de/zz/x'), page('/de/ai/x')];
+  assert.equal('scope' in captureGaps(dePlan, { entryUrl: 'https://example.test/de/zz/x' }), false);
+  assert.deepEqual(captureGaps(dePlan, { entryUrl: 'https://example.test/de/ai/x' }).scope, { entryLocale: '/de/ai', inside: 1, outside: 3 });
+});
+check('localeCodes: the shipped table loads from beside crawl.mjs; a missing table → null and ONE stderr note however often asked, and entryLocalePrefix without a table (null) never narrows past the first segment', () => {
+  const table = JSON.parse(readFileSync(TABLE_FILE, 'utf8'));
+  assert.deepEqual([...localeCodes()].sort(), [...new Set([...table.languages, ...table.regions])].sort());
+  const missing = new URL('./no-such-locale-codes.json', pathToFileURL(SCRIPT));
+  const notes = []; const stderr = console.error; console.error = (...a) => notes.push(a.join(' '));
+  try { for (let i = 0; i < 3; i += 1) assert.equal(localeCodes(missing), null); } finally { console.error = stderr; }
+  assert.equal(notes.length, 1, notes.join('\n')); assert.match(notes[0], /^\[crawl\] note: .*no-such-locale-codes\.json.* second path segment/);
+  for (const [u, want] of [['https://x.example/de/ai/x', '/de'], ['https://x.example/ca/en/x', '/ca'], ['https://x.example/en-us/x', '/en-us'], ['https://x.example/faq', null]]) assert.equal(entryLocalePrefix(u, null), want, u);
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');

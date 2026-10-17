@@ -11,7 +11,10 @@
 // whose content-type is not media is not-media (no file), octet-stream and no content-type download;
 // the second run requests only the failed URLs and leaves the map byte-identical (an unrelated entry
 // survives); on a clean site the second run makes zero requests; a missing local file is fetched
-// again; a map that
+// again; without --max-bytes a video (video/* or a video extension) over the default cap is too-large,
+// declared or streamed, while an explicit --max-bytes replaces that default and images stay uncapped;
+// the map is on disk after the first of two downloads, a run killed mid-download keeps it, the re-run
+// fetches only the rest and the run after that changes nothing; a map that
 // is not a JSON object is refused; usage errors; --help in an empty cwd writes nothing; the real-path
 // main-module guard. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -23,8 +26,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DEFAULTS, MAX_FAIL_LINES, baseName, cssUrls, extFor, extractRefs, hash8, mediaFileName, mergeMap, pageMedia,
-  parseArgs, parseSrcset, resolveRef, serializeMap, summarize, urlExt,
+  DEFAULTS, MAX_FAIL_LINES, VIDEO_MAX_BYTES, baseName, cssUrls, download, extFor, extractRefs, hash8, mediaFileName, mergeMap,
+  pageMedia, parseArgs, parseSrcset, resolveRef, serializeMap, summarize, urlExt,
 } from '../media-harvest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -180,8 +183,9 @@ await check('parseArgs: defaults; every flag; a value flag followed by nothing o
 const fill = (seed, n) => Buffer.from(Array.from({ length: n }, (_, i) => (i * 31 + seed) % 256));
 const HERO = fill(1, 300); const HERO2X = fill(2, 400); const CARD = fill(3, 500); const NOEXT = fill(4, 200);
 const NESTED = fill(5, 120); const LOGO = fill(6, 140); const SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>'); const BIG = fill(7, 5000);
-const BLOB = fill(8, 90); const UNTYPED = fill(9, 80);
+const BLOB = fill(8, 90); const UNTYPED = fill(9, 80); const INC_A = fill(10, 110); const INC_B = fill(11, 130);
 const ROUTES = {
+  '/inc/a.jpg': ['image/jpeg', INC_A], '/inc/b.jpg': ['image/jpeg', INC_B],
   '/img/hero.jpg': ['image/jpeg', HERO], '/cdn/hero.jpg': ['image/jpeg', HERO], '/img/hero-2x.jpg': ['image/jpeg', HERO2X],
   '/img/card.webp?v=2': ['image/webp; charset=binary', CARD], '/img/noext': ['image/png', NOEXT], '/bg/Pattern%20Dark.svg': ['image/svg+xml', SVG],
   '/sub/nested.gif': ['image/gif', NESTED], '/img/logo.gif': ['image/gif', LOGO], '/big.mp4': ['video/mp4', BIG],
@@ -189,11 +193,17 @@ const ROUTES = {
 };
 const hits = new Map();
 const hanging = [];
+let onRequest = null; // a test's hook: answers (returns true) or passes (false)
 const server = createServer((req, res) => {
   hits.set(req.url, (hits.get(req.url) || 0) + 1);
   res.on('error', () => {}); req.socket.on('error', () => {});
+  if (onRequest?.(req, res)) return;
   if (req.url === '/redirect/logo') { res.writeHead(302, { location: '/img/logo.gif' }); res.end(); return; }
   if (req.url === '/slow.jpg') { hanging.push(res); return; }
+  if (req.url === '/huge.mp4' || req.url === '/raw/huge-clip.mp4') { // one byte over the video default, no body: only the declared length can stop it
+    res.writeHead(200, { 'content-type': req.url === '/huge.mp4' ? 'video/mp4' : 'application/octet-stream', 'content-length': VIDEO_MAX_BYTES + 1 });
+    res.flushHeaders(); hanging.push(res); return;
+  }
   if (req.url === '/stream.mp4') { // no content-length: only streaming can see it is too large
     res.writeHead(200, { 'content-type': 'video/mp4' });
     for (let i = 0; i < 5; i += 1) res.write(BIG.subarray(i * 1000, (i + 1) * 1000));
@@ -324,6 +334,76 @@ await check('a 2xx answer whose content-type is not media (an <iframe data-src> 
   assert.equal(again.code, 0, again.err); assert.equal(hits.get('/embed/player'), n + 1, 'a not-media entry is retried');
 });
 
+await check('without --max-bytes a video over the default cap is too-large — a video/* answer and an octet-stream answer at a video URL extension; no file, exit 0; an image beside them downloads; the re-run leaves the map untouched', async () => {
+  const dir = join(root, 'video-cap'); mkdirSync(join(dir, 'pages'), { recursive: true });
+  writeFileSync(join(dir, 'pages/index.json'), `${JSON.stringify({ slug: 'index', url: `${ORIGIN}/` })}\n`);
+  writeFileSync(join(dir, 'pages/index.html'), '<video src="/huge.mp4" poster="/img/hero.jpg"><source src="/raw/huge-clip.mp4" type="video/mp4"></video>');
+  const args = ['--pages', 'pages', '--out', 'media', '--map', 'm.json', '--timeout', '2'];
+  const r = await run(args, dir);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `media-harvest: 3 url(s) from 1 page(s) · downloaded 1 · reused 0 · failed 2 (too-large ×2) → m.json\nfail too-large ${ORIGIN}/huge.mp4\nfail too-large ${ORIGIN}/raw/huge-clip.mp4\n`);
+  const over = { local: null, bytes: null, contentType: null, status: 'too-large', error: `content-length ${VIDEO_MAX_BYTES + 1} > video cap ${VIDEO_MAX_BYTES} (the default without --max-bytes)` };
+  const map = readFileSync(join(dir, 'm.json'));
+  assert.deepEqual(JSON.parse(map), {
+    [`${ORIGIN}/huge.mp4`]: over,
+    [`${ORIGIN}/img/hero.jpg`]: { local: `media/hero-${sha8(HERO)}.jpg`, bytes: HERO.length, contentType: 'image/jpeg', status: 'ok' },
+    [`${ORIGIN}/raw/huge-clip.mp4`]: over,
+  });
+  assert.deepEqual(readdirSync(join(dir, 'media')), [`hero-${sha8(HERO)}.jpg`], 'no file for an over-cap video');
+  const mtime = statSync(join(dir, 'm.json')).mtimeMs; const before = hits.get('/huge.mp4');
+  const again = await run(args, dir);
+  assert.equal(again.code, 0, again.err); assert.equal(hits.get('/huge.mp4'), before + 1, 'a too-large entry is retried');
+  assert.ok(readFileSync(join(dir, 'm.json')).equals(map), 'map byte-identical'); assert.equal(statSync(join(dir, 'm.json')).mtimeMs, mtime, 'map not rewritten');
+});
+
+await check('download(): the video cap also stops a streamed body (no content-length); an explicit --max-bytes replaces the video default; an image is not under the video default', async () => {
+  assert.deepEqual(await download(`${ORIGIN}/stream.mp4`, { videoMaxBytes: 2000 }),
+    { status: 'too-large', error: 'body passed video cap 2000 (the default without --max-bytes) while streaming' });
+  const lifted = await download(`${ORIGIN}/big.mp4`, { maxBytes: 10000, videoMaxBytes: 2000 });
+  assert.equal(lifted.status, 'ok', lifted.error); assert.ok(lifted.bytes.equals(BIG));
+  const image = await download(`${ORIGIN}/img/hero.jpg`, { videoMaxBytes: 10 });
+  assert.equal(image.status, 'ok', image.error); assert.ok(image.bytes.equals(HERO));
+});
+
+await check('the map is written after every download: on disk with the first of two files while the second is in flight; a run killed then keeps it; the re-run fetches only the second; the run after that makes no request and leaves the map untouched', async () => {
+  const dir = join(root, 'incremental'); mkdirSync(join(dir, 'pages'), { recursive: true });
+  writeFileSync(join(dir, 'pages/index.json'), `${JSON.stringify({ slug: 'index', url: `${ORIGIN}/` })}\n`);
+  writeFileSync(join(dir, 'pages/index.html'), '<img src="/inc/b.jpg"><img src="/inc/a.jpg">');
+  const MAPFILE = join(dir, 'm.json');
+  writeFileSync(MAPFILE, serializeMap({ 'https://example.test/old.jpg': OLD }));
+  const args = ['--pages', 'pages', '--out', 'media', '--map', 'm.json', '--concurrency', '1'];
+  const A = { local: `media/a-${sha8(INC_A)}.jpg`, bytes: INC_A.length, contentType: 'image/jpeg', status: 'ok' };
+  const B = { local: `media/b-${sha8(INC_B)}.jpg`, bytes: INC_B.length, contentType: 'image/jpeg', status: 'ok' };
+  // --concurrency 1 takes the sorted URLs in order, so /inc/b.jpg is requested only once /inc/a.jpg is done.
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd: dir });
+  const closed = new Promise((resolve) => { child.on('close', (code, signal) => resolve({ code, signal })); });
+  let midRun = null;
+  onRequest = (req, res) => {
+    if (req.url !== '/inc/b.jpg') return false;
+    onRequest = null;
+    midRun = readFileSync(MAPFILE, 'utf8');
+    hanging.push(res);
+    child.kill('SIGKILL');
+    return true;
+  };
+  const end = await closed;
+  onRequest = null;
+  assert.equal(end.signal, 'SIGKILL', `killed while the second download was in flight (exit ${end.code})`);
+  assert.equal(midRun, serializeMap({ [`${ORIGIN}/inc/a.jpg`]: A, 'https://example.test/old.jpg': OLD }), 'the first entry is on disk before the second request');
+  assert.equal(readFileSync(MAPFILE, 'utf8'), midRun, 'the killed run kept every finished entry');
+  assert.deepEqual(readdirSync(dir).sort(), ['m.json', 'media', 'pages'], 'no tmp file left');
+  const resumed = await run(args, dir);
+  assert.equal(resumed.code, 0, resumed.err);
+  assert.equal(resumed.out, 'media-harvest: 2 url(s) from 1 page(s) · downloaded 1 · reused 1 · failed 0 → m.json\n');
+  assert.deepEqual([hits.get('/inc/a.jpg'), hits.get('/inc/b.jpg')], [1, 2], 'only the unfinished file is fetched again');
+  const full = readFileSync(MAPFILE);
+  assert.equal(full.toString(), serializeMap({ [`${ORIGIN}/inc/a.jpg`]: A, [`${ORIGIN}/inc/b.jpg`]: B, 'https://example.test/old.jpg': OLD }));
+  const mtime = statSync(MAPFILE).mtimeMs; const n = totalHits();
+  const idle = await run(args, dir);
+  assert.equal(idle.out, 'media-harvest: 2 url(s) from 1 page(s) · downloaded 0 · reused 2 · failed 0 → m.json\n');
+  assert.equal(totalHits(), n, 'no request'); assert.ok(readFileSync(MAPFILE).equals(full), 'map byte-identical'); assert.equal(statSync(MAPFILE).mtimeMs, mtime, 'map not rewritten');
+});
+
 await check('an existing --map that is not a JSON object is refused (exit 2) before any request and left untouched', async () => {
   const bad = join(root, 'bad-map'); mkdirSync(join(bad, 'pages'), { recursive: true });
   writeFileSync(join(bad, 'pages/a.html'), `<img src="${ORIGIN}/img/hero.jpg">`);
@@ -355,6 +435,7 @@ await check('--help (and -h, and alongside a bad flag) in an empty cwd: exit 0, 
     const r = await run(args, cwd);
     assert.equal(r.code, 0, r.err); assert.match(r.out, /Usage:/); assert.doesNotMatch(r.out, /\/\*\*/);
     for (const f of ['--pages <dir>', '--out <dir>', '--map <file>', '--concurrency <n>', '--max-bytes <n>', '--timeout <s>', 'Exit codes:']) assert.ok(r.out.includes(f), `header names ${f}`);
+    assert.ok(r.out.includes(`${VIDEO_MAX_BYTES} bytes`), 'header states the video default cap');
   }
   assert.deepEqual(readdirSync(cwd), []);
 });

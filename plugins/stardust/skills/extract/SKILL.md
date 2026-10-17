@@ -106,7 +106,8 @@ Additional checks for this sub-command:
    **Script location matters.** ESM resolves `import 'playwright'`
    from the *script's* directory and the plugin tree ships no
    `node_modules`: copy every script byte-identical into the project
-   (`stardust/scripts/…`) and run the copy. `crawl.mjs` dismisses
+   (`stardust/scripts/…`; `crawl.mjs` with its `locale-codes.json`
+   beside it) and run the copy. `crawl.mjs` dismisses
    consent from the diff skill's `live-session.mjs` table: copy that
    file into the same directory as the `crawl.mjs` copy, or keep the
    `stardust/scripts/extract/` (or `stardust/scripts/`) ↔
@@ -118,8 +119,7 @@ Additional checks for this sub-command:
    runnable reference implementation of this whole sub-command —
    browser config + bot-management fallback, consent dismissal, wait
    + scroll, the capture list, per-page full-page screenshots
-   (`assets/screenshots/<slug>.png`, consumed by the Phase 2.5
-   vision gate), response validation, and the §
+   (Phase 2), response validation, and the §
    Capture-hygiene hardening (visibility filter, interstitial drop,
    SPA-shell flag, modal `textContent` capture, tracking-pixel
    discounting, cross-page duplicate detection). Prefer invoking it over
@@ -294,17 +294,19 @@ first key. **The bundled crawler also saves the settled rendered DOM
 verbatim as `stardust/current/pages/<slug>.html`** (`page.content()`
 after the wait/scroll settle; path in the record's `renderedHtml`
 field). Capture once, parse offline: every downstream importer or
-sibling generator iterates its extraction against this artifact —
-free, reproducible, and provenance — instead of re-running live
-probes per selector guess (recorded: 4+ live round-trips per page
-family before the switch). Live probes stay for what the static DOM
-cannot answer: geometry and computed styles. Referenced media: run
+sibling generator iterates against this artifact instead of
+re-running live probes per selector guess (recorded: 4+ live
+round-trips per page family before the switch). Live probes stay
+for what the static DOM cannot answer: geometry and computed
+styles. Referenced media: run
 `node <plugin>/skills/extract/scripts/media-harvest.mjs` after the
-crawl (offline over `pages/*.html`; `--max-bytes <n>` caps video) — every
+crawl (offline over `pages/*.html`; video capped at 50 MiB,
+`--max-bytes <n>` caps every file) — every
 `src`/`srcset`/`data-src*`/poster/CSS `url()` once into
 `stardust/current/assets/media/<base>-<hash8>.<ext>`, plus
 `assets/media-map.json` (source URL → local file + status), the map
-later phases rewrite references with. Re-runs reuse it; never a
+later phases rewrite references with, saved after every file so a
+re-run (after a kill too) reuses every finished entry; never a
 hand-written harvester. Each saved file is recorded as the media entry's `localPath` (deploy maps
 each upload back to its source URLs through it).
 
@@ -564,8 +566,8 @@ After all Phase 2-5 writes succeed:
 
 1. `stardust/state.json` is written by `state.mjs init` (Phase 2;
    schema in `skills/stardust/reference/state-machine.md`):
-   `site.originUrl`, `extractedAt`, `pageCap`, `totalDiscovered`,
-   `crawled` (+ `captureGaps`), `direction: null` (unresolved until
+   `site.originUrl`, `extractedAt`, `pageCap`, `totalDiscovered`
+   (pre-cap), `crawled` (+ `captureGaps`), `direction: null` (unresolved until
    `direct`) and one `extracted` page per crawled URL. `designSource` —
    only when `--design-source` was used: `{ url, capturedAt, path }`
    per § Cross-site brand sources.
@@ -813,12 +815,18 @@ reference):
   debt), not in the rollout link audit (recorded: 15 uncaptured
   `/ca/en/*` pages surfaced six hours later as 15 × 404). **An entry
   locale most captured pages lie outside is the same owner
-  decision:** when the `--url` path starts with a locale (`/de`) and
-  fewer than half of the captured pages lie under it,
-  `captureGaps.scope` (`entryLocale`, `inside`, `outside`) and the
-  `detail` suffix ("entry locale /de but 9 of 10 captured pages
-  outside it") name it — re-crawl from the locale the site plan
-  delivers, or record the choice, before Phase 2.
+  decision:** when the `--url` path starts with a locale (`/de`; a
+  second segment only when it is a known language or region code —
+  `/de/ai` narrows, `/de/zz` stays `/de`) and fewer than half of the
+  captured pages lie under it, `captureGaps.scope` (`entryLocale`,
+  `inside`, `outside`, `totalDiscovered` — `_crawl-log.json#discovery.total`,
+  the count before the `--max` cap) and the `detail` suffix ("entry
+  locale /de but 9 of 10 captured pages outside it") name it —
+  re-crawl from the locale the site plan delivers, or record the
+  choice, before Phase 2. An entry redirected to another origin is
+  scoped at the landed URL: `scope.landedFrom` keeps the `--url` and
+  the clause reads "(from the landed URL <landed>, redirected from
+  <entry>)".
 - **The header contract is recorded here** (`../diff/SKILL.md` § The header
   contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its

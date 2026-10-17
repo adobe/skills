@@ -56,12 +56,20 @@
  *     15-page subtree discovery never listed, and learned it six hours later from
  *     the rollout link audit (15 × 404, then repointed to the source).
  *     ENTRY-LOCALE SCOPE: when the --url path starts with locale codes (at most two
- *     two-letter segments, such as /de, /fr-ca, /ca/en) and fewer than half of the
- *     captured pages lie under that prefix on the entry's host, captureGaps gains
- *     `scope: { entryLocale, inside, outside }`, `detail` gains "; entry locale /de
- *     but 9 of 10 captured pages outside it", and one stderr line names it an owner
- *     decision before Phase 2. A recorded hands-off run entered at a /de/ URL while
- *     its site plan captured nine English pages, and nothing flagged the mismatch.
+ *     two-letter segments, such as /de, /fr-ca, /ca/en; a second segment counts only
+ *     when its two-letter head is a known language or region code, read from
+ *     locale-codes.json beside this script — /de/ai narrows, /de/zz stays /de;
+ *     without that file only the first segment counts, with one stderr note) and
+ *     fewer than half of the captured pages lie under that prefix on the entry's
+ *     host, captureGaps gains
+ *     `scope: { entryLocale, inside, outside, totalDiscovered }`, `detail` gains
+ *     "; entry locale /de but 9 of 10 captured pages outside it", and one stderr
+ *     line names it an owner decision before Phase 2. A recorded hands-off run
+ *     entered at a /de/ URL while its site plan captured nine English pages, and
+ *     nothing flagged the mismatch. An entry that redirected to another origin is
+ *     scoped at the landed URL: `scope.landedFrom` holds the --url as given, and the
+ *     clause reads "entry locale <prefix> (from the landed URL <landed>, redirected
+ *     from <entry>) but …".
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
@@ -99,7 +107,8 @@
  *                                  `_signals.screenshotMode` says which)
  *   assets/favicon.<ext>           the site icon from <link rel~=icon> or /favicon.ico, <ext> from
  *                                  its content-type — the ONLY media file this crawler downloads
- *   _crawl-log.json                discovery technique + page count, consent mode, favicon result,
+ *   _crawl-log.json                discovery technique + page count (`discovery.count` after the
+ *                                  --max cap, `discovery.total` before it), consent mode, favicon result,
  *                                  per-URL failures, slash retries, `captureGaps` (locale roots,
  *                                  entry-locale `scope`, above) (+ `dynamicSurface` with
  *                                  --dynamics); merged into an existing log, never replaced
@@ -343,15 +352,38 @@ const pathKey = (u) => u.pathname.replace(/\/+$/, '') || '/';
 // a record's `links` is the flat href list capture() writes; the schema's { internal, external } shape is read too
 const linkList = (links) => (Array.isArray(links) ? links : links && typeof links === 'object' ? [...(links.internal || []), ...(links.external || [])] : []);
 // The entry locale: the entry URL's leading path segments that are two-letter locale codes, at most two —
-// `/de/produkte` → `/de`, `/ca/en/x` → `/ca/en`, `/fr-ca/` → `/fr-ca`; `/faq/x` and `/` → null. A recorded
+// `/de/produkte` → `/de`, `/ca/en/x` → `/ca/en`, `/fr-ca/` → `/fr-ca`; `/faq/x` and `/` → null. A second segment
+// counts only when its two-letter head is a known language or region code (`/de/ai/…` → `/de/ai`, Anguilla;
+// `/de/zz/…` → `/de`), so a short non-locale section does not narrow the scope into a false warning. A recorded
 // hands-off run entered at a /de/ URL while its site plan captured nine English pages, and nothing flagged it.
 const ENTRY_LOCALE_SEG = /^[a-z]{2}(?:[-_][a-z]{2,4})?$/i;
-export function entryLocalePrefix(href) {
+// The known two-letter heads a SECOND segment needs: ISO 639-1 languages and ISO 3166-1 alpha-2 regions, from
+// locale-codes.json beside this file (a project copy carries it along). Read on first use — never on import or
+// --help — once per table; a missing or unreadable table → null (no second segment is a locale) and one stderr note.
+const LOCALE_CODES = new URL('./locale-codes.json', import.meta.url);
+const localeTables = new Map();
+export function localeCodes(url = LOCALE_CODES) {
+  if (!localeTables.has(url.href)) {
+    let codes = null;
+    try {
+      const { languages, regions } = JSON.parse(readFileSync(url, 'utf8'));
+      codes = new Set([...languages, ...regions]);
+    } catch (e) {
+      console.error(`[crawl] note: no usable locale table at ${url.protocol === 'file:' ? fileURLToPath(url) : url.href} (${e.code || e.message}) — a second path segment is not read as a locale, so the entry-locale scope stops at the first segment`);
+    }
+    localeTables.set(url.href, codes);
+  }
+  return localeTables.get(url.href);
+}
+// `codes` = the known codes (default: localeCodes(), read only when a second segment is a candidate); null = no table.
+export function entryLocalePrefix(href, codes) {
   let u;
   try { u = new URL(href); } catch { return null; }
-  const lead = [];
-  for (const s of u.pathname.split('/').filter(Boolean).slice(0, 2)) { if (!ENTRY_LOCALE_SEG.test(s)) break; lead.push(s); }
-  return lead.length ? `/${lead.join('/')}` : null;
+  const [first, second] = u.pathname.split('/').filter(Boolean);
+  if (!first || !ENTRY_LOCALE_SEG.test(first)) return null;
+  if (!second || !ENTRY_LOCALE_SEG.test(second)) return `/${first}`;
+  const known = codes === undefined ? localeCodes() : codes;
+  return known && known.has(second.slice(0, 2).toLowerCase()) ? `/${first}/${second}` : `/${first}`;
 }
 // Inside = records (url, else finalUrl) on the entry's host whose path is the prefix or lies under it (case kept,
 // trailing slash folded, www. folded); M = records with a parseable URL. Only a minority inside (< half) is a scope.
@@ -372,7 +404,17 @@ function localeScope(records, entryUrl) {
   const m = inside + outside;
   return m > 0 && inside * 2 < m ? { entryLocale, inside, outside } : null;
 }
-export function captureGaps(records, { entryUrl } = {}) {
+// The scope clause of `detail` and of the stderr line. An entry that redirected to another origin is scoped
+// at the landed URL (crawl adopts it as the entry), so the clause names both URLs rather than leave the
+// owner comparing a locale the --url never had.
+function scopeClause({ entryLocale, inside, outside, landedFrom }, entryUrl) {
+  const landed = landedFrom ? ` (from the landed URL ${entryUrl}, redirected from ${landedFrom})` : '';
+  return `entry locale ${entryLocale}${landed} but ${outside} of ${inside + outside} captured pages outside it`;
+}
+const otherOrigin = (a, b) => { try { return new URL(a).origin !== new URL(b).origin; } catch { return false; } };
+// entryUrl = the effective entry (the landed URL after an origin redirect); landedFrom = the --url as given,
+// passed only when it redirected to another origin; totalDiscovered = _crawl-log.json#discovery.total.
+export function captureGaps(records, { entryUrl, landedFrom, totalDiscovered } = {}) {
   const captured = new Set();
   for (const r of records) {
     for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
@@ -400,10 +442,28 @@ export function captureGaps(records, { entryUrl } = {}) {
     : 'uncaptured first-level targets: none (no locale root captured)';
   const scope = localeScope(records, entryUrl);
   if (!scope) return { roots, detail };
-  return { roots, detail: `${detail}; entry locale ${scope.entryLocale} but ${scope.outside} of ${scope.inside + scope.outside} captured pages outside it`, scope };
+  if (Number.isInteger(totalDiscovered)) scope.totalDiscovered = totalDiscovered;
+  if (landedFrom && otherOrigin(landedFrom, entryUrl)) scope.landedFrom = landedFrom;
+  return { roots, detail: `${detail}; ${scopeClause(scope, entryUrl)}`, scope };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
+// Discovered URLs with the entry first, deduped by dedupeKey, then cut at the --max cap. `total` is the
+// count BEFORE the cap (_crawl-log.json#discovery.total), so a capped crawl still says how much it found. Pure.
+export function capDiscovered(entry, found, max) {
+  const seen = new Set(); const all = [];
+  for (const u of [entry, ...found]) {
+    const k = dedupeKey(u);
+    if (!seen.has(k)) { seen.add(k); all.push(u); }
+  }
+  return { urls: all.slice(0, max), total: all.length };
+}
+// _crawl-log.json#discovery: `count` = pages queued (after the cap), `total` = pages discovered (before it;
+// listed --pages are never capped, so there total === count). Pure.
+export function discoveryLog({ technique, count, total, concurrency, botBlock = null, originRedirect = null }) {
+  return { fetchTechnique: technique, count, total, concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) };
+}
+// discover() resolves to { urls, total }.
 async function discover(args, page) {
   const entry = normalizeUrl(args.url);
   // explicit --pages: NEVER drop a listed page. The entry URL is ADDED on top
@@ -418,17 +478,10 @@ async function discover(args, page) {
     if (urls.length > args.max) {
       console.error(`[crawl] WARN --pages lists ${listed.length} page(s); with the entry URL the total is ${urls.length}, exceeding --max ${args.max} — crawling all of them (explicitly listed pages are never dropped)`);
     }
-    return urls;
+    return { urls, total: urls.length };
   }
   // discovered lists (sitemap/BFS): entry always included, normalized dedupe, capped at --max.
-  const withEntry = (list) => {
-    const seen = new Set(); const out = [];
-    for (const u of [entry, ...list.map((x) => normalizeUrl(x, args.origin))]) {
-      const k = dedupeKey(u);
-      if (!seen.has(k)) { seen.add(k); out.push(u); }
-    }
-    return out.slice(0, args.max);
-  };
+  const withEntry = (list) => capDiscovered(entry, list.map((x) => normalizeUrl(x, args.origin)), args.max);
   // sitemap.xml — but only trust it if it has >=1 <loc> (a 200-but-empty Drupal
   // sitemap must fall through to BFS — finding from a media-site run).
   for (const sm of ['/sitemap.xml', '/sitemap_index.xml']) {
@@ -1119,6 +1172,7 @@ async function main() {
   // sitemap fetch must use where the site actually lives, or discovery silently
   // collapses to 1 page (agency-site e2e finding).
   let originRedirect = null;
+  const requestedUrl = args.url; // the --url as given: the scope note names it when the entry redirected
   try {
     const landed = new URL(probe.url());
     if (landed.origin !== args.origin) {
@@ -1129,16 +1183,16 @@ async function main() {
     }
   } catch { /* keep declared origin */ }
 
-  const urls = await discover(args, probe);
+  const { urls, total } = await discover(args, probe);
   // favicon rides the probe page (already on the entry URL) — runs in every
   // mode, so bounded extracts can't silently drop it (CEN-4).
   const favicon = await captureFavicon(probe, args);
   if (favicon) console.error(`[crawl] favicon captured: ${favicon.file} (${favicon.url})`);
   else console.error('[crawl] WARN no favicon captured — no link[rel~=icon] and /favicon.ico unreachable; deploy will ship the default icon unless one is provided');
   await probe.close();
-  console.error(`[crawl] technique=${technique} pages=${urls.length}`);
+  console.error(`[crawl] technique=${technique} pages=${urls.length}${total > urls.length ? ` (of ${total} discovered; --max ${args.max})` : ''}`);
 
-  const log = { discovery: { fetchTechnique: technique, count: urls.length, concurrency: args.concurrency, ...(botBlock ? { botBlock } : {}), ...(originRedirect ? { originRedirect } : {}) }, consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
+  const log = { discovery: discoveryLog({ technique, count: urls.length, total, concurrency: args.concurrency, botBlock, originRedirect }), consent: { method: args.consent ? 'auto' : 'skipped' }, favicon: favicon || null, crawl: { failures: [] } };
   let ok = 0;
   await context.close();
 
@@ -1220,13 +1274,12 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url });
+  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url, landedFrom: originRedirect ? requestedUrl : null, totalDiscovered: total });
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
   }
   if (log.captureGaps.scope) {
-    const { entryLocale, inside, outside } = log.captureGaps.scope;
-    console.error(`[crawl] locale scope: entry locale ${entryLocale} but ${outside} of ${inside + outside} captured pages outside it — an owner decision before Phase 2 (_crawl-log.json#captureGaps.scope)`);
+    console.error(`[crawl] locale scope: ${scopeClause(log.captureGaps.scope, args.url)} — an owner decision before Phase 2 (_crawl-log.json#captureGaps.scope)`);
   }
   if (args.dynamics) {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);

@@ -28,9 +28,15 @@
  *                (none: an empty section, `brand 0`)
  *                section 2 links: the top-level <ul>/<ol> with the most links, lists inside <nav> first, as a clean
  *                <ul>; nesting only where the source has a list (a link, a heading or column text right before a
- *                list heads it; a badge or description after a link stays inline), other text stays inline in its
- *                item; a trigger without href keeps its label text (no list: an
- *                empty section)
+ *                list heads it, and every column right after that list; a badge or description after a link stays
+ *                inline), other text stays inline in its item; a trigger without href keeps its label text as the
+ *                first part of an item, or of a column with no label before it (a dropdown wrapper holding its
+ *                toggle and list); in a column after a label, a
+ *                button or a link without href (a Back or Close at the top of a panel) is a control; a column
+ *                (a div, section, … holding a list) is read on its own — every heading or link in it heads the list
+ *                right after it, a run after its first list stands as an entry — so a column heading never labels
+ *                the item: an item with no label of its own outside its columns gives its place to their entries (no
+ *                list: an empty section)
  *                section 3 tools: every other link as <p><a>, every other list as <ul>, in document order
  *   footer.html  one section per footer band — the element children of <footer>, through single-child wrappers
  *                (a run of inline children is one band): headings, lists, paragraphs (inline <a>, <strong>, <em>,
@@ -58,11 +64,12 @@ import { fileURLToPath } from 'node:url';
 // script runs standalone from a project copy. Whitespace-only text is kept: it separates inline links and words.
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW = new Set(['script', 'style', 'textarea', 'title', 'noscript', 'template']);
-const IMPLIED = {
+// Null-prototype maps: a name read from the source (`&constructor;`, a <constructor> tag) never finds an Object member.
+const IMPLIED = Object.assign(Object.create(null), {
   p: /^(address|article|aside|blockquote|div|dl|fieldset|footer|form|h[1-6]|header|hr|main|nav|ol|p|pre|section|table|ul)$/,
   li: /^li$/, dt: /^(dt|dd)$/, dd: /^(dt|dd)$/, option: /^(option|optgroup)$/, tr: /^tr$/, td: /^(td|th|tr)$/, th: /^(td|th|tr)$/,
-};
-const ENT = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', AMP: '&', LT: '<', GT: '>', QUOT: '"' };
+});
+const ENT = Object.assign(Object.create(null), { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0', AMP: '&', LT: '<', GT: '>', QUOT: '"' });
 const REF = /^#?[a-z0-9]+;/i;
 
 /**
@@ -268,13 +275,21 @@ const section = (kids) => block('<div>', kids.filter(Boolean), '</div>');
 /* ---------------------------------------------------------------------------- nav --- */
 const BUTTONLIKE = new Set(['button', 'summary']);
 
+/** A mega-menu column: a wrapper (div, section, …) with a list inside. navParts keeps it whole; navGroup reads it. */
+const isColumn = (n) => WRAPPERS.has(n.tag) && [...walk(n)].some((d) => d.tag === 'ul' || d.tag === 'ol');
+
 /**
- * A nav list item's parts in document order: text runs, links, nested lists. `block` marks a part that starts a
- * block (a heading or a panel column), as opposed to a badge or description inline after a link.
+ * A nav list item's parts in document order: text runs, links, nested lists, columns. `block` marks a part that
+ * starts a block (a heading or a panel), as opposed to a badge or description inline after a link. Only the first
+ * part may be a trigger (a button or a link without href, its label kept), and only while `triggers` holds: a column
+ * keeps it only when no label (text, link or trigger) comes before it, so a dropdown wrapper holding its own toggle
+ * and list keeps that label, while a Back or Close at the top of a panel after the item's label is a skipped control.
  */
-function navParts(li, ctx) {
+function navParts(li, ctx, triggers = true) {
   const parts = []; let joinable = false; let fresh = true;
   const push = (p) => { parts.push({ ...p, block: fresh }); fresh = false; };
+  const trigger = (el) => triggers && !parts.length && plainLabel(el);
+  const unlabelled = () => parts.every((p) => p.kind === 'list' || p.kind === 'column');
   const visit = (node) => {
     for (const ch of node.children) {
       if (!ch.tag) {
@@ -291,48 +306,81 @@ function navParts(li, ctx) {
       joinable = false;
       if (t === 'a') {
         if (realHref(ch)) push({ kind: 'link', html: linkHtml(ch, ctx) });
-        else if (!parts.length && plainLabel(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
+        else if (trigger(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
         else ctx.skipped += 1;
-      } else if (BUTTONLIKE.has(t) && !parts.length && plainLabel(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
+      } else if (BUTTONLIKE.has(t) && trigger(ch)) push({ kind: 'trigger', html: plainLabel(ch) });
       else if (BUTTONLIKE.has(t) || CONTROLS.has(t)) ctx.skipped += 1;
       else if (t === 'ul' || t === 'ol') { push({ kind: 'list', el: ch }); fresh = true; }
+      else if (isColumn(ch)) { push({ kind: 'column', el: ch, triggers: triggers && unlabelled() }); fresh = true; }
       else { fresh = true; visit(ch); joinable = false; fresh = true; }
     }
   };
   visit(li);
-  return parts.map((p) => (p.kind === 'text' ? { ...p, html: escapeHtml(collapse(p.raw)) } : p)).filter((p) => p.kind === 'list' || p.html);
+  return parts.map((p) => (p.kind === 'text' ? { ...p, html: escapeHtml(collapse(p.raw)) } : p))
+    .filter((p) => p.kind === 'list' || p.kind === 'column' || p.html);
+}
+
+const navLi = (head, items) => (items.length ? block(`<li>${head}`, [block('<ul>', items, '</ul>')], '</li>') : `<li>${head}</li>`);
+
+/**
+ * An item's (or a column's) label and the entries below it: { head, items, columns }. The label is the first link
+ * or text (a trigger without href: its label, where navParts allows one) and every other text or link that does not
+ * head a list, in document order. Nesting comes only from the source's lists: a nested list's items, and a link, or
+ * a text that starts a block (a heading or a panel), directly followed by a list as `<li>label<ul>…` (a mega-menu
+ * column heading).
+ * Inline text after a link (a description or a badge) stays inline even before a list, so it never turns the link
+ * into a dropdown trigger. A column is read on its own, so none of its text is ever the item's label: in it even the
+ * first link or text heads the list right after it, its label is only what comes before its first list, and a run
+ * after that heads the next list or stands as an entry of its own. A labelled column is one entry; one without a
+ * label stands in for a list (a link or block text right before it heads its entries). The group's own label (the first
+ * label of a column no outer label sits over: a dropdown's link, toggle or text) heads every column after the list it
+ * heads, and a label that heads a column heads the columns right after it; any other heading heads only its own list,
+ * so the columns after it stay siblings (a mega menu's inner heading never takes the columns beside it).
+ */
+function navGroup(el, ctx, column = false, triggers = true) {
+  let columns = false;
+  const parts = navParts(el, ctx, triggers).map((p) => {
+    if (p.kind === 'list') return { ...p, items: navItems(p.el, ctx) };
+    if (p.kind !== 'column') return p;
+    columns = true;
+    const c = navGroup(p.el, ctx, true, p.triggers);
+    return c.head ? { kind: 'column', items: [navLi(c.head, c.items)], fromColumn: true } : { kind: 'list', items: c.items, fromColumn: true };
+  });
+  const inline = [];
+  const items = [];
+  let seen = false; let run = null;
+  const flush = () => { if (run) items.push(`<li>${run.join(' ')}</li>`); run = null; };
+  for (let i = 0; i < parts.length; i += 1) {
+    const p = parts[i]; const next = parts[i + 1];
+    if (p.items && run && p.kind === 'list') { items.push(navLi(run.join(' '), p.items)); run = null; seen = true; }
+    else if (p.items) { flush(); items.push(...p.items); seen = true; }
+    else if ((column || i > 0) && (p.kind === 'link' || p.block) && next?.kind === 'list') {
+      const own = column && triggers && !seen && !inline.length;
+      const sub = [...next.items]; i += 1;
+      if (own || next.fromColumn) while (parts[i + 1]?.fromColumn) { i += 1; sub.push(...parts[i].items); }
+      flush(); items.push(navLi(p.html, sub)); seen = true;
+    } else if (column && seen) { if (p.block || !run) { flush(); run = []; } run.push(p.html); }
+    else inline.push(p.html);
+  }
+  flush();
+  return { head: inline.join(' '), items, columns };
 }
 
 /**
- * `<li>inline<ul>…</ul></li>`. The inline part is the first link or text (a trigger without href: its label) and
- * every other text or link that does not head a list, in document order. Nesting comes only from the source's
- * lists: a nested list's items, and a link, or a text that starts a block (a heading or a panel column), directly
- * followed by a list as `<li>label<ul>…` (a mega-menu column heading). Inline text after a link (a description or a
- * badge) stays inline even before a list, so it never turns the link into a dropdown trigger.
+ * A list item's entries, `[<li>label<ul>…</ul></li>]` (see navGroup). An item without a label of its own that holds
+ * columns gives its place to their entries: the first column's heading is never promoted to its label.
  */
 function navItem(li, ctx) {
-  const parts = navParts(li, ctx);
-  if (!parts.length) return null;
-  const inline = [];
-  const items = [];
-  for (let i = 0; i < parts.length; i += 1) {
-    const p = parts[i]; const next = parts[i + 1];
-    if (p.kind === 'list') items.push(...navItems(p.el, ctx));
-    else if (i > 0 && (p.kind === 'link' || p.block) && next?.kind === 'list') {
-      const sub = navItems(next.el, ctx); i += 1;
-      items.push(sub.length ? block(`<li>${p.html}`, [block('<ul>', sub, '</ul>')], '</li>') : `<li>${p.html}</li>`);
-    } else inline.push(p.html);
-  }
-  const head = inline.join(' ');
-  if (!items.length) return head ? `<li>${head}</li>` : null;
-  return block(`<li>${head}`, [block('<ul>', items, '</ul>')], '</li>');
+  const { head, items, columns } = navGroup(li, ctx);
+  if (!head && (columns || !items.length)) return items;
+  return [navLi(head, items)];
 }
 
 function navItems(list, ctx) {
   const items = [];
   for (const ch of list.children) {
     if (!ch.tag || DROP.has(ch.tag) || ctx.isBrand(ch)) continue;
-    if (ch.tag === 'li') { const it = navItem(ch, ctx); if (it) items.push(it); } else if (CONTROLS.has(ch.tag) || BUTTONLIKE.has(ch.tag)) ctx.skipped += 1;
+    if (ch.tag === 'li') items.push(...navItem(ch, ctx)); else if (CONTROLS.has(ch.tag) || BUTTONLIKE.has(ch.tag)) ctx.skipped += 1;
     else items.push(...navItems(ch, ctx)); // a wrapper element inside the list
   }
   return items;
