@@ -122,8 +122,10 @@
  * the row's path. Beside a coverage, state.json is optional; one that does not parse is one stderr note, not an error.
  * The build is that deployedUrl as recorded (the preview host the delivery records) — no other file moves it; gate another
  * host (the live one) with --eds-host <host>. Every row carries `host`: the build origin (`<protocol>//<host>`) it was
- * measured against — a reused row keeps its own; one from a table written before the field takes this run's, which its
- * equal gate key (it hashes the build origin) proves. The first status line names the origin(s) and their source.
+ * measured against — the origin of the EDS capture record's `url` (eds.json; so --compare-only after a run with another
+ * --eds-host names the host its pixels came from), else this run's build URL; a reused row keeps its own; one from a
+ * table written before the field takes this run's, which its equal gate key (it hashes the build origin) proves. The
+ * first status line names the origin(s) this run measures and their source.
  * Not found: an explicit --coverage, or neither file (published), or --state (prototype); a coverage that does not
  * parse → exit 1, nothing written.
  *
@@ -248,6 +250,7 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             (https:// added when no scheme); a path, query or hash is refused (exit 2). Without it
                             the build is the roster's URL as recorded (coverage deployedUrl: the preview host); gate
                             the live host with --eds-host <live host>. Every row records its build origin as host
+                            (the origin of its EDS capture's url — eds.json — so --compare-only names that host)
   --blocked <regex>         origins the edge denies → crawl shot unless --try-blocked
   --try-blocked             attempt the live stitch on --blocked origins too
   --crawl-shots <dir>       stardust/current/assets/screenshots (fallback origin PNGs)
@@ -1295,7 +1298,9 @@ async function main() {
   if (!HIDE_OK && Object.values(PRESENCE || {}).some((e) => e && typeof e === 'object' && e.hide != null)) log('presence hide: not honoured — the diff scripts dir has no live-session.mjs with presenceHide; captures and probes run without hides');
   const dir = (p) => join(opts.out, p.slug);
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
-  const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // the row's `host`
+  const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // this run's build origin
+  // the row's `host`: the origin the EDS pixels came from — the capture record's url (eds.json), else this run's build URL
+  const rowHost = (p, eds) => { try { if (eds && eds.url) return new URL(eds.url).origin; } catch { /* not a URL: this run's */ } return hostOf(p); };
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
   const stitchArgs = (url, out, { inventory, hide = [], json } = {}) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : []), ...(opts.dismiss.length ? ['--dismiss', opts.dismiss.join(',')] : []), ...(hide.length ? ['--hide', hide.join(',')] : []), ...(inventory ? ['--inventory', inventory] : [])];
@@ -1609,7 +1614,7 @@ async function main() {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { polluted: capturePollution(r.origin, r.eds), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
-    return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: hostOf(p),
+    return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
       presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,

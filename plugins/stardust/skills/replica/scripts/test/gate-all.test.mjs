@@ -1212,7 +1212,7 @@ check('coverage-only project (no state.json): the rollout coverage is the roster
   assert.match(m.stderr, /^gate-all: stardust\/state\.json unreadable \(.+\) — roster from coverage without state enrichment$/m);
   rmSync(croot, { recursive: true, force: true });
 });
-check('--eds-host in the sandbox: a bare host and its https://<host>/ form both stitch and probe https://<host><path> and record the origin as _provenance.edsHostOverride and the row host; the first status line names it (--eds-host)', () => {
+check('--eds-host in the sandbox: a bare host and its https://<host>/ form both stitch and probe https://<host><path> and record the origin as _provenance.edsHostOverride and the row host; the first status line names it (--eds-host); a later --compare-only without it keeps the row host its pixels came from (the eds.json url)', () => {
   const eroot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-eds-'))); mkdirSync(join(eroot, 'stardust'));
   writeFileSync(join(eroot, 'stardust/state.json'), JSON.stringify({ pages: [pages[1]] }));
   const host = 'fix-x--site--org.aem.page';
@@ -1227,6 +1227,14 @@ check('--eds-host in the sandbox: a bare host and its https://<host>/ form both 
     assert.deepEqual([pv.edsHostOverride, pv.eds, rows[0].host], [`https://${host}`, `https://${host}`, `https://${host}`], flag);
     assert.match(r.stdout.split('\n')[0], new RegExp(`; source: state stardust/state\\.json \\(1 of 1 page\\(s\\) qualified\\); build host https://${host.replace(/\./g, '\\.')} \\(--eds-host\\)$`), flag);
   }
+  // --compare-only without --eds-host recomputes the pixels of that capture: the row names the host they came from
+  // (eds.json url), not the roster's — the status line still names what this run would measure
+  const e = { ...process.env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC']) delete e[k];
+  const c = spawnSync(process.execPath, [join(RS, 'gate-all.mjs'), '--width', '1440', '--compare-only'], { cwd: eroot, env: e, encoding: 'utf8', timeout: 60e3 });
+  assert.equal(c.status, 0, c.stderr + c.stdout);
+  const cs = JSON.parse(readFileSync(join(eroot, 'stardust/replica/gates/all-1440/summary.json'), 'utf8'));
+  assert.deepEqual([cs._provenance.edsHostOverride, cs.rows[0].host], [null, `https://${host}`]);
+  assert.match(c.stdout.split('\n')[0], /; build host https:\/\/main--site--org\.aem\.live \(state liveUrl\)$/);
   rmSync(eroot, { recursive: true, force: true });
 });
 check('pools inside a machine browser slot: per slot 1 → _run.log names 1 / 1 / 1 clamped from 2/4/2, sequential, and every ORIGIN capture precedes every EDS one; the estimate × 4 in the status line and the deadline guard; per slot 3 → 2 / 1 / 2, not sequential, the estimate × 1', () => {
