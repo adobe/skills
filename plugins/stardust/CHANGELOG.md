@@ -197,6 +197,36 @@ Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally �
 No threshold, criterion, capture or reuse change; a page that was already selectable keeps its template, tier and
 units, and its gate key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`.
 
+## 0.35.0 — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
+
+A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
+and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
+boundary only between recorded units while a background subagent holds the unit; a ten-page run overran the same way
+(106 min, first boundary ask after 87 min).
+
+- **A cluster of more than 16 siblings (archetype out) runs as sub-units `cluster-<template>-1` … `-n`:** n =
+  ⌈siblings ÷ 16⌉, near-equal (17 → 9 + 8), at most 16 pages, cut in sibling (`plan.json`) order, one after another
+  (other clusters stay concurrent). Each has its own `progress.json` entry (same shape, kind `cluster`), subagent,
+  `.paths` + batch ledger + log, fix rounds (cap 3), `gate-all --only` scope, `gate-triage.mjs --unit <sub-unit>`
+  first pass, checkpoint commit and boundary ask. Target: no C-deliver unit runs longer than 90 minutes.
+- **A boundary ask closes every unit end, C0 included** (§ 5: `progress.json` write → freeze check → commit → ask →
+  next unit): the main agent lets its supervising process, if any, end or continue the session in whatever form the
+  harness provides; with none it continues. Only at a unit end does a supervised session end without losing work;
+  an ask made while other units are still in flight names them.
+- **Pause on request: `STARDUST_PAUSE_FILE`** (JSON `{at, reason}`; the supervisor's file — the run never writes or
+  deletes it). When set, every fan-out subagent checks the file at each batch or iteration boundary and, if present,
+  finishes the iteration, reports and returns; the main agent records the unit `running` in § 5's order (verdict
+  `paused: …`, resumed like any in-flight unit) and asks its boundary before anything new — with several units in
+  flight, once the last has returned. Briefs: cluster (after each page, deploy batch, gate round), archetype (each
+  gate iteration), roster-gate job (before each `run-bg.mjs wait`).
+- **No script change:** no script loops gate rounds (`gate.sh`, `gate-all.mjs`, `run-bg.mjs`, `deploy-batch.mjs`: one
+  each), so none reads the pause file; `done-check.mjs`, `gate-evidence.mjs` do not read the C-deliver unit ledger;
+  `gate-triage.mjs --unit` takes any `[\w.-]+` name (`units/<name>.paths`); `token-ledger.mjs` gives each unit a row.
+
+Contract change: handoff contract § 3 row C, the `progress.json` unit names, § Fan-out discipline, § 5's unit-end
+order and the 90-minute unit target; touches #125, #126; no script, verdict, threshold, criterion or gate-row change.
+Minor: a changed contract is a minor release (plugin `AGENTS.md`), hence 0.35.0 rather than a 0.34.x patch.
+
 ## 0.34.5 — replica self-hosts the source's brand faces; one hide list for in-flow bars across captures, probes and the header contract; cap-probe lists unpaired modules
 
 A recorded ten-page hands-off run passed all four gated archetypes at both widths, but three of its six register
