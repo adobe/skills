@@ -279,6 +279,24 @@ else {
       }
     });
 
+    await check('a text.allow entry also applies to a CTA text: the one use of an entry inside a CTA passes the CTA and is not "unused"; without the entry the CTA fails', async () => {
+      // the source's CTA carries a visually-hidden suffix the preview drops; the slot text does not hold it
+      const hidden = loadSourceModel(source.origin);
+      hidden.sections[0].ctas[0].text = 'Get started Opens in new tab';
+      const hiddenModel = write('hidden-cta-model.json', hidden);
+      const deltas = variant('hidden-cta.json', (d) => { d.blocking = true; d.text.allow.push({ id: 'T3', from: ' Opens in new tab', to: '', why: 'a visually-hidden label the preview does not carry' }); return d; });
+      const withEntry = await run('slot-coverage', ['--model', hiddenModel, '--rendered', url, '--report', join(scratch, 'sc-cta-text.md'), ...EDS, '--deltas', deltas]);
+      assert.equal(withEntry.status, 0, withEntry.all);
+      assert.ok(!/WARNING|FAIL/.test(withEntry.stdout), withEntry.stdout);
+      assert.match(withEntry.stdout, /deltas applied: T1 ×1, T3 ×1/);
+      assert.ok(!/Unused/.test(report('sc-cta-text')), 'T3 is used, by the CTA alone');
+      assert.match(report('sc-cta-text'), /T3 ×1: " Opens in new tab" → ""/);
+      assert.match(report('sc-cta-text'), /\[x\] s01 CTA "Get started Opens in new tab" -> https:\/\/src\.test\/start/, 'the check keeps the model\'s own CTA text in its name');
+      const without = await run('slot-coverage', ['--model', hiddenModel, '--rendered', url, '--report', join(scratch, 'sc-cta-bare.md'), ...EDS, '--deltas', variant('hidden-cta-none.json', (d) => { d.blocking = true; return d; })]);
+      assert.equal(without.status, 1, without.all);
+      assert.deepEqual(failures(without.stdout), ['s01 CTA "Get started Opens in new tab" -> https://src.test/start']);
+    });
+
     await check('without links.localize the localized CTAs fail; a CTA also matches its model href as it stands', async () => {
       const r = await slot(['--deltas', variant('nolinks.json', (d) => { delete d.links; d.blocking = true; return d; })], 'sc-nolinks');
       assert.equal(r.status, 1, r.all);

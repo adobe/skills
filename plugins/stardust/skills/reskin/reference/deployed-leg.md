@@ -73,7 +73,7 @@ would be in the saved command. A sandbox repo's preview is public by default.
 - `version`: required, `1`; any other value, or none, is an invalid file.
 - `blocking`: `false` makes a failed check advisory (exit 0, `ADVISORY`); left out it is `true`, as with no file.
 - `text.allow`: `id` (unique), `from` and `why` required, `to` defaults to `""`. Each entry replaces its literal
-  `from` on the source side, in file order, every occurrence.
+  `from` on the source side (slot text and CTA text), in file order, every occurrence.
 - `images`: `"count+alt+width"`, the only mode, replaces the host+path comparison: same count, same alt in order,
   every rendered width above 0. `slot-coverage` attributes images to slots positionally by cumulative count, so an
   image moved across a slot boundary with the order kept, or replaced by one with the same alt, goes undetected; its

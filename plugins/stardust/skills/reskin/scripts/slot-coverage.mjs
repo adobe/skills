@@ -285,17 +285,19 @@ const paintCheck = (label, painted) => {
     R('paint', `${label} painted`, painted, hint);
   }
 };
-// --deltas: each slot's model text after the text.allow entries (counted once across all slots), the CTA hrefs'
-// localization onto the rendered origin, and the images taken slot by slot in document order.
-const textDeltas = deltas ? deltasLib.applyTexts(model.sections.map((s) => s.visibleText), deltas) : null;
+// --deltas: each slot's model text and each CTA's text after the text.allow entries (counted once across all of
+// them), the CTA hrefs' localization onto the rendered origin, and the images taken slot by slot in document order.
+const textsOf = (s) => [s.visibleText, ...s.ctas.map((c) => c.text)];
+const textDeltas = deltas ? deltasLib.applyTexts(model.sections.flatMap(textsOf), deltas) : null;
 const localize = deltas?.links.localize && /^https?:/.test(renderedUrl) ? { sourceHost: deltas.links.localize.sourceHost, renderedOrigin: new URL(renderedUrl).origin } : null;
-let nextImg = 0;
-for (const [si, s] of model.sections.entries()) {
-  const text = textDeltas ? squash(textDeltas.texts[si]) : s.visibleText;
+let nextImg = 0; let nextText = 0;
+for (const s of model.sections) {
+  const [text, ...ctaTexts] = textDeltas ? textDeltas.texts.slice(nextText, nextText + 1 + s.ctas.length).map(squash) : textsOf(s);
+  nextText += 1 + s.ctas.length;
   R('slot-coverage', `${s.slot} text present`, rendered.text.includes(text), text.slice(0, 50));
-  for (const c of s.ctas) {
+  for (const [ci, c] of s.ctas.entries()) {
     const hrefs = localize ? [c.absHref, deltasLib.normalizeHref(c.absHref, localize)] : [c.absHref];
-    const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(c.text));
+    const hit = rendered.hrefs.find((h) => hrefs.includes(h.href) && h.text.includes(ctaTexts[ci]));
     R('slot-coverage', `${s.slot} CTA "${c.text.slice(0, 30)}" -> ${c.absHref.slice(0, 60)}`, !!hit);
   }
   if (deltas?.images) {
