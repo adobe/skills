@@ -15,6 +15,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { composeHead, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
+import { recordAttempt } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'migrate-test-'));
@@ -88,6 +89,9 @@ write(`${P}/assets/img/hero.jpg`, 'HERO');
 write(`${P}/assets/img/hero@2x.jpg`, 'HERO2X');
 write(`${P}/assets/fonts/a.woff2`, 'FONT');
 write('stardust/current/assets/img/bg.png', 'BG');
+// The A′ renders below need their template's encode attempt record (the A′ gate; plan's section tests it): an owner's
+// not-attempted record per template, as encode-attempt.mjs record --not-attempted writes it.
+for (const t of ['tours', 'guides', 'guides-b', 'notes', 'city', 'trips']) recordAttempt(tmp, t, { notAttempted: 'fixture: siblings rendered from the archetype' });
 
 // ---- flow guard (state-machine.md § Flow keys) -------------------------------------------------
 console.log('flow guard');
@@ -827,6 +831,16 @@ if (t === 'events') { console.log('roundtrip events at text: equal — content/e
 console.log('roundtrip ' + t + ' at text: not equal (2 differences) — content/' + t + '.html'); process.exit(2);
 `);
 const PLAN = ['plan', 'home', 'events', 'event-one', 'event-two', 'venues', 'venue-one', 'press', '--branch-b', 'press', '--encoder', 'fake-encode.mjs'];
+check('render keeps the A′ path closed without the template\'s encode attempt record (fork or own file; an invalid record is none), naming the command; A and B pages render', () => {
+  write(ENC('venues'), `${JSON.stringify({ template: 'venues', verdict: 'maybe' })}\n`);
+  const r = run(['render', 'events', 'event-one', 'event-two', 'venue-one', 'press', '--branch-b', 'press']); assert.equal(r.status, 2);
+  for (const [s, t] of [['event-one', 'events'], ['event-two', 'events'], ['venue-one', 'venues']]) {
+    assert.match(r.err, new RegExp(`^refused ${s}: strict encode-attempt — template ${t} has no encode attempt record \\(stardust/migrate/encode/${t}\\.json\\) — run: node stardust/scripts/migrate/encode-attempt\\.mjs record --template ${t}$`, 'm'));
+    assert.ok(!has(`${OUT}/${t}/${s.split('-')[1]}/index.html`) && !has(`${OUT}/${t}/${s.split('-')[1]}/_meta.json`), `nothing written for ${s}`);
+  }
+  assert.match(r.out, /^A {2}events → events\/index\.html /m); assert.match(r.out, /^B {2}press → press\/index\.html /m);
+  assert.match(r.out, /^rendered 2, unchanged 0, refused 3, passthrough 0 /m);
+});
 check('plan records one encode attempt per template with A′ siblings (not for an A page without siblings, nor B) and prints the count last', () => {
   const r = run(PLAN); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
   assert.deepEqual(r.out.trim().split('\n'), [
@@ -844,7 +858,7 @@ check('plan records one encode attempt per template with A′ siblings (not for 
   assert.equal(json(ENC('venues')).verdict, 'no-roundtrip');
   for (const t of ['home', 'press', 'event']) assert.ok(!has(ENC(t)), `no record for ${t}`);
   assert.deepEqual(encRuns(), ['--roundtrip events', '--lint events', '--roundtrip venues', '--lint venues']);
-  assert.ok(!has(`${OUT}/events/one/index.html`) && !has(`${OUT}/events/index.html`), 'plan renders nothing');
+  assert.ok(!has(`${OUT}/events/one/index.html`) && !has(`${OUT}/venues/one/index.html`), 'plan renders nothing');
 });
 check('a re-run keeps an existing record (the encoder is not run again); --force re-records', () => {
   const at = json(ENC('events')).at;
@@ -860,6 +874,11 @@ check('the production default encoder (encode.mjs beside encode-attempt.mjs): a 
   assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
   assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
   assert.equal(json(ENC('shows')).verdict, 'not-attempted');
+});
+check('any recorded verdict opens the A′ path: encoded (events), no-roundtrip (venues), not-attempted (shows)', () => {
+  const r = run(['render', 'event-one', 'event-two', 'venue-one', 'show-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' event-one → events\/one\/index\.html {2}\(event; fork of events; /m); assert.match(mainOf(read(`${OUT}/events/one/index.html`)), /<h1 data-slot="headline">Event one<\/h1>/);
+  assert.match(r.out, /^A' event-two → events\/two\/index\.html {2}\(event; \d+ assets/m); assert.match(r.out, /^A' venue-one → venues\/one\/index\.html /m); assert.match(r.out, /^A' show-one → shows\/one\/index\.html /m);
 });
 check('plan refusals: a missing --encoder is a usage error; a template name the record cannot take is one clean line, exit 2; a branch refusal is named and the count still printed last', () => {
   const bad = run(['plan', 'venue-one', '--encoder', 'nope.mjs', '--force']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --encoder nope\.mjs does not exist/);

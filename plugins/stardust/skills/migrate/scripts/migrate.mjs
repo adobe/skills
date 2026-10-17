@@ -83,6 +83,14 @@
  *   record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
  *   page is refused or a template is left without a record.
  *
+ * Encode-attempt gate (every A' page, own file or fork; before the sidecar and variance checks): the template (the
+ *   archetype's slug) needs an attempt record, stardust/migrate/encode/<template>.json under the project root, that
+ *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted): the gate is that the
+ *   attempt was made, not that it encoded. None (or an invalid one) → refused, nothing written, `refused <slug>:
+ *   strict encode-attempt — template <t> has no encode attempt record (stardust/migrate/encode/<t>.json) — run: node
+ *   stardust/scripts/migrate/encode-attempt.mjs record --template <t>` (migrate.mjs plan records it too). A and B
+ *   pages are never checked.
+ *
  * A' fork (template-and-module-rendering.md § Path A′; data-attributes.md § Slot identity): the
  *   archetype's source HTML is copied in-process and every `data-slot` inside its <main> takes
  *   this page's value from <current>/pages/<slug>.json#slots (prep-mode.md § 4) — an object
@@ -181,7 +189,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
-import { readAttempt, recordAttempt, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
+import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -200,6 +208,8 @@ const SKIP_SCHEMES = /^(#|mailto:|tel:|javascript:|data:)/i;
 const SIDECAR_KEYS = ['slug', 'type', 'renderBranch', 'template', 'modules', 'slotsFilled', 'canonShas', 'deviations', 'migrationDecisions', 'metadata', 'jsonLd', 'migratedAt', 'designMdSha', 'designJsonSha', 'sourceCurrentSha', 'sourceProposedSha',
   'fidelityTier', 'archetypeSource', 'archetypeSha', 'variants', 'gatesPassed', 'gateEvidence', 'contentDeviations', 'assetsBundled', 'missingAssets', 'brokenInternalLinks', 'outputPath', 'outputPathDefault', 'sidecar', 'driverVersion', 'variance', 'slotSource', 'slotMap', 'slotMapSkipped'];
 const CARRIED = ['gatesPassed', 'gateEvidence', 'variants', 'contentDeviations', 'deviations'];
+// The encode-attempt records live under the project root — the cwd, where encode-attempt.mjs's record command runs too.
+const PROJECT_ROOT = '.';
 const SELF = fileURLToPath(import.meta.url);
 
 export class UsageError extends Error { constructor(msg) { super(msg); this.code = 1; } }
@@ -753,6 +763,11 @@ export function resolveCanon(o) {
 export function renderPage(run, page, entry) {
   const { slug } = page; const { outputPath, outputPathDefault } = entry;
   const { branch, tier, archetype, source, fork } = chooseBranch(run, page);
+  // encode-attempt gate — every A' page, own file or fork: its template's attempt must be on record (any verdict)
+  if (branch === "A'") {
+    const missing = requireEncodeAttempt(PROJECT_ROOT, archetype.slug);
+    if (missing) throw new Refusal(slug, 'encode-attempt', `template ${archetype.slug} has no encode attempt record (stardust/migrate/encode/${archetype.slug}.json)`, missing.slice(missing.indexOf('run: ')));
+  }
   const outFile = join(run.outDir, outputPath); const sideRel = sidecarFor(outputPath); const sideFile = join(run.outDir, sideRel);
   const capturePath = join(run.currentDir, 'pages', `${slug}.json`); const capture = readJson(capturePath);
   const archetypeSource = archetype ? sourceFor(run, archetype) : null;
@@ -959,8 +974,6 @@ function pageSet(o, pages, bySlug, cmd) {
   if (!o.slugs.length) throw new UsageError(`${cmd} needs <slug…> or --all`);
   return [...new Set(o.slugs)];
 }
-// The encode-attempt records live under the project root — the cwd, where encode-attempt.mjs's record command runs too.
-const PROJECT_ROOT = '.';
 const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
 // plan (Phase 1): each page's branch as render chooses it, then per template with A′ siblings in the set its encode attempt
 // (kept when recorded, unless --force), the count last. Writes the attempt records only.
