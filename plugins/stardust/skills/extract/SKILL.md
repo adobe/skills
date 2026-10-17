@@ -313,8 +313,13 @@ agent) cannot satisfy the contract for a page, treat the page
 as a Phase 2 failure: record under `_crawl-log.json#crawl.failures[]`
 with `errorClass: "ProvenanceMissing"` and continue.
 
-Mark the page `extracted` in `state.json` immediately after each
-successful page write. If a page fails, record the error in
+After the crawl one command writes `state.json`, never a hand-built
+file or `node -e`: `node stardust/scripts/stardust/state.mjs init
+--pages <captured-urls> [--types <slug=type,…>] [--site-url <url>]`
+(`skills/stardust/scripts/state.mjs`) — one `extracted` page per URL,
+the check above applied at write time (a failing page: exit 2, nothing
+written — drop it from the list). Types and representatives change
+later via `state.mjs set`. If a page fails, record the error in
 `_crawl-log.json` and continue — extraction is best-effort per page.
 
 ### Phase 2.5 — Vision verification
@@ -542,14 +547,11 @@ is missing.
 
 After all Phase 2-5 writes succeed:
 
-1. Update `stardust/state.json` (schema in
-   `skills/stardust/reference/state-machine.md`):
-   - `site.originUrl`, `site.extractedAt`, `site.pageCap`,
-     `site.totalDiscovered`, `site.crawled`
-   - `pages[]` — one entry per crawled page with `status: "extracted"`,
-     filled `currentStatePath`, empty `prototypePath` and `migratedPath`
-   - `designSource` — only when `--design-source` was used:
-     `{ url, capturedAt, path }` per § Cross-site brand sources
+1. `stardust/state.json` is `state.mjs init`'s (Phase 2; schema in
+   `skills/stardust/reference/state-machine.md`): `site` plus one
+   `extracted` page per crawled URL. `designSource` — only when
+   `--design-source` was used: `{ url, capturedAt, path }` per
+   § Cross-site brand sources.
 2. Print a one-screen summary:
    ```
    Extracted https://example.com (5/38 pages, sitemap.xml)
@@ -772,8 +774,8 @@ reference):
   junk-filtered inventory, not the discovery cap.
 - Page types (`landing | article | listing | program | form |
   static | unique`) are LLM-inferred into `state.json.pages[].type`
-  (discovery-mode runs leave `type` null); the user confirms in
-  `direct --prep`.
+  (`state.mjs init --types` / `set --type`; discovery-mode runs leave
+  `type` null); the user confirms in `direct --prep`.
 - Module candidates (cross-page structural repeats, detected by the
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
@@ -785,9 +787,9 @@ reference):
   path, and marks the ones missing from the capture:
   `_crawl-log.json#captureGaps` (`roots[]` with `root`, `slug`,
   `linked`, `uncaptured[]`, plus `detail`, a ready ledger string) and
-  one `[crawl] capture gaps:` stderr line. Copy `roots[]` to
-  `state.json.site.captureGaps` (the `site` block is extract's; an
-  uncaptured target never becomes a `pages[]` row) and carry `detail`
+  one `[crawl] capture gaps:` stderr line. `state.mjs init` copies
+  `roots[]` to `state.json.site.captureGaps` (an uncaptured target
+  never becomes a `pages[]` row); carry `detail`
   verbatim in the ledger `end` line that closes the extraction —
   `ledger.mjs extract prep end --detail "… uncaptured first-level
   targets: ca/en 15, fr/fr 0"` (replica's `extract end` repeats it) — so

@@ -2,8 +2,11 @@
 
 Stardust tracks state per page so multi-page redesigns can be incremental
 and resumable. The state file is `stardust/state.json`. It is written by
-`extract`, `direct`, `prototype`, and `migrate`, and read by `stardust`
-(the master) for the state report.
+`extract`, `direct`, `prototype`, and `migrate` — created after extract's
+crawl by `state.mjs init` (`skills/stardust/scripts/state.mjs`), page
+status, type and representative through `state.mjs advance` / `set`,
+never a hand-built file or `node -e` — and read by `stardust` (the
+master) for the state report.
 
 ---
 
@@ -61,8 +64,8 @@ that order. `_provenance` is always the first key. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
-§ Flow keys). `site.captureGaps` (optional, written by `extract --prep`
-from `_crawl-log.json#captureGaps`): `[{ root, slug, linked, uncaptured:
+§ Flow keys). `site.captureGaps` (optional, copied by `state.mjs init`
+from `_crawl-log.json#captureGaps.roots`): `[{ root, slug, linked, uncaptured:
 [<path>…] }]` per captured locale root — uncaptured targets never become
 `pages[]` rows.
 
@@ -165,7 +168,8 @@ The catalog is per-site; new types may be added at `direct --prep`
 time when the inventory surfaces a shape no existing type covers.
 
 **When set.** `type` is inferred during `extract --prep` from URL
-pattern and content shape (LLM judgment). The user confirms or
+pattern and content shape (LLM judgment) and written with
+`state.mjs init --types` or `state.mjs set --type`. The user confirms or
 refines the catalog during `direct --prep`. Discovery-mode runs of
 `extract` skip type-tagging — `type` is `null` until prep-mode sets
 it.
@@ -175,6 +179,12 @@ it.
 structure (Path A′ in `skills/migrate/SKILL.md`). A page typed
 `unique` is rendered as a one-off using DESIGN.md/json + canon +
 brand modules.
+
+**Representative.** A sibling's optional `representative` key names the
+archetype slug it clones (`state.mjs set <slug…> --representative
+<archetype-slug>`): `migrate.mjs render` forks that archetype when no
+`--archetype` is given, and rollout's `inventory.mjs --state` keys a
+pending sibling to it before its `type`.
 
 ---
 
@@ -351,9 +361,9 @@ the calling phase otherwise:
 |---|---|
 | file exists | `current/pages/<slug>.json` resolves to a regular file |
 | renderedBy | `_provenance.renderedBy === "playwright"` (string equality) |
-| fetchedAt | parses as ISO 8601, not in the future, not before the project's earliest extract |
+| fetchedAt | parses as ISO 8601, at most 5 min in the future (clock skew), not before the project's earliest extract |
 | waitMs | integer, strictly `> 0` |
-| waitMode | matches `^(fast|medium|spec|networkidle|domcontentloaded)(\(fallback\))?$` |
+| waitMode | matches `^(fast|medium|slow|spec|networkidle|domcontentloaded)(\(fallback\))?$` |
 | httpStatus | integer in `[200, 399]` (4xx/5xx pages should never have landed in `state.json` as `extracted` per `extract/reference/playwright-recipe.md` § Response validation; if one did, the validator surfaces it) |
 
 When any condition fails, the calling phase aborts immediately
@@ -368,16 +378,16 @@ and the artifact path. Hint at the recovery command:
 
 | phase | scope of validation |
 |---|---|
+| `extract` (`state.mjs init`) | every page record, at write time — any failure: exit 2, no `state.json` written |
 | `direct --prep` | every page in the inventory before typing / module detection |
 | `prototype` (any mode) | every page referenced by the variant being rendered |
 | `prototype --prep` | every page-type representative slated for the archetype pass |
 | `migrate` (any mode) | every page in the migrate target list |
 | `prepare-migration` orchestrator | every claimed-extracted page at the start of Phase 1, **before** invoking `direct --prep` |
 
-Discovery-mode `extract` does **not** call the validator on its
-own outputs (it just wrote them); but extract Phase 6 must
-include a **`live: yes/no` column** in its summary report so the
-user can eyeball provenance coverage before the next phase runs.
+Extract Phase 6 must also include a **`live: yes/no` column** in
+its summary report so the user can eyeball provenance coverage
+before the next phase runs.
 A column of `live: yes` across every row is the visible signal
 that the validator will pass downstream. See
 `skills/extract/SKILL.md` § Phase 6 for the report format.
