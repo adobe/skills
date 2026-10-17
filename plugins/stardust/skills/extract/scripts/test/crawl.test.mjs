@@ -8,7 +8,8 @@
 // Also navMsSummary (pure: the crawl figure { n, p50, p95, max }, nearest-rank) and, where playwright is importable,
 // e2e crawls of a local fixture origin: navMs on every record and crawl.navMs in _crawl-log.json; the page goto
 // timeout and its source on one stderr line and in crawl.navTimeout (default, env, a previous crawl's figure in the
-// same --out); env STARDUST_NAV_TIMEOUT_MS bounds each page's goto (not the entry probe's); a copy without
+// same --out, and both orders of env vs that figure); env STARDUST_NAV_TIMEOUT_MS is a floor (1500 → 20000: a 4 s page
+// is captured); a copy without
 // live-session.mjs keeps 45 s and says so once on stderr (the 2xx denial-page check off, on the same line); a 200
 // denial page ("Access Denied" + "Reference #") linked from the entry is a BotChallengeError in crawl.failures with no
 // page record and no screenshot, its sibling captured; an older live-session copy without pageDenial says the check is
@@ -149,9 +150,13 @@ if (playwrightOk) {
     records: readdirSync(join(out, 'pages')).filter((f) => f.endsWith('.json')).sort().map((f) => JSON.parse(readFileSync(join(out, 'pages', f), 'utf8'))),
   });
   const gotoLines = (stderr) => stderr.split('\n').filter((l) => l.startsWith('[crawl] page goto timeout '));
-  // a re-crawl into an --out whose previous log holds a fast figure (p95 3000 → 6000, clamped up to 20000)
-  mkdirSync(join(work, 'again'), { recursive: true });
-  writeFileSync(join(work, 'again', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [], navMs: { n: 9, p50: 1200, p95: 3000, max: 3400 } } }));
+  // a re-crawl into an --out whose previous log holds a fast figure (p95 3000 → 6000, clamped up to 20000); two more
+  // beside an env of 25000: one under it (p95 3000 → 6000: env), one over it (p95 15000 → 30000: crawl)
+  const previousLog = (out, p95) => {
+    mkdirSync(join(work, out), { recursive: true });
+    writeFileSync(join(work, out, '_crawl-log.json'), JSON.stringify({ crawl: { failures: [], navMs: { n: 9, p50: 1200, p95, max: p95 + 400 } } }));
+  };
+  previousLog('again', 3000); previousLog('env-over', 3000); previousLog('crawl-over', 15000);
   // a copy of crawl.mjs with no live-session.mjs in any layout (extract copied alone); playwright still resolves
   let alone = null;
   try {
@@ -167,13 +172,15 @@ if (playwrightOk) {
     writeFileSync(join(dirname(stale), 'live-session.mjs'), "export function navTimeout() { return { ms: 45000, source: 'default', detail: 'older copy' }; }\n");
   }
   try {
-    const [plain, byEnv, bare, again, denied, older] = await Promise.all([
+    const [plain, byEnv, bare, again, denied, older, envOver, crawlOver] = await Promise.all([
       crawl(SCRIPT, ['--pages', '/a,/b', '--out', join(work, 'plain')], cleanEnv),
       crawl(SCRIPT, ['--pages', '/slow', '--out', join(work, 'env')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }),
       alone ? crawl(alone, ['--pages', '/slow', '--out', join(work, 'bare')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '1500' }) : null,
       crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'again')], cleanEnv),
       crawl(SCRIPT, ['--out', join(work, 'denied')], cleanEnv, '/hub'),
       stale ? crawl(stale, ['--pages', '/denied', '--out', join(work, 'older')], cleanEnv) : null,
+      crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'env-over')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '25000' }),
+      crawl(SCRIPT, ['--pages', '/a', '--out', join(work, 'crawl-over')], { ...cleanEnv, STARDUST_NAV_TIMEOUT_MS: '25000' }),
     ]);
     await checkAsync('e2e: every page record carries navMs (integer ms); _crawl-log.json crawl.navMs is navMsSummary of them, beside crawl.failures', () => {
       assert.equal(plain.status, 0, plain.stderr);
@@ -184,8 +191,13 @@ if (playwrightOk) {
       assert.equal(log.crawl.navMs.n, 3); assert.deepEqual(log.crawl.failures, []);
       assert.doesNotMatch(plain.stderr, /live-session\.mjs/);
     });
-    await checkAsync('e2e: the page goto timeout and its source — one stderr line and crawl.navTimeout { ms, source }: 45000 default, 1500 env, 20000 from a previous fast figure in the same --out', () => {
-      const cases = [[plain, 'plain', 45000, 'default', /no STARDUST_NAV_TIMEOUT_MS/], [byEnv, 'env', 1500, 'env', /STARDUST_NAV_TIMEOUT_MS=1500/], [again, 'again', 20000, 'crawl', /crawl\.navMs\.p95 3000 ms/]];
+    await checkAsync('e2e: the page goto timeout and its source — one stderr line and crawl.navTimeout { ms, source }: 45000 default, env 1500 clamped to 20000, 20000 from a previous fast figure in the same --out; env 25000 over a previous 6000 → env, under a previous 30000 → crawl', () => {
+      const cases = [
+        [plain, 'plain', 45000, 'default', /no STARDUST_NAV_TIMEOUT_MS/], [byEnv, 'env', 20000, 'env', /STARDUST_NAV_TIMEOUT_MS=1500, clamped to 20000–180000 ms/],
+        [again, 'again', 20000, 'crawl', /crawl\.navMs\.p95 3000 ms/],
+        [envOver, 'env-over', 25000, 'env', /max\(STARDUST_NAV_TIMEOUT_MS=25000, crawl\.navMs\.p95 3000 ms × 2 = 6000 in .*env-over\/_crawl-log\.json\) = 25000 ms$/],
+        [crawlOver, 'crawl-over', 30000, 'crawl', /max\(STARDUST_NAV_TIMEOUT_MS=25000, crawl\.navMs\.p95 15000 ms × 2 = 30000 in .*crawl-over\/_crawl-log\.json\) = 30000 ms$/],
+      ];
       for (const [r, out, ms, source, detail] of cases) {
         assert.equal(r.status, 0, r.stderr);
         const lines = gotoLines(r.stderr);
@@ -194,11 +206,11 @@ if (playwrightOk) {
       }
       assert.equal(readOut(join(work, 'again')).log.crawl.navMs.n, 2, 'the re-crawl wrote its own figure');
     });
-    await checkAsync('e2e: env STARDUST_NAV_TIMEOUT_MS bounds each page\'s goto — a 4 s page fails at 1500 ms, the entry (probe and page) is still captured', () => {
+    await checkAsync('e2e: env STARDUST_NAV_TIMEOUT_MS is a floor, never a cut — env 1500 is clamped to 20000, so the 4 s page is captured beside the entry', () => {
       assert.equal(byEnv.status, 0, byEnv.stderr);
-      const { log } = readOut(join(work, 'env'));
-      assert.equal(log.crawl.failures.length, 1, JSON.stringify(log.crawl.failures)); assert.equal(log.crawl.failures[0].slug, 'slow'); assert.match(log.crawl.failures[0].message, /Timeout 1500ms exceeded/);
-      assert.equal(log.crawl.navMs.n, 1, 'only captured pages are samples');
+      const { log, records } = readOut(join(work, 'env'));
+      assert.deepEqual(log.crawl.failures, []); assert.equal(log.crawl.navMs.n, 2);
+      assert.ok(records.find((r) => r.slug === 'slow').navMs >= 3900, 'the 4 s answer is in its navMs');
     });
     if (alone) {
       await checkAsync('e2e: without live-session.mjs the crawl keeps 45 s (the env is not read: the 4 s page is captured) and says so on ONE stderr line; navMs still recorded', () => {

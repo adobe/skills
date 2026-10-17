@@ -3,7 +3,7 @@
 // surface every instrument imports, the consent-accept candidate list (the cmp-prefixed candidates are present,
 // no duplicates, the OneTrust id first), isLiveHttpUrl, defaultWaitUntil, isEdsHost and lateWindowFor (no timed
 // late-modal poll on EDS build/preview hosts), waitEdsDelayedPhase never throwing (stub page), and the one
-// navigation timeout (env → the crawl's p95 × 2 → the caller's default; gotoLive and visit take it per call), and the
+// navigation timeout (max(env, the crawl's p95 × 2) clamped 20–180 s, else the caller's default; gotoLive and visit take it per call), and the
 // per-width deadline helpers (withDeadline, isContextDestroyed), and the 2xx denial page (the vendor signatures in
 // order, normalizeDenialText, denialMarker per signature / the 2 KB rule / the one-error-heading rule, and gotoLive on
 // stub pages: a denial throws BotChallengeError "origin blocked", a >= 400 is never probed, a failing probe is one
@@ -121,12 +121,37 @@ const withProcessEnv = async (value, fn) => {
   try { return await fn(); } finally { if (saved === undefined) delete process.env[NAV_ENV]; else process.env[NAV_ENV] = saved; }
 };
 
-check('navTimeout: env wins — trimmed, rounded, used as given (no clamp), over a crawl figure', () => withCrawlLog(({ file, write }) => {
+check('navTimeout: the env is a floor — env above the crawl figure → env (trimmed, rounded); the detail names both inputs', () => withCrawlLog(({ file, write }) => {
+  write({ crawl: { navMs: { p95: 12000 } } });
+  assert.deepEqual(session.navTimeout({ env: { [NAV_ENV]: ' 30000.4 ' }, crawlLog: file }),
+    { ms: 30000, source: 'env', detail: `max(${NAV_ENV}=30000.4, crawl.navMs.p95 12000 ms × 2 = 24000 in ${file}) = 30000 ms` });
+  assert.equal(session.resolveNavTimeoutMs({ env: { [NAV_ENV]: '45000' }, crawlLog: file, fallback: 90000 }), 45000);
+}));
+check('navTimeout: the crawl figure above the env → crawl (the env never cuts a slow origin short)', () => withCrawlLog(({ file, write }) => {
   write({ crawl: { navMs: { p95: 30000 } } });
-  assert.deepEqual(session.navTimeout({ env: { [NAV_ENV]: ' 1500.6 ' }, crawlLog: file }), { ms: 1501, source: 'env', detail: `${NAV_ENV}=1500.6` });
-  assert.equal(session.navTimeout({ env: { [NAV_ENV]: '250000' }, crawlLog: file }).ms, 250000, 'above the crawl clamp');
-  assert.equal(session.navTimeout({ env: { [NAV_ENV]: '5000' }, crawlLog: file }).ms, 5000, 'below the crawl clamp');
-  assert.equal(session.resolveNavTimeoutMs({ env: { [NAV_ENV]: '7000' }, crawlLog: file, fallback: 90000 }), 7000);
+  assert.deepEqual(session.navTimeout({ env: { [NAV_ENV]: '1500' }, crawlLog: file }),
+    { ms: 60000, source: 'crawl', detail: `max(${NAV_ENV}=1500, crawl.navMs.p95 30000 ms × 2 = 60000 in ${file}) = 60000 ms` });
+  assert.equal(session.navTimeout({ env: { [NAV_ENV]: '59999' }, crawlLog: file }).source, 'crawl', 'one ms under');
+}));
+check('navTimeout: a tie → env; both inputs clamped together, the detail says so', () => withCrawlLog(({ file, write }) => {
+  const nav = (v) => { const t = session.navTimeout({ env: { [NAV_ENV]: v }, crawlLog: file }); return [t.ms, t.source]; };
+  write({ crawl: { navMs: { p95: 20000 } } });
+  assert.deepEqual(nav('40000'), [40000, 'env'], 'env 40000 = p95 20000 × 2');
+  write({ crawl: { navMs: { p95: 4000 } } });
+  assert.deepEqual(nav('1500'), [20000, 'crawl'], '8000 > 1500, clamped up');
+  assert.equal(session.navTimeout({ env: { [NAV_ENV]: '1500' }, crawlLog: file }).detail,
+    `max(${NAV_ENV}=1500, crawl.navMs.p95 4000 ms × 2 = 8000 in ${file}) = 8000 ms, clamped to 20000–180000 ms → 20000 ms`);
+  write({ crawl: { navMs: { p95: 100000 } } });
+  assert.deepEqual(nav('250000'), [180000, 'env'], '250000 > 200000, clamped down');
+}));
+check('navTimeout: the env alone is clamped to 20000–180000 (source env); the detail says clamped and names the missing crawl figure', () => withCrawlLog(({ dir }) => {
+  const absent = join(dir, 'absent.json');
+  for (const [v, want, clamped] of [['1500', 20000, true], [' 1500.6 ', 20000, true], ['20000', 20000, false], ['45000', 45000, false], ['180000', 180000, false], ['250000', 180000, true]]) {
+    const t = session.navTimeout({ env: { [NAV_ENV]: v }, crawlLog: absent, fallback: 90000 });
+    assert.deepEqual([t.ms, t.source], [want, 'env'], v);
+    assert.equal(t.detail, `${NAV_ENV}=${v.trim()}${clamped ? ', clamped to 20000–180000 ms' : ''} (no crawl.navMs.p95 in ${absent})`, v);
+  }
+  assert.equal(session.navTimeout({ env: { [NAV_ENV]: '1500' }, crawlLog: null }).detail, `${NAV_ENV}=1500, clamped to 20000–180000 ms (no crawl.navMs.p95 in (no crawl log))`);
 }));
 check('navTimeout: an empty env is unset (no warning); an invalid one falls through with ONE warning per process', () => withCrawlLog(({ dir, file, write }) => {
   write({ crawl: { navMs: { p95: 30000 } } });
@@ -180,7 +205,9 @@ check('navTimeout: the defaults read process.env and CRAWL_LOG relative to the c
     assert.deepEqual([session.navTimeout().ms, session.navTimeout().source], [60000, 'crawl']);
     assert.ok(session.navTimeout().detail.includes('stardust/current/_crawl-log.json'));
     process.env[NAV_ENV] = '4321';
-    assert.equal(session.resolveNavTimeoutMs(), 4321);
+    assert.deepEqual([session.navTimeout().ms, session.navTimeout().source], [60000, 'crawl'], 'a smaller env is only a floor');
+    process.env[NAV_ENV] = '90000';
+    assert.equal(session.resolveNavTimeoutMs(), 90000);
   } finally {
     process.chdir(cwd);
     if (savedEnv === undefined) delete process.env[NAV_ENV]; else process.env[NAV_ENV] = savedEnv;
@@ -207,10 +234,11 @@ await checkAsync('gotoLive and measure-live visit take the navigation timeout pe
   try {
     process.chdir(dir); // no crawl log under this cwd
     assert.deepEqual(await withProcessEnv(undefined, both), [60000, 90000], 'each keeps its own default');
-    assert.deepEqual(await withProcessEnv('4321', both), [4321, 4321], 'the env drives both');
-    assert.deepEqual(await withProcessEnv('9876', both), [9876, 9876], 'evaluated per call, not at import');
+    assert.deepEqual(await withProcessEnv('45000', both), [45000, 45000], 'the env drives both');
+    assert.deepEqual(await withProcessEnv('30000', both), [30000, 30000], 'evaluated per call, not at import');
+    assert.deepEqual(await withProcessEnv('4321', both), [20000, 20000], 'the env alone is clamped to 20000');
     timeouts.length = 0;
-    await withProcessEnv('4321', () => session.gotoLive(page, url, { settleMs: 0, timeoutMs: 1000 }));
+    await withProcessEnv('45000', () => session.gotoLive(page, url, { settleMs: 0, timeoutMs: 1000 }));
     assert.deepEqual(timeouts, [1000], 'an explicit timeoutMs always wins');
   } finally { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }); }
 });

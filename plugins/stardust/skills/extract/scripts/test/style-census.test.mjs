@@ -5,7 +5,7 @@
 // navigation timeout (a live-session.mjs older than navTimeout keeps 20000) — no browser. Part (b): end-to-end
 // against a fixture site served from this process (two pages, known
 // colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page for the shared
-// navigation timeout — env STARDUST_NAV_TIMEOUT_MS when --timeout-ms is not given) — runs only where
+// navigation timeout — --timeout-ms bounds it; env STARDUST_NAV_TIMEOUT_MS alone is a floor) — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
@@ -241,14 +241,13 @@ if (playwrightOk) {
     const part = await runAsync(['--urls', `${origin}/about,${origin}/missing`, '--out', join(root, 'part.json')]);
     assert.equal(part.code, 0); assert.match(part.out, /1 pages × 1 widths .* \(1 of 2 measurements failed/); assert.match(part.err, /FAIL .*\/missing @1440 {2}HTTP 404/);
   });
-  await check('e2e navigation timeout: without --timeout-ms, env STARDUST_NAV_TIMEOUT_MS bounds the goto (a 2.5 s page fails at 1000 ms); an explicit --timeout-ms wins over the env', async () => {
-    const env = { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' };
-    const [byEnv, byFlag] = await Promise.all([
-      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], env),
-      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '10000'], env),
+  await check('e2e navigation timeout: an explicit --timeout-ms bounds the goto and wins over a larger env (a 2.5 s page fails at 1000 ms); without it env STARDUST_NAV_TIMEOUT_MS 1000 is only a floor, clamped to 20000 (the page is measured)', async () => {
+    const [byFlag, byEnv] = await Promise.all([
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '1000'], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '45000' }),
+      runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' }),
     ]);
-    assert.equal(byEnv.code, 1, byEnv.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-env.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
-    assert.equal(byFlag.code, 0, byFlag.err); assert.match(byFlag.out, /^style-census: 1 pages × 1 widths → /);
+    assert.equal(byFlag.code, 1, byFlag.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-flag.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
+    assert.equal(byEnv.code, 0, byEnv.err); assert.match(byEnv.out, /^style-census: 1 pages × 1 widths → /);
   });
   server.close();
 }

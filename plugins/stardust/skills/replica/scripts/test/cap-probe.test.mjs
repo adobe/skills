@@ -388,11 +388,11 @@ if (pwProbe.status !== 0) {
     await check('e2e capture: a hanging page beside a good one — the next URL goes on, exit 0, partial, the aggregate from the good one, DESIGN.json left as it was', async () => {
       const design = join(root, 'DESIGN-partial.json'); const before = '{\n  "extensions": { "breakpoints": { "containerMaxWidth": "1280px", "probeWidth": 2560 } }\n}\n';
       writeFileSync(design, before);
-      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json', '--write-design', design], { env: { STARDUST_NAV_TIMEOUT_MS: '5000' } });
+      const r = await runAsync([`${base}/hang`, `${base}/live`, '--json', '--timeout-ms', '5000', '--write-design', design], { env: { STARDUST_NAV_TIMEOUT_MS: '45000' } });
       assert.equal(r.code, 0, r.out + r.err);
       const j = JSON.parse(r.out);
       assert.match(r.err, new RegExp(`cap-probe: PARTIAL — 1 of 2 page probe\\(s\\) failed: ${base}/hang @2560 \\(probe read: deadline 5000 ms`), 'with --json the status line goes to stderr');
-      assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'env' }, 'no flag: the env figure is the navigation timeout and the deadline');
+      assert.deepEqual(j._provenance.navTimeout, { ms: 5000, source: 'flag' }, 'the flag wins over a larger env: it is the navigation timeout and the deadline');
       assert.equal(j._provenance.partial, true); assert.deepEqual(Object.keys(j.pages), [`${base}/live`]);
       assert.deepEqual([j.aggregate.containerMaxWidth, j.aggregate.shellMaxWidth], ['1600px', 1920]);
       assert.equal(readFileSync(design, 'utf8'), before, 'a partial model never reaches DESIGN.json — qa-gate and compare --design read it as complete');

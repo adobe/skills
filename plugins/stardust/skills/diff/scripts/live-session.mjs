@@ -70,10 +70,11 @@
  *   the site needs crawl.mjs-class capture and the gate must fail, not degrade.
  *
  * Navigation timeout (navTimeout / resolveNavTimeoutMs): ONE value for every
- * live navigation — env STARDUST_NAV_TIMEOUT_MS (as given) → the crawl's
- * measured origin latency (stardust/current/_crawl-log.json crawl.navMs.p95
- * × 2, clamped 20–180 s) → 60000. Callers pass their own fallback (their
- * current default) for the last step; an explicit timeout always wins.
+ * live navigation — max(env STARDUST_NAV_TIMEOUT_MS, the crawl's measured
+ * origin latency: stardust/current/_crawl-log.json crawl.navMs.p95 × 2),
+ * clamped 20–180 s; the env is a floor, never a cut. Neither present → the
+ * caller's own fallback (its current default; 60000 unless given). An
+ * explicit timeout always wins.
  * withDeadline bounds a whole per-width read; isContextDestroyed names the
  * one failure worth a retry on a fresh page.
  */
@@ -543,11 +544,11 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
   return err;
 }
 
-// ---- navigation timeout: one value, from the operator, else the origin's measured latency ----------
+// ---- navigation timeout: one value, the larger of the operator's floor and the origin's measured latency ----
 // A recorded hands-off run's measure.mjs hung 8× at 900 s on a site that navigates after load, while the
 // instruments carried 20–90 s navigation defaults with no shared value and no origin-latency figure. One
-// resolution now feeds them all: the operator's env, else twice the crawl's p95 page-load time (a slow
-// origin gets more room, a fast one fails sooner), else the caller's own default.
+// resolution now feeds them all: the larger of the operator's env and twice the crawl's p95 page-load time (a slow
+// origin gets more room, a fast one fails sooner), clamped 20–180 s, else the caller's own default.
 export const NAV_TIMEOUT_ENV = 'STARDUST_NAV_TIMEOUT_MS';
 export const CRAWL_LOG = 'stardust/current/_crawl-log.json'; // relative to the cwd (project root), like LEDGER
 export const NAV_TIMEOUT_DEFAULT_MS = 60000;
@@ -557,33 +558,50 @@ let navEnvWarned = false; // one warning per process, not one per navigation
 
 /**
  * The navigation timeout → { ms, source: 'env' | 'crawl' | 'default', detail }. Never throws; reads only `crawlLog`.
- *   1. env STARDUST_NAV_TIMEOUT_MS: trimmed, a finite number that rounds to >= 1 ms → used as given (no clamp —
- *      the operator's figure wins). Set but invalid → ignored, with one stderr warning per process. Empty = unset.
- *   2. `crawlLog` JSON `crawl.navMs.p95` (a finite number > 0) → round(p95 × 2) clamped to 20000–180000. A missing,
- *      unreadable or malformed file or field is skipped silently (a crawl log from before the timing has no figure).
- *   3. `fallback` (the caller's current default; 60000 unless given).
+ * Two inputs, either may be absent:
+ *   - env STARDUST_NAV_TIMEOUT_MS: trimmed, a finite number that rounds to >= 1 ms. Set but invalid → ignored, with
+ *     one stderr warning per process. Empty = unset.
+ *   - `crawlLog` JSON `crawl.navMs.p95` (a finite number > 0) → round(p95 × 2). A missing, unreadable or malformed
+ *     file or field is skipped silently (a crawl log from before the timing has no figure).
+ * Either present → ms = max(present inputs) clamped to 20000–180000; source = the input that set the max ('env' on a
+ * tie). The env is a FLOOR, not a replacement: a runner sets it from its discovery sample, while the crawl measured the
+ * real pages — a slow origin's crawl figure must not be cut short by a smaller env. Neither → `fallback` (the caller's
+ * current default; 60000 unless given), unclamped, source 'default'. An instrument's explicit flag bypasses all this.
  */
 export function navTimeout({ env = process.env, crawlLog = CRAWL_LOG, fallback = NAV_TIMEOUT_DEFAULT_MS } = {}) {
   const raw = env && env[NAV_TIMEOUT_ENV] != null ? String(env[NAV_TIMEOUT_ENV]).trim() : '';
+  let envMs = null;
   if (raw) {
     const n = Number(raw);
     // Math.round(0.4) is 0, and a 0 ms timeout means "no timeout" to playwright — the hang this exists to stop
-    if (Number.isFinite(n) && Math.round(n) >= 1) return { ms: Math.round(n), source: 'env', detail: `${NAV_TIMEOUT_ENV}=${raw}` };
-    if (!navEnvWarned) {
+    if (Number.isFinite(n) && Math.round(n) >= 1) envMs = Math.round(n);
+    else if (!navEnvWarned) {
       navEnvWarned = true;
       console.error(`[live-session] ${NAV_TIMEOUT_ENV}=${raw} is not a positive number of ms — ignored`);
     }
   }
+  let p95 = null;
   if (crawlLog) {
-    let p95 = null;
-    try { p95 = JSON.parse(readFileSync(crawlLog, 'utf8')).crawl.navMs.p95; } catch { /* no crawl figure — fall through */ }
-    if (Number.isFinite(p95) && p95 > 0) {
-      const ms = Math.min(NAV_TIMEOUT_MAX_MS, Math.max(NAV_TIMEOUT_MIN_MS, Math.round(p95 * 2)));
-      return { ms, source: 'crawl', detail: `crawl.navMs.p95 ${p95} ms × 2, clamped to ${NAV_TIMEOUT_MIN_MS}–${NAV_TIMEOUT_MAX_MS} ms (${crawlLog})` };
-    }
+    try { p95 = JSON.parse(readFileSync(crawlLog, 'utf8')).crawl.navMs.p95; } catch { /* no crawl figure */ }
   }
-  const envNote = raw ? `no valid ${NAV_TIMEOUT_ENV} (${raw} ignored)` : `no ${NAV_TIMEOUT_ENV}`;
-  return { ms: fallback, source: 'default', detail: `${envNote} and no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'}` };
+  const crawlMs = Number.isFinite(p95) && p95 > 0 ? Math.round(p95 * 2) : null;
+  const range = `${NAV_TIMEOUT_MIN_MS}–${NAV_TIMEOUT_MAX_MS} ms`;
+  if (envMs == null && crawlMs == null) {
+    const envNote = raw ? `no valid ${NAV_TIMEOUT_ENV} (${raw} ignored)` : `no ${NAV_TIMEOUT_ENV}`;
+    return { ms: fallback, source: 'default', detail: `${envNote} and no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'}` };
+  }
+  if (envMs == null) {
+    const ms = Math.min(NAV_TIMEOUT_MAX_MS, Math.max(NAV_TIMEOUT_MIN_MS, crawlMs));
+    return { ms, source: 'crawl', detail: `crawl.navMs.p95 ${p95} ms × 2, clamped to ${range} (${crawlLog})` };
+  }
+  const max = Math.max(envMs, crawlMs ?? 0);
+  const ms = Math.min(NAV_TIMEOUT_MAX_MS, Math.max(NAV_TIMEOUT_MIN_MS, max));
+  const clampNote = ms !== max ? `, clamped to ${range}` : '';
+  if (crawlMs == null) {
+    return { ms, source: 'env', detail: `${NAV_TIMEOUT_ENV}=${raw}${clampNote} (no crawl.navMs.p95 in ${crawlLog || '(no crawl log)'})` };
+  }
+  const detail = `max(${NAV_TIMEOUT_ENV}=${raw}, crawl.navMs.p95 ${p95} ms × 2 = ${crawlMs} in ${crawlLog}) = ${max} ms${clampNote ? `${clampNote} → ${ms} ms` : ''}`;
+  return { ms, source: envMs >= crawlMs ? 'env' : 'crawl', detail };
 }
 
 /** navTimeout(opts).ms — the default every navigation helper takes when its caller passes no timeout. */
@@ -596,7 +614,7 @@ export function resolveNavTimeoutMs(opts = {}) {
 // navigates after load). Instruments race each width's whole read against a deadline and retry only a
 // destroyed context (isContextDestroyed), once, on a fresh page.
 
-// node fires a setTimeout longer than 2^31 − 1 ms after 1 ms: an (unclamped) env figure that large would fail every read at once
+// node fires a setTimeout longer than 2^31 − 1 ms after 1 ms: an explicit flag that large would fail every read at once
 const MAX_TIMER_MS = 2 ** 31 - 1;
 
 /**
