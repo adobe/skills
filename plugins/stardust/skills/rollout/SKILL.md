@@ -419,7 +419,9 @@ DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content pe
 `update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` writes each row into
 `delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
 gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
-the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
+the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); pages it still fails
+get one bounded `gap-closure` pass per template, and what fails after it is reported as residuals,
+never looped again (handoff contract § 3).
 
 ### Phase E2 — Link-audit completeness
 
