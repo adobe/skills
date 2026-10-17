@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.0 — reskin checks a page against its Figma donor: section join, geometry, type ramp, frame pixels, divergence register
+## 0.34.0 — reskin checks a page against its Figma donor and on its aem.page preview: section join, geometry, type ramp, frame pixels, divergence register; content, tokens, parity, sanity and deploy's gates
 
 A Figma-donor reskin used to stop at the token probe: nothing compared the rendered page with the frames it was built
 from. The new `reskin/figma-gate.mjs` does, offline (no token, no network), from the capture `figma-donor.mjs` made. B0
@@ -19,6 +19,21 @@ block, B2 is advisory, B4 informational. The instruments are reused, not rebuilt
 `pixel-compare`, `run-capped` and `run-bg`, so Setup step 3 now copies all of `skills/diff/scripts/` and those three, and
 step 2 installs `pixelmatch` and `pngjs` with `playwright` (`npm i -D … --legacy-peer-deps`, never `--no-save`).
 
+Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the local
+reskin page and the donor, on its `<branch>--<repo>--<org>.aem.page` preview, for any donor. `preview` finds the preview
+and refuses a page that touches shared documents. `content` runs `dom-equality` and `slot-coverage` on it. `tokens`
+asserts the donor tokens on the EDS DOM through `donor-probe`. `parity` runs replica's stitched pixel, crop,
+`chrome-parity` and `cap-probe` instruments (pixels ≤ 10%, height ≤ 5%, crops ≤ 2%, caps ±20px). `sanity` holds the hard
+asserts: overflow ≤ 4px at 1440 and 360, a settled decoration, no broken images or page errors, `clip-probe` and
+`content-presence` 0; no delta file and no residual waives it. `inherited` runs `deploy`'s `.plain.html` asserts,
+`ai-readability` ≥ 98 and `qa-gate`. `all` runs them in turn, then `figma-gate all --target preview` when the page has
+Figma checks, prints one verdict line per step for `run-bg`, exits 0 / 1 / 2 / 3 / 124 and writes a `ledgerFragment` for
+`ledger.json` `pages.<slug>.gates.deployed`. The leg runs only in an aem-boilerplate project and is otherwise skipped,
+with the reason recorded. Phase 5 gains **(e) Deployed acceptance** and Phase 6's "ship via deploy, unchanged" becomes
+a pointer to it; `reference/deployed-leg.md` holds the recipe, the delta file, the ledger shape and the fix budget (one
+reconcile round per family, a re-run matrix per fix type), `gates.md` § (e) the bars. Setup step 3 also copies replica's
+`stitch-shot`, `crop-compare`, `chrome-parity` and `cap-probe` and deploy's `eds-path`, `qa-gate` and `ai-readability`.
+
 - **The `:root` block (D10).** `reskin/render/root-tokens.mjs` renders the token-contract block from `donor-tokens.json`,
   plus `--type-*` names for per-module text styles. Renderers emit it first in the first `<style>` and style through
   `var(--…)`; names the donor lacks are left out and go to the page's `flags[]`. Phase 4 also renders every `mapped` or
@@ -27,6 +42,27 @@ step 2 installs `pixelmatch` and `pngjs` with `playwright` (`npm i -D … --lega
 - **`donor-probe` options.** Spec entries may name a custom property (`--name`), compared whitespace-collapsed, and
   `compare: "firstFamily"`; `--viewport <w>`, `--no-sanity` and `--json <path>` let `figma-gate` run it per width and read
   the results. A value flag no longer swallows a following `--flag`.
+- **Declared deltas.** `dom-equality` and `slot-coverage` take `--deltas <json>` (`reskin/deltas/<slug>.json`): literal text
+  replacements with a why each, `images: "count+alt+width"`, `links.localize.sourceHost`, `metadata` (`ignore`, `jsonLd`,
+  `absent`) and `blocking: false` for an advisory run. Applied entries are reported, an entry that matched nothing
+  warns, and nothing changes without the flag. Images are attributed to slots positionally, so a move across a slot
+  boundary and an equal-alt replacement go undetected.
+- **EDS settle and site auth on the reskin gates.** `dom-equality`, `slot-coverage` and `donor-probe` take `--wait-eds`
+  (`networkidle`, `body.appear`, every `[data-section-status]` and `[data-block-status]` `loaded`; on by default for an
+  EDS host), `--eds-timeout` (20 s: a stall exits 2 and measures nothing) and `--auth-header` / `--token-env`, sent to
+  the rendered origin only, handed to child processes by environment and never printed or recorded. All three now
+  answer `--help` with nothing beside them.
+- **Isolation.** DA content is not branch-scoped: a branch preview that writes `/nav` rewrites it for every branch. In a
+  shared repo `preview` requires `--namespace <ns>`: the page's path under `/<ns>/` and, in the delivered head,
+  `<meta name="nav">` and `<meta name="footer">` (EDS's form of the metadata rows) naming `/<ns>/nav` and `/<ns>/footer`,
+  plain paths only. `--sandbox` waives both and is recorded.
+- **Protected previews.** `content`, `tokens`, `inherited`'s `.plain.html` row and `figma-gate` authenticate; `parity`,
+  `sanity` and the `qa-gate` and `ai-readability` rows report `n/a: protected preview` (their instruments carry no site
+  auth, and `ai-readability` sends its header to every origin the page loads).
+- **Figma checks on a preview.** `figma-gate … --target preview --reskin <file>` joins each slot to the preview's
+  `.plain.html`, then to the decorated page's `main > div:nth-child(k)` (decoration can prepend or drop a section; a
+  moved slot gets a note); checks-file entries may carry `previewSelector` for blocks that rebuild the markup. Its
+  fragment goes to `pages.<slug>.gates.deployed.figma`.
 - **Field run, a component kit.** The home page from 0.33.0's run, moved to the Phase 4 conventions, with twelve type
   roles for the module text styles and the kit's mobile values (curations from its type and width tables). The join
   passed once a Donor module cell may name the module after its id (`M3 (Card Row)`). Counts below are failing

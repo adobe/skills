@@ -1,15 +1,18 @@
 # The reskin gates — commands, pass bars, tolerances, failure modes
 
-Three gate families per page, plus (d) for a Figma donor, run in
-Phase 5 after the programmatic render. All scripts are run as project-local copies
+Three gate families per page, plus (d) for a Figma donor and (e) for a
+deployed page, run in Phase 5 after the programmatic render. All scripts
+are run as project-local copies
 (`stardust/scripts/reskin/`, per SKILL.md § Setup) — never from the
 plugin tree (ESM playwright resolution). `--rendered` accepts a URL or
 a file path (auto-converted to `file://`).
 
 Run order: content gate first (a design-adopted page with dropped
-content is worthless), then design adoption, then sanity, then (d).
+content is worthless), then design adoption, then sanity, then (d),
+then (e) once the page is deployed.
 **One fix iteration per gate family** — content; design-adoption/sanity;
-Figma fidelity — then residuals are logged (§ Residual logging).
+Figma fidelity — then residuals are logged (§ Residual logging). (e) has its
+own budget (`deployed-leg.md` § The fix budget).
 
 ## (a) Content gate
 
@@ -264,6 +267,40 @@ the section's margins there; check widths, gaps and paddings instead.
   a residual (needs-owner). Exit 3 (bot challenge on a live target)
   outranks 124 and 1 in `all`'s exit, and exit 2 outranks both.
 
+## (e) Deployed acceptance (aem.page preview)
+
+`deployed-gate.mjs` holds the page `deploy` made to the local reskin
+page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
+Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
+lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
+`deployed-gate.mjs --help`. Each step first settles the EDS decoration
+(`--wait-eds`: `networkidle`, `body.appear`, every `[data-section-status]`
+and `[data-block-status]` `loaded`, bounded by `--eds-timeout`, 20000 ms)
+and names a stall, never waits silently.
+
+| Step | Class | Asserts | Bar |
+|---|---|---|---|
+| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
+| `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, every `:root` token verbatim | exact, first font family only (a font not served fails nothing); container width is `parity`'s cap row, `layout.sectionPaddingY` a SKIP |
+| `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10%; Δh ≤ 5% of the reskin page's height; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
+| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0 |
+| `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
+
+- **Protected preview.** `parity`, `sanity` and the `qa-gate` and
+  `ai-readability` rows are `n/a: protected preview`: their instruments
+  carry no site auth, and `ai-readability` sets its header on its whole
+  browser context, so the token would reach every origin the page loads.
+  `content`, `tokens`, the `.plain.html` row and `figma` authenticate.
+- **Figma on a preview.** B0 finds each slot in the preview's
+  `.plain.html`, then in the decorated page: the section is
+  `main > div:nth-child(k)` of the decorated div, since decoration can
+  prepend or drop sections (a moved slot gets a note in `join.json`). An
+  entry is measured by its `previewSelector`, else its `selector`, scoped
+  to that section; no match is "unmeasurable", a FAIL. Register rows
+  point at the checks root.
+- **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
+
 ## One fix iteration per gate family, then residuals
 
 The budget is **one fix iteration per gate family**: one for the
@@ -272,7 +309,8 @@ design-adoption/sanity (donor-probe + overflow), and for a Figma donor
 one for (d) (B0, B1, B3 failures). On a failure: diagnose, fix once,
 **re-run every gate family** (a fix for one gate can break another).
 When a family's iteration is spent and it still fails, stop iterating
-that family and log.
+that family and log. On the preview each round costs a push and a Code
+Sync, so (e) re-runs a matrix instead (`deployed-leg.md`).
 
 Why per family, not per page: the families fail for unrelated
 reasons — content failures are renderer emission bugs, sanity
@@ -293,7 +331,8 @@ just as bounded without absorbing real, cheap fixes.
     "<slug>": {
       "status": "gated",
       "gates": { "domEquality": "PASS", "slotCoverage": "PASS", "donorProbe": "PASS", "eyeball": "adopted", "sanity": "PASS",
-                 "figma": "<summary.json ledgerFragment, Figma donor only>" },
+                 "figma": "<summary.json ledgerFragment, Figma donor only>",
+                 "deployed": "<deployed-gate summary.json ledgerFragment: deployed-leg.md § The ledger>" },
       "fixIteration": "hid nav CTA + lang switch below 560px; stacked hero form",
       "residuals": [ { "gate": "donorProbe", "check": "section rhythm", "detail": "72px vs 96px on s05 — donor's own short sections do this too", "verdict": "accepted" } ],
       "flags": [ "source JSON-LD Organization URLs are broken upstream — carried verbatim, needs owner decision" ]
@@ -303,7 +342,7 @@ just as bounded without absorbing real, cheap fixes.
 ```
 
 A Figma residual also carries `class` (`figma.join` | `figma.geometry` |
-`figma.ramp`). Residuals are never silently absorbed:
+`figma.ramp`); a deployed one's classes are in `deployed-leg.md` § The ledger. Residuals are never silently absorbed:
 each names the gate, the check, and a human-readable verdict (`accepted` | `needs-owner` |
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
@@ -377,6 +416,7 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
 `../../diff/SKILL.md`'s two probes (pixel + structural) remain the
 **build-side** check after Phase 6 deploys the page to EDS — run them
 prototype-vs-build with `--profile eds`, exactly as `deploy` Step 10
-does. The reskin gates are **source-vs-render** and byte-level; the
+does; (e) is the same question for the archetype page on its preview,
+asked of the reskin page. The reskin gates are **source-vs-render** and byte-level; the
 diff probes are render-vs-build and role-level. They answer different
 questions; neither substitutes for the other.

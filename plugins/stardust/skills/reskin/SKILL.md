@@ -70,25 +70,33 @@ regression check instead of a debugging tool.
    from the project root; on failure (any one missing)
    `npm i -D playwright pixelmatch pngjs --legacy-peer-deps` (never
    `--no-save`: a later real `npm i` prunes it; `pixelmatch` and `pngjs`
-   serve the Figma pixel check). Re-run the probe at the start of every
+   serve the Figma and deployed pixel checks). Re-run the probe at the start of every
    phase that renders.
 3. **Copy the scripts into the project.** ESM resolves
    `import('playwright')` from the *script's* directory and the plugin
    tree ships no `node_modules`. Copy, byte-identical:
    `skills/reskin/scripts/` recursively except `test/` (sibling imports,
-   `figma/`, `figma-gate/` and `render/` travel with it) to
+   `deployed/`, `figma/`, `figma-gate/` and `render/` travel with it) to
    `stardust/scripts/reskin/`; `skills/stardust/scripts/state.mjs` to
    `stardust/scripts/stardust/` (`figma-donor.mjs stamp` writes through
    it); **all of** `skills/diff/scripts/` to
-   `stardust/scripts/diff/`; and `pixel-compare.mjs`, `run-capped.mjs`
-   and `run-bg.mjs` from `skills/replica/scripts/` to
-   `stardust/scripts/replica/`. Every reskin gate script (capture-content,
-   dom-equality, donor-probe, slot-coverage) imports `diff/live-session.mjs`
-   unconditionally at startup: without the copy each one exits 2, even
-   for `--help` or a local-file `--rendered` target. It supplies ALL
+   `stardust/scripts/diff/`; from `skills/replica/scripts/` to
+   `stardust/scripts/replica/`, `pixel-compare.mjs`, `run-capped.mjs`,
+   `run-bg.mjs`, `stitch-shot.mjs`, `crop-compare.mjs`,
+   `chrome-parity.mjs` and `cap-probe.mjs` (`pixel-compare` and `run-bg`
+   import `run-capped`; `stitch-shot`, `chrome-parity` and `cap-probe`
+   need `diff/live-session.mjs`); and
+   from `skills/deploy/scripts/` to `stardust/scripts/deploy/`,
+   `eds-path.mjs`, `qa-gate.mjs` (it finds `replica/cap-probe.mjs`) and
+   `ai-readability.mjs` — what `deployed-gate.mjs` resolves. Every reskin
+   gate script (capture-content, dom-equality, donor-probe, slot-coverage)
+   needs `diff/live-session.mjs` and exits 2 without the copy, even for a
+   local-file `--rendered` target; only `capture-content` also fails
+   `--help` (the other three answer it with nothing beside them).
+   `live-session.mjs` supplies ALL
    live-target hardening (real-Chrome UA + standard headers, challenge
    detection, headed-stealth escalation). The scripts resolve one
-   another from sibling dirs (`../diff/`, `../replica/` next to
+   another from sibling dirs (`../diff/`, `../replica/`, `../deploy/` next to
    `../reskin/`), so keep them siblings. Run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
@@ -320,7 +328,8 @@ forbidden order-reconstruction move
 
 ### Phase 5 — GATES
 
-Three gate families per page, plus (d) for a Figma donor; commands,
+Three gate families per page, plus (d) for a Figma donor and (e) for a
+deployed page; commands,
 pass bars, tolerances, and failure modes in `reference/gates.md`. Serve or `file://`-address the
 rendered page and run:
 
@@ -398,9 +407,31 @@ target, exit 2 a setup problem (fix the input, then re-run). Residuals carry
 `pages.<slug>.gates.figma`. UNASSERTED ramp lines and pixel numbers are
 advisory.
 
+**(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
+project) — the page `deploy` made, on its aem.page branch preview, after
+the local gates pass. Recipe (`deploy` Steps 1–9, push, `deploy-batch`),
+isolation, delta file, ledger and fix budget: `reference/deployed-leg.md`;
+bars: `reference/gates.md` § (e).
+
+```bash
+node stardust/scripts/reskin/deployed-gate.mjs preview --page <slug> \
+  --org <o> --repo <r> --branch <b> --path /<ns>/<slug> --namespace <ns>   # or --sandbox
+node stardust/scripts/reskin/deployed-gate.mjs content --page <slug>   # no delta file yet: it measures
+# author stardust/reskin/deltas/<slug>.json, then the whole leg:
+node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
+  --dir stardust/.work/reskin/bg -- \
+  node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
+node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
+```
+
+`all` prints one verdict line per step and writes `summary.json`; copy its
+`ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exit
+124 is no verdict (re-run once), exit 3 a bot challenge or token halt.
+
 **One fix iteration per gate family** — content; design-adoption/sanity;
 and, for a Figma donor, Figma fidelity. On a failure in a family, fix
-once, re-run all gates (a fix for one gate can break another). Residual
+once, re-run all gates (a fix for one gate can break another); (e) has
+its own budget (`reference/deployed-leg.md`). Residual
 failures after a family's iteration is spent are logged in
 `stardust/reskin/ledger.json` under the page's `residuals[]` — never
 silently absorbed, never looped on indefinitely. Per family because the
@@ -411,7 +442,7 @@ residuals.
 ### Phase 6 — HANDOFF
 
 Reskin owns the archetype pages; scale and shipping are the existing
-pipeline, unchanged:
+pipeline:
 
 - **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
@@ -423,10 +454,12 @@ pipeline, unchanged:
   gated archetype. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
-- **Ship via the stardust `deploy` and `rollout` skills**, unchanged. Blocks
-  written for donor modules obey the Experience Workspace editability
-  contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW gate
-  (`block-roundtrip --ew`) before they are done.
+- **Ship via the stardust `deploy` and `rollout` skills.** An archetype
+  page's first deploy is Phase 5 (e), preview-only
+  (`reference/deployed-leg.md`); publishing and the rest of the site are
+  theirs. Blocks written for donor modules obey the Experience Workspace
+  editability contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW
+  gate (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate
@@ -479,10 +512,12 @@ for URL and directory donors, `figma-donor.mjs stamp` for Figma).
 | `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
 | `stardust/reskin/figma-checks/<slug>.json` | Figma donor only: the authored geometry, type and pixel checks (git-ignored under `--confidential`) |
+| `stardust/reskin/deltas/<slug>.json` | Deployed leg: the page's declared source → preview differences (`--deltas`) |
 | `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
 | `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
 | `stardust/.work/reskin/figma/` | Figma donor only: raw REST cache and frame PNGs (git-ignored) |
 | `stardust/.work/reskin/gates/<slug>/figma/` | Figma donor only: the checks' evidence, `summary.json` and the divergence register (git-ignored) |
+| `stardust/.work/reskin/gates/<slug>/deployed/` | Deployed leg: the preview record, each step's evidence and `summary.json` (git-ignored) |
 
 ## References
 
@@ -496,7 +531,10 @@ for URL and directory donors, `figma-donor.mjs stamp` for Figma).
   Figma join reads), the ≥80% gate, new-module composition rules,
   casing policy.
 - `reference/gates.md` — the gates' commands, pass bars, tolerances,
-  failure modes, residual logging; § (d) the Figma checks.
+  failure modes, residual logging; § (d) the Figma checks; § (e) the
+  deployed bars.
+- `reference/deployed-leg.md` — the deployed leg: preconditions,
+  isolation, recipe, delta file, ledger shape, fix budget.
 - `../extract/SKILL.md` § Cross-site brand sources — the
   `--design-source` donor-capture path Phase 1 delegates to.
 - `../migrate/reference/content-preservation.md` — the content rules
