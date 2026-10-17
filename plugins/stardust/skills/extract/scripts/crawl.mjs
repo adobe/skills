@@ -62,7 +62,10 @@
  *     "; entry locale /de but 9 of 10 captured pages outside it", and one stderr
  *     line names it an owner decision before Phase 2. A recorded hands-off run
  *     entered at a /de/ URL while its site plan captured nine English pages, and
- *     nothing flagged the mismatch.
+ *     nothing flagged the mismatch. An entry that redirected to another origin is
+ *     scoped at the landed URL: `scope.landedFrom` holds the --url as given, and the
+ *     clause reads "entry locale <prefix> (from the landed URL <landed>, redirected
+ *     from <entry>) but …".
  *
  * Usage:
  *   node crawl.mjs --url https://example.com [--pages a,b,c] [--max 25] \
@@ -337,7 +340,17 @@ function localeScope(records, entryUrl) {
   const m = inside + outside;
   return m > 0 && inside * 2 < m ? { entryLocale, inside, outside } : null;
 }
-export function captureGaps(records, { entryUrl, totalDiscovered } = {}) {
+// The scope clause of `detail` and of the stderr line. An entry that redirected to another origin is scoped
+// at the landed URL (crawl adopts it as the entry), so the clause names both URLs rather than leave the
+// owner comparing a locale the --url never had.
+function scopeClause({ entryLocale, inside, outside, landedFrom }, entryUrl) {
+  const landed = landedFrom ? ` (from the landed URL ${entryUrl}, redirected from ${landedFrom})` : '';
+  return `entry locale ${entryLocale}${landed} but ${outside} of ${inside + outside} captured pages outside it`;
+}
+const otherOrigin = (a, b) => { try { return new URL(a).origin !== new URL(b).origin; } catch { return false; } };
+// entryUrl = the effective entry (the landed URL after an origin redirect); landedFrom = the --url as given,
+// passed only when it redirected to another origin; totalDiscovered = _crawl-log.json#discovery.total.
+export function captureGaps(records, { entryUrl, landedFrom, totalDiscovered } = {}) {
   const captured = new Set();
   for (const r of records) {
     for (const h of [r.url, r.finalUrl]) { try { const u = new URL(h); captured.add(`${hostKey(u)}${pathKey(u)}`); } catch { /* absent or not a URL */ } }
@@ -366,7 +379,8 @@ export function captureGaps(records, { entryUrl, totalDiscovered } = {}) {
   const scope = localeScope(records, entryUrl);
   if (!scope) return { roots, detail };
   if (Number.isInteger(totalDiscovered)) scope.totalDiscovered = totalDiscovered;
-  return { roots, detail: `${detail}; entry locale ${scope.entryLocale} but ${scope.outside} of ${scope.inside + scope.outside} captured pages outside it`, scope };
+  if (landedFrom && otherOrigin(landedFrom, entryUrl)) scope.landedFrom = landedFrom;
+  return { roots, detail: `${detail}; ${scopeClause(scope, entryUrl)}`, scope };
 }
 
 // ---- discovery: explicit pages > sitemap (validated) > BFS from nav ----
@@ -1053,6 +1067,7 @@ async function main() {
   // sitemap fetch must use where the site actually lives, or discovery silently
   // collapses to 1 page (agency-site e2e finding).
   let originRedirect = null;
+  const requestedUrl = args.url; // the --url as given: the scope note names it when the entry redirected
   try {
     const landed = new URL(probe.url());
     if (landed.origin !== args.origin) {
@@ -1148,13 +1163,12 @@ async function main() {
   // locale-root capture gaps: the subtree a captured locale root links to but discovery never listed —
   // surfaced here, and as a ready --detail string for the extract `end` ledger line, not six hours later
   // in the rollout link audit.
-  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url, totalDiscovered: total });
+  log.captureGaps = captureGaps(results.filter(Boolean), { entryUrl: args.url, landedFrom: originRedirect ? requestedUrl : null, totalDiscovered: total });
   if (log.captureGaps.roots.length) {
     console.error(`[crawl] capture gaps: ${log.captureGaps.roots.map((r) => `${r.root} ${r.uncaptured.length} of ${r.linked} first-level target(s) uncaptured`).join('; ')} — list in _crawl-log.json#captureGaps; ledger --detail "${log.captureGaps.detail}"`);
   }
   if (log.captureGaps.scope) {
-    const { entryLocale, inside, outside } = log.captureGaps.scope;
-    console.error(`[crawl] locale scope: entry locale ${entryLocale} but ${outside} of ${inside + outside} captured pages outside it — an owner decision before Phase 2 (_crawl-log.json#captureGaps.scope)`);
+    console.error(`[crawl] locale scope: ${scopeClause(log.captureGaps.scope, args.url)} — an owner decision before Phase 2 (_crawl-log.json#captureGaps.scope)`);
   }
   if (args.dynamics) {
     log.dynamicSurface = finalizeDynamic(dynamicRollup);

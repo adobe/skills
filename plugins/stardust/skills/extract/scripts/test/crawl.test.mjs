@@ -167,6 +167,18 @@ check('captureGaps scope: carries totalDiscovered (= discovery.total) when the c
   assert.deepEqual(none, captureGaps(DE_ENTRY_EN_PLAN));
   assert.equal('totalDiscovered' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/' }).scope, false);
 });
+check('captureGaps scope: an entry that redirected to another origin is scoped at the LANDED URL — scope.landedFrom names the requested URL and the detail names both; a same-origin, unparsable or absent landedFrom changes nothing', () => {
+  // requested at another origin's /en/, landed on /de/: the landed /de decides (the requested /en would hold 9 of 10 inside)
+  const r = captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', landedFrom: 'https://example.org/en/', totalDiscovered: 12 });
+  assert.deepEqual(r.scope, { entryLocale: '/de', inside: 1, outside: 9, totalDiscovered: 12, landedFrom: 'https://example.org/en/' });
+  assert.equal(r.detail, 'uncaptured first-level targets: de 0, en 0; entry locale /de (from the landed URL https://example.test/de/, redirected from https://example.org/en/) but 9 of 10 captured pages outside it');
+  assert.deepEqual(r.roots, captureGaps(DE_ENTRY_EN_PLAN).roots);
+  for (const landedFrom of ['https://example.test/en/', 'not a url', undefined, null]) {
+    assert.deepEqual(captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/', landedFrom }), captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/de/' }), String(landedFrom));
+  }
+  // the landed URL has no locale: no scope, whatever the requested URL said
+  assert.equal('scope' in captureGaps(DE_ENTRY_EN_PLAN, { entryUrl: 'https://example.test/', landedFrom: 'https://example.org/de/' }), false);
+});
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
 process.exit(failed ? 1 : 0);
