@@ -1,12 +1,13 @@
 # The rollout's client contract (coverage/ and workspace/)
 
 Clients (a migration tool that adopts a delivered project) read `stardust/rollout/coverage/` (`pages.json`,
-`templates.json`, `blocks.json`) and `stardust/rollout/workspace/` (`manifest.json`, `judgement.json`); they never
-re-crawl or re-judge. Unchanged inputs give byte-identical coverage. Statuses and lifecycle stay in
+`templates.json`, `blocks.json`) and `stardust/rollout/workspace/` (`manifest.json`, `judgement.json`, `mapping.json`);
+they never re-crawl or re-judge. Unchanged inputs give byte-identical files. Statuses and lifecycle stay in
 `skills/rollout/reference/coverage-model.md`. Schemas (strict: they describe what stardust writes):
-`schemas/rollout-{pages,templates,blocks}.schema.json`, `schemas/rollout-workspace-manifest.schema.json`.
+`schemas/rollout-{pages,templates,blocks}.schema.json`, `schemas/rollout-workspace-manifest.schema.json`,
+`schemas/rollout-workspace-mapping.schema.json`.
 
-**Versioning.** Every coverage file and the manifest carry `formatVersion` (after `_provenance`), now `0.1.0`. Pre-1.0
+**Versioning.** Every coverage file, the manifest and the mapping carry `formatVersion`, now `0.1.0`. Pre-1.0
 a release may still change the shape; from 1.0.0 (declared once a client has shipped against it) a minor only adds
 fields, clients ignore fields they do not know, and removing or renaming a field is a major.
 
@@ -57,32 +58,49 @@ absent (sections live in `delivered.sections`, chrome in the blocks.json chrome 
 |---|---|
 | `_provenance` | `writtenBy` `stardust:rollout/workspace-manifest`, `writtenAt` = pages.json `generatedAt`, `readArtifacts[]`, `stardustVersion` (null in a project copy) |
 | `inputs` | `sha256:` hashes of what coverage was built from: `content {files, sha256, tracked}` and the files `blocks.mjs` read (`judgement.json`, `stardust/eds-conversion-log.md`, each `blocks/<n>/<n>.{js,css}`, when present) |
-| `outputs` | hashes of what a client reads: the three coverage files; a client trusts one only when its hash matches |
+| `outputs` | hashes of what a client reads: the three coverage files and `workspace/mapping.json` when present; a client trusts one only when its hash matches |
 | `placeholders[]` | "(not judged)" summary lines (template names, template descriptions, blocks with base type `unknown`, blocks without purpose or reuse guidance); pages with `delivered: null` |
 | `handover` | null, or `{at, detectedFrom}` (`marker` / `manifest` / `untracked-content`) from the first `--force` run; later forced runs keep it |
 | `degraded` | only once a `--force` run found inputs differing from the manifest's: `{reason, inputs[]}`, accumulated across forced runs |
 
 **Freshness:** the manifest refuses coverage older than its inputs (exit 1, naming what to re-run): a page with a
 content file whose `delivered` is null or whose `contentHash` differs (`inventory.mjs`), or a file in blocks.json
-`_provenance.inputs` (the judgement, conversion log and block JS/CSS `blocks.mjs` read) changed on disk (`blocks.mjs`).
-`--draft-judgement` needs only `formatVersion`. **Judgement:** `templates.<id>.{name, description}` and
+`_provenance.inputs` changed on disk (`blocks.mjs`). **Judgement:** `templates.<id>.{name, description}` and
 `blocks.<name>.{baseType, purpose, reuseGuidance, colorScheme}`; empty = unjudged, non-empty = judged (`reuseGuidance`:
-one non-empty array). `defaults` are suggestions, `toFill` is informational, `colorScheme` is accepted but not prompted
-(not in `toFill`, no placeholder). An unjudged template has no `name`/`description` in coverage; an empty base type
-keeps the coverage default. Clients read judged values only from coverage.
+one non-empty array; the draft's `defaults`, `toFill` and `colorScheme`: `workspace-manifest.mjs --help`). An unjudged
+template has no `name`/`description` in coverage; an empty base type keeps the coverage default. Clients read judged
+values only from coverage.
+
+## mapping — the source side (`workspace/mapping.json`)
+
+Every delivered block instance → the CSS selector of its origin element in the page's captured source DOM
+(`sourceSnapshot`), derived from and verified against the capture as stardust's own HTML parser reads it (no browser:
+no inserted `tbody`). A selector resolves to exactly one element there, or is null; `confidence` (0–1) is the share of
+the block's text the element holds (image `alt` is never block text). Shape: `{formatVersion, generatedAt (pages.json),
+skipped[], templates[{templateId, pages[], sections[], blocks[]}]}`.
+
+| Field | Meaning |
+|---|---|
+| `sections[]` | `{id, selector, pages[], style, blocks[], defaultContent[], confidence}`, aligned across the template's pages by style and block names; `selector` generalises the per-page ones (the lowest common ancestor of the section's records), `pages[]` = the slugs where it resolves; `defaultContent[]` = eds-schema roles, else delivered parts; `confidence` = the lowest over its pages |
+| `blocks[]` | `{block, variant, variantId, section, instances[]}` per block, variant and section; an instance is `{slug, selector, confidence, source, verified}` |
+| `source` | precedence `encoder-map` > `text-alignment` > `position`: the template's encoder map (`--encode`) selecting the instance's element, confidence 1 (with no element for it: confidence 0, its raw selector only when that matches nothing on the page, else null — never another block's element); else the element covering most of the text; else the block's place next to its aligned neighbours inside the aligned section, confidence 0 (image-only blocks) |
+| `verified` | `--verify`: `true` = the selector resolves to exactly one element of the capture (not proof it is the right one), else `false`; `null` = not verified (skipped) |
+| `skipped[]` | `{slug, reason}`: a page not mapped (no delivered structure, content file or indexable capture); `{slug, block, pos, reason}`: a coverage block the delivered document no longer has |
+
+**Rule:** clients read selectors only from mapping.json and only when its sha256 is listed in manifest.json outputs.
 
 ## Identity and what is absent
 
 Clients MUST ignore identity fields (`delivery.deployedUrl`, anything under `rollout.json` `site`) and resolve identity
 from the repository they open. New free-text fields are scrubbed: the project's identity tokens become `<site>`, a
 GitHub repo URL `<repo-url>`, a `<ref>--<repo>--<owner>` EDS host `<host>`, a DA content or admin path `<da-path>`.
-Deliberately absent: screenshots (none are committed) and source selectors (`sourceSnapshot` names the source DOM).
+Deliberately absent: screenshots (none are committed). Source selectors live only in `workspace/mapping.json` (above).
 
 ## How it is produced
 
 Structural fields are always written, by `skills/rollout/scripts/inventory.mjs` (`delivered`, template fields) and
-`skills/rollout/scripts/blocks.mjs` (block fields, judged template values). Only the manifest and the judgement draft
-are opt-in (`rollout.json` `exports: ["migration-workspace"]`, set by a person, a supervising process, or
+`skills/rollout/scripts/blocks.mjs` (block fields, judged template values). Only the manifest, the judgement draft and
+the mapping are opt-in (`rollout.json` `exports: ["migration-workspace"]`, set by a person, a supervising process, or
 `inventory.mjs --export migration-workspace`): Phase I, after `dashboard.mjs`, before the `I-dashboard` end line,
 non-gating (a failure goes into that line's `--detail`, never `blocked`):
 
@@ -91,10 +109,10 @@ node skills/rollout/scripts/inventory.mjs …                            # the P
 node skills/rollout/scripts/blocks.mjs
 node skills/rollout/scripts/workspace-manifest.mjs --draft-judgement   # once; then fill judgement.json
 node skills/rollout/scripts/blocks.mjs                                 # judged values → coverage, template names too
+node skills/rollout/scripts/block-origin.mjs --verify                  # → workspace/mapping.json, source selectors
 node skills/rollout/scripts/workspace-manifest.mjs                     # → workspace/manifest.json
 ```
 
-Exit codes: 0 written or unchanged, 1 coverage missing, without `formatVersion` or stale, 2 usage, 3 handed over (1
-and 3 write nothing). **Handover:** `workspace/handover.json` (`{at, by}`, written by the adopting client, never by
-stardust), a manifest recording a handover, or content once tracked that git no longer tracks → exit 3; `--force`
-writes anyway, with `handover` and `degraded` as above.
+**Handover:** `workspace/handover.json` (`{at, by}`, written by the adopting client, never by stardust), a manifest
+recording a handover, or content once tracked that git no longer tracks → the manifest writes nothing and exits 3;
+`--force` writes anyway, with `handover` and `degraded` as above. Other exit codes: each script's `--help`.

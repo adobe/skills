@@ -578,14 +578,14 @@ node skills/rollout/scripts/inventory.mjs <Phase A flags> && node skills/rollout
 node skills/rollout/scripts/workspace-manifest.mjs --draft-judgement  # once: empty fields to fill
 # fill judgement.json (below), then write the judged names and base types into coverage:
 node skills/rollout/scripts/blocks.mjs
+node skills/rollout/scripts/block-origin.mjs --verify  # → workspace/mapping.json: source selectors
 node skills/rollout/scripts/workspace-manifest.mjs  # → workspace/manifest.json: hashes, handover state
 ```
 
 Fill `stardust/rollout/workspace/judgement.json` in one short pass: per template a name and a
 one-sentence description; per block a base type (`hero`, `cards`, `columns`, … or `unknown`),
 a purpose and reuse guidance. Nothing else is model-authored, and a re-run never asks again.
-`workspace-manifest.mjs` refuses coverage older than content, block code or the judgement
-(exit 1 names what to re-run). The step does not gate completion: a failure goes into the
+The step does not gate completion: a failure (an exit 1 names what to re-run) goes into the
 `I-dashboard` end line's `--detail` and the journal, never `blocked`.
 
 **Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
@@ -614,7 +614,7 @@ exits 0; otherwise it prints one gap per line.
 | `stardust/rollout/rollout.json` | config + `lastRun` summary (schema: `schemas/rollout-config.schema.json`) |
 | `stardust/rollout/site/{sitemap.xml,robots.txt,manifest.json}` | site-level assembly artifacts |
 | `stardust/rollout/dashboard/{index.html,data.json}` | self-contained progress dashboard + snapshot |
-| `stardust/rollout/workspace/{manifest,judgement}.json` | opt-in manifest (hashes, handover state) and judgement (contract: `reference/coverage-contract.md`) |
+| `stardust/rollout/workspace/{manifest,judgement,mapping}.json` | opt-in manifest (hashes, handover state), judgement and source selectors (contract: `reference/coverage-contract.md`) |
 | edits to the **EDS project** (`content/**`, `styles/`) | applied by `autofix-aem` (the only files rollout writes outside `stardust/rollout/`) |
 | the delivered EDS site | produced by `deploy` per page (blocks/, content/, fragments — owned by `deploy`) |
 
@@ -667,6 +667,8 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
 - `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
+- `scripts/block-origin.mjs` — opt-in: delivered block → source selector
+  (`workspace/mapping.json`).
 - `scripts/workspace-manifest.mjs` — opt-in: the manifest (hashes, handover; refuses after
   handover, exit 3) and the judgement draft.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
