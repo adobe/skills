@@ -102,7 +102,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
 // a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
@@ -389,11 +389,32 @@ async function discover(args, page) {
   return withEntry(links);
 }
 
+// One consent table for every instrument: the diff skill's live-session.mjs exports CONSENT_CANDIDATES.
+// Layouts: the plugin tree (skills/extract/scripts ↔ skills/diff/scripts), the project copy
+// (scripts/extract ↔ scripts/diff) and a flat copy (a sibling). Resolved lazily — never on import, on
+// --help or with --no-consent-dismiss — so the pure helpers stay importable without it.
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'];
+let liveSession; // the module promise, once found
+/** live-session's CONSENT_CANDIDATES (the same array object); rejects in one line naming the looked-in paths. */
+export async function consentTable() {
+  if (!liveSession) {
+    const looked = LIVE_SESSION_CANDIDATES.map((p) => path.resolve(path.dirname(SELF), p));
+    const found = looked.find((p) => existsSync(p));
+    if (!found) throw new Error(`live-session.mjs not found (looked in ${looked.join(', ')}) — copy live-session.mjs beside the extract scripts (extract/SKILL.md § Setup)`);
+    liveSession = import(pathToFileURL(found).href).then((m) => {
+      if (!Array.isArray(m.CONSENT_CANDIDATES)) throw new Error(`${found} exports no CONSENT_CANDIDATES — copy live-session.mjs beside the extract scripts again (extract/SKILL.md § Setup)`);
+      return m;
+    });
+  }
+  return (await liveSession).CONSENT_CANDIDATES;
+}
+
 async function dismissConsent(page) {
-  const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
-    'button[id*="accept" i]', 'button[class*="accept" i]'];
+  let table;
+  // No table, no consent pass: stop the crawl (exit 2) rather than capture every page under a banner.
+  try { table = await consentTable(); } catch (e) { console.error(`[crawl] fatal: ${e.message}`); process.exit(2); }
   let matched = false;
-  for (const s of sels) {
+  for (const s of table) {
     const el = await page.$(s);
     if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
@@ -409,7 +430,7 @@ async function dismissConsent(page) {
   }).catch(() => false);
   // Text-match fallback, only when the selector pass matched NOTHING (two field
   // harvests, 2026-08: two different consent widgets — a custom
-  // dialog, cookieconsent's a.cc-btn — were missed by the list above; on
+  // dialog, cookieconsent's a.cc-btn — were missed by the selector table; on
   // one of them the banner baked into the ground-truth screenshot AND repeated at
   // all 7 stitch seams → 32% false pixel diff). Guards keep it from ever
   // hitting an in-content link: exact match on a short consent label (≤25

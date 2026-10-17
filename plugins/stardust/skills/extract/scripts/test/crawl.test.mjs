@@ -4,19 +4,25 @@
 // (same-origin links on the root page under its own path, minus what the crawl captured; query, hash and
 // trailing slash folded; assets, mailto:/tel: and other hosts dropped; www. folded), the ready ledger
 // detail string, both link-list shapes — and that importing the module or asking --help starts no crawl
-// and writes nothing. Run: node <this file>.
+// and writes nothing. One consent table: consentTable() hands back live-session's CONSENT_CANDIDATES (the
+// same array object, resolved in the plugin tree and in both project-copy layouts), crawl.mjs keeps no
+// selector list of its own, and a copy without live-session beside it still imports and answers --help while
+// consentTable() rejects naming the three looked-in paths and the copy step; a stale live-session copy without
+// the export is refused the same way. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { captureGaps, localeRootPath, maxPages } from '../crawl.mjs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { captureGaps, consentTable, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
+const LIVE_SESSION = join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
 // The fixture's links the way the browser hands them to capture(): every a[href], resolved against the page.
 const hrefs = (html, base) => [...html.matchAll(/<a\b[^>]*\bhref=["']([^"']+)["']/gi)].map((m) => { try { return new URL(m[1], base).href; } catch { return null; } }).filter(Boolean);
@@ -79,6 +85,42 @@ check('--help prints the usage header (naming captureGaps) and exits 0 without p
 
 check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
   assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
+});
+
+await checkAsync('consentTable(): live-session\'s CONSENT_CANDIDATES itself (identity, not a copy) — one consent list for every instrument', async () => {
+  const live = await import(pathToFileURL(LIVE_SESSION).href);
+  assert.ok(Array.isArray(live.CONSENT_CANDIDATES) && live.CONSENT_CANDIDATES.length > 0, 'live-session exports a non-empty CONSENT_CANDIDATES');
+  assert.equal(await consentTable(), live.CONSENT_CANDIDATES);
+});
+check('crawl.mjs keeps no consent selector list of its own', () => {
+  const src = readFileSync(SCRIPT, 'utf8');
+  for (const lit of [`'#onetrust-accept-btn-handler'`, `'.truste-button2'`, `'button[id*="accept" i]'`]) assert.ok(!src.includes(lit), `crawl.mjs still carries ${lit}`);
+});
+await checkAsync('project copies: consentTable() resolves live-session beside the extract scripts (scripts/extract ↔ scripts/diff, flat); without it the copy still imports and answers --help, and consentTable() rejects naming the three looked-in paths and the copy step; a stale copy without the export is refused', async () => {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'crawl-consent-'))); // the module URL is the real path
+  try {
+    const want = (await import(pathToFileURL(LIVE_SESSION).href)).CONSENT_CANDIDATES;
+    for (const [crawlRel, liveRel] of [['scripts/extract/crawl.mjs', 'scripts/diff/live-session.mjs'], ['flat/crawl.mjs', 'flat/live-session.mjs']]) {
+      for (const [from, rel] of [[SCRIPT, crawlRel], [LIVE_SESSION, liveRel]]) { mkdirSync(dirname(join(root, rel)), { recursive: true }); copyFileSync(from, join(root, rel)); }
+      const copy = await import(pathToFileURL(join(root, crawlRel)).href);
+      assert.deepEqual(await copy.consentTable(), want, `${crawlRel} reads ${liveRel}`);
+    }
+    const alone = join(root, 'a', 'b', 'extract', 'crawl.mjs');
+    mkdirSync(dirname(alone), { recursive: true }); copyFileSync(SCRIPT, alone);
+    const help = spawnSync(process.execPath, [alone, '--help'], { cwd: root, encoding: 'utf8' });
+    assert.equal(help.status, 0, help.stderr); assert.match(help.stdout, /Usage:/);
+    const copy = await import(pathToFileURL(alone).href);
+    await assert.rejects(copy.consentTable(), (e) => {
+      for (const p of [join(root, 'a', 'diff', 'scripts', 'live-session.mjs'), join(root, 'a', 'b', 'diff', 'live-session.mjs'), join(root, 'a', 'b', 'extract', 'live-session.mjs')]) assert.ok(e.message.includes(p), `names ${p}: ${e.message}`);
+      assert.match(e.message, /copy live-session\.mjs beside the extract scripts \(extract\/SKILL\.md § Setup\)/);
+      assert.equal(e.message.split('\n').length, 1, 'one line');
+      return true;
+    });
+    mkdirSync(join(root, 'stale'), { recursive: true }); copyFileSync(SCRIPT, join(root, 'stale', 'crawl.mjs'));
+    writeFileSync(join(root, 'stale', 'live-session.mjs'), "export const REAL_CHROME_UA = 'x';\n");
+    const stale = await import(pathToFileURL(join(root, 'stale', 'crawl.mjs')).href);
+    await assert.rejects(stale.consentTable(), /stale\/live-session\.mjs exports no CONSENT_CANDIDATES — copy live-session\.mjs beside the extract scripts again \(extract\/SKILL\.md § Setup\)/);
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');
