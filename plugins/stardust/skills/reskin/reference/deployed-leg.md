@@ -49,10 +49,12 @@ A preview is protected when it refuses the first request `preview` makes, which 
 `auth: true`). A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on `preview`, `content`,
 `tokens`, `inherited` and `all`; a value starting with neither `token ` nor `bearer ` gets `token ` put in front. Without
 one, `preview`, `content` and `all` stop with exit 2 (`the preview needs a site token`) rather than poll or crawl the
-source first; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124. A token a public preview never asked for is not sent (`tokenUnused: true`) and changes nothing: `parity`,
-`sanity` and the rest run as on any public preview. The token reaches the preview origin only, child processes by
-environment, and never argv, output, records or the ledger; under `run-bg` use `--token-env` only, as the header value
-would be in the saved command. A sandbox repo's preview is public by default.
+source first; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124. A token a public preview never
+asked for (`tokenUnused: true`) changes no verdict: `parity`, `sanity` and the rest run as on any public preview. `preview`
+sends it only after a refusal, `inherited` only to a protected preview's `.plain.html`, `parity` and `sanity` never;
+`content`, `tokens` and `figma` send it to the preview origin whenever one is given. It reaches that origin only, child
+processes by environment, and never argv, output, records or the ledger; under `run-bg` use `--token-env` only, as the
+header value would be in the saved command. A sandbox repo's preview is public by default.
 
 ## The delta file
 

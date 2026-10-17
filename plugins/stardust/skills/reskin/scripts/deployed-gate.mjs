@@ -57,8 +57,10 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          auth: true; without one it is exit 2 "the preview needs a site token: pass --token-env <NAME>", never polled
          until 124. A 401 or 403 to a request that carried the token is exit 2 at once too ("the preview refused the
          site token (HTTP 401) given by --token-env: it is wrong or expired", the flag named, never its value); a 404 or
-         a page not authored yet still polls. A token the preview never asked for is not sent: preview.json says
-         auth: false, tokenUnused: true.
+         a page not authored yet still polls. This step sends the token only after a refusal, so a preview that never
+         asked for one gets none: preview.json says auth: false, tokenUnused: true. Of the later steps, inherited,
+         parity and sanity send such a preview none; content, tokens and figma send the token they are given, to the
+         preview origin only.
          Then, in a shared repo, the path must be a plain path (no %, \\, ., .. or empty segment) starting
          with /<ns>/, and the head of the delivered page must carry <meta name="nav"> and <meta name="footer">
          naming /<ns>/nav and /<ns>/footer (a full URL on the preview origin is the same path; EDS strips the
@@ -179,7 +181,7 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
          A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without): the
          .plain.html request carries the header to the preview origin only, and nothing else gets it. A record whose
          plain URL is not on the preview origin is exit 2 ("preview.json plain URL is not on the preview origin")
-         before any request. A preview that needs no token is sent none. HTTP 401 or 403 on the .plain.html is exit 2.
+         before any request. A preview that needs no token is sent none by this step. HTTP 401 or 403 on the .plain.html is exit 2.
          Prints "PASS inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
          "ai-readability 97 < 98", the findings below it), one "n/a: <reason> (<rows>)" line per reason and "by
          deploy (<rows>)"; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when

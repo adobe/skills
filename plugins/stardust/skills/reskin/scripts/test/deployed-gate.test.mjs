@@ -501,7 +501,7 @@ await check('--auth-header: the preview refuses the first, anonymous request and
   } finally { await server.close(); }
 });
 
-await check('a token given for a public preview is recorded as unused: auth: false, tokenUnused: true, and it is never sent', async () => {
+await check('a token given for a public preview is recorded as unused: auth: false, tokenUnused: true, and the preview step never sends it', async () => {
   const server = await startPreviewServer();
   try {
     for (const [name, extra, env] of [['unused-header', ['--auth-header', HEADER], {}], ['unused-env', ['--token-env', 'STARDUST_T4_TOKEN'], { STARDUST_T4_TOKEN: TOKEN }]]) {

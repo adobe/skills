@@ -86,9 +86,10 @@ const go = (root, opts = {}) => runContent({ dir: dirOf(root), slug: 'home', pre
 
 // ---- runContent against a stub `run` ----------------------------------------------------------------------------
 
-await check('runContent starts dom-equality, then slot-coverage, beside the CLI with the brief\'s flags; the token goes by environment, an inherited one is replaced, and no argv carries it', async () => {
+await check('runContent starts dom-equality, then slot-coverage, beside the CLI with the brief\'s flags; the token goes by environment (to a public preview too: the record says auth: false), an inherited one is replaced, and no argv carries it', async () => {
   const root = project('stub-args', { normalize: true });
   const preview = previewOf(root);
+  assert.equal(preview.auth, false, 'a public preview: content sends the token it is given all the same');
   const { run: stub, calls } = stubRun();
   const r = await go(root, { auth: HEADER, run: stub, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stale' } });
   assert.equal(calls.length, 2);

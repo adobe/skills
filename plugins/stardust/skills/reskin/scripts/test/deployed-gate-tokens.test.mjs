@@ -171,10 +171,11 @@ process.exit(${exit});
 const PASSING = { pass: true, results: [{ check: 'page bg = rgb(255, 255, 255)', label: 'page bg', status: 'PASS', detail: 'rgb(255, 255, 255)' }] };
 const attempt = async (fn) => { try { return { value: await fn() }; } catch (e) { return { error: e }; } };
 
-await check('runTokens hands donor-probe the spec, the preview URL and --wait-eds; the token goes by environment, never argv', async () => {
+await check('runTokens hands donor-probe the spec, the preview URL and --wait-eds; the token goes by environment (to a public preview too: the record says auth: false), never argv', async () => {
   const root = project('stub-args');
   const dir = join(root, 'stardust');
   const preview = readJson(join(outOf(root), 'preview.json'));
+  assert.equal(preview.auth, false, 'a public preview: tokens sends the token it is given all the same');
   const stub = stubProbe('probe-args', { exit: 0, json: PASSING });
   const r = await runTokens({ dir, slug: 'home', preview, auth: HEADER, donorProbe: stub.file, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stale' } });
   const { argv, token } = stub.seen();

@@ -114,10 +114,11 @@ const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 // checkedAt, problems? }. `plain` is the authored form's URL, `problems` the isolation findings, `originOverride`
 // { env: 'DEPLOY_VERIFY_ORIGIN', origin } the origin that stood in for the branch preview's (absent when none did).
 // `auth` is whether the preview refused a request without the site token (401 or 403): the page is protected and the
-// later steps treat it so. The token goes out only after such a refusal, so the first request of the poll, the
-// authored form's, is the anonymous one; a token the preview never asked for is not sent and the record says
-// `tokenUnused: true`. With no token, a refusal is a setup error (the token is missing), and so is the refusal of a token
-// that was sent (it is wrong or expired); neither is something to poll until 124.
+// later steps treat it so. This step sends the token only after such a refusal, so the first request of the poll, the
+// authored form's, is the anonymous one; for a preview that never asked for one none is sent and the record says
+// `tokenUnused: true` (content, tokens and figma, later steps, send a token they are given regardless). With no token,
+// a refusal is a setup error (the token is missing), and so is the refusal of a token that was sent (it is wrong or
+// expired); neither is something to poll until 124.
 // Skipped (not an aem-boilerplate project) is recorded; a poll that never sees 200 for the authored form and then
 // for the delivered page (whose head says which nav and footer it loads) within maxWaitSec throws an error with
 // code 124 (and .last, the last response) and leaves no record, so no step reads a stale one.

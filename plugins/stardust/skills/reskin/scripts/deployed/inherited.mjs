@@ -13,8 +13,9 @@
 // A protected preview (preview.json says auth: true) needs the site token, and only the .plain.html request carries it, to
 // the preview origin and to no other (a record whose plain URL is elsewhere is a setup error). ai-readability sets its header
 // on the whole browser context, so it would reach every origin the page loads: its row is "n/a: protected preview", as
-// qa-gate's, which carries no site auth. A token the preview does not need is not sent. The token never travels in argv or
-// by environment to an instrument and never appears in a row, a line or a record.
+// qa-gate's, which carries no site auth. This step sends a token the preview does not need to no request and no instrument
+// (content, tokens and figma send theirs wherever one is given). The token never travels in argv or by environment to an
+// instrument and never appears in a row, a line or a record.
 //   plainAsserts(html)  the problems of an authored form, as strings; none is a pass
 //   runInherited({ dir, slug, preview, auth, tools, env })  writes inherited.json ({ verdict, rows }) and returns
 //        { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, value, bar, status: 'PASS' | 'FAIL' |
