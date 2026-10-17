@@ -210,10 +210,12 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
    **`deployed` is on disk and committed before any gate:** each page's
-   `--status deployed` line runs right after its `.plain.html` checks, then
-   `node skills/stardust/scripts/unit-commit.mjs <unit>` (`<unit>`: the recorded
-   unit holding the page, `stardust/rollout/units/<unit>.paths`); the
-   published-origin gate comes after (handoff contract § 3, row C).
+   `--status deployed` line runs right after its `.plain.html` checks, then,
+   inside a C-deliver unit, `node skills/stardust/scripts/unit-commit.mjs <unit>`
+   (`<unit>`: the recorded unit holding the page, `stardust/rollout/units/<unit>.paths`);
+   pages outside any unit (D2-built pages, C0 chrome documents) are recorded and
+   committed at the checkpoint commit. The published-origin gate comes after
+   (handoff contract § 3, row C).
    **Publish in the loop (`PUT → preview → live`), don't stop at preview** — any
    query-index (Phase D2) builds from the **live** tree, so a preview-only delivery
    leaves indexes empty. On failure: `--status failed --error "<reason>"` and

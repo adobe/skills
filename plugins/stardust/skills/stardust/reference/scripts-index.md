@@ -80,7 +80,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
-- `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--content <dir>] [--json]`
+- `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--coverage <json>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units, sidecars, ledger pairs proven — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--site-url <u>] [--state <f>]`

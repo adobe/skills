@@ -984,6 +984,7 @@ The retired `visual-diff` classes are covered elsewhere: stretched images by the
 curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free
 curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
 command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
+# loopback only: the default binds every interface, exposing the tree
 ( cd <prototype-dir> && python3 -m http.server 8791 --bind 127.0.0.1 & )   # only when nothing answered
 # Answers but not your file → a foreign server: never kill a listener you did not
 # start; prefer a per-project port — a stale server from another project makes the

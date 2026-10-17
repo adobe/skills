@@ -21,7 +21,8 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/code/$ORG/$REPO/$BRANCH/*"          # expect 202
 node skills/deploy/scripts/fresh-check.mjs "https://$BRANCH--$REPO--$ORG.aem.page/blocks/<edited-block>/<edited-block>.js" \
   --grep "<a marker string from your edit>" --max-s 180 --every-s 3 \
-  || { echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
+  || { rc=$?; [ "$rc" -eq 3 ] && echo "code sync did not land in 3 min — check the POST above / Code Sync installation" >&2; exit 1; }
+#    exit 3 = still stale at the deadline; any other non-zero (2 = usage) → fresh-check's own stderr names it
 
 # 1. sanitise non-ASCII to entities (in place, idempotent) — DA corrupts raw UTF-8
 node skills/deploy/scripts/sanitise.js content/$P.html
