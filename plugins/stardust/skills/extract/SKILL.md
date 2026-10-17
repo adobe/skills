@@ -295,11 +295,13 @@ round-trips per page family before the switch). Live probes stay
 for what the static DOM cannot answer: geometry and computed
 styles. Referenced media: run
 `node <plugin>/skills/extract/scripts/media-harvest.mjs` after the
-crawl (offline over `pages/*.html`; `--max-bytes <n>` caps video) — every
+crawl (offline over `pages/*.html`; video capped at 50 MiB,
+`--max-bytes <n>` caps every file) — every
 `src`/`srcset`/`data-src*`/poster/CSS `url()` once into
 `stardust/current/assets/media/<base>-<hash8>.<ext>`, plus
 `assets/media-map.json` (source URL → local file + status), the map
-later phases rewrite references with. Re-runs reuse it; never a
+later phases rewrite references with, saved after every file so a
+re-run (after a kill too) reuses every finished entry; never a
 hand-written harvester.
 
 **Live-render evidence (synthesis is forbidden).** Refuse to mark
