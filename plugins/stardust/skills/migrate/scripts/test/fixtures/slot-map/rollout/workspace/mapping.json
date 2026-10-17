@@ -1,0 +1,56 @@
+{
+  "formatVersion": "0.1.0",
+  "generatedAt": "2026-10-01T08:00:00.000Z",
+  "skipped": [],
+  "templates": [
+    {
+      "blocks": [
+        {
+          "block": "hero",
+          "instances": [
+            { "confidence": 0.857, "pos": 0, "selector": "div.hero-banner", "slug": "trips", "source": "text-alignment", "verified": true }
+          ],
+          "positions": [0],
+          "section": "s1",
+          "variant": null,
+          "variantId": "v_0a1b2c3d4e5f"
+        },
+        {
+          "block": "promo",
+          "instances": [
+            { "confidence": 1, "pos": 1, "selector": "div.promo", "slug": "trips", "source": "text-alignment", "verified": false },
+            { "confidence": 0, "pos": 2, "selector": null, "slug": "trips", "source": "position", "verified": null }
+          ],
+          "positions": [1, 2],
+          "section": "s2",
+          "variant": null,
+          "variantId": "v_1a2b3c4d5e6f"
+        }
+      ],
+      "pages": ["trips"],
+      "sections": [
+        { "blocks": ["hero"], "confidence": 0.857, "defaultContent": [], "id": "s1", "pages": ["trips"], "selector": "div.hero-banner", "style": null },
+        { "blocks": ["promo"], "confidence": 1, "defaultContent": [], "id": "s2", "pages": [], "selector": "div.promo", "style": "highlight" },
+        { "blocks": [], "confidence": 1, "defaultContent": ["text"], "id": "s3", "pages": ["trips"], "selector": "div.article", "style": null }
+      ],
+      "templateId": "trip"
+    },
+    {
+      "blocks": [
+        {
+          "block": "hero",
+          "instances": [
+            { "confidence": 1, "pos": 0, "selector": "main", "slug": "elsewhere", "source": "encoder-map", "verified": true }
+          ],
+          "positions": [0],
+          "section": "s1",
+          "variant": null,
+          "variantId": "v_0a1b2c3d4e5f"
+        }
+      ],
+      "pages": ["elsewhere"],
+      "sections": [],
+      "templateId": "other"
+    }
+  ]
+}
