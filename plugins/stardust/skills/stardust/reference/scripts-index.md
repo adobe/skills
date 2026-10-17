@@ -54,10 +54,10 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2] [--strip <out.png>]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation, sha256 manifest — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed (roster: rollout coverage, else state.json) or `--stage prototype`; reuses unchanged rows — `[--coverage <f>] [--only <s,…>] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL, INCONCLUSIVE or refused start
-- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--check] [--dry-run]`
-- `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
-- `replica/gate.sh` — one gate round (both sides settled) + overflow assert + probes (`--full`: + diff probes); overlay left = exit 1 — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>]`
+- `replica/gate-all.mjs` — pixel tables, deployed (roster: rollout coverage, else state.json) or `--stage prototype`; reuses unchanged rows — `[--coverage <f>] [--only <s,…>] [--max-rounds 3] [--round-reset "<reason>"] [--skip-existing] [--recapture-eds] [--eds-host <h>] [--no-probes] [--origin-max-age <h>] [--one-load]`; exit 2 = FAIL, INCONCLUSIVE or refused start
+- `replica/gate-evidence.mjs` — sidecar gates from pixel tables + run-bg jobs — `[--slug <s>]… [--content <dir>] [--tables <dir>] [--height-tolerance <frac|px>] [--check] [--dry-run]`
+- `replica/gate-triage.mjs` — failing rows by shared cause + re-gate scope, rounds n/max — `[--gate <dir>]… [--unit <u>] [--no-parity] [--dry-run]`
+- `replica/gate.sh` — one gate round (both sides settled) + overflow assert + probes (`--full`: + diff probes, bounded under run-bg); overlay left = exit 1 — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text] [--all]`
 - `replica/json-query.mjs` — bounded view of JSON — `<f.json> [--path <p>] [--keys] [--match k=re] [--fields a,b]`
 - `replica/measure.mjs` — rects, computed values, scrollWidth, renditions — `<url> --selectors "a,b" [--against <url>] [--width 1440,360]`
@@ -65,7 +65,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `replica/motion-observe.mjs` — observe motion — `<url> <out.json> [--click <sel>]… [--hover <sel>]…`
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
-- `replica/run-bg.mjs` — background jobs, bounded wait — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
+- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110]`; `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
@@ -89,7 +89,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Ask `--help` only for 
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
-- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
+- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
