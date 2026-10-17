@@ -4,8 +4,8 @@
 // search link, a search button) and a footer (link columns with headings, a legal line with links, social icon links,
 // a newsletter form); entities (a prototype-key name stays literal); the empty-list nav; column-only nav items, with and
 // without their own label; a Back or Close control at the top of a panel stays a skipped control, while a dropdown
-// wrapper holding its own trigger keeps that label; a label heads every column after the list it heads; the CLI
-// (written, unchanged, --check, --prefix, a missing source).
+// wrapper holding its own trigger keeps that label; the item's own label heads every column after its list, a mega
+// menu's inner heading never does; the CLI (written, unchanged, --check, --prefix, a missing source).
 // Run: node plugins/stardust/skills/deploy/scripts/test/chrome-docs.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -407,6 +407,39 @@ check('nav: a label heads every column after the list it heads — a dropdown wr
           </ul>
         </li>
       </ul>`);
+});
+check('nav: a mega menu whose first column is an inner heading over its own list keeps the three columns after it siblings — none nests under that heading', () => {
+  const COL_T = '<div class="col"><h3>Tools</h3><ul><li><a href="/t1">T1</a></li></ul></div>';
+  const r = navFor(`<li><a href="/products">Products</a><div class="mega"><h3>Featured</h3><ul><li><a href="/f1">F1</a></li></ul>${COL_W}${COL_G}${COL_T}</div></li>`);
+  assert.equal(sectionsOf(r.doc)[1], `      <ul>
+        <li><a href="/products">Products</a>
+          <ul>
+            <li>Featured
+              <ul>
+                <li><a href="/f1">F1</a></li>
+              </ul>
+            </li>
+            <li>Widgets
+              <ul>
+                <li><a href="/w1">W1</a></li>
+              </ul>
+            </li>
+            <li>Gadgets
+              <ul>
+                <li><a href="/g1">G1</a></li>
+              </ul>
+            </li>
+            <li>Tools
+              <ul>
+                <li><a href="/t1">T1</a></li>
+              </ul>
+            </li>
+          </ul>
+        </li>
+      </ul>`);
+  assert.deepEqual(r.counts, { brand: 1, links: 5, tools: 0, skipped: 0 });
+  const wrapped = `<li><a href="/products">Products</a><div class="mega"><h3>Featured</h3><div><ul><li><a href="/f1">F1</a></li></ul></div>${COL_W}${COL_G}${COL_T}</div></li>`;
+  assert.equal(navOf(wrapped), sectionsOf(r.doc)[1]);
 });
 check('entities: a name that is an Object.prototype key stays literal text; a tag of that name parses', () => {
   assert.equal(decode('&constructor; &toString; &valueOf; &hasOwnProperty; &amp;'), '&constructor; &toString; &valueOf; &hasOwnProperty; &');

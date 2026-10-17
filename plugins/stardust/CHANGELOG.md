@@ -64,10 +64,11 @@ title was expanded; and every probe screenshot was written at full resolution, t
     names the path, else the local fallback), `hidden <n>` counts an element once, and an `--sbs` output that is the
     `--shot` file is written beside it as `<name>-sbs`.
   - chrome-docs nests a list item made only of nav columns under the item's own label, never its first column
-    heading (without a label, the columns' entries stand at that level); a label that heads a list also heads every
-    column right after it (a dropdown's own link over two columns keeps both); a Back or Close control at the top of a
-    panel is skipped, a dropdown wrapper's own trigger keeps its label. Its entity and implied-tag maps have no
-    prototype, so `&constructor;` stays literal.
+    heading (without a label, the columns' entries stand at that level); the item's own link or toggle button also
+    heads every column after the list it heads (a dropdown's own link over two columns keeps both), while a heading
+    inside a mega menu under the item's label heads only its own list, bare or wrapped, and the columns after it stay
+    siblings; a Back or Close control at the top of a panel is skipped, a dropdown wrapper's own trigger keeps its
+    label. Its entity and implied-tag maps have no prototype, so `&constructor;` stays literal.
   - media-harvest caps video at 50 MiB without `--max-bytes` (which caps every file); an over-cap file is recorded
     `too-large`, never written. `media-map.json` is saved after every finished download, so a killed run keeps every
     finished entry; an unchanged re-run leaves it byte-identical.
