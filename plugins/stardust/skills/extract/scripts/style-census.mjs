@@ -32,7 +32,8 @@
  *     --out <file>         output (default stardust/current/_computed-styles.json)
  *     --width <px>         viewport width; repeatable or comma-separated (default 1440)
  *     --concurrency <n>    parallel browser contexts (default 1 — one live page at a time; raise
- *                          it only on an origin known to have no bot management)
+ *                          it only on an origin known to have no bot management). A measurement that
+ *                          times out above 1 drops the rest of the roster to 1 (one WARNING line)
  *     --max-pages <n>      cap the page list (default: every page — the census is site-wide)
  *     --timeout-ms <ms>    per-page navigation timeout (default: max(env STARDUST_NAV_TIMEOUT_MS,
  *                          2 × crawl.navMs.p95 from stardust/current/_crawl-log.json) clamped to
@@ -67,7 +68,8 @@
  * Writes (nothing else):
  *   <out>   { _provenance: { writtenBy, writtenAt, readArtifacts[], widths[], synthesizedInputs: [],
  *                            failed[] ({ url, width, error }), timedOut[] ({ url, width, deadlineMs }),
- *                            pageTimeoutMs, complete },
+ *                            pageTimeoutMs, concurrency: { requested, final, fellBackAfter?: { url,
+ *                            width } }, complete },
  *             pages: { [url]: { [width]: { headings[], text[], buttons[], links[], surfaces[],
  *                                          radii[], shadows[], gradients[], bgColors[], textColors[],
  *                                          borderColors[], customProps, fonts[], logoCandidates[],
@@ -79,9 +81,9 @@
  *           roster order (records carried from outside it after, sorted), widths ascending; failed[]
  *           and timedOut[] the roster order.
  *
- * Output: one progress line per measurement on stderr (OK / FAIL / TIMEOUT); the summary on stdout
- * (`style-census: N pages × W widths → <out>`, plus the failure count and the timed-out
- * `<url> @<w>` list when any).
+ * Output: one progress line per measurement on stderr (OK / FAIL / TIMEOUT; once, a WARNING when a
+ * timeout drops the pass to concurrency 1); the summary on stdout (`style-census: N pages × W
+ * widths → <out>`, plus the failure count and the timed-out `<url> @<w>` list when any).
  * Exit codes: 0 at least one measurement in <out> (this run's or one carried by --resume; partial
  * evidence is evidence — failed and timed-out ones are listed under _provenance.failed[] /
  * timedOut[]); 2 usage error (an <out> --resume cannot read as a census file included), playwright
@@ -566,13 +568,17 @@ async function main(argv) {
   const pageMs = resolvePageTimeoutMs(o.pageTimeout, o.timeoutMs);
   const outcomes = new Array(roster.length);
   let challenge = null;
+  // The effective concurrency: drops to 1 for the rest of the roster once a measurement times out above it (a
+  // stuck page under parallel load is the run to stop parallelising); workers ≥ it stop after their current job.
+  let effective = Math.min(o.concurrency, Math.max(1, todo.length));
+  let fellBackAfter = null;
   // The whole file, rewritten after every measurement (atomic: a temp file renamed over <out>; synchronous, so two
   // workers never interleave a write) — a killed pass keeps everything it measured.
   let outDirMade = false;
   const write = (complete) => {
     const s = assembleCensus(roster, outcomes, carried);
     const doc = {
-      _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed: s.failed, timedOut: s.timedOut, pageTimeoutMs: pageMs, complete },
+      _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed: s.failed, timedOut: s.timedOut, pageTimeoutMs: pageMs, concurrency: { requested: o.concurrency, final: effective, ...(fellBackAfter ? { fellBackAfter } : {}) }, complete },
       pages: s.pages,
       aggregate: s.measured ? aggregate(s.pages) : null,
     };
@@ -594,40 +600,48 @@ async function main(argv) {
     local: await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common }),
   });
   const closeContexts = (c) => Promise.all([c.live.close().catch(() => {}), c.local.close().catch(() => {})]);
-  async function worker() {
+  async function worker(index) {
     // The worker's two contexts, as a promise. After a timed-out measurement they are dropped (a wedged page or
     // context must not stall the next job) and the next job opens fresh ones inside its own deadline.
     let ctx = Promise.resolve(await openContexts());
     const fresh = () => { const p = openContexts(); p.catch(() => { if (ctx === p) ctx = null; }); return p; };
     try {
-      while (!challenge && next < todo.length) {
+      while (!challenge && index < effective && next < todo.length) {
         const { i, url, width } = todo[next];
         next += 1;
         const t0 = Date.now();
         const job = { page: null, abandoned: false };
         const contexts = ctx || (ctx = fresh());
+        let rec;
         try {
-          const rec = await raceDeadline(contexts.then((c) => measure(c, url, width, o, session, job)), pageMs);
-          if (rec === TIMED_OUT) {
-            job.abandoned = true;
-            outcomes[i] = { deadlineMs: pageMs };
-            console.error(`[style-census] TIMEOUT ${url} @${width}  page deadline ${pageMs / 1000} s exceeded — recorded timed_out, continuing`);
-            write(false);
-            if (job.page) await settledWithin(job.page.close(), CLOSE_WAIT_MS);
-            const stale = ctx;
-            ctx = null;
-            if (stale) await settledWithin(stale.then(closeContexts), CLOSE_WAIT_MS);
-            continue;
-          }
-          outcomes[i] = { rec };
-          console.error(`[style-census] OK   ${url} @${width}  headings=${rec.headings.length} text=${rec.text.length} buttons=${rec.buttons.length} bg=${rec.bgColors.length} radii=${rec.radii.length}${rec.occluders.length ? ` occluders=${rec.occluders.length}` : ''}${rec.consent.dismissed ? ` consent="${rec.consent.dismissed}"` : ''}  ${Date.now() - t0}ms`);
+          rec = await raceDeadline(contexts.then((c) => measure(c, url, width, o, session, job)), pageMs);
         } catch (e) {
           outcomes[i] = { error: String(e.message || e).split('\n')[0].slice(0, 200) };
           console.error(`[style-census] FAIL ${url} @${width}  ${outcomes[i].error}`);
           // A bot challenge stops the pass: every further hit spends the origin's block budget, and
           // an interstitial must never be censused as the site. Partial evidence is still written.
           if (e.name === 'BotChallengeError' && !challenge) challenge = e;
+          write(false);
+          continue;
         }
+        if (rec === TIMED_OUT) {
+          job.abandoned = true;
+          outcomes[i] = { deadlineMs: pageMs };
+          console.error(`[style-census] TIMEOUT ${url} @${width}  page deadline ${pageMs / 1000} s exceeded — recorded timed_out, continuing`);
+          if (effective > 1) {
+            console.error(`[style-census] WARNING ${url} @${width} timed out at concurrency ${effective} — finishing the remaining ${todo.length - next} measurements at concurrency 1`);
+            effective = 1;
+            fellBackAfter = { url, width };
+          }
+          write(false);
+          if (job.page) await settledWithin(job.page.close(), CLOSE_WAIT_MS);
+          const stale = ctx;
+          ctx = null;
+          if (stale) await settledWithin(stale.then(closeContexts), CLOSE_WAIT_MS);
+          continue;
+        }
+        outcomes[i] = { rec };
+        console.error(`[style-census] OK   ${url} @${width}  headings=${rec.headings.length} text=${rec.text.length} buttons=${rec.buttons.length} bg=${rec.bgColors.length} radii=${rec.radii.length}${rec.occluders.length ? ` occluders=${rec.occluders.length}` : ''}${rec.consent.dismissed ? ` consent="${rec.consent.dismissed}"` : ''}  ${Date.now() - t0}ms`);
         write(false);
       }
     } finally {
@@ -636,7 +650,7 @@ async function main(argv) {
   }
   if (browser) {
     try {
-      await Promise.all(Array.from({ length: Math.min(o.concurrency, todo.length) }, worker));
+      await Promise.all(Array.from({ length: Math.min(o.concurrency, todo.length) }, (_, index) => worker(index)));
     } catch (e) {
       await closeBrowser(browser);
       throw e;

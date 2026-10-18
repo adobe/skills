@@ -7,8 +7,9 @@
 // not a census file — no browser. Part (b): end-to-end against a fixture site served from this process
 // (two pages, known colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page
 // for the shared navigation timeout — --timeout-ms bounds it; env STARDUST_NAV_TIMEOUT_MS alone is a floor; a page
-// that never settles — recorded timed_out at its page deadline, the census continues, exit 2 when nothing was
-// measured; a pass killed mid-run leaves a valid file that --resume continues), and a project copy whose
+// that never settles — recorded timed_out at its page deadline, the census continues (at concurrency 1 once one
+// timed out at more), exit 2 when nothing was measured; a pass killed mid-run leaves a valid file that --resume
+// continues), and a project copy whose
 // live-session.mjs predates the shared consent table refused — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -186,7 +187,7 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
-  assert.match(h.out, /--page-timeout <s> /); assert.match(h.out, /timedOut\[\]/); assert.match(h.out, /--resume /); assert.match(h.out, /rewritten after every\s+measurement/);
+  assert.match(h.out, /--page-timeout <s> /); assert.match(h.out, /timedOut\[\]/); assert.match(h.out, /--resume /); assert.match(h.out, /rewritten after every\s+measurement/); assert.match(h.out, /fellBackAfter/);
   assert.match(h.out, /--timeout-ms <ms> .*\(default: max\(env STARDUST_NAV_TIMEOUT_MS,\s+2 × crawl\.navMs\.p95 from stardust\/current\/_crawl-log\.json\) clamped to\s+20000–180000, else 20000; the flag always wins\)/, 'the floor precedence on the --timeout-ms line');
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
@@ -244,6 +245,7 @@ if (playwrightOk) {
     assert.equal(r.code, 0, r.err); assert.match(r.out, /^style-census: 2 pages × 2 widths → .*_computed-styles\.json\n$/); assert.match(r.err, /\[style-census\] OK {3}http:\/\/127\.0\.0\.1:\d+\/ @1440 /);
     doc = JSON.parse(readFileSync(outFile, 'utf8'));
     assert.equal(doc._provenance.writtenBy, 'stardust:extract'); assert.deepEqual(doc._provenance.widths, [1440, 360]); assert.deepEqual(doc._provenance.failed, []); assert.deepEqual(doc._provenance.synthesizedInputs, []); assert.equal(doc._provenance.readArtifacts.length, 2);
+    assert.deepEqual(doc._provenance.concurrency, { requested: 1, final: 1 }); assert.doesNotMatch(r.err, /WARNING/);
   });
   const home = () => doc.pages[`${origin}/`]['1440'];
   const about = () => doc.pages[`${origin}/about`]['1440'];
@@ -324,23 +326,39 @@ if (playwrightOk) {
     return { killed, left, resumed };
   };
   const t0 = Date.now();
-  const [hangMix, hangOnly, kr] = await Promise.all([
+  const [hangMix, hangOnly, kr, hangPair] = await Promise.all([
     runAsync(['--urls', `${origin}/,${origin}/hang,${origin}/about`, '--out', join(root, 'hang-mix.json'), '--concurrency', '2', '--page-timeout', '10', '--timeout-ms', '60000']),
     runAsync(['--urls', `${origin}/hang`, '--out', join(root, 'hang-only.json'), '--page-timeout', '3', '--timeout-ms', '60000']),
     killAndResume(),
+    // both workers start on /hang (two widths) and both time out: one fallback, two `/` jobs left for worker 0
+    runAsync(['--urls', `${origin}/hang,${origin}/`, '--width', '1440,360', '--out', join(root, 'hang-pair.json'), '--concurrency', '2', '--page-timeout', '6', '--timeout-ms', '60000']),
   ]);
   const hangWall = Date.now() - t0;
-  await check('e2e page deadline: a page that never settles is recorded timed_out (one TIMEOUT line, the summary lists it, _provenance.timedOut names it) and the census continues — exit 0 with the other pages measured, well inside the navigation timeout', () => {
+  await check('e2e page deadline: a page that never settles is recorded timed_out (one TIMEOUT line, the summary lists it, _provenance.timedOut names it) and the census continues at concurrency 1 (one WARNING line) — exit 0 with the other pages measured, well inside the navigation timeout', () => {
     assert.equal(hangMix.code, 0, hangMix.err); assert.ok(hangWall < 45000, `${hangWall} ms`);
     assert.equal(hangMix.err.match(/\[style-census\] TIMEOUT /g).length, 1, hangMix.err);
     assert.match(hangMix.err, /\[style-census\] TIMEOUT http:\/\/127\.0\.0\.1:\d+\/hang @1440 {2}page deadline 10 s exceeded — recorded timed_out, continuing/);
+    assert.equal(hangMix.err.match(/\[style-census\] WARNING /g).length, 1, hangMix.err);
+    assert.match(hangMix.err, /\[style-census\] WARNING http:\/\/127\.0\.0\.1:\d+\/hang @1440 timed out at concurrency 2 — finishing the remaining \d+ measurements at concurrency 1\n/);
     assert.match(hangMix.out, /^style-census: 2 pages × 1 widths → .*hang-mix\.json — 1 timed out \(page deadline 10 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440\n$/);
     const d = JSON.parse(readFileSync(join(root, 'hang-mix.json'), 'utf8'));
     assert.deepEqual(Object.keys(d.pages), [`${origin}/`, `${origin}/about`]); assert.ok(d.pages[`${origin}/about`]['1440'].headings.length);
     assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 10000 }]); assert.deepEqual(d._provenance.failed, []); assert.equal(d._provenance.pageTimeoutMs, 10000); assert.equal(d._provenance.complete, true);
+    assert.deepEqual(d._provenance.concurrency, { requested: 2, final: 1, fellBackAfter: { url: `${origin}/hang`, width: 1440 } });
+  });
+  await check('e2e concurrency fallback: both workers time out — ONE WARNING (the remaining 2 measurements), both timeouts recorded in roster order, the rest measured at concurrency 1, exit 0', () => {
+    assert.equal(hangPair.code, 0, hangPair.err);
+    assert.equal(hangPair.err.match(/\[style-census\] TIMEOUT /g).length, 2, hangPair.err);
+    assert.equal(hangPair.err.match(/\[style-census\] WARNING /g).length, 1, hangPair.err);
+    assert.match(hangPair.err, /\[style-census\] WARNING http:\/\/127\.0\.0\.1:\d+\/hang @(1440|360) timed out at concurrency 2 — finishing the remaining 2 measurements at concurrency 1\n/);
+    assert.match(hangPair.out, /— 2 timed out \(page deadline 6 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440, http:\/\/127\.0\.0\.1:\d+\/hang @360\n$/);
+    const d = JSON.parse(readFileSync(join(root, 'hang-pair.json'), 'utf8'));
+    assert.deepEqual(Object.keys(d.pages[`${origin}/`]), ['360', '1440']);
+    assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 6000 }, { url: `${origin}/hang`, width: 360, deadlineMs: 6000 }]);
+    assert.equal(d._provenance.concurrency.final, 1); assert.equal(d._provenance.concurrency.fellBackAfter.url, `${origin}/hang`);
   });
   await check('e2e page deadline: no measurement succeeded (the only page timed out) → exit 2 saying so, aggregate null, timedOut lists it', () => {
-    assert.equal(hangOnly.code, 2, hangOnly.err); assert.match(hangOnly.err, /no measurement succeeded — 0 failed, 1 timed out/);
+    assert.equal(hangOnly.code, 2, hangOnly.err); assert.match(hangOnly.err, /no measurement succeeded — 0 failed, 1 timed out/); assert.doesNotMatch(hangOnly.err, /WARNING/, 'no fallback at concurrency 1');
     assert.match(hangOnly.out, /^style-census: 0 pages × 1 widths → .* — 1 timed out \(page deadline 3 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440\n$/);
     const d = JSON.parse(readFileSync(join(root, 'hang-only.json'), 'utf8'));
     assert.equal(d.aggregate, null); assert.deepEqual(d.pages, {}); assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 3000 }]); assert.equal(d._provenance.complete, true);
