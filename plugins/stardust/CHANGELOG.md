@@ -4,162 +4,46 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.0 — reskin checks a page against its Figma donor and on its aem.page preview: section join, geometry, type ramp, frame pixels, divergence register; content, tokens, parity, sanity and deploy's gates
+## 0.34.0 — reskin checks a page against its Figma donor and on its aem.page preview
 
-A Figma-donor reskin used to stop at the token probe: nothing compared the rendered page with the frames it was built
-from. The new `reskin/figma-gate.mjs` does, offline (no token, no network), from the capture `figma-donor.mjs` made. B0
-joins the page's top-level `section[data-slot]` elements to `mapping.md` and the curated modules. B1 measures geometry
-against Figma nodes or tokens. B3 asserts the generated `:root` block and each text style's computed size, weight, line
-height, letter spacing, family and color. B2 compares each section with its slice of the frame image through replica's
-`pixel-compare`, advisory, and only where the frame's copy is the section's copy. B4 writes a divergence register in six
-classes: mandated (every entry passes, every text style is covered, no waiver, and the results are of this checks file),
-waived, unmandated, out-of-kit, conflict, pre-existing. The agent authors `reskin/figma-checks/<slug>.json` from
-`figma-gate.mjs boxes` outlines; an entry's selector resolves inside its section (`:scope` is the section, a comma list
-is scoped branch by branch, a branch that would leave it, `:scope + p`, is exit 2). `all` runs under `run-bg`, exits
-0 / 1 / 2 / 3 / 124 and writes a `ledgerFragment` for `ledger.json` `pages.<slug>.gates.figma`. Phase 5 gains **(d) Figma
-fidelity**, with its own fix iteration; B0, B1 and B3 block, B2 is advisory, B4 informational. The instruments are
-reused, not rebuilt: `diff`'s `measure-live` and replica's `pixel-compare`, `run-capped` and `run-bg`, so Setup step 3
-now copies all of `skills/diff/scripts/` and those three, and step 2 installs `pixelmatch` and `pngjs` with `playwright`
-(`npm i -D … --legacy-peer-deps`, never `--no-save`).
+A Figma-donor reskin stopped at the token probe: nothing compared the page with its frames. The new `reskin/figma-gate.mjs`
+does, offline, from the capture `figma-donor.mjs` made. B0 joins the page's top-level `section[data-slot]`s to `mapping.md`,
+B1 measures geometry, B3 the generated `:root` block and each text style, B2 compares frame pixels (advisory, only where
+the frame's copy is the section's copy) and B4 writes a divergence register. The agent authors
+`reskin/figma-checks/<slug>.json` from `boxes` outlines; the coverage floor comes from Figma, so a file cannot cover only
+what the page got right (every text style of each checked root, a mobile root at the variant's own width; only a `waive`
+or `skip` with a `why` lowers it, a miss is exit 2). B0, B1 and B3 block. Phase 5 gains **(d)**, and Phase 4 renders every
+slot as `section[data-slot][data-module]` and emits `render/root-tokens.mjs`'s `:root` block first.
 
-Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the local
-reskin page and the donor, on its `<branch>--<repo>--<org>.aem.page` preview, for any donor. `preview` finds the preview
-and refuses a page that touches shared documents. `content` runs `dom-equality` and `slot-coverage` on it. `tokens`
-asserts the donor tokens on the EDS DOM through `donor-probe`, `layout.sectionPaddingY` as the top and bottom padding of
-every non-empty `main > .section` (±16px; a value that is not a px length is exit 2). `parity` runs replica's stitched
-pixel, crop, `chrome-parity` and `cap-probe` instruments (pixels ≤ 10%, height ≤ 5%, crops ≤ 2%, caps ±20px); a header
-or footer the preview renders at a width and the reskin page does not is left out of the preview's capture
-(`stitch-shot --hide`, which removes the matches from layout), so the pixel and height rows compare `main` to `main` and
-say what was excluded. `sanity` holds the hard asserts: overflow ≤ 4px at 1440 and 360, a settled decoration, no broken
-images or page errors, `clip-probe` and `content-presence` 0; no delta file and no residual waives it. `inherited` runs
-`deploy`'s `.plain.html` asserts, `ai-readability` ≥ 98 and `qa-gate`. `all` runs them in turn, then `figma-gate all
---target preview` when the page has Figma checks, prints one verdict line per step for `run-bg`, exits 0 / 1 / 2 / 3 /
-124 and writes a `ledgerFragment` for `ledger.json` `pages.<slug>.gates.deployed`. The record says when
-`DEPLOY_VERIFY_ORIGIN` stood in for the branch preview (`originOverride`, in `preview.json`, the summary and the
-fragment), and its `invocation` redacts `--auth-header` but keeps `--token-env`'s variable name, so the line can be run
-again. The leg runs only in an aem-boilerplate project and is otherwise skipped, with the reason recorded. Phase 5 gains
-**(e) Deployed acceptance** and Phase 6's "ship via deploy, unchanged" becomes a pointer to it;
-`reference/deployed-leg.md` holds the recipe, the delta file, the ledger shape and the fix budget (one reconcile round
-per family, a re-run matrix per fix type), `gates.md` § (e) the bars. Setup step 3 also copies replica's `stitch-shot`,
-`crop-compare`, `chrome-parity` and `cap-probe` and deploy's `eds-path`, `qa-gate`, `ai-readability` and `site-auth`.
+Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the reskin
+page and the donor on its `aem.page` preview, any donor, in an aem-boilerplate project: `preview` (isolation: `--namespace
+<ns>` in a shared repo, `--sandbox` in one's own), `content` (through a declared delta file, `reskin/deltas/<slug>.json`),
+`tokens`, `parity`, `sanity` (hard), `inherited` (`.plain.html`, `ai-readability`, `qa-gate`; a missing `qa-gate` input is a
+FAIL, never `n/a`) and `figma-gate --target preview`. It replaces only `deploy` Step 10's automated reconcile: the
+deployed eyeball, the delayed-font/nav CLS probe and the header-behavior checks stay mandatory before handoff, recorded in
+the ledger. Phase 5 gains **(e)**; recipe, delta file and fix budget are in `reference/deployed-leg.md`, the bars in
+`gates.md`.
 
-- **The coverage floor.** Left to the agent that rendered the page, the checks file scoped itself: a blind run read
-  geometry 41/41, ramp 291/291 and every section `mandated`, with the mobile variants never checked. The floor now comes
-  from Figma. At every width a section is checked at, each text style of that root (first family, size, weight, line
-  height and letter spacing to 0.1px, colour) needs a `type` entry whose node has it. A module frame that holds a mobile
-  variant (a component or instance named mobile, 320 to 480 wide) needs a root up to 480 wide that is one of them (the
-  desktop root's own set when the frame holds several), keyed at the variant's own width, and some root above 480. Every
-  root is the module frame or an outermost component or instance in it, at least half as wide as the width it is
-  checked at, and holds a text style. Only `waive: [{ node | width: "mobile" | "desktop", why }]` or a section `skip`
-  lowers it (a container waiver drops its subtree). A miss is exit 2, every one listed, and in `floor-problems.txt`,
-  the error's last line. The register shows each waiver as a `waived` row with what it drops, and the ledger fragment
-  gains `coverage` (`text styles 76/78 · widths 414,1440 · waived 2`). A preview run keeps its files in `figma-preview/`
-  beside `figma/`; `boxes` TEXT lines print colour and letter spacing.
+Every step measures a protected preview with the site token, or stops with exit 2; nothing reports `n/a`. The token goes
+to one origin, fails closed, is never printed or recorded and never crosses a redirect.
 
-- **The `:root` block (D10).** `reskin/render/root-tokens.mjs` renders the token-contract block from `donor-tokens.json`,
-  plus `--type-*` names for per-module text styles. Renderers emit it first in the first `<style>` and style through
-  `var(--…)`; names the donor lacks are left out and go to the page's `flags[]`. Phase 4 also renders every `mapped` or
-  `new-module` slot as one top-level `<section data-slot data-module>`, which the join reads, and `mapping.md` needs the
-  table form of the entry schema.
-- **`donor-probe` options.** Spec entries may name a custom property (`--name`), compared whitespace-collapsed, and
-  `compare: "firstFamily"` and `"match": "all"` (assert every element the selector matches, not the first; a failure
-  names each failing match); `--viewport <w>`, `--no-sanity` and `--json <path>` let `figma-gate` run it per width and
-  read the results. A value flag no longer swallows a following `--flag`.
-- **Declared deltas.** `dom-equality` and `slot-coverage` take `--deltas <json>` (`reskin/deltas/<slug>.json`): literal text
-  replacements with a why each (applied to slot text and CTA text alike), `images: "count+alt+width"`,
-  `links.localize.sourceHost`, `metadata` (`ignore`, `jsonLd`,
-  `absent`) and `blocking: false` for an advisory run. Applied entries are reported, an entry that matched nothing
-  warns, and nothing changes without the flag. Images are attributed to slots positionally, so a move across a slot
-  boundary and an equal-alt replacement go undetected.
-- **EDS settle and site auth on the reskin gates.** `dom-equality`, `slot-coverage` and `donor-probe` take `--wait-eds`
-  (`networkidle`, `body.appear`, every `[data-section-status]` and `[data-block-status]` `loaded`; on by default for an
-  EDS host), `--eds-timeout` (20 s: a stall exits 2 and measures nothing) and `--auth-header` / `--token-env`, sent to
-  the rendered origin only, handed to child processes by environment and never printed or recorded. All three now
-  answer `--help` with nothing beside them.
-- **Isolation.** DA content is not branch-scoped: a branch preview that writes `/nav` rewrites it for every branch. In a
-  shared repo `preview` requires `--namespace <ns>`: the page's path under `/<ns>/` and, in the delivered head,
-  `<meta name="nav">` and `<meta name="footer">` (EDS's form of the metadata rows) naming `/<ns>/nav` and `/<ns>/footer`,
-  plain paths only. `--sandbox` waives both and is recorded.
-- **Protected previews.** Every `deployed-gate` step measures a protected preview with the site token, or stops with
-  exit 2 without one: nothing reports `n/a: protected preview`. `preview` sends the token only after the preview refuses
-  an anonymous request; a refusal of the token it sent (`preview`, `parity` and `sanity`) is exit 2 at once, naming the
-  flag (never the variable or the value), not a poll to 124. The instruments `stitch-shot`, `chrome-parity`,
-  `cap-probe`, `clip-probe`, `content-presence`, `qa-gate` and `ai-readability` take opt-in site auth:
-  `--token-env <NAME>` (a variable, else a `NAME=` line of `./.env`), `--auth-header "<value>"` (a value with neither a
-  `token ` nor a `bearer ` prefix gets `token `) and `--auth-origin <url>`. Without a flag nothing is sent, whatever
-  `SITE_TOKEN` holds. The token goes to one origin, `--auth-origin` or the measured URL's (two origins without it is exit
-  2, so the local reskin page never gets it), and never to a font or image host. It fails closed: a request to that
-  origin that fails is aborted, never retried without the header. A redirect off that origin is followed without the
-  token; one on it fails (measure the final URL): the token never crosses a redirect. `deployed-gate` hands each child
-  the flag and the value by environment, never argv, and redacts what it prints and writes. `diff/live-session.mjs`
-  holds the algorithm and deploy's own `site-auth.mjs` a copy (deploy does not import diff).
-  `deploy-batch --site-token-env <NAME>` sends the site token on its delivered `.plain.html` check only, never to DA
-  or the admin API, and never records it.
-- **`deploy`'s scripts on a reskin page.** `qa-gate` finds a repeat group's block by the section's order among the
-  non-chrome sections, not its name: `section-schema` names every reskin section `m`, so every group resolved to the
-  first. `build-harness` creates its output directory (the skill's own example path is absent in a fresh project).
-- **Figma checks on a preview.** `figma-gate … --target preview --reskin <file>` joins each slot to the preview's
-  `.plain.html`, then to the decorated page's `main > div:nth-child(k)` (decoration can prepend or drop a section; a
-  moved slot gets a note); checks-file entries may carry `previewSelector` for blocks that rebuild the markup. Its
-  fragment goes to `pages.<slug>.gates.deployed.figma`.
-- **Field run, a component kit.** The home page from 0.33.0's run, moved to the Phase 4 conventions, with twelve type
-  roles for the module text styles and the kit's mobile values (curations from its type and width tables). The join
-  passed once a Donor module cell may name the module after its id (`M3 (Card Row)`). Counts below are failing
-  entries over entries checked. First run: geometry 22/28, ramp 70/247 with every `:root` token passing; B3 named the
-  card-title size (48px against the kit's 24px) behind 0.33.0's 33px overflow at 360px. After one fix iteration (the
-  renderer through the new roles, the kit's gaps and paddings): geometry 2/28, ramp 8/257 (colours only: module
-  variants and two blues outside the palette), no overflow at 360px, content gates still byte-equal. That iteration
-  broke the donor-probe container check, which one more design-adoption iteration fixed. The first `boxes` on the
-  219 MB capture took 1.2 s and 1.3 GB peak; later steps read the 25 MB box cache for the roots they name, while
-  `boxes --node` on an id outside those roots re-parses the capture. The kit's module frames are documentation frames (title block,
-  notation panels, three widths): checks name the desktop instance and set `width`, or the page opens at the frame's
-  width. Pixel was n/a throughout (the kit's copy is not the page's), as designed.
-- **Field run, a page-design file.** The frame's own copy, hand-mapped and rendered with the donor tokens: join PASS,
-  failing geometry 1/22, ramp 1/107. Every section was pixel n/a until a frame PNG within 1px of its fractional box fit.
-  With no font served, text sections read 0.2–6.5% and raster grounds with a flat stand-in 44–96%; serving the body
-  font brought two text sections to 4.8% and 3.3%. One auto-layout grid had grown past its stored box, so its slice was
-  1486px short. B2 stays advisory: served fonts and raster assets, not the renderer, decided its numbers. No ±1px
-  false FAIL from `measure-live`'s whole-pixel rounding across 50 geometry entries, fractional Figma widths included.
-  The served-font line now works: `document.fonts.check()` answers true for any family no `@font-face` declares.
-- **Field run, the deployed leg on a protected preview.** The component kit's home page, deployed preview-only to a
-  sandbox repo with site authentication on: the foundation and 4 blocks in one commit, Code Sync served on the first
-  poll, 12 images rehosted and one 44 KB SVG rasterized (over the preview's ~40 KB SVG limit). The delta file held 2 text
-  entries (visually-hidden hints DA content cannot carry), `images: "count+alt+width"`, metadata `ignore` 5 / `absent` 4
-  and `jsonLd: "ignore"`. The text closed exactly, and once `slot-coverage` applied the entries to CTA text the page ran
-  `"blocking": true`, content 37/37. Protected, `all` took 41 s and could not measure `parity`, `sanity`, `qa-gate` and
-  `ai-readability` (the instruments' site auth, above, now does). The same preview through a token-injecting proxy
-  (`DEPLOY_VERIFY_ORIGIN`) gave the public measurement: `all` 196 s, under `run-bg`'s 900 s default. Parity first read 13.05% at 1440 and 19.02% at 360 (FAIL): the site's default
-  header and footer shifted the page, and at 360 its fixed mobile header was captured once per stitched slice; with them
-  left out, 8.98% and 0.29% (PASS). `qa-gate` gave 4 false unit FAILs; by order, 30 ok / 0 fail. Figma on the preview
-  reproduced the local numbers exactly (geometry failing 2/28 → 1/28 after one round, ramp 8/257 colours); B2 was n/a in
-  all 7 sections (the kit's frames carry placeholder copy) and stays advisory. `main > .section` padding equalled the
-  token, 64px, on every section at 1440 and 360, so `tokens` asserts it: 96/96. The one Figma-family round found block
-  CSS that had copied a renderer column collision from the reskin page; reverting to the Figma split was served 6 s after
-  Code Sync, and parity's main-to-main number moved 0.04% → 8.98% (the reskin page still has the collision), inside the
-  bar. Recipe lessons are in `reference/deployed-leg.md`: `--site-token-env` on a protected preview, a served check
-  with the token out of argv, one `--map <block>=section[data-slot=sNN],…` per block for `block-roundtrip` on a reskin page,
-  `:root` font tokens verbatim with the fallback stack in its own custom property. Not fixed: `deploy`'s editability
-  probe buttonizes bare links regardless of the runtime contract (false edit-mode drift on plain links and `tel:`
-  links), and the delivered head carried no `nav` or `footer` metas (`--sandbox` waives them; a `--namespace` run needs
-  `deploy` to author them).
-- **Blind end-to-end runs.** Two fresh agents, given one sentence and the plugin path, took the component kit and its
-  home page to a protected preview. Run #1 (M2 as first built) took 44 min with 0 blockers: geometry 41/41, ramp
-  291/291, register mandated 7 of 7, and an audit with a floor from Figma failed 19 assertions it never made. `parity`
-  and `sanity` read `n/a` while a proxy found the deployed hero at 21.05% off at 360. That drove M2c: the floor refuses
-  the same file with 12 problems; completed, ramp FAIL 32/549 and mandated 0 · waived 2 · unmandated 32; measured
-  directly (244.5 s), the protected preview gave parity FAIL at 360 and sanity 10/10, and Figma named the cause
-  (56/64.4 against 40/46). Run #2 (M2c) took 60 min with 0 blockers: ramp PASS 547/547 at widths 414 and 1440,
-  coverage 78/80 with 2 waivers, register mandated 6 · waived 2; on the protected preview, measured directly, parity
-  0.05% at 1440 and 0.19% at 360 and sanity PASS (hard); 21 doc and script problems, 10 cost time. Fixed from them: a
-  JSON-LD `<script>` in `main` became a slot (`capture-content` skips script, style, noscript and template children,
-  and the JSON-LD still reaches `metadata.jsonLd`), the floor's list was cut off by `run-bg wait`, `all` left per-width
-  ramp files of an earlier run, and the docs lacked the mobile root's width key, the `--type-<kebab>-*` names, the
-  mode for a site's own repo and chrome (`--sandbox`) and where a non-text delta's why goes.
-- **Migration.** An M2-era checks file now exits 2 under the floor: add entries or waivers. A standalone
-  `figma-gate register` needs the checks file and `donor-tokens.json` (it re-validates the floor) and reads
-  `figma-preview/` only with `--target preview`. `deploy-batch`'s `.env` reader takes only `NAME=value` (a trailing
-  `# comment` is now part of the value and fails as a 401). `ai-readability --token-env` with an unset variable is exit
-  2 instead of a tokenless run.
+- **Instruments.** `stitch-shot --hide`; `stitch-shot`, `chrome-parity`, `cap-probe`, `clip-probe`, `content-presence`,
+  `qa-gate` and `ai-readability` take `--token-env`, `--auth-header`, `--auth-origin` (`diff/live-session.mjs`; deploy's
+  `site-auth.mjs`); `deploy-batch --site-token-env`; `donor-probe` `match: "all"` and `--wait-eds`; `dom-equality` and
+  `slot-coverage` `--deltas`; `capture-content` skips script, style, noscript and template children; `qa-gate` finds a
+  repeat group's block by order, not name; `build-harness` creates its output directory. Setup installs `pixelmatch` and
+  `pngjs` and copies more scripts (`reference/gates.md` § Project copies).
+- **Honest coverage.** `parity` compares main to main and says what it left out; an unserved font is recorded, never a
+  failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
+  assessed" (`register.unassessable`), neither a class nor a PASS.
+- **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
+  checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`. `deploy-batch`'s `.env`
+  reader takes only `NAME=value` (a trailing `# comment` is part of the value and fails as a 401). `ai-readability
+  --token-env` with an unset variable is exit 2. A redirect inside a protected origin now fails: measure the final URL.
+- **Field.** Two blind runs took a component kit's home page to a protected preview with 0 blockers (44 and 60 min). The
+  first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
+  floor and protected measurement. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
+  0.05% at 1440 and 0.19% at 360, sanity PASS.
 
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation
 
