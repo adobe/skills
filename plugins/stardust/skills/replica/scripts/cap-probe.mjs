@@ -509,7 +509,8 @@ async function main(argv) {
   let auth;
   try { auth = session.instrumentAuth({ tokenEnv: o.tokenEnv, authHeader: o.authHeader, authOrigin: o.authOrigin, urls: o.against ? [o.urls[0], o.against] : o.urls }); } catch (e) { throw e.code === 2 ? new UsageError(e.message) : e; }
   let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
+  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let result; let code = 0;
   try {
