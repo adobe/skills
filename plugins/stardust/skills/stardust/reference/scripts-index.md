@@ -79,7 +79,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
 - `replica/presence.mjs` — site-wide hide list + capture settings `stardust/replica/presence.json` — `add [--hide <sel,…>] [--dismiss <sel,…>] [--pin <sel> --state <l>] [--allow clip|per-visitor-dialog=<sel>] [--slug <s>] [--reason <R-nn>] [--verify <url>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS); `suggest <url>` (candidates)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
-- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max 300|--until <ISO>] [--all]` (bare: your own jobs; 76 = pause; tool timeout > wait); `log <j>`
+- `replica/run-bg.mjs` — background jobs, bounded wait, sets STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max 300|--until <ISO>] [--all]` (bare = yours; 76 pause, 77 wake; tool timeout > wait); `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline; a miss retries by words — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`; exit 2 = no match, outline on stdout
 - `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`; advice: variant class (few differ) or re-type (most)
@@ -126,7 +126,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `stardust/browser-lock.mjs` — machine-wide browser slots — `acquire|status|release|reap`; 124 = no slot
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
-- `stardust/progress.mjs` — unit ledger rollout/migrate/replica, locked — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>|--waves]`; `wait [--unit <n>]… [--max 300]` (0 = one ended; 76 = pause)
+- `stardust/progress.mjs` — unit ledger rollout/migrate/replica, locked — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>|--waves]`; `wait [--unit <n>]… [--max 300]` (0 ended, 76 pause, 77 wake)
 - `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `exclude <slug…> --reason "<r>" [--url <u>]`; `summary [--slugs]`
 - `stardust/token-ledger.mjs` — usage per phase/unit, advisory; run it LAST (handoff end), idempotent, stamps `writtenAt` + `sessionsCovered`; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping by path, under a lock — `<unit> [--code blocks/<name>]… [--push] [--wait-s 120]`; exit 2 = refused or failed, nothing half-done; `--push` returns under 240 s
