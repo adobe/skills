@@ -19,10 +19,12 @@ a sibling run fixed its findings in code instead. Touches #132 (the header contr
   reason, by: "agent", at }`, one exact key per entry, a reason of at least 40 characters naming the evidence;
   chrome-compare counts it as decided and lists it for the owner's review. In an attended run the owner rule stays.
 - **chrome-compare:** `--state <file>` (default `stardust/state.json`); an agent entry that is attended, a prefix*
-  key, another decision or a reason under 40 characters is ignored and reported (`decision-invalid`, naming why); a
-  site owner's entry wins over the agent's for the same key. The verdict gains `handsOff`, `counts.decidedByAgent`
+  key, another decision or a reason under 40 characters is ignored and reported (`decision-invalid`, naming why); an
+  agent word anywhere in `by` ("subagent", "the agent", a bot) signs as the agent, never as the owner; a bare `*` key
+  clears nothing for anyone; a site owner's entry wins over the agent's for the same key. The verdict gains `handsOff`, `counts.decidedByAgent`
   and `decidedByAgent[]` (`{ key, decision, reason, at }`); the printed report a `🔵 decided by the agent:` line per
-  entry and `(n by the agent, hands-off — for the owner's review)` on the counts line (attended output unchanged).
+  entry and `(n by the agent, hands-off — for the owner's review)` on the counts line (attended: the counts line is
+  unchanged; the warning for an ignored agent entry now names the attended rule).
 - **`chrome-compare.mjs decide <key> --decision <d> --reason "<r>"`** turns a proposal into a decision: the
   agent-signed entry, written atomically; the same entry again changes nothing, a changed decision or reason
   replaces it, a site owner's entry is kept; refused in an attended run (exit 3, the owner sentence), usage exit 1.

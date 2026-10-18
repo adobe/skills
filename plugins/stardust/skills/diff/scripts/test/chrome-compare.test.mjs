@@ -15,7 +15,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DECISION_RULE, applyDecisions, compareDocs, compareHide, findingKey, hideOffset, pairControls, visualFindings } from '../chrome-compare.mjs';
+import { DECISION_RULE, applyDecisions, compareDocs, compareHide, decideEntry, findingKey, hideOffset, pairControls, visualFindings } from '../chrome-compare.mjs';
 
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -111,6 +111,26 @@ check('hands-off: a site owner\'s entry for the same finding wins over the agent
   const owner = { finding: KEY, decision: 'fix-later', reason: 'search is rebuilt next quarter', by: 'Site owner', at: '2026-10-18' };
   const out = applyDecisions(errs(), [agentEntry(), owner], { handsOff: true });
   assert.deepEqual(out[0].decided, { decision: 'fix-later', by: 'Site owner', at: '2026-10-18', reason: 'search is rebuilt next quarter' });
+});
+check('an agent named anywhere in `by` ("subagent", "the agent", " Agent", "migration bot", "AI") is the agent, never the owner', () => {
+  for (const by of ['subagent', 'the agent', ' Agent', 'migration bot', 'AI', 'LLM', 'model']) {
+    const wild = applyDecisions(errs(), [{ finding: 'state-missing*', decision: 'accept', by, at: 'x' }], { handsOff: true });
+    assert.equal(wild[0].decided, undefined, `${by}: a prefix* from an agent clears nothing`);
+    assert.equal(applyDecisions(errs(), [agentEntry({ by })], { handsOff: true })[0].decided.agent, true, by);
+    assert.equal(applyDecisions(errs(), [agentEntry({ by })])[0].decided, undefined, `${by}: attended`);
+  }
+  assert.equal(applyDecisions(errs(), [agentEntry({ by: 'Site owner (marketing lead)' })])[0].decided.agent, undefined, 'an owner stays an owner');
+});
+check('a bare "*" key clears nothing for anyone (ignored and reported)', () => {
+  const out = applyDecisions(errs(), [{ finding: '*', decision: 'accepted', by: 'Site owner', at: '2026-10-18' }]);
+  assert.ok(out.every((f) => !f.decided));
+  assert.match(out.find((x) => x.id === 'decision-invalid').detail, /^ignored: \* — /);
+});
+check('decideEntry: an earlier entry signed "subagent" is the agent\'s — replaced, not kept as the owner\'s', () => {
+  const doc = { decisions: [{ finding: KEY, decision: 'accept', reason: REASON, by: 'subagent', at: '2026-10-17' }] };
+  const { doc: next, status } = decideEntry(doc, { finding: KEY, decision: 'artefact', reason: REASON, at: '2026-10-18' });
+  assert.equal(status, 'replaced');
+  assert.deepEqual(next.decisions, [{ finding: KEY, decision: 'artefact', reason: REASON, by: 'agent', at: '2026-10-18' }]);
 });
 
 const hid = (d, list) => ({ ...structuredClone(d), hide: { list, presence: null, perWidth: {} } });

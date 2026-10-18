@@ -20,7 +20,8 @@
  * (`handsOff` false or absent) only the site owner clears a finding (`by`, `at`); an agent-signed entry is ignored
  * and reported.
  * The owner's entry ({ finding: "<key or prefix*>", decision, reason, by, at }) wins over the agent's for the same key;
- * an entry without `by`/`at` is ignored and reported too.
+ * an agent word anywhere in `by` (subagent, the agent, a bot) makes it the agent's; an entry without `by`/`at`, or a
+ * bare `*` key, is ignored and reported too.
  *
  * Usage: node skills/diff/scripts/chrome-compare.mjs <source.json> <build.json> [options]
  *   --profile replica|functional   default replica
@@ -63,6 +64,10 @@ import { effectiveHide, hideArgs, normName } from './chrome-explore.mjs';
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
 const AGENT = /^(agent|assistant|stardust|claude|codex|bot|auto)/i;
+
+// an agent word anywhere in `by` ("subagent", "the agent", "migration bot") signs as the agent, never as the owner
+const AGENT_WORD = /\b(sub-?)?agents?\b|\bassistants?\b|\bai\b|\bllms?\b|\bmodels?\b|\bbots?\b|\bstardust\b/i;
+const isAgent = (by) => AGENT.test(String(by).trim()) || AGENT_WORD.test(String(by));
 
 export const DECISIONS = ['accept', 'fix-later', 'artefact'];
 export const MIN_REASON = 40;
@@ -253,7 +258,8 @@ export function applyDecisions(findings, decisions = [], { handsOff = false } = 
   const ignore = (d, why) => out.push({ width: 0, path: '(decisions)', id: 'decision-invalid', severity: 'warn', detail: `ignored: ${d && d.finding ? d.finding : '(no finding)'} — ${why}` });
   for (const d of decisions) {
     if (!d || !d.finding || !d.by || !d.at) { ignore(d, 'a decision needs the site owner\'s `by` and `at`'); continue; }
-    if (!AGENT.test(String(d.by))) { owner.push(d); continue; }
+    if (String(d.finding).trim() === '*') { ignore(d, 'a bare `*` would clear every finding — name a key (or, the owner, a prefix*)'); continue; }
+    if (!isAgent(d.by)) { owner.push(d); continue; }
     const why = agentDecisionInvalid(d, { handsOff });
     if (why) ignore(d, why); else agent.push(d);
   }
@@ -273,9 +279,9 @@ export function applyDecisions(findings, decisions = [], { handsOff = false } = 
  * kept and nothing is added. Pure. */
 export function decideEntry(doc, { finding, decision, reason, at }) {
   const decisions = Array.isArray(doc && doc.decisions) ? doc.decisions : [];
-  if (decisions.some((d) => d && d.finding === finding && d.by && d.at && !AGENT.test(String(d.by)))) return { doc, status: 'owner' };
+  if (decisions.some((d) => d && d.finding === finding && d.by && d.at && !isAgent(d.by))) return { doc, status: 'owner' };
   const entry = { finding, decision, reason, by: 'agent', at };
-  const i = decisions.findIndex((d) => d && d.finding === finding && AGENT.test(String(d.by || '')));
+  const i = decisions.findIndex((d) => d && d.finding === finding && d.by && isAgent(d.by));
   if (i < 0) return { doc: { ...doc, decisions: [...decisions, entry] }, status: 'recorded' };
   if (decisions[i].decision === decision && decisions[i].reason === reason) return { doc, status: 'unchanged' };
   return { doc: { ...doc, decisions: decisions.map((d, j) => (j === i ? entry : d)) }, status: 'replaced' };
