@@ -323,7 +323,8 @@ $P unit start archetype-product --kind archetype --templates product
 $P wait          # --max 300 (240 under a five-minute cache); by exit code:
 #  0   a unit flipped its own end ("progress rollout archetype-product: done …") → its § 5 steps
 #      (unit-commit.mjs <unit> commits the flip), then the two lines below
-#  75  nothing ended within --max → a unit `running` past its deadline whose agent returned:
+#  75  nothing ended within --max → a unit `running` past its deadline whose agent returned
+#      (its line in `stardust/.labs/wake`, or the harness's agent status):
 #      $P unit failed <unit> --verdict "no end by its deadline: <reason>"; wait again
 #  76  the pause file → start nothing new, let running units return, ask the boundary
 #  77  a background agent finished (the wake line) → show --waves: its unit flipped → as 0; already
