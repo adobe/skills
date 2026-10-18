@@ -125,7 +125,13 @@ if (playwrightOk) {
     checks.sections.s01.type = checks.sections.s01.type.filter((e) => e.node !== '1:6');
     writeFileSync(file, JSON.stringify(checks));
     await assert.rejects(prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) }), (e) => e.name === 'UsageError' && e.code === 2
-      && e.message.includes('reskin/figma-checks/home.json has 1 problem(s):\n  s01 @1440: text style 18/400/28 #1a1a1a ("A calm, readable starti…", node 1:6) has no type entry or waiver'));
+      && e.message.includes('reskin/figma-checks/home.json has 1 problem(s):\n  s01 @1440: text style 18/400/28 #1a1a1a ("A calm, readable starti…", node 1:6) has no type entry or waiver')
+      && e.message.endsWith(`\nfull list: ${join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'floor-problems.txt')}`));
+    const list = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma', 'floor-problems.txt');
+    assert.equal(readFileSync(list, 'utf8'), 's01 @1440: text style 18/400/28 #1a1a1a ("A calm, readable starti…", node 1:6) has no type entry or waiver; name the desktop instance in "node"\n', 'every problem, one per line, beside the evidence of the regime');
+    writeFileSync(file, JSON.stringify({ ...checks, sections: { ...checks.sections, s01: { ...checks.sections.s01, waive: [{ node: '1:6', why: 'lead copy is long-form' }] } } }));
+    await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) });
+    assert.ok(!existsSync(list), 'a valid checks file removes the stale list');
   });
 
   await check('on a local page previewSelector is not used: the entry is measured by its selector', async () => {

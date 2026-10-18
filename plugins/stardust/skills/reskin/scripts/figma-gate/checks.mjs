@@ -6,13 +6,14 @@
 // that documents a mobile variant needs a mobile root, and only a waiver (node or width "mobile", with a why)
 // or a skip lowers it; validateChecks returns the per-section coverage that floor left.
 // Pure: boxes come from loadBoxes/buildBoxes (rootsNamed lists the roots to load), no I/O here.
-import { findBox } from './boxes.mjs';
+import { findBox, hexOf, round1 } from './boxes.mjs';
 
 export const MEASURES = ['width', 'left', 'right', 'top', 'height', 'gapX', 'gapY', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'];
 const CONTENT_DEPENDENT = new Set(['top', 'height']);
 const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft: 3 };
 const PIXEL_MODES = ['auto', 'fixture', 'off'];
 const PX = /^-?\d+(\.\d+)?px$/;
+const MAX_VARIANTS_SHOWN = 6;
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (v) => typeof v === 'string' && v.trim() !== '';
@@ -97,21 +98,12 @@ export function rootsNamed(checks, join) {
 
 const tokenValue = (tokens, path) => path.split('.').reduce((v, k) => (isObject(v) ? v[k] : undefined), tokens);
 
-const round1 = (n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
-const RGB = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
-
-// A box's colour (rgb()/rgba() css or hex) as lower-case hex; an alpha below 1 is a fourth byte.
-function hexOf(css) {
-  const m = RGB.exec(String(css ?? '').trim());
-  if (!m) return String(css ?? '').trim().toLowerCase();
-  const byte = (n) => Math.min(255, Number(n)).toString(16).padStart(2, '0');
-  return `#${byte(m[1])}${byte(m[2])}${byte(m[3])}${m[4] !== undefined && Number(m[4]) < 1 ? byte(Math.round(Number(m[4]) * 255)) : ''}`;
-}
-
 // The text style of a TEXT box's `text`, as one key: first font family, size, weight, line height and letter
 // spacing to 0.1px, colour. The six things ramp.mjs asserts (it asserts them exactly, so equal keys are one check).
 export const styleKey = (t) => [String(t.fontFamily ?? '').split(',')[0].trim(), t.fontSize, t.fontWeight, round1(t.lineHeightPx), round1(t.letterSpacing), hexOf(t.color)].map((v) => v ?? '').join('|');
-const styleLabel = (t) => `${[t.fontSize, t.fontWeight, round1(t.lineHeightPx)].map((v) => v ?? '?').join('/')}${t.color ? ` ${hexOf(t.color)}` : ''}`;
+// size/weight/line height, then the letter spacing when it is not 0 and the colour: two styles that differ only in those
+// two never print the same label.
+const styleLabel = (t) => `${[t.fontSize, t.fontWeight, round1(t.lineHeightPx)].map((v) => v ?? '?').join('/')}${round1(t.letterSpacing) ? ` ls ${round1(t.letterSpacing)}` : ''}${t.color ? ` ${hexOf(t.color)}` : ''}`;
 const sampleOf = (characters) => {
   const s = String(characters ?? '').replace(/\s+/g, ' ').trim();
   return s.length > 24 ? `${s.slice(0, 23)}…` : s;
@@ -140,17 +132,29 @@ export function textStyles(rootBox, waived = []) {
 }
 
 // The mobile variants a joined module frame documents: a COMPONENT or INSTANCE named for mobile, 320 to 480 wide
-// (narrower is an icon or a swatch, not a page).
+// (narrower is an icon or a swatch, not a page), each with the parent it sits in (its component set or group).
 export function mobileVariants(moduleBox) {
   const found = [];
   const walk = (b) => {
     for (const c of b.children) {
-      if ((c.type === 'COMPONENT' || c.type === 'INSTANCE') && /\bmobile\b/i.test(c.name) && c.w >= 320 && c.w <= 480) found.push({ id: c.id, name: c.name, w: c.w });
+      if ((c.type === 'COMPONENT' || c.type === 'INSTANCE') && /\bmobile\b/i.test(c.name) && c.w >= 320 && c.w <= 480) found.push({ id: c.id, name: c.name, w: c.w, parent: { id: b.id, name: b.name } });
       walk(c);
     }
   };
   walk(moduleBox);
   return found;
+}
+
+// The mobile variants a desktop root may be paired with: those in the same parent as it (the same component set or
+// variant group) when the module frame holds several sets, else, when the box tree cannot tell them apart (the root is
+// the frame itself, or sits in a parent that holds no variant), every one. → { list, apart, total }: apart says the sets
+// were told apart, total how many variants the frame holds.
+export function mobileCandidates(moduleBox, desktopBox) {
+  const variants = mobileVariants(moduleBox);
+  const parentOf = (b, id) => b.children.reduce((hit, c) => hit ?? (c.id === id ? b.id : parentOf(c, id)), null);
+  const parent = desktopBox ? parentOf(moduleBox, desktopBox.id) : null;
+  const same = parent ? variants.filter((v) => v.parent.id === parent) : [];
+  return { list: same.length ? same : variants, apart: same.length > 0, total: variants.length };
 }
 
 // A section's waive list, as { node, why } or { width: 'mobile', why } entries; every malformed entry is a problem.
@@ -360,20 +364,24 @@ export function validateChecks(checks, { join, boxes, tokens }) {
       if (!skipped && moduleHasText && textStyles(box, waivedIds).size === 0) refuse('holds no text style to check (after waivers) and the module frame has some');
     }
     if (!skipped) {
-      const variants = frame ? mobileVariants(frame) : [];
       const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
+      const desktopNode = roots[width] && Number(width) > 480 ? roots[width] : Object.entries(roots).find(([w]) => Number(w) > 480)?.[1];
+      const { list: variants, apart, total } = frame ? mobileCandidates(frame, desktopNode ? rootBox(desktopNode) : null) : { list: [], apart: true, total: 0 };
+      // With several variants in the frame a name alone does not say which: the id and the parent's name do.
+      const which = (v) => (total > 1 ? `, ${v.id}, in ${v.parent.name}` : '');
       if (!waive.some((w) => w.width === 'desktop') && mobile.length === Object.keys(roots).length) {
         problems.push(`${slot}: no root is checked wider than 480 (${Object.keys(roots).join(', ')}) and no { width: "desktop" } waiver`);
       }
       if (variants.length && !waive.some((w) => w.width === 'mobile') && !mobile.some(([, node]) => variants.some((v) => v.id === node))) {
+        const shown = variants.slice(0, MAX_VARIANTS_SHOWN);
+        const more = variants.length > shown.length ? `; +${variants.length - shown.length} more` : '';
         if (!mobile.length) {
-          const [first] = variants;
-          const more = variants.length > 1 ? `; +${variants.length - 1} more` : '';
-          problems.push(`${slot}: module has a mobile variant (${first.name}, ${first.w} wide${more}) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver${hint}`);
+          const names = shown.map((v) => `${v.name}, ${v.w} wide${which(v)}`).join('; ');
+          problems.push(`${slot}: module has a mobile variant (${names}${more}) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver${hint}`);
         } else {
           const roles = mobile.map(([w, node]) => `roots[${w}] (${rootBox(node).name})`).join(', ');
-          const list = variants.map((v) => `${v.name} (${v.w} wide, ${v.id})`).join('; ');
-          problems.push(`${slot}: ${roles} is not one of the module's mobile variants (${list}) and no { width: "mobile" } waiver${hint}`);
+          const list = shown.map((v) => `${v.name} (${v.w} wide, ${v.id}${total > 1 ? `, in ${v.parent.name}` : ''})`).join('; ');
+          problems.push(`${slot}: ${roles} is not one of the ${apart && variants.length < total ? 'desktop root\'s own' : "module's"} mobile variants (${list}${more}) and no { width: "mobile" } waiver${hint}`);
         }
       }
     }

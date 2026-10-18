@@ -19,7 +19,7 @@
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup · 3 bot challenge on a live target
 // · 124 no verdict (a step crashed or timed out: re-run, never a fix iteration).
-import { existsSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -46,7 +46,8 @@ boxes    the Figma box trees of the modules curation-rules.json includes. Reads 
          that cache, even after nodes.json is gone. A box is { id, name, type, x, y, w, h, layout,
          text, fill, fillKind, children }: x and y are relative to the root, layout is
          { mode, padding [t, r, b, l], gap } on an auto-layout frame, hidden layers are dropped.
-         --module Mn   print that module's outline (id, type, name, x,y, w×h, layout, text)
+         --module Mn   print that module's outline (id, type, name, x,y, w×h, layout; a TEXT node: family, weight,
+                       size/line height, ls <letter spacing>, colour, text: the styles the coverage floor keys by)
          --node <id>   print the outline of any captured node id, nested I…;… ids included
          --depth <n>   outline depth, 0 = the root only (default 3)
          neither       build the cache for every included module and print "<Mn> <frame id> <w>×<h>"
@@ -142,8 +143,9 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          "register written: mandated 1 · waived 0 · unmandated 1 · …" and the register.md path; exit 0.
 all      The whole run: join, geometry, ramp, pixel, register. The page is joined and the checks file
          validated once, and every step works from that result. First it deletes the previous geometry.json,
-         ramp.json, pixel.json, register.json, register.md and summary.json of its own regime's directory, so a drifted or crashed run never
-         feeds stale files to the register or the summary. A join drift ends in exit 1 with geometry, ramp
+         ramp.json, pixel.json, register.json, register.md, summary.json, floor-problems.txt and the per-width
+         ramp files (ramp-spec.<w>.json, ramp.<w>.md, ramp.<w>.json) of its own regime's directory, so a drifted
+         or crashed run never feeds stale files to the register or the summary. A join drift ends in exit 1 with geometry, ramp
          and pixel "not run: section drift" (the register still runs, with nothing mandated and "join drift"
          under Not run). A step that throws anything but a usage error or a bot challenge is "CRASH: <message>" (exit 124);
          a usage error (a missing input, an invalid checks file) stops the run with exit 2. Prints one
@@ -203,14 +205,17 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   gapX and gapY take exactly two nodes; token is a path in donor-tokens.json holding one px value.
   top and height are content-dependent: they need tolerancePx and why. tolerancePx above 1 needs why.
   A padding measure needs an auto-layout node; a type node must be TEXT; every node sits inside the root
-  of its width. fixture needs fixtureUrl, off needs why. Every problem is listed at once (exit 2).
+  of its width. fixture needs fixtureUrl, off needs why. Every problem is listed at once (exit 2) and also written, one
+  per line, to floor-problems.txt beside the step files; the error ends with its path (run-bg wait shows the last lines).
   Coverage floor, computed from Figma (not from this file): at every width a section is checked at (its root and each
   roots entry), every text style of that root (first font family, size, weight, line height and letter spacing to
   0.1px, colour) needs a type entry at that width whose node has the style. Every root (node, each roots entry) is the
   module frame itself or an outermost component or instance inside it (no instance between it and the frame; never a
   TEXT node, a plain frame or a node of another module), at least half as wide as the width it is checked at, and holds
   a text style unless the module frame has none. A module frame that holds a mobile variant (a component or instance
-  named "mobile", 320 to 480 wide) needs a roots entry up to 480 wide that is one of those variants, and some root is
+  named "mobile", 320 to 480 wide) needs a roots entry up to 480 wide that is one of those variants (the desktop
+  root's own set, when the frame holds several), keyed at the variant's own width (its box's w: "414", not a phone
+  width such as 360: geometry and type would be held to a width the variant was not drawn at), and some root is
   checked wider than 480. waive is the only way below the floor, and needs a why: { node } on a frame drops that subtree
   (a documentation panel, notation text), on a TEXT node waives that style; { width: "mobile" } waives the mobile root,
   { width: "desktop" } the root above 480. A module frame that is itself the root holds its documentation frames and
@@ -423,7 +428,7 @@ async function registerStep({ dir, opts, log, UsageError, ready: given }) {
   }
   const inputs = readInputs(dir, opts.page, ['mapping', 'ledger', 'checks', 'donorTokens']);
   // The waivers and coverage of the checks file as it stands; a drifted join has no sections to check.
-  const prepared = joinResult.pass === false ? null : given && !given.drift ? given : checksFor({ dir, slug: opts.page, inputs, join: joinResult });
+  const prepared = joinResult.pass === false ? null : given && !given.drift ? given : checksFor({ dir, slug: opts.page, inputs, join: joinResult, out });
   const current = readCurrent(dir);
   const sectionNodes = [...new Set((joinResult.sections || []).map((s) => s.node).filter(Boolean))];
   const boxes = prepared?.boxes ?? (sectionNodes.length ? loadBoxes(dir, sectionNodes) : { roots: {} });
@@ -450,7 +455,9 @@ async function registerStep({ dir, opts, log, UsageError, ready: given }) {
   return 0;
 }
 
-const STALE_FILES = ['geometry.json', 'ramp.json', 'pixel.json', 'register.json', 'register.md', 'summary.json'];
+const STALE_FILES = ['geometry.json', 'ramp.json', 'pixel.json', 'register.json', 'register.md', 'summary.json', 'floor-problems.txt'];
+// The per-width files of a ramp (ramp-spec.<w>.json, ramp.<w>.md, ramp.<w>.json): a width the checks file no longer has leaves its files behind.
+const RAMP_WIDTH_FILE = /^ramp(?:-spec)?\.\d+\.(?:json|md)$/;
 const NOT_RUN_DRIFT = 'not run: section drift';
 const VERDICT_WORDS = { geometry: { 0: 'PASS', 1: 'FAIL' }, ramp: { 0: 'PASS', 1: 'FAIL' }, pixel: { 0: 'advisory', 124: 'no verdict' }, register: { 0: 'written' } };
 
@@ -484,6 +491,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
   const scrub = (m) => (redact ? redact(m) : m);
   const out = workDir(dir, opts.page, regime);
   for (const f of STALE_FILES) rmSync(join(out, f), { force: true });
+  if (existsSync(out)) for (const f of readdirSync(out)) if (RAMP_WIDTH_FILE.test(f)) rmSync(join(out, f), { force: true });
 
   const isSetup = (e) => e instanceof UsageError || e?.code === 2;
   const recorded = {};

@@ -327,6 +327,36 @@ if (playwrightOk && pngOk) {
     assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
   });
 
+  queue('all with a checks file the floor refuses: exit 2, the whole problem list is in floor-problems.txt beside the evidence and the error ends with its path; a valid file removes it', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const valid = readFileSync(file, 'utf8');
+    const checksFile = JSON.parse(valid);
+    checksFile.sections.s01.type = checksFile.sections.s01.type.filter((e) => e.node !== '1:6');
+    writeFileSync(file, JSON.stringify(checksFile));
+    const list = join(work(p), 'floor-problems.txt');
+    const refused = await runAll(p);
+    assert.equal(refused.status, 2, refused.stdout + refused.stderr);
+    assert.ok(refused.stderr.trimEnd().endsWith(`\nfull list: ${list}`), refused.stderr);
+    assert.match(readFileSync(list, 'utf8'), /^s01 @1440: text style 18\/400\/28 #1a1a1a \("A calm, readable starti…", node 1:6\) has no type entry or waiver.*\n$/);
+    writeFileSync(file, valid);
+    const fixed = await runAll(p);
+    assert.equal(fixed.status, 0, fixed.stdout + fixed.stderr);
+    assert.ok(!existsSync(list), 'a stale list is removed');
+  });
+
+  queue('all removes the per-width ramp files of an earlier run, a width the checks file no longer has included', async () => {
+    const p = await framed();
+    assert.equal((await runAll(p)).status, 0);
+    const stale = ['ramp-spec.414.json', 'ramp.414.md', 'ramp.414.json'].map((f) => join(work(p), f));
+    for (const f of stale) writeFileSync(f, 'from an earlier run');
+    const other = join(work(p), 'ramp-tokens.json');
+    assert.equal((await runAll(p)).status, 0);
+    for (const f of stale) assert.ok(!existsSync(f), f);
+    for (const f of ['ramp-spec.1440.json', 'ramp.1440.md', 'ramp.1440.json']) assert.ok(existsSync(join(work(p), f)), `${f} is written by this run`);
+    assert.ok(existsSync(other));
+  });
+
   queue('the checks file changes after an all run: register on its own gives that section a stale row and no mandated row; the next all mandates it', async () => {
     const p = await framed();
     const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');

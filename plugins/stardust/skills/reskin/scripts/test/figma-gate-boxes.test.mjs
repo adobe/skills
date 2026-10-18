@@ -74,6 +74,13 @@ check('outline: root line, depth limit, indentation', () => {
   assert.match(two[1], /^ {2}I1:7;5:2 TEXT "Section title" 120,80 1200×48/);
 });
 
+check('outline: a TEXT line names the font, size/line height, letter spacing and colour the floor keys its styles by', () => {
+  const lines = outline(f.box, 1);
+  assert.equal(lines[1], '  I1:7;5:2 TEXT "Section title" 120,80 1200×48 Inter Display 700 40/48 ls -0.8 #1f3a5f "Everything in one place"');
+  assert.match(lines[2], / Inter 400 18\/28 ls 0 #1a1a1a "Plan the work/, 'a letter spacing of 0 is printed too');
+  assert.ok(!/ ls | #[0-9a-f]{6} /.test(lines[0] + lines[4]), 'frames carry neither');
+});
+
 check('loadBoxes: builds from the capture, caches, and still answers without nodes.json', () => {
   const p = makeProject(scratch);
   const first = loadBoxes(p.dir, ['1:7']);

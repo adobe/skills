@@ -3,7 +3,7 @@
 // nodes it drops at which width. A bare count would let a container waiver hide a whole page area.
 // Pure: boxes are the loaded box trees (loadBoxes), the section is validateChecks' output for it.
 import { findBox } from './boxes.mjs';
-import { mobileVariants, textStyles } from './checks.mjs';
+import { mobileCandidates, mobileVariants, textStyles } from './checks.mjs';
 
 const textNodes = (box) => (box.text ? 1 : 0) + box.children.reduce((n, c) => n + textNodes(c), 0);
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
@@ -51,7 +51,8 @@ export function waiverImpacts(section, joined, boxes) {
       continue;
     }
     if (w.width === 'mobile') {
-      const [first, ...more] = frame ? mobileVariants(frame) : [];
+      // The variants of the desktop root's own set, when the frame holds several.
+      const [first, ...more] = frame ? mobileCandidates(frame, roots.find((r) => r.width > 480)?.box ?? null).list : [];
       const variant = first && findBox(frame, first.id);
       const drops = variant ? [{ width: first.w, styles: textStyles(variant).size, nodes: textNodes(variant) }] : [];
       const via = first ? `the mobile root "${first.name}" (${first.id})${more.length ? `, one of ${more.length + 1} variants` : ''}: ` : 'the mobile root, which the module frame does not hold: ';

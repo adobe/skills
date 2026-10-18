@@ -9,7 +9,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
-import { MEASURES, leavesSection, mobileVariants, rootsNamed, scopeSelector, selectorBranches, styleKey, textStyles, validateChecks } from '../figma-gate/checks.mjs';
+import { MEASURES, leavesSection, mobileCandidates, mobileVariants, rootsNamed, scopeSelector, selectorBranches, styleKey, textStyles, validateChecks } from '../figma-gate/checks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const nodes = JSON.parse(readFileSync(join(HERE, 'fixtures', 'figma-kit', 'nodes.json'), 'utf8'));
@@ -181,8 +181,18 @@ const floorNodes = { nodes: { 'F:0': { document: shape('F:0', 'Page', 'FRAME', 1
     shape('G:5', 'mobile', 'INSTANCE', 24, 24),
   ]),
   shape('H:1', 'Image module', 'FRAME', 1440, 600, [shape('H:2', 'Hero image', 'INSTANCE', 1440, 500)]),
+  shape('K:1', 'Sets module', 'FRAME', 1440, 2200, [
+    shape('K:2', 'Card', 'COMPONENT_SET', 900, 800, [
+      shape('K:3', 'Device=Desktop', 'COMPONENT', 800, 400, [words('K:4', 'Card heading', 'Inter Display', 24, 700, 28.8, WHITE)]),
+      shape('K:5', 'Device=Mobile', 'COMPONENT', 414, 600, [words('K:6', 'Card mobile heading', 'Inter Display', 20, 700, 24, WHITE)]),
+    ]),
+    shape('K:10', 'Hero', 'COMPONENT_SET', 1600, 1000, [
+      shape('K:11', 'Device=Desktop', 'COMPONENT', 1440, 600, [words('K:12', 'Hero heading', 'Inter Display', 40, 700, 46, WHITE, 0.4), words('K:15', 'Hero kicker', 'Inter Display', 40, 700, 46, WHITE, -0.4)]),
+      shape('K:13', 'Device=Mobile', 'COMPONENT', 414, 800, [words('K:14', 'Hero mobile heading', 'Inter Display', 32, 700, 36.8, WHITE)]),
+    ]),
+  ]),
 ]) } } };
-const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:2', 'F:10', 'F:11', 'F:14', 'F:18', 'F:20', 'F:30', 'F:31', 'F:40', 'F:50', 'F:60', 'F:62', 'F:64', 'G:1', 'H:1'] });
+const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:2', 'F:10', 'F:11', 'F:14', 'F:18', 'F:20', 'F:30', 'F:31', 'F:40', 'F:50', 'F:60', 'F:62', 'F:64', 'G:1', 'H:1', 'K:1', 'K:3', 'K:5', 'K:11', 'K:13'] });
 const floorJoin = { sections: [{ slot: 's03', module: 'M3', node: 'F:1' }, { slot: 's04', module: 'M4', node: 'G:1' }] };
 const floorCtx = { join: floorJoin, boxes: floorBoxes, tokens: {} };
 const s04 = { geometry: [{ id: 'g1', selector: 'h2', node: 'G:2', measure: 'width' }], type: [{ id: 't1', selector: 'h2', node: 'G:2' }, { id: 't2', selector: 'p', node: 'G:4' }] };
@@ -229,7 +239,7 @@ check('textStyles: equal styles across nodes are one group; hidden nodes are not
 });
 
 check('mobileVariants: a COMPONENT or INSTANCE named mobile, at most 480 wide; a tablet and a 24px icon named mobile are not', () => {
-  assert.deepEqual(mobileVariants(floorBoxes.roots['F:1'].box), [{ id: 'F:30', name: 'Card, Device=Mobile', w: 382 }]);
+  assert.deepEqual(mobileVariants(floorBoxes.roots['F:1'].box), [{ id: 'F:30', name: 'Card, Device=Mobile', w: 382, parent: { id: 'F:1', name: 'Card module' } }]);
   assert.deepEqual(mobileVariants(floorBoxes.roots['G:1'].box), [], 'a tablet instance and a 24px icon named mobile');
   const sized = (w, name = 'Device=Mobile', type = 'INSTANCE') => ({ id: `n${w}`, name, type, w, children: [] });
   const found = (...kids) => mobileVariants({ id: 'm', name: 'm', type: 'FRAME', w: 1440, children: kids }).map((v) => v.w);
@@ -306,6 +316,47 @@ check('coverage floor: a module with a mobile variant needs a mobile root or a {
   assert.deepEqual(floorProblems(s03({ ...noMobile, waive: [{ width: 'mobile', why: '' }] })), ['s03: waive[0] needs why']);
   assert.deepEqual(floorProblems(s03({ roots: { 360: 'F:30' }, type: [...withoutType('t4', 't5'), ...at382.map((e) => ({ ...e, width: 360 }))] })), [], 'any root up to 480 wide');
   assert.match(floorProblems(s03({ roots: { 768: 'F:20' }, type: [...withoutType('t4', 't5'), { id: 't6', selector: 'h3', node: 'F:21', width: 768 }] })).join('\n'), /module has a mobile variant/, 'a tablet-width root is not a mobile root');
+});
+
+// A module frame that holds several variant sets (a card and a hero, each with a desktop and a mobile variant): the mobile
+// root is the one of the desktop root's own set.
+const setsCtx = { join: { sections: [{ slot: 's05', module: 'M5', node: 'K:1' }] }, boxes: floorBoxes, tokens: {} };
+const s05 = (over = {}) => ({
+  node: 'K:11',
+  geometry: [{ id: 'g1', selector: '.hero', node: 'K:12', measure: 'width' }],
+  type: [{ id: 't1', selector: 'h1', node: 'K:12' }, { id: 't2', selector: '.kicker', node: 'K:15' }],
+  ...over,
+});
+const inSets = (section) => validateChecks({ version: 1, page: 'home', sections: { s05: section } }, setsCtx);
+const mobileType = [{ id: 't3', selector: 'h1', node: 'K:14', width: 414 }];
+
+check('coverage floor: with several variant sets in the frame the mobile root is the one of the desktop root\'s own set, and a miss names it, with its parent, not an unrelated one', () => {
+  assert.deepEqual(mobileCandidates(floorBoxes.roots['K:1'].box, floorBoxes.roots['K:11'].box), { list: [{ id: 'K:13', name: 'Device=Mobile', w: 414, parent: { id: 'K:10', name: 'Hero' } }], apart: true, total: 2 });
+  assert.deepEqual(inSets(s05({ roots: { 414: 'K:13' }, type: [...s05().type, ...mobileType] })).problems, [], 'the hero\'s own mobile variant');
+  assert.deepEqual(inSets(s05()).problems, ['s05: module has a mobile variant (Device=Mobile, 414 wide, K:13, in Hero) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver'], 'the card\'s variant comes first in the tree and is not named');
+  const unrelated = inSets(s05({ roots: { 414: 'K:5' }, type: [...s05().type, { id: 't3', selector: 'h1', node: 'K:6', width: 414 }] })).problems;
+  assert.deepEqual(unrelated, ['s05: roots[414] (Device=Mobile) is not one of the desktop root\'s own mobile variants (Device=Mobile (414 wide, K:13, in Hero)) and no { width: "mobile" } waiver'], 'another set\'s mobile variant is no pair for the hero');
+  assert.deepEqual(inSets(s05({ waive: [{ width: 'mobile', why: 'the hero is not responsive' }] })).problems, []);
+});
+
+check('coverage floor: two styles that differ only in letter spacing or colour never print the same label', () => {
+  const miss = inSets({ node: 'K:11', geometry: s05().geometry, type: [], waive: [{ width: 'mobile', why: 'covered elsewhere' }] }).problems.filter((p) => /has no type entry/.test(p));
+  assert.deepEqual(miss, [
+    's05 @1440: text style 40/700/46 ls 0.4 #ffffff ("Hero heading", node K:12) has no type entry or waiver',
+    's05 @1440: text style 40/700/46 ls -0.4 #ffffff ("Hero kicker", node K:15) has no type entry or waiver',
+  ]);
+  const labels = [...textStyles(floorBoxes.roots['K:11'].box).values()].map((s) => s.label);
+  assert.equal(new Set(labels).size, labels.length);
+  const t = { fontFamily: 'Inter', fontSize: 16, fontWeight: 400, lineHeightPx: 24, letterSpacing: 0, color: 'rgb(0, 0, 0)' };
+  const labelOf = (over) => [...textStyles({ id: 'r', name: 'r', type: 'FRAME', w: 1, h: 1, text: null, children: [{ id: 'a', name: 'a', type: 'TEXT', w: 1, h: 1, children: [], text: { characters: 'x', ...t, ...over } }] }).values()][0].label;
+  assert.equal(labelOf({}), '16/400/24 #000000', 'no letter spacing, nothing printed');
+  assert.notEqual(labelOf({ color: 'rgb(1, 1, 1)' }), labelOf({}));
+  assert.notEqual(labelOf({ letterSpacing: 0.5 }), labelOf({}));
+});
+
+check('coverage floor: when the box tree cannot tell the sets apart, every candidate is named with its parent', () => {
+  const asFrame = inSets({ geometry: s05().geometry, type: [...s05().type, { id: 't0', selector: 'h2', node: 'K:4' }, { id: 't9', selector: 'h2', node: 'K:6' }], waive: [{ node: 'K:2', why: 'the card set is another module' }] }).problems;
+  assert.ok(asFrame.includes('s05: module has a mobile variant (Device=Mobile, 414 wide, K:5, in Card; Device=Mobile, 414 wide, K:13, in Hero) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver; name the desktop instance in "node"'), asFrame.join('\n'));
 });
 
 check('coverage floor: a module with no mobile variant needs no mobile root (a tablet instance, a 24px icon named mobile)', () => {
