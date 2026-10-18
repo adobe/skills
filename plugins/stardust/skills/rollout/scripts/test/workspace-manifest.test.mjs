@@ -9,7 +9,10 @@
 // without formatVersion or on stale coverage; handover (marker, untracked content, --force +
 // degraded, a second forced run keeping the first handover); the judgement draft; placeholders;
 // exit 2 on usage errors; --help writes nothing; no identity in the manifest or the draft; a project
-// moved after coverage was built with absolute flags is not stale. Also the
+// moved after coverage was built with absolute flags is not stale. The mapping is required once
+// captures exist: without workspace/mapping.json the manifest is written without handover, the
+// missing line is printed and the exit is 2 (--allow-no-mapping and a project without captures keep
+// handover null, exit 0). Also the
 // identity helpers in lib.mjs (patterns, tokens, linear time). Every run works on a copy in a temp
 // dir, never inside a repository unless a check makes one.
 // Run: node plugins/stardust/skills/rollout/scripts/test/workspace-manifest.test.mjs
@@ -78,8 +81,15 @@ const buildCoverage = (dir, ...inventoryArgs) => [
 const rebuild = (dir, ...inventoryArgs) => [node(dir, 'inventory.mjs', ...inventoryArgs), node(dir, 'blocks.mjs')].forEach((r) => ok(r));
 const BASE = join(ROOT, 'base');
 cpSync(FIXTURE, BASE, { recursive: true });
+// The checks below run as a project without captures (no mapping needed); withCaptures() puts the fixture's back.
+const CAPTURES = join('stardust', 'current');
+rmSync(join(BASE, CAPTURES), { recursive: true, force: true });
 const setup = buildCoverage(BASE);
 const copy = (label) => { const dir = mkdtempSync(join(ROOT, `${label}-`)); cpSync(BASE, dir, { recursive: true }); return dir; };
+const withCaptures = (label) => { const dir = copy(label); cpSync(join(FIXTURE, CAPTURES), join(dir, CAPTURES), { recursive: true }); return dir; };
+const MAP = 'stardust/rollout/workspace/mapping.json';
+const MISSING = 'missing: stardust/rollout/workspace/mapping.json — run block-origin.mjs --verify first';
+const mappingDoc = (generatedAt) => `${JSON.stringify({ formatVersion: '0.1.0', generatedAt, templates: [] }, null, 2)}\n`;
 const gitCopy = (label) => {
   const dir = copy(label);
   git(dir, '-c', 'init.defaultBranch=main', 'init', '-q');
@@ -115,9 +125,9 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
   broken.outputs[COV[0]] = 'sha256:xyz';
-  delete broken.handover;
+  delete broken.placeholders;
   const errors = validate(schema, broken);
-  assert.ok(errors.some((e) => /missing required handover/.test(e)) && errors.some((e) => /does not match/.test(e)), errors.join('\n'));
+  assert.ok(errors.some((e) => /missing required placeholders/.test(e)) && errors.some((e) => /does not match/.test(e)), errors.join('\n'));
   ok(run(dir, '--draft-judgement'));
   assert.deepEqual(validate(judgementSchema, doc(dir, 'judgement.json')), []);
 });
@@ -177,6 +187,56 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   ok(again);
   assert.equal(jsonOut(again).status, 'written', 'changed mapping.json bytes change the manifest');
   assert.equal(doc(dir, 'manifest.json').outputs[MAP], sha(readFileSync(join(dir, MAP))));
+});
+
+check('mapping required: captures present and no mapping.json → the manifest is written without handover, the missing line names block-origin.mjs --verify, exit 2; unchanged on a re-run, still 2; --dry-run writes nothing', () => {
+  const dir = withCaptures('needs-mapping');
+  const r = run(dir);
+  ok(r, 2);
+  assert.ok(r.stderr.split('\n').includes(MISSING), r.stderr);
+  const mf = doc(dir, 'manifest.json');
+  assert.equal(Object.hasOwn(mf, 'handover'), false, 'no handover key while the mapping is missing');
+  assert.deepEqual(Object.keys(mf.outputs), COV);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
+  const again = run(dir, '--json');
+  ok(again, 2);
+  assert.equal(jsonOut(again).status, 'unchanged');
+  assert.deepEqual(jsonOut(again).missing, [MAP]);
+  const dry = withCaptures('needs-mapping-dry');
+  const d = run(dry, '--dry-run');
+  ok(d, 2);
+  assert.ok(d.stderr.includes(MISSING), d.stderr);
+  assert.equal(existsSync(W(dry)), false, '--dry-run created the workspace dir');
+  ok(run(withCaptures('needs-mapping-draft'), '--draft-judgement'), 0);
+});
+
+check('mapping required: with mapping.json the manifest carries handover null and exits 0; captures holding only <slug>.json count; --captures points at the capture dir', () => {
+  const dir = withCaptures('has-mapping');
+  mkdirSync(W(dir), { recursive: true });
+  writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
+  const r = run(dir, '--json');
+  ok(r);
+  assert.deepEqual(jsonOut(r).missing, []);
+  assert.equal(doc(dir, 'manifest.json').handover, null);
+  const jsonOnly = withCaptures('json-captures');
+  for (const f of readdirSync(join(jsonOnly, CAPTURES, 'pages')).filter((n) => n.endsWith('.html'))) rmSync(join(jsonOnly, CAPTURES, 'pages', f));
+  ok(run(jsonOnly), 2);
+  const moved = copy('captures-flag');
+  cpSync(join(FIXTURE, CAPTURES, 'pages'), join(moved, 'captures'), { recursive: true });
+  ok(run(moved, '--captures', 'captures'), 2);
+  ok(run(moved));
+  assert.equal(doc(moved, 'manifest.json').handover, null, 'no capture under the default dir: no mapping needed');
+});
+
+check('mapping required: --allow-no-mapping keeps the manifest as before (handover null, exit 0) with captures present', () => {
+  const dir = withCaptures('allow-no-mapping');
+  const r = run(dir, '--allow-no-mapping');
+  ok(r);
+  assert.equal(r.stderr.includes('missing:'), false, r.stderr);
+  assert.equal(doc(dir, 'manifest.json').handover, null);
+  const plain = copy('allow-no-mapping-plain');
+  ok(run(plain));
+  assert.equal(text(dir, 'manifest.json'), text(plain, 'manifest.json'), 'the same bytes as a project without captures');
 });
 
 check('idempotent: a second run is "unchanged" and rewrites nothing, also after inventory and blocks re-run and from another cwd; deleting and re-running gives the same bytes; --dry-run writes nothing', () => {
@@ -479,7 +539,7 @@ check('usage: exit 2 on an unknown flag, a positional argument or a value flag w
   for (const flag of ['--help', '-h']) {
     const h = node(empty, 'workspace-manifest.mjs', flag, '--bogus');
     ok(h);
-    assert.ok(h.stdout.includes('Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--draft-judgement] [--force] [--dry-run] [--json]'), h.stdout);
+    assert.ok(h.stdout.includes('Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json]'), h.stdout);
   }
   assert.deepEqual(readdirSync(empty), [], '--help or a usage error wrote something');
 });
@@ -535,6 +595,7 @@ check('lib identity: scrubIdentity and findIdentity finish in < 200 ms each on 1
 check('moved project: coverage built with absolute --out/--blocks from another cwd, then the project dir moved (renamed) — workspace-manifest.mjs --project <new path> exits 0, not stale', () => {
   const dir = join(mkdtempSync(join(ROOT, 'abs-')), 'site');
   cpSync(FIXTURE, dir, { recursive: true });
+  rmSync(join(dir, CAPTURES), { recursive: true });
   const elsewhere = mkdtempSync(join(ROOT, 'cwd-'));
   const blocksArgs = ['--out', OUT(dir), '--blocks', join(dir, 'blocks')];
   for (const r of [

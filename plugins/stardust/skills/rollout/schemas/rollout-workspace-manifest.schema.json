@@ -4,7 +4,7 @@
   "title": "stardust rollout/workspace/manifest.json",
   "description": "Hashes and handover state for the coverage a client reads. outputs hashes the three coverage files and workspace/mapping.json when present (what a client reads); inputs hashes what the coverage was built from (the content documents as one summary, the block code read, the judgement). placeholders lists what is still a default. Once a client has taken the project over, the writer refuses to run unless forced; a forced run records handover and, when inputs changed, degraded. Deterministic: unchanged inputs give byte-identical output. Owned by stardust:rollout; strict here because it describes exactly what stardust writes.",
   "type": "object",
-  "required": ["_provenance", "formatVersion", "inputs", "outputs", "placeholders", "handover"],
+  "required": ["_provenance", "formatVersion", "inputs", "outputs", "placeholders"],
   "additionalProperties": false,
   "properties": {
     "_provenance": { "$ref": "#/$defs/provenance" },
@@ -34,7 +34,7 @@
     },
     "handover": {
       "type": ["object", "null"],
-      "description": "null before handover; set only by a forced run after a client took the project over.",
+      "description": "null before handover; set only by a forced run after a client took the project over. Absent while the export is incomplete: captures exist and workspace/mapping.json does not (the writer exits 2) — not ready to hand over.",
       "required": ["at", "detectedFrom"],
       "additionalProperties": false,
       "properties": {
