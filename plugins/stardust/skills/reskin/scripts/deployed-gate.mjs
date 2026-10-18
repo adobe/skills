@@ -153,13 +153,14 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
          A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without) and
          is measured as any other: this step's browser and both instruments carry the token to the preview origin
          only (the instruments by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin>, the
-         value by environment, never argv); the reskin page content-presence reads gets none. A page that
-         answers HTTP 400 or more, a 401 included, is a row in error, never a pass; one that needs no token is
-         sent none. The step prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
-         failing row ("overflow 240px > 4px @360", the instrument's findings below it); "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
-         error when a check gave no verdict (an instrument exiting 124, 1 or another, a page the browser could
-         not load, or one that answered HTTP 400 or more, "HTTP <n> at <url>": an error page measures nothing
-         about the page; re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
+         value by environment, never argv); the reskin page content-presence reads gets none. A token the
+         preview refuses (401 or 403 once sent) is exit 2 like parity's: nothing is measured or recorded. Any
+         other page that answers HTTP 400 or more is a row in error, never a pass; one that needs no token is
+         sent none. The step prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per failing row
+         ("overflow 240px > 4px @360", the instrument's findings below it); "ERROR (exit 124) sanity: <n> checks
+         gave no verdict" and a line per row in error when a check gave no verdict (an instrument exiting 124,
+         1 or another, a page the browser could not load, or one that answered HTTP 400 or more, "HTTP <n> at
+         <url>": an error page measures nothing about the page; re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
          status, artifact, detail }] }) and sanity/ (clip-probe-1440.json, content-presence-1440.json) beside
          preview.json. Exit 1 on a FAIL row, 3 on a bot challenge, 124 on a row in error (the rows measured stay
          in sanity.json).

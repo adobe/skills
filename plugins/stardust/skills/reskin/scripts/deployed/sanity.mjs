@@ -19,7 +19,8 @@
 //        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR', artifact, detail }. A check
 //        that gave no verdict (an instrument exiting 124, 1, 4 or any other unexpected exit or no number in its JSON,
 //        a page the browser could not load or that answered HTTP 400 or more) makes its row "ERROR (exit N)", the
-//        verdict ERROR and the exit 124; a bot challenge throws an error with code 3. `tools` maps clip and presence
+//        verdict ERROR and the exit 124; a bot challenge throws an error with code 3, and a token the preview refuses
+//        (401 or 403 once sent) is a UsageError (exit 2) before any instrument runs. `tools` maps clip and presence
 //        to script paths (default: diffTools()),
 //        for tests; edsTimeoutMs bounds the settle (default 20000).
 //   diffTools(from)    the two instruments in either layout of the scripts, or a UsageError naming what is missing
@@ -122,8 +123,9 @@ const toolError = (check, width, name, r) => errorRow(check, width, exitOf(r), f
 
 const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
 
-// The four rows of one width. A challenge is thrown (code 3); an HTTP status of 400 or more (an error page measures
-// nothing about the page) and any other failure to load or read the page make the four rows "ERROR (exit 124)" with
+// The four rows of one width. A challenge is thrown (code 3), and so is a 401 or 403 to a token that was sent (a setup
+// error, exit 2, as in parity: nothing is measured); another HTTP status of 400 or more (an error page measures nothing
+// about the page) and any other failure to load or read the page make the four rows "ERROR (exit 124)" with
 // "HTTP <n> at <url>" or the first line of the failure.
 async function measureWidth({ browser, openPage, gotoLive, width, url, token, edsTimeoutMs }) {
   const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT, ...authContextOptions(url, token) });
@@ -145,6 +147,7 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, token, ed
     ];
   } catch (e) {
     if (e?.name === 'BotChallengeError') throw coded(3, e.message);
+    if (e?.name === 'LiveHTTPError' && [401, 403].includes(e.status) && token) throw new UsageError(`${url} answered HTTP ${e.status}: the site token was not accepted`);
     const why = e?.name === 'LiveHTTPError' ? `HTTP ${e.status} at ${url}` : firstLine(String(e?.message ?? e)) || 'the page could not be read';
     return BROWSER_CHECKS.map((check) => errorRow(check, width, EXIT.ERROR, why));
   } finally { await ctx.close(); }

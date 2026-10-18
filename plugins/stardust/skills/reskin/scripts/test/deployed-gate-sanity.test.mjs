@@ -316,14 +316,22 @@ if (playwrightOk) {
     } finally { watch.stop(); await asset.close(); }
   });
 
-  await check('a token the protected preview refuses is no verdict: the four rows of each width are "ERROR (exit 124)" with "HTTP 401 at <url>", never a pass; the offered token is in no row', async () => {
-    const { result, previewUrl, error } = await scenario('protected-wrong-token', {}, { ...protectedBy('not-the-one'), widths: [1440, 360] });
-    assert.ifError(error);
-    assert.deepEqual([result.verdict, result.exit], ['ERROR', 124]);
-    for (const width of [1440, 360]) {
-      for (const c of BROWSER_CHECKS) assert.deepEqual([pick(result.rows, c, width).status, pick(result.rows, c, width).detail], ['ERROR', `HTTP 401 at ${previewUrl}`], `${c} @${width}`);
-    }
-    assert.ok(!JSON.stringify(result).includes('not-the-one'));
+  await check('a token the protected preview refuses is a setup error (exit 2), not rows of a 401 page: no instrument runs, no record is written, the offered token is not echoed; the CLI exits 2 too', async () => {
+    const wrong = await scenario('protected-wrong-token', {}, { ...protectedBy('not-the-one'), widths: [1440, 360] });
+    assert.ok(wrong.error instanceof UsageError && wrong.error.code === 2, String(wrong.error));
+    assert.match(wrong.error.message, /^http:\/\/127\.0\.0\.1:\d+\/ns\/home answered HTTP 401: the site token was not accepted$/);
+    assert.ok(!wrong.error.message.includes('not-the-one'));
+    assert.deepEqual(wrong.stub.calls(), [], 'no instrument ran');
+    assert.ok(!existsSync(join(outOf(wrong.root), 'sanity.json')), 'no verdict');
+    const server = await startPreviewServer({ pages: { '/ns/home': HOME }, token: SECRET });
+    try {
+      const root = project('protected-wrong-token-cli', { origin: server.origin, record: { auth: true } });
+      const cli = await sanity(root, ['--reskin', smallPage(), '--auth-header', 'token not-the-one']);
+      assert.equal(cli.status, 2, cli.all);
+      assert.match(cli.stderr, /answered HTTP 401: the site token was not accepted/);
+      assert.ok(!cli.all.includes('not-the-one'), 'the offered token is not echoed');
+      assert.ok(!existsSync(join(outOf(root), 'sanity.json')));
+    } finally { await server.close(); }
   });
 
   await check('a token the preview does not need is sent to no request and no instrument, even when the environment holds one', async () => {
