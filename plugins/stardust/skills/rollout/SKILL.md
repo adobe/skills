@@ -297,10 +297,11 @@ are committed and frozen, start EVERY archetype unit in the same turn (one
 background subagent each; disjoint by construction) and each cluster (its first
 sub-unit) the moment its archetype is `done`; never serialize disjoint units to
 spare browsers — the browser slot queue paces captures, not the number of units
-(recorded: a run that started four units in one turn finished ten while a serial
-one finished five, each serial unit paying the post-push code propagation,
-median 5–6 min, alone). The lead's loop: `progress.mjs wait` → record what ended
-(handoff contract § 5) → start what is now unblocked → wait again; each
+(recorded: four units started in one turn finished ten while a serial run
+finished five, each serial unit paying the 5–6 min post-push propagation
+alone). The lead's loop: `progress.mjs wait` → record what ended (handoff
+contract § 5) → start what is now unblocked (`progress.mjs show --waves` ends
+with `can start now: …`) → wait again; each
 subagent's last command is its own `progress.mjs unit done|failed` (handoff
 contract § Fan-out discipline). The one exception: a unit that edits a shared
 file waits for that file's lock as the contract's shared-ledgers bullet
@@ -315,7 +316,8 @@ $P unit start cluster-page      --kind cluster   --templates page
 $P unit start archetype-article --kind archetype --templates article
 $P unit start archetype-product --kind archetype --templates product
 $P wait   # exit 0: "progress rollout archetype-product: done …" — its subagent's own last command
-#   record it (handoff contract § 5, steps 0–4), then start its cluster and spawn that subagent:
+#   record it (handoff contract § 5, steps 0–4), then start what is unblocked:
+$P show --waves   # … can start now: cluster-product
 $P unit start cluster-product --kind cluster --templates product
 $P wait   # exit 75 at --max (300 s; 240 under a five-minute cache), nothing ended: wait again
 $P wait   # archetype-article done → record it, start cluster-article; and so on until nothing
