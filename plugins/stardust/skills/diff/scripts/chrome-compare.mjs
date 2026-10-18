@@ -10,15 +10,25 @@
  * max(80 ms, 25 %)) and the header's scroll states; `functional` (redesign, reskin) checks behaviour
  * and content only.
  *
- * A finding clears only by a fix or by a site-owner decision in --decisions
- * ({ decisions: [{ finding: "<key or prefix*>", decision, reason, by, at }] }); entries without
- * `by`/`at`, or signed by an agent, are ignored and reported.
+ * The one rule for header findings (diff/SKILL.md § The header contract, the handoff contract and replica/SKILL.md
+ * quote it word for word): Fix or decide every error (hands-off: you decide, with a reason). In a hands-off run
+ * (`stardust/state.json` `handsOff: true`) the agent is the deciding party: `chrome-compare.mjs decide <finding>
+ * --decision accept|fix-later|artefact --reason "<r>"` signs `{ finding, decision, reason, by: "agent", at }` into
+ * `stardust/chrome/header-decisions.json`, one exact finding key per entry, with a reason of at least 40 characters
+ * naming the evidence (a measurement artefact, a host-bound feature, a third-party component, a hide-list offset);
+ * chrome-compare counts it as decided and lists it in `decidedByAgent` for the owner's review. In an attended run
+ * (`handsOff` false or absent) only the site owner clears a finding (`by`, `at`); an agent-signed entry is ignored
+ * and reported.
+ * The owner's entry ({ finding: "<key or prefix*>", decision, reason, by, at }) wins over the agent's for the same key;
+ * an entry without `by`/`at` is ignored and reported too.
  *
  * Usage: node skills/diff/scripts/chrome-compare.mjs <source.json> <build.json> [options]
  *   --profile replica|functional   default replica
  *   --bar <ratio>                  open-state crop bar (default 0.02)
- *   --decisions <file>             default stardust/chrome/header-decisions.json
- *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads)
+ *   --decisions <file>             default stardust/chrome/header-decisions.json ({ decisions: [ … ] })
+ *   --state <file>                 default stardust/state.json — `handsOff: true` makes the run hands-off (absent → attended)
+ *   --json <file>                  write the verdict (stardust/chrome/header-parity.json is what done-check reads): with
+ *                                  `handsOff`, `counts.decidedByAgent` and `decidedByAgent[]` ({ key, decision, reason, at })
  *   --src-shots <dir> / --build-shots <dir>   crop folders when not where the records say
  *   --hide <sel,…>                 the hide list both records must carry (chrome-explore --hide); repeatable
  *   --slug <slug>                  the page's key in presence.json: its `hide` too, after "*"'s (optional)
@@ -28,11 +38,20 @@
  * and the verdict's `hide.site` names it.
  * Records explored with different hide lists (or not the expected one) are not the same page: one error
  * `hide-mismatch`; `hide: { source, build, expected, consistent, site? }` is printed and in the verdict when any is set.
+ * Printed: a 🔴 / 🟡 line per open finding, a `🔵 decided by the agent: <key> — <decision>: <reason> (<at>)` line per
+ * agent decision, the hide line, then the counts (hands-off: `N decided (n by the agent, hands-off — …)`).
  * Exit: 0 no undecided error · 2 errors · 1 usage, or a malformed presence.json named on stderr (--presence's file, or the
- * cwd's stardust/replica/presence.json — refused with no flag too). `compareDocs`, `compareHide`, `applyDecisions`,
- * `findingKey` are exported.
+ * cwd's stardust/replica/presence.json — refused with no flag too).
+ *
+ *        node skills/diff/scripts/chrome-compare.mjs decide <finding> --decision accept|fix-later|artefact --reason "<r>"
+ *          [--decisions <file>] [--state <file>]
+ * Writes the agent's entry into the decisions file (atomic): the same entry again changes nothing, a changed decision
+ * or reason replaces it, a site owner's entry for the key is kept and nothing is written.
+ * Exit: 0 recorded or unchanged · 1 usage (no key, a prefix* key, another decision, a reason under 40 characters, an
+ * unreadable decisions file) · 3 refused: an attended run (the owner sentence on stderr).
+ * `compareDocs`, `compareHide`, `applyDecisions`, `decideEntry`, `findingKey`, `DECISION_RULE` are exported.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -41,6 +60,28 @@ import { effectiveHide, hideArgs, normName } from './chrome-explore.mjs';
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
 const AGENT = /^(agent|assistant|stardust|claude|codex|bot|auto)/i;
+
+export const DECISIONS = ['accept', 'fix-later', 'artefact'];
+export const MIN_REASON = 40;
+export const DECISION_RULE = 'Fix or decide every error (hands-off: you decide, with a reason). In a hands-off run (`stardust/state.json` `handsOff: true`) the agent is the deciding party: `chrome-compare.mjs decide <finding> --decision accept|fix-later|artefact --reason "<r>"` signs `{ finding, decision, reason, by: "agent", at }` into `stardust/chrome/header-decisions.json`, one exact finding key per entry, with a reason of at least 40 characters naming the evidence (a measurement artefact, a host-bound feature, a third-party component, a hide-list offset); chrome-compare counts it as decided and lists it in `decidedByAgent` for the owner\'s review. In an attended run (`handsOff` false or absent) only the site owner clears a finding (`by`, `at`); an agent-signed entry is ignored and reported.';
+const ATTENDED = 'an attended run: only the site owner clears a finding (`by`, `at`); an agent decides only in a hands-off run (`stardust/state.json` `handsOff: true`)';
+
+/** True only when the state file reads `handsOff: true`; absent or unreadable → false (an attended run). */
+export function handsOffOf(file = join('stardust', 'state.json')) {
+  try { return JSON.parse(readFileSync(file, 'utf8')).handsOff === true; } catch { return false; }
+}
+
+/** The decisions file's entries ([] when absent); a malformed file throws. */
+export const readDecisions = (file) => (existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')).decisions || []) : []);
+
+/** Why an agent-signed entry does not count, or null. Pure. */
+export function agentDecisionInvalid(d, { handsOff = false } = {}) {
+  if (!handsOff) return ATTENDED;
+  if (String(d.finding).endsWith('*')) return 'an agent decides one exact finding key per entry (no prefix*)';
+  if (!DECISIONS.includes(d.decision)) return `an agent decision is accept, fix-later or artefact (got ${JSON.stringify(d.decision ?? null)})`;
+  if (String(d.reason || '').trim().length < MIN_REASON) return `an agent decision needs a reason of at least ${MIN_REASON} characters naming the evidence (a measurement artefact, a host-bound feature, a third-party component, a hide-list offset)`;
+  return null;
+}
 
 /** The decision key of a finding: `<id>@<width> <path>[ [action]]`. Pure. */
 export const findingKey = (f) => `${f.id}@${f.width} ${f.path}${f.action ? ` [${f.action}]` : ''}`;
@@ -185,19 +226,40 @@ export function compareDocs(src, bld, { profile = 'replica', expectedHide = null
   return { findings, visual: profile === 'replica' ? visual : [], ...(hide ? { hide } : {}) };
 }
 
-/** Mark findings cleared by a valid site-owner decision; invalid entries become warnings. Pure. */
-export function applyDecisions(findings, decisions = []) {
-  const valid = []; const out = [...findings];
+/** Mark the error findings a valid decision clears: a site owner's (exact or prefix*) in any run, an agent's (exact,
+ * accept|fix-later|artefact, reason ≥ 40 characters) only when `handsOff`, marked `decided.agent`; the owner's wins.
+ * Invalid entries become `decision-invalid` warnings naming why. Pure. */
+export function applyDecisions(findings, decisions = [], { handsOff = false } = {}) {
+  const owner = []; const agent = []; const out = [...findings];
+  const ignore = (d, why) => out.push({ width: 0, path: '(decisions)', id: 'decision-invalid', severity: 'warn', detail: `ignored: ${d && d.finding ? d.finding : '(no finding)'} — ${why}` });
   for (const d of decisions) {
-    if (!d || !d.finding || !d.by || !d.at || AGENT.test(String(d.by))) { out.push({ width: 0, path: '(decisions)', id: 'decision-invalid', severity: 'warn', detail: `ignored: ${d && d.finding ? d.finding : '(no finding)'} — a decision needs the site owner's \`by\` and \`at\`` }); continue; }
-    valid.push(d);
+    if (!d || !d.finding || !d.by || !d.at) { ignore(d, 'a decision needs the site owner\'s `by` and `at`'); continue; }
+    if (!AGENT.test(String(d.by))) { owner.push(d); continue; }
+    const why = agentDecisionInvalid(d, { handsOff });
+    if (why) ignore(d, why); else agent.push(d);
   }
   for (const f of out) {
+    if (f.severity !== 'error') continue;
     const k = findingKey(f);
-    const d = valid.find((x) => (x.finding.endsWith('*') ? k.startsWith(x.finding.slice(0, -1)) : k === x.finding));
-    if (d && f.severity === 'error') f.decided = { decision: d.decision || 'accepted', by: d.by, at: d.at, reason: d.reason || '' };
+    const o = owner.find((x) => (x.finding.endsWith('*') ? k.startsWith(x.finding.slice(0, -1)) : k === x.finding));
+    const a = o ? null : agent.find((x) => x.finding === k);
+    const d = o || a;
+    if (d) f.decided = { decision: d.decision || 'accepted', by: d.by, at: d.at, reason: d.reason || '', ...(a ? { agent: true } : {}) };
   }
   return out;
+}
+
+/** The decisions document with the agent's entry for `finding` → { doc, status: recorded|replaced|unchanged|owner }:
+ * one agent entry per key; the same decision and reason again change nothing; a site owner's entry for the key is
+ * kept and nothing is added. Pure. */
+export function decideEntry(doc, { finding, decision, reason, at }) {
+  const decisions = Array.isArray(doc && doc.decisions) ? doc.decisions : [];
+  if (decisions.some((d) => d && d.finding === finding && d.by && d.at && !AGENT.test(String(d.by)))) return { doc, status: 'owner' };
+  const entry = { finding, decision, reason, by: 'agent', at };
+  const i = decisions.findIndex((d) => d && d.finding === finding && AGENT.test(String(d.by || '')));
+  if (i < 0) return { doc: { ...doc, decisions: [...decisions, entry] }, status: 'recorded' };
+  if (decisions[i].decision === decision && decisions[i].reason === reason) return { doc, status: 'unchanged' };
+  return { doc: { ...doc, decisions: decisions.map((d, j) => (j === i ? entry : d)) }, status: 'replaced' };
 }
 
 const loadDep = async (name) => {
@@ -232,12 +294,34 @@ export async function visualFindings(pairs, { srcDir, buildDir, bar }) {
   return out.map(({ src, build, ...f }) => f);
 }
 
+function decideMain(argv) {
+  const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
+  const finding = argv[1] && !argv[1].startsWith('--') ? argv[1] : null;
+  const decision = arg('decision', null); const reason = arg('reason', '');
+  const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json')); const sf = arg('state', join('stardust', 'state.json'));
+  const usage = (why) => { console.error(`chrome-compare decide: ${why}\nusage: chrome-compare.mjs decide <finding> --decision ${DECISIONS.join('|')} --reason "<r>" [--decisions f] [--state f]`); process.exit(1); };
+  if (!finding) usage('no finding key (copy it from the 🔴 line or the verdict\'s findings[].key)');
+  const why = agentDecisionInvalid({ finding, decision, reason }, { handsOff: true });
+  if (why) usage(why);
+  if (!handsOffOf(sf)) { console.error(`chrome-compare decide: refused — ${ATTENDED}; the site owner signs ${df} (\`by\`, \`at\`)`); process.exit(3); }
+  let doc = { decisions: [] };
+  try { if (existsSync(df)) doc = JSON.parse(readFileSync(df, 'utf8')); } catch (e) { usage(`${df} unreadable (${e.message})`); }
+  const { doc: next, status } = decideEntry(doc, { finding, decision, reason, at: new Date().toISOString() });
+  if (status === 'owner') { console.log(`chrome-compare decide: the site owner already decided ${finding} in ${df}; nothing written`); return; }
+  if (status === 'unchanged') { console.log(`chrome-compare decide: already recorded ${finding} — ${decision} (by agent) in ${df}; unchanged`); return; }
+  mkdirSync(dirname(df), { recursive: true });
+  const tmp = `${df}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(next, null, 1)}\n`); renameSync(tmp, df);
+  console.log(`chrome-compare decide: ${status} ${finding} — ${decision} (by agent) → ${df}; re-run chrome-compare to apply`);
+}
+
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
+  if (argv[0] === 'decide') { decideMain(argv); return; }
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
   const [sf, bf] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--')));
-  if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) { console.error('usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--json f]'); process.exit(1); }
+  if (!sf || !bf || !existsSync(sf) || !existsSync(bf)) { console.error('usage: chrome-compare.mjs <source.json> <build.json> [--profile replica|functional] [--bar 0.02] [--decisions f] [--state f] [--json f] | decide <finding> --decision d --reason r'); process.exit(1); }
   let expected = null; let expectedSite = null;
   try {
     const h = hideArgs(argv);
@@ -255,15 +339,21 @@ async function main() {
   const hide = compared && expectedSite ? { ...compared, site: expectedSite } : compared;
   findings.push(...await visualFindings(visual, { srcDir: arg('src-shots', src.shots || '.'), buildDir: arg('build-shots', bld.shots || '.'), bar }));
   const df = arg('decisions', join('stardust', 'chrome', 'header-decisions.json'));
-  const all = applyDecisions(findings, existsSync(df) ? (JSON.parse(readFileSync(df, 'utf8')).decisions || []) : []);
+  const stateFile = arg('state', null);
+  if (stateFile && !existsSync(stateFile)) console.error(`chrome-compare: --state ${stateFile} not found — an attended run (agent decisions ignored)`);
+  const handsOff = handsOffOf(stateFile || join('stardust', 'state.json'));
+  const all = applyDecisions(findings, readDecisions(df), { handsOff });
   const errors = all.filter((f) => f.severity === 'error' && !f.decided); const warns = all.filter((f) => f.severity === 'warn'); const decided = all.filter((f) => f.decided);
+  const byAgent = decided.filter((f) => f.decided.agent);
   for (const f of [...errors, ...warns]) console.log(`${f.severity === 'error' ? '🔴' : '🟡'} ${findingKey(f)} — ${f.detail}`);
+  for (const f of byAgent) console.log(`🔵 decided by the agent: ${findingKey(f)} — ${f.decided.decision}: ${f.decided.reason} (${f.decided.at})`);
   const widths = Object.keys(src.widths || {}).map(Number);
-  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), counts: { error: errors.length, warn: warns.length, decided: decided.length }, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
+  const decidedByAgent = byAgent.map((f) => ({ key: findingKey(f), decision: f.decided.decision, reason: f.decided.reason, at: f.decided.at }));
+  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), handsOff, counts: { error: errors.length, warn: warns.length, decided: decided.length, decidedByAgent: byAgent.length }, decidedByAgent, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
   if (hide) { const show = (l) => `[${l.join(', ')}]`; console.log(`chrome-compare hide: source ${show(hide.source)} · build ${show(hide.build)} · expected ${hide.expected ? show(hide.expected) : 'not given'}${hide.site ? ` (with site ${hide.site})` : ''} → ${hide.consistent ? 'consistent' : 'INCONSISTENT'}`); }
-  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
+  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided${handsOff ? ` (${byAgent.length} by the agent, hands-off — for the owner's review)` : ''} (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
   process.exit(errors.length ? 2 : 0);
 }
 
