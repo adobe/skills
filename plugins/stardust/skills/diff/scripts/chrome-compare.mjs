@@ -43,6 +43,8 @@
  * a region hidden at that width (±2 px; the records' `hide.perWidth`), the panels are as wide, the lower one is at
  * most that much shorter (the viewport clipped it), and the shared, top-aligned area is within the bar — the finding
  * carries `evidence: { kind: "hide-offset", region, h, dy, shared }`.
+ * An error on a source state chrome-explore marked `unstable` (it sampled differently on a fresh page; the contract
+ * header's `stability`) is a warning, its detail ending "(source state unstable: sampled differently on a fresh page)".
  * Printed: a 🔴 / 🟡 / ⚪ (info) line per finding, a `🔵 decided by the agent: <key> — <decision>: <reason> (<at>)`
  * line per agent decision, the hide line, then the counts (hands-off: `N decided (n by the agent, hands-off — …)`).
  * Exit: 0 no undecided error · 2 errors · 1 usage, or a malformed presence.json named on stderr (--presence's file, or the
@@ -61,7 +63,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFil
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { effectiveHide, hideArgs, normName } from './chrome-explore.mjs';
+import { effectiveHide, hideArgs, normName, unstableAsWarn } from './chrome-explore.mjs';
 
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);
@@ -383,7 +385,7 @@ async function main() {
   const stateFile = arg('state', null);
   if (stateFile && !existsSync(stateFile)) console.error(`chrome-compare: --state ${stateFile} not found — an attended run (agent decisions ignored)`);
   const handsOff = handsOffOf(stateFile || join('stardust', 'state.json'));
-  const all = applyDecisions(findings, readDecisions(df), { handsOff });
+  const all = applyDecisions(unstableAsWarn(findings, src), readDecisions(df), { handsOff });
   const errors = all.filter((f) => f.severity === 'error' && !f.decided); const warns = all.filter((f) => f.severity === 'warn'); const decided = all.filter((f) => f.decided);
   const byAgent = decided.filter((f) => f.decided.agent); const infos = all.filter((f) => f.severity === 'info');
   for (const f of [...errors, ...warns, ...infos]) console.log(`${{ error: '🔴', warn: '🟡' }[f.severity] || '⚪'} ${findingKey(f)} — ${f.detail}`);

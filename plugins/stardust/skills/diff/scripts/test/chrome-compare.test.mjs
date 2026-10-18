@@ -361,6 +361,18 @@ if (deps) {
     assert.equal(verdict.findings[0].evidence.kind, 'hide-offset');
   });
 }
+check('CLI: an error on a source state chrome-explore marked unstable is a warning (exit 0); the same pair without the mark stays an error (exit 2)', () => {
+  const noHover = structuredClone(source); noHover.widths[1440].controls[0].actions.hover = null;
+  const shaky = structuredClone(source); shaky.widths[1440].controls[0].actions.hover.unstable = true;
+  const b = put('no-hover.json', noHover);
+  const stable = cli(plain, b);
+  assert.equal(stable.status, 2, stable.stdout + stable.stderr);
+  assert.match(stable.stdout, /^🔴 \S+@1440 Shop \[hover\] — /m);
+  const r = cli(put('shaky.json', shaky), b);
+  assert.equal(r.status, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /^🟡 \S+@1440 Shop \[hover\] — .*\(source state unstable: sampled differently on a fresh page\)$/m);
+  assert.match(r.stdout, /chrome-compare: 0 error\(s\), [1-9]\d* warning\(s\)/);
+});
 check('the one rule: DECISION_RULE reads the same in --help, diff/SKILL.md, the handoff contract and replica/SKILL.md', () => {
   const norm = (s) => s.replace(/\s+/g, ' ');
   assert.ok(norm(cli('--help').stdout).includes(norm(DECISION_RULE)), '--help');
