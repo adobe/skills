@@ -9,10 +9,8 @@ a file path (auto-converted to `file://`).
 
 Run order: content gate first (a design-adopted page with dropped
 content is worthless), then design adoption, then sanity, then (d),
-then (e) once the page is deployed.
-**One fix iteration per gate family** — content; design-adoption/sanity;
-Figma fidelity — then residuals are logged (§ Residual logging). (e) has its
-own budget (`deployed-leg.md` § The fix budget).
+then (e) once the page is deployed. One fix iteration per gate family
+(§ below); (e) has its own budget (`deployed-leg.md` § The fix budget).
 
 ## (a) Content gate
 
@@ -155,8 +153,8 @@ The default spec covers: page bg/fg, font-family **token string**,
 body size, display weight, heading color, primary button
 (bg/fg/radius/padding/size), container max-width, section rhythm.
 Pass `--spec <probe-spec.json>` (entry shape in the script header) to
-extend with page-specific assertions — band palettes, card radii,
-accent link color — as the experiment's 17-assertion probe did.
+extend with page-specific assertions: band palettes, card radii,
+accent link color.
 
 #### Rendered-page conventions
 
@@ -199,9 +197,7 @@ donor. Open the rendered page (or the `--shot` capture) next to the
 donor reference-page screenshots
 (`stardust/canon-source/assets/screenshots/`) and judge: hero
 treatment, band rhythm, module shapes, link/CTA idiom. Record the
-verdict and its weakest point in `ledger.json` (the experiment's
-verdict named the hero gradient saturation and a fidelity-forced
-uppercase headline — honest weak points, still "adopted").
+verdict and its weakest point in `ledger.json`.
 
 ## (c) Sanity
 
@@ -235,15 +231,18 @@ full-bleed and the instance is not, so `left`, `right` and `top` are
 offset by the section's margins: check widths, gaps and paddings.
 
 **Coverage floor.** Computed from Figma, so a file cannot cover only
-what the page got right. At every width a section is checked at, every
-text style of that width's root (family, size, weight, line height and
-letter spacing to 0.1px, colour) needs a `type` entry whose node has
-it, and a module frame holding a mobile variant (a component or
-instance named mobile, 320 to 480 wide) needs a `roots` entry up to 480
-wide. Only `waive: [{ node | "width": "mobile", why }]` lowers it:
-`node` on a frame drops that subtree (a documentation panel), on a TEXT
-node waives its style; `"width": "mobile"` waives the mobile root. A
-miss is exit 2, every one listed.
+what the page got right. Every root (`node`, each `roots` entry) is the
+module frame or an outermost component or instance in it: no instance
+between, never a TEXT node, a plain frame or another module's node. At
+every width a section is checked at, every text style of that width's
+root (family, size, weight, line height and letter spacing to 0.1px,
+colour) needs a `type` entry whose node has it, and a module frame
+holding a mobile variant (a component or instance named mobile, 320 to
+480 wide) needs a `roots` entry up to 480 wide that is one of them. Only
+`waive: [{ node | "width": "mobile", why }]` lowers it: `node` on a frame
+drops that subtree (a documentation panel), on a TEXT node waives its
+style; `"width": "mobile"` waives the mobile root. A miss is exit 2,
+every one listed.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|

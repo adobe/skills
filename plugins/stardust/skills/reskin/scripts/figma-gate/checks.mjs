@@ -175,10 +175,13 @@ function readWaivers(slot, list, inRoots, problems) {
 
 // The coverage floor of one section: at every width it is checked at, each text style of that width's root (less
 // the waived) needs a type entry at that width whose node has the style. → { covered, total } over (width, style).
-function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems }) {
+// The base width goes first, and its first style problem takes `hint` (the root is the whole module frame).
+function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems, baseWidth, hint = '' }) {
   let covered = 0;
   let total = 0;
-  for (const [w, node] of Object.entries(roots)) {
+  let hinted = false;
+  const widths = Object.entries(roots).sort(([a], [b]) => (a === baseWidth ? -1 : b === baseWidth ? 1 : 0));
+  for (const [w, node] of widths) {
     const root = rootBox(node);
     const have = new Set();
     for (const e of type.filter((t) => String(t.width) === w)) {
@@ -190,10 +193,32 @@ function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems }) {
     covered += [...every.keys()].filter((k) => have.has(k)).length;
     if (!enforce) continue;
     for (const [key, s] of textStyles(root, waivedIds)) {
-      if (!have.has(key)) problems.push(`${slot} @${w}: text style ${s.label} ("${s.sample}", node ${s.nodes[0]}) has no type entry or waiver`);
+      if (have.has(key)) continue;
+      const tail = hint && !hinted && w === baseWidth ? hint : '';
+      hinted = hinted || Boolean(tail);
+      problems.push(`${slot} @${w}: text style ${s.label} ("${s.sample}", node ${s.nodes[0]}) has no type entry or waiver${tail}`);
     }
   }
   return { covered, total };
+}
+
+// Why a root is not the joined module frame or an outermost COMPONENT/INSTANCE inside it, or null. A root that is
+// a TEXT node, a plain frame, nested in another instance of the module, or outside it measures a slice of the
+// module: the floor would be met by shrinking the root.
+function rootFault(frame, root) {
+  if (root.id === frame.id) return null;
+  const path = [];
+  const walk = (b) => {
+    path.push(b);
+    if (b.id === root.id) return true;
+    if (b.children.some(walk)) return true;
+    path.pop();
+    return false;
+  };
+  if (!walk(frame)) return `is not inside the module frame ${frame.id}`;
+  if (root.type !== 'COMPONENT' && root.type !== 'INSTANCE') return `is a ${root.type}, not a component or instance`;
+  const outer = path.slice(1, -1).find((b) => b.type === 'COMPONENT' || b.type === 'INSTANCE');
+  return outer ? `is nested inside ${outer.name}` : null;
 }
 
 function validatePixel(slot, pixel, problems) {
@@ -317,17 +342,29 @@ export function validateChecks(checks, { join, boxes, tokens }) {
 
     const inRoots = (id) => Object.values(roots).some((node) => findBox(rootBox(node), id));
     const waive = readWaivers(slot, section.waive, inRoots, problems);
-    const styles = floorOf({ slot, roots, rootBox, type, waivedIds: waive.flatMap((w) => (w.node ? [w.node] : [])), enforce: !skipped, problems });
+    const frame = !j.node || j.node === root ? base : rootBox(j.node);
+    const hint = j.node && roots[width] === j.node ? '; name the desktop instance in "node"' : '';
+    const styles = floorOf({ slot, roots, rootBox, type, waivedIds: waive.flatMap((w) => (w.node ? [w.node] : [])), enforce: !skipped, problems, baseWidth: String(width), hint });
+    if (j.node && !frame && !skipped) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
+    if (j.node && frame) {
+      for (const [w, node] of Object.entries(roots)) {
+        const fault = rootFault(frame, rootBox(node));
+        if (fault) problems.push(`${slot} @${w}: root ${node} (${rootBox(node).name}) ${fault} — name the module's outermost instance or variant`);
+      }
+    }
     if (!skipped) {
-      const frame = j.node && j.node !== root ? rootBox(j.node) : base;
-      if (j.node && !frame) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
       const variants = frame ? mobileVariants(frame) : [];
-      const mobileRoot = Object.keys(roots).some((w) => Number(w) <= 480);
-      if (variants.length && !mobileRoot && !waive.some((w) => w.width === 'mobile')) {
-        const [first] = variants;
-        const more = variants.length > 1 ? `; +${variants.length - 1} more` : '';
-        const hint = root === j.node ? '; name the desktop instance in "node"' : '';
-        problems.push(`${slot}: module has a mobile variant (${first.name}, ${first.w} wide${more}) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver${hint}`);
+      const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
+      if (variants.length && !waive.some((w) => w.width === 'mobile') && !mobile.some(([, node]) => variants.some((v) => v.id === node))) {
+        if (!mobile.length) {
+          const [first] = variants;
+          const more = variants.length > 1 ? `; +${variants.length - 1} more` : '';
+          problems.push(`${slot}: module has a mobile variant (${first.name}, ${first.w} wide${more}) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver${hint}`);
+        } else {
+          const roles = mobile.map(([w, node]) => `roots[${w}] (${rootBox(node).name})`).join(', ');
+          const list = variants.map((v) => `${v.name} (${v.w} wide, ${v.id})`).join('; ');
+          problems.push(`${slot}: ${roles} is not one of the module's mobile variants (${list}) and no { width: "mobile" } waiver${hint}`);
+        }
       }
     }
     coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0) };
