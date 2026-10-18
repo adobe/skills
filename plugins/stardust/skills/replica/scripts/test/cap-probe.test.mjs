@@ -200,7 +200,7 @@ await check('--help lists the three site-auth flags, in the header and in the sh
   assert.match(h.out, /125 usage \(a site-auth usage error included\)/);
 });
 await check('a site-auth usage error is the usage error (exit 125, UsageError path) and needs no browser: it is raised before playwright is imported or any page loaded', () => {
-  for (const [flags, re] of [[['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/], [['--token-env'], /--token-env takes the name of an environment variable/], [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/]]) {
+  for (const [flags, re] of [[['--token-env', 'NO_SUCH_FIXTURE_VAR'], /no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env/], [['--token-env'], /--token-env takes the name of an environment variable/], [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/]]) {
     const r = run(['http://127.0.0.1:9/page', ...flags]);
     assert.equal(r.code, 125, `${flags.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); assert.match(r.err, /^cap-probe: /); assert.equal(r.out, '');
   }
@@ -337,7 +337,7 @@ if (pwProbe.status !== 0) {
     }));
     await check('auth usage errors exit 125 (not the FAIL code) before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
       const cases = [
-        [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
+        [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env/],
         [['--token-env'], /--token-env takes the name of an environment variable/],
         [['--auth-header'], /--auth-header needs a value/],
         [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/],

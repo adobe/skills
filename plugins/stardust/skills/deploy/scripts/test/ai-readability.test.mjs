@@ -19,6 +19,7 @@ const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'ai-readabili
 const SCRATCH = mkdtempSync(join(tmpdir(), 'ai-readability-test-'));
 after(() => rmSync(SCRATCH, { recursive: true, force: true }));
 const SECRET = 't0k3n';
+const NAME_SHAPED = 'hlx_AbC123secretValue';
 const AUTHORIZATION = `token ${SECRET}`;
 
 const run = (args, { env = {}, cwd = SCRATCH } = {}) => new Promise((resolve, reject) => {
@@ -46,10 +47,11 @@ test('--help: exit 0 and the usage header with the site-auth flags, before any b
 test('auth usage errors exit 2 before any request: an unset variable is named, an empty flag value is refused, a token pasted for a name is never echoed', async () => {
   const base = ['--origin', 'http://127.0.0.1:9', '/page'];
   const cases = [
-    [['--token-env', 'AIR_NOT_SET'], /^ai-readability: no site token: --token-env AIR_NOT_SET is not set \(or is empty\) in the environment or in a AIR_NOT_SET= line of \.env$/m],
+    [['--token-env', 'AIR_NOT_SET'], /^ai-readability: no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env$/m],
     [['--token-env'], /^ai-readability: --token-env takes the name of an environment variable/m],
     [['--token-env', ''], /^ai-readability: --token-env takes the name of an environment variable/m],
     [['--token-env', `token ${SECRET}`], /^ai-readability: --token-env takes the name of an environment variable/m],
+    [['--token-env', NAME_SHAPED], /^ai-readability: no site token: the variable --token-env names is not set/m],
     [['--auth-header'], /^ai-readability: --auth-header needs a value$/m],
     [['--auth-header', ''], /^ai-readability: --auth-header needs a value$/m],
     [['--auth-header', SECRET, '--auth-origin'], /^ai-readability: --auth-origin needs an http\(s\) URL/m],
@@ -61,6 +63,7 @@ test('auth usage errors exit 2 before any request: an unset variable is named, a
     assert.match(r.err, expected, flags.join(' '));
     assert.equal(r.out, '');
     noSecret(r);
+    assert.ok(!r.err.includes(NAME_SHAPED), 'a token shaped like a name is not echoed');
   }
   const noPath = await run(['--origin', 'http://127.0.0.1:9', '--auth-header', AUTHORIZATION]);
   assert.equal(noPath.code, 2); assert.match(noPath.err, /^usage: ai-readability\.mjs --origin <published origin>/); noSecret(noPath);

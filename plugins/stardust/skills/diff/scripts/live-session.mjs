@@ -316,10 +316,10 @@ export function instrumentAuth({ tokenEnv, authHeader, authOrigin, urls = [], en
     value = typeof authHeader === 'string' ? authHeader.trim() : '';
     if (!value) throw usageError('--auth-header needs a value');
   } else {
-    // The variable's name is never echoed unless it is one: a token typed in its place would be printed.
+    // The variable's name is never echoed, even when it is shaped like one: a token typed in its place would be printed.
     if (typeof tokenEnv !== 'string' || !ENV_NAME.test(tokenEnv)) throw usageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
     value = readTokenVar(tokenEnv, { env, cwd });
-    if (!value) throw usageError(`no site token: --token-env ${tokenEnv} is not set (or is empty) in the environment or in a ${tokenEnv}= line of .env`);
+    if (!value) throw usageError('no site token: the variable --token-env names is not set (or is empty) in the environment or in .env');
   }
 
   let origin;

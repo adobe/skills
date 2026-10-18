@@ -85,16 +85,18 @@ check('--auth-origin must be an http(s) origin → exit 2 naming --auth-origin, 
     assert.ok(!msg.includes(bad), msg);
   }
 }));
-check('an unset variable → exit 2 naming the variable and no other variable\'s value', () => withDir('SITE_TOKEN=dotenv-secret\nOTHER=another-secret\n', (cwd) => {
-  const msg = fails(() => instrumentAuth({ tokenEnv: 'MY_TOKEN', urls: [PAGE], env: { SITE_TOKEN: 'env-secret' }, cwd }), /MY_TOKEN/);
-  for (const secret of ['env-secret', 'dotenv-secret', 'another-secret']) assert.ok(!msg.includes(secret), msg);
+check('an unset variable → exit 2 naming the flag, not the variable, and no other variable\'s value', () => withDir('SITE_TOKEN=dotenv-secret\nOTHER=another-secret\n', (cwd) => {
+  const msg = fails(() => instrumentAuth({ tokenEnv: 'MY_TOKEN', urls: [PAGE], env: { SITE_TOKEN: 'env-secret' }, cwd }), /^no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env$/);
+  for (const secret of ['MY_TOKEN', 'env-secret', 'dotenv-secret', 'another-secret']) assert.ok(!msg.includes(secret), msg);
 }));
 check('an empty value counts as unset', () => withDir('A=\nB=""\nC=   \n', (cwd) => {
-  for (const name of ['A', 'B', 'C', 'D']) fails(() => instrumentAuth({ tokenEnv: name, urls: [PAGE], env: { D: '' }, cwd }), new RegExp(name));
+  for (const name of ['A', 'B', 'C', 'D']) fails(() => instrumentAuth({ tokenEnv: name, urls: [PAGE], env: { D: '' }, cwd }), /--token-env/);
 }));
-check('--token-env takes a variable name: a token typed there is refused without echoing it', () => withDir(null, (cwd) => {
+check('--token-env takes a variable name: a token typed there is refused without echoing it, even one shaped like a name', () => withDir(null, (cwd) => {
   const msg = fails(() => instrumentAuth({ tokenEnv: 'token abc.def-123', urls: [PAGE], env: {}, cwd }), /--token-env/);
   assert.ok(!msg.includes('abc.def-123'), msg);
+  const shaped = fails(() => instrumentAuth({ tokenEnv: 'hlx_AbC123secretValue', urls: [PAGE], env: {}, cwd }), /--token-env/);
+  assert.ok(!shaped.includes('hlx_AbC123secretValue'), shaped);
 }));
 check('a flag given blank is a usage error, not a silent no-auth run', () => withDir(null, (cwd) => {
   fails(() => instrumentAuth({ authHeader: '   ', urls: [PAGE], env: {}, cwd }), /--auth-header/);

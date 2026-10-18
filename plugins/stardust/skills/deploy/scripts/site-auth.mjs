@@ -23,7 +23,7 @@
 //        `context.request` (APIRequestContext) bypasses routes and keeps a header across a redirect too — send the
 //        header there yourself, to the origin only. Same semantics as diff/scripts/live-session.mjs
 //        `attachOriginAuth`, kept here because deploy does not import diff.
-//   strayEnvLine(name, { cwd }) / strayMessage(flag, name)  whether the `.env` has a line for `name` the grammar does
+//   strayEnvLine(name, { cwd }) / strayMessage(flag)  whether the `.env` has a line for `name` the grammar does
 //        not read (`export NAME=`, `NAME = v`), and the usage-error text for it, so it is not reported as "not set".
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -51,7 +51,8 @@ export function strayEnvLine(name, { cwd = process.cwd() } = {}) {
   const loose = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`);
   return readFileSync(file, 'utf8').split(/\r?\n/).some((line) => loose.test(line) && !line.startsWith(`${name}=`));
 }
-export const strayMessage = (flag, name) => `${flag} ${name}: found a ${name} line in ./.env but it must be exactly ${name}=value (no export, no spaces round the =, no indent)`;
+// The variable's name is not echoed: a token typed in its place would be.
+export const strayMessage = (flag) => `${flag}: the .env line for the variable it names is not in a form that is read; it must be exactly NAME=value (no export, no spaces round the =, no indent)`;
 
 export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = [], env = process.env, cwd = process.cwd() } = {}) {
   const wantsHeader = authHeader !== undefined && authHeader !== null;
@@ -65,7 +66,7 @@ export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = []
     header = withTokenPrefix(value);
   } else {
     header = readSiteAuth(tokenEnv, { env, cwd });
-    if (!header) throw usageError(strayEnvLine(tokenEnv, { cwd }) ? strayMessage('--token-env', tokenEnv) : `no site token: --token-env ${tokenEnv} is not set (or is empty) in the environment or in a ${tokenEnv}= line of .env`);
+    if (!header) throw usageError(strayEnvLine(tokenEnv, { cwd }) ? strayMessage('--token-env') : 'no site token: the variable --token-env names is not set (or is empty) in the environment or in .env');
   }
 
   let origin;

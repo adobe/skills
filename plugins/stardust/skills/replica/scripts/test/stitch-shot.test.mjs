@@ -146,7 +146,7 @@ if (playwrightOk) {
     const url = `${fx.originA}/page`;
     const out = join(scratch, 'usage.png');
     const cases = [
-      [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
+      [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env/],
       [['--token-env'], /--token-env takes the name of an environment variable/],
       [['--auth-header'], /--auth-header needs a value/],
       [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/],

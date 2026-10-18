@@ -116,7 +116,7 @@ const TOKEN_EXIT = 3;
 function siteAuthOf(name) {
   const siteAuth = readSiteAuth(name, { flag: '--site-token-env' });
   if (siteAuth) return siteAuth;
-  throw new Error(strayEnvLine(name) ? strayMessage('--site-token-env', name) : `--site-token-env ${name}: not set in the environment or in ./.env`);
+  throw new Error(strayEnvLine(name) ? strayMessage('--site-token-env') : '--site-token-env: the variable it names is not set in the environment or in ./.env');
 }
 
 // The text with the site token (and the bare token under its `token ` / `bearer ` prefix) replaced.

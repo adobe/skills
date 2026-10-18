@@ -177,7 +177,7 @@ const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: a
 // Anything printed passes through here, so the token cannot reach stderr by way of an error text.
 const die = (m, c = 2) => { console.error(`[donor-probe] ${redact(m, auth)}`); process.exit(c); };
 // Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
-if (wantsAuth && !auth) die(`no site token: --token-env ${args['token-env']} is not set in the environment or .env`);
+if (wantsAuth && !auth) die('no site token: the variable --token-env names is not set in the environment or .env');
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));

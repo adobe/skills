@@ -78,8 +78,8 @@ test('strayEnvLine / instrumentSiteAuth: a NAME line in a form the grammar does 
   assert.equal(strayEnvLine('not a name', { cwd: withEnvFile(`not a name=${T}\n`) }), false);
   const cwd = withEnvFile(`export SITE_X=${T}\n`);
   assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_X', urls: ['https://a.test/'], env: {}, cwd }), (e) => e.code === 2
-    && e.message === '--token-env SITE_X: found a SITE_X line in ./.env but it must be exactly SITE_X=value (no export, no spaces round the =, no indent)');
-  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_Y', urls: ['https://a.test/'], env: {}, cwd }), (e) => /^no site token: --token-env SITE_Y is not set/.test(e.message), 'another variable is plainly not set');
+    && e.message === '--token-env: the .env line for the variable it names is not in a form that is read; it must be exactly NAME=value (no export, no spaces round the =, no indent)');
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_Y', urls: ['https://a.test/'], env: {}, cwd }), (e) => /^no site token: the variable --token-env names is not set/.test(e.message), 'another variable is plainly not set');
   assert.equal(instrumentSiteAuth({ tokenEnv: 'SITE_X', urls: ['https://a.test/'], env: { SITE_X: T }, cwd }).header, `token ${T}`, 'the environment still wins');
 });
 
@@ -127,9 +127,10 @@ test('instrumentSiteAuth: an empty flag value is a usage error that names the fl
   const urls = ['https://a.test/'];
   for (const authHeader of ['', '   ']) assert.throws(() => instrumentSiteAuth({ authHeader, urls, cwd }), (e) => e.code === 2 && e.message === '--auth-header needs a value');
   assert.throws(() => instrumentSiteAuth({ tokenEnv: '', urls, cwd }), (e) => e.code === 2 && /^--token-env takes the name of an environment variable/.test(e.message));
-  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_NOT_SET', urls, env: {}, cwd }), (e) => e.code === 2 && e.message === 'no site token: --token-env SITE_NOT_SET is not set (or is empty) in the environment or in a SITE_NOT_SET= line of .env');
-  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_BLANK', urls, env: {}, cwd }), (e) => e.code === 2 && /^no site token: --token-env SITE_BLANK is not set/.test(e.message));
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_NOT_SET', urls, env: {}, cwd }), (e) => e.code === 2 && e.message === 'no site token: the variable --token-env names is not set (or is empty) in the environment or in .env');
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_BLANK', urls, env: {}, cwd }), (e) => e.code === 2 && /^no site token: the variable --token-env names is not set/.test(e.message));
   assert.throws(() => instrumentSiteAuth({ tokenEnv: `token ${T}`, urls, env: {}, cwd }), (e) => e.code === 2 && !e.message.includes(T));
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'hlx_AbC123secretValue', urls, env: {}, cwd }), (e) => e.code === 2 && !e.message.includes('hlx_AbC123secretValue') && /--token-env/.test(e.message), 'a token shaped like a name is not echoed');
 });
 
 // A browser context as attachSiteAuth sees it: the route handler it registers; `visit` runs one request through the

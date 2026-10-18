@@ -190,7 +190,11 @@ else {
       assert.equal(viaEnv.status, 0, viaEnv.all);
       noToken(viaEnv.stdout, viaEnv.stderr);
       assert.equal(empty.status, 2, empty.all);
-      assert.match(empty.stderr, /STARDUST_D6_NO_SUCH_TOKEN/);
+      assert.match(empty.stderr, /no site token: the variable --token-env names is not set/);
+      assert.ok(!empty.stderr.includes('STARDUST_D6_NO_SUCH_TOKEN'), 'the variable name is not echoed');
+      const shaped = await run('slot-coverage', ['--model', model, '--rendered', url, '--token-env', 'hlx_AbC123secretValue']);
+      assert.equal(shaped.status, 2, shaped.all);
+      assert.ok(!shaped.all.includes('hlx_AbC123secretValue'), 'a token typed as the name, shaped like one, is not echoed');
     } finally { await preview.close(); }
   });
 

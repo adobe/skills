@@ -106,6 +106,7 @@ test('--help: exit 0 and the usage header, before any browser or file work', () 
 const SCRATCH = mkdtempSync(join(tmpdir(), 'qa-gate-test-'));
 after(() => rmSync(SCRATCH, { recursive: true, force: true }));
 const SECRET = 't0k3n';
+const NAME_SHAPED = 'hlx_AbC123secretValue';
 const run = (args, { env = {}, cwd = SCRATCH } = {}) => new Promise((resolve, reject) => {
   const base = { ...process.env };
   for (const k of Object.keys(base)) if (/token/i.test(k)) delete base[k];
@@ -122,10 +123,11 @@ const noSecret = (r) => assert.ok(!r.out.includes(SECRET) && !r.err.includes(SEC
 test('auth usage errors exit 2 before any request: an unset variable is named, an empty flag value is refused, a token pasted for a name is never echoed', async () => {
   const url = 'http://127.0.0.1:9/page';
   const cases = [
-    [['--token-env', 'QA_NOT_SET'], /^qa-gate: no site token: --token-env QA_NOT_SET is not set \(or is empty\) in the environment or in a QA_NOT_SET= line of \.env$/m],
+    [['--token-env', 'QA_NOT_SET'], /^qa-gate: no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env$/m],
     [['--token-env'], /^qa-gate: --token-env takes the name of an environment variable/m],
     [['--token-env', ''], /^qa-gate: --token-env takes the name of an environment variable/m],
     [['--token-env', `token ${SECRET}`], /^qa-gate: --token-env takes the name of an environment variable/m],
+    [['--token-env', NAME_SHAPED], /^qa-gate: no site token: the variable --token-env names is not set/m],
     [['--auth-header'], /^qa-gate: --auth-header needs a value$/m],
     [['--auth-header', ''], /^qa-gate: --auth-header needs a value$/m],
     [['--auth-header', SECRET, '--auth-origin'], /^qa-gate: --auth-origin needs an http\(s\) URL/m],
@@ -137,6 +139,7 @@ test('auth usage errors exit 2 before any request: an unset variable is named, a
     assert.match(r.err, expected, flags.join(' '));
     assert.equal(r.out, '');
     noSecret(r);
+    assert.ok(!r.err.includes(NAME_SHAPED), 'a token shaped like a name is not echoed');
   }
   const noUrl = await run(['--auth-header', `token ${SECRET}`]);
   assert.equal(noUrl.code, 2); assert.match(noUrl.err, /^usage: qa-gate\.mjs <harnessURL>/); noSecret(noUrl);

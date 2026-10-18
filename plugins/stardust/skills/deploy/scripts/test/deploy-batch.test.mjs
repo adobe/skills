@@ -485,22 +485,26 @@ await check('a value already starting with `bearer ` is sent as is; with the var
     for (const line of [`export SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN = ${SITE_TOKEN}`, ` SITE_ENV_TOKEN=${SITE_TOKEN}`]) {
       writeFileSync(dotenv, `OTHER=1\n${line}\n`);
       const off = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env SITE_ENV_TOKEN: found a SITE_ENV_TOKEN line in \.\/\.env but it must be exactly SITE_ENV_TOKEN=value \(no export, no spaces round the =, no indent\)$/m);
+      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env: the \.env line for the variable it names is not in a form that is read; it must be exactly NAME=value \(no export, no spaces round the =, no indent\)$/m);
       assert.ok(!off.err.includes(SITE_TOKEN) && !off.out.includes(SITE_TOKEN), 'the value was printed');
     }
     writeFileSync(dotenv, `# SITE_ENV_TOKEN=${SITE_TOKEN}\nSITE_ENV_TOKEN_2=${SITE_TOKEN}\n`);
     const other = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-    assert.equal(other.code, 2, other.out + other.err); assert.match(other.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m, 'a comment or another variable is not a NAME line');
+    assert.equal(other.code, 2, other.out + other.err); assert.match(other.err, /fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m, 'a comment or another variable is not a NAME line');
     writeFileSync(dotenv, `SITE_ENV_TOKEN=\nSITE_ENV_TOKEN_2="${SITE_TOKEN}"\n`);
     const empty = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-    assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m);
+    assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, /fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m);
   } finally { rmSync(dotenv, { force: true }); }
 });
-await check('--site-token-env usage errors exit 2 with nothing sent: an unset variable is named (never a value), a token pasted where the name belongs is refused without being echoed, a dangling flag is refused', async () => {
+await check('--site-token-env usage errors exit 2 with nothing sent: an unset variable is not named (and never a value), a token pasted where the name belongs is refused without being echoed, a dangling flag is refused', async () => {
   const from = requests.length; const pfrom = protectedSeen.length;
   const miss = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_NOT_SET']);
   assert.equal(miss.code, 2, miss.out + miss.err);
-  assert.match(miss.err, /^\[deploy-batch\] fatal: --site-token-env SITE_NOT_SET: not set in the environment or in \.\/\.env$/m);
+  assert.match(miss.err, /^\[deploy-batch\] fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m);
+  assert.ok(!miss.err.includes('SITE_NOT_SET'), 'the variable name is not echoed either');
+  const shaped = await protectedRun(['--content', 'site-h', '--site-token-env', 'hlx_AbC123secretValue']);
+  assert.equal(shaped.code, 2, shaped.out + shaped.err);
+  assert.ok(!shaped.err.includes('hlx_AbC123secretValue') && !shaped.out.includes('hlx_AbC123secretValue'), 'a token shaped like a name was echoed');
   const pasted = await protectedRun(['--content', 'site-h', '--site-token-env', `token ${SITE_TOKEN}`]);
   assert.equal(pasted.code, 2, pasted.out + pasted.err);
   assert.match(pasted.err, /^\[deploy-batch\] fatal: --site-token-env takes the name of an environment variable/m);
