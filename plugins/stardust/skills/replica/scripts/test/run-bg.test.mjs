@@ -298,7 +298,7 @@ await check('three --lock jobs from three run-bg dirs under STARDUST_BROWSER_SLO
 });
 await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children take no second slot) and STARDUST_BROWSER_SLOT = its slot file in the lock dir', () => {
   for (const [i, d] of dirs3.entries()) {
-    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/ slots=(\S*) slot=(\S*)$/m);
+    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/^holders \d+ .* slots=(\S*) slot=(\S*)$/m); // the job's own line, not the launch line echoing its command
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
 });
