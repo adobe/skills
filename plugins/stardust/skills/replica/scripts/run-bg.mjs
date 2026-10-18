@@ -123,7 +123,7 @@
  *        the cwd; absent = nothing) whenever a background agent finishes; every
  *        poll compares its size with the size at the start (after the pause and
  *        the jobs' end, before the bound), and growth ends the wait with
- *        `wake: <its last line>` before the report.
+ *        `wake: <its last line>` before the report (also before an exit 0's).
  *        Pause: the runner writes $STARDUST_PAUSE_FILE (JSON {at, reason}; a
  *        relative path from the cwd, the project root) when it wants the
  *        session to stop — it alone writes, edits or deletes it. Unset or empty
@@ -316,7 +316,8 @@ const HELP = `Usage:
   names a file that exists, wait ends at once — checked on every poll — with exit ${PAUSED_EXIT} and the one-pass report after a
   \`run-bg: paused — <path> present …\` line; status shows that line first. Jobs keep running; nothing is signalled.
   Wake: the runner appends a line to ${WAKE_FILE} (from the cwd; absent = nothing) when a background agent finishes; a
-  wait that sees it grow ends with exit ${WAKE_EXIT} and the one-pass report after a \`wake: <its last line>\` line.
+  wait that sees it grow ends with exit ${WAKE_EXIT} and the one-pass report after a \`wake: <its last line>\` line (an exit 0
+  whose poll saw it grow prints that line too).
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
   --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
   logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
@@ -654,8 +655,9 @@ function pickNames(dir, requested, { all = false, owner = null } = {}) {
 }
 
 // The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. Each
-// poll, the first included, in order: the pause file present (pauseState) → `paused`; every job ended; the wake file
-// (relative: from the cwd) grown past its size at the start → `woken` (a shrunk file lowers that size); the bound.
+// poll, the first included, in order: the pause file present (pauseState) → `paused`; every job ended (`woken` too when
+// the wake file grew in that poll); the wake file (relative: from the cwd) grown past its size at the start → `woken` (a
+// shrunk file lowers that size); the bound.
 export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, wakeFile = WAKE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
   let ceilingSec;
   if (untilMs != null) {
@@ -675,9 +677,9 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
     pause = pauseState(pauseFile);
     if (pause) break;
     const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
-    if (!pending.length) break;
     const size = wakeSize(wakePath);
-    if (size > wakeBase) { woken = wakeText(wakePath); break; }
+    if (size > wakeBase) woken = wakeText(wakePath); // also with every job ended: a coincident wake is reported, not swallowed
+    if (!pending.length || woken != null) break;
     wakeBase = Math.min(wakeBase, size);
     if ((Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
@@ -786,7 +788,7 @@ async function cli(argv) {
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; if (r.woken != null) return WAKE_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; if (!r.pending) return 0; return r.woken != null ? WAKE_EXIT : STILL_RUNNING_EXIT; }
     case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
     case 'clean': console.log(await clean(o.dir, { all: o.all })); return 0;

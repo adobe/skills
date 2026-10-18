@@ -664,13 +664,18 @@ await check(`wait exits ${WAKE_EXIT} within a poll when the wake file in the cwd
   await sleep(800); writeFileSync(WAKE, ''); await sleep(400); appendFileSync(WAKE, 'short\n');
   const s = await shrink; assert.equal(s.code, WAKE_EXIT, s.out); assert.equal(firstLine(s.out), 'wake: short');
 });
-await check('every job ended in the poll that sees the wake file grown: exit 0 wins — woken null (per poll: pause, ended, wake, bound)', async () => {
+await check('every job ended in the poll that sees the wake file grown: exit 0, yet the wake: line first and woken set — a coincident wake is not swallowed', async () => {
   await startRunning('we', 1000);
-  const waiting = wait(wd, ['we'], { maxSec: 20, wakeFile: WAKE }); // in-process: polls every 2 s, so both land in one poll
+  // Both waits poll at once, then only after the job has ended and the line is appended: in-process every 2 s, the CLI every 3 s.
+  const inproc = wait(wd, ['we'], { maxSec: 20, wakeFile: WAKE });
+  const cli = bgAt(wp, wd, { RUN_BG_POLL_MS: '3000' }, 'wait', '--max', '20', 'we');
   for (let i = 0; i < 100 && !stateIn(wd, 'we').endedAt; i += 1) await sleep(20); // eslint-disable-line no-await-in-loop
   appendFileSync(WAKE, 'agent c finished\n');
-  const r = await waiting;
-  assert.equal(r.woken, null, r.text); assert.equal(r.pending, 0); assert.doesNotMatch(r.text, /wake:/); assert.match(r.text, /all 1 ended/);
+  const r = await inproc;
+  assert.equal(r.woken, 'agent c finished', r.text); assert.equal(r.pending, 0); assert.equal(r.text.split('\n')[0], 'wake: agent c finished'); assert.match(r.text, /all 1 ended/);
+  const c = await cli; const lines = c.out.trim().split('\n');
+  assert.equal(c.code, 0, c.out + c.err); assert.equal(lines[0], 'wake: agent c finished'); assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)');
+  assert.match(lines[2], /^we {2}done exit=0/); assert.match(lines.at(-1), /^run-bg: all 1 ended/);
   assert.equal((await bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk')).code, 0, 'wk ends on its own');
 });
 
