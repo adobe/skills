@@ -57,13 +57,15 @@
  * Exit: 0 recorded or unchanged · 1 usage (no key, a prefix* key, another decision, a reason under 40 characters, an
  * unreadable decisions file) · 3 refused: an attended run (the owner sentence on stderr).
  * `compareDocs`, `compareHide`, `applyDecisions`, `decideEntry`, `hideOffset`, `visualFindings`, `findingKey`,
- * `DECISION_RULE` are exported.
+ * `DECISION_RULE` are exported, and chrome-explore's `unstableAsWarn` is re-exported (qa's `chrome` check applies it too).
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { effectiveHide, hideArgs, normName, unstableAsWarn } from './chrome-explore.mjs';
+
+export { unstableAsWarn };
 
 const TOUCH_BELOW = 768;
 const FAMILIES = new Set(['search', 'cart', 'account', 'locale', 'drawer']);

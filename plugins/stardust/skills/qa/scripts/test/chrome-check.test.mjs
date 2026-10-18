@@ -86,4 +86,10 @@ await check('attended (no handsOff): the same agent decision is ignored and repo
   assert.deepEqual(findings.map((f) => [f.id, f.severity]), [['control-missing', 'error'], ['decision-invalid', 'warn']]);
   assert.match(findings[1].message, /an attended run: only the site owner clears a finding/);
 });
+await check('a source state the contract marks unstable: its error is a warning, as in chrome-compare', async () => {
+  const shaky = structuredClone(missingShop); shaky.widths[1440].controls[0].actions.click.unstable = { delta: 0.1, resample: 'differs' };
+  const { findings } = await sandboxRun(shaky, { state: {} });
+  assert.deepEqual(findings.map((f) => [f.id, f.severity]), [['control-missing', 'warn']]);
+  assert.match(findings[0].message, /\(source state unstable: sampled differently on a fresh page\)$/);
+});
 process.exit(failed ? 1 : 0);
