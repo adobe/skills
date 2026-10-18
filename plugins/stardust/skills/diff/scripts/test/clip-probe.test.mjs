@@ -6,21 +6,28 @@
 // mid-line and whose "View details" link sits below the box (the recorded card defect), a line-clamped
 // paragraph (advisory only), a collapsed mega-menu (max-height 0 — must not count), an sr-only span (must not
 // count), a horizontal carousel track (advisory only), a "Read more" collapsible (advisory TEXT COLLAPSED) — and
-// a clean page (exit 0). Run: node <this file>.
+// a clean page (exit 0). Site auth (--token-env / --auth-header / --auth-origin) against a two-origin fixture whose
+// protected origin loads its stylesheet and image from a second one: the token reaches the protected origin and never
+// the other, nothing is sent without a flag (a SITE_TOKEN in the environment and .env included) and that run is the run
+// of today — the 401 page measured with a warning, exit 0 —, an auth usage error exits 2 before any request, and a run
+// with no auth flag on an open page is unchanged. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { formatTable, parseArgs, summarize, verdictLine } from '../clip-probe.mjs';
+import { startTwoOriginServer } from '../../../replica/scripts/test/fixtures/two-origin-server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'clip-probe.mjs');
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
-const runAsync = (args, cwd) => new Promise((done) => { const ch = spawn(process.execPath, [SCRIPT, ...args], { cwd }); let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err })); });
+const runAsync = (args, cwd, env = process.env) => new Promise((done) => { const ch = spawn(process.execPath, [SCRIPT, ...args], { cwd, env }); let out = ''; let err = ''; ch.stdout.on('data', (d) => { out += d; }); ch.stderr.on('data', (d) => { err += d; }); ch.on('close', (code) => done({ code, out, err })); });
+// The child env never carries a site token of the runner's.
+const cleanEnv = (extra = {}) => { const env = { ...process.env, ...extra }; for (const k of ['SITE_TOKEN', 'DEPLOYED_GATE_SITE_TOKEN']) if (!(k in extra)) delete env[k]; return env; };
 
 const findings = [
   { kind: 'CONTROL HIDDEN', path: 'div.card-body > p.details > a', text: 'view details', clipper: 'div.card-body', cut: 20 },
@@ -57,6 +64,23 @@ await check('--help exits 0 with the usage and writes nothing', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8' });
   assert.equal(r.status, 0); assert.match(r.stdout, /Usage: node clip-probe\.mjs/); assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
+});
+
+await check('--help lists the three site-auth flags', () => {
+  const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
+  assert.equal(r.status, 0);
+  for (const flag of ['--token-env <NAME>', '--auth-header <value>', '--auth-origin <url>']) assert.ok(r.stdout.includes(flag), flag);
+  assert.match(r.stdout, /A site-auth usage error exits 2 too/);
+});
+await check('parseArgs: an absent site-auth flag stays undefined (never ""), a given one is read, a missing value is ""', () => {
+  const none = parseArgs(['node', 'x', 'https://a.test/']);
+  for (const k of ['tokenEnv', 'authHeader', 'authOrigin']) assert.equal(none[k], undefined, k);
+  const all = parseArgs(['node', 'x', 'https://a.test/', '--token-env', 'MY_TOKEN', '--auth-header', 'token abc', '--auth-origin', 'https://a.test']);
+  assert.deepEqual([all.tokenEnv, all.authHeader, all.authOrigin, all.url], ['MY_TOKEN', 'token abc', 'https://a.test', 'https://a.test/']);
+  const bare = parseArgs(['node', 'x', 'https://a.test/', '--token-env']);
+  assert.equal(bare.tokenEnv, ''); assert.equal(bare.url, 'https://a.test/');
+  const next = parseArgs(['node', 'x', 'https://a.test/', '--auth-header', '--plain']);
+  assert.equal(next.authHeader, ''); assert.equal(next.plain, true);
 });
 
 let playwright = true;
@@ -107,6 +131,71 @@ else {
     const r = await runAsync([`${base}/clean`, '--plain', '--width', '900'], cwd);
     assert.equal(r.code, 0, r.err); assert.match(r.out, /Clipped: 0 /);
   });
+
+  // ---- site auth: a protected origin A whose page loads its stylesheet and image from an open origin B ----
+  const fixture = async (fn) => { const fx = await startTwoOriginServer(); try { await fn(fx); } finally { await fx.stop(); } };
+  const noLeak = (fx, r) => {
+    assert.deepEqual(fx.authorizations('B'), [], 'origin B (the third party) saw no Authorization');
+    assert.ok(!`${r.out}${r.err}`.includes(fx.token), 'the token is never printed');
+  };
+  const probe = ['--plain', '--width', '900'];
+  await check('--token-env: the protected page is measured (HTTP 200); the token reaches its origin and not the origin of its stylesheet and image', () => fixture(async (fx) => {
+    const r = await runAsync([`${fx.originA}/page`, ...probe, '--token-env', 'FIXTURE_SITE_TOKEN'], cwd, cleanEnv({ FIXTURE_SITE_TOKEN: fx.token }));
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /^clip-probe .*\/page @ 900px — docH \d+, 7 text nodes, 2 controls \(HTTP 200, chromium\)\n/);
+    assert.equal(r.err, '');
+    assert.ok(fx.a.log.some((e) => e.path === '/page' && e.status === 200 && e.authorization === fx.authorization), 'origin A answered the page 200 to the token');
+    assert.ok(['/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)), 'the sub-resources were fetched from origin B');
+    noLeak(fx, r);
+  }));
+  await check('--auth-header with a bare value and an explicit --auth-origin works the same; --warmup on another origin gets no token', () => fixture(async (fx) => {
+    const r = await runAsync([`${fx.originA}/page`, ...probe, '--warmup', `${fx.originB}/page`, '--auth-header', fx.token, '--auth-origin', fx.originA], cwd, cleanEnv());
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /\(HTTP 200, chromium\)/);
+    assert.ok(fx.a.log.some((e) => e.path === '/page' && e.status === 200 && e.authorization === fx.authorization), 'a bare value is sent as "token <value>"');
+    assert.ok(fx.b.log.some((e) => e.path === '/page'), 'the warm-up page was visited');
+    noLeak(fx, r);
+  }));
+  await check('a token and a --warmup on another origin without --auth-origin: exit 2 before any request, naming the flag', () => fixture(async (fx) => {
+    const r = await runAsync([`${fx.originA}/page`, ...probe, '--warmup', `${fx.originB}/page`, '--token-env', 'FIXTURE_SITE_TOKEN'], cwd, cleanEnv({ FIXTURE_SITE_TOKEN: fx.token }));
+    assert.equal(r.code, 2, r.out + r.err);
+    assert.match(r.err, /^clip-probe error: .*one origin only and these URLs have 2.*--auth-origin/);
+    assert.equal(r.out, '');
+    assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
+    noLeak(fx, r);
+  }));
+  await check('no flag: nothing is sent — a SITE_TOKEN in the environment and in .env included — and the 401 page is measured with a warning, exit 0, as before', () => fixture(async (fx) => {
+    const dir = mkdtempSync(join(cwd, 'cwd-'));
+    writeFileSync(join(dir, '.env'), `SITE_TOKEN=${fx.token}\n`);
+    const r = await runAsync([`${fx.originA}/page`, ...probe], dir, cleanEnv({ SITE_TOKEN: fx.token }));
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.equal(r.out, `clip-probe ${fx.originA}/page @ 900px — docH 900, 1 text nodes, 0 controls (HTTP 401, chromium)\n  (none)\nClipped: 0 (text clipped 0, text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0, collapsed 0, scroll-hidden 0, horizontal 0)\n`);
+    assert.equal(r.err, `[live-session] WARNING: HTTP 401 at ${fx.originA}/page — measuring the error page; flags will reflect it\n`);
+    assert.ok(fx.a.log.length > 0 && fx.a.log.every((e) => e.authorization === null && e.status === 401), 'origin A saw requests and none carried an Authorization');
+    noLeak(fx, r);
+  }));
+  await check('no auth flag on an open page is unaffected: the same report, nothing sent anywhere', () => fixture(async (fx) => {
+    const r = await runAsync([`${fx.originB}/page`, ...probe], cwd, cleanEnv({ SITE_TOKEN: fx.token }));
+    assert.equal(r.code, 0, r.out + r.err);
+    assert.match(r.out, /^clip-probe .*\/page @ 900px — docH \d+, 7 text nodes, 2 controls \(HTTP 200, chromium\)\n {2}\(none\)\nClipped: 0 /);
+    assert.equal(r.err, '');
+    assert.equal(fx.a.log.length, 0, 'origin A was never asked');
+    noLeak(fx, r);
+  }));
+  await check('auth usage errors exit 2 before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
+    const cases = [
+      [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
+      [['--token-env'], /--token-env takes the name of an environment variable/],
+      [['--auth-header'], /--auth-header needs a value/],
+      [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/],
+    ];
+    for (const [flags, re] of cases) {
+      const r = await runAsync([`${fx.originA}/page`, ...probe, ...flags], cwd, cleanEnv());
+      assert.equal(r.code, 2, `${flags.join(' ')}: ${r.out}${r.err}`);
+      assert.match(r.err, re); assert.match(r.err, /^clip-probe error: /);
+    }
+    assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
+  }));
   server.close(); rmSync(cwd, { recursive: true, force: true });
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
