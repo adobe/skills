@@ -169,8 +169,8 @@ criteria and the cap of 3 rounds per page (handoff contract § 1 row 5) stay.
   (delivered CSS/JS plus its own and the chrome documents, recorded beside a
   verdict only when the gate key proves the host serves that tree — a row
   without one is always re-gated) changed since its PASS, and leaves out and
-  names a page at the cap (`at the cap: <slug> — C-final's roster gate
-  measures it`); `--round-reset` follows only a recorded re-prototype decision.
+  names each page at the cap (`at the cap: <slug>, … — C-final's roster gate
+  measures them`); `--round-reset` follows only a recorded re-prototype decision.
 - **Resume, never restart:** a killed `gate-all.mjs` run re-runs the same
   command plus `--skip-existing`.
 
@@ -182,6 +182,7 @@ Fix round <n> of 3 — unit <unit>; pages <slug,…>; widths 1440 + 360; host <p
 FAIL lines, verbatim from gate-all with their numbers (and <out>/triage.json): <lines>
 Edit only blocks/<name>/; a frozen-file finding is ONE stardust/rollout/foundation-requests.md line:
   - <unit> | <what> | <evidence: instrument + numbers> | <templates affected>
+A server: node skills/replica/scripts/run-bg.mjs start --kind server --name <unit>-srv -- <cmd> (never waited)
 Each round: fix, npm run lint, then
   node skills/stardust/scripts/unit-commit.mjs <unit> --code blocks/<name> --push
   node skills/deploy/scripts/fresh-check.mjs <css-or-js-url> --grep '<marker>'
@@ -192,13 +193,10 @@ Each round: fix, npm run lint, then
     node skills/replica/scripts/gate-all.mjs --changed-only --eds-host <host> --width <w>
   node skills/replica/scripts/run-bg.mjs wait   # exit 75: wait again
   node skills/rollout/scripts/update-coverage.mjs --gate <each width's "run →" file>
-  node skills/stardust/scripts/unit-commit.mjs <unit>
-Stop at PASS at both widths; Δh ≠ 0 takes another round only with rounds left and a named
-cause. At the cap a PASS is final; a FAIL is the re-prototype decision — not yours, never --round-reset.
-A server: node skills/replica/scripts/run-bg.mjs start --kind server --name <unit>-srv -- <cmd>
-(never waited); at the end: node skills/replica/scripts/run-bg.mjs stop --servers
-STARDUST_PAUSE_FILE present → finish the round, return "paused: <report>".
-Return: your report in stardust/rollout/units/<unit>.md (unit-commit.mjs commits it — never
-git add it by hand); last command, not when paused:
-  node skills/stardust/scripts/progress.mjs unit done|failed <unit> --verdict "<one verdict line>"
+Stop: <the stop rule above>; at the cap the decision is not yours, never --round-reset. Then:
+  write your report to stardust/rollout/units/<unit>.md (never git add it by hand)
+  node skills/stardust/scripts/unit-commit.mjs <unit>   # carries the report, pages and bookkeeping
+  node skills/replica/scripts/run-bg.mjs stop --servers
+  node skills/stardust/scripts/progress.mjs unit done|failed <unit> --verdict "<one verdict line>"   # last
+STARDUST_PAUSE_FILE present → finish the round, stop your servers, return "paused: <report>" (no progress.mjs).
 ```
