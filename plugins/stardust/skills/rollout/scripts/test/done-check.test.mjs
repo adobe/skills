@@ -286,6 +286,9 @@ check('unit_unproven: a unit page excluded since (coverage excluded[] by path, n
   const short = UNIT_PAGES.slice(1).map(withGate('news-b', { atByWidth: { 1440: AT[1440] } }));
   assert.deepEqual(units({ pages: short, excluded }).gaps, ['unit_unproven:cluster-news: 1/1 pages without a passing gate at 1440 and 360: /news/b/']);
   assert.deepEqual(units({ pages: UNIT_PAGES.slice(0, 2), excluded: [{ slug: 'story', path: '/story', status: 'excluded' }] }).gaps, []);
+  const story = UNIT_PAGES.map(withGate('story', { pass: false }));
+  assert.deepEqual(units({ pages: story, excluded: [{ slug: 'old-story', path: '/Story', status: 'excluded' }] }).gaps,
+    ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], 'an excluded path never hides a row still in pages[]');
 });
 
 const LEGACY_SKIP = (n) => `unit_unproven: ${n} row(s) without per-width verdicts — proven on the last width's pass`;

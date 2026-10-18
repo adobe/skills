@@ -225,7 +225,7 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
   if (progress == null) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
   if (!isMap(progress) || !isMap(progress.units)) return { gaps: [], skipped: [`unit_unproven: ${join(out, 'progress.json')} has no units map`] };
   const { units } = progress;
-  // a page excluded since (coverage excluded[]) has no row to prove: it leaves its unit's count
+  // a page excluded since (coverage excluded[]) with no row left in pages[] has nothing to prove: it leaves its unit's count
   const gone = new Set((Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e.path === 'string').map((e) => pathKey(e.path)));
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
@@ -249,7 +249,7 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
     const byKey = new Map();
     let left = 0;
     for (const l of contentLines(text)) {
-      if (gone.has(pathKey(l))) { left += 1; continue; }
+      if (gone.has(pathKey(l)) && !rowsByKey.has(pathKey(l))) { left += 1; continue; }
       if (!byKey.has(pathKey(l))) byKey.set(pathKey(l), l);
     }
     if (!byKey.size) { if (!left) gaps.push(`unit_unproven:${name}: no pages in ${file}`); continue; }
