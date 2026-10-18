@@ -568,8 +568,8 @@ async function main(argv) {
   const pageMs = resolvePageTimeoutMs(o.pageTimeout, o.timeoutMs);
   const outcomes = new Array(roster.length);
   let challenge = null;
-  // The effective concurrency: drops to 1 for the rest of the roster once a measurement times out above it (a
-  // stuck page under parallel load is the run to stop parallelising); workers ≥ it stop after their current job.
+  // The effective concurrency: drops to 1 for the rest of the roster once a measurement times out above it (a page
+  // stuck under parallel load is the cue to stop parallelising); workers ≥ it stop after their current job.
   let effective = Math.min(o.concurrency, Math.max(1, todo.length));
   let fellBackAfter = null;
   // The whole file, rewritten after every measurement (atomic: a temp file renamed over <out>; synchronous, so two
