@@ -56,7 +56,7 @@ join     B0, the section join. Opens the page (a file path, a file: or localhost
          the table's order, whose data-module is the row's Donor module and whose text holds the slot's first
          heading (content-model.json); a Donor module must be included in curation-rules.json. Chrome and
          carried-invisible rows need no section. Each problem starts "section drift:". Writes
-         <dir>/.work/reskin/gates/<slug>/figma/join.json (each section's slot, module, Figma frame, selector
+         <dir>/.work/reskin/gates/<slug>/figma/join.json (figma-preview/ on --target preview; each section's slot, module, Figma frame, selector
          and document index), prints one PASS or FAIL line and exits 1 on drift.
          --target preview joins a deployed preview instead: --url is its http(s) URL, --reskin the reskin page (the file
          whose data-slot sections mapping.md describes). The preview is opened and settled first (a block that never
@@ -79,7 +79,7 @@ geometry B1. Runs the join first (drift stops here, exit 1), validates the check
          Prints "geometry PASS n/n" or "geometry FAIL k/n" plus one indented line per failing entry
          ("<slot> <id> <measure> (node <id>): 540 vs 560 (±1)", or "unmeasurable: <why>" when the selector
          matched nothing, a gap has fewer than two matches or the box has no size); writes
-         <dir>/.work/reskin/gates/<slug>/figma/geometry.json; exit 1 on any FAIL. Each result carries root, the
+         <dir>/.work/reskin/gates/<slug>/figma/geometry.json (figma-preview/ on --target preview); exit 1 on any FAIL. Each result carries root, the
          checks root (the section's root node for the entry's width) it was measured against.
 ramp     B3. Runs the join first (drift stops here, exit 1), validates the checks file, then asserts through
          donor-probe.mjs (one run per width, no overflow sanity): the :root block that donor-tokens.json
@@ -89,7 +89,7 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          color; the rules' weightMap and familyEquivalence apply to the Figma side. Prints "ramp PASS n/n"
          or "ramp FAIL k/n" plus one indented line per failing entry ("<slot> <id> <property> (node <id>):
          16px vs 14px", ":root <name>: ..." for a custom property); writes ramp-spec.<w>.json, ramp.<w>.md,
-         ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/; exit 1 on any FAIL.
+         ramp.<w>.json and ramp.json under <dir>/.work/reskin/gates/<slug>/figma/ (figma-preview/ on --target preview); exit 1 on any FAIL.
          A property the Figma node gives no value for (no font size, a fill that is not one visible solid
          color, ...) is recorded as UNASSERTED in ramp.json, never failed: the verdict reads "ramp PASS n/n
          (k unasserted)" with one indented "advisory" line per property.
@@ -114,7 +114,7 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          or "<slot> n/a: <why>"; an indented line names each first font family the section uses
          that the page does not render (no loaded @font-face, not installed; a generic family is
          served). Writes <slot>.figma.png, <slot>.page.png, <slot>.diff.png,
-         <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/ (results carry root).
+         <slot>.text-boxes.json and pixel.json under <dir>/.work/reskin/gates/<slug>/figma/ (figma-preview/ on --target preview; results carry root).
          Exit 0, or 124 when a comparison hit its deadline (no verdict: re-run). On --target preview the screenshot is
          the decorated section at the join's selector once the decoration has settled; the number stays advisory.
 register B4, the divergence register. Reads join.json and whichever of geometry.json, ramp.json and
@@ -123,10 +123,11 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          checks file as it stands now, for its waivers and coverage (a missing or invalid one is exit 2). A step with no
          file is "not run": the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
          Six classes: mandated (a joined module section whose geometry and type entries all pass, whose text styles
-         all have a type entry and that has no waiver; UNASSERTED ignored), waived (one row per waiver of a section, a
+         all have a type entry and that has no waiver; UNASSERTED ignored; and whose results are of the checks file as it
+         stands: one for every entry id, from steps that recorded the section's checksStamp), waived (one row per waiver of a section, a
          skip included: the node's name and id, or the mobile or desktop root, its why in quotes, and how many text styles and text
          nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
-         failing :root token included),
+         failing :root token included; a "stale" row for a section whose results are not of this checks file: re-run all),
          out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
          on its own solid ground: 4.5, or 3 for large text; gradient and image grounds are skipped)
          and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
@@ -152,7 +153,7 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          the ledger fragment as JSON, then the register.md path. Exit: the first present of 2, 3, 124, 1, 0
          (a step that throws code 3, a bot challenge, is verdict "CHALLENGE: <message>" and exit 3; the
          other steps still run).
-         Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json:
+         Writes <dir>/.work/reskin/gates/<slug>/figma/summary.json (figma-preview/ on --target preview):
            { _provenance, page, url, regime, figma: { version }, steps: { <step>: { verdict, exit, detail } },
              ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key); with

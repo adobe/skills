@@ -7,6 +7,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
 import { scopeSelector, selectorFor } from './checks.mjs';
+import { stampsOf } from './stamp.mjs';
 import { loadChromium, loadMeasureLive } from './target.mjs';
 
 const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft: 3 };
@@ -129,6 +130,6 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
   });
   const result = { pass: results.every((r) => r.status === 'PASS'), results };
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'geometry.json'), `${JSON.stringify({ version: 1, url: target.url, regime: target.regime, ...result }, null, 2)}\n`);
+  writeFileSync(join(out, 'geometry.json'), `${JSON.stringify({ version: 1, url: target.url, regime: target.regime, checksStamp: stampsOf(checks), ...result }, null, 2)}\n`);
   return result;
 }

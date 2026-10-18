@@ -250,7 +250,7 @@ A miss is exit 2, every one listed.
 | B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
-| B4 register | informational | `mandated` (passes, every text style covered, no waiver), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
+| B4 register | informational | `mandated` (passes on results of this checks file, every text style covered, no waiver; results of an older file give a `stale` row: re-run `all`), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
 
 - **Waivers show.** A `waived` row names the waived node (name and id) or
   `mobile`/`desktop`, quotes its `why` and says how many text styles and nodes it
@@ -265,8 +265,6 @@ A miss is exit 2, every one listed.
 - **Fonts are recorded, not failed.** B2 names each font a section
   uses that the page does not render; B3 compares only the first
   family of the computed `font-family`.
-- **UNASSERTED.** A property the Figma node gives no value for is
-  listed in `ramp.json` and never fails.
 - **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
   deadline): re-run once, never a fix iteration; the same 124 twice is
   a residual (needs-owner). `all`'s exit order is in `--help`.

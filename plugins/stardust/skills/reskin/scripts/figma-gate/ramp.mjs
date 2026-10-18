@@ -15,6 +15,7 @@ import { parseNormalizations } from '../figma/rules.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { findBox } from './boxes.mjs';
 import { scopeSelector, selectorFor } from './checks.mjs';
+import { stampsOf } from './stamp.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 // donor-probe.mjs sits beside figma-gate.mjs in both layouts (plugin tree and project copy).
@@ -218,6 +219,6 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
   results.push(...unasserted);
   const literals = tokenLiterals(await pageSource(target.url, preview ? auth : null), rootEntries);
   const result = { pass: results.every((x) => x.status !== 'FAIL'), results, perWidth, literals };
-  writeFileSync(join(out, 'ramp.json'), `${JSON.stringify({ url: target.url, regime: target.regime, ...result }, null, 2)}\n`);
+  writeFileSync(join(out, 'ramp.json'), `${JSON.stringify({ url: target.url, regime: target.regime, checksStamp: stampsOf(checks), ...result }, null, 2)}\n`);
   return result;
 }

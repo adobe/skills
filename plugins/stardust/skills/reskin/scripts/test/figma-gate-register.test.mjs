@@ -12,8 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { writeCurrent } from '../figma/cache.mjs';
 import { canonicalFigmaUrl } from '../figma/url.mjs';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
-import { workDir } from '../figma-gate/io.mjs';
+import { readInputs, workDir } from '../figma-gate/io.mjs';
+import { checksFor } from '../figma-gate/prepare.mjs';
 import { buildRegister, contrast, coverageLine, mandateConflicts, registerMd } from '../figma-gate/register.mjs';
+import { sectionStamp, stampsOf } from '../figma-gate/stamp.mjs';
 import { waiverImpacts } from '../figma-gate/waivers.mjs';
 import { KEY, VERSION, makeProject } from './fixtures/figma-gate/setup.mjs';
 
@@ -82,17 +84,23 @@ const mapping = [
   { slot: 's03', module: null, status: 'chrome' },
 ];
 const link = (id) => canonicalFigmaUrl({ fileKey: 'KITKEY', nodeId: id });
-const geometry = { results: [
+const checks = {
+  s01: { root: '1:3', width: 1440, roots: { 1440: '1:3' }, geometry: [{ id: 'g1', measure: 'width', node: '1:4' }], type: [{ id: 't1', node: '1:5' }], waive: [] },
+  s02: { root: '1:7', width: 1440, roots: { 1440: '1:7' }, geometry: [{ id: 'g1', measure: 'width', node: 'I1:7;5:7' }], type: [{ id: 't1', node: 'I1:7;5:2' }], waive: [] },
+};
+// The results as geometry.json and ramp.json record them: with the stamp of the checks they were measured against
+// (`over` replaces sections of those checks).
+const stamped = (results, over = {}) => ({ checksStamp: stampsOf({ ...checks, ...over }), results });
+const geometry = stamped([
   { slot: 's01', id: 'g1', node: '1:4', measure: 'width', status: 'PASS' },
   { slot: 's02', id: 'g1', node: 'I1:7;5:7', measure: 'width', status: 'FAIL', detail: '540 vs 560 (±1)' },
-] };
-const ramp = { results: [
+]);
+const ramp = stamped([
   { slot: 's01', id: 't1', node: '1:5', property: 'fontSize', status: 'PASS' },
   { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'PASS' },
-] };
+]);
 const full = { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 };
 const coverage = { s01: full, s02: full };
-const checks = { s01: { root: '1:3', roots: { 1440: '1:3' }, waive: [] }, s02: { root: '1:7', roots: { 1440: '1:7' }, waive: [] } };
 const base = { join: joined, geometry, ramp, pixel: { results: [] }, mapping: [...mapping, { slot: 's04', module: null, status: 'new-module' }], boxes, flags: ['source JSON-LD carried verbatim'], link, checks, coverage };
 const COUNTS = { mandated: 1, waived: 0, unmandated: 1, 'out-of-kit': 1, conflict: 0, 'pre-existing': 1 };
 
@@ -114,22 +122,22 @@ check('buildRegister: one class per kind, counts, and Figma links on the rows wi
 
 check('buildRegister: a result carrying root points its rows at the checks root: node and link of the unmandated and the mandated row', () => {
   const rooted = {
-    geometry: { results: [
+    geometry: stamped([
       { slot: 's01', id: 'g1', node: '1:4', root: '7:7', measure: 'width', status: 'PASS' },
       { slot: 's02', id: 'g1', node: 'I1:7;5:7', root: '9:9', measure: 'width', status: 'FAIL', detail: '540 vs 560 (±1)' },
-    ] },
-    ramp: { results: [
+    ]),
+    ramp: stamped([
       { slot: 's01', id: 't1', node: '1:5', root: '7:7', property: 'fontSize', status: 'PASS' },
       { slot: 's02', id: 't1', node: 'I1:7;5:2', root: '9:9', property: 'fontSize', status: 'FAIL', detail: '16px vs 14px' },
       { slot: null, id: '--max-width', node: null, root: null, property: '--max-width', status: 'FAIL', detail: '1px vs 2px' },
-    ] },
+    ]),
   };
   const reg = buildRegister({ ...base, ...rooted });
   const un = reg.rows.filter((r) => r.class === 'unmandated');
   assert.deepEqual(un.map((r) => [r.slot, r.node, r.check]), [['s02', '9:9', 'geometry g1 width'], ['s02', '9:9', 'type t1 fontSize'], [null, null, ':root --max-width']]);
   assert.ok(un.slice(0, 2).every((r) => /node-id=9-9$/.test(r.link)), JSON.stringify(un.map((r) => r.link)));
   assert.equal(un[2].link, null);
-  const ok = buildRegister({ ...base, geometry: { results: [rooted.geometry.results[0]] }, ramp: { results: [rooted.ramp.results[0]] } });
+  const ok = buildRegister({ ...base, geometry: stamped([rooted.geometry.results[0]]), ramp: stamped([rooted.ramp.results[0]]) });
   const man = ok.rows.find((r) => r.class === 'mandated' && r.slot === 's01');
   assert.deepEqual([man.node, man.module], ['7:7', 'M1']);
   assert.match(man.link, /node-id=7-7$/);
@@ -142,24 +150,24 @@ check('buildRegister: a mandated section with no root in its results keeps the j
 });
 
 check('buildRegister: a failing type entry is unmandated too; UNASSERTED is ignored', () => {
-  const r = { results: [
+  const r = stamped([
     { slot: 's01', id: 't1', node: '1:5', property: 'fontSize', status: 'FAIL', detail: '16px vs 14px' },
     { slot: 's01', id: 't2', node: '1:6', property: 'color', status: 'UNASSERTED', detail: 'no solid fill' },
     { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'PASS' },
-  ] };
-  const reg = buildRegister({ ...base, ramp: r, geometry: { results: [{ slot: 's02', id: 'g1', node: 'x', measure: 'width', status: 'PASS' }] } });
+  ]);
+  const reg = buildRegister({ ...base, ramp: r, geometry: stamped([{ slot: 's01', id: 'g1', node: '1:4', measure: 'width', status: 'PASS' }, { slot: 's02', id: 'g1', node: 'x', measure: 'width', status: 'PASS' }]) });
   assert.deepEqual(reg.counts, COUNTS);
   assert.equal(reg.rows.find((x) => x.class === 'mandated').slot, 's02');
   assert.equal(reg.rows.find((x) => x.class === 'unmandated').check, 'type t1 fontSize');
 });
 
 check('buildRegister: a section whose only results are UNASSERTED is not mandated', () => {
-  const reg = buildRegister({ ...base, geometry: { results: [] }, ramp: { results: [{ slot: 's01', id: 't1', node: '1:5', property: 'color', status: 'UNASSERTED' }] } });
+  const reg = buildRegister({ ...base, geometry: stamped([]), ramp: stamped([{ slot: 's01', id: 't1', node: '1:5', property: 'color', status: 'UNASSERTED' }]) });
   assert.equal(reg.counts.mandated, 0);
 });
 
 check('buildRegister: a failing :root entry is an unmandated row with no slot, module or node', () => {
-  const reg = buildRegister({ ...base, ramp: { results: [...ramp.results, { slot: null, id: '--color-brand', node: null, property: 'custom-property', status: 'FAIL', detail: '#fff vs #000' }] } });
+  const reg = buildRegister({ ...base, ramp: stamped([...ramp.results, { slot: null, id: '--color-brand', node: null, property: 'custom-property', status: 'FAIL', detail: '#fff vs #000' }]) });
   const row = reg.rows.find((r) => r.check === ':root --color-brand');
   assert.deepEqual([row.class, row.slot, row.module, row.node, row.link, row.detail], ['unmandated', null, null, null, null, '#fff vs #000']);
   assert.equal(reg.counts.unmandated, 2);
@@ -224,10 +232,10 @@ check('registerMd: counts, rows, the not-run line and the advisory pixel block w
 });
 
 const passing = {
-  geometry: { results: [
+  geometry: stamped([
     { slot: 's01', id: 'g1', node: '1:4', measure: 'width', status: 'PASS' },
     { slot: 's02', id: 'g1', node: 'I1:7;5:7', measure: 'width', status: 'PASS' },
-  ] },
+  ]),
   ramp,
 };
 const waiving = (slot, section, cov) => ({ ...base, ...passing, checks: { ...checks, [slot]: { ...checks[slot], ...section } }, coverage: { ...coverage, [slot]: { ...full, ...cov } } });
@@ -263,8 +271,9 @@ check('buildRegister: a TEXT waiver drops its style wherever the root has it', (
 });
 
 check('buildRegister: a skipped section has no mandated row and a waived row for the skip; no coverage floor left but the skip says what it drops', () => {
-  const reg = buildRegister({ ...base, ...passing, geometry: { results: [passing.geometry.results[1]] }, ramp: { results: [ramp.results[1]] },
-    checks: { ...checks, s01: { root: '1:3', roots: { 1440: '1:3' }, waive: [], skip: 'composed beyond the kit' } },
+  const skipped = { ...checks.s01, geometry: [], type: [], skip: 'composed beyond the kit' };
+  const reg = buildRegister({ ...base, ...passing, geometry: stamped([passing.geometry.results[1]], { s01: skipped }), ramp: stamped([ramp.results[1]], { s01: skipped }),
+    checks: { ...checks, s01: skipped },
     coverage: { ...coverage, s01: { styles: { covered: 0, total: 4 }, widths: [1440], waived: 1 } } });
   assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s02']);
   const w = reg.rows.find((r) => r.class === 'waived');
@@ -348,6 +357,58 @@ check('coverageLine: text styles, the widths of every section, waivers; empty is
   assert.equal(coverageLine({}), 'text styles 0/0 · widths none · waived 0');
 });
 
+const staleRows = (reg) => reg.rows.filter((r) => r.check === 'stale');
+const mandatedSlots = (reg) => reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot);
+
+check('buildRegister: step files of an older checks file never make a section mandated: an entry with no result is a "stale" row saying so', () => {
+  // The run was made when a container waiver excused these type entries; the file now has them and no waiver.
+  const grown = { ...checks, s01: { ...checks.s01, type: [...checks.s01.type, { id: 't2', node: '1:6' }, { id: 't3', node: 'I1:20;3:5' }] } };
+  const reg = buildRegister({ ...base, ...passing, checks: grown });
+  assert.deepEqual(mandatedSlots(reg), ['s02']);
+  const [row] = staleRows(reg);
+  assert.deepEqual([row.class, row.slot, row.module, row.node, row.detail], ['unmandated', 's01', 'M1', '1:3', '2 entries of the checks file have no result (t2, t3): re-run figma-gate all']);
+  assert.equal(staleRows(reg).length, 1);
+  const lone = buildRegister({ ...base, ...passing, checks: { ...checks, s02: { ...checks.s02, geometry: [...checks.s02.geometry, { id: 'g2', measure: 'height', node: '1:7' }] } } });
+  assert.equal(staleRows(lone)[0].detail, '1 entry of the checks file has no result (g2): re-run figma-gate all');
+});
+
+check('buildRegister: the same ids on another version of the section (a tolerance, a node) are stale too: the stamp of each step file is compared', () => {
+  const changed = { ...checks.s01, geometry: [{ ...checks.s01.geometry[0], tolerancePx: 3 }] };
+  const now = { ...checks, s01: changed };
+  const reg = buildRegister({ ...base, ...passing, checks: now });
+  assert.deepEqual(mandatedSlots(reg), ['s02']);
+  assert.equal(staleRows(reg)[0].detail, 'geometry.json and ramp.json measured another version of the section: re-run figma-gate all');
+  const geometryOnly = buildRegister({ ...base, ...passing, checks: now, ramp: stamped(ramp.results, { s01: changed }) });
+  assert.equal(staleRows(geometryOnly)[0].detail, 'geometry.json measured another version of the section: re-run figma-gate all');
+  const unstamped = buildRegister({ ...base, ...passing, geometry: { results: passing.geometry.results } });
+  assert.deepEqual(mandatedSlots(unstamped), [], 'step files that recorded no stamp vouch for nothing');
+  assert.deepEqual(staleRows(unstamped).map((r) => [r.slot, r.detail]), ['s01', 's02'].map((slot) => [slot, 'geometry.json measured another version of the section: re-run figma-gate all']));
+});
+
+check('buildRegister: results of this checks file are mandated, and a waiver or skip added since is no staleness (it measures nothing)', () => {
+  assert.deepEqual(mandatedSlots(buildRegister({ ...base, ...passing })), ['s01', 's02']);
+  assert.equal(staleRows(buildRegister({ ...base, ...passing })).length, 0);
+  const waived = buildRegister(waiving('s01', { waive: [{ node: '1:6', why: 'lead copy is long-form' }] }, { waived: 1 }));
+  assert.equal(staleRows(waived).length, 0);
+  assert.deepEqual([mandatedSlots(waived), waived.counts.waived], [['s02'], 1]);
+});
+
+check('sectionStamp: key order, waivers, skip and pixel do not change it; a node, a tolerance, an entry or a root do', () => {
+  const s = checks.s01;
+  const stamp = sectionStamp(s);
+  assert.match(stamp, /^[0-9a-f]{16}$/);
+  assert.equal(sectionStamp({ ...s, geometry: [{ node: '1:4', measure: 'width', id: 'g1' }] }), stamp);
+  assert.equal(sectionStamp({ ...s, waive: [{ node: '1:6', why: 'x' }], skip: 'y', pixel: { mode: 'off', why: 'z' } }), stamp);
+  for (const other of [
+    { ...s, geometry: [{ ...s.geometry[0], node: '1:5' }] },
+    { ...s, geometry: [{ ...s.geometry[0], tolerancePx: 2 }] },
+    { ...s, type: [...s.type, { id: 't2', node: '1:6' }] },
+    { ...s, roots: { 1440: '1:7' } },
+    { ...s, width: 1280 },
+  ]) assert.notEqual(sectionStamp(other), stamp);
+  assert.deepEqual(Object.keys(stampsOf(checks)), ['s01', 's02']);
+});
+
 check('registerMd: a waived section lists each waiver row with its node name and id, why and what it drops', () => {
   const reg = buildRegister(waiving('s02', { waive: [{ node: 'I1:7;5:7', why: 'card is a documentation panel' }] }, { waived: 1 }));
   const md = registerMd({ page: 'home', ...reg });
@@ -360,11 +421,26 @@ const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd,
 let n = 0;
 const project = () => { n += 1; return makeProject(join(scratch, `p${n}`)); };
 const put = (p, name, obj, regime = 'local') => { const d = workDir(p.dir, p.slug, regime); mkdirSync(d, { recursive: true }); writeFileSync(join(d, name), `${JSON.stringify(obj, null, 2)}\n`); };
-const seed = (p, extra = {}) => {
-  put(p, 'join.json', joined);
-  put(p, 'geometry.json', { pass: true, results: geometry.results });
-  put(p, 'ramp.json', ramp);
-  for (const [name, obj] of Object.entries(extra)) put(p, name, obj);
+// The step files `all` would write for the checks file the project has now: a result for every entry, PASS but for
+// `fail` ({ "<slot> <id>": detail }), each with the stamp of the checks; `roots` ({ "<slot> <id>": node }) sets a result's root.
+const measured = (p, fail = {}, roots = {}) => {
+  const { checks } = checksFor({ dir: p.dir, slug: p.slug, inputs: readInputs(p.dir, p.slug, ['checks', 'donorTokens']), join: joined });
+  const result = (slot, e, extra) => ({ slot, id: e.id, node: e.node ?? e.nodes?.[0] ?? null, ...(roots[`${slot} ${e.id}`] ? { root: roots[`${slot} ${e.id}`] } : {}), ...extra, ...(fail[`${slot} ${e.id}`] ? { status: 'FAIL', detail: fail[`${slot} ${e.id}`] } : { status: 'PASS' }) });
+  const files = (kind, extra) => Object.entries(checks).flatMap(([slot, s]) => s[kind].map((e) => result(slot, e, extra(e))));
+  const geometryResults = files('geometry', (e) => ({ measure: e.measure }));
+  const rampResults = files('type', () => ({ property: 'fontSize' }));
+  return {
+    geometry: { pass: geometryResults.every((r) => r.status === 'PASS'), checksStamp: stampsOf(checks), results: geometryResults },
+    ramp: { pass: rampResults.every((r) => r.status === 'PASS'), checksStamp: stampsOf(checks), results: rampResults },
+  };
+};
+const DETAIL = { 's02 g1': '540 vs 560 (±1)' };
+const seed = (p, { fail = DETAIL, roots = {}, regime = 'local', files = {} } = {}) => {
+  const m = measured(p, fail, roots);
+  put(p, 'join.json', { ...joined, regime }, regime);
+  put(p, 'geometry.json', m.geometry, regime);
+  put(p, 'ramp.json', m.ramp, regime);
+  for (const [name, obj] of Object.entries(files)) put(p, name, obj, regime);
 };
 
 check('register without join.json: exit 2 naming the steps to run first, nothing written', () => {
@@ -384,7 +460,7 @@ check('register without --page: exit 2', () => {
 
 check('register reads the step files, writes register.json and register.md, prints counts, exit 0', () => {
   const p = project();
-  seed(p, { 'pixel.json': { results: [{ slot: 's01', mode: 'auto', verdict: 'n/a', reason: 'frame content differs', fonts: [] }] } });
+  seed(p, { files: { 'pixel.json': { results: [{ slot: 's01', mode: 'auto', verdict: 'n/a', reason: 'frame content differs', fonts: [] }] } } });
   writeFileSync(join(p.dir, 'reskin', 'ledger.json'), JSON.stringify({ pages: { home: { flags: ['carried verbatim'] } } }));
   const r = run(['register', '--page', 'home'], p.root);
   assert.equal(r.status, 0, r.stderr);
@@ -403,9 +479,7 @@ check('register reads the step files, writes register.json and register.md, prin
 check('register --target preview reads and writes the preview run\'s directory; the local run\'s files stay as they were', () => {
   const p = project();
   seed(p);
-  put(p, 'join.json', { ...joined, regime: 'preview' }, 'preview');
-  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] }, 'preview');
-  put(p, 'ramp.json', { pass: true, results: [] }, 'preview');
+  seed(p, { regime: 'preview', roots: { 's02 g1': '9:9' } });
   const local = workDir(p.dir, p.slug);
   const preview = workDir(p.dir, p.slug, 'preview');
   assert.ok(preview.endsWith(join('gates', 'home', 'figma-preview')) && local.endsWith(join('gates', 'home', 'figma')), `${preview} ${local}`);
@@ -454,6 +528,45 @@ check('register reads the waivers of the checks file: a waived row names the nod
   assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /## waived \(1\)[^]*waive node "Lead" \(1:6\)[^]*"lead copy is long-form"/);
 });
 
+check('register run on its own after the checks file changed since the run: the section is not mandated and a stale row says to re-run all; a fresh run is mandated', () => {
+  const p = project();
+  const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+  const fixture = readFileSync(file, 'utf8');
+  // The run is made while a container waiver stands in for most of s01's type entries.
+  const first = JSON.parse(fixture);
+  first.sections.s01.type = first.sections.s01.type.filter((t) => t.id !== 't2');
+  first.sections.s01.waive = [{ node: '1:20', why: 'documentation button' }];
+  writeFileSync(file, JSON.stringify(first));
+  seed(p, { fail: {} });
+  const registerOf = () => JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
+  let r = run(['register', '--page', 'home'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /mandated 1 · waived 1 · unmandated 0 /);
+  // The author removes the waiver and adds the entries the floor wants, then runs register without a new run.
+  writeFileSync(file, fixture);
+  r = run(['register', '--page', 'home'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /mandated 1 · waived 0 · unmandated 1 /);
+  const reg = registerOf();
+  assert.deepEqual(reg.rows.filter((x) => x.class === 'mandated').map((x) => x.slot), ['s02']);
+  const stale = reg.rows.find((x) => x.check === 'stale');
+  assert.deepEqual([stale.class, stale.slot, stale.detail], ['unmandated', 's01', '1 entry of the checks file has no result (t2): re-run figma-gate all']);
+  assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /\| s01 \| M1 \| 1:3 \| stale \| 1 entry of the checks file has no result/);
+  // A changed tolerance with every id still present is stale as well.
+  const tuned = JSON.parse(fixture);
+  tuned.sections.s01.geometry[0].tolerancePx = 3;
+  tuned.sections.s01.geometry[0].why = 'content moves it';
+  seed(p, { fail: {} });
+  writeFileSync(file, JSON.stringify(tuned));
+  run(['register', '--page', 'home'], p.root);
+  assert.equal(registerOf().rows.find((x) => x.check === 'stale').detail, 'geometry.json and ramp.json measured another version of the section: re-run figma-gate all');
+  // A run made with the file as it stands: both sections are mandated.
+  seed(p, { fail: {} });
+  r = run(['register', '--page', 'home'], p.root);
+  assert.match(r.stdout, /mandated 2 · waived 0 · unmandated 0 /);
+  assert.equal(registerOf().rows.some((x) => x.check === 'stale'), false);
+});
+
 check('register needs the checks file: missing or invalid is exit 2 naming it, a drifted join excepted from validation', () => {
   const p = project();
   seed(p);
@@ -476,9 +589,7 @@ check('register needs the checks file: missing or invalid is exit 2 naming it, a
 
 check('register on step files whose results carry root: the rows and register.md link to the root, the regime comes from join.json', () => {
   const p = project();
-  put(p, 'join.json', { ...joined, regime: 'preview' }, 'preview');
-  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] }, 'preview');
-  put(p, 'ramp.json', { pass: true, results: [] }, 'preview');
+  seed(p, { regime: 'preview', roots: { 's02 g1': '9:9' } });
   const r = run(['register', '--page', 'home', '--target', 'preview'], p.root);
   assert.equal(r.status, 0, r.stderr);
   const out = workDir(p.dir, p.slug, 'preview');

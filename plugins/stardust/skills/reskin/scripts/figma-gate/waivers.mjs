@@ -50,11 +50,13 @@ export function waiverImpacts(section, joined, boxes) {
       add('waive width desktop', root?.id ?? section.root, w.why, drops, via);
       continue;
     }
-    const [first, ...more] = frame ? mobileVariants(frame) : [];
-    const variant = first && findBox(frame, first.id);
-    const drops = variant ? [{ width: first.w, styles: textStyles(variant).size, nodes: textNodes(variant) }] : [];
-    const via = first ? `the mobile root "${first.name}" (${first.id})${more.length ? `, one of ${more.length + 1} variants` : ''}: ` : 'the mobile root, which the module frame does not hold: ';
-    add('waive width mobile', first?.id ?? section.root, w.why, drops, via);
+    if (w.width === 'mobile') {
+      const [first, ...more] = frame ? mobileVariants(frame) : [];
+      const variant = first && findBox(frame, first.id);
+      const drops = variant ? [{ width: first.w, styles: textStyles(variant).size, nodes: textNodes(variant) }] : [];
+      const via = first ? `the mobile root "${first.name}" (${first.id})${more.length ? `, one of ${more.length + 1} variants` : ''}: ` : 'the mobile root, which the module frame does not hold: ';
+      add('waive width mobile', first?.id ?? section.root, w.why, drops, via);
+    }
   }
   if (section?.skip) {
     const drops = roots.map((r) => ({ width: r.width, styles: textStyles(r.box).size, nodes: textNodes(r.box) }));

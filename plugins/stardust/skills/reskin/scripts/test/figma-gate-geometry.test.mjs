@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
 import { expected, judge, observed, runGeometry } from '../figma-gate/geometry.mjs';
 import { prepare } from '../figma-gate/prepare.mjs';
+import { stampsOf } from '../figma-gate/stamp.mjs';
 import { makeProject } from './fixtures/figma-gate/setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -111,6 +112,7 @@ if (playwrightOk) {
     assert.deepEqual(r.results.find((x) => x.slot === 's02' && x.id === 'g3'), { slot: 's02', id: 'g3', measure: 'gapX', node: 'I1:7;5:3', root: '1:7', want: 80, got: 80, status: 'PASS', detail: '80 vs 80 (±1)' });
     assert.deepEqual(r.results.map((x) => [x.slot, x.root]), [...Array(6).fill(['s01', '1:3']), ...Array(4).fill(['s02', '1:7'])]);
     assert.deepEqual(geometryOf(p).results, r.results);
+    assert.deepEqual(geometryOf(p).checksStamp, stampsOf((await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) })).checks), 'geometry.json records the stamp of each section of the checks it measured');
   });
 
   await check('prepare hands on the coverage floor with the checks; a style no entry covers is a usage error listing it', async () => {

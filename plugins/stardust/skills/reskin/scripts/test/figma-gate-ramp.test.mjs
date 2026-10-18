@@ -13,6 +13,7 @@ import { parseNormalizations } from '../figma/rules.mjs';
 import { buildBoxes, findBox } from '../figma-gate/boxes.mjs';
 import { prepare } from '../figma-gate/prepare.mjs';
 import { rampSpecs, runRamp, textExpect, tokenLiterals } from '../figma-gate/ramp.mjs';
+import { stampsOf } from '../figma-gate/stamp.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { makeProject } from './fixtures/figma-gate/setup.mjs';
 
@@ -150,8 +151,9 @@ if (playwrightOk) {
     assert.deepEqual(r.results.find((x) => x.property === '--max-width'), { slot: null, id: '--max-width', node: null, root: null, property: '--max-width', status: 'PASS', detail: '1200px vs 1200px' });
     const work = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
     for (const f of ['ramp-spec.1440.json', 'ramp.1440.md', 'ramp.1440.json', 'ramp.json']) assert.ok(existsSync(join(work, f)), f);
-    assert.deepEqual(Object.keys(rampOf(p)), ['url', 'regime', 'pass', 'results', 'perWidth', 'literals']);
+    assert.deepEqual(Object.keys(rampOf(p)), ['url', 'regime', 'checksStamp', 'pass', 'results', 'perWidth', 'literals']);
     assert.deepEqual([rampOf(p).url, rampOf(p).regime], [urlOf(p), 'local']);
+    assert.deepEqual(rampOf(p).checksStamp, stampsOf((await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) })).checks), 'ramp.json records the stamp of each section of the checks it measured');
     assert.deepEqual(rampOf(p).results, r.results);
     assert.ok(r.literals.length > 0);
   });

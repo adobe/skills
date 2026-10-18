@@ -327,6 +327,30 @@ if (playwrightOk && pngOk) {
     assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
   });
 
+  queue('the checks file changes after an all run: register on its own gives that section a stale row and no mandated row; the next all mandates it', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const fixture = readFileSync(file, 'utf8');
+    const first = JSON.parse(fixture);
+    first.sections.s01.type = first.sections.s01.type.filter((t) => t.id !== 't2');
+    first.sections.s01.waive = [{ node: '1:20', why: 'documentation button' }];
+    writeFileSync(file, JSON.stringify(first));
+    assert.equal((await runAll(p)).status, 0);
+    assert.match(summaryOf(p).ledgerFragment.register, /^mandated 1 · waived 1 · unmandated 0 /);
+    // The waiver is removed and the entry it excused is written; the geometry and ramp files are still the first run's.
+    writeFileSync(file, fixture);
+    const alone = await runAsync(['register', '--page', p.slug, '--dir', p.dir], p.root);
+    assert.equal(alone.status, 0, alone.stdout + alone.stderr);
+    assert.match(alone.stdout, /mandated 1 · waived 0 · unmandated 1 /);
+    const rows = registerOf(p).rows;
+    assert.deepEqual(rows.filter((x) => x.class === 'mandated').map((x) => x.slot), ['s02']);
+    assert.deepEqual(rows.filter((x) => x.check === 'stale').map((x) => [x.slot, x.detail]), [['s01', '1 entry of the checks file has no result (t2): re-run figma-gate all']]);
+    const again = await runAll(p);
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.match(summaryOf(p).ledgerFragment.register, /^mandated 2 · waived 0 · unmandated 0 /);
+    assert.equal(registerOf(p).rows.some((x) => x.check === 'stale'), false);
+  });
+
   queue('a drifted run after a passing one never reuses the earlier step files', async () => {
     const p = await framed();
     assert.equal((await runAll(p)).status, 0);

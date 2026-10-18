@@ -408,7 +408,7 @@ if (playwrightOk) {
     });
   });
 
-  await check('CLI join --target preview: PASS line, exit 0, join.json.regime "preview" under .work/reskin/gates/<slug>/figma/', async () => {
+  await check('CLI join --target preview: PASS line, exit 0, join.json.regime "preview" under .work/reskin/gates/<slug>/figma-preview/', async () => {
     await withPreview({}, async (server) => {
       const p = project('cli-pass');
       const r = await run(joinArgs(p, `${server.origin}/ns/home`), { cwd: p.root });

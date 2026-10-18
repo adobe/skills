@@ -1,13 +1,15 @@
 // skills/reskin/scripts/figma-gate/register.mjs — B4, the divergence register: what the Figma checks say
 // about a page, in six classes. mandated (a joined module section whose geometry and type entries all
-// pass, whose coverage floor is complete and that has no waiver: the page follows Figma there; none after a join
-// drift), waived (each waiver of a section: its node's name and id or its width, its why, and the text styles and nodes
-// it drops at which width; that section is not mandated), unmandated (each failing
-// entry), out-of-kit (each new-module mapping row: nothing in Figma to follow), conflict (a Figma text color that
+// pass, with a result for every entry of the checks file as it stands, whose coverage floor is complete and that has no
+// waiver: the page follows Figma there; none after a join drift), waived (each waiver of a section: its node's name and
+// id or its width, its why, and the text styles and nodes it drops at which width; that section is not mandated),
+// unmandated (each failing entry, and a "stale" row for a section whose results are not of this checks file), out-of-kit
+// (each new-module mapping row: nothing in Figma to follow), conflict (a Figma text color that
 // misses WCAG contrast on its own ground, so following Figma would ship an unreadable page) and pre-existing (each
 // ledger flag).
 // Pure: the CLI reads the step files and writes register.json and register.md.
 import { REFERENCE_CLASSES } from './pixel.mjs';
+import { sectionStamp } from './stamp.mjs';
 import { waiverImpacts } from './waivers.mjs';
 
 const CLASSES = ['mandated', 'waived', 'unmandated', 'out-of-kit', 'conflict', 'pre-existing'];
@@ -53,30 +55,47 @@ export function mandateConflicts(box) {
 const failing = (r) => r.status !== 'PASS' && r.status !== 'UNASSERTED';
 const asserted = (r) => r.status !== 'UNASSERTED';
 
-// checks is the validated checks (prepare's checks: each section's root, roots, waive and skip) and coverage its per-slot
-// coverage floor ({ styles: { covered, total }, widths, waived }); boxes must hold the roots the checks name. Without
-// coverage nothing is mandated: it is not run. A waived row names its node or width, quotes the why and says what it drops.
+// Why geometry.json and ramp.json cannot vouch for this section of the checks file as it stands, or null: an entry of
+// the file has no result (an entry added, or an id renamed, since the run), or a step file was measured against another
+// version of the section (its stamp is missing or differs: a tolerance, a node or a root changed).
+function staleWhy(slot, section, geometry, ramp) {
+  if (!section) return 'the checks file has no section for it';
+  const ids = (file) => new Set((file.results || []).filter((r) => r.slot === slot).map((r) => r.id));
+  const [haveG, haveT] = [ids(geometry), ids(ramp)];
+  const missing = [...section.geometry.filter((e) => !haveG.has(e.id)), ...section.type.filter((e) => !haveT.has(e.id))].map((e) => e.id);
+  if (missing.length) return `${missing.length} ${missing.length === 1 ? 'entry' : 'entries'} of the checks file ${missing.length === 1 ? 'has' : 'have'} no result (${missing.slice(0, 5).join(', ')}${missing.length > 5 ? ', …' : ''})`;
+  const old = [['geometry.json', geometry], ['ramp.json', ramp]].filter(([, file]) => file.checksStamp?.[slot] !== sectionStamp(section)).map(([name]) => name);
+  return old.length ? `${old.join(' and ')} measured another version of the section` : null;
+}
+
+// checks is the validated checks (prepare's checks: each section's root, roots, entries, waive and skip) and coverage its
+// per-slot coverage floor ({ styles: { covered, total }, widths, waived }); boxes must hold the roots the checks name.
+// Without coverage or checks nothing is mandated: it is not run. A section is also not mandated when its results are not of this
+// checks file (staleWhy): an unmandated "stale" row says why. A waived row names its node or width, quotes the why and
+// says what it drops.
 export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, flags, link, checks, coverage }) {
   const rows = [];
   const row = (cls, slot, module, node, check, detail) => rows.push({ class: cls, slot, module, node, check, detail, link: node ? link(node) : null });
   const sections = join.sections || [];
   const moduleOf = (slot) => sections.find((s) => s.slot === slot)?.module ?? null;
   const drifted = join.pass === false;
-  const notRun = [...(drifted ? ['join drift'] : []), ...[['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k), ...(!drifted && !coverage ? ['coverage'] : [])];
+  const notRun = [...(drifted ? ['join drift'] : []), ...[['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k), ...(!drifted && !(coverage && checks) ? ['coverage'] : [])];
 
   const geo = geometry?.results || [];
   const typ = ramp?.results || [];
 
   // A row points at the checks root its results were measured against. Results that carry none (step files written
   // before roots were recorded) fall back to the join's module frame for a mandated row, to the entry's own node for a failing one.
-  // A section is mandated only when it passes, its text styles are all covered and nothing in it was waived; its
-  // waivers are rows of their own, whatever its results.
+  // A section is mandated only when it passes on results of this checks file, its text styles are all covered and
+  // nothing in it was waived; its waivers are rows of their own, whatever its results.
   for (const s of drifted ? [] : sections.filter((x) => x.module)) {
     const g = geo.filter((r) => r.slot === s.slot && asserted(r));
     const t = typ.filter((r) => r.slot === s.slot && asserted(r));
     const cov = coverage?.[s.slot];
-    const passes = Boolean(geometry && ramp) && g.length + t.length > 0 && ![...g, ...t].some(failing);
+    const stale = geometry && ramp && checks ? staleWhy(s.slot, checks[s.slot], geometry, ramp) : null;
+    const passes = Boolean(geometry && ramp && checks) && !stale && g.length + t.length > 0 && ![...g, ...t].some(failing);
     const tally = `${g.length} geometry and ${t.length} type entries pass`;
+    if (stale) row('unmandated', s.slot, s.module, s.node, 'stale', `${stale}: re-run figma-gate all`);
     if (passes && cov?.waived === 0) {
       if (cov.styles.covered === cov.styles.total) row('mandated', s.slot, s.module, [...g, ...t].find((r) => r.root)?.root ?? s.node, 'geometry and type', tally);
       else row('unmandated', s.slot, s.module, s.node, 'coverage', `text styles ${cov.styles.covered}/${cov.styles.total} have a type entry`);
