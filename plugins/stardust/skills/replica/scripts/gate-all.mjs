@@ -444,6 +444,9 @@ Self-triage: a published --only run where a selected page already had a row in <
   gate-triage's triageGate on <out> in-process (offline: no parity, nothing routed) — its triage.md head under the table,
   <out>/triage.{json,md}; a failure is one log line "triage: skipped — <why>", never a verdict or exit-code change. A
   page's first gating, full runs and the prototype stage do not triage.
+FAIL annotation: a failing row's reasons column also names the pin state (a pixel FAIL: "pinned: <sel>=<state>" or
+  "unpinned", so a re-gate of a rotating hero reads which) and the top (topmost) mismatch band ("top band
+  <y0>-<y1>:<pct>%", the section to fix first) — the facts a fix round would otherwise write a probe script to learn.
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
   the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
@@ -854,7 +857,8 @@ export function formatSummary(summary) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
     const units = r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
     const verdictCell = r.inconclusive ? 'INCONCLUSIVE' : r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}${r.override.valid === true ? '' : ' (rejected)'}` : ''} | ${r.reasons.join('; ') || '-'} | ${r.reused ? `${r.reused.what} ${r.reused.at}` : '-'} |`);
+    const reasonCell = [r.reasons.join('; '), failAnnotation(r)].filter(Boolean).join('; ') || '-';
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}${r.override.valid === true ? '' : ' (rejected)'}` : ''} | ${reasonCell} | ${r.reused ? `${r.reused.what} ${r.reused.at}` : '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -885,6 +889,24 @@ const sameDismiss = (recorded, list) => sameHide(recorded, list);
 const pinRecord = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x.sel === 'string').map((x) => ({ sel: x.sel, state: x.state ?? null })) : []);
 const pinField = (list) => (pinRecord(list).length ? { pin: pinRecord(list) } : {});
 const samePin = (recorded, list) => canon(pinRecord(recorded)) === canon(pinRecord(list));
+/**
+ * For a FAILING row, the one annotation a fix round would otherwise write a probe script to learn: the pin state (a
+ * pixel/height FAIL names whether the page was pinned to a state — `pinned: <sel>=<state>` — or `unpinned`, so a
+ * recorded re-gate of a rotating hero reads which) and the top (topmost) mismatch band from the per-band pixel diff
+ * (`top band <y0>-<y1>:<pct>%`, the section to fix first — every band below a hot one is contaminated). '' when the row
+ * passes or neither applies.
+ */
+export function failAnnotation(row) {
+  if (!row || row.pass) return '';
+  const parts = [];
+  if (row.pct != null && row.pixelPass === false) {
+    const pins = pinRecord(row.pin);
+    parts.push(pins.length ? `pinned: ${pins.map((x) => `${x.sel}${x.state ? `=${x.state}` : ''}`).join(', ')}` : 'unpinned');
+  }
+  const band = (row.hotBands || [])[0];
+  if (band) parts.push(`top band ${band}`);
+  return parts.join(', ');
+}
 /** The page's --dismiss list then presence.json's dismiss — one list, split on ',', trimmed, de-duplicated in order. */
 const unionList = (...lists) => hideRecord(lists.flatMap((l) => [].concat(l ?? [])));
 const DIALOG_UNCHECKED = 'unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)';
@@ -2023,7 +2045,7 @@ async function main() {
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: ((CLIP_ALLOW[p.slug] || {}).max || 0) + ca.n, capture: { polluted: capturePollution(r.origin, r.eds, { hide: hideOf(p), dismiss: dismissOf(p), pin: pinOf(p), allowDialog: capOf(p).allowDialog }), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
-      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(r.eds && r.eds.buildReused ? { buildReused: r.eds.buildReused } : {}), ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...missField(r.origin && r.origin.hideMiss),
+      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(r.eds && r.eds.buildReused ? { buildReused: r.eds.buildReused } : {}), ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...pinField(pinOf(p)), ...missField(r.origin && r.origin.hideMiss),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null, ...(ca.n ? { clipAllowed: ca } : {}),
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,

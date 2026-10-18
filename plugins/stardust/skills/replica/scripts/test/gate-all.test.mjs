@@ -90,7 +90,7 @@ import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, canon, capRefusal, capturePollution, changedOnly, changedOnlyLine, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fingerprintOf, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gatedBefore, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, latestRows, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundSkip, roundsOf, rowFingerprint, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, canon, capRefusal, capturePollution, changedOnly, changedOnlyLine, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, failAnnotation, fingerprintOf, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gatedBefore, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, latestRows, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundSkip, roundsOf, rowFingerprint, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -117,6 +117,13 @@ check('the recorded card page: pixel PASS, elements FAIL — pixelOnlyPass true,
 check('a clean page passes every criterion', () => {
   const v = verdict({ pixel: px(1.77, -1, 3415), clip: clip(0), content: content(0, 0) });
   assert.equal(v.pass, true); assert.deepEqual(v.reasons, []); assert.equal(v.originH, 3415); assert.equal(v.edsH, 3416);
+});
+check('failAnnotation: a pixel FAIL names the pin state and the top mismatch band (so no probe script learns the hero was unpinned); a pass gets nothing', () => {
+  assert.equal(failAnnotation({ pass: true, pct: 9, pixelPass: false, hotBands: ['0-500:40%'] }), '', 'a passing row carries no annotation');
+  assert.equal(failAnnotation({ pass: false, pct: 9, pixelPass: false, pin: [{ sel: '.hero', state: 'slide-1' }], hotBands: ['0-500:40%', '500-1000:22%'] }), 'pinned: .hero=slide-1, top band 0-500:40%', 'the recorded pin and the topmost hot band');
+  assert.equal(failAnnotation({ pass: false, pct: 9, pixelPass: false, hotBands: ['1000-1500:30%'] }), 'unpinned, top band 1000-1500:30%', 'no pin recorded: the hero was unpinned');
+  assert.equal(failAnnotation({ pass: false, pct: 9, pixelPass: false }), 'unpinned', 'a pixel FAIL with no hot band: the pin state alone');
+  assert.equal(failAnnotation({ pass: false, pct: null, pixelPass: null, clipPass: false, hotBands: [] }), '', 'a non-pixel FAIL with no hot band: nothing to add');
 });
 check('height guard: pixel % inside the bar but 6900 px too tall fails (the rejected union metric case)', () => {
   const v = verdict({ pixel: px(4, -6900, 10000), clip: clip(0), content: content(0, 0) });
