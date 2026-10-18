@@ -216,72 +216,56 @@ export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
 }
 
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
-const MAX_AUTH_HOPS = 10;
 
-// The attachOriginAuth route. A header set with route.continue() stays on the request when the server redirects to
-// ANOTHER origin, and a redirect answered with route.fulfill() is followed by the browser without going through any
-// route again, so the follow-up carries nothing. So a redirect is settled here, on the origin's side of it:
-//   - no redirect → the origin's answer is handed to the browser (route.fetch, redirects unfollowed + route.fulfill);
-//   - a redirect that leaves the origin (directly, or after hops inside it) → the browser gets that redirect, and
-//     follows it without the token;
-//   - a redirect chain that stays inside the origin → route.continue() with the header: the browser follows it
-//     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
-//     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
-//     answer as it came, a redirect included.
-// A request that cannot be made here (a timeout, a dropped connection), or a chain that does not end within the hop
-// budget (a loop), is ABORTED, never continued or handed on: it would go out without the token and the instrument
-// would measure a 401 page as the site. One stderr line names the origin. The requests here set no timeout of their own (0): the caller's navigation timeout ends a stall.
-async function authRoute(route, context, o, headerValue) {
+// The attachOriginAuth route. A request of the origin is made HERE (route.fetch, redirects unfollowed) and is never
+// released to the browser with the header: a header set with route.continue() stays on the request across every
+// redirect the browser then follows, no route sees those hops, and the origin may answer the browser's ask with
+// another redirect than the one it gave here (a cookie set meanwhile, a count) — to another origin, token included.
+//   - an answer that is no redirect → handed to the browser (route.fulfill);
+//   - a redirect to another origin → handed to the browser, which follows it as a request of its own, with no token;
+//   - a redirect within the origin → ABORTED, one stderr line naming the origin and the two paths: its next hop could
+//     carry the token only by a replay, and without it the instrument would measure a 401 page. The token never
+//     crosses a redirect; measure the final URL.
+// A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: it would go out
+// without the token and the instrument would measure a 401 page as the site. One stderr line names the origin. The
+// requests here set no timeout of their own (0): the caller's navigation timeout ends a stall.
+async function authRoute(route, o, headerValue, named) {
   const request = route.request();
   const onOrigin = (u) => { try { return new URL(u).origin === o; } catch { return false; } };
   if (!onOrigin(request.url())) { await route.fallback(); return; }
-  const headers = { ...request.headers(), authorization: headerValue };
-  const target = (response, from) => {
-    const location = REDIRECT_STATUS.has(response.status()) && response.headers().location;
-    try { return location ? new URL(location, from).href : null; } catch { return null; }
-  };
-  let last;
-  let replay = false;
-  let exhausted = false;
+  let answer;
   try {
-    last = await route.fetch({ headers, maxRedirects: 0, timeout: 0 });
-    let next = target(last, request.url());
-    if (next && ['GET', 'HEAD'].includes(request.method())) {
-      for (let hop = 0; next && onOrigin(next) && hop < MAX_AUTH_HOPS; hop += 1) {
-        const answer = await context.request.fetch(next, { method: request.method(), headers, maxRedirects: 0, timeout: 0 });
-        const after = target(answer, next);
-        if (!after) { replay = true; break; }
-        last = answer;
-        next = after;
-      }
-      exhausted = !replay && onOrigin(next);
-    }
+    answer = await route.fetch({ headers: { ...request.headers(), authorization: headerValue }, maxRedirects: 0, timeout: 0 });
   } catch {
     console.error(`live-session: a request to ${o} failed and was not sent again without the site token`);
     await route.abort('failed').catch(() => {});
     return;
   }
-  if (exhausted) {
-    console.error(`live-session: a redirect chain inside ${o} did not end within ${MAX_AUTH_HOPS} hops (a loop?); the request was stopped, not sent on without the site token`);
+  const location = REDIRECT_STATUS.has(answer.status()) && answer.headers().location;
+  let next = null;
+  try { next = location ? new URL(location, request.url()).href : null; } catch { /* unresolvable: the browser cannot follow it either */ }
+  if (next && onOrigin(next)) {
+    const hop = `${new URL(request.url()).pathname} → ${new URL(next).pathname}`;
+    if (!named.has(hop)) { named.add(hop); console.error(`live-session: ${o} redirected ${hop}; a site token is never replayed across a redirect — measure the final URL`); }
     await route.abort('failed').catch(() => {});
     return;
   }
   // (a page that closed meanwhile leaves nothing to answer)
-  if (replay) await route.continue({ headers }).catch(() => {});
-  else await route.fulfill({ response: last }).catch(() => {});
+  await route.fulfill({ response: answer }).catch(() => {});
 }
 
 export async function attachOriginAuth(context, origin, headerValue) {
   if (!headerValue || !origin) return;
   const o = new URL(origin).origin;
-  await context.route('**/*', (route) => authRoute(route, context, o, headerValue));
+  const named = new Set();
+  await context.route('**/*', (route) => authRoute(route, o, headerValue, named));
 }
 
 /** The help lines every instrument prints for its site-auth flags (one source of wording). */
 export const AUTH_HELP = [
   '--token-env <NAME>    send the site token held in the environment variable NAME (else the NAME= line of a cwd .env); no flag, no token: SITE_TOKEN is never picked up by itself; never printed',
   '--auth-header <value> send this Authorization value instead ("token <t>" or "bearer <t>"; a bare value gets "token " in front); never printed',
-  '--auth-origin <url>   the one origin that receives it (default: the origin of the measured URL; required when the URLs span two); every other origin the page loads gets none',
+  '--auth-origin <url>   the one origin that receives it (default: the origin of the measured URL; required when the URLs span two); every other origin the page loads gets none; a redirect on that origin fails (measure the final URL): the token never crosses a redirect',
 ].join('\n');
 
 const usageError = (message) => Object.assign(new Error(message), { code: 2 });

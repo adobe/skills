@@ -23,8 +23,10 @@
  * <NAME> sends the token held in the environment variable NAME (else the NAME= line of ./.env), --auth-header "<value>"
  * this Authorization value (a bare value gets `token ` in front). It goes on every request to ONE origin — --auth-origin
  * <url>, default --origin — the page's own, the served fetch and the fragment fetches alike, and to no other: not a
- * font or image host, not the target of a redirect off the origin. It is never printed. A flag with no value, or a
- * variable that is not set, exits 2.
+ * font or image host, not the target of a redirect off the origin. The page's own requests fail on a redirect within
+ * the origin (measure the final URL): the token never crosses a redirect; the served and fragment fetches follow one
+ * hop by hop, the token on that origin's hops only. It is never printed. A flag with no value, or a variable that is
+ * not set, exits 2.
  *
  * Exit 1 when any page's code score is below --min; 2 on infrastructure failure or a usage error.
  * Writes: nothing unless --json <file> is given (the per-page results as JSON); the report is stdout.

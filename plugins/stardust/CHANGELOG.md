@@ -89,11 +89,12 @@ per family, a re-run matrix per fix type), `gates.md` § (e) the bars. Setup ste
   `token ` nor a `bearer ` prefix gets `token `) and `--auth-origin <url>`. Without a flag nothing is sent, whatever
   `SITE_TOKEN` holds. The token goes to one origin, `--auth-origin` or the measured URL's (two origins without it is exit
   2, so the local reskin page never gets it), and never to a font or image host. It fails closed: a request to that
-  origin that fails is aborted, never retried without the header. A redirect is settled on the origin's side, and one
-  that leaves the origin is followed without the token. `deployed-gate` hands each child the flag and the value by
-  environment, never argv, and redacts what it prints and writes. `diff/live-session.mjs` holds the algorithm and
-  deploy's own `site-auth.mjs` a copy (deploy does not import diff). `deploy-batch --site-token-env <NAME>` sends the
-  site token on its delivered `.plain.html` check only, never to DA or the admin API, and never records it.
+  origin that fails is aborted, never retried without the header. A redirect off that origin is followed without the
+  token; one on it fails (measure the final URL): the token never crosses a redirect. `deployed-gate` hands each child
+  the flag and the value by environment, never argv, and redacts what it prints and writes. `diff/live-session.mjs`
+  holds the algorithm and deploy's own `site-auth.mjs` a copy (deploy does not import diff).
+  `deploy-batch --site-token-env <NAME>` sends the site token on its delivered `.plain.html` check only, never to DA
+  or the admin API, and never records it.
 - **`deploy`'s scripts on a reskin page.** `qa-gate` finds a repeat group's block by the section's order among the
   non-chrome sections, not its name: `section-schema` names every reskin section `m`, so every group resolved to the
   first. `build-harness` creates its output directory (the skill's own example path is absent in a fresh project).

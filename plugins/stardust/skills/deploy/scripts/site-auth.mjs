@@ -16,10 +16,10 @@
 //   attachSiteAuth(context, origin, header)  a `context.route` that makes the requests of `origin` with `authorization`
 //        added and lets every other request through untouched, so a webfont, an image host, a vendor — or the target
 //        of a redirect off the origin — never sees it. A redirect is settled inside the route (see the comment above
-//        it): off the origin, the browser gets the redirect and follows it without the token; within the origin, it
-//        keeps it. A request of the origin that fails (a drop, a stall past the page's own timeout), or whose redirect
-//        chain inside the origin is still going after ten hops (a loop), is aborted, never continued without the header
-//        — that would measure the 401 — and one stderr line names the origin. Attach it before the first navigation;
+//        it): off the origin, the browser gets the redirect and follows it without the token; on the origin, the
+//        request fails (measure the final URL) — the token never crosses a redirect. A request of the origin that
+//        fails (a drop, a stall past the page's own timeout) is aborted, never continued without the header — that
+//        would measure the 401 — and one stderr line names the origin. Attach it before the first navigation;
 //        `context.request` (APIRequestContext) bypasses routes and keeps a header across a redirect too — send the
 //        header there yourself, to the origin only. Same semantics as diff/scripts/live-session.mjs
 //        `attachOriginAuth`, kept here because deploy does not import diff.
@@ -83,19 +83,16 @@ export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = []
 }
 
 const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
-const MAX_HOPS = 10;
 
-// The route of attachSiteAuth. A header set with route.continue() stays on the request when the server redirects to
-// ANOTHER origin, and a redirect answered with route.fulfill() is followed by the browser without going through any
-// route again, so the follow-up carries nothing. So a redirect is settled here, on the origin's side of it:
-//   - no redirect → the origin's answer is handed to the browser (route.fetch, redirects unfollowed + route.fulfill);
-//   - a redirect that leaves the origin (directly, or after hops inside it) → the browser gets that redirect, and
-//     follows it without the token;
-//   - a redirect chain that stays inside the origin → route.continue() with the header: the browser follows it
-//     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
-//     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
-//     answer as it came, a redirect included. A chain (or loop) still inside the origin after MAX_HOPS hops fails
-//     closed like a failed request: aborted, one stderr line naming the origin and the hop count.
+// The route of attachSiteAuth. A request of the origin is made HERE (route.fetch, redirects unfollowed) and is never
+// released to the browser with the header: a header set with route.continue() stays on the request across every
+// redirect the browser then follows, no route sees those hops, and the origin may answer the browser's ask with
+// another redirect than the one it gave here (a cookie set meanwhile, a count) — to another origin, token included.
+//   - an answer that is no redirect → handed to the browser (route.fulfill);
+//   - a redirect to another origin → handed to the browser, which follows it as a request of its own, with no token;
+//   - a redirect within the origin → ABORTED, one stderr line naming the origin and the two paths: its next hop could
+//     carry the token only by a replay, and without it the instrument would measure a 401 page. The token never
+//     crosses a redirect; measure the final URL.
 // A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: continued, it
 // would go out without the token and the instrument would measure a 401 page as the site. One stderr line (per
 // attachSiteAuth) names the origin. The requests here set no timeout of their own (0): the caller's navigation
@@ -104,41 +101,29 @@ export async function attachSiteAuth(context, origin, header) {
   if (!origin || !header) return;
   const only = new URL(origin).origin;
   const onOrigin = (u) => originOf(u) === only;
-  const target = (response, from) => {
-    const location = REDIRECT_STATUS.has(response.status()) && response.headers().location;
-    try { return location ? new URL(location, from).href : null; } catch { return null; }
-  };
-  const tooLong = new Error('redirect chain past the hop budget');
   let said = false;
-  let saidLong = false;
+  const named = new Set();
   await context.route('**/*', async (route) => {
     const request = route.request();
     if (!onOrigin(request.url())) { await route.fallback(); return; }
-    const headers = { ...request.headers(), authorization: header };
-    let last;
-    let replay = false;
+    let answer;
     try {
-      last = await route.fetch({ headers, maxRedirects: 0, timeout: 0 });
-      let next = target(last, request.url());
-      if (next && ['GET', 'HEAD'].includes(request.method())) {
-        for (let hop = 0; next && onOrigin(next) && hop < MAX_HOPS; hop += 1) {
-          const answer = await context.request.fetch(next, { method: request.method(), headers, maxRedirects: 0, timeout: 0 });
-          const after = target(answer, next);
-          if (!after) { replay = true; break; }
-          last = answer;
-          next = after;
-        }
-        if (!replay && next && onOrigin(next)) throw tooLong;
-      }
-    } catch (e) {
-      if (e === tooLong) {
-        if (!saidLong) { saidLong = true; console.error(`site-auth: a redirect chain inside ${only} was still going after ${MAX_HOPS} hops (a loop?) and was not followed without the site token`); }
-      } else if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
+      answer = await route.fetch({ headers: { ...request.headers(), authorization: header }, maxRedirects: 0, timeout: 0 });
+    } catch {
+      if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
+      await route.abort('failed').catch(() => {});
+      return;
+    }
+    const location = REDIRECT_STATUS.has(answer.status()) && answer.headers().location;
+    let next = null;
+    try { next = location ? new URL(location, request.url()).href : null; } catch { /* unresolvable: the browser cannot follow it either */ }
+    if (next && onOrigin(next)) {
+      const hop = `${new URL(request.url()).pathname} → ${new URL(next).pathname}`;
+      if (!named.has(hop)) { named.add(hop); console.error(`site-auth: ${only} redirected ${hop}; a site token is never replayed across a redirect — measure the final URL`); }
       await route.abort('failed').catch(() => {});
       return;
     }
     // (a page that closed meanwhile leaves nothing to answer)
-    if (replay) await route.continue({ headers }).catch(() => {});
-    else await route.fulfill({ response: last }).catch(() => {});
+    await route.fulfill({ response: answer }).catch(() => {});
   });
 }

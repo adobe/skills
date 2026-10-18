@@ -139,7 +139,7 @@ check('resolveSiteAuth keeps its behaviour: --auth-header verbatim, SITE_TOKEN b
   }
 }));
 
-// ---- in Chromium: the token goes to its origin and to no other, redirects included (skipped without playwright) ----
+// ---- in Chromium: the token goes to its origin and to no other, never across a redirect (skipped without playwright) ----
 const browserAvailable = await import('playwright').then(async ({ chromium }) => { const b = await chromium.launch(); await b.close(); return true; }, () => false);
 if (!browserAvailable) console.log('skip  live-session Chromium checks (playwright or Chromium not importable here; run this test in an environment that has them)');
 else {
@@ -154,44 +154,104 @@ else {
     try { await fn(fx, await ctx.newPage()); } finally { await ctx.close(); await fx.stop(); }
   };
   const live = (fx) => newLiveContext(browser, { authOrigin: fx.originA, authHeader: fx.authorization });
+  const plain = (fx) => browser.newContext().then(async (ctx) => { await attachOriginAuth(ctx, fx.originA, fx.authorization); return ctx; });
   const seenOnA = (fx, path) => fx.a.log.filter((e) => e.path === path);
+  const asked = (fx, path) => seenOnA(fx, path).map((e) => [e.status, e.authorization]);
+  const withStderr = async (fn) => {
+    const lines = [];
+    const write = process.stderr.write;
+    process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
+    try { await fn(); } finally { process.stderr.write = write; }
+    return lines.join('');
+  };
+  const redirected = (origin, from, to) => `live-session: ${origin} redirected ${from} → ${to}; a site token is never replayed across a redirect — measure the final URL\n`;
+  // a navigation that is expected to fail: its error (null when it did not fail) and what went to stderr meanwhile
+  const failing = async (page, url) => {
+    let error;
+    const err = await withStderr(async () => { error = await page.goto(url, { timeout: 15000, waitUntil: 'load' }).then(() => null, (e) => e); });
+    return { error, err };
+  };
+  const imageWidth = (page, src) => page.evaluate((u) => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve(i.naturalWidth); i.onerror = () => resolve(-1); i.src = u; }), src);
 
-  await checkAsync('a redirect off the origin (a page): origin A sees the token, origin B — the page, its stylesheet and image — none', () => session(live, async (fx, page) => {
-    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
-    assert.equal(page.url(), `${fx.originB}/page`, 'the redirect was followed');
-    assert.ok(seenOnA(fx, '/hop-b').every((e) => e.status === 302 && e.authorization === fx.authorization), 'origin A saw the token');
-    assert.ok(['/page', '/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)), 'origin B served the page and its sub-resources');
-    assert.deepEqual(fx.authorizations('B'), [], 'origin B saw no Authorization');
+  for (const [kind, open] of [['newLiveContext', live], ['attachOriginAuth on a plain context', plain]]) {
+    await checkAsync(`${kind}: a redirect off the origin (a page): origin A sees the token once, origin B — the page, its stylesheet and image — none`, () => session(open, async (fx, page) => {
+      await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
+      assert.equal(page.url(), `${fx.originB}/page`, 'the redirect was followed');
+      assert.deepEqual(asked(fx, '/hop-b'), [[302, fx.authorization]], 'origin A was asked once, with the token');
+      assert.ok(['/page', '/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)), 'origin B served the page and its sub-resources');
+      assert.deepEqual(fx.authorizations('B'), [], 'origin B saw no Authorization');
+    }));
+    // The reviewer's case: the origin's first answer sets a cookie, and the same request asked again with it is sent
+    // to the other origin. Walking the first redirect and then letting the browser replay its request with the header
+    // sent the token there.
+    await checkAsync(`${kind}: a redirect within the origin that a cookie turns off it on the next ask: the navigation fails loudly and origin B never sees the token`, () => session(open, async (fx, page) => {
+      const first = await failing(page, `${fx.originA}/cookie-hop`);
+      assert.ok(first.error, 'the navigation failed');
+      assert.equal(first.err, redirected(fx.originA, '/cookie-hop', '/page'));
+      assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization, e.cookie]), [['/cookie-hop', 302, fx.authorization, null]], 'one ask, with the token; the redirect target was never asked');
+      // asked again (from a fresh tab: the first one is still showing its error page), now with the cookie the first
+      // answer set: the redirect leaves the origin, and the browser follows it on its own, without the token
+      const tab = await page.context().newPage();
+      const again = await failing(tab, `${fx.originA}/cookie-hop`);
+      assert.equal(again.error, null, 'the second navigation succeeded');
+      assert.equal(tab.url(), `${fx.originB}/page`, 'it ended on origin B');
+      assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization, e.cookie]), [['/cookie-hop', 302, fx.authorization, null], ['/cookie-hop', 302, fx.authorization, 'hopped=1']]);
+      assert.deepEqual(seenOnA(fx, '/page'), [], 'origin A\'s redirect target was never asked');
+      assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200), 'origin B served the page');
+      assert.deepEqual(fx.authorizations('B'), [], 'origin B saw an Authorization');
+      assert.ok(!`${first.err}${again.err}`.includes(fx.token), 'the token is not printed');
+    }));
+    await checkAsync(`${kind}: a redirect within the origin that turns off it on the second ask: the first ask fails loudly, the second ends on origin B without the token`, () => session(open, async (fx, page) => {
+      const first = await failing(page, `${fx.originA}/count-hop`);
+      assert.ok(first.error, 'the first navigation failed');
+      assert.equal(first.err, redirected(fx.originA, '/count-hop', '/page'));
+      const tab = await page.context().newPage();
+      await tab.goto(`${fx.originA}/count-hop`, { waitUntil: 'load' });
+      assert.equal(tab.url(), `${fx.originB}/page`);
+      assert.deepEqual(asked(fx, '/count-hop'), [[302, fx.authorization], [302, fx.authorization]], 'each navigation asked origin A once, with the token');
+      assert.deepEqual(seenOnA(fx, '/page'), []);
+      assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200), 'origin B served the page');
+      assert.deepEqual(fx.authorizations('B'), [], 'origin B saw an Authorization');
+    }));
+  }
+  await checkAsync('a redirect within the origin (A → A): the navigation fails, one stderr line names the origin and the two paths, the target is never asked', () => session(live, async (fx, page) => {
+    const { error, err } = await failing(page, `${fx.originA}/hop-a`);
+    assert.ok(error, 'the navigation failed');
+    assert.equal(err, redirected(fx.originA, '/hop-a', '/page'));
+    assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization]), [['/hop-a', 302, fx.authorization]], 'one ask, with the token, and nothing after it');
+    assert.deepEqual(fx.b.log, []);
   }));
-  await checkAsync('a redirect within the origin keeps the token and the URL; the page and its other-origin sub-resources load', () => session(live, async (fx, page) => {
-    await page.goto(`${fx.originA}/hop-a`, { waitUntil: 'load' });
-    assert.equal(page.url(), `${fx.originA}/page`);
-    assert.ok(seenOnA(fx, '/hop-a').every((e) => e.authorization === fx.authorization));
-    assert.ok(seenOnA(fx, '/page').some((e) => e.status === 200 && e.authorization === fx.authorization), 'the page behind the redirect was served to the token');
-    assert.ok(fx.a.log.every((e) => e.authorization === fx.authorization), 'every request to origin A carried the token');
-    assert.ok(['/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)));
+  await checkAsync('a redirect within the origin and then off it (A → A → B): stopped at the first hop; the token never reaches the other origin', () => session(live, async (fx, page) => {
+    const { error, err } = await failing(page, `${fx.originA}/hop-ab`);
+    assert.ok(error, 'the navigation failed');
+    assert.equal(err, redirected(fx.originA, '/hop-ab', '/hop-b'));
+    assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization]), [['/hop-ab', 302, fx.authorization]]);
+    assert.deepEqual(fx.b.log, [], 'origin B was never asked');
+  }));
+  await checkAsync('a same-origin redirect loop is one tokened ask, aborted: the navigation fails, one stderr line names the origin and the path', () => session(live, async (fx, page) => {
+    const { error, err } = await failing(page, `${fx.originA}/loop`);
+    assert.ok(error, 'the navigation failed');
+    assert.equal(err, redirected(fx.originA, '/loop', '/loop'));
+    assert.ok(!err.includes(fx.token), 'the token is not printed');
+    assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization]), [['/loop', 302, fx.authorization]]);
     assert.deepEqual(fx.authorizations('B'), []);
   }));
-  await checkAsync('a redirect within the origin and then off it: the token never reaches the other origin', () => session(live, async (fx, page) => {
-    await page.goto(`${fx.originA}/hop-ab`, { waitUntil: 'load' });
-    assert.equal(page.url(), `${fx.originB}/page`);
-    assert.ok(fx.a.log.length > 0 && fx.a.log.every((e) => e.authorization === fx.authorization));
-    assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200));
-    assert.deepEqual(fx.authorizations('B'), []);
-  }));
-  await checkAsync('a sub-resource redirected off the origin (an image) loads without the token', () => session(live, async (fx, page) => {
+  await checkAsync('a sub-resource redirected off the origin (an image) loads; origin A sees the token once, origin B none', () => session(live, async (fx, page) => {
     await page.goto(`${fx.originA}/page`, { waitUntil: 'load' });
     fx.reset();
-    const width = await page.evaluate(() => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve(i.naturalWidth); i.onerror = () => resolve(-1); i.src = '/hop-pic'; }));
-    assert.equal(width, 1, 'the image behind the redirect loaded');
-    assert.ok(seenOnA(fx, '/hop-pic').every((e) => e.authorization === fx.authorization));
+    assert.equal(await imageWidth(page, '/hop-pic'), 1, 'the image behind the redirect loaded');
+    assert.deepEqual(asked(fx, '/hop-pic'), [[302, fx.authorization]]);
     assert.ok(fx.b.log.some((e) => e.path === '/pic.png' && e.status === 200));
     assert.deepEqual(fx.authorizations('B'), []);
   }));
-  await checkAsync('attachOriginAuth on a plain context: the same, a redirect off the origin gets no token', () => session((fx) => browser.newContext().then(async (ctx) => { await attachOriginAuth(ctx, fx.originA, fx.authorization); return ctx; }), async (fx, page) => {
-    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
-    assert.equal(page.url(), `${fx.originB}/page`);
-    assert.ok(seenOnA(fx, '/hop-b').every((e) => e.authorization === fx.authorization));
+  await checkAsync('a sub-resource redirected within the origin (an image, A → A) fails with one stderr line; its target is never asked', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/page`, { waitUntil: 'load' });
+    fx.reset();
+    let width;
+    const err = await withStderr(async () => { width = await imageWidth(page, '/hop-a'); });
+    assert.equal(width, -1, 'the image request failed');
+    assert.equal(err, redirected(fx.originA, '/hop-a', '/page'));
+    assert.deepEqual(fx.a.log.map((e) => [e.path, e.status, e.authorization]), [['/hop-a', 302, fx.authorization]]);
     assert.deepEqual(fx.authorizations('B'), []);
   }));
   await checkAsync('the standard header set reaches document requests on both paths (the origin\'s, made by the auth route, and another origin\'s), and stays off sub-resources', () => session(live, async (fx, page) => {
@@ -205,9 +265,12 @@ else {
     assert.notEqual(fx.b.log.find((e) => e.path === '/pic.png').accept, accept, 'the standard Accept stays off sub-resources');
     assert.deepEqual(fx.authorizations('B'), []);
   }));
-  await checkAsync('no auth given: nothing is sent, a redirect included', () => session((fx) => newLiveContext(browser, {}), async (fx, page) => {
-    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
-    assert.deepEqual(fx.a.log.map((e) => [e.authorization, e.status]), [[null, 401]]);
+  await checkAsync('no auth given: nothing is sent and nothing is stopped, the redirect routes included', () => session((fx) => newLiveContext(browser, {}), async (fx, page) => {
+    let answers;
+    const err = await withStderr(async () => { answers = []; for (const p of ['/hop-b', '/hop-a', '/cookie-hop', '/count-hop']) answers.push((await page.goto(`${fx.originA}${p}`, { waitUntil: 'load' })).status()); });
+    assert.deepEqual(answers, [401, 401, 401, 401], 'each page loaded, as the 401 the protected origin answers');
+    assert.equal(err, '');
+    assert.deepEqual(fx.a.log.map((e) => [e.path, e.authorization, e.status]), [['/hop-b', null, 401], ['/hop-a', null, 401], ['/cookie-hop', null, 401], ['/count-hop', null, 401]]);
     assert.deepEqual(fx.authorizations('B'), []);
   }));
 
@@ -219,13 +282,6 @@ else {
     const server = createServer((req, res) => { seen.push(req.headers.authorization || null); behave(req, res); });
     server.listen(0, '127.0.0.1', () => resolve({ seen, origin: `http://127.0.0.1:${server.address().port}`, stop: () => { server.closeAllConnections(); server.close(); } }));
   });
-  const withStderr = async (fn) => {
-    const lines = [];
-    const write = process.stderr.write;
-    process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
-    try { await fn(); } finally { process.stderr.write = write; }
-    return lines.join('');
-  };
   // Closing a context resumes the requests still paused in it, so a stalled request reaches the origin bare as the
   // browser is torn down; the navigation has failed by then, and what is asserted is the time before.
   for (const [kind, behave, navigationTimeout, strictToTheEnd] of [['drops the connection', (req) => req.socket.destroy(), 15000, true], ['stalls', () => {}, 1500, false]]) {
@@ -251,15 +307,6 @@ else {
       if (strictToTheEnd) assert.deepEqual(srv.seen, ['token t0k3n'], 'nor at teardown');
     });
   }
-  await checkAsync('a same-origin redirect loop fails closed: the navigation fails, one stderr line names the origin, every request carried the token', () => session(live, async (fx, page) => {
-    let navigation;
-    const err = await withStderr(async () => { navigation = await page.goto(`${fx.originA}/loop`, { timeout: 15000, waitUntil: 'load' }).then(() => null, (e) => e); });
-    assert.ok(navigation, 'the navigation failed');
-    assert.match(err, new RegExp(`^live-session: a redirect chain inside ${fx.originA.replace(/[.:/]/g, '\\$&')} did not end within \\d+ hops[^\\n]*\\n$`), err);
-    assert.ok(!err.includes(fx.token), 'the token is not printed');
-    assert.ok(fx.a.log.length > 1 && fx.a.log.every((e) => e.path === '/loop' && e.status === 302 && e.authorization === fx.authorization), 'only tokened /loop requests reached the origin');
-    assert.deepEqual(fx.authorizations('B'), []);
-  }));
   await browser.close();
 }
 

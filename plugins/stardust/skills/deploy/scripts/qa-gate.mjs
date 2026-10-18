@@ -20,7 +20,8 @@
  *   --token-env <NAME> | --auth-header "<value>"   a protected preview: send the site token held in the environment
  *                    variable NAME (else the NAME= line of ./.env), or this Authorization value (a bare value gets
  *                    `token ` in front), on every request the page makes to ONE origin — --auth-origin <url>, default the
- *                    URL's origin — and to no other (a font or image host, a CDN). Opt-in: without a flag nothing is
+ *                    URL's origin — and to no other (a font or image host, a CDN); a redirect on that origin fails
+ *                    (measure the final URL): the token never crosses a redirect. Opt-in: without a flag nothing is
  *                    sent, whatever SITE_TOKEN holds; the value is never printed. A flag with no value, or a variable
  *                    that is not set, exits 2.
  *

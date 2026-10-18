@@ -141,6 +141,29 @@ browserTest('a redirect off the origin: the served fetch and the page load follo
   } finally { redirector.closeAllConnections(); redirector.close(); }
 });
 
+browserTest('a redirect within the origin and then off it: the served fetch checks every hop (the token on the origin\'s, none on the other origin\'s); the page load stops at the first hop with one stderr line, and the other origin never sees the token', async () => {
+  fx.reset();
+  const seen = [];
+  const redirector = createServer((req, res) => {
+    seen.push({ path: req.url, authorization: req.headers.authorization || null });
+    if (req.headers.authorization !== AUTHORIZATION) { res.writeHead(401); res.end('401'); return; }
+    res.writeHead(302, { location: req.url === '/go' ? '/next' : `${fx.originB}/page` });
+    res.end();
+  });
+  await new Promise((resolve) => { redirector.listen(0, '127.0.0.1', resolve); });
+  try {
+    const origin = `http://127.0.0.1:${redirector.address().port}`;
+    const r = await run(['--origin', origin, '/go', '--token-env', 'AIR_SITE_TOKEN'], { env: { AIR_SITE_TOKEN: SECRET } });
+    assert.equal(r.code, 1, `${r.out}${r.err}`);
+    assert.match(r.out, /^\/go\n {2}ERROR .*ERR_FAILED/m, 'the page load failed, and says so');
+    assert.equal(r.err, `site-auth: ${origin} redirected /go → /next; a site token is never replayed across a redirect — measure the final URL\n`);
+    noSecret(r);
+    assert.deepEqual(seen, [{ path: '/go', authorization: AUTHORIZATION }, { path: '/next', authorization: AUTHORIZATION }, { path: '/go', authorization: AUTHORIZATION }], 'the served fetch asked both hops of the origin with the token; the page load asked once');
+    assert.equal(hits(fx.b, '/page').length, 1, 'the served fetch followed the redirect to origin B');
+    assert.deepEqual(fx.authorizations('B'), [], 'origin B saw an Authorization');
+  } finally { redirector.closeAllConnections(); redirector.close(); }
+});
+
 browserTest('fragments the served page links to are fetched with the token, and only from the origin', async () => {
   const seen = [];
   const site = createServer((req, res) => {
