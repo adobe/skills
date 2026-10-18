@@ -135,27 +135,31 @@
  *        job is signalled.
  * status one pass of the same report (the same selection), without waiting;
  *        the pause line first while the pause file exists (exit unchanged).
- *        Bare and --all, the selection's servers follow the jobs under a
- *        `servers:` heading (Servers, below); with no server, the report is
- *        the jobs' alone.
+ *        Servers follow the jobs under a `servers:` heading (Servers, below) —
+ *        a named server there too; with no server, the report is the jobs'
+ *        alone.
  * stop   <job>… (either kind) or --servers (the caller's own running servers;
  *        --servers --all every owner's): SIGTERM to the wrapper (run-capped
  *        forwards it to the instrument's process group) and to the instrument's
- *        group, then after a 5 s grace SIGKILL to both groups — the clean --all
- *        sequence, the files kept. The state records the end: endedAt, stopped,
- *        stoppedAt, exit 143 (128 + SIGTERM; never a verdict, whatever the
- *        command exited with) — unless it recorded its own end before the
- *        signal. One line per job; a job not running is one line saying so,
- *        exit 0. An unknown name is exit 2 with nothing signalled; a process
- *        that survives SIGKILL, exit 1 (its state unchanged).
+ *        group, then after a 5 s grace SIGKILL to every member left in either
+ *        group, pass after pass, until both are empty — a child that ignores
+ *        SIGTERM outlives a parent that obeys it — the files kept. Then the
+ *        state records the end with the deadline's no-verdict marker: endedAt,
+ *        exit 124, timedOut, plus stopped and stoppedAt (status/wait say
+ *        `stopped`, not deadline) — whatever the command exited with: a stopped
+ *        job is no verdict, like a deadline; unless it recorded its own end
+ *        before the signal. One line per job; a job not running is one line
+ *        saying so, exit 0. An unknown name is exit 2 with nothing signalled; a
+ *        process that survives SIGKILL, exit 1 (its state unchanged).
  * log    a bounded view of one job's log: the last --tail lines (default
  *        40) or the --grep matches (at most 200).
  * clean  deletes ended and lost jobs' files (a running server's stay, like a
  *        running job's — `stop` ends one); --all also stops queued/running
  *        jobs: SIGTERM to the wrapper (run-capped forwards it to the
  *        instrument's process group and escalates to SIGKILL after 3 s), then
- *        after a 4 s grace SIGKILL to the wrapper's whole process group and to
- *        the instrument's, and the files go only once the wrapper is gone. A
+ *        after a 4 s grace SIGKILL to every member left in the wrapper's process
+ *        group and the instrument's (the same passes as stop), and the files go
+ *        only once nothing of the job is left alive. A
  *        lost job (wrapper gone) whose instrument still runs is stopped the same
  *        way through the recorded childPid. Nothing is ever signalled unless its
  *        identity matches (below).
@@ -174,7 +178,8 @@
  * recorded hands-off run a bare wait in one agent blocked on every other
  * agent's jobs, and --timeout on wait was silently ignored.
  *
- * Servers: start records the kind — `job` (default) or `server`, a process that
+ * Servers: start records the kind as runKind — `job` (default; a state without
+ * one, from an older run, is a job) or `server`, a process that
  * runs until stopped (a static file server, a dev server). --no-lock implies
  * --kind server unless --kind job is given (explicit wins: an instrument run
  * without the browser slot); start says so in one line, and in another when a
@@ -183,13 +188,19 @@
  * it never takes the machine-wide browser slot (lock off; --lock with it is a
  * usage error). Deadline: --timeout, else 3600 s (gate-all's estimate sizes
  * jobs only). A bare or --all wait/status leaves servers out of its selection;
- * status lists them after the jobs under `servers: <n> of yours|of all owners`
- * — those queued or running (or lost with their command still running), or
- * ended within the last 10 min — one line each by name: state and pid, age,
+ * status lists them after the jobs under `servers: <n> of yours|of all
+ * owners|named` — bare: the caller's queued or running (or lost with their
+ * command still running) or ended within the last 10 min; --all: every server
+ * state on disk; named: those — one line each by name: state and pid, age,
  * deadline, command. Why: in a recorded hands-off run a 26-second measure
  * queued 615 s behind a static file server, and a bare wait blocked 600 s on
  * the unit's own servers (deadline 3600 s) while its gates had ended seven
  * minutes earlier.
+ *
+ * Signals: every signal goes only to a pid that a fresh look at that pid, taken
+ * right before it (never the report passes' cached snapshot), still shows alive
+ * with the identity recorded (below) — for a member of a job's process group,
+ * found by a census of the group, its start time and group.
  *
  * Liveness: a job's state records the wrapper pid AND its process start time
  * (`ps -o lstart`, the same on macOS and procps Linux) — a bare pid names a
@@ -210,8 +221,8 @@
  *
  * Per-job exit codes are the instrument's (gate.sh: 0 PASS, 2 FAIL, 3 bot
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
- * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run; 143 = stopped
- * by `stop` — no verdict.
+ * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run; also 124 (with
+ * stopped) = ended by `stop` — no verdict, like a deadline.
  *
  * Also importable: start(), wait(), status(), stop(), pickNames(), startKind(), mayLaunch(), isServer(), serverLine(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
@@ -229,10 +240,10 @@ export const DEFAULT_TIMEOUT_SEC = 900;
 // recorded hands-off runs gave their prototype and dev servers.
 export const KINDS = ['job', 'server'];
 export const SERVER_TIMEOUT_SEC = 3600;
-// `stop` records this exit (128 + SIGTERM, the shell's convention) whatever the command exited with: never a verdict.
-export const STOPPED_EXIT = 143;
-// stop: SIGTERM, then SIGKILL whatever is left after this grace.
+// stop: SIGTERM, then SIGKILL every process left in the job's groups after this grace.
 const STOP_GRACE_MS = 5000;
+// After the grace: SIGKILL passes (100 ms apart) until a job's process groups are empty; members left after them survived.
+const KILL_PASSES = 10;
 // Each capture is a Chromium and a `gate.sh --full` round holds up to six at its peak, so the cap bounds the Chromiums at
 // six per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
 // percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine. On a
@@ -263,7 +274,7 @@ export const RECENT_WINDOW_SEC = 600;
 // younger than this is still spawning (node startup on a loaded machine), older is lost.
 export const SPAWN_GRACE_SEC = 15;
 // clean --all: SIGTERM first (run-capped forwards it to the instrument's group and SIGKILLs that after 3 s), then
-// SIGKILL whatever is left after this grace.
+// SIGKILL every process left in the job's groups after this grace.
 const CLEAN_GRACE_MS = 4000;
 // One `ps` snapshot serves a whole report/poll pass.
 const PROC_TTL_MS = 250;
@@ -372,16 +383,18 @@ const HELP = `Usage:
   neither --slots nor the machine's browser slot (--lock with it: usage error) — running servers do not count toward
   --slots, and its deadline is ${SERVER_TIMEOUT_SEC} s unless --timeout. A bare or --all wait never waits for one (its first line
   counts them); wait <name> does, and ends only when the server is stopped or at its deadline. status lists them after
-  the jobs under \`servers:\` — yours, --all every owner's; queued or running, or ended in the last ${RECENT_WINDOW_SEC / 60} min; by name:
-  state and pid, age, deadline, command. stop <job>… ends jobs of either kind — SIGTERM to the process group, SIGKILL after
-  ${STOP_GRACE_MS / 1000} s — and records the end (stopped, exit ${STOPPED_EXIT}: no verdict); stop --servers = your running servers, --servers
-  --all every owner's; a job not running is one line, exit 0. clean keeps running servers; clean --all stops them.
+  the jobs under \`servers:\` — bare: yours, queued or running or ended in the last ${RECENT_WINDOW_SEC / 60} min; --all: every server on disk;
+  named: those; by name: state and pid, age, deadline, command. stop <job>… ends jobs of either kind — SIGTERM, then after
+  ${STOP_GRACE_MS / 1000} s SIGKILL to every process left in the job's process groups until none is — and records the end with the
+  deadline's no-verdict marker (exit ${DEADLINE_EXIT}, timedOut) plus stopped: a stopped job is no verdict, like a deadline. stop
+  --servers = your running servers, --servers --all every owner's; a job not running is one line, exit 0. A signal goes
+  only to a pid a fresh look still shows with its recorded identity. clean keeps running servers; clean --all stops them.
   Why: in a recorded hands-off run a 26-second measure queued 615 s behind a static file server, and a bare wait blocked
   600 s on the unit's own servers.
   Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
   · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return · 2 (start) the name is still
   queued/running, (log) no log, (stop) no such job — nothing signalled · 125 usage · 1 error, (stop) a process survived
-  SIGKILL. A job's own exit (124 = deadline, ${STOPPED_EXIT} = stopped — no verdict) is on its line.`;
+  SIGKILL. A job's own exit (124 = deadline, or stopped — no verdict) is on its line.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -395,41 +408,63 @@ function writeState(dir, st) { const p = statePath(dir, st.name); const tmp = `$
 export function listJobs(dir) { if (!existsSync(dir)) return []; return readdirSync(dir).filter((f) => f.endsWith('.json')).map((f) => readState(dir, f.slice(0, -5))).filter(Boolean); }
 
 // ---- process identity --------------------------------------------------------------------------
-// pid → { ppid, state, start, command } from one `ps` run (cached PROC_TTL_MS); null when ps is unusable.
-// lstart is 5 whitespace tokens ("Wed Sep 23 07:59:27 2026") on macOS and procps alike; -ww: never truncate.
+// pid → { ppid, pgid, state, start, command } from `ps` (-ww: never truncate); lstart is 5 whitespace tokens ("Wed Sep 23
+// 07:59:27 2026") on macOS and procps alike. Without ps: /proc (Linux; start = kernel start ticks).
+const PS_FIELDS = 'pid=,ppid=,pgid=,state=,lstart=,command=';
+function psRows(stdout) {
+  const rows = new Map();
+  for (const line of String(stdout || '').split('\n')) {
+    const t = line.trim().split(/\s+/);
+    if (t.length < 10) continue;
+    rows.set(Number(t[0]), { ppid: Number(t[1]), pgid: Number(t[2]), state: t[3], start: t.slice(4, 9).join(' '), command: t.slice(9).join(' ') });
+  }
+  return rows;
+}
+function procStat(pid) {
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+    return { ppid: Number(f[1]), pgid: Number(f[2]), state: f[0], start: `ticks:${f[19]}`, command: readFileSync(`/proc/${pid}/cmdline`, 'latin1').split('\0').join(' ').trim() };
+  } catch { return null; }
+}
+// The whole table from one `ps -e` run — cached PROC_TTL_MS for a report or poll pass, `fresh` on request; null when ps
+// is unusable.
 let procCache = { at: 0, table: null };
 function procTable({ fresh = false } = {}) {
   if (!fresh && Date.now() - procCache.at < PROC_TTL_MS) return procCache.table;
-  let table = null;
-  const r = spawnSync('ps', ['-e', '-ww', '-o', 'pid=,ppid=,state=,lstart=,command='], { encoding: 'utf8' });
-  if (r.status === 0 && r.stdout) {
-    table = new Map();
-    for (const line of r.stdout.split('\n')) {
-      const t = line.trim().split(/\s+/);
-      if (t.length < 9) continue;
-      table.set(Number(t[0]), { ppid: Number(t[1]), state: t[2], start: t.slice(3, 8).join(' '), command: t.slice(8).join(' ') });
-    }
-  }
-  procCache = { at: Date.now(), table };
-  return table;
+  const r = spawnSync('ps', ['-e', '-ww', '-o', PS_FIELDS], { encoding: 'utf8' });
+  procCache = { at: Date.now(), table: r.status === 0 && r.stdout ? psRows(r.stdout) : null };
+  return procCache.table;
 }
-// One process's identity: the ps snapshot, else /proc (Linux without ps: start = kernel start ticks), else null.
-export function procInfo(pid, opts) {
-  const t = procTable(opts);
-  if (t) return t.get(Number(pid)) || null;
-  try {
-    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8'); const f = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
-    return { ppid: Number(f[1]), state: f[0], start: `ticks:${f[19]}`, command: readFileSync(`/proc/${pid}/cmdline`, 'latin1').split('\0').join(' ').trim() };
-  } catch { return null; }
+// One process's identity, else null: the cached snapshot — or, `fresh`, a `ps -p` of that pid alone at this instant (the
+// look taken right before every signal) — else /proc.
+export function procInfo(pid, { fresh = false } = {}) {
+  if (fresh) {
+    const r = spawnSync('ps', ['-ww', '-o', PS_FIELDS, '-p', String(pid)], { encoding: 'utf8' });
+    if (!r.error && (r.status === 0 || r.status === 1)) return psRows(r.stdout).get(Number(pid)) || null; // 1: no such pid
+    return procStat(pid);
+  }
+  const t = procTable();
+  return t ? t.get(Number(pid)) || null : procStat(pid);
+}
+// The live members of process group `pgid` (zombies and this process aside), from a fresh census:
+// [{ pid, ident: { start, pgid } }].
+function groupMembers(pgid) {
+  const t = procTable({ fresh: true });
+  let rows;
+  if (t) rows = [...t];
+  else { let ids = []; try { ids = readdirSync('/proc').filter((d) => /^\d+$/.test(d)); } catch { /* no /proc */ } rows = ids.map((d) => [Number(d), procStat(d)]).filter(([, p]) => p); }
+  return rows.filter(([pid, p]) => p.pgid === pgid && pid !== process.pid && !/^[ZX]/.test(p.state)).map(([pid, p]) => ({ pid, ident: { start: p.start, pgid } }));
 }
 // A pid alone is not a job: pids recycle, and EPERM answers for a process that is not ours. Ours = the pid exists,
-// is not a zombie (a dead wrapper lingers as one under a PID 1 that does not reap), and its start time is the one
-// recorded at spawn — or, for state files without one, its command line is this script's `__run --name <job>`.
-export function alive(pid, { start = null, name = null } = {}, opts) {
+// is not a zombie (a dead wrapper lingers as one under a PID 1 that does not reap), its group is `pgid` when one is
+// given, and its start time is the one recorded at spawn — or, for state files without one, its command line is this
+// script's `__run --name <job>`.
+export function alive(pid, { start = null, name = null, pgid = null } = {}, opts) {
   if (!pid) return false;
   try { process.kill(pid, 0); } catch { return false; }
   const p = procInfo(pid, opts);
   if (!p || /^[ZX]/.test(p.state)) return false;
+  if (pgid != null && p.pgid !== pgid) return false;
   if (start) return p.start === start;
   return Boolean(name) && new RegExp(`run-bg\\.mjs __run\\b.* --name ${escapeRe(name)}(?: |$)`).test(p.command);
 }
@@ -485,8 +520,8 @@ const isPending = (st) => ['queued', 'running'].includes(phase(st));
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
 
 // ---- kinds -------------------------------------------------------------------------------------
-// A state without a kind (older runs) is a job.
-export const isServer = (st) => st?.kind === 'server';
+// The kind is stored as runKind (gate-evidence's own `kind` names an instrument); a state without one (older runs) is a job.
+export const isServer = (st) => st?.runKind === 'server';
 // --kind as given wins; without it --no-lock (lock off) means a server — the recorded servers were started that way.
 export function startKind(kind, lock) { return kind ?? (lock === 'off' ? 'server' : 'job'); }
 // May `st` launch now? A job: fewer than its slots of this dir's other jobs are running and no job queued before it
@@ -513,7 +548,7 @@ export function start(dir, name, cmd, args, { kind = 'job', timeoutSec = kind ==
   if (prev && isPending(prev)) throw new UsageError(`run-bg: ${name} is still ${phase(prev)} (wrapper pid ${prev.wrapperPid}) — pick another --name, or \`stop ${name}\` ends it`, 2);
   // Written once, before the spawn; from here on the wrapper is the file's only writer while it lives (`stop` records an
   // end once it is gone). ownerPid: the caller (callerOwner). A server never takes the browser slot: lock off.
-  const st = { name, kind, ownerPid: owner, cmd, args, cwd: process.cwd(), timeoutSec, slots, lock: kind === 'server' ? 'off' : lock, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  const st = { name, runKind: kind, ownerPid: owner, cmd, args, cwd: process.cwd(), timeoutSec, slots, lock: kind === 'server' ? 'off' : lock, queuedAt: new Date().toISOString(), wrapperPid: null, wrapperStart: null, launchedAt: null, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
   writeState(dir, st);
   const fd = openSync(logPath(dir, name), 'w');
   const child = spawn(process.execPath, [SELF, '__run', '--dir', dir, '--name', name], { detached: true, stdio: ['ignore', fd, fd], cwd: process.cwd(), env: process.env });
@@ -652,7 +687,7 @@ export function describe(st) {
   if (ph === 'queued') return `${st.name}  queued ${secondsBetween(st.queuedAt)}s (${isServer(st) ? 'a server, starting' : st.lockWaitFrom ? 'waiting for a machine-wide browser slot — browser-lock.mjs status' : 'waiting for a slot'})`;
   if (ph === 'running') return isServer(st) ? `${st.name}  server running ${secondsBetween(st.launchedAt)}s (ends at \`stop ${st.name}\`${st.timeoutSec > 0 ? ` or its ${st.timeoutSec}s deadline` : ''})` : `${st.name}  running ${secondsBetween(st.launchedAt)}s`;
   if (ph === 'lost') return `${st.name}  lost — wrapper gone without an exit (kill -9? reboot?)${isOrphan(st) ? `; its instrument (pid ${st.childPid}) still runs — \`clean --all\` stops it` : ''} — re-run`;
-  if (st.stopped) return `${st.name}  stopped ${st.launchedAt ? `after ${secondsBetween(st.launchedAt, st.endedAt)}s` : 'before launch'} (exit ${st.exit}: no verdict)`;
+  if (st.stopped) return `${st.name}  stopped ${st.launchedAt ? `after ${secondsBetween(st.launchedAt, st.endedAt)}s` : 'before launch'} (no verdict, exit ${st.exit})`;
   if (st.lockTimeout) return `${st.name}  no machine-wide browser slot within ${st.lockWaitSec ?? secondsBetween(st.lockWaitFrom, st.endedAt)}s (exit ${DEADLINE_EXIT}: no verdict — re-run)`;
   const took = st.launchedAt ? ` in ${secondsBetween(st.launchedAt, st.endedAt)}s` : '';
   return st.timedOut ? `${st.name}  deadline ${st.timeoutSec}s exceeded (exit ${DEADLINE_EXIT}: no verdict — re-run, or raise --timeout for a legitimately huge page)${took}` : `${st.name}  done exit=${st.exit}${took}`;
@@ -673,9 +708,16 @@ export function serverLine(st) {
 // The first line names the selection and its count — `sub`: wait | status, `scope`: pickNames' — plus `hidden`, the jobs
 // --all would add (it folds in the former trailing "earlier job(s) not shown" line), and `skipped`, the servers a bare or
 // --all wait leaves out. `pause` (pauseState): its line comes first, and a pending job gets no "wait again". `servers`
-// (names; `serversAll`: every owner's): a `servers:` section after the jobs, one serverLine each.
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, skipped = 0, servers = [], serversAll = false, elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
-  const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}${skipped ? `; ${skipped} server(s) not waited for — status lists them` : ''}`]; let pending = 0;
+// (names; `serversOf`: yours | all | named): a `servers:` section after the jobs, one serverLine each — a named one is
+// counted on the first line too.
+const SERVERS_HEAD = {
+  yours: 'of yours — not waited for; `stop <name>` or `stop --servers` ends them',
+  all: 'of all owners — not waited for; `stop <name>` or `stop --servers --all` ends them',
+  named: 'named — `stop <name>` ends one; `wait <name>` waits until it is stopped or at its deadline',
+};
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, skipped = 0, servers = [], serversOf = 'yours', elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
+  const sts = servers.map((n) => readState(dir, n)).filter(Boolean);
+  const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${serversOf === 'named' && sts.length ? `, ${sts.length} server(s)` : ''}${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}${skipped ? `; ${skipped} server(s) not waited for — status lists them` : ''}`]; let pending = 0;
   if (pause) lines.unshift(pauseLine(pause));
   for (const name of names) {
     const st = readState(dir, name);
@@ -684,12 +726,11 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
     lines.push(describe(st));
     if (!isPending(st)) for (const l of verdictLines(logPath(dir, name), { tail, grep })) lines.push(`  ${l}`);
   }
-  if (!names.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`);
+  if (!names.length) { if (!sts.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`); }
   else if (pending && pause) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — paused: no further wait; they keep running, \`status\` reads them later; logs: ${dir}/<job>.log`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
-  const sts = servers.map((n) => readState(dir, n)).filter(Boolean);
-  if (sts.length) lines.push(`servers: ${sts.length} ${serversAll ? 'of all owners' : 'of yours'} — not waited for; \`stop <name>\` or \`stop --servers${serversAll ? ' --all' : ''}\` ends them`, ...sts.map(serverLine));
+  if (sts.length) lines.push(`servers: ${sts.length} ${SERVERS_HEAD[serversOf]}`, ...sts.map(serverLine));
   return { text: lines.join('\n'), pending, paused: Boolean(pause) };
 }
 
@@ -706,8 +747,9 @@ function current(jobs, pending, { onDisk = false } = {}) {
 
 // wait/status → { names, scope, hidden, servers, skipped }: named → those (a server too); --all → every owner's jobs
 // (unfinished, else every job on disk); bare → the caller's own (unfinished, else its latest batch). Servers stay out of
-// bare and --all: `servers` = that scope's servers queued or running, lost with their command still running, or ended
-// within RECENT_WINDOW_SEC — by name, for status's section; `skipped` = those queued or running, for wait's first line.
+// bare and --all: `servers` = bare: the caller's servers queued or running, lost with their command still running, or
+// ended within RECENT_WINDOW_SEC; --all: every server state on disk — by name, for status's section; `skipped` = those
+// queued or running, for wait's first line.
 // A state without ownerPid (older runs) is nobody's: by name or --all only. hidden = the jobs --all would add.
 export function pickNames(dir, requested, { all = false, owner = null } = {}) {
   if (requested.length) return { names: requested, scope: 'named', hidden: 0, servers: [], skipped: 0 };
@@ -716,7 +758,7 @@ export function pickNames(dir, requested, { all = false, owner = null } = {}) {
   const isMine = (j) => j.ownerPid != null && j.ownerPid === owner;
   const theirs = states.filter((j) => isServer(j) && (all || isMine(j)));
   const recent = (j) => Boolean(j.endedAt) && Date.now() - Date.parse(j.endedAt) <= RECENT_WINDOW_SEC * 1000;
-  const servers = theirs.filter((j) => pending.has(j.name) || recent(j) || isOrphan(j)).map((j) => j.name).sort();
+  const servers = (all ? theirs : theirs.filter((j) => pending.has(j.name) || recent(j) || isOrphan(j))).map((j) => j.name).sort();
   const skipped = theirs.filter((j) => pending.has(j.name)).length;
   const jobs = states.filter((j) => !isServer(j));
   const everyone = current(jobs, pending, { onDisk: true });
@@ -753,7 +795,12 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
   return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, skipped, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause });
 }
 
-export function status(dir, requested, { tail, grep, all = false, owner = callerOwner(), pauseFile = process.env.STARDUST_PAUSE_FILE } = {}) { const { names, scope, hidden, servers } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden, servers, serversAll: all, pause: pauseState(pauseFile) }); }
+// Named, a server goes under servers: too (by name), with the fields a bare or --all status gives it.
+export function status(dir, requested, { tail, grep, all = false, owner = callerOwner(), pauseFile = process.env.STARDUST_PAUSE_FILE } = {}) {
+  const { names, scope, hidden, servers } = pickNames(dir, requested, { all, owner });
+  const named = requested.length ? [...new Set(names.filter((n) => isServer(readState(dir, n))))].sort() : [];
+  return report(dir, names.filter((n) => !named.includes(n)), { tail, grep, sub: 'status', scope, hidden, servers: requested.length ? named : servers, serversOf: requested.length ? 'named' : all ? 'all' : 'yours', pause: pauseState(pauseFile) });
+}
 
 export function showLog(dir, name, { tail = 40, grep = null } = {}) {
   if (!name) throw new UsageError(`run-bg: log needs a <job>\n${HELP}`);
@@ -774,28 +821,46 @@ const instrumentTarget = (j) => (childAlive(j) ? [{ pid: j.childPid, ident: { st
 function jobTargets(j) {
   return [...(isPending(j) ? [{ pid: j.wrapperPid, ident: { start: j.wrapperStart, name: j.name }, what: 'wrapper' }] : []), ...instrumentTarget(j)];
 }
-// targets: name → [{ pid, ident, what }]. SIGTERM to each (an instrument: its whole group), up to `graceMs` for them to
-// go, then SIGKILL to the group of whatever is left. `more(name)` → targets recorded since (an instrument the wrapper
-// launched as it was signalled), added and signalled the same way. → the pids that survived SIGKILL.
+// targets: name → [{ pid, ident, what }] — a wrapper (signalled alone: run-capped forwards a SIGTERM to the instrument's
+// group) and an instrument (its whole group). Each leads its own process group (both spawn detached) and every member of
+// those groups counts: a child that ignores SIGTERM outlives a leader that obeys it. SIGTERM, up to `graceMs` for the
+// groups to empty, then SIGKILL to every member a fresh census finds, pass after pass, until they are empty. A signal goes
+// only where a fresh look at that pid right before it still shows the identity recorded (a leader) or censused (a member:
+// start time and group); a group that empties, or whose leader's pid now names another process, is not looked at again.
+// `more(name)` → targets recorded since (an instrument launched as its wrapper was signalled), added and signalled the
+// same way. → the members left after the last pass: [{ pid, pgid }].
 async function terminate(targets, graceMs, more = () => []) {
-  const term = (x) => signal(x.pid, 'SIGTERM', { group: x.what === 'instrument' });
-  for (const x of [...targets.values()].flat()) term(x);
+  const groups = new Map(); // pgid → the leader's recorded start (null: an older state without one)
+  const send = (x, sig, group = false) => alive(x.pid, x.ident, { fresh: true }) && signal(x.pid, sig, { group });
+  const term = (x) => { groups.set(x.pid, x.ident.start ?? null); send(x, 'SIGTERM', x.what === 'instrument'); };
   const add = () => { for (const [name, t] of targets) for (const x of more(name)) if (!t.some((y) => y.pid === x.pid)) { t.push(x); term(x); } };
-  const left = () => [...targets.values()].flat().filter((x) => alive(x.pid, x.ident, { fresh: true }));
-  if (targets.size) {
-    const t0 = Date.now();
-    for (add(); left().length && Date.now() - t0 < graceMs; add()) await sleep(100);
-    for (const x of left()) signal(x.pid, 'SIGKILL', { group: true });
-    if (left().length) await sleep(200);
+  const left = () => [...groups].flatMap(([pgid, start]) => {
+    const m = groupMembers(pgid); const leader = m.find((x) => x.pid === pgid);
+    if (!m.length || (leader && start && leader.ident.start !== start)) { groups.delete(pgid); return []; }
+    return m;
+  });
+  for (const x of [...targets.values()].flat()) if (x.pid) term(x);
+  if (!groups.size) return [];
+  const t0 = Date.now();
+  for (add(); left().length && Date.now() - t0 < graceMs; add()) await sleep(100);
+  for (let pass = 0; pass < KILL_PASSES; pass += 1) {
+    add(); const rest = left(); if (!rest.length) break;
+    for (const m of rest) send(m, 'SIGKILL');
+    await sleep(100);
   }
-  return new Set(left().map((x) => x.pid));
+  return left().map((m) => ({ pid: m.pid, pgid: m.ident.pgid }));
 }
+// The survivors among a job's targets' groups, and how a line names them.
+const stuckIn = (survivors, t) => survivors.filter((m) => t.some((x) => x.pid === m.pgid));
+const stuckText = (stuck) => stuck.map((m) => `pid ${m.pid}${m.pid === m.pgid ? '' : ` (group ${m.pgid})`}`).join(', ');
 
 // stop <job>… (either kind; an unknown name: exit 2 before anything is signalled) or `servers` (the caller's own servers
 // queued, running, or lost with their command still running; `all`: every owner's). Once nothing of a job is left alive —
-// the wrapper gone writes no more — its state records the end: stopped, stoppedAt (the signal), exit STOPPED_EXIT,
-// whatever the command exited with; a job that recorded its own end before the signal keeps it. → { text: one line per
-// job, code: 0, or 1 when a process survived SIGKILL (its state unchanged) }.
+// the wrapper gone writes no more, its process groups are empty — its state records the end with the deadline's no-verdict
+// marker (exit DEADLINE_EXIT, timedOut: what gate-evidence reads as no verdict) plus stopped and stoppedAt (the signal),
+// whatever the command exited with — a server too: one started as a server may still have run an instrument. A job that
+// recorded its own end before the signal keeps it. → { text: one line per job, code: 0, or 1 when a process survived
+// SIGKILL (its state unchanged) }.
 export async function stop(dir, requested, { servers = false, all = false, owner = callerOwner(), graceMs = STOP_GRACE_MS } = {}) {
   if (servers && requested.length) throw new UsageError(`run-bg: stop takes <job>… or --servers, not both\n${HELP}`);
   if (all && !servers) throw new UsageError(`run-bg: stop --all needs --servers (every owner's servers) — jobs are stopped by name\n${HELP}`);
@@ -821,15 +886,15 @@ export async function stop(dir, requested, { servers = false, all = false, owner
   const survivors = await terminate(targets, graceMs, (n) => { const s = readState(dir, n); return s ? instrumentTarget(s) : []; });
   let code = 0;
   for (const [n, t] of targets) {
-    const stuck = t.filter((x) => survivors.has(x.pid));
+    const stuck = stuckIn(survivors, t);
     const st = readState(dir, n);
-    if (stuck.length) { code = 1; out.set(n, `run-bg: could not stop ${n} (${stuck.map((x) => `${x.what} pid ${x.pid}`).join(', ')} survived SIGKILL) — state unchanged`); continue; }
+    if (stuck.length) { code = 1; out.set(n, `run-bg: could not stop ${n} (${stuckText(stuck)} survived SIGKILL) — state unchanged`); continue; }
     if (!st) { out.set(n, `run-bg: stopped ${n} — its state file went meanwhile, nothing recorded`); continue; }
     if (st.endedAt && st.endedAt < at) { out.set(n, `run-bg: ${n} ended on its own before the stop (exit ${st.exit}) — kept`); continue; }
     const endedAt = st.endedAt ?? new Date().toISOString();
-    writeState(dir, { ...st, endedAt, exit: STOPPED_EXIT, timedOut: false, stopped: true, stoppedAt: at });
-    try { appendFileSync(logPath(dir, n), `run-bg: ${n} stopped ${at} (exit ${STOPPED_EXIT})\n`); } catch { /* no log */ }
-    out.set(n, `run-bg: stopped ${n} (${isServer(st) ? 'server' : 'job'}${st.launchedAt ? `, ran ${secondsBetween(st.launchedAt, endedAt)}s` : ', before launch'}; exit ${STOPPED_EXIT} recorded)`);
+    writeState(dir, { ...st, endedAt, exit: DEADLINE_EXIT, timedOut: true, stopped: true, stoppedAt: at });
+    try { appendFileSync(logPath(dir, n), `run-bg: ${n} stopped ${at} (no verdict, exit ${DEADLINE_EXIT})\n`); } catch { /* no log */ }
+    out.set(n, `run-bg: stopped ${n} (${isServer(st) ? 'server' : 'job'}${st.launchedAt ? `, ran ${secondsBetween(st.launchedAt, endedAt)}s` : ', before launch'}; no verdict, exit ${DEADLINE_EXIT} recorded)`);
   }
   return { text: names.map((n) => out.get(n)).join('\n'), code };
 }
@@ -847,11 +912,11 @@ export async function clean(dir, { all = false } = {}) {
   }
   const survivors = await terminate(targets, CLEAN_GRACE_MS);
   for (const [name, t] of targets) {
-    const stuck = t.filter((x) => survivors.has(x.pid));
-    out.push(stuck.length ? `run-bg: could not stop ${name} (${stuck.map((x) => `${x.what} pid ${x.pid}`).join(', ')} survived SIGKILL) — files kept` : `run-bg: stopped ${name}`);
+    const stuck = stuckIn(survivors, t);
+    out.push(stuck.length ? `run-bg: could not stop ${name} (${stuckText(stuck)} survived SIGKILL) — files kept` : `run-bg: stopped ${name}`);
   }
   for (const j of listJobs(dir)) {
-    if ((isPending(j) || isOrphan(j)) && (!all || (targets.get(j.name) || []).some((x) => survivors.has(x.pid)))) continue;
+    if ((isPending(j) || isOrphan(j)) && (!all || stuckIn(survivors, targets.get(j.name) || []).length)) continue;
     for (const p of [statePath(dir, j.name), logPath(dir, j.name)]) { try { unlinkSync(p); } catch { /* gone */ } }
     if (!targets.has(j.name)) out.push(`run-bg: removed ${j.name}`);
   }
