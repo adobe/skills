@@ -9,11 +9,11 @@
 // before any I/O. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyReplace, contextLines, expandBraces, expandGlob, findMatches, ownedBy, parseArgs, resolveInside } from '../replace.mjs';
+import { applyReplace, contextLines, expandBraces, expandGlob, findMatches, ownedBy, parseArgs, resolveInside, writeAll } from '../replace.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'replace.mjs');
@@ -26,7 +26,8 @@ const read = (p) => readFileSync(p, 'utf8');
 const oneLine = (s) => { assert.equal(s.split('\n').filter(Boolean).length, 1, `one line expected, got: ${s}`); return s.trimEnd(); };
 const noTmp = (dir) => assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith('.tmp')), [], `temp file left in ${dir}`);
 let failed = 0;
-const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+// fn may return { skipped: '<why>' } when the environment cannot exercise the case
+const check = (name, fn) => { try { const r = fn(); console.log(r?.skipped ? `- ${name} (skipped: ${r.skipped})` : `✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
 // ---- pure helpers -------------------------------------------------------------------------------
 check('parseArgs: files, value flags, defaults, the expectation', () => {
@@ -59,6 +60,9 @@ check('parseArgs: usage errors (exit 2)', () => {
   bad(['a', '--from', 'x', '--to'], /--to needs a value/);
   bad(['a', '--from', 'x', '--to', '--json'], /--to needs a value \(got --json/);
   bad(['a', '--from', '--to', 'y'], /--from needs a value \(got --to/);
+  bad(['a', '--from', 'x', '--to', '--count=2'], /--to needs a value \(got --count=2/);
+  bad(['a', '--from', '--json=1', '--to', 'y'], /--from needs a value \(got --json=1/);
+  assert.equal(parseArgs(['a', '--from', 'x', '--to', '--brand-new=1']).to, '--brand-new=1', 'not one of this script\'s flags: a value');
   bad(['a', '--from', 'x', '--to', 'y', '--all', '--count', '2'], /--all.*--count|--count.*--all/);
   bad(['a', '--from', 'x', '--to', 'y', '--count', '0'], /--count/);
   bad(['a', '--from', 'x', '--to', 'y', '--count', '1.5'], /--count/);
@@ -144,14 +148,19 @@ check('ownedBy: the dedicated writers; * is one segment', () => {
   assert.equal(ownedBy('src/stardust/state.json'), null);
   assert.equal(ownedBy('styles/site.css'), null);
 });
-check('resolveInside: inside → { abs, real, rel }; outside, missing, resolving outside, not a regular file refused', () => {
+check('resolveInside: inside → { abs, real, rel, realRel }; outside, missing, resolving outside, a symlink loop, not a regular file refused', () => {
   const p = project();
   const other = project();
   put(join(p, 'src', 'a.html'), 'x');
   put(join(other, 'x.html'), 'x');
   const r = resolveInside('src/a.html', p);
-  assert.equal(r.rel, 'src/a.html'); assert.equal(r.abs, join(p, 'src', 'a.html'));
+  assert.equal(r.rel, 'src/a.html'); assert.equal(r.abs, join(p, 'src', 'a.html')); assert.equal(r.realRel, 'src/a.html');
   assert.equal(readFileSync(r.real, 'utf8'), 'x');
+  symlinkSync(join('src', 'a.html'), join(p, 'alias.html'));
+  const l = resolveInside('alias.html', p);
+  assert.equal(l.rel, 'alias.html'); assert.equal(l.realRel, 'src/a.html');
+  symlinkSync('loop', join(p, 'loop'));
+  assert.throws(() => resolveInside('loop', p), (e) => e.code === 2 && e.message === 'loop: symlink loop');
   const refused = (file, re) => assert.throws(() => resolveInside(file, p), (e) => e.code === 2 && re.test(e.message), `${file} → ${re}`);
   refused(`../${basename(other)}/x.html`, new RegExp(`^\\.\\./${basename(other)}/x\\.html is outside the project \\(`));
   refused(join(other, 'x.html'), /is outside the project/);
@@ -368,6 +377,9 @@ check('value flags: --to --brand-new renames a CSS custom property; --to --json 
   assert.equal(read(f), ':root { --brand-new: red; }\n.x { color: var(--brand-new); }\n');
   const j = run(p, 'a.css', '--from', '--brand-new', '--to', '--json');
   assert.equal(j.code, 2); assert.match(oneLine(j.err), /^replace: --to needs a value \(got --json/);
+  const c = run(p, 'a.css', '--from', '--brand-new', '--to', '--count=2');
+  assert.equal(c.code, 2); assert.match(oneLine(c.err), /^replace: --to needs a value \(got --count=2/);
+  assert.equal(read(f), ':root { --brand-new: red; }\n.x { color: var(--brand-new); }\n');
   const t = put(join(p, 'notes.txt'), 'pass --json here\n');
   const e = run(p, 'notes.txt', '--from=--json', '--to=--text');
   assert.equal(e.code, 0, e.err); assert.equal(read(t), 'pass --text here\n');
@@ -396,7 +408,7 @@ check('atomic write keeps the file mode, CRLF line endings and a BOM byte-for-by
   assert.equal(statSync(g).mode & 0o7777, 0o640);
 });
 check('I/O failure (directory not writable): exit 1, the temp file removed, the file unchanged', () => {
-  if (process.getuid?.() === 0) { console.log('  (skipped as root: permissions do not apply)'); return; }
+  if (process.getuid?.() === 0) return { skipped: 'running as root, permissions do not apply' };
   const p = project();
   const f = put(join(p, 'locked', 'a.txt'), 'old\n');
   chmodSync(join(p, 'locked'), 0o555);
@@ -406,6 +418,47 @@ check('I/O failure (directory not writable): exit 1, the temp file removed, the 
     assert.equal(read(f), 'old\n');
     assert.deepEqual(readdirSync(join(p, 'locked')), ['a.txt']);
   } finally { chmodSync(join(p, 'locked'), 0o755); }
+});
+check('temp file: created exclusively — a symlink already at the temp name is not followed or removed; nothing written', () => {
+  const p = project();
+  const other = project();
+  const secret = put(join(other, 'secret.txt'), 'secret\n');
+  chmodSync(secret, 0o600);
+  const a = put(join(p, 'a.txt'), 'old\n');
+  const b = put(join(p, 'b.txt'), 'old\n');
+  const planted = join(p, `.a.txt.${process.pid}.tmp`);
+  symlinkSync(secret, planted);
+  const item = (f) => ({ rel: basename(f), real: realpathSync.native(f), next: 'new\n', mode: 0o644 });
+  assert.throws(() => writeAll([item(b), item(a)]), (e) => e.code === 2 && /a\.txt\..*\.tmp already exists/.test(e.message) && /nothing written/.test(e.message));
+  assert.equal(read(secret), 'secret\n'); assert.equal(statSync(secret).mode & 0o777, 0o600, 'no chmod through the link');
+  assert.ok(lstatSync(planted).isSymbolicLink(), 'the planted link is left alone');
+  assert.equal(read(a), 'old\n'); assert.equal(read(b), 'old\n');
+  assert.ok(!existsSync(join(p, `.b.txt.${process.pid}.tmp`)), 'the temp file this run created is removed');
+});
+check('symlink loop: refused (exit 2, one line), not an I/O error', () => {
+  const p = project();
+  symlinkSync('b.html', join(p, 'a.html'));
+  symlinkSync('a.html', join(p, 'b.html'));
+  const r = run(p, 'a.html', '--from', 'x', '--to', 'y');
+  assert.equal(r.code, 2); assert.equal(oneLine(r.err), 'replace: refused — a.html: symlink loop');
+});
+check('case-insensitive file system: the on-disk case decides the owned check and the duplicate drop', () => {
+  const p = project();
+  put(join(p, 'probe.txt'), '');
+  if (!existsSync(join(p, 'PROBE.TXT'))) return { skipped: 'the temp file system is case-sensitive' };
+  const state = put(join(p, 'stardust', 'state.json'), '{"v":1}\n');
+  const owned = run(p, 'STARDUST/State.json', '--from', '1', '--to', '2');
+  assert.equal(owned.code, 2);
+  assert.equal(oneLine(owned.err), 'replace: refused — stardust/state.json is written by stardust/state.mjs — use it');
+  assert.equal(read(state), '{"v":1}\n');
+  const globbed = run(p, '--files-from', 'stardust/*.json', '--from', '1', '--to', '2');
+  assert.equal(globbed.code, 2); assert.match(globbed.err, /is written by stardust\/state\.mjs/);
+  assert.equal(resolveInside('STARDUST/State.json', p).realRel, 'stardust/state.json');
+  const a = put(join(p, 'a.html'), 'old\n');
+  const r = run(p, 'a.html', 'A.html', '--from', 'old', '--to', 'new');
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'replace a.html: 1 replaced\n', 'the same file reached twice is processed once');
+  assert.equal(read(a), 'new\n');
+  noTmp(p);
 });
 
 rmSync(root, { recursive: true, force: true });

@@ -16,12 +16,15 @@
 // compiles `new RegExp(from, 'g' + flags)` and --to uses the engine's replacement syntax. A regex match
 // of length 0 is refused — its count would be meaningless.
 // Guards (each refused, nothing written): a path outside the project root (the cwd), missing, resolving
-// outside it through a symlink, or not a regular file; a file with a dedicated writer (OWNED); a NUL
-// byte or bytes that are not UTF-8. A symlink inside the project is followed and stays a link.
-// Write: per file a sibling temp file renamed over the real path, mode kept; all temp files are written
-// before the first rename. Bytes outside the replaced spans (line endings, a BOM) stay as they were.
+// outside it through a symlink, a symlink loop, or not a regular file; a file with a dedicated writer
+// (OWNED); a NUL byte or bytes that are not UTF-8. A symlink inside the project is followed and stays a
+// link. Real paths come from the native realpath — the on-disk case — so on a case-insensitive file
+// system `A.html` and `a.html` are one file and a differently cased owned ledger is still refused.
+// Write: per file a sibling temp file, created exclusively, renamed over the real path, mode kept; all
+// temp files are written before the first rename. Bytes outside the replaced spans (line endings, a
+// BOM) stay as they were.
 // Exit codes: 0 replaced / dry run within the expectation / unchanged · 1 I/O error · 2 usage or refusal.
-import { chmodSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { closeSync, fchmodSync, openSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -79,8 +82,8 @@ Inputs:
   --dry-run            write nothing; print what would be replaced, with the context
   --json               one JSON object on stdout instead of the text
   Value flags also take --flag=<value>, verbatim (--from=--json). In the space form the next token is the
-  value unless it is one of this script's flags: --to --json is a forgotten value, while
-  --from --brand-old --to --brand-new renames a CSS custom property.
+  value unless it is one of this script's flags, bare or as <flag>=…: --to --json and --to --count=2 are
+  forgotten values, while --from --brand-old --to --brand-new renames a CSS custom property.
 Expectation: checked per file. Every file is read and counted before the first write; if any file misses
   its expectation, nothing is written to any file.
 Output (stdout; <rel> = the path relative to the project root):
@@ -93,14 +96,16 @@ Output (stdout; <rel> = the path relative to the project root):
   a matching line to ${CONTEXT.half} characters either side of the match start, any other to its first ${CONTEXT.width}.
   --json: {"ok","dryRun","mode":"literal"|"regex","expect":{"op":"exactly"|"atLeast","n"},"refused":<reason>|null,
   "files":[{"file","count","written","matches":[{"line","column"}],"matchesOmitted"}]} — matches: the first
-  ${JSON_MATCHES}, 1-based; also printed on a refusal (files [] when it came before counting), not on a usage error.
-Writes: a sibling temp file (.<name>.<pid>.tmp) renamed over the real path, the file mode kept; line endings
-  and a BOM stay byte-for-byte outside the replaced spans. A symlink inside the project stays a link; its
-  target is edited.
+  ${JSON_MATCHES}, line and column 1-based (column in UTF-16 code units); also printed on a refusal (files [] when it
+  came before counting), not on a usage error.
+Writes: a sibling temp file (.<name>.<pid>.tmp, created exclusively) renamed over the real path, the file mode
+  kept; line endings and a BOM stay byte-for-byte outside the replaced spans. A symlink inside the project
+  stays a link; its target is edited. Paths are compared by their on-disk real path (case included).
 Refused (exit 2, nothing written, one stderr line "replace: refused — <reason>"): a missed expectation; a
-  path outside the project, missing, resolving outside it (a symlink) or not a regular file; a NUL byte
-  ("looks binary") or bytes that are not UTF-8; a regex match of length 0; a --files-from glob matching
-  nothing; a file with a dedicated writer — use the writer:
+  path outside the project, missing, resolving outside it (a symlink), a symlink loop or not a regular
+  file; a NUL byte ("looks binary") or bytes that are not UTF-8; a regex match of length 0; a --files-from
+  glob matching nothing; something already at a temp file's name; a file with a dedicated writer — use
+  the writer:
 ${ownedTable()}
 Usage errors (exit 2, one stderr line "replace: <message>"): no file and no --files-from; --from missing or
   empty; --to missing; --all with --count; --count not an integer ≥ 1; --flags without --regex or outside
@@ -127,9 +132,13 @@ export function parseArgs(argv) {
     if (VALUE_FLAGS.includes(name)) {
       if (o[KEY[name]] !== null) throw new UsageError(`${name} given twice`);
       if (eq > 0) { o[KEY[name]] = a.slice(eq + 1); continue; }
-      // Only this script's own flags count as a forgotten value: `--to --brand-new` is a value.
+      // Only this script's own flags (bare or <flag>=…) count as a forgotten value: `--to --brand-new` is a value.
+      const next = argv[i + 1];
       if (i + 1 >= argv.length) throw new UsageError(`${a} needs a value`);
-      if (FLAGS.includes(argv[i + 1])) throw new UsageError(`${a} needs a value (got ${argv[i + 1]}, which is a flag)`);
+      const nextEq = next.indexOf('=');
+      if (FLAGS.includes(next) || (nextEq > 0 && FLAGS.includes(next.slice(0, nextEq)))) {
+        throw new UsageError(`${a} needs a value (got ${next}, which is a flag)`);
+      }
       i += 1;
       o[KEY[name]] = argv[i];
     } else if (eq < 0 && Object.hasOwn(BOOL_FLAGS, a)) o[BOOL_FLAGS[a]] = true;
@@ -309,7 +318,7 @@ const byCodePoint = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b));
 
 /** The project-relative regular files matching `pattern` under `root`, sorted by code point. */
 export function expandGlob(pattern, root = process.cwd()) {
-  const base = realpathSync(root);
+  const base = realpathSync.native(root);
   const found = new Set();
   for (const p of expandBraces(pattern)) walk(base, '', p.replace(/^(?:\.\/)+/, '').split('/'), found);
   return [...found].sort(byCodePoint);
@@ -323,35 +332,39 @@ export function ownedBy(rel) {
 }
 
 /**
- * `file` (as given) inside the project `root` → { abs, real, rel }; refuses (Refusal, exit 2) a path whose
- * lexical resolution is outside the root, a missing file, a realpath outside realpath(root), a non-file.
+ * `file` (as given) inside the project `root` → { abs, real, rel, realRel }: `rel` as typed, `realRel` the
+ * on-disk path (native realpath, the file system's case) relative to realpath(root). Refuses (Refusal,
+ * exit 2) a path whose lexical resolution is outside the root, a missing file, a symlink loop, a realpath
+ * outside realpath(root), a non-file.
  */
 export function resolveInside(file, root = process.cwd()) {
   const logical = resolve(root);
-  const base = realpathSync(logical);
+  const base = realpathSync.native(logical);
   const abs = resolve(logical, file);
   const lexical = isInside(abs, logical) ? logical : isInside(abs, base) ? base : null;
   if (lexical === null) throw new Refusal(`${file} is outside the project (${base})`);
   let real;
-  try { real = realpathSync(abs); } catch (e) {
+  try { real = realpathSync.native(abs); } catch (e) {
     if (e.code === 'ENOENT' || e.code === 'ENOTDIR') throw new Refusal(`no such file ${file}`);
+    if (e.code === 'ELOOP') throw new Refusal(`${file}: symlink loop`);
     throw e;
   }
   if (!isInside(real, base)) throw new Refusal(`${file} resolves outside the project (${real})`);
   if (!statSync(real).isFile()) throw new Refusal(`${file} is not a regular file`);
-  return { abs, real, rel: toPosix(relative(lexical, abs)) };
+  return { abs, real, rel: toPosix(relative(lexical, abs)), realRel: toPosix(relative(base, real)) };
 }
 
 // ---- I/O ---------------------------------------------------------------------------------------
+const tempPath = (real) => join(dirname(real), `.${basename(real)}.${process.pid}.tmp`);
+
 function collect(o, root) {
-  const base = realpathSync(root);
   const seen = new Set();
   const items = [];
   const add = (file) => {
     const r = resolveInside(file, root);
     if (seen.has(r.real)) return;
     seen.add(r.real);
-    for (const rel of [r.rel, toPosix(relative(base, r.real))]) {
+    for (const rel of [r.rel, r.realRel]) {
       const writer = ownedBy(rel);
       if (writer) throw new Refusal(`${rel} is written by ${writer} — use it`);
     }
@@ -380,22 +393,30 @@ function collect(o, root) {
   return items;
 }
 
-/** Stage every file as a sibling temp file, then rename each over its real path; a failure removes the temp files. */
-function writeAll(items) {
+/**
+ * Stage every item ({ rel, real, next, mode }) as a sibling temp file, then rename each over its real path.
+ * A temp file is created exclusively: anything already at its name (a planted symlink included) is never
+ * written through or removed — a Refusal, nothing written. On a failure the temp files this run created
+ * are removed.
+ */
+export function writeAll(items) {
   const staged = [];
   let renamed = 0;
   let current = null;
   try {
     for (const it of items) {
       current = it;
-      const tmp = join(dirname(it.real), `.${basename(it.real)}.${process.pid}.tmp`);
+      const tmp = tempPath(it.real);
+      const fd = openSync(tmp, 'wx', it.mode);
       staged.push(tmp);
-      writeFileSync(tmp, it.next, { mode: it.mode });
-      chmodSync(tmp, it.mode);
+      try { writeFileSync(fd, it.next); fchmodSync(fd, it.mode); } finally { closeSync(fd); }
     }
     for (const it of items) { current = it; renameSync(staged[renamed], it.real); renamed += 1; }
   } catch (e) {
     for (const tmp of staged.slice(renamed)) rmSync(tmp, { force: true });
+    if (e.code === 'EEXIST' && !renamed) {
+      throw new Refusal(`${current.rel}: ${tempPath(current.real)} already exists (not created by this run) — nothing written`);
+    }
     const done = renamed ? `${renamed} file(s) already replaced: ${items.slice(0, renamed).map((x) => x.rel).join(', ')}` : 'nothing written';
     throw new Error(`could not write ${current?.rel}: ${String(e.message).split('\n')[0]} — ${done}`);
   }
@@ -459,7 +480,10 @@ export function main(argv) {
     }
     return 0;
   }
-  writeAll(items.filter((it) => it.changed));
+  try { writeAll(items.filter((it) => it.changed)); } catch (e) {
+    if (e instanceof Refusal) throw refuse(e.message);
+    throw e;
+  }
   items.forEach((it, i) => { report.files[i].written = it.changed; });
   report.ok = true;
   if (o.json) console.log(JSON.stringify(report));
