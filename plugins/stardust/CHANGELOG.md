@@ -26,10 +26,11 @@ push (median 5–6 minutes, p90 10) is paid serially by serial units and overlap
   alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
 - **Each unit flips its own end.** A unit's subagent runs `progress.mjs unit done|failed <unit> …` as its last act,
   after its commit, so the lead's wait sees the end within five seconds; the lead records an end only for a unit that
-  died without flipping it (`failed`, with the reason).
+  died without flipping it (`failed`, with the reason — at a wake, or at a 75 past its launch deadline), and still
+  commits each ended unit (`unit-commit.mjs`) before its boundary ask.
 - **Wake (exit 77, both waits).** `progress.mjs wait` and `run-bg.mjs wait` also return 77, first line
   `wake: <last line>`, when `stardust/.labs/wake` has grown since the wait started — the runner appends a line there
-  when a background agent finishes; an absent file means nothing.
+  when a background agent finishes; an absent file means nothing. An exit 0 that arrives with a wake prints it too.
 - **Every disjoint unit starts at once (rollout Phase C, delivery-gates).** After C0 is committed and frozen, every
   archetype unit starts in the same turn, each cluster the moment its archetype is `done`; disjoint units are never
   serialized to spare browsers — the browser slot queue paces captures. The lead's loop is `progress.mjs wait` →
@@ -46,6 +47,10 @@ push (median 5–6 minutes, p90 10) is paid serially by serial units and overlap
   `STARDUST_BROWSER_BUDGET` — 3 slots when the budget is 3 or 6, otherwise 2 (a budget under 2: one slot per browser) —
   so budget 4 runs 2 slots × 2 browsers instead of 3 × 1 with one idle (budgets 3, 4 and 6 are used whole, 5 runs 4);
   an explicit `STARDUST_BROWSER_SLOTS` still wins, and the job log names a derived count.
+- **A job that just ended is never called lost (`run-bg.mjs`).** `status` and `wait` read a job's state again before
+  calling it `lost`: a state read just before the wrapper wrote its exit, with the wrapper gone by the liveness check,
+  printed `lost — re-run` for a job that had ended (seen under load). The run-bg tests match a job's own output line,
+  never the command the wrapper echoes.
 
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
