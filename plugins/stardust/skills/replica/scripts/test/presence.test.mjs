@@ -571,9 +571,9 @@ else {
   // a fixed consent-style banner the default dismissal leaves alone: no label of the consent tables, no dialog role, no
   // modal / popup marker — its controls are the dismiss candidates; the header link and the in-content button are not
   // in an overlay, and the off-page link sorts after the controls that stay on the page; the hero's dots and pause button
-  // are the pin candidates
+  // are the pin candidates — the active dot has no label and a state class, which a selector must not rest on
   const CONSENT = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} header{height:60px} .cookie-banner{position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;border-top:1px solid #ccc} .hero__dot{width:12px;height:12px}</style></head><body>'
-    + '<header><a href="/home">Home</a></header><main><p>Content</p><div class="hero"><button class="hero__dot" aria-label="Go to slide 1"></button>'
+    + '<header><a href="/home">Home</a></header><main><p>Content</p><div class="hero"><button class="hero__dot is-active"></button>'
     + '<button class="hero__dot" aria-label="Go to slide 2"></button><button class="hero__pause">Pause</button></div><button class="cta">Read more</button></main>'
     + '<div id="site-notice" class="cookie-banner"><p>We use cookies.</p><a href="/privacy">Privacy policy</a>'
     + '<button class="banner-btn primary">Continue to site</button><button class="banner-btn">Preferences</button>'
@@ -648,14 +648,14 @@ else {
       assert.deepEqual(lines(r.out), [`verified on ${consentUrl} @ 1440px: button[aria-label="Close notice"] ×1`, '*.dismiss: button[aria-label="Close notice"]', `wrote ${DEFAULT_FILE}: +1 setting, 0 reasons`]);
       assert.deepEqual(json(consentMiss)['*'], { hide: ['.promo'], dismiss: ['button[aria-label="Close notice"]'] });
     });
-    await checkAsync('e2e suggest --kind dismiss lists the same top three as the miss; --kind pin the rotator controls (a pin\'s --state is the control\'s text) — exit 0, nothing written', async () => {
+    await checkAsync('e2e suggest --kind dismiss lists the same top three as the miss; --kind pin the rotator controls (a pin\'s --state is the control\'s text, else "pinned"; never a selector on a state class) — exit 0, nothing written', async () => {
       assert.equal(dismissListed.code, 0, dismissListed.err);
       assert.deepEqual(lines(dismissListed.out), [`suggest on ${consentUrl} @ 1440px — top candidates for --dismiss:`, ...DISMISS_TOP.map((l) => l.replace(/^presence: /, ''))]);
       assert.equal(pinListed.code, 0, pinListed.err);
       assert.deepEqual(lines(pinListed.out), [
         `suggest on ${consentUrl} @ 1440px — top candidates for --pin:`,
-        '  button[aria-label="Go to slide 1"]  "Go to slide 1"  button',
-        `    presence.mjs add --pin 'button[aria-label="Go to slide 1"]' --state 'Go to slide 1' --verify ${consentUrl}`,
+        '  body > main:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1)  ""  button',
+        `    presence.mjs add --pin 'body > main:nth-of-type(1) > div:nth-of-type(1) > button:nth-of-type(1)' --state pinned --verify ${consentUrl}`,
         '  button[aria-label="Go to slide 2"]  "Go to slide 2"  button',
         `    presence.mjs add --pin 'button[aria-label="Go to slide 2"]' --state 'Go to slide 2' --verify ${consentUrl}`,
         '  button.hero__pause  "Pause"  button',

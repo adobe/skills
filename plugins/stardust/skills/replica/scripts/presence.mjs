@@ -557,10 +557,11 @@ async function scrollThroughInPage() {
  * Within a rank a control that leaves the page (a form submit, a link off this document) comes after the others (a click
  * on it would navigate the capture away), then document order. selector: the first of `#id` (a clean id: a letter, then
  * [A-Za-z0-9_-], no run of 4 digits), `tag[data-testid|aria-label|name|title="…"]` (a value ≤ 80 chars on one line),
- * `#anchor tag`, `#anchor tag.class` (the nearest ancestor with a clean unique id), `tag.class` (clean classes), then
- * the `body > …:nth-of-type(i)` path, that matches only this element (querySelectorAll length 1); none → the control is
- * skipped. text: whitespace-collapsed (an input's value), else aria-label / title, cut to 40 chars; role: the role
- * attribute, else button (button, summary, input button / submit), link (a[href]), else the tag.
+ * `#anchor tag`, `#anchor tag.class` (the nearest ancestor with a clean unique id), `tag.class` (clean classes, no state
+ * class — is- / has-, active, selected, current, … move with the state), then the `body > …:nth-of-type(i)` path, that
+ * matches only this element (querySelectorAll length 1); none → the control is skipped. text: whitespace-collapsed (an
+ * input's value), else aria-label / title, cut to 40 chars; role: the role attribute, else button (button, summary, input
+ * button / submit), link (a[href]), else the tag.
  */
 export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
   const CONTROLS = 'button, [role="button"], a[href], input[type="button"], input[type="submit"], [role="tab"], summary';
@@ -623,6 +624,8 @@ export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
   ranked.sort((a, b) => a.rank.reduce((d, x, i) => d || x - b.rank[i], 0));
   const only = (sel, el) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; } catch { return false; } };
   const clean = (s) => /^[A-Za-z][\w-]*$/.test(s) && !/\d{4}/.test(s);
+  // a state class moves with the state (the active dot): a selector built on it would match another control later
+  const STATEFUL = /^(is|has)[-_]|active|selected|current|focus|hover|visible|hidden|^(show|open|closed|in)$/i;
   const quoted = (v) => `"${v.replace(/["\\]/g, '\\$&')}"`;
   const selectorOf = (el) => {
     const tag = el.tagName.toLowerCase();
@@ -631,7 +634,7 @@ export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
       const v = el.getAttribute(a);
       if (v && v.trim() && v.length <= 80 && !/[\n\r\f]/.test(v)) tries.push(`${tag}[${a}=${quoted(v)}]`);
     }
-    const classes = [...el.classList].filter(clean).slice(0, 8);
+    const classes = [...el.classList].filter((c) => clean(c) && !STATEFUL.test(c)).slice(0, 8);
     const tails = [tag, ...classes.map((c) => `${tag}.${c}`), ...(classes.length > 1 ? [`${tag}${classes.map((c) => `.${c}`).join('')}`] : [])];
     let anchor = null;
     for (let n = el.parentElement; n && n !== body && !anchor; n = n.parentElement) if (n.id && clean(n.id) && only(`#${n.id}`, n)) anchor = n;
