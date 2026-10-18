@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
-// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default and ceiling 1500, or
+// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default 300, a notice over 600, ceiling 1500, or
 // --until <ISO> clamped to the same ceiling; exit 76 at once on the pause file $STARDUST_PAUSE_FILE, which status
 // shows too), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
@@ -20,7 +20,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -130,18 +130,24 @@ await check('--timeout is a start flag: on wait or status it is a usage error na
   for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
     const r = bg(...args);
     assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
-    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 1500, at most 1500) or --until <ISO>; status reports at once', args.join(' '));
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 300, at most 1500) or --until <ISO>; status reports at once', args.join(' '));
   }
 });
 const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
-await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why; at or under it is not`, () => {
+const NOTICE = (n) => `run-bg: --max ${n} — a wait over 600 s buys nothing; a one-hour cache does not need it (a 300 s step costs about three cents and sees an ended job up to 20 minutes sooner)`;
+await check(`--max above ${WAIT_NOTICE_SEC} s prints one notice line; above ${MAX_CEILING_SEC} s the clamp line (says why) follows it; at or under ${WAIT_NOTICE_SEC} stderr stays empty`, () => {
+  assert.equal(WAIT_NOTICE_SEC, 600);
   assert.equal(MAX_CEILING_SEC, 1500, 'a recorded single wait of 57 minutes is why a ceiling stays; 25 minutes is the runner\'s check-in interval');
   assert.equal(bg('start', '--name', 'z', '--', 'true').code, 0);
   const r = bg('wait', '--max', '9999', 'z');
-  assert.equal(r.code, 0); assert.equal(r.err.trim(), `run-bg: --max 9999 clamped to 1500s — ${CLAMP_WHY}.`);
-  const r1501 = bg('wait', '--max', '1501', 'z');
-  assert.equal(r1501.code, 0); assert.match(r1501.err, /^run-bg: --max 1501 clamped to 1500s — /);
-  for (const max of ['1500', '200', '111']) { const k = bg('wait', '--max', max, 'z'); assert.equal(k.code, 0); assert.equal(k.err, '', `--max ${max}: at or under the ceiling is not clamped`); }
+  assert.equal(r.code, 0); assert.deepEqual(r.err.trim().split('\n'), [NOTICE(9999), `run-bg: --max 9999 clamped to 1500s — ${CLAMP_WHY}.`]);
+  const r1501 = bg('wait', '--max', '1501', 'z'); const [n1501, c1501] = r1501.err.trim().split('\n');
+  assert.equal(r1501.code, 0); assert.equal(n1501, NOTICE(1501)); assert.match(c1501, /^run-bg: --max 1501 clamped to 1500s — /);
+  const r1500 = bg('wait', '--max', '1500', 'z');
+  assert.equal(r1500.code, 0); assert.deepEqual(r1500.err.trim().split('\n'), [NOTICE(1500)], 'at the ceiling: the notice, no clamp');
+  const r601 = bg('wait', '--max', '601', 'z');
+  assert.equal(r601.code, 0); assert.deepEqual(r601.err.trim().split('\n'), [NOTICE(601)], 'just over 600: exactly one notice line');
+  for (const max of ['600', '200', '111']) { const k = bg('wait', '--max', max, 'z'); assert.equal(k.code, 0); assert.equal(k.err, '', `--max ${max}: at or under 600 no line`); }
 });
 await check(`slots default to ${DEFAULT_SLOTS} — RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else ${DEFAULT_SLOTS}`, () => {
   assert.equal(DEFAULT_SLOTS, 3, 'each capture is a Chromium and a gate.sh --full round holds up to six, yet at 3 slots a recorded fan-out still queued 84 of 272 jobs for more than 10 s: 3 is the default, the env moves it');
@@ -607,9 +613,11 @@ await check('--until that is not an ISO-8601 instant with an offset or Z, --unti
   }
   assert.equal(existsSync(join(pd, 'ux.json')), false, 'no job was created by the rejected start');
 });
-await check('--help: wait\'s default --max 1500 or --until, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+await check('--help: wait\'s default --max 300 or --until, the five-minute rule, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+  assert.equal(DEFAULT_MAX_SEC, 300, 'recorded leads polled with 9–23 minute waits while ended units sat unseen: five minutes, lead and subagents alike');
   const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', env });
-  assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=1500 \| --until <ISO>\]/);
+  assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=300 \| --until <ISO>\]/);
+  assert.ok(h.stdout.includes('wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait'), 'the rule, verbatim');
   assert.match(h.stdout, /timeout longer than the wait/);
   assert.match(h.stdout, /76 \(wait\) the pause file is present — stop waiting, finish the iteration and return/);
 });

@@ -15,10 +15,8 @@
  * than the gate rounds it waited for. The rule that falls out: an instrument
  * may run as long as it needs, but the STEP that waits for it must be bounded
  * and must return a verdict summary — the full output belongs in a log file
- * the agent reads by `log --grep`. The bound is 25 minutes (wait, below): the
- * runner that supervises a hands-off run keeps the lead's prompt cache for an
- * hour and is asked at least every 25 minutes; where the cache lives five
- * minutes, pass a shorter --max.
+ * the agent reads by `log --grep`. The bound is five minutes by default and
+ * 25 at most (wait, below); where the cache lives five minutes, pass --max 240.
  *
  * Usage:
  *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] [--lock|--no-lock] -- <cmd> [args…]
@@ -93,18 +91,21 @@
  *        caller's own (Owner, below): those unfinished when the wait began, if
  *        none its latest batch (jobs ended within 10 min of its newest); --all:
  *        every owner's (every job unfinished when the wait began; if none, every
- *        job on disk) — or the bound passes: --max seconds (default 1500) or
+ *        job on disk) — or the bound passes: --max seconds (default 300) or
  *        --until an ISO-8601 instant with an offset or Z (a past one = one
- *        pass), both clamped to MAX_CEILING_SEC (1500 s = 25 minutes) from now.
- *        Why both are 25 minutes: under the former 110 s ceiling a lead agent
- *        in a recorded hands-off run polled `wait` twenty times over 35 minutes,
- *        each poll a new tool call — so the default is long; in another a single
- *        tool call waited 57 minutes without a word to its runner — so a ceiling
- *        stays, at the 25 minutes within which a supervised session asks its
- *        runner (`wait --max 1500`). The agent's shell tool kills a call at its
- *        timeout (about two minutes where the call declares none): declare one
- *        longer than the wait (--max 1500 → e.g. 1560 s). Then it prints a first
- *        line naming the selection and its count
+ *        pass), both clamped to MAX_CEILING_SEC (1500 s = 25 minutes) from now;
+ *        a --max over WAIT_NOTICE_SEC (600) adds one notice line on stderr. Rule:
+ *        wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
+ *        Why: in recorded hands-off runs the lead polled delegated units with
+ *        foreground waits of 9–23 minutes (one 93-minute session held 15, 99
+ *        minutes in all), and an ended job or unit waited for the current wait
+ *        to end; with a one-hour cache a five-minute poll costs about three
+ *        cents, so a longer wait buys nothing and costs up to twenty minutes per
+ *        unit. A ceiling stays because in another run a single tool call waited
+ *        57 minutes without a word to its runner. The agent's shell tool kills a
+ *        call at its timeout (about two minutes where the call declares none):
+ *        declare one longer than the wait (--max 300 → e.g. 360 s). Then it
+ *        prints a first line naming the selection and its count
  *        (`run-bg: wait — yours (owner 4242), unfinished: 2 job(s); 3 other
  *        job(s) not shown — --all`: the jobs --all would add), then
  *        one line per job and, for ended jobs, its verdict lines: log lines
@@ -187,13 +188,15 @@ export const DEFAULT_TIMEOUT_SEC = 900;
 // large one raise STARDUST_BROWSER_BUDGET and STARDUST_BROWSER_SLOTS with it (up to the budget) — the machine's slots
 // bound browser jobs too, so RUN_BG_SLOTS above them adds none.
 export const DEFAULT_SLOTS = 3;
-// One wait's default and ceiling, both 25 minutes. Default: under the former 110 s ceiling a lead agent in a recorded
-// hands-off run polled `wait` twenty times over 35 minutes, each poll a new tool call. Ceiling: in another a single tool
-// call waited 57 minutes; a supervised session asks its runner at least every 25 minutes (`wait --max 1500`), the pause
-// file ends a wait at once, and the runner keeps the lead's prompt cache for an hour. The shell tool call must declare a
-// timeout longer than the wait — its default (about two minutes) would kill it first.
-export const DEFAULT_MAX_SEC = 1500;
+// One wait's default 5 minutes, ceiling 25. Default: in recorded hands-off runs the lead polled delegated units with
+// foreground waits of 9–23 minutes and an ended job or unit waited for the current wait to end; with a one-hour cache a
+// five-minute poll costs about three cents, so a longer wait buys nothing — a --max over WAIT_NOTICE_SEC says so in one
+// stderr line. Ceiling: in another run a single tool call waited 57 minutes; a supervised session asks its runner at least
+// every 25 minutes and the pause file ends a wait at once. The shell tool call must declare a timeout longer than the
+// wait — its default (about two minutes) would kill it first.
+export const DEFAULT_MAX_SEC = 300;
 export const MAX_CEILING_SEC = 1500;
+export const WAIT_NOTICE_SEC = 600;
 const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
 // --until: an instant, never a local wall-clock time — the offset (or Z) is required.
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
@@ -288,12 +291,13 @@ const HELP = `Usage:
   call); a job state without one is reached by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
   --timeout is a start flag: on wait or status a usage error (exit 125), no longer silently ignored — wait takes --max
   or --until.
-  Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 25 min) or --until an ISO-8601 instant with an offset or Z (past = one
-  pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the shell tool call a
-  timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it first.
-  The default suits a session whose prompt cache lives an hour (a supervised lead); with a five-minute cache pass --max 240.
-  Why: under a 110 s ceiling a recorded hands-off run polled twenty times in 35 minutes; in another one call waited 57
-  minutes — a supervised session asks its runner at least every 25 minutes.
+  Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 5 min; over ${WAIT_NOTICE_SEC}, one notice line) or --until an ISO-8601 instant with an
+  offset or Z (past = one pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the
+  shell tool call a timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it
+  first. --max 240 where the prompt cache lives five minutes.
+  Rule: wait in steps of at most five minutes, lead and subagents alike — \`run-bg.mjs wait\` for jobs, \`progress.mjs wait\` for units; a \`sleep\` is never a wait.
+  Why: recorded hands-off leads waited 9–23 minutes per poll while ended units sat unseen; with a one-hour cache a
+  five-minute poll costs about three cents. A ceiling stays: in another run one call waited 57 minutes.
   Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)
   names a file that exists, wait ends at once — checked on every poll — with exit ${PAUSED_EXIT} and the one-pass report after a
   \`run-bg: paused — <path> present …\` line; status shows that line first. Jobs keep running; nothing is signalled.
@@ -619,6 +623,7 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
   } else {
     if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
     ceilingSec = maxSec;
+    if (maxSec > WAIT_NOTICE_SEC) console.error(`run-bg: --max ${maxSec} — a wait over ${WAIT_NOTICE_SEC} s buys nothing; a one-hour cache does not need it (a ${DEFAULT_MAX_SEC} s step costs about three cents and sees an ended job up to 20 minutes sooner)`);
     if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — ${CLAMP_WHY}.`); }
   }
   const { names, scope, hidden } = pickNames(dir, requested, { all, owner });
