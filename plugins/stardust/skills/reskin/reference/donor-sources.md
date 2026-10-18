@@ -159,7 +159,8 @@ environment only. Recipe:
    other donors (it creates `state.json`).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
-   `.work/reskin/figma/`, then `canon-source/foundation/*.json`
+   `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the
+   last complete capture), then `canon-source/foundation/*.json`
    (normalized values, each citing its node), `role-candidates.json`
    (ranked sources for the 13 probe paths), `module-candidates.json`
    (frames with their page, sections by y, component sets, remote
@@ -194,17 +195,17 @@ Provenance class: **`figma-rest`** — `_crawl-log.json#discovery`
 records `fetchTechnique: "figma-rest"` in place of a crawl, with the
 file version and the frames selected and cut; `notBrowserRendered`
 says per artifact that it was authored from REST node data. Every token
-cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). One
-gap the contract acknowledges: Figma has no computed styles, so
-`donor-tokens.json` values are authored from node data rather than
-sampled — the probe still works because the tokens are exact strings
-either way. Flags, schemas and exit codes: `figma-donor.mjs --help`.
+cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). Figma has
+no computed styles, so `donor-tokens.json` values are authored from node
+data, not sampled; the probe still works because the tokens are exact
+strings. Flags, schemas and exit codes: `figma-donor.mjs --help`.
 `type.family` is the bare Figma family name; map it with a
 `familyEquivalence` normalization to the exact stack the renderer will
 emit (the probe compares the whole string). A design that must not reach
 git: pass `--confidential` to `capture` (sticky: `curate` and `stamp`
-inherit it; writes are refused unless git-ignored and the stamp redacts
-the URL). Color names come from styles or `design.colorNames` in the
+inherit it; every output and cache path must be git-ignored and
+untracked, else nothing is written; the stamp redacts the URL). Color
+names come from styles or `design.colorNames` in the
 rules; a Figma MCP server, where available, can help name them.
 
 ## Pin one reference page (hard rule)
