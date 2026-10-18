@@ -22,9 +22,22 @@ const query = (params) => Object.entries(params)
 // Origin and path only: a signed URL's query is a credential and never goes into a message.
 const safeUrl = (url) => { try { const u = new URL(url); return `${u.origin}${u.pathname}`; } catch { return '(invalid url)'; } };
 
-const reasonOf = async (res) => {
+// A reason is redacted whole and only then cut: cutting first would leave all but the last character of
+// a token that straddles the cap. A token prefix of 8+ characters left at the end (the body itself
+// stopped mid-token) is redacted too.
+const REASON_MAX = 300;
+const TAIL_MIN = 8;
+export function clip(text, token, max = REASON_MAX) {
+  const s = redact(text, token).slice(0, max);
+  for (let k = Math.min((token || '').length - 1, s.length); k >= TAIL_MIN; k -= 1) {
+    if (s.endsWith(token.slice(0, k))) return `${s.slice(0, -k)}[redacted]`;
+  }
+  return s;
+}
+
+const reasonOf = async (res, token) => {
   const text = await res.text().catch(() => '');
-  try { const j = JSON.parse(text); return String(j.err ?? j.message ?? text).slice(0, 300); } catch { return text.slice(0, 300); }
+  try { const j = JSON.parse(text); return clip(j.err ?? j.message ?? text, token); } catch { return clip(text, token); }
 };
 
 export function createClient({
@@ -63,7 +76,7 @@ export function createClient({
       if (tier) state.planTier = tier;
       if (res.ok) return res;
       const { status } = res;
-      const reason = await reasonOf(res);
+      const reason = await reasonOf(res, token);
       if (withToken && (res.type === 'opaqueredirect' || (status >= 300 && status < 400))) {
         throw fail(`Figma answered ${label} with a redirect (HTTP ${status}); not followed, so the token is not forwarded. Check FIGMA_API_BASE.`, { exitCode: 3, status });
       }
