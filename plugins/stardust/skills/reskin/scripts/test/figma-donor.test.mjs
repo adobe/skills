@@ -9,7 +9,8 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -246,6 +247,59 @@ await check('a --refresh that stopped part-way is reported on the next cached ru
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stderr, /version v2\) stopped part-way.*v1.*--refresh/s);
 });
+const URL_FILE = `https://www.figma.com/design/${KEY}/Kit`;
+await check('a failed refresh of another selection at the same version leaves the complete capture intact; the old selection still serves, the refresh resumes', async () => {
+  reset();
+  const p = project();
+  assert.equal((await run(['capture', URL_FILE, '--frames', '1:2'], { cwd: p })).code, 0);
+  const root = join(p, 'stardust', '.work', 'reskin', 'figma', KEY);
+  const cs = join(p, 'stardust', 'canon-source');
+  const before = { cache: hashTree(join(root, 'v1')), outputs: hashTree(cs) };
+  reset();
+  fake.behaviors[`/v1/images/${KEY}`] = { status: 429, headers: { 'retry-after': '3600' }, body: { status: 429, err: 'Rate limit exceeded' } };
+  assert.equal((await run(['capture', URL_FILE, '--frames', '1:9', '--refresh'], { cwd: p })).code, 3);
+  assert.deepEqual(hashTree(join(root, 'v1')), before.cache, 'the complete capture was written to');
+  assert.deepEqual(json(join(root, 'latest.json')), { version: 'v1' });
+  reset();
+  const again = await run(['capture', URL_FILE, '--frames', '1:2'], { cwd: p, token: '' });
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(fake.requests.length, 0);
+  assert.match(again.stderr, /refresh of version v1 stopped part-way/);
+  assert.deepEqual(json(join(cs, 'module-candidates.json')).frames.map((f) => f.node), ['1:2']);
+  assert.deepEqual(json(join(cs, '_crawl-log.json')).discovery.missing, []);
+  assert.deepEqual(hashTree(cs), before.outputs);
+  reset();
+  const done = await run(['capture', URL_FILE, '--frames', '1:9', '--refresh'], { cwd: p });
+  assert.equal(done.code, 0, done.stderr);
+  assert.ok(!apiCalls().some((c) => c.path.endsWith('/nodes')), 'the stopped refresh resumed from staging');
+  assert.deepEqual(json(join(root, 'v1', 'manifest.json')).frames, ['1:9']);
+  assert.deepEqual(readdirSync(root).sort(), ['latest.json', 'v1'], 'staging cleaned up');
+});
+await check('a cache whose manifest and saved selection or nodes disagree → exit 2 naming both, no request; a cache without selection.json still serves', async () => {
+  reset();
+  const p = project();
+  assert.equal((await run(['capture', URL_FILE, '--frames', '1:2'], { cwd: p })).code, 0);
+  const v1 = join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1');
+  const [selection, nodes] = ['selection.json', 'nodes.json'].map((f) => readFileSync(join(v1, f)));
+  const swapped = { ...JSON.parse(nodes), nodes: { '1:9': JSON.parse(nodes).nodes['1:2'] } };
+  const cs = hashTree(join(p, 'stardust', 'canon-source'));
+  const serve = () => run(['capture', URL_FILE, '--frames', '1:2'], { cwd: p, token: '' });
+  // what an in-place refresh of 1:9 that stopped before its manifest left in the old layout
+  writeFileSync(join(v1, 'selection.json'), JSON.stringify({ frames: ['1:9'] }));
+  writeFileSync(join(v1, 'nodes.json'), JSON.stringify(swapped));
+  reset();
+  const bad = await serve();
+  assert.equal(bad.code, 2, bad.stderr);
+  assert.match(bad.stderr, /inconsistent.*manifest\.json lists frames 1:2.*nodes\.json holds 1:9.*selection\.json names 1:9.*--refresh/s);
+  assert.equal(fake.requests.length, 0);
+  assert.deepEqual(hashTree(join(p, 'stardust', 'canon-source')), cs, 'nothing rewritten');
+  writeFileSync(join(v1, 'nodes.json'), nodes);
+  assert.equal((await serve()).code, 2, 'the selection alone disagrees');
+  rmSync(join(v1, 'selection.json'));
+  assert.equal((await serve()).code, 0, 'a cache from before selection.json was kept still serves');
+  writeFileSync(join(v1, 'selection.json'), selection);
+  assert.equal((await serve()).code, 0);
+});
 await check('missing FIGMA_TOKEN with no cache → exit 2 naming FIGMA_TOKEN and file_content:read', async () => {
   reset();
   const r = await run(['capture', URL_PAGE], { cwd: project(), token: '' });
@@ -274,15 +328,18 @@ await check('a 429 with Retry-After 3600 → exit 3, cache of completed calls ke
   const r = await run(['capture', URL_PAGE, '--max-wait', '30'], { cwd: p });
   assert.equal(r.code, 3, r.stderr);
   assert.match(r.stderr, /starter/);
-  const v = join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1');
-  assert.ok(existsSync(join(v, 'file.json')) && existsSync(join(v, 'nodes.json')));
-  assert.ok(!existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'latest.json')));
+  const root = join(p, 'stardust', '.work', 'reskin', 'figma', KEY);
+  const [stage] = readdirSync(join(root, '.staging'));
+  assert.ok(existsSync(join(root, '.staging', stage, 'file.json')) && existsSync(join(root, '.staging', stage, 'nodes.json')), 'completed calls kept in staging');
+  assert.ok(!existsSync(join(root, 'v1')), 'no complete capture yet');
+  assert.ok(!existsSync(join(root, 'latest.json')));
   assert.ok(!existsSync(join(p, 'stardust', 'canon-source')));
   delete fake.behaviors[`/v1/images/${KEY}`];
   fake.requests.length = 0;
   const again = await run(['capture', URL_PAGE], { cwd: p });
   assert.equal(again.code, 0, again.stderr);
   assert.ok(!apiCalls().some((c) => c.path.endsWith('/nodes')), 'completed nodes call reused');
+  assert.ok(existsSync(join(root, 'v1', 'manifest.json')) && !existsSync(join(root, '.staging', stage)), 'promoted out of staging');
 });
 await check('curate: no capture → exit 2 naming capture; no rules → exit 2 naming curation-rules.json', async () => {
   const none = await run(['curate'], { cwd: project() });
@@ -477,6 +534,142 @@ await check('--confidential with an output already tracked → exit 2 naming git
   assert.equal(r.code, 2, r.stderr);
   assert.match(r.stderr, /git rm --cached -- stardust\/canon-source\/_crawl-log\.json/);
   assert.equal(fake.requests.length, 0);
+});
+const IGNORE_ALL = ['canon-source/foundation/', 'canon-source/role-candidates.json', 'canon-source/module-candidates.json', 'canon-source/spec-tables.json', 'canon-source/assets/screenshots/', 'canon-source/_crawl-log.json', '.work/'];
+const withIgnore = (p, lines) => { mkdirSync(join(p, 'stardust'), { recursive: true }); writeFileSync(join(p, 'stardust', '.gitignore'), `${lines.join('\n')}\n`); return p; };
+const untouched = (p) => walk(p).filter((f) => !f.includes('/.git/')).map((f) => relative(p, f));
+await check('--confidential refuses an ignore negation of a non-representative output: exit 2 naming it, no request, nothing written', async () => {
+  reset();
+  const p = withIgnore(gitProject(), [...IGNORE_ALL.filter((l) => l !== 'canon-source/foundation/'), 'canon-source/foundation/*', '!canon-source/foundation/typography.json']);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /stardust\/canon-source\/foundation\/typography\.json/);
+  assert.ok(!r.stderr.includes('colors.json'));
+  assert.equal(fake.requests.length, 0);
+  assert.deepEqual(untouched(p), ['stardust/.gitignore']);
+});
+await check('--confidential refuses a tracked file under a capture output directory that the run would not write', async () => {
+  reset();
+  const p = gitProject();
+  mkdirSync(join(p, 'stardust', 'canon-source', 'assets', 'screenshots'), { recursive: true });
+  writeFileSync(join(p, 'stardust', 'canon-source', 'assets', 'screenshots', 'old-slug.png'), 'x');
+  spawnSync('git', ['add', '-A'], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'x'], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  withIgnore(p, IGNORE_ALL);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /git rm --cached -- stardust\/canon-source\/assets\/screenshots\/old-slug\.png/);
+  assert.equal(fake.requests.length, 0);
+});
+await check('--confidential checks the cache paths once the file version is known: refused before the first cache write', async () => {
+  reset();
+  const p = withIgnore(gitProject(), [...IGNORE_ALL.filter((l) => l !== '.work/'), '.work/reskin/figma/current.json', '.work/reskin/figma/*/latest.json']);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /stardust\/\.work\/reskin\/figma\/AbCdEf1234567890\/\.staging\/v1-[0-9a-f]{8}\/nodes\.json/);
+  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+  assert.deepEqual(untouched(p), ['stardust/.gitignore']);
+});
+await check('--confidential checks every screenshot destination before writing canon-source; the cache stays and the fixed .gitignore finishes it with no request', async () => {
+  reset();
+  const lines = [...IGNORE_ALL.filter((l) => l !== 'canon-source/assets/screenshots/'), 'canon-source/assets/screenshots/*', '!canon-source/assets/screenshots/home.png'];
+  const p = withIgnore(gitProject(), lines);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /1 output\(s\).*stardust\/canon-source\/assets\/screenshots\/home\.png/);
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')), 'nothing written under canon-source');
+  assert.ok(existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')));
+  withIgnore(p, [...lines, 'canon-source/assets/screenshots/']);
+  reset();
+  const again = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL, token: '' });
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(fake.requests.length, 0);
+  const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: p, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
+  assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+});
+await check('--confidential checks where a swap parks the old capture: refused before anything moves; with the backup ignored, a swap cut short by an I/O error stays ignored and readable', async () => {
+  reset();
+  const lines = [...IGNORE_ALL.filter((l) => l !== '.work/'), '.work/reskin/figma/current.json', '.work/reskin/figma/*/latest.json', '.work/reskin/figma/*/v1/', '.work/reskin/figma/*/.staging/'];
+  const p = withIgnore(gitProject(), lines);
+  const args = ['capture', URL_FILE, '--frames', '1:2', '--confidential'];
+  assert.equal((await run(args, { cwd: p, env: NOGLOBAL })).code, 0);
+  const work = join(p, 'stardust', '.work');
+  const root = join(work, 'reskin', 'figma', KEY);
+  const before = hashTree(work);
+  reset();
+  const refused = await run([...args, '--refresh'], { cwd: p, env: NOGLOBAL });
+  assert.equal(refused.code, 2, refused.stderr);
+  assert.match(refused.stderr, /stardust\/\.work\/reskin\/figma\/AbCdEf1234567890\/\.prev\/v1\/nodes\.json/);
+  assert.deepEqual(hashTree(work), before, 'nothing written or moved');
+  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+
+  // The same refresh with the backup ignored, in-process, with an I/O error on both renames after the first.
+  withIgnore(p, [...lines, '.work/reskin/figma/*/.prev/']);
+  const { runCapture } = await import('../figma/capture.mjs');
+  const { createClient } = await import('../figma/client.mjs');
+  const { cacheFor } = await import('../figma/cache.mjs');
+  const realRename = fs.renameSync;
+  const here = process.cwd();
+  Object.assign(process.env, NOGLOBAL);
+  process.chdir(p);
+  fs.renameSync = (from, to) => {
+    if (/\/\.(staging|prev)\/[^/]+$/.test(String(from))) throw Object.assign(new Error(`EIO: i/o error, rename '${from}'`), { code: 'EIO' });
+    return realRename(from, to);
+  };
+  syncBuiltinESMExports();
+  reset();
+  try {
+    await assert.rejects(runCapture({ url: URL_FILE, frames: ['1:2'], refresh: true, confidential: true, dir: 'stardust', client: createClient({ token: TOKEN, base: fake.base }), warn: () => {} }), /EIO/);
+  } finally {
+    fs.renameSync = realRename;
+    syncBuiltinESMExports();
+    process.chdir(here);
+    for (const k of Object.keys(NOGLOBAL)) delete process.env[k];
+  }
+  assert.ok(existsSync(join(root, '.prev', 'v1', 'nodes.json')) && !existsSync(join(root, 'v1')), 'the old capture is parked');
+  const gitEnv = { ...process.env, ...NOGLOBAL };
+  assert.equal(spawnSync('git', ['check-ignore', '-q', `stardust/.work/reskin/figma/${KEY}/.prev/v1/nodes.json`], { cwd: p, env: gitEnv }).status, 0, 'and ignored');
+  const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: p, encoding: 'utf8', env: gitEnv }).stdout;
+  assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+  assert.deepEqual(cacheFor(join(p, 'stardust'), KEY).version('v1').read('manifest.json').frames, ['1:2'], 'readers get it from the backup');
+  reset();
+  const back = await run(args, { cwd: p, env: NOGLOBAL, token: '' });
+  assert.equal(back.code, 0, back.stderr);
+  assert.equal(fake.requests.length, 0);
+  assert.ok(existsSync(join(root, 'v1', 'manifest.json')) && !existsSync(join(root, '.prev')), 'the next capture puts it back');
+});
+await check('curate and stamp read the last complete capture while a swap is cut short (version dir parked in .prev); the next capture puts it back', async () => {
+  const p = await curated();
+  const root = join(p, 'stardust', '.work', 'reskin', 'figma', KEY);
+  const outputs = () => ({ ...hashTree(join(p, 'stardust', 'reskin')), ...hashTree(join(p, 'stardust', 'canon-source')) });
+  const before = outputs();
+  mkdirSync(join(root, '.prev'), { recursive: true });
+  renameSync(join(root, 'v1'), join(root, '.prev', 'v1'));
+  const cur = await run(['curate'], { cwd: p, token: '' });
+  assert.equal(cur.code, 0, cur.stderr);
+  assert.deepEqual(outputs(), before);
+  const stamp = await run(['stamp'], { cwd: p, token: '' });
+  assert.equal(stamp.code, 0, stamp.stderr);
+  assert.ok(!existsSync(join(root, 'v1')), 'reading moves nothing');
+  const cap = await run(['capture', URL_PAGE], { cwd: p, token: '' });
+  assert.equal(cap.code, 0, cap.stderr);
+  assert.ok(existsSync(join(root, 'v1', 'manifest.json')) && !existsSync(join(root, '.prev')));
+});
+await check('capture --list --confidential needs no ignore rules and writes nothing', async () => {
+  reset();
+  const p = gitProject();
+  const r = await run(['capture', URL_FILE, '--list', '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /2 pages, 3 top-level nodes/);
+  assert.deepEqual(untouched(p), []);
+});
+await check('every file capture and curate write is covered by the --confidential guard lists', async () => {
+  const { CAPTURE_NAMESPACES, CAPTURE_OUTPUTS, CURATE_OUTPUTS } = await import('../figma/guard.mjs');
+  const root = join(P1, 'stardust');
+  const listed = new Set([...CAPTURE_OUTPUTS, ...CURATE_OUTPUTS].map(([rel]) => rel));
+  const files = walk(root).map((f) => relative(root, f));
+  assert.ok(files.length > 20, `${files.length} files`);
+  for (const f of files) assert.ok(listed.has(f) || CAPTURE_NAMESPACES.some(([ns]) => f.startsWith(ns)), `${f} escapes the guard`);
 });
 await check('--confidential outside a git repo → exit 2', async () => {
   reset();
