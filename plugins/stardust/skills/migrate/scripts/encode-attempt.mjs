@@ -40,10 +40,11 @@
  *                                           --not-attempted; --pages needs --hand-authored
  *   Encoder first (migrate SKILL.md § Encoder first): the two automatic not-attempted outcomes (encoder absent, no
  *   map) are REFUSED for a template with ≥ 2 siblings unless --reason "<why>" names why the encoder cannot serve it —
- *   its map is due in the C-archetype unit. Refused: nothing written (an earlier automatic not-attempted record of
+ *   its map is due in the C-archetype unit — or migrate.mjs plan derived the template's slot map (source derived,
+ *   below: the fork builds the siblings). Refused: nothing written (an earlier automatic not-attempted record of
  *   the template is removed — it would open render's A′ path), exit 2, one stderr line `encode-attempt <t>: refused
  *   not-attempted — <n> sibling(s) (<slug, …>) and <cause>: <fix> — or pass --reason "<why the encoder cannot serve
- *   this template>"`. With --reason the record's reason is `<why> (<cause>)`; --reason is used only on these two
+ *   this template>"` (from plan, plus `; no slot map derives either (<cause>) — <the one command>`). With --reason the record's reason is `<why> (<cause>)`; --reason is used only on these two
  *   outcomes and never with --not-attempted. Siblings (siblingsOf): the --state pages (default
  *   <root>/stardust/state.json; none when it is absent) whose representative is <t>, whose migrate sidecar names <t>
  *   as its template (read under state.migrate.outputDir, else stardust/migrated — delivered siblings count), and —
@@ -61,12 +62,12 @@
  *   line the roster report quotes: `encode-attempt <t>: <s> sibling(s) · <e> encoded · <r> slot-rendered · <h>
  *   hand-authored · <n> not-attempted (<verdict | no record>[; <k> hand-authored without a record: <slug, …>])`; each
  *   sibling (siblingsOf) counted once, first match: encoded (its migrate sidecar has `encode` and audit.encode.status
- *   clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource), hand-authored (named by the template's
+ *   clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource, or listed in the record's `forked`), hand-authored (named by the template's
  *   hand-authored record, or an A′ render from its own file — listed as without a record), else not-attempted; the
  *   sidecars are read under state.migrate.outputDir, else stardust/migrated. Then, last, every record under the record
  *   directory: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`; an invalid
  *   record file is named on stderr and not counted. --json: { total, encoded, aPrime, noRoundtrip, notAttempted,
- *   handAuthored, templates: [{ template, verdict, reason[, pages] }] (pages on hand-authored only), perTemplate:
+ *   handAuthored, templates: [{ template, verdict, reason, source[, pages] }] (pages on hand-authored only), perTemplate:
  *   [{ template, verdict, siblings, encoded, slotRendered, handAuthored, notAttempted, unrecorded[] }] } sorted by
  *   template.
  *
@@ -77,12 +78,23 @@
  *         { "_provenance": { writtenBy: "stardust:migrate/encode-attempt", writtenAt }, "template",
  *           "verdict": "encoded" | "no-roundtrip" | "not-attempted" | "hand-authored", "roundtrip": { exit, line } |
  *           null, "lint": { exit, line } | null, "reason": <string | null>, "pages": [<slug>…] (hand-authored) | null,
- *           "at": <ISO> }
+ *           "at": <ISO>, "source": "derived" | "forked" | "not-attempted", "sourceReason": <string>, "derive": {
+ *           prototype, markers: "marked" | "derived", slots: [<name>…], located, total, capture } | null, "forked":
+ *           [<slug>…] | null }
+ *         source — how the A′ siblings get their slots: derived = migrate.mjs plan derived the slot map from the
+ *         archetype prototype (`derive`; located / total / capture null when every sibling's page JSON has slots);
+ *         forked = migrate.mjs render --from-archetype <proto> --capture <page.json> forked ≥ 1 sibling (`forked`,
+ *         sorted; a list on a prior record survives any re-record, source staying forked); not-attempted = no derivation, sourceReason says
+ *         why (the template encodes · an owner decision · hand-authored · nothing derivable — <cause> · no derivation
+ *         on record — this CLI never derives). Readers accept older records without these four keys.
  *         check and summary write nothing.
  * Library (imported by migrate.mjs): readAttempt(root, t) → the record or null · requireEncodeAttempt(root, t) →
  *   null or the check refusal line · recordAttempt(root, t, { encoder, notAttempted, reason, handAuthored, pages,
- *   state, siblings, timeoutMs }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
- *   Refusal, the encoder-first line, when it refuses; siblings: slugs that replace the state's) · siblingsOf(state,
+ *   state, siblings, timeoutMs, derive }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
+ *   Refusal, the encoder-first line, when it refuses; siblings: slugs that replace the state's; derive: plan's
+ *   derivation { prototype, markers, slots, located, total, capture }, or { cause, fix } when nothing derives) ·
+ *   recordFork(root, t, slug, { prototype }) → the record with slug added to `forked` and source forked, the rest
+ *   kept (atomic; Refusal when t has no record) · siblingsOf(state,
  *   t[, sidecars]) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
  *   attemptLine(record) → the record's stdout line · sidecarsBySlug(root, state) → slug → migrate sidecar · siblingTally(state, record, sidecars, t) → the summary's counts ·
  *   summaryLine(records) → the summary line (a null entry is counted as ` · <k> without a record`).
@@ -197,7 +209,7 @@ function writeRecord(root, rec) {
  */
 export function recordAttempt(root, template, opts = {}) {
   assertTemplate(template);
-  const { encoder = null, notAttempted = null, reason: given = null, handAuthored = false, pages: named = null, state = null, siblings = null, keepDecision = false, timeoutMs = TIMEOUT_MS } = opts;
+  const { encoder = null, notAttempted = null, reason: given = null, handAuthored = false, pages: named = null, state = null, siblings = null, keepDecision = false, timeoutMs = TIMEOUT_MS, derive = null } = opts;
   if (notAttempted !== null && notAttempted !== undefined && (typeof notAttempted !== 'string' || !notAttempted.trim())) throw new UsageError('--not-attempted needs a non-empty reason');
   if (given !== null && given !== undefined && (typeof given !== 'string' || !given.trim())) throw new UsageError('--reason needs a non-empty reason');
   if (typeof given === 'string' && typeof notAttempted === 'string') throw new UsageError('--not-attempted carries its own reason — drop --reason');
@@ -207,6 +219,7 @@ export function recordAttempt(root, template, opts = {}) {
   const rootAbs = resolve(root);
   if (!isDir(rootAbs)) throw new UsageError(`--root ${root} is not a directory`);
   if (state && !isFile(state)) throw new UsageError(`--state ${state} does not exist`);
+  const prior = readAttempt(rootAbs, template); // its forked list survives any re-record
   const at = new Date().toISOString();
   let verdict; let roundtrip = null; let lint = null; let reason = null; let cause = null; let fix = null; let pages = null;
   const siblingList = () => {
@@ -239,18 +252,57 @@ export function recordAttempt(root, template, opts = {}) {
     if (prev && (prev.verdict === 'hand-authored' || (prev.verdict === 'not-attempted' && !isAutoNotAttempted(prev)))) return prev;
   }
   if (cause) {
-    // Encoder first: a template with ≥ 2 siblings gets its map in the C-archetype unit — not-attempted only with a reason.
+    // Encoder first: a template with ≥ 2 siblings gets its map in the C-archetype unit — not-attempted only with a reason,
+    // or when migrate.mjs plan derived the slot map (the fork engages: siblings are built from the archetype, not by hand).
     const sibs = siblingList();
-    if (sibs.length >= SIBLING_MIN && typeof given !== 'string') {
+    if (sibs.length >= SIBLING_MIN && typeof given !== 'string' && !isDerivation(derive)) {
       // An automatic not-attempted written before this rule would still open render's A′ path: it goes with the refusal.
       if (isAutoNotAttempted(readAttempt(rootAbs, template))) rmSync(join(recordDir(rootAbs), `${template}.json`), { force: true });
-      throw new Refusal(`encode-attempt ${template}: refused not-attempted — ${sibs.length} sibling(s) (${sibs.join(', ')}) and ${cause.split(' — ')[0]}: ${fix} — or pass --reason "<why the encoder cannot serve this template>"`);
+      const why = typeof derive?.cause === 'string' ? `; no slot map derives either (${derive.cause})${derive.fix ? ` — ${derive.fix}` : ''}` : '';
+      throw new Refusal(`encode-attempt ${template}: refused not-attempted — ${sibs.length} sibling(s) (${sibs.join(', ')}) and ${cause.split(' — ')[0]}: ${fix} — or pass --reason "<why the encoder cannot serve this template>"${why}`);
     }
     verdict = 'not-attempted'; reason = typeof given === 'string' ? `${given.trim()} (${cause})` : cause;
   }
-  const rec = { _provenance: { writtenBy: WRITTEN_BY, writtenAt: new Date().toISOString() }, template, verdict, roundtrip, lint, reason, pages, at };
+  const forked = forkedOf(prior);
+  const src = sourceOf(verdict, { owner: typeof notAttempted === 'string', given: typeof given === 'string', derive, forked });
+  const rec = { _provenance: { writtenBy: WRITTEN_BY, writtenAt: new Date().toISOString() }, template, verdict, roundtrip, lint, reason, pages, at, ...src, forked };
   writeRecord(rootAbs, rec);
   return rec;
+}
+
+// ---- the fork's slot source on record: derived (plan) · forked (render --from-archetype … --capture …) · not-attempted ----
+const isDerivation = (d) => !!d && typeof d === 'object' && Array.isArray(d.slots);
+const forkedOf = (rec) => (Array.isArray(rec?.forked) && rec.forked.length ? [...new Set(rec.forked)].sort() : null);
+const NO_DERIVATION = 'no derivation on record — migrate.mjs plan derives the slot map';
+function sourceOf(verdict, { owner, given, derive, forked }) {
+  let source = 'not-attempted'; let sourceReason = NO_DERIVATION; let d = null;
+  if (verdict === 'encoded') sourceReason = 'the template encodes';
+  else if (verdict === 'hand-authored') sourceReason = 'hand-authored';
+  else if (owner) sourceReason = 'an owner decision';
+  else if (isDerivation(derive)) {
+    d = { prototype: derive.prototype ?? null, markers: derive.markers ?? null, slots: [...derive.slots].sort(), located: derive.located ?? null, total: derive.total ?? null, capture: derive.capture ?? null };
+    source = 'derived';
+    sourceReason = `the slot map derives from ${d.prototype} (${d.slots.length} ${d.markers} slot(s); ${d.capture ? `${d.located}/${d.total} located in ${d.capture}` : 'every sibling\'s page JSON has slots'})`;
+  } else if (typeof derive?.cause === 'string') sourceReason = `nothing derivable — ${derive.cause}`;
+  else if (given) sourceReason = 'an owner decision';
+  return { source: forked ? 'forked' : source, sourceReason, derive: d };
+}
+
+/**
+ * Adds `slug` to the template's `forked` list (sorted, once) and sets source forked — migrate.mjs render --from-archetype
+ * <prototype> --capture <page.json> forked it; every other key is kept, the rewrite is atomic, a slug already listed
+ * rewrites nothing. Returns the record; throws Refusal when the template has no attempt record.
+ */
+export function recordFork(root, template, slug, { prototype = null } = {}) {
+  assertTemplate(template);
+  const rootAbs = resolve(root); const rec = readAttempt(rootAbs, template);
+  if (!rec) throw new Refusal(`encode-attempt ${template}: no attempt record to add the fork of ${slug}${prototype ? ` (${prototype})` : ''} to — run: node stardust/scripts/migrate/migrate.mjs plan ${slug}`);
+  const forked = [...new Set([...(forkedOf(rec) || []), slug])].sort();
+  if (rec.source === 'forked' && JSON.stringify(rec.forked) === JSON.stringify(forked)) return rec;
+  const { source, sourceReason, derive, forked: _f, ...kept } = rec;
+  const next = { ...kept, source: 'forked', sourceReason: sourceReason ?? NO_DERIVATION, derive: derive ?? null, forked };
+  writeRecord(rootAbs, next);
+  return next;
 }
 
 /** `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, a hand-authored record's pages after it. */
@@ -295,19 +347,22 @@ export function sidecarsBySlug(root, state) {
   return bySlug;
 }
 
+const SLOT_SOURCES = new Set(['mapping', 'page-json', 'derived']);
 /**
  * One template's siblings by how they were built (the roster report's line), first match: encoded (a sidecar whose
- * `encode` is set and audit.encode.status clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource),
+ * `encode` is set and audit.encode.status clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource, or a
+ * sibling the record lists in `forked` — render --from-archetype … --capture … wrote its source HTML),
  * hand-authored (named by the template's hand-authored record, or an A′ render from its own file — those without a
  * record are listed in `unrecorded`), else not-attempted.
  */
 export function siblingTally(state, record, sidecars, template) {
   const t = { template, verdict: record?.verdict ?? null, siblings: 0, encoded: 0, slotRendered: 0, handAuthored: 0, notAttempted: 0, unrecorded: [] };
   const named = new Set(record?.verdict === 'hand-authored' && Array.isArray(record.pages) ? record.pages : []);
+  const forked = new Set(forkedOf(record) || []);
   for (const slug of siblingsOf(state, template, sidecars)) {
     const m = sidecars.get(slug); t.siblings++;
     if (m?.encode && typeof m.encode === 'object' && m.audit?.encode?.status === 'clean') t.encoded++;
-    else if (m?.renderBranch === "A'" && (m.slotSource === 'mapping' || m.slotSource === 'page-json')) t.slotRendered++;
+    else if ((m?.renderBranch === "A'" && SLOT_SOURCES.has(m.slotSource)) || forked.has(slug)) t.slotRendered++;
     else if (named.has(slug)) t.handAuthored++;
     else if (m?.renderBranch === "A'") { t.handAuthored++; t.unrecorded.push(slug); }
     else t.notAttempted++;
@@ -404,7 +459,7 @@ function summaryCmd(o) {
   const tallies = templates.map((t) => siblingTally(state, byTemplate.get(t), sidecars, t));
   if (!o.json) { for (const t of tallies) console.log(tallyLine(t)); console.log(summaryLine(records)); return 0; }
   const c = countVerdicts(records);
-  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, handAuthored: c.handAuthored, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null, ...(r.verdict === 'hand-authored' ? { pages: Array.isArray(r.pages) ? r.pages : [] } : {}) })), perTemplate: tallies }, null, 2));
+  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, handAuthored: c.handAuthored, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null, source: r.source ?? null, ...(r.verdict === 'hand-authored' ? { pages: Array.isArray(r.pages) ? r.pages : [] } : {}) })), perTemplate: tallies }, null, 2));
   return 0;
 }
 
