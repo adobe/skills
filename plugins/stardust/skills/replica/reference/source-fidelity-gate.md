@@ -714,8 +714,9 @@ rather than erroring.
     doc height moved 6669→6518 once fixed, and a whole class of
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
-    and warns loudly with the family names; mirror the check in any ad-hoc
-    capture. On the warning, decide before gating: load the face in a real
+    and warns loudly with the family names; an `@font-face` whose every
+    requested src answered 404 is a dead declaration (the same for every
+    visitor — `fontsDead`, never counted). On the warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
@@ -893,8 +894,8 @@ on the verdict, never reported unmasked), `overrides.json` (shown BESIDE the mea
 never replacing it; counted only when valid, below), `clip-allow.json`, `presence.json`, `units.json`.
 
 **INCONCLUSIVE — the gate names what it could not measure.** A row whose origin is the
-`crawl-fullpage` fallback, or whose either capture left an overlay (§ Hardening rules, rule 6) or
-wrote no capture record, or whose kept origin was taken with another dismiss / hide list, has no
+`crawl-fullpage` fallback, or whose either capture left an overlay (§ Hardening rules, rule 6) or a
+dialog open or wrote no capture record, or whose kept origin was taken with another dismiss / hide / pin list, has no
 pixel or height verdict: `inconclusive: true`, reasons `origin capture polluted: <why>` (`build
 capture polluted: …` for the served side), INCONCLUSIVE in `summary.md` and `totals.inconclusive`;
 the run exits 2. gate-evidence reads it OPEN, update-coverage keeps the page's status and records
@@ -929,10 +930,18 @@ come from the DOM — the in-flow blocks above the header rendered when the capt
 `display:none` or not-yet-inserted block is not listed, so `none found above the header` means none
 rendered then, and a 0-px candidate can still be the bar: a block that grows later stays hidden by
 the persistent `display:none !important` rule. `presence.mjs suggest <url>` lists them;
-`presence.mjs add --hide <sel> --verify <url>` refuses a selector that still matches nothing. Overlays
+`presence.mjs add --hide <sel> --verify <url>` refuses a selector that still matches nothing; a
+selector that matches nothing on the build is expected — an info line, never a warning. Overlays
 are dismissed, not hidden: gate-all takes `--dismiss <sel,…>` like gate.sh / anchor.mjs (both stitches,
 before the hide list; its probes content-presence / clip-probe / unit-geometry keep their built-in
-dismissal). An authored-volatile band (a campaign hero) is masked: still measured, masked on the verdict
+dismissal). **Capture settings live in presence.json, never only on a command line** — a recorded
+roster re-gate reproduced 8/10 of a run's 10/10 because its carousel pin and two clip acceptances were
+flags and prose: `presence.mjs add --dismiss <sel>`, `--pin <sel> --state <label>` (a rotator control
+clicked on the frozen page), `--allow clip=<sel>` (counted clip findings under it do not count) and
+`--allow per-visitor-dialog=<container>`, each with `--reason R-<nn>` and `--verify`; gate-all,
+gate.sh and stitch-shot `--slug` read them. **A dialog left open is INCONCLUSIVE** (`dialog left open
+(<name>)`; gate.sh: no verdict) even when its container is hidden — only an allowed per-visitor-dialog
+container clears it. An authored-volatile band (a campaign hero) is masked: still measured, masked on the verdict
 (`masks.json`).
 
 Origin: a fix round reuses this run's (row `originReused`, § Iteration discipline, Evidence
