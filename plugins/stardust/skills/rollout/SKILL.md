@@ -275,13 +275,14 @@ siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at mos
 with its own `stardust/rollout/progress.json` entry
 (`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint
 commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
-are per sub-unit. Other edits go through instruments too: text in a tracked file
-through the edit tool or `skills/stardust/scripts/replace.mjs` (counted, atomic),
-a JSON value through `skills/stardust/scripts/json-edit.mjs` — an inline
-interpreter may read and print, never write a tracked file
-(`../replica/reference/reading-discipline.md`). Target: no C-deliver unit runs longer than 90 minutes
+are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
 `STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
+Other edits go through instruments too: text in a tracked file through the
+edit tool or `skills/stardust/scripts/replace.mjs` (counted, atomic), a JSON
+value through `skills/stardust/scripts/json-edit.mjs` — an inline interpreter
+may read and print, never write a tracked file
+(`../replica/reference/reading-discipline.md`).
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
 edits blocks — template clusters concurrently (non-overlapping pages),

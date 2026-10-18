@@ -349,15 +349,14 @@ rehosts media, one `report` unit (Phase 4). Per unit, in this order: the
 (`node stardust/scripts/stardust/progress.mjs unit start|done|failed <name> --ledger migrate [--kind …]`;
 it locks through deploy's `file-lock.mjs`, copied to `stardust/scripts/deploy/`)
 → the checkpoint commit → the next unit; a unit end
-is a safe resume point, not a stop. Other edits go through instruments too:
-text in a tracked file through the edit tool or
-`stardust/scripts/stardust/replace.mjs` (counted, atomic), a JSON value
-through `json-edit.mjs` beside it — an inline interpreter may read and
-print, never write a tracked file
-(`../replica/reference/reading-discipline.md`). A session resumed inside migrate reads
+is a safe resume point, not a stop. A session resumed inside migrate reads
 the file and runs only the units not `done`; a unit left `running`
 re-renders its slugs — the driver is idempotent, unchanged pages are
-skipped skipped.
+skipped skipped. Other edits go through instruments too: text in a tracked
+file through the edit tool or `stardust/scripts/stardust/replace.mjs`
+(counted, atomic), a JSON value through `json-edit.mjs` beside it — an
+inline interpreter may read and print, never write a tracked file
+(`../replica/reference/reading-discipline.md`).
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 
