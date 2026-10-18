@@ -5,7 +5,8 @@
 // never run; --not-attempted
 // (reason required); template names that could leave the record directory; check (missing / malformed →
 // exit 2 naming the command, present → 0); summary counts (text and --json); deterministic bytes and key
-// order; the exported library; importing is silent.
+// order; the exported library; importing is silent; the fork's slot source on record (derived / forked / not-attempted,
+// recordFork, forked siblings counted as slot-rendered).
 // Run: node skills/migrate/scripts/test/encode-attempt.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -13,7 +14,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readAttempt, recordAttempt, Refusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError } from '../encode-attempt.mjs';
+import { readAttempt, recordAttempt, recordFork, Refusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'encode-attempt.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'encode-attempt-test-'));
@@ -225,7 +226,7 @@ check('two records of the same attempt → the same bytes but at / writtenAt; fi
   rec('diff'); const a = read(P(REC('diff')));
   rec('diff'); const b = read(P(REC('diff')));
   assert.equal(strip(a), strip(b)); assert.ok(a.endsWith('}\n'));
-  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'at']);
+  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'at', 'source', 'sourceReason', 'derive', 'forked']);
   assert.equal(JSON.parse(a).pages, null, 'pages: the hand-authored siblings only');
   assert.deepEqual(Object.keys(JSON.parse(a)._provenance), ['writtenBy', 'writtenAt']);
   assert.deepEqual(readdirSync(join(ROOT, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), []);
@@ -293,7 +294,7 @@ check('--hand-authored --reason: verdict hand-authored, nothing run, pages = the
   assert.deepEqual(json(P(REC('guides'))).pages, ['guide-a', 'guide-c']);
   assert.equal(run(['check', '--template', 'guides', '--root', ROOT]).status, 0, 'a hand-authored record passes check (render\'s A′ gate)');
   const s = run(['summary', '--root', ROOT, '--json']); const sj = JSON.parse(s.out);
-  assert.equal(sj.handAuthored, 1); assert.deepEqual(sj.templates.find((t) => t.template === 'guides'), { template: 'guides', verdict: 'hand-authored', reason: 'two exception pages', pages: ['guide-a', 'guide-c'] });
+  assert.equal(sj.handAuthored, 1); assert.deepEqual(sj.templates.find((t) => t.template === 'guides'), { template: 'guides', verdict: 'hand-authored', reason: 'two exception pages', source: 'not-attempted', pages: ['guide-a', 'guide-c'] });
   assert.match(run(['summary', '--root', ROOT]).out, /, 1 hand-authored\)\n$/);
   rmSync(join(ROOT, 'stardust', 'import', 'guides'), { recursive: true }); rmSync(join(ROOT, REC('guides')));
 });
@@ -334,6 +335,55 @@ check('summaryLine counts records; a missing record (null) is named, not counted
   assert.equal(summaryLine([]), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)');
   assert.equal(summaryLine([readAttempt(ROOT, 'good'), null]), 'encode: 1 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record');
   assert.equal(summaryLine([readAttempt(ROOT, 'good'), { template: 'h', verdict: 'hand-authored' }]), 'encode: 1 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
+});
+
+// ---- the fork's slot source on record: derived (plan), forked (render --capture), not-attempted ----------------
+console.log('source: derived / forked / not-attempted');
+const DP = join(tmp, 'derive'); const dput = (rel, data) => { const f = join(DP, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`); };
+const djson = (t) => JSON.parse(readFileSync(join(DP, REC(t)), 'utf8'));
+dput('stardust/state.json', { pages: [pg('parks', 'approved', 'park'), pg('park-a', 'directed', 'park'), pg('park-b', 'directed', 'park'), pg('park-c', 'directed', 'park')] });
+const DERIV = { prototype: 'stardust/prototypes/parks-proposed.html', markers: 'derived', slots: ['hero-h1', 'hero-p'], located: 2, total: 2, capture: 'stardust/current/pages/parks.html' };
+check('every record says how the siblings get their slots — source not-attempted with the reason: the template encodes, an owner decision, hand-authored, no derivation on record', () => {
+  const good = readAttempt(ROOT, 'good');
+  assert.deepEqual([good.source, good.sourceReason, good.derive, good.forked], ['not-attempted', 'the template encodes', null, null]);
+  assert.equal(recordAttempt(DP, 'owner', { notAttempted: 'one page' }).sourceReason, 'an owner decision');
+  assert.equal(recordAttempt(DP, 'owner', { handAuthored: true, reason: 'drawn per page' }).sourceReason, 'hand-authored');
+  assert.equal(recordAttempt(DP, 'solo', {}).sourceReason, 'no derivation on record — migrate.mjs plan derives the slot map');
+  rmSync(join(DP, REC('owner'))); rmSync(join(DP, REC('solo')));
+});
+check('a derivation (plan) lets an automatic not-attempted through for ≥ 2 siblings: source derived, the derivation on record; without one the refusal adds the cause and its command', () => {
+  const r = recordAttempt(DP, 'parks', { derive: DERIV });
+  assert.equal(r.verdict, 'not-attempted'); assert.match(r.reason, /^no map at stardust\/import\/parks\/vocabulary\.json/);
+  assert.equal(r.source, 'derived'); assert.deepEqual(r.derive, DERIV); assert.equal(r.forked, null);
+  assert.equal(r.sourceReason, 'the slot map derives from stardust/prototypes/parks-proposed.html (2 derived slot(s); 2/2 located in stardust/current/pages/parks.html)');
+  assert.deepEqual(djson('parks'), r);
+  const cause = { cause: 'the archetype capture stardust/current/pages/parks.html is absent', fix: 'run: node stardust/scripts/extract/crawl.mjs --url https://example.test/parks/ --pages https://example.test/parks/ --out stardust/current' };
+  assert.throws(() => recordAttempt(DP, 'parks', { derive: cause }), (e) => e instanceof Refusal
+    && e.message.startsWith('encode-attempt parks: refused not-attempted — 3 sibling(s) (park-a, park-b, park-c) and no map at stardust/import/parks/vocabulary.json: ')
+    && e.message.endsWith(` — or pass --reason "<why the encoder cannot serve this template>"; no slot map derives either (${cause.cause}) — ${cause.fix}`));
+  assert.ok(!existsSync(join(DP, REC('parks'))), 'the earlier automatic record goes with the refusal');
+});
+check('recordFork adds the slug to forked (sorted, once) and sets source forked, everything else kept; a re-record keeps the list; no record → refused', () => {
+  const before = recordAttempt(DP, 'parks', { derive: DERIV });
+  const one = recordFork(DP, 'parks', 'park-b', { prototype: DERIV.prototype });
+  assert.deepEqual(one, djson('parks')); assert.deepEqual(one.forked, ['park-b']); assert.equal(one.source, 'forked');
+  const { source: s0, forked: f0, ...rest0 } = before; const { source: s1, forked: f1, ...rest1 } = one; assert.deepEqual(rest1, rest0);
+  assert.deepEqual(recordFork(DP, 'parks', 'park-a', { prototype: DERIV.prototype }).forked, ['park-a', 'park-b']);
+  const bytes = readFileSync(join(DP, REC('parks')), 'utf8');
+  recordFork(DP, 'parks', 'park-a', { prototype: DERIV.prototype }); assert.equal(readFileSync(join(DP, REC('parks')), 'utf8'), bytes, 'a slug already listed: not rewritten');
+  const again = recordAttempt(DP, 'parks', { derive: DERIV });
+  assert.deepEqual(again.forked, ['park-a', 'park-b']); assert.equal(again.source, 'forked');
+  assert.throws(() => recordFork(DP, 'nowhere', 'x', { prototype: 'stardust/prototypes/nowhere-proposed.html' }), (e) => e instanceof Refusal && /^encode-attempt nowhere: no attempt record to add the fork of x \(stardust\/prototypes\/nowhere-proposed\.html\) to — run: node stardust\/scripts\/migrate\/migrate\.mjs plan x$/.test(e.message));
+  assert.deepEqual(readdirSync(join(DP, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), [], 'no tmp file left');
+});
+check('summary counts a sibling listed in forked as slot-rendered (its own-file A′ render, or none yet) and a derived fork too; --json templates[] carry source', () => {
+  dput('stardust/migrated/parks/a/_meta.json', { slug: 'park-a', renderBranch: "A'", slotSource: null });
+  dput('stardust/migrated/parks/c/_meta.json', { slug: 'park-c', renderBranch: "A'", slotSource: 'derived' });
+  const r = run(['summary', '--root', DP]); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 sibling(s) · 0 encoded · 3 slot-rendered · 0 hand-authored · 0 not-attempted (not-attempted)');
+  const j = JSON.parse(run(['summary', '--root', DP, '--json']).out);
+  assert.deepEqual(j.templates, [{ template: 'parks', verdict: 'not-attempted', reason: djson('parks').reason, source: 'forked' }]);
+  assert.deepEqual(j.perTemplate[0].unrecorded, []);
 });
 
 // ---- done -----------------------------------------------------------------------------------

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Lakeside Trails (prototype)</title>
+  <meta name="description" content="Lake walks, as the head describes them.">
+  <style>.hero { min-height: 60vh; } .card { display: grid; }</style>
+</head>
+<body>
+  <header class="site-header"><nav><a href="/">Home</a> <a href="/trips">Trips</a></nav></header>
+  <main>
+    <section class="hero" data-section="hero" data-block="hero">
+      <div class="hero__inner">
+        <picture>
+          <source srcset="../current/assets/media/lake-1a2b3c4d.webp" type="image/webp">
+          <img class="hero__img" src="../current/assets/media/lake-1a2b3c4d.jpg" alt="A calm lake at dawn" loading="eager" width="1600">
+        </picture>
+        <div class="hero__copy">
+          <p class="eyebrow" data-slot="eyebrow">Day trips</p>
+          <h1 data-slot="title">Walk the   lake
+            shore</h1>
+          <p class="lede" data-slot="lede">Easy loops for every season &mdash; caf&eacute; stops included &amp; maps&nbsp;free.</p>
+          <p class="badge" data-module="badge">New this season</p>
+          <a class="button button--primary" href="/trips" data-slot="cta">See all trips</a>
+        </div>
+      </div>
+    </section>
+    <section class="intro" data-section="intro">
+      <h2 id="why">Why walk with us</h2>
+      <p style="color: teal">Local guides, <b>small groups</b> and <i>no rush</i>.<br>Every walk ends at a <span class="hl">caf&eacute;</span>.</p>
+      <script>window.introSeen = true;</script>
+      <svg class="deco" viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0h10"/></svg>
+      <!-- the season chips are a block of their own -->
+      <ul class="seasons" data-block="Tags">
+        <li class="tag">Spring</li>
+        <li class="tag">Summer</li>
+        <li class="tag">Autumn</li>
+      </ul>
+      <button class="more" type="button">Show more</button>
+      <hr>
+    </section>
+    <section class="trips" data-section="trips" data-block="cards" data-variant="Three_Up">
+      <h2 data-slot="heading">Popular trips</h2>
+      <article class="card" data-slot="card">
+        <img src="../current/assets/media/river-5e6f7a8b.jpg" alt="River bend">
+        <h3>River Walk</h3>
+        <p>6 km along the water.</p>
+        <a href="/trips/river-walk" title="River Walk details">Read more</a>
+      </article>
+      <article class="card">
+        <figure><img src="../current/assets/media/forest-9c0d1e2f.jpg" alt="Pines in fog"></figure>
+        <h3>Forest Loop</h3>
+        <p>9 km under the pines.</p>
+        <a href="/trips/forest-loop">Read more</a>
+      </article>
+      <article class="card">
+        <img src="../current/assets/media/ridge-3a4b5c6d.jpg" alt="">
+        <h3>Ridge Path</h3>
+        <p>12 km with a view.</p>
+        <a href="#">Coming soon</a>
+      </article>
+      <p class="note">Prices include a guide.</p>
+    </section>
+  </main>
+  <footer class="site-footer"><p>&copy; Lakeside Trails</p></footer>
+  <script src="app.js"></script>
+</body>
+</html>

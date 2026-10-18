@@ -1,14 +1,15 @@
 // Unit test for slot-map.mjs — the A′ fork's slot values located through the rollout block mapping: the selector
 // grammar over migrate.mjs's element model, readMapping's reasons (absent, not hash-listed, stale, another formatVersion,
 // no templates[], no manifest), the archetype's anchors, the recipes of a fixture archetype (prototype + capture) and the
-// values they read on sibling captures (one whose anchor matches twice), and an ambiguous source (no recipe).
+// values they read on sibling captures (one whose anchor matches twice), an ambiguous source (no recipe), and deriveRecipes'
+// anchor choice (the capture's single <main>, else <body>).
 // Static fixtures only: test/fixtures/slot-map/.
 // Run: node skills/migrate/scripts/test/slot-map.test.mjs
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { anchorsFor, parseSelector, querySelectorAll, readMapping, slotRecipes, slotValues, UnsupportedSelector } from '../slot-map.mjs';
+import { anchorsFor, deriveRecipes, parseSelector, querySelectorAll, readMapping, slotRecipes, slotValues, UnsupportedSelector } from '../slot-map.mjs';
 
 const FIX = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'slot-map');
 const fx = (name) => readFileSync(join(FIX, name), 'utf8');
@@ -265,6 +266,24 @@ check('a data: placeholder is never the image source or srcset (a data: URL with
   assert.deepEqual(r, { slots: { pic: { src: 'https://cdn.example.test/m/sib.png?w=800', alt: 'Lazy', srcset: 'https://cdn.example.test/m/sib.png?w=800 800w, https://cdn.example.test/m/sib.png?w=1600 1600w' } }, unresolved: [] });
   const mixed = slotValues({ pic: kinds.pic }, SIBLING.replace('alt="Sibling picture"', 'srcset="data:image/gif;base64,R0lGODlhAQABAAAAACw= 1x, /m/sib-2x.png 2x" alt="Sibling picture"'));
   assert.equal(mixed.slots.pic.srcset, '/m/sib-2x.png 2x');
+});
+
+// ---- deriveRecipes: the archetype's own capture is the map (no rollout mapping) ----------------------
+console.log('deriveRecipes');
+check('deriveRecipes anchors at the capture\'s <main> when it has exactly one, else at <body>; the recipes are slotRecipes on that anchor', () => {
+  const proto = '<html><body><main><h1 data-slot="headline">Lake walks</h1><p data-slot="deck">Around the lake.</p></main></body></html>';
+  const one = '<html><body><header><h1>Site</h1></header><main><div class="hero"><h1>Lake walks</h1><p>Around the lake.</p></div></main></body></html>';
+  const d = deriveRecipes(proto, one);
+  assert.equal(d.anchor, 'main');
+  assert.deepEqual(d.recipes, slotRecipes(proto, one, ['main']));
+  assert.deepEqual(d.recipes.headline, { anchor: 'main', path: [{ tag: 'div', n: 1 }, { tag: 'h1', n: 1 }], kind: 'text' });
+  for (const capture of [one.replace(/<\/?main>/g, ''), one.replace('<header>', '<main><p>Skip</p></main><header>')]) {
+    const b = deriveRecipes(proto, capture);
+    assert.equal(b.anchor, 'body', 'no <main>, or more than one: the body anchors');
+    assert.deepEqual(b.recipes, slotRecipes(proto, capture, ['body']));
+    assert.equal(b.recipes.deck.anchor, 'body');
+  }
+  assert.equal(deriveRecipes(proto, one.replace('<main>', '<script>document.write("<main>")</script><main>')).anchor, 'main', 'script text is never markup');
 });
 
 console.log(failed ? `\n${failed} check(s) failed, ${passed} passed` : `\nall checks passed (${passed})`);
