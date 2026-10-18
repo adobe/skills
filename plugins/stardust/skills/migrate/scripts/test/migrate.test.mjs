@@ -5,7 +5,9 @@
 // from the archetype's typed slots (media map, media ledger, refusals), the sibling-variance gate (an earlier acceptance holds
 // while the probe row is unchanged; sidecar, else the coverage row), the fork's
 // slots from the rollout block mapping (--slots mapping|page-json; fixtures in test/fixtures/slot-map/) and plan's encode
-// attempt per template with A′ siblings (a fake encoder; kept, --force, the production default, refusals).
+// attempt per template with A′ siblings (a fake encoder; kept, --force, the production default, refusals), the derived slot
+// map (plan derives it, render's `derived` slot source, render --from-archetype <proto> --capture <page.json>; fixtures in
+// test/fixtures/derive/).
 // Run: node skills/migrate/scripts/test/migrate.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -1214,6 +1216,8 @@ check('--from-archetype stays a switch unless it is given a value (=<file>, or a
   ];
   for (const [args, re] of cases) { const r = run(args); assert.equal(r.status, 1, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re, args.join(' ')); }
   assert.ok(!has(`${P}/ferry-west-proposed.html`));
+  const keep = read(STATE); const s = json(STATE); delete s.flow; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  try { const r = run(FORK('ferry-north', '--force')); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/); assert.equal(r.out, ''); } finally { write(STATE, keep); }
 });
 
 // ---- --help ---------------------------------------------------------------------------------
