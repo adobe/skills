@@ -425,12 +425,12 @@ node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.wo
 
 On a protected preview add `--token-env <NAME>` to the `all` command, never
 `--auth-header`: `run-bg` saves and prints the command it runs, so a header
-value would be written to disk.
+value would be written to disk. Every step then measures the preview; without
+the token `all` stops with exit 2.
 
 `all` prints one verdict line per step and writes `summary.json`; copy its
-`ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exit
-124 (no verdict), exit 3 (bot challenge, token halt) and the fix budget:
-`reference/deployed-leg.md` § The fix budget.
+`ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124
+and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 
 **One fix iteration per gate family** — content; design-adoption/sanity;
 and, for a Figma donor, Figma fidelity. On a failure in a family, fix

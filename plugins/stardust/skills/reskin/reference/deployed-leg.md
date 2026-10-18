@@ -46,14 +46,14 @@ the rows (read from the delivered head) and the path: rules in `deployed-gate.mj
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
 
 A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
-`auth: true`). A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on `preview`, `content`,
-`tokens`, `inherited` and `all`; a value starting with neither `token ` nor `bearer ` gets `token ` put in front. Without
-one, `preview`, `content` and `all` stop with exit 2 (`the preview needs a site token`) rather than poll or crawl the
-source first; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124. A token a public preview never
-asked for (`tokenUnused: true`) changes no verdict: `parity`, `sanity` and the rest run as on any public preview. `preview`
-sends it only after a refusal, `inherited` only to a protected preview's `.plain.html`, `parity` and `sanity` never;
-`content`, `tokens` and `figma` send it to the preview origin whenever one is given. It reaches that origin only, child
-processes by environment, and never argv, output, records or the ledger. A sandbox repo's preview is public by default.
+`auth: true`). A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on every step; a value starting
+with neither `token ` nor `bearer ` gets `token ` put in front. Without one, `preview` stops with exit 2 (`the preview
+needs a site token`) rather than poll, and every later step does before it crawls or measures anything; a token it
+refuses (401 or 403 once sent) is exit 2 too, not a poll to 124. Every step then measures a protected preview as any
+other, `parity` and `sanity` included, never `n/a`. The token goes to the preview origin and no other (not a font or image
+host, not the local reskin page), to child processes by environment (`--token-env`, `--auth-origin` the preview) and
+never argv, output, records or the ledger. A token a public preview never asked for (`tokenUnused: true`) is sent by
+nothing, `preview` itself sending it only after a refusal. A sandbox repo's preview is public by default.
 
 ## The delta file
 
@@ -103,7 +103,7 @@ the fragment.
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and
 measured nothing: the step fails and the run goes on, `sanity` records its own hard decoration FAIL),
-`ADVISORY <gates> (deltas.blocking false)`, `n/a: <why>`, `not run: <why>` or
+`ADVISORY <gates> (deltas.blocking false)`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list, `--auth-header`'s value `[redacted]` (`--token-env`'s is a variable name, kept). A residual's `class` is
 `deployed.content`, `.tokens`, `.parity`, `.sanity` or `.inherited` (M2b's are `figma.*`); a `deployed.sanity`

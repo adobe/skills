@@ -17,7 +17,7 @@ import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
 import { deployTools, inheritedLines, plainAsserts, runInherited } from '../deployed/inherited.mjs';
-import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
+import { fixturePath, startPreviewServer, startSourceServer, watchRequests } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
@@ -234,8 +234,11 @@ await check('--help documents inherited; its usage errors exit 2 and write nothi
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
   assert.match(r.stdout, /deployed-gate\.mjs inherited --page <slug> \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
-  for (const re of [/\.plain\.html/, /about:error/, /\/img\//, /ai-readability/, /98/, /qa-gate/, /eds-schema/, /Step 2b/, /design\.json/, /protected preview/, /by deploy/, /localize-links --check/, /davids-model-lint/, /block-roundtrip --ew/, /inherited\.json/, /not run: skipped/, /ai-readability sends its header to every origin/]) assert.match(r.stdout, re);
-  assert.match(r.stdout, /--auth-header[^]*?preview origin only[^]*?inherited sends it with the \.plain\.html request only/, 'the --auth-header paragraph says what inherited does with the header');
+  for (const re of [/\.plain\.html/, /about:error/, /\/img\//, /ai-readability/, /98/, /qa-gate/, /eds-schema/, /Step 2b/, /design\.json/, /protected preview/, /by deploy/, /localize-links --check/, /davids-model-lint/, /block-roundtrip --ew/, /inherited\.json/, /not run: skipped/]) assert.match(r.stdout, re);
+  const help = r.stdout.replace(/\s+/g, ' ');
+  assert.ok(help.includes('ai-readability and qa-gate get the token by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin> (the value by environment, never argv), for that origin only'), 'the help says how a protected preview is measured');
+  assert.ok(!/n\/a: protected preview|sends its header to every origin/.test(help), 'a protected preview is no longer n/a');
+  assert.match(r.stdout, /--auth-header[^]*?preview\s+origin only[^]*?inherited to its \.plain\.html request and to\s+ai-readability and qa-gate/, 'the --auth-header paragraph says what inherited does with the header');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
   const root = project('inherited-usage', { preview: false });
@@ -522,57 +525,69 @@ await check('a stale record and artifacts of an earlier run are removed before a
 
 // ---- a protected preview ---------------------------------------------------------------------------------------
 
-const AI_PROTECTED = 'n/a: protected preview (ai-readability sends its header to every origin)';
+const TOKEN_FLAGS = ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN'];
 
-await check('a protected preview: .plain.html gets the header on the preview origin; ai-readability (its header reaches every origin the page loads) and qa-gate (no site auth) are "n/a" and never run; the secret appears in no row, record or line', async () => {
-  const { result, stub, requests, root, error } = await scenario('protected', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}` });
+await check('a protected preview is measured: .plain.html carries the header, ai-readability and qa-gate run with the token by environment and --token-env (never argv), aimed at the preview origin; the secret appears in no row, record, line or argument', async () => {
+  const { result, stub, requests, root, origin, error } = await scenario('protected', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}` });
   assert.ifError(error);
   assert.equal(result.verdict, 'PASS');
-  assert.deepEqual(brief(result.rows).slice(0, 3).map((r) => `${r.check}: ${r.value} (${r.status})`), ['.plain.html: 200, 1 <h1> (PASS)', `ai-readability: ${AI_PROTECTED} (n/a)`, 'qa-gate: n/a: protected preview (n/a)']);
+  assert.deepEqual(brief(result.rows).slice(0, 3).map((r) => `${r.check}: ${r.value} (${r.status})`), ['.plain.html: 200, 1 <h1> (PASS)', 'ai-readability: 99 (PASS)', 'qa-gate: 12 ok, 1 warn, 0 fail (PASS)']);
   assert.deepEqual(requests.map((q) => q.headers.authorization), [`token ${SECRET}`]);
-  assert.deepEqual(stub.calls(), [], 'neither instrument ran: no token and no --token-env reached either');
-  const text = [readFileSync(join(outOf(root), 'inherited.json'), 'utf8'), ...inheritedLines(result)].join('\n');
+  const [ai, qa, ...rest] = stub.calls();
+  assert.equal(rest.length, 0, 'each instrument ran once');
+  assert.deepEqual(ai.argv, ['--origin', origin, '/ns/home', '--min', '98', '--json', join(outOf(root), 'inherited', 'ai-readability.json'), ...TOKEN_FLAGS, '--auth-origin', origin]);
+  assert.deepEqual(qa.argv, [`${origin}/ns/home`, '--schema', join(root, 'stardust', 'eds-schema', 'home.json'), '--design', join(outOf(root), 'design.json'), ...TOKEN_FLAGS, '--auth-origin', origin]);
+  assert.deepEqual([ai.token, qa.token], [`token ${SECRET}`, `token ${SECRET}`], 'the token reaches each by environment');
+  for (const c of stub.calls()) assert.ok(!c.argv.some((a) => a.includes(SECRET) || a === '--auth-header'), `${c.tool}: no token in argv`);
+  const text = [readFileSync(join(outOf(root), 'inherited.json'), 'utf8'), readFileSync(join(outOf(root), 'inherited', 'qa-gate.txt'), 'utf8'), ...inheritedLines(result)].join('\n');
   assert.ok(!text.includes(SECRET), 'the secret is not recorded or printed');
-  assert.deepEqual(inheritedLines(result), [
-    'PASS inherited',
-    `${AI_PROTECTED} (ai-readability)`,
-    'n/a: protected preview (qa-gate)',
-    'by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)',
-  ]);
+  assert.deepEqual(inheritedLines(result), ['PASS inherited', 'by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)']);
 
   const failing = await scenario('protected-fail', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { readability: readability(50) } });
-  assert.equal(failing.result.verdict, 'PASS', 'ai-readability is not read on a protected preview: a score of 50 is never seen');
-  assert.deepEqual(failing.stub.calls(), []);
+  assert.equal(failing.result.verdict, 'FAIL', 'a score of 50 on a protected preview is read, and a FAIL');
+  assert.equal(pick(failing.result.rows, 'ai-readability').value, '50');
 
   const missing = await scenario('protected-no-token', { token: SECRET, record: { auth: true } });
   assert.ok(missing.error instanceof UsageError && missing.error.code === 2, String(missing.error));
-  assert.match(missing.error.message, /preview\.json says the preview was reached with a site token: pass --auth-header or --token-env/);
+  assert.match(missing.error.message, /^inherited needs the site token to read a protected preview\npreview\.json says the preview was reached with a site token: pass --auth-header or --token-env/);
   assert.deepEqual(missing.requests, [], 'nothing was requested without the token');
   assert.deepEqual(missing.stub.calls(), []);
 
   const wrong = await scenario('protected-wrong-token', { token: SECRET, record: { auth: true }, auth: 'token not-the-one' });
   assert.ok(wrong.error instanceof UsageError && /answered HTTP 401: the site token was not accepted/.test(wrong.error.message), String(wrong.error));
   assert.ok(!wrong.error.message.includes('not-the-one'), 'the offered token is not echoed');
+  assert.deepEqual(wrong.stub.calls(), [], 'no instrument ran with a token the preview refused');
 });
 
-await check('a token the preview does not need is not sent, to the request or to either instrument, even when the environment holds one; a non-"token" scheme is sent as given to .plain.html', async () => {
-  const ambient = { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'ambient-secret' };
+await check('an instrument that echoes the token has it redacted from its row and from the error of a bot challenge; no flag, no token: a SITE_TOKEN in the environment is never handed on', async () => {
+  const leaky = await scenario('protected-leak', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { readability: { exit: 2, stderr: `request failed: token ${SECRET}\n`, json: undefined } } });
+  assert.ifError(leaky.error);
+  assert.deepEqual([pick(leaky.result.rows, 'ai-readability').status, pick(leaky.result.rows, 'ai-readability').detail], ['ERROR', 'request failed: [redacted]']);
+  assert.ok(!readFileSync(join(outOf(leaky.root), 'inherited.json'), 'utf8').includes(SECRET));
+  const challenged = await scenario('protected-challenge', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { qa: { exit: 3, stdout: '', stderr: `bot challenge for ${SECRET}\n` } } });
+  assert.equal(challenged.error?.code, 3, String(challenged.error));
+  assert.equal(challenged.error.message, 'bot challenge for [redacted]');
+
+  const ambient = { ...process.env, SITE_TOKEN: 'ambient-secret', DEPLOYED_GATE_SITE_TOKEN: 'ambient-secret' };
   const unneeded = await scenario('public-with-token', { auth: `token ${SECRET}`, env: ambient });
   assert.ifError(unneeded.error);
   assert.equal(unneeded.result.verdict, 'PASS');
   assert.equal(unneeded.requests[0].headers.authorization, undefined);
-  assert.deepEqual(unneeded.stub.calls().map((c) => [c.tool, c.token]), [['readability', null], ['qa', null]], 'neither instrument was handed one, and both ran: the preview is public');
-  for (const c of unneeded.stub.calls()) assert.ok(!c.argv.includes('--token-env'), `${c.tool}: no --token-env`);
+  assert.deepEqual(unneeded.stub.calls().map((c) => [c.tool, c.token]), [['readability', null], ['qa', null]], 'a public preview is handed no token, and both instruments ran');
+  for (const c of unneeded.stub.calls()) assert.ok(!c.argv.some((a) => a === '--token-env' || a === '--auth-origin'), `${c.tool}: no auth flag`);
+});
 
+await check('a non-"token" scheme is sent as given to .plain.html and to the instruments (by environment)', async () => {
   const open = await startPreviewServer();
   try {
     const root = project('bearer-open', { origin: open.origin, record: { auth: true } });
+    writeSchema(root);
+    writeDesign(root);
     const stub = stubTools('bearer-open');
     const got = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth: `bearer ${SECRET}`, tools: stub.tools });
     assert.equal(got.verdict, 'PASS');
     assert.equal(open.requests[0].headers.authorization, `bearer ${SECRET}`, '.plain.html is fetched with the header as given');
-    assert.equal(pick(got.rows, 'ai-readability').value, AI_PROTECTED);
-    assert.deepEqual(stub.calls(), [], 'neither instrument ran');
+    assert.deepEqual(stub.calls().map((c) => c.token), [`bearer ${SECRET}`, `bearer ${SECRET}`]);
   } finally { await open.close(); }
 });
 
@@ -621,22 +636,23 @@ await check('the project-copy layout: the CLI finds the instruments beside the r
   const guarded = await startPreviewServer({ token: SECRET });
   try {
     const root = project('copy-protected', { origin: guarded.origin, record: { auth: true } });
+    writeSchema(root);
+    writeDesign(root);
     stubTools('copy-protected-stubs', { readability: readability(99) }, join(copy, 'deploy'));
     const gate2 = (extra, env = {}) => run(['inherited', '--page', 'home', ...extra], { cwd: root, script: gate, env });
+    const callsFile = join(copy, 'deploy', 'calls.jsonl');
+    const ran = () => readFileSync(callsFile, 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+    const before = ran().length;
     const bare = await gate2([]);
     assert.equal(bare.status, 2, bare.all);
     assert.match(bare.stderr, /pass --auth-header or --token-env/);
-    const callsFile = join(copy, 'deploy', 'calls.jsonl');
-    const ran = () => readFileSync(callsFile, 'utf8').trim().split('\n').length;
-    const before = ran();
     const ok = await gate2(['--token-env', 'MY_SITE_TOKEN'], { MY_SITE_TOKEN: SECRET });
     assert.equal(ok.status, 0, ok.all);
-    assert.equal(ok.stdout.split('\n')[0], 'PASS inherited');
-    assert.ok(ok.stdout.includes('n/a: protected preview (qa-gate)'), ok.stdout);
-    assert.ok(ok.stdout.includes(`${AI_PROTECTED} (ai-readability)`), ok.stdout);
+    assert.equal(ok.stdout.trim().split('\n')[0], 'PASS inherited');
+    assert.ok(!/n\/a/.test(ok.stdout), `both instruments ran on the protected preview: ${ok.stdout}`);
     assert.ok(!ok.all.includes(SECRET) && !readFileSync(join(outOf(root), 'inherited.json'), 'utf8').includes(SECRET));
-    assert.deepEqual(guarded.requests.map((q) => q.headers.authorization), [`token ${SECRET}`], 'the one request carried the header');
-    assert.equal(ran(), before, 'neither instrument ran: no token reached either');
+    assert.deepEqual(guarded.requests.map((q) => q.headers.authorization), [`token ${SECRET}`], 'the one request of this step carried the header');
+    assert.deepEqual(ran().slice(before).map((c) => [c.tool, c.token, c.argv.includes('--auth-origin')]), [['readability', `token ${SECRET}`, true], ['qa', `token ${SECRET}`, true]], 'no instrument ran without the token, both with it');
   } finally { await guarded.close(); }
 });
 
@@ -698,6 +714,32 @@ if (playwrightOk) {
       assert.match(broken.row.detail, /content cap 900px holds at 2560/);
       assert.deepEqual([broken.result.verdict, broken.result.exit], ['FAIL', 1]);
     } finally { await server.close(); }
+  });
+
+  await check('the real ai-readability and qa-gate on a protected preview: both measure it, and only the preview origin receives the token, not an image host on a second origin', async () => {
+    const real = deployTools();
+    const watch = watchRequests();
+    const asset = await startSourceServer();
+    const page = join(scratch, 'protected-third-party.html');
+    writeFileSync(page, readFileSync(fixturePath('home.html'), 'utf8').replace('<body>', () => `<body><img alt="" width="8" height="8" src="${asset.origin}/images/hero.png">`));
+    const server = await startPreviewServer({ token: SECRET, pages: { '/ns/home': page } });
+    try {
+      const root = project('real-protected', { origin: server.origin, record: { auth: true } });
+      writeSchema(root);
+      writeFileSync(join(outOf(root), 'design.json'), `${JSON.stringify({ extensions: { breakpoints: { containerMaxWidth: '1200px', probeWidth: 2560 } } })}\n`);
+      const result = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth: `token ${SECRET}`, tools: real });
+      assert.equal(result.verdict, 'PASS', JSON.stringify(result.rows));
+      assert.deepEqual([pick(result.rows, 'ai-readability').value, pick(result.rows, 'ai-readability').status], ['100', 'PASS']);
+      assert.equal(pick(result.rows, 'qa-gate').status, 'PASS', JSON.stringify(pick(result.rows, 'qa-gate')));
+      const at = (port) => watch.seen.filter((q) => q.port === Number(port));
+      const previewSeen = at(new URL(server.origin).port);
+      assert.ok(previewSeen.length >= 3, `the preview was read by the step and both instruments: ${previewSeen.length} requests`);
+      assert.deepEqual([...new Set(previewSeen.map((q) => q.authorization))], [`token ${SECRET}`], 'every request to the preview carried the token');
+      const imageSeen = at(new URL(asset.origin).port);
+      assert.ok(imageSeen.some((q) => q.path === '/images/hero.png'), 'the image on the second origin was requested');
+      assert.deepEqual(imageSeen.map((q) => q.authorization), imageSeen.map(() => undefined), 'and it was sent no Authorization');
+      assert.ok(!readFileSync(join(outOf(root), 'inherited.json'), 'utf8').includes(SECRET));
+    } finally { watch.stop(); await server.close(); await asset.close(); }
   });
 }
 

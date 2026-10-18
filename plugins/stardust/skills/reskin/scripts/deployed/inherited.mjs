@@ -10,12 +10,11 @@
 //                       deploy Step 2b) and the sizing model parity's cap-probe captured (<deployed>/design.json)
 //   by deploy           localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own loop before the
 //                       push; recorded, never PASS or FAIL, never part of the verdict
-// A protected preview (preview.json says auth: true) needs the site token, and only the .plain.html request carries it, to
-// the preview origin and to no other (a record whose plain URL is elsewhere is a setup error). ai-readability sets its header
-// on the whole browser context, so it would reach every origin the page loads: its row is "n/a: protected preview", as
-// qa-gate's, which carries no site auth. This step sends a token the preview does not need to no request and no instrument
-// (content, tokens and figma send theirs wherever one is given). The token never travels in argv or by environment to an
-// instrument and never appears in a row, a line or a record.
+// A protected preview (preview.json says auth: true) needs the site token, `auth`, and without one is a setup error. It goes
+// to the preview origin and to no other: the .plain.html request carries it, and ai-readability and qa-gate get it by
+// environment and --token-env, aimed at that origin by --auth-origin (the token never travels in argv, and never appears in a
+// row, a line or a record). A record whose plain URL is elsewhere is a setup error. A public preview is sent none, whatever
+// token was given.
 //   plainAsserts(html)  the problems of an authored form, as strings; none is a pass
 //   runInherited({ dir, slug, preview, auth, tools, env })  writes inherited.json ({ verdict, rows }) and returns
 //        { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, value, bar, status: 'PASS' | 'FAIL' |
@@ -32,7 +31,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { authHint, callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
+import { callOnPreview, exitOf, firstLine, outputOf, parseJson, previewToken } from './child.mjs';
 import { fetchOnce } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
@@ -180,12 +179,9 @@ function gapDetail(page) {
   return lines.join('\n') || null;
 }
 
-// ai-readability sets the site token as an extra header of its whole browser context, so it would reach every origin the
-// page loads: a protected preview is not read with it.
-async function readabilityRow({ preview, out, tools, env }) {
-  if (preview.auth) return naRow('ai-readability', 'protected preview (ai-readability sends its header to every origin)');
+async function readabilityRow({ preview, token, out, tools, env }) {
   const file = join(out, 'ai-readability.json');
-  const r = await call('ai-readability', tools.readability, ['--origin', preview.origin, preview.path, '--min', String(MIN_READABILITY), '--json', file], childEnv(env, null));
+  const r = await callOnPreview('ai-readability', tools.readability, ['--origin', preview.origin, preview.path, '--min', String(MIN_READABILITY), '--json', file], env, { token, url: preview.url });
   const page = counted(r) ? readJsonFile(file)?.pages?.[0] : null;
   const score = page?.code?.score;
   if (!Number.isFinite(score)) {
@@ -195,11 +191,10 @@ async function readabilityRow({ preview, out, tools, env }) {
   return score < MIN_READABILITY ? row('ai-readability', 'FAIL', String(score), gapDetail(page)) : row('ai-readability', 'PASS', String(score));
 }
 
-async function qaRow({ preview, schema, design, out, tools, env }) {
-  if (preview.auth) return naRow('qa-gate', 'protected preview');
+async function qaRow({ preview, token, schema, design, out, tools, env }) {
   if (!existsSync(schema)) return naRow('qa-gate', 'run deploy Step 2b');
   if (!existsSync(design)) return naRow('qa-gate', 'run deployed-gate parity first (design.json)');
-  const r = await call('qa-gate', tools.qa, [preview.url, '--schema', schema, '--design', design], childEnv(env, null));
+  const r = await callOnPreview('qa-gate', tools.qa, [preview.url, '--schema', schema, '--design', design], env, { token, url: preview.url });
   writeFileSync(join(out, 'qa-gate.txt'), r.stdout);
   const summary = r.stdout.match(/^QA GATE: (?:PASS|FAIL) — (.+)$/m)?.[1];
   if (!counted(r) || !summary) return errorRow('qa-gate', exitOf(r), firstLine(outputOf(r, null)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`);
@@ -221,11 +216,10 @@ export async function runInherited({ dir, slug, preview, auth = null, tools = nu
   if (!sameOrigin(preview.plain, preview.origin)) {
     throw new UsageError(`preview.json plain URL is not on the preview origin (${preview.plain}, origin ${preview.origin}): the site token goes to the preview origin only; run deployed-gate preview --page ${slug} again`);
   }
-  if (preview.auth && !auth) throw new UsageError(`inherited needs the site token to read a protected preview${authHint(preview, auth)}`);
+  const token = previewToken('inherited', preview, auth);
   const instruments = tools ? checkTools(tools) : deployTools();
   mkdirSync(out, { recursive: true });
 
-  const token = preview.auth ? auth : null;
   const run = {
     preview,
     token,

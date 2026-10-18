@@ -289,12 +289,9 @@ fetches `.plain.html` without a browser.
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`).
-  `parity`, `sanity` and the `qa-gate` and `ai-readability` rows are
-  `n/a: protected preview`: their instruments
-  carry no site auth, and `ai-readability` sets its header on its whole
-  browser context, so the token would reach every origin the page loads.
-  `content`, `tokens`, the `.plain.html` row and `figma` authenticate, and
-  `content`, `inherited` and `all` stop with exit 2 when given no token.
+  Every step measures it with the site token, sent to the preview origin
+  only, and stops with exit 2 when given none: no row is `n/a` for want of
+  one.
 - **Figma on a preview.** B0 finds each slot in the preview's
   `.plain.html`, then in the decorated page: the section is
   `main > div:nth-child(k)` of the decorated div, since decoration can

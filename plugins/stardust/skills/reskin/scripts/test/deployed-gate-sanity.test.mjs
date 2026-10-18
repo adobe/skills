@@ -11,14 +11,14 @@ import { spawn } from 'node:child_process';
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
 import { diffTools, runSanity, sanityLines } from '../deployed/sanity.mjs';
-import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
+import { fixturePath, startPreviewServer, startSourceServer, watchRequests } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
@@ -150,11 +150,11 @@ await check('--help documents sanity; its usage errors exit 2 and write nothing;
   copyFileSync(GATE, join(dir, 'deployed-gate.mjs'));
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /deployed-gate\.mjs sanity --page <slug> \[--reskin <file>\] \[--dir stardust\]/);
+  assert.match(r.stdout, /deployed-gate\.mjs sanity --page <slug> \[--reskin <file>\] \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
   for (const re of [/overflow/, /4px/, /decoration/, /broken images/, /page errors/, /clip-probe/, /content-presence/, /1440 and 360/, /never waivable/i, /FAIL sanity \(hard\)/, /protected preview/, /not run: skipped/]) assert.match(r.stdout, re);
   const help = r.stdout.replace(/\s+/g, ' ');
-  assert.ok(help.includes('prints only the one line "n/a: protected preview (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL)'), 'the help says what a protected preview prints');
-  assert.ok(help.includes('inside all the row reads "ADVISORY sanity n/a: protected preview"'), 'and what all prints');
+  assert.ok(help.includes('this step\'s browser and both instruments carry the token to the preview origin only (the instruments by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin>, the value by environment, never argv)'), 'the help says how a protected preview is measured');
+  assert.ok(!/n\/a: protected preview/.test(help), 'a protected preview is no longer n/a');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
   const root = project('sanity-usage', { preview: false });
@@ -162,7 +162,9 @@ await check('--help documents sanity; its usage errors exit 2 and write nothing;
     [['sanity'], /sanity needs --page <slug>/],
     [['sanity', '--page', '../x'], /--page must be a slug/],
     [['sanity', '--page', 'home', '--org', 'o'], /unknown flag --org for sanity/],
-    [['sanity', '--page', 'home', '--auth-header', 'token x'], /unknown flag --auth-header for sanity/],
+    [['sanity', '--page', 'home', '--auth-header', '--dir', 'x'], /--auth-header needs a value/],
+    [['sanity', '--page', 'home', '--token-env', '  '], /--token-env needs a value/],
+    [['sanity', '--page', 'home', '--auth-header=token x'], /unknown flag --auth-header for sanity: a flag and its value are separate arguments/],
     [['sanity', '--page', 'home', 'stray'], /unexpected argument "stray"/],
     [['sanity', '--page'], /--page needs a value/],
     [['sanity', '--page', 'home', '--reskin', '--dir', 'x'], /--reskin needs a value/],
@@ -195,30 +197,22 @@ await check('--help documents sanity; its usage errors exit 2 and write nothing;
   assert.ok(!existsSync(join(outOf(noPage), 'sanity.json')));
 });
 
-await check('a protected preview: every row is "n/a: protected preview", nothing is run or served, sanity.json says so (hard), and the CLI prints the one n/a line with exit 0', async () => {
+await check('a protected preview needs the site token: without one runSanity and the CLI are exit 2 before anything is measured, served or run, and no record is written; an unset --token-env variable is exit 2 too', async () => {
   const root = project('protected', { record: { auth: true } });
   const stub = stubTools('protected-stubs');
-  const result = await runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: smallPage(), tools: stub.tools });
-  assert.equal(result.verdict, 'n/a');
-  assert.equal(result.exit, 0);
-  assert.deepEqual(result.rows.map((r) => `${r.check}@${r.width}`), [
-    ...BROWSER_CHECKS.map((c) => `${c}@1440`), 'clip-probe@1440', 'content-presence@1440', ...BROWSER_CHECKS.map((c) => `${c}@360`),
-  ]);
-  for (const r of result.rows) {
-    assert.equal(r.status, 'n/a');
-    assert.equal(r.value, 'n/a: protected preview');
-    assert.equal(r.artifact, null);
-  }
+  const got = await attempt(() => runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: smallPage(), tools: stub.tools }));
+  assert.ok(got.error instanceof UsageError && got.error.code === 2, String(got.error));
+  assert.match(got.error.message, /^sanity needs the site token to read a protected preview\npreview\.json says the preview was reached with a site token: pass --auth-header or --token-env/);
   assert.deepEqual(stub.calls(), [], 'nothing was run');
-  assert.deepEqual(readJson(join(outOf(root), 'sanity.json')), { verdict: 'n/a', hard: true, rows: result.rows });
-  const lines = sanityLines(result);
-  assert.equal(lines.length, 1);
-  assert.match(lines[0], /^n\/a: protected preview \(overflow @1440, decoration @1440, broken images @1440, page errors @1440, clip-probe @1440, content-presence @1440, overflow @360, /);
+  assert.ok(!existsSync(join(outOf(root), 'sanity.json')), 'no verdict');
 
   const cli = await sanity(root, ['--reskin', smallPage()]);
-  assert.equal(cli.status, 0, cli.all);
-  assert.equal(cli.stdout.trim(), lines[0]);
-  assert.ok(!/PASS|FAIL/.test(cli.stdout));
+  assert.equal(cli.status, 2, cli.all);
+  assert.match(cli.stderr, /sanity needs the site token to read a protected preview/);
+  assert.ok(!existsSync(join(outOf(root), 'sanity.json')));
+  const unset = await sanity(root, ['--reskin', smallPage(), '--token-env', 'STARDUST_M2C_UNSET_TOKEN']);
+  assert.equal(unset.status, 2, unset.all);
+  assert.match(unset.stderr, /no site token: the variable --token-env names is not set/);
 });
 
 await check('main dispatches sanity to a replaceable step and returns its exit code; --help runs before it', async () => {
@@ -234,15 +228,16 @@ await check('main dispatches sanity to a replaceable step and returns its exit c
 let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  browser parts (playwright not importable here; run this test in an environment that has it)'); }
 
-// One runSanity against a fake preview serving `previewPage`; the browser rows are measured for real, with a short
-// EDS bound. → { result | error, stub, root, previewUrl }: no throw.
-const scenario = async (name, cfg = {}, { reskin = smallPage(), previewPage = HOME, widths = [1440], serverOptions = {}, env = process.env } = {}) => {
-  const server = await startPreviewServer({ pages: { '/ns/home': previewPage }, ...serverOptions });
+// One runSanity against a fake preview serving `previewPage` (token: it demands it; record: preview.json's extra fields;
+// auth: what the step is given); the browser rows are measured for real, with a short EDS bound.
+// → { result | error, stub, root, previewUrl, requests }: no throw.
+const scenario = async (name, cfg = {}, { reskin = smallPage(), previewPage = HOME, widths = [1440], serverOptions = {}, token = null, record = {}, auth = null, env = process.env } = {}) => {
+  const server = await startPreviewServer({ pages: { '/ns/home': previewPage }, token, ...serverOptions });
   try {
-    const root = project(name, { origin: server.origin });
+    const root = project(name, { origin: server.origin, record });
     const stub = stubTools(name, cfg);
-    const got = await attempt(() => runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: reskin, widths, tools: stub.tools, env, edsTimeoutMs: 1500 }));
-    return { result: got.value, error: got.error, stub, root, previewUrl: `${server.origin}/ns/home` };
+    const got = await attempt(() => runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth, reskinPage: reskin, widths, tools: stub.tools, env, edsTimeoutMs: 1500 }));
+    return { result: got.value, error: got.error, stub, root, previewUrl: `${server.origin}/ns/home`, requests: server.requests };
   } finally { await server.close(); }
 };
 const fails = (result) => brief(result.rows).filter((r) => r.status === 'FAIL').map((r) => `${r.check}@${r.width}`);
@@ -283,6 +278,72 @@ if (playwrightOk) {
     assert.deepEqual(Object.keys(result.rows[0]).sort(), ['artifact', 'bar', 'check', 'detail', 'status', 'value', 'width']);
     assert.deepEqual(readJson(join(outOf(root), 'sanity.json')), { verdict: 'PASS', hard: true, rows: result.rows });
     assert.deepEqual(sanityLines(result), ['PASS sanity']);
+  });
+
+  const SECRET = 'hlxtok-0123456789abcdef';
+  const TOKEN_FLAGS = ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN'];
+  const protectedBy = (token = SECRET) => ({ token: SECRET, record: { auth: true }, auth: `token ${token}` });
+  const portOf = (origin) => Number(new URL(origin).port);
+
+  await check('a protected preview is measured: the four browser rows and both instruments read it with the token, for the preview origin only (not an image host, not the served reskin page), and the token is in no argument, row, record or line', async () => {
+    const watch = watchRequests();
+    const asset = await startSourceServer();
+    try {
+      const page = variant('protected-third-party', ['<body>', `<body><img alt="" width="8" height="8" src="${asset.origin}/images/hero.png">`]);
+      const { result, stub, root, previewUrl, requests, error } = await scenario('protected', {}, { previewPage: page, widths: [1440, 360], ...protectedBy() });
+      assert.ifError(error);
+      assert.equal(result.verdict, 'PASS', JSON.stringify(brief(result.rows)));
+      assert.equal(result.rows.length, 10);
+      assert.deepEqual(result.rows.filter((r) => r.status !== 'PASS'), [], 'every row was measured');
+      const origin = new URL(previewUrl).origin;
+      const out = join(outOf(root), 'sanity');
+      const [clip, presence, ...rest] = stub.calls();
+      assert.equal(rest.length, 0);
+      assert.deepEqual(clip.argv, [previewUrl, '--width', '1440', '--plain', '--json', join(out, 'clip-probe-1440.json'), ...TOKEN_FLAGS, '--auth-origin', origin]);
+      assert.deepEqual(presence.argv, [presence.argv[0], previewUrl, '--width', '1440', '--plain', '--json', join(out, 'content-presence-1440.json'), ...TOKEN_FLAGS, '--auth-origin', origin]);
+      assert.notEqual(new URL(presence.argv[0]).origin, origin, 'the reskin page is served from another origin');
+      assert.deepEqual([clip.token, presence.token], [`token ${SECRET}`, `token ${SECRET}`], 'the token reaches each by environment');
+      assert.equal(presence.reskin, 200);
+
+      assert.ok(requests.length >= 4 && requests.every((q) => q.headers.authorization === `token ${SECRET}`), 'every request to the preview carried the token');
+      const elsewhere = watch.seen.filter((q) => q.port !== portOf(origin));
+      assert.ok(elsewhere.some((q) => q.port === portOf(asset.origin) && q.path === '/images/hero.png'), 'the image on the second origin was requested');
+      assert.ok(elsewhere.some((q) => q.path === new URL(presence.argv[0]).pathname), 'and the served reskin page');
+      assert.deepEqual(elsewhere.map((q) => q.authorization), elsewhere.map(() => undefined), 'neither was sent an Authorization');
+
+      const text = [JSON.stringify(stub.calls().map((c) => c.argv)), readFileSync(join(outOf(root), 'sanity.json'), 'utf8'), ...sanityLines(result)].join('\n');
+      assert.ok(!text.includes(SECRET), 'the token is in no argument, record or line');
+    } finally { watch.stop(); await asset.close(); }
+  });
+
+  await check('a token the protected preview refuses is no verdict: the four rows of each width are "ERROR (exit 124)" with "HTTP 401 at <url>", never a pass; the offered token is in no row', async () => {
+    const { result, previewUrl, error } = await scenario('protected-wrong-token', {}, { ...protectedBy('not-the-one'), widths: [1440, 360] });
+    assert.ifError(error);
+    assert.deepEqual([result.verdict, result.exit], ['ERROR', 124]);
+    for (const width of [1440, 360]) {
+      for (const c of BROWSER_CHECKS) assert.deepEqual([pick(result.rows, c, width).status, pick(result.rows, c, width).detail], ['ERROR', `HTTP 401 at ${previewUrl}`], `${c} @${width}`);
+    }
+    assert.ok(!JSON.stringify(result).includes('not-the-one'));
+  });
+
+  await check('a token the preview does not need is sent to no request and no instrument, even when the environment holds one', async () => {
+    const ambient = { ...process.env, SITE_TOKEN: 'ambient-secret', DEPLOYED_GATE_SITE_TOKEN: 'ambient-secret' };
+    const { result, stub, requests, error } = await scenario('public-with-token', {}, { auth: `token ${SECRET}`, env: ambient });
+    assert.ifError(error);
+    assert.equal(result.verdict, 'PASS');
+    assert.ok(requests.length > 0 && requests.every((q) => q.headers.authorization === undefined), 'no request carried a token');
+    assert.deepEqual(stub.calls().map((c) => c.token), [null, null]);
+    for (const c of stub.calls()) assert.ok(!c.argv.some((a) => a === '--token-env' || a === '--auth-origin'), `${c.tool}: no auth flag`);
+  });
+
+  await check('an instrument that echoes the token has it redacted from its row, and from the error of a bot challenge', async () => {
+    const leaky = await scenario('protected-leak', { clip: { exit: 1, stderr: `clip-probe: refused token ${SECRET}\n` } }, protectedBy());
+    assert.ifError(leaky.error);
+    assert.equal(pick(leaky.result.rows, 'clip-probe', 1440).detail, 'clip-probe: refused [redacted]');
+    assert.ok(!readFileSync(join(outOf(leaky.root), 'sanity.json'), 'utf8').includes(SECRET));
+    const challenged = await scenario('protected-challenge', { presence: { exit: 3, stderr: `bot challenge for ${SECRET}\n` } }, protectedBy());
+    assert.equal(challenged.error?.code, 3, String(challenged.error));
+    assert.equal(challenged.error.message, 'bot challenge for [redacted]');
   });
 
   await check('overflow: scrollWidth − clientWidth at most 4px at each width; a 600px element at 360 is 240px over, and 4px over passes', async () => {
@@ -542,6 +603,24 @@ if (playwrightOk) {
       assert.equal(record.verdict, 'PASS');
       assert.equal(record.hard, true);
       assert.deepEqual([...new Set(record.rows.map((r) => r.width))], [1440, 360], 'both default widths were measured');
+
+      const guarded = await startPreviewServer({ token: SECRET, pages: { '/ns/home': HOME } });
+      try {
+        const gRoot = project('copy-protected', { origin: guarded.origin, record: { auth: true } });
+        stubTools('copy-protected-stubs', {}, join(copy, 'diff'));
+        const ran = () => readFileSync(join(copy, 'diff', 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        const before = ran().length;
+        const bare = await run(['sanity', '--page', 'home', '--reskin', page], { cwd: gRoot, script: gate });
+        assert.equal(bare.status, 2, bare.all);
+        assert.match(bare.stderr, /pass --auth-header or --token-env/);
+        assert.equal(ran().length, before, 'no instrument ran without the token');
+        const ok = await run(['sanity', '--page', 'home', '--reskin', page, '--token-env', 'MY_SITE_TOKEN'], { cwd: gRoot, script: gate, env: { MY_SITE_TOKEN: SECRET } });
+        assert.equal(ok.status, 0, ok.all);
+        assert.equal(ok.stdout.trim(), 'PASS sanity');
+        assert.deepEqual(ran().slice(before).map((c) => [c.tool, c.token]), [['clip', `token ${SECRET}`], ['presence', `token ${SECRET}`]]);
+        assert.ok(!ok.all.includes(SECRET) && !readFileSync(join(outOf(gRoot), 'sanity.json'), 'utf8').includes(SECRET));
+        assert.ok(guarded.requests.length > 0 && guarded.requests.every((q) => q.headers.authorization === `token ${SECRET}`), 'every request to the protected preview carried the token');
+      } finally { await guarded.close(); }
       rmSync(join(copy, 'diff', 'content-presence.mjs'));
       const missing = await run(['sanity', '--page', 'home', '--reskin', page], { cwd: root, script: gate });
       assert.equal(missing.status, 2, missing.all);
@@ -577,6 +656,29 @@ if (playwrightOk) {
       assert.equal(pick(result.rows, 'content-presence', 1440).status, 'PASS', 'no heading or link was lost: the clip is what this row sees');
       assert.ok(sanityLines(result).includes(`  clip-probe ${clip.value} > 0 @1440`));
     } finally { await server.close(); }
+  });
+
+  await check('the real instruments on a protected preview: PASS sanity; the token goes to the preview origin only, not to an image host or the served reskin page, and is in no file', async () => {
+    const watch = watchRequests();
+    const asset = await startSourceServer();
+    const page = variant('real-protected', ['<body>', `<body><img alt="" width="8" height="8" src="${asset.origin}/images/hero.png">`]);
+    const server = await startPreviewServer({ token: SECRET, pages: { '/ns/home': page } });
+    try {
+      const root = project('real-protected', { origin: server.origin, record: { auth: true } });
+      const result = await runSanity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth: `token ${SECRET}`, reskinPage: reskinPage() });
+      assert.equal(result.verdict, 'PASS', JSON.stringify(brief(result.rows).filter((r) => r.status !== 'PASS')));
+      assert.deepEqual(result.rows.filter((r) => r.status !== 'PASS'), []);
+      assert.equal(result.rows.length, 10, 'four browser rows at each width, then clip-probe and content-presence');
+      const preview = watch.seen.filter((q) => q.port === portOf(server.origin));
+      const elsewhere = watch.seen.filter((q) => q.port !== portOf(server.origin));
+      assert.ok(preview.length > 6 && preview.every((q) => q.authorization === `token ${SECRET}`), 'every request to the preview carried the token');
+      assert.ok(elsewhere.some((q) => q.port === portOf(asset.origin) && q.path === '/images/hero.png'), 'the image on the second origin was requested');
+      assert.ok(elsewhere.some((q) => q.path === `/${basename(reskinPage())}`), 'and the served reskin page');
+      assert.deepEqual(elsewhere.map((q) => q.authorization), elsewhere.map(() => undefined), 'neither was sent an Authorization');
+      const files = readdirSync(outOf(root), { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+      assert.ok(files.length >= 3, 'the scan covers sanity.json and the instruments\' reports');
+      assert.deepEqual(files.filter((f) => readFileSync(f).includes(SECRET)), [], 'no file holds the token');
+    } finally { watch.stop(); await server.close(); await asset.close(); }
   });
 }
 

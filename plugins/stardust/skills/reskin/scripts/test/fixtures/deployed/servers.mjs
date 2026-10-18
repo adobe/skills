@@ -13,6 +13,9 @@
 //     source.html at "/" and its image at /images/hero.png: the live source content-model.json captured.
 //   loadSourceModel(origin) → content-model.json with _provenance.url set to `${origin}/`.
 //   fixturePath(name), solidPng(w, h, [r, g, b]).
+//   watchRequests() → { seen, stop }: every request answered by a server created after the call, by any module, as
+//     { port, path, authorization }; where a site token went, port by port (the preview's, a second origin's, the
+//     reskin page's own server).
 //
 // What the fixtures contain, so the gates' tests can rely on it. home.html (the delivered preview page, served
 // at /ns/home) and source.html carry the same copy in the same order: h1 "Welcome to the kit", the lead, the
@@ -38,8 +41,9 @@
 // "card". Its block CSS (display: grid) applies only once data-block-status is "loaded", as in EDS. As EDS
 // delivers a page, home.html's head carries <meta name="nav" content="/ns/nav"> and <meta name="footer"
 // content="/ns/footer"> and home.plain.html has no metadata block (its first top-level <div> is empty).
-import { createServer } from 'node:http';
+import http, { createServer } from 'node:http';
 import { existsSync, readFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { deflateSync } from 'node:zlib';
@@ -50,6 +54,24 @@ const MEDIA = /(^|\/)media_[0-9a-f]+\.png$/;
 const HERO = [320, 180, [198, 214, 232]];
 
 export const fixturePath = (name) => (isAbsolute(name) ? name : join(HERE, name));
+
+// Every request that a server created from now on answers, whoever made it (a fixture, or the code under test: the
+// reskin page's static server): { port, path, authorization }. Where a site token went is then a fact of the run, port by
+// port. stop() puts node:http back.
+export function watchRequests() {
+  const seen = [];
+  const real = http.createServer;
+  http.createServer = function watched(...args) {
+    const server = real.apply(this, args);
+    server.on('request', (req) => seen.push({ port: req.socket.localPort, path: new URL(req.url, 'http://x').pathname, authorization: req.headers.authorization }));
+    return server;
+  };
+  syncBuiltinESMExports();
+  return {
+    seen,
+    stop() { http.createServer = real; syncBuiltinESMExports(); },
+  };
+}
 
 export function loadSourceModel(origin) {
   const model = JSON.parse(readFileSync(fixturePath('content-model.json'), 'utf8'));

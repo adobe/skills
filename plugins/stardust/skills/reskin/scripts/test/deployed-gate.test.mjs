@@ -840,15 +840,12 @@ await check('all: failing steps are "FAIL k/n" in the fragment (sanity with hard
   assert.deepEqual(Object.values(summaryAt(root).steps).map((x) => x.exit).slice(0, 5), [1, 1, 1, 1, 1]);
 });
 
-await check('all: an advisory content gate is "ADVISORY …" and a protected preview\'s parity and sanity are "n/a: protected preview": exit 0, every line still matches VERDICT_RE', async () => {
+await check('all: an advisory content gate is "ADVISORY …"; on a protected preview every step is handed the token and parity and sanity measure it: exit 0, every line still matches VERDICT_RE', async () => {
   const root = allRoot('all-advisory', { record: { auth: true } });
-  const na = (...checks) => checks.map((c) => rowOf(c, 1440, 'n/a', 'n/a: protected preview'));
   const r = await runAll(root, {
     extra: ['--auth-header', `token ${ALL_TOKEN}`],
     over: {
       content: () => ({ verdict: 'ADVISORY', unusedDeltas: [], gates: [gateOf('dom-equality', 0, { advisory: true, lines: ['FAIL text diverges at char 12'] }), gateOf('slot-coverage')] }),
-      parity: () => ({ verdict: 'n/a', exit: 0, rows: na('pixel', 'height') }),
-      sanity: () => ({ verdict: 'n/a', exit: 0, hard: true, rows: na('overflow') }),
     },
   });
   assert.equal(r.code, 0, r.lines.join('\n'));
@@ -856,13 +853,11 @@ await check('all: an advisory content gate is "ADVISORY …" and a protected pre
   assert.deepEqual(verdicts.map(stepOf), STEPS);
   for (const l of verdicts) assert.match(l, VERDICT_RE, l);
   assert.match(verdicts[0], /^ADVISORY content: dom-equality/);
-  assert.match(verdicts[2], /^ADVISORY parity n\/a: protected preview/);
-  assert.match(verdicts[3], /^ADVISORY sanity n\/a: protected preview/);
+  assert.deepEqual(verdicts.slice(2, 5), ['PASS parity', 'PASS sanity', 'PASS inherited']);
   assert.ok(r.lines.includes('    FAIL text diverges at char 12'));
   const f = summaryAt(root).ledgerFragment;
-  assert.deepEqual([f.content, f.parity, f.sanity], ['ADVISORY dom-equality (deltas.blocking false)', 'n/a: protected preview', { verdict: 'n/a: protected preview', hard: true }]);
-  assert.deepEqual([r.args.content.auth, r.args.tokens.auth, r.args.inherited.auth], Array(3).fill(`token ${ALL_TOKEN}`), 'the steps that take the token get it');
-  for (const name of ['parity', 'sanity']) assert.equal('auth' in r.args[name], false, `${name} takes no token`);
+  assert.deepEqual([f.content, f.parity, f.sanity, f.inherited], ['ADVISORY dom-equality (deltas.blocking false)', 'PASS', { verdict: 'PASS', hard: true }, 'PASS']);
+  assert.deepEqual(['content', 'tokens', 'parity', 'sanity', 'inherited'].map((name) => r.args[name].auth), Array(5).fill(`token ${ALL_TOKEN}`), 'every step that reads the preview gets the token');
   assert.equal(JSON.stringify([r.lines, summaryAt(root)]).includes(ALL_TOKEN), false);
 });
 
@@ -1001,14 +996,14 @@ await check('all: a step that passed with n/a rows is "PASS (n/a: <checks>)" in 
   const r = await runAll(root, {
     over: {
       parity: () => ({ verdict: 'PASS', exit: 0, rows: [rowOf('pixel', 1440, 'PASS'), na('header crop', 1440, crop), na('header crop', 360, crop), na('footer crop', 1440, crop)] }),
-      inherited: () => ({ verdict: 'PASS', exit: 0, rows: [rowOf('.plain.html', null, 'PASS'), na('ai-readability', null, 'n/a: protected preview'), na('qa-gate', null, 'n/a: run deploy Step 2b')] }),
+      inherited: () => ({ verdict: 'PASS', exit: 0, rows: [rowOf('.plain.html', null, 'PASS'), na('qa-gate', null, 'n/a: run deploy Step 2b')] }),
     },
   });
   assert.equal(r.code, 0, r.lines.join('\n'));
   assert.deepEqual(verdictLines(r.lines).slice(0, 5), ['PASS content', 'PASS tokens 12/12', 'PASS parity', 'PASS sanity', 'PASS inherited']);
   const s = summaryAt(root);
   const f = s.ledgerFragment;
-  assert.deepEqual([f.content, f.tokens, f.parity, f.sanity, f.inherited], ['PASS', 'PASS', 'PASS (n/a: header crop, footer crop)', { verdict: 'PASS', hard: true }, 'PASS (n/a: ai-readability, qa-gate)']);
+  assert.deepEqual([f.content, f.tokens, f.parity, f.sanity, f.inherited], ['PASS', 'PASS', 'PASS (n/a: header crop, footer crop)', { verdict: 'PASS', hard: true }, 'PASS (n/a: qa-gate)']);
   assert.deepEqual([s.steps.parity.verdict, s.steps.inherited.verdict], ['PASS', 'PASS']);
   assert.ok(s.steps.parity.detail.some((l) => l.includes(crop)), s.steps.parity.detail.join('\n'));
   assert.ok(s.steps.inherited.detail.some((l) => l.includes('n/a: run deploy Step 2b')), s.steps.inherited.detail.join('\n'));
@@ -1166,7 +1161,7 @@ await check('a token typed as the --token-env name is never echoed: not a name i
   const root = allRoot('all-token-name');
   const notAName = 'hlxtok-canary-7f3a91';
   const nameShaped = 'hlxtokcanary7f3a91';
-  const steps = [['preview', ...PAGE, '--namespace', 'ns'], ['content', '--page', 'home'], ['tokens', '--page', 'home'], ['inherited', '--page', 'home'], ['all', '--page', 'home']];
+  const steps = [['preview', ...PAGE, '--namespace', 'ns'], ['content', '--page', 'home'], ['tokens', '--page', 'home'], ['parity', '--page', 'home'], ['sanity', '--page', 'home'], ['inherited', '--page', 'home'], ['all', '--page', 'home']];
   const cases = [
     [notAName, /--token-env takes the name of an environment variable \(letters, digits and underscores\), not the token/],
     ['9starts-with-a-digit', /--token-env takes the name of an environment variable/],
@@ -1337,7 +1332,38 @@ if (playwrightOk) {
     } finally { await server.close(); await source.close(); }
   });
 
-  await check('real run on a protected preview with the real figma-gate: --auth-header and --token-env both pass, the figma fragment is the ledger\'s, and no file, line or stream holds the token', async () => {
+  await check('real run on a protected preview with a reskin page that matches it: all exits 0 and every step measures it, parity, sanity and inherited too (nothing is n/a), the fragment is PASS throughout, and no file, line or stream holds the token', async () => {
+    const source = await startSourceServer();
+    const server = await startPreviewServer({ token: CANARY, pages: { '/ns/home': HOME } });
+    try {
+      const root = realProject('real-protected-pass', source);
+      const header = `token ${CANARY}`;
+      const reskin = reskinPage();
+      const p = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', header]);
+      assert.equal(p.status, 0, p.all.replaceAll(CANARY, '[token]'));
+      const r = await allIn(root, server.origin, ['--reskin', reskin, '--token-env', 'STARDUST_T5_PREVIEW_TOKEN'], { STARDUST_T5_PREVIEW_TOKEN: CANARY });
+      assert.equal(r.status, 0, r.all.replaceAll(CANARY, '[token]'));
+      const verdicts = verdictLines(r.stdout.split('\n'));
+      assert.deepEqual(verdicts.map(stepOf), STEPS, r.stdout);
+      for (const l of verdicts) assert.match(l, VERDICT_RE, l);
+      assert.deepEqual(verdicts.slice(0, 5).map((l) => l.split(' ')[0]), Array(5).fill('PASS'), r.stdout);
+      assert.equal(/protected preview/.test(r.stdout), false, 'no row is n/a: protected preview');
+      const out = deployedDir(dirOf(root), 'home');
+      const measured = (file, check) => read(out, file).rows.find((x) => x.check === check)?.status;
+      assert.deepEqual([measured('parity.json', 'pixel'), measured('parity.json', 'cap-probe'), measured('sanity.json', 'overflow'), measured('sanity.json', 'clip-probe'), measured('sanity.json', 'content-presence'), measured('inherited.json', 'ai-readability')], Array(6).fill('PASS'), 'the rows that were n/a on a protected preview are measured');
+      const s = summaryAt(root);
+      assert.match(s.ledgerFragment.parity, /^PASS/);
+      assert.match(s.ledgerFragment.sanity.verdict, /^PASS/);
+      assert.equal(s.ledgerFragment.inherited, 'PASS (n/a: qa-gate)', 'qa-gate has no schema to read here');
+      assert.ok(s.invocation.endsWith('--token-env STARDUST_T5_PREVIEW_TOKEN'), s.invocation);
+      const leaked = walk(join(dirOf(root), '.work')).filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
+      assert.deepEqual(leaked, [], 'no file holds the token');
+      assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], 'stdout or stderr holds the token');
+      assert.deepEqual(server.requests.filter((q) => q.headers.authorization !== header).map((q) => q.path), ['/ns/home.plain.html'], 'only the preview step\'s anonymous first request lacked the token');
+    } finally { await server.close(); await source.close(); }
+  });
+
+  await check('real run on a protected preview with the real figma-gate (parity and sanity stand in as passed): --auth-header and --token-env both pass, every step is handed the token, the figma fragment is the ledger\'s, and no file or line holds the token', async () => {
     const source = await startSourceServer();
     const server = await startPreviewServer({ token: CANARY, pages: { '/ns/home': HOME } });
     try {
@@ -1351,24 +1377,30 @@ if (playwrightOk) {
         assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma', 'summary.json'))), 'the scan covers deployed/ and figma/');
         return files.filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
       };
-      for (const [label, extra, env] of [['--auth-header', ['--auth-header', header], {}], ['--token-env', ['--token-env', 'STARDUST_T12_PREVIEW_TOKEN'], { STARDUST_T12_PREVIEW_TOKEN: CANARY }]]) {
-        const r = await allIn(root, server.origin, ['--reskin', page, ...extra], env);
-        assert.equal(r.status, 0, `${label}: ${r.all.replaceAll(CANARY, '[token]')}`);
-        const verdicts = verdictLines(r.stdout.split('\n'));
-        assert.deepEqual(verdicts.map(stepOf), STEPS, r.stdout.replaceAll(CANARY, '[token]'));
-        assert.match(verdicts[2], /^ADVISORY parity n\/a: protected preview/);
-        assert.match(verdicts[3], /^ADVISORY sanity n\/a: protected preview/);
+      for (const [label, extra, envName] of [['--auth-header', ['--auth-header', header], null], ['--token-env', ['--token-env', 'STARDUST_T12_PREVIEW_TOKEN'], 'STARDUST_T12_PREVIEW_TOKEN']]) {
+        const handed = {};
+        const passedWith = (name, check) => async (a) => { handed[name] = a.auth; return { verdict: 'PASS', exit: 0, rows: passing(check) }; };
+        const lines = [];
+        if (envName) process.env[envName] = CANARY;
+        let code;
+        try {
+          code = await main(['all', '--page', 'home', '--dir', dirOf(root), '--reskin', page, ...extra], { env: { DEPLOY_VERIFY_ORIGIN: server.origin }, log: (m) => lines.push(m), runners: { parity: passedWith('parity', 'pixel'), sanity: passedWith('sanity', 'overflow') } });
+        } finally { if (envName) delete process.env[envName]; }
+        const text = lines.join('\n').replaceAll(CANARY, '[token]');
+        assert.equal(code, 0, `${label}: ${text}`);
+        const verdicts = verdictLines(lines);
+        assert.deepEqual(verdicts.map(stepOf), STEPS, text);
+        assert.deepEqual(verdicts.slice(0, 5).map((l) => l.split(' ')[0]), Array(5).fill('PASS'), text);
         assert.equal(verdicts[5], 'PASS figma', verdicts[5]);
+        assert.deepEqual(handed, { parity: header, sanity: header }, `${label}: parity and sanity are handed the token`);
         const s = summaryAt(root);
-        assert.equal(s.ledgerFragment.parity, 'n/a: protected preview');
-        assert.deepEqual(s.ledgerFragment.sanity, { verdict: 'n/a: protected preview', hard: true });
         assert.equal(s.ledgerFragment.figma.regime, 'preview');
         assert.equal(s.ledgerFragment.figma.join, 'PASS');
         assert.equal(s.invocation.includes(CANARY), false);
         assert.ok(s.invocation.endsWith(label === '--auth-header' ? '--auth-header [redacted]' : '--token-env STARDUST_T12_PREVIEW_TOKEN'), s.invocation);
         // Scanned after each run: the next one rewrites the files, so a leak of the first would be gone by then.
         assert.deepEqual(scanFiles(), [], `${label}: a file holds the token`);
-        assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], `${label}: stdout or stderr holds the token`);
+        assert.equal(lines.some((l) => l.includes(CANARY)), false, `${label}: a line holds the token`);
       }
       assert.ok(server.requests.some((q) => q.headers.authorization === header), 'the token went to the preview');
       assert.deepEqual(server.requests.filter((q) => q.headers.authorization !== header).map((q) => q.path), ['/ns/home.plain.html'], 'only the preview step\'s anonymous first request lacked the token');

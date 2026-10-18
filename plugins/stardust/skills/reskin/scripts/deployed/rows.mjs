@@ -9,7 +9,7 @@
 //   stepLines(step, { verdict, rows }, { failHeading, failure, unrun })  the lines the CLI prints: a line for the rows that
 //        gave no verdict, the verdict line, one indented line per failing row (its findings below), one line per ADVISORY
 //        row, and one line per distinct reason a row was not run (the statuses in `unrun`, default n/a)
-export const EXIT = { PASS: 0, 'n/a': 0, FAIL: 1, ERROR: 124 };
+export const EXIT = { PASS: 0, FAIL: 1, ERROR: 124 };
 const MAX_LISTED = 10;
 
 export const verdictOf = (rows) => (rows.some((r) => r.status === 'ERROR') ? 'ERROR' : rows.some((r) => r.status === 'FAIL') ? 'FAIL' : 'PASS');

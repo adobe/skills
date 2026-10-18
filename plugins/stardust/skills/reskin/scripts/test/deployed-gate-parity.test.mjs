@@ -17,7 +17,7 @@ import { readJson } from '../figma/io.mjs';
 import { main } from '../deployed-gate.mjs';
 import { deployedDir } from '../deployed/io.mjs';
 import { parityLines, previewExclusion, replicaTools, runParity } from '../deployed/parity.mjs';
-import { startPreviewServer } from './fixtures/deployed/servers.mjs';
+import { startPreviewServer, startSourceServer, watchRequests } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
@@ -55,15 +55,15 @@ const outOf = (root) => deployedDir(join(root, 'stardust'), 'home');
 const previewOf = (root) => readJson(join(outOf(root), 'preview.json'));
 const parity = (root, extra = [], opts = {}) => run(['parity', '--page', 'home', ...extra], { cwd: root, ...opts });
 
-// A small page: 64px header, 600px main, 40px footer, each left out on request; `css` adds rules.
+// A small page: 64px header, 600px main, 40px footer, each left out on request; `css` adds rules, `body` markup before main.
 let pageCount = 0;
-const smallPage = ({ header = true, footer = true, css = '' } = {}) => {
+const smallPage = ({ header = true, footer = true, css = '', body = '' } = {}) => {
   pageCount += 1;
   const file = join(scratch, `page-${pageCount}.html`);
   writeFileSync(file, `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>parity</title>
 <style>body{margin:0;font:16px/24px sans-serif}header{height:64px}main{height:600px}footer{height:40px}${css}</style></head>
-<body>${header ? '<header>Head</header>' : ''}<main><h1>Body</h1></main>${footer ? '<footer>Foot</footer>' : ''}</body></html>
+<body>${body}${header ? '<header>Head</header>' : ''}<main><h1>Body</h1></main>${footer ? '<footer>Foot</footer>' : ''}</body></html>
 `);
   return file;
 };
@@ -130,6 +130,12 @@ const flagOf = (argv, f) => argv[argv.indexOf(f) + 1];
 const brief = (rows) => rows.map(({ check, width, value, bar, status }) => ({ check, width, value, bar, status }));
 const pick = (rows, check, width) => rows.find((r) => r.check === check && r.width === width);
 
+// The site token a fake protected preview demands, the flags the instruments get for it, and what a scenario is given.
+const SECRET = 'hlxtok-0123456789abcdef';
+const TOKEN_FLAGS = ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN'];
+const protectedBy = (given = SECRET) => ({ token: SECRET, record: { auth: true }, auth: `token ${given}` });
+const portOf = (origin) => Number(new URL(origin).port);
+
 // ---- no browser ------------------------------------------------------------------------------------------------
 
 await check('replicaTools finds the five instruments in the plugin tree and in the project copy, and names what is missing', () => {
@@ -170,11 +176,11 @@ await check('--help documents parity; its usage errors exit 2 and write nothing;
   copyFileSync(GATE, join(dir, 'deployed-gate.mjs'));
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /deployed-gate\.mjs parity --page <slug> \[--reskin <file>\] \[--dir stardust\]/);
+  assert.match(r.stdout, /deployed-gate\.mjs parity --page <slug> \[--reskin <file>\] \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
   for (const re of [/stitch-shot/, /pixel-compare/, /crop-compare/, /chrome-parity/, /cap-probe/, /10%/, /5%/, /2%/, /±20px/, /protected preview/, /not run: skipped/, /stitch-shot --hide\)/]) assert.match(r.stdout, re);
   const help = r.stdout.replace(/\s+/g, ' ');
-  assert.ok(help.includes('prints only the one line "n/a: protected preview (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL)'), 'the help says what a protected preview prints');
-  assert.ok(help.includes('inside all the row reads "ADVISORY parity n/a: protected preview"'), 'and what all prints');
+  assert.ok(help.includes('the preview side of each stitch-shot, chrome-parity and cap-probe\'s compare, and this step\'s own browser carry the token to the preview origin only (--token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin>, the value by environment, never argv)'), 'the help says how a protected preview is measured');
+  assert.ok(!/n\/a: protected preview/.test(help), 'a protected preview is no longer n/a');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
   const root = project('parity-usage', { preview: false });
@@ -182,7 +188,9 @@ await check('--help documents parity; its usage errors exit 2 and write nothing;
     [['parity'], /parity needs --page <slug>/],
     [['parity', '--page', '../x'], /--page must be a slug/],
     [['parity', '--page', 'home', '--org', 'o'], /unknown flag --org for parity/],
-    [['parity', '--page', 'home', '--auth-header', 'token x'], /unknown flag --auth-header for parity/],
+    [['parity', '--page', 'home', '--auth-header', '--dir', 'x'], /--auth-header needs a value/],
+    [['parity', '--page', 'home', '--token-env', '  '], /--token-env needs a value/],
+    [['parity', '--page', 'home', '--auth-header=token x'], /unknown flag --auth-header for parity: a flag and its value are separate arguments/],
     [['parity', '--page', 'home', 'stray'], /unexpected argument "stray"/],
     [['parity', '--page'], /--page needs a value/],
     [['parity', '--page', 'home', '--reskin', '--dir', 'x'], /--reskin needs a value/],
@@ -215,32 +223,22 @@ await check('--help documents parity; its usage errors exit 2 and write nothing;
   assert.ok(!existsSync(join(outOf(noPage), 'parity.json')));
 });
 
-await check('a protected preview: every row is "n/a: protected preview", no instrument runs, parity.json says so, and the CLI prints the one n/a line with exit 0', async () => {
+await check('a protected preview needs the site token: without one runParity and the CLI are exit 2 before anything is captured, served or run, and no record is written; an unset --token-env variable is exit 2 too', async () => {
   const root = project('protected', { record: { auth: true } });
   const stub = stubTools('protected-stubs');
-  const page = smallPage();
-  const result = await runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: page, tools: stub.tools });
-  assert.equal(result.verdict, 'n/a');
-  assert.equal(result.exit, 0);
-  assert.deepEqual(result.rows.map((r) => `${r.check}@${r.width}`), [
-    'pixel@1440', 'height@1440', 'header crop@1440', 'footer crop@1440', 'chrome-parity@1440', 'cap-probe@1440',
-    'pixel@360', 'height@360', 'header crop@360', 'footer crop@360',
-  ]);
-  for (const r of result.rows) {
-    assert.equal(r.status, 'n/a');
-    assert.equal(r.value, 'n/a: protected preview');
-    assert.equal(r.artifact, null);
-  }
+  const got = await attempt(() => runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: smallPage(), tools: stub.tools }));
+  assert.ok(got.error instanceof UsageError && got.error.code === 2, String(got.error));
+  assert.match(got.error.message, /^parity needs the site token to read a protected preview\npreview\.json says the preview was reached with a site token: pass --auth-header or --token-env/);
   assert.deepEqual(stub.calls(), [], 'nothing was run');
-  assert.deepEqual(readJson(join(outOf(root), 'parity.json')), { verdict: 'n/a', rows: result.rows });
-  const lines = parityLines(result);
-  assert.equal(lines.length, 1);
-  assert.match(lines[0], /^n\/a: protected preview \(pixel @1440, height @1440, header crop @1440, footer crop @1440, chrome-parity @1440, cap-probe @1440, pixel @360, /);
+  assert.ok(!existsSync(join(outOf(root), 'parity.json')) && !existsSync(join(outOf(root), 'parity')), 'no verdict, no capture');
 
-  const cli = await parity(root, ['--reskin', page]);
-  assert.equal(cli.status, 0, cli.all);
-  assert.equal(cli.stdout.trim(), lines[0]);
-  assert.ok(!/PASS|FAIL/.test(cli.stdout));
+  const cli = await parity(root, ['--reskin', smallPage()]);
+  assert.equal(cli.status, 2, cli.all);
+  assert.match(cli.stderr, /parity needs the site token to read a protected preview/);
+  assert.ok(!existsSync(join(outOf(root), 'parity.json')));
+  const unset = await parity(root, ['--reskin', smallPage(), '--token-env', 'STARDUST_M2C_UNSET_TOKEN']);
+  assert.equal(unset.status, 2, unset.all);
+  assert.match(unset.stderr, /no site token: the variable --token-env names is not set/);
 });
 
 await check('main dispatches parity to a replaceable step and returns its exit code; --help runs before it', async () => {
@@ -256,15 +254,16 @@ await check('main dispatches parity to a replaceable step and returns its exit c
 let playwrightOk = false;
 try { await import('playwright'); await import('pngjs'); playwrightOk = true; } catch { console.log('skip  browser parts (playwright or pngjs not importable here; run this test in an environment that has them)'); }
 
-// One runParity against a fake preview serving `previewPage`; the heights of the page's header and footer are
-// measured by the real browser. → { result | error, stub, root, reskinUrl }: no throw.
-const scenario = async (name, cfg = {}, { reskin = smallPage(), previewPage = reskin, widths = [1440], env = process.env } = {}) => {
-  const server = await startPreviewServer({ pages: { '/ns/home': previewPage } });
+// One runParity against a fake preview serving `previewPage` (token: it demands it; record: preview.json's extra fields;
+// auth: what the step is given); the heights of the page's header and footer are measured by the real browser.
+// → { result | error, stub, root, previewUrl, requests }: no throw.
+const scenario = async (name, cfg = {}, { reskin = smallPage(), previewPage = reskin, widths = [1440], token = null, record = {}, auth = null, env = process.env } = {}) => {
+  const server = await startPreviewServer({ token, pages: { '/ns/home': previewPage } });
   try {
-    const root = project(name, { origin: server.origin });
+    const root = project(name, { origin: server.origin, record });
     const stub = stubTools(name, cfg);
-    const got = await attempt(() => runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), reskinPage: reskin, widths, tools: stub.tools, env }));
-    return { result: got.value, error: got.error, stub, root, previewUrl: `${server.origin}/ns/home` };
+    const got = await attempt(() => runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth, reskinPage: reskin, widths, tools: stub.tools, env }));
+    return { result: got.value, error: got.error, stub, root, previewUrl: `${server.origin}/ns/home`, requests: server.requests };
   } finally { await server.close(); }
 };
 
@@ -321,6 +320,77 @@ if (playwrightOk) {
     assert.deepEqual(readJson(join(outOf(root), 'parity.json')), { verdict: 'PASS', rows: result.rows });
     assert.deepEqual(parityLines(result), ['PASS parity']);
     await assert.rejects(fetch(reskinUrl), 'the static server of the reskin page is stopped');
+  });
+
+  await check('a protected preview is measured: the preview side of each capture, chrome-parity and cap-probe\'s compare carry the token (by environment, --token-env, aimed at the preview origin), nothing else does; only the preview origin ever receives it, and it is in no argument, row, record or line', async () => {
+    const watch = watchRequests();
+    const asset = await startSourceServer();
+    try {
+      const reskin = smallPage();
+      const previewPage = smallPage({ body: `<img alt="" width="8" height="8" style="position:absolute" src="/ns/media_ab12.png"><img alt="" width="8" height="8" style="position:absolute" src="${asset.origin}/images/hero.png">` });
+      const { result, stub, root, previewUrl, requests, error } = await scenario('protected', {}, { reskin, previewPage, ...protectedBy() });
+      assert.ifError(error);
+      assert.equal(result.verdict, 'PASS', JSON.stringify(brief(result.rows)));
+      assert.deepEqual(result.rows.map((r) => `${r.check}: ${r.status}`), ['pixel: PASS', 'height: PASS', 'header crop: PASS', 'footer crop: PASS', 'chrome-parity: PASS', 'cap-probe: PASS'], 'every row was measured');
+      const origin = new URL(previewUrl).origin;
+      const out = join(outOf(root), 'parity');
+      const calls = stub.calls();
+      assert.deepEqual(calls.map((c) => [`${c.tool}:${c.key}`, c.token]), [
+        ['stitch:reskin', null], ['stitch:preview', `token ${SECRET}`], ['pixel:all', null], ['crop:header', null], ['crop:footer', null],
+        ['chrome:all', `token ${SECRET}`], ['cap:capture', null], ['cap:compare', `token ${SECRET}`],
+      ], 'the token reaches exactly the instruments that load the preview, by environment');
+      const argvOf = (key) => calls.find((c) => `${c.tool}:${c.key}` === key).argv;
+      const aim = [...TOKEN_FLAGS, '--auth-origin', origin];
+      const reskinUrl = argvOf('stitch:reskin')[0];
+      assert.deepEqual(argvOf('stitch:reskin'), [reskinUrl, join(out, 'reskin-1440.png'), '--width', '1440', '--settle']);
+      assert.deepEqual(argvOf('stitch:preview'), [previewUrl, join(out, 'preview-1440.png'), '--width', '1440', '--settle', '--wait', '3000', ...aim]);
+      assert.deepEqual(argvOf('chrome:all'), [reskinUrl, previewUrl, '--width', '1440', '--no-defaults', '--region', 'header=header', '--region', 'footer=footer', '--json', ...aim]);
+      assert.deepEqual(argvOf('cap:capture'), [reskinUrl, '--write-design', join(outOf(root), 'design.json')]);
+      assert.deepEqual(argvOf('cap:compare'), [reskinUrl, '--against', previewUrl, '--design', join(outOf(root), 'design.json'), '--tolerance', '20', '--json', '--out', join(out, 'cap-probe-1440.json'), ...aim]);
+      for (const key of ['pixel:all', 'crop:header', 'crop:footer']) assert.ok(!argvOf(key).some((a) => a === '--token-env' || a === '--auth-origin'), `${key}: no auth flag`);
+
+      assert.deepEqual(requests.map((q) => [q.path, q.headers.authorization]), [['/ns/home', `token ${SECRET}`], ['/ns/media_ab12.png', `token ${SECRET}`]], 'the page and its image on the preview origin carried the token');
+      const elsewhere = watch.seen.filter((q) => q.port !== portOf(origin));
+      assert.ok(elsewhere.some((q) => q.port === portOf(asset.origin) && q.path === '/images/hero.png'), 'the image on the second origin was requested');
+      assert.ok(elsewhere.some((q) => q.path === new URL(reskinUrl).pathname), 'and the served reskin page');
+      assert.deepEqual(elsewhere.map((q) => q.authorization), elsewhere.map(() => undefined), 'neither was sent an Authorization');
+
+      const text = [JSON.stringify(calls.map((c) => c.argv)), readFileSync(join(outOf(root), 'parity.json'), 'utf8'), ...parityLines(result)].join('\n');
+      assert.ok(!text.includes(SECRET), 'the token is in no argument, record or line');
+    } finally { watch.stop(); await asset.close(); }
+  });
+
+  await check('a token the protected preview refuses is a setup error (exit 2), not rows of a 401 page: nothing is captured or recorded, and the offered token is not echoed; a public record that now answers 401 says to run preview again', async () => {
+    const wrong = await scenario('protected-wrong-token', {}, protectedBy('not-the-one'));
+    assert.ok(wrong.error instanceof UsageError && wrong.error.code === 2, String(wrong.error));
+    assert.match(wrong.error.message, /^http:\/\/127\.0\.0\.1:\d+\/ns\/home answered HTTP 401: the site token was not accepted$/);
+    assert.deepEqual(wrong.stub.calls(), [], 'no instrument ran');
+    assert.ok(!existsSync(join(outOf(wrong.root), 'parity.json')), 'no verdict');
+    const stale = await scenario('public-now-protected', {}, { token: SECRET });
+    assert.ok(stale.error instanceof UsageError && /answered HTTP 401: the preview is protected: run deployed-gate preview again with --auth-header or --token-env/.test(stale.error.message), String(stale.error));
+    assert.deepEqual(stale.stub.calls(), []);
+  });
+
+  await check('a token the preview does not need is sent to no request and no instrument, even when the environment holds one', async () => {
+    const ambient = { ...process.env, SITE_TOKEN: 'ambient-secret', DEPLOYED_GATE_SITE_TOKEN: 'ambient-secret' };
+    const { result, stub, requests, error } = await scenario('public-with-token', {}, { auth: `token ${SECRET}`, env: ambient });
+    assert.ifError(error);
+    assert.equal(result.verdict, 'PASS');
+    assert.ok(requests.length > 0 && requests.every((q) => q.headers.authorization === undefined), 'no request carried a token');
+    for (const c of stub.calls()) {
+      assert.equal(c.token, null, `${c.tool}: no token in the environment`);
+      assert.ok(!c.argv.some((a) => a === '--token-env' || a === '--auth-origin'), `${c.tool}: no auth flag`);
+    }
+  });
+
+  await check('an instrument that echoes the token has it redacted from its row, and from the error of a bot challenge', async () => {
+    const leaky = await scenario('protected-leak', { chrome: { exit: 1, stderr: `chrome-parity: refused token ${SECRET}\n` } }, protectedBy());
+    assert.ifError(leaky.error);
+    assert.equal(pick(leaky.result.rows, 'chrome-parity', 1440).detail, 'chrome-parity: refused [redacted]');
+    assert.ok(!readFileSync(join(outOf(leaky.root), 'parity.json'), 'utf8').includes(SECRET));
+    const challenged = await scenario('protected-challenge', { stitch: { exit: { preview: 3 }, stderr: `bot challenge for ${SECRET}\n` } }, protectedBy());
+    assert.equal(challenged.error?.code, 3, String(challenged.error));
+    assert.equal(challenged.error.message, 'bot challenge for [redacted]');
   });
 
   await check('the bars: pixel and crop follow the instruments\' exit (0 under, 2 over); |Δh| at 5% of the reskin page height passes, above it fails; the Δh row names the preview as taller', async () => {
@@ -559,6 +629,25 @@ if (playwrightOk) {
       assert.equal(good.stdout.trim(), 'PASS parity');
       assert.equal(readJson(join(outOf(root), 'parity.json')).verdict, 'PASS');
       assert.ok(existsSync(join(outOf(root), 'parity', 'reskin-1440.png')) && existsSync(join(outOf(root), 'parity', 'reskin-360.png')), 'both default widths were captured');
+
+      const guarded = await startPreviewServer({ token: SECRET, pages: { '/ns/home': page } });
+      try {
+        const gRoot = project('copy-protected', { origin: guarded.origin, record: { auth: true } });
+        stubTools('copy-protected-stubs', {}, join(copy, 'replica'));
+        const ran = () => readFileSync(join(copy, 'replica', 'calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l));
+        const before = ran().length;
+        const bare = await run(['parity', '--page', 'home', '--reskin', page], { cwd: gRoot, script: gate });
+        assert.equal(bare.status, 2, bare.all);
+        assert.match(bare.stderr, /pass --auth-header or --token-env/);
+        assert.equal(ran().length, before, 'no instrument ran without the token');
+        const ok = await run(['parity', '--page', 'home', '--reskin', page, '--token-env', 'MY_SITE_TOKEN'], { cwd: gRoot, script: gate, env: { MY_SITE_TOKEN: SECRET } });
+        assert.equal(ok.status, 0, ok.all);
+        assert.equal(ok.stdout.trim(), 'PASS parity');
+        assert.deepEqual([...new Set(ran().slice(before).filter((c) => c.token).map((c) => `${c.tool}:${c.key}`))], ['stitch:preview', 'chrome:all', 'cap:compare']);
+        assert.ok(ran().slice(before).filter((c) => !c.token).every((c) => !c.argv.includes('--token-env')));
+        assert.ok(!ok.all.includes(SECRET) && !readFileSync(join(outOf(gRoot), 'parity.json'), 'utf8').includes(SECRET));
+        assert.ok(guarded.requests.length > 0 && guarded.requests.every((q) => q.headers.authorization === `token ${SECRET}`), 'every request to the protected preview carried the token');
+      } finally { await guarded.close(); }
       rmSync(join(copy, 'replica', 'cap-probe.mjs'));
       const missing = await run(['parity', '--page', 'home', '--reskin', page], { cwd: root, script: gate });
       assert.equal(missing.status, 2, missing.all);
@@ -605,6 +694,33 @@ if (playwrightOk) {
       assert.equal(readJson(join(outOf(root), 'design.json')).extensions.breakpoints.probeWidth >= 2560, true);
       assert.ok(server.requests.some((q) => q.path === '/ns/home'), 'the preview was asked for');
     } finally { await server.close(); }
+  });
+
+  await check('the reskin fixture page against a protected preview serving the same page: PASS parity at both widths with the real instruments, every row measured; the token goes to the preview origin only (not an image host, not the served reskin page) and is in no file', async () => {
+    const watch = watchRequests();
+    const asset = await startSourceServer();
+    const previewPage = slowPage('page-protected', ['<body>', `<body><img alt="" width="1" height="1" style="position:absolute;left:0;top:0;opacity:0" src="${asset.origin}/images/hero.png">`]);
+    const server = await startPreviewServer({ token: SECRET, pages: { '/ns/home': previewPage } });
+    try {
+      const root = project('real-protected', { origin: server.origin, record: { auth: true } });
+      const result = await runParity({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), auth: `token ${SECRET}`, reskinPage: RESKIN_FIXTURE });
+      assert.equal(result.verdict, 'PASS', JSON.stringify(brief(result.rows).filter((r) => r.status !== 'PASS' && r.status !== 'n/a')));
+      assert.deepEqual(result.rows.filter((r) => r.status === 'n/a').map((r) => `${r.check}@${r.width}`), ['footer crop@1440', 'footer crop@360'], 'only the footer crops are n/a: the reskin page has no footer');
+      assert.equal(pick(result.rows, 'pixel', 1440).value, '0.00%');
+      assert.equal(pick(result.rows, 'pixel', 360).status, 'PASS');
+      assert.equal(pick(result.rows, 'chrome-parity', 1440).status, 'PASS');
+      assert.equal(pick(result.rows, 'cap-probe', 1440).status, 'PASS');
+      const preview = watch.seen.filter((q) => q.port === portOf(server.origin));
+      const elsewhere = watch.seen.filter((q) => q.port !== portOf(server.origin));
+      assert.ok(preview.length >= 6, `the preview was loaded by the step's browser and by the instruments that read it: ${preview.length} requests`);
+      assert.deepEqual([...new Set(preview.map((q) => q.authorization))], [`token ${SECRET}`], 'every request to the preview carried the token');
+      assert.ok(elsewhere.some((q) => q.port === portOf(asset.origin) && q.path === '/images/hero.png'), 'the image on the second origin was requested');
+      assert.ok(elsewhere.some((q) => q.path === '/page.html'), 'and the served reskin page');
+      assert.deepEqual(elsewhere.map((q) => q.authorization), elsewhere.map(() => undefined), 'neither was sent an Authorization');
+      const files = readdirSync(outOf(root), { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
+      assert.ok(files.length >= 10, 'the scan covers parity.json, the captures and the instruments\' reports');
+      assert.deepEqual(files.filter((f) => readFileSync(f).includes(SECRET)), [], 'no file holds the token');
+    } finally { watch.stop(); await server.close(); await asset.close(); }
   });
 
   await check('a reskin page without chrome against a preview that wraps the same main in a fixed header and a footer: pixel is about 0% and Δh 0 at 1440 and 360, the rows say what was excluded, and the same pair captured without the exclusion is far over the bar', async () => {

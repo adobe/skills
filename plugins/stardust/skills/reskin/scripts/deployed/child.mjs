@@ -6,8 +6,13 @@
 //   runChild(command, args, { env })   the child collected, as spawnSync's result ({ status, signal, stdout, stderr });
 //                                 async, so a server in this process can answer it while the child runs
 //   outputOf(result, auth)        the child's own words (stderr, else stdout), the token redacted
-//   callTool(name, script, args, env)  an instrument run with node: its result; exit 3 thrown with code 3, a spawn
-//                                 failure with code 124
+//   callTool(name, script, args, env, auth)  an instrument run with node: its result; exit 3 thrown with code 3, a spawn
+//                                 failure with code 124 (the token, when given, redacted from both messages)
+//   previewToken(step, preview, auth)  the token a step sends: `auth` for a protected preview (a UsageError without one),
+//                                 null for a public preview, whatever it was given
+//   callOnPreview(name, script, args, env, { token, url })  callTool for an instrument that loads the preview at `url`: the
+//                                 token by environment and --token-env, aimed by --auth-origin at the origin of `url` and no
+//                                 other, its output redacted; with no token it is callTool with the token variable dropped
 //   exitOf, firstLine, parseJson  the exit (or signal) of a result, the first non-blank line of a text, JSON or null
 //   setupError(result, { name, auth, hint })  the error for a child that exited 2 (a UsageError) or 3 (code 3: a bot
 //                                 challenge or token halt); null for any other exit
@@ -51,12 +56,25 @@ export const firstLine = (text) => (text.split('\n').find((l) => l.trim()) ?? ''
 export const parseJson = (text) => { try { return JSON.parse(text); } catch { return null; } };
 
 // An instrument as a child process: its result, a bot challenge (exit 3) thrown with code 3 and one that did not start
-// with code 124. Whether any other exit is a verdict is the caller's to say. No site token: childEnv(env, null).
-export async function callTool(name, script, args, env) {
+// with code 124. Whether any other exit is a verdict is the caller's to say. `env` is the child's environment as it is
+// (childEnv(env, null) for none); `auth` only says what to redact.
+export async function callTool(name, script, args, env, auth = null) {
   let r;
-  try { r = await runChild(process.execPath, [script, ...args], { env }); } catch (e) { throw coded(124, `${name} did not start: ${e.message}`); }
-  if (r.status === 3) throw coded(3, outputOf(r, null) || `${name} exited 3: bot challenge`);
+  try { r = await runChild(process.execPath, [script, ...args], { env }); } catch (e) { throw coded(124, redact(`${name} did not start: ${e.message}`, auth)); }
+  if (r.status === 3) throw coded(3, outputOf(r, auth) || `${name} exited 3: bot challenge`);
   return r;
+}
+
+export function previewToken(step, preview, auth) {
+  if (!preview.auth) return null;
+  if (!auth) throw new UsageError(`${step} needs the site token to read a protected preview${authHint(preview, auth)}`);
+  return auth;
+}
+
+export async function callOnPreview(name, script, args, env, { token, url }) {
+  if (!token) return callTool(name, script, args, childEnv(env, null));
+  const r = await callTool(name, script, [...args, ...tokenFlags(token), '--auth-origin', new URL(url).origin], childEnv(env, token), token);
+  return { ...r, stdout: redact(r.stdout, token), stderr: redact(r.stderr, token) };
 }
 
 export const authHint = (preview, auth) => (preview.auth && !auth ? '\npreview.json says the preview was reached with a site token: pass --auth-header or --token-env' : '');

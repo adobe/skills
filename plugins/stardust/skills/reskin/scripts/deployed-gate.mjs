@@ -8,12 +8,12 @@
 //            slot (slot-coverage), with the page's declared deltas. Blocking unless the delta file says otherwise.
 //   tokens   A2: the donor tokens asserted on the EDS DOM of the preview, through donor-probe.mjs. Blocking.
 //   parity   A3: the preview held to the local reskin page with replica's instruments (stitch-shot, pixel-compare,
-//            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking; n/a on a protected preview.
+//            crop-compare, chrome-parity, cap-probe) at 1440 and 360. Blocking.
 //   sanity   A4: the hard asserts on the preview at 1440 and 360 (overflow, decoration, broken images, page errors,
-//            clip-probe, content-presence). Blocking and never waivable; n/a on a protected preview.
+//            clip-probe, content-presence). Blocking and never waivable.
 //   inherited  A5: deploy's delivered-page gates on the preview: the .plain.html asserts, ai-readability, qa-gate; the
-//            pre-delivery gates are recorded as run by deploy. Blocking; ai-readability and qa-gate are n/a on a
-//            protected preview.
+//            pre-delivery gates are recorded as run by deploy. Blocking.
+//            On a protected preview (preview.json auth: true) every step above measures it with the site token.
 //   all      The whole leg in one run: content, tokens, parity, sanity, inherited in this process, then figma-gate
 //            all --target preview as a child process when the page has a figma-checks file. One verdict line per
 //            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
@@ -35,8 +35,8 @@ export const HELP = `Usage:
                          [--max-wait 120] [--dir stardust]
   node deployed-gate.mjs content --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
-  node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
+  node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs inherited --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
   node deployed-gate.mjs all --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
 
@@ -71,8 +71,7 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
            { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, originOverride?,
              checkedAt, problems? }
          auth is whether the preview refused an anonymous request, the one fact the later steps read a protected
-         preview from (parity, sanity, qa-gate and ai-readability are n/a on it; content, tokens, inherited and all
-         need the token).
+         preview from (every later step needs the token on it: --auth-header or --token-env).
 content  A1. Checks the preview's content against the live source, through two gates run one after the other, each with the
          decoration settled first (--wait-eds): dom-equality (the text and images of the preview's main against the
          source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
@@ -122,10 +121,13 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
-         A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: replica's
-         capture instruments carry no site auth. The step then prints only the one line "n/a: protected preview
-         (<rows>)" (verdict "n/a", exit 0, no PASS or FAIL), and inside all the row reads "ADVISORY parity n/a:
-         protected preview". Otherwise it prints "PASS parity", or "FAIL parity" and one indented line per
+         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without) and
+         is measured as any other: the preview side of each stitch-shot, chrome-parity and cap-probe's compare, and
+         this step's own browser carry the token to the preview origin only (--token-env DEPLOYED_GATE_SITE_TOKEN and
+         --auth-origin <preview origin>, the value by environment, never argv); the reskin page, the two
+         comparisons of the captures and cap-probe's capture of the reskin page get none. A preview that answers
+         HTTP 401 or 403 to this step's browser is exit 2 (the token is missing, wrong or expired), never rows;
+         one that needs no token is sent none. The step prints "PASS parity", or "FAIL parity" and one indented line per
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
@@ -148,12 +150,13 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
            content-presence   the reskin page (--reskin, default <dir>/reskin/pages/<slug>.html, served by a
                               local server for the run) against the preview: HIDDEN + MISSING headings and
                               links 0
-         A protected preview (preview.json says auth: true) gets "n/a: protected preview" for every row: the
-         instruments carry no site auth. The step then prints only the one line "n/a: protected preview (<rows>)"
-         (verdict "n/a", exit 0, no PASS or FAIL), and inside all the row reads "ADVISORY sanity n/a: protected
-         preview". Otherwise it prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
-         failing row ("overflow 240px > 4px @360", the instrument's findings below it), one "n/a: <reason>
-         (<rows>)" line per reason; "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
+         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without) and
+         is measured as any other: this step's browser and both instruments carry the token to the preview origin
+         only (the instruments by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin>, the
+         value by environment, never argv); the reskin page content-presence reads gets none. A page that
+         answers HTTP 400 or more, a 401 included, is a row in error, never a pass; one that needs no token is
+         sent none. The step prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per
+         failing row ("overflow 240px > 4px @360", the instrument's findings below it); "ERROR (exit 124) sanity: <n> checks gave no verdict" and a line per row in
          error when a check gave no verdict (an instrument exiting 124, 1 or another, a page the browser could
          not load, or one that answered HTTP 400 or more, "HTTP <n> at <url>": an error page measures nothing
          about the page; re-run once). Writes sanity.json ({ verdict, hard: true, rows: [{ check, width, value, bar,
@@ -170,20 +173,18 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
                            5xx or 429 answer is no verdict (re-run once), a 404 or another answer a FAIL
            ai-readability  ai-readability.mjs on the preview's origin and path, --min 98: the page's code score
                            (its --json report); under 98 is "ai-readability <score> < 98", the blocks the served
-                           HTML lacks most below it. On a protected preview the row is
-                           "n/a: protected preview (ai-readability sends its header to every origin)" and it is
-                           not run: it sets the site token on its whole browser context, so the token would reach
-                           every origin the page loads
+                           HTML lacks most below it
            qa-gate         qa-gate.mjs on the delivered page with --schema <dir>/eds-schema/<slug>.json (deploy
                            Step 2b) and --design <deployed>/design.json (parity's cap-probe capture): its exit is
-                           the verdict, its ✗ lines the findings. "n/a: run deploy Step 2b" without the schema,
-                           "n/a: run deployed-gate parity first (design.json)" without the design, and
-                           "n/a: protected preview" on a protected preview: qa-gate carries no site auth
+                           the verdict, its ✗ lines the findings. "n/a: run deploy Step 2b" without the schema and
+                           "n/a: run deployed-gate parity first (design.json)" without the design
            by deploy       localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own
                            loop before the push and are not re-run: recorded as "by deploy", never PASS or FAIL,
                            and no part of the verdict
          A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without): the
-         .plain.html request carries the header to the preview origin only, and nothing else gets it. A record whose
+         .plain.html request carries the header to the preview origin only, and ai-readability and qa-gate get the
+         token by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin> (the value by environment,
+         never argv), for that origin only. A record whose
          plain URL is not on the preview origin is exit 2 ("preview.json plain URL is not on the preview origin")
          before any request. A preview that needs no token is sent none by this step. HTTP 401 or 403 on the .plain.html is exit 2.
          Prints "PASS inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
@@ -217,7 +218,7 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          matching run-bg's default verdict filter, with the step's findings indented below it:
            PASS <step>            FAIL <step> <k/n, or the failing gates or steps>      ERROR (exit N) <step>: <why>
            FAIL <step>: stalled decoration: <what>      a gate that stalled on the preview's decoration
-           ADVISORY <step> …      an advisory content gate; n/a: protected preview; not run: skipped, no figma checks
+           ADVISORY <step> …      an advisory content gate; not run: skipped, no figma checks
          then "summary written: <path>". Exit: the first present of 2, 3, 124, 1, 0.
          Writes <deployed>/summary.json:
            { _provenance, page, url, regime: "preview", originOverride?, steps: { <step>: { verdict, exit, detail } },
@@ -230,7 +231,7 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
          Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "PASS (n/a: <checks>)" (it passed, but
          those checks were n/a: their reasons are in steps.<step>.detail), "FAIL k/n" (k of the n measured failing: gates
          for content, assertions for tokens, rows for the rest), "FAIL stalled decoration: <what>", "ADVISORY <gates>
-         (deltas.blocking false)", "n/a: <why>", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
+         (deltas.blocking false)", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
          ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
          and no residual accepts its failure. invocation is the exact argument list, the value of --auth-header
          replaced by [redacted]; --token-env's value is a variable name and stays, so the line can be run again. No step
@@ -246,12 +247,14 @@ all      The whole leg: content, tokens, parity, sanity and inherited in turn, e
 --auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
                variable (or .env entry) that holds the token; neither may be empty. Under run-bg use --token-env only
                (run-bg saves the command's arguments, so a header value would be saved with it). Sent to the preview
-               origin only (ai-readability, which would send it to every origin the page loads, is not run on a
-               protected preview), never printed or recorded (preview.json says only whether the preview refused an
+               origin only, by every step that reads a protected preview (the instruments by --token-env and
+               --auth-origin; a font or image host or the local reskin page never gets it), never printed or
+               recorded (preview.json says only whether the preview refused an
                anonymous request: auth). tokens hands it
                to donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
                which puts "token " in front of a value that starts with neither "token " nor "bearer ".
-               inherited sends it with the .plain.html request only. all hands it to those three and to the
+               parity and sanity hand it to their instruments and browser, inherited to its .plain.html request and to
+               ai-readability and qa-gate. all hands it to every step and to the
                figma-gate child (by that variable and --token-env). Write a flag and its value as two arguments,
                the value quoted when it has a space: an unknown --flag=value or --flag:value, a command that starts
                with - or holds a space, = or :, and a stray argument holding a space, = or : are never echoed.
@@ -291,12 +294,12 @@ const SPEC = {
     positional: [],
   },
   parity: {
-    values: ['--page', '--reskin', '--dir'],
+    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
     bools: [],
     positional: [],
   },
   sanity: {
-    values: ['--page', '--reskin', '--dir'],
+    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
     bools: [],
     positional: [],
   },
@@ -477,23 +480,33 @@ async function tokensStep(ctx) {
 }
 
 async function parityStep(ctx) {
-  const { dir, opts, env, log } = ctx;
+  const { dir, opts, env, log, UsageError } = ctx;
   const preview = await pageRecord('parity', ctx);
   if (!preview) return 0;
   const { runParity, parityLines } = await helper('parity');
-  const result = await runParity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
-  for (const line of parityLines(result)) log(line);
-  return result.exit;
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
+  try {
+    const result = await runParity({ dir, slug: opts.page, preview, auth, reskinPage: opts.reskin, env });
+    for (const line of parityLines(result)) say(line);
+    return result.exit;
+  } catch (e) {
+    throw scrub(e);
+  }
 }
 
 async function sanityStep(ctx) {
-  const { dir, opts, env, log } = ctx;
+  const { dir, opts, env, log, UsageError } = ctx;
   const preview = await pageRecord('sanity', ctx);
   if (!preview) return 0;
   const { runSanity, sanityLines } = await helper('sanity');
-  const result = await runSanity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
-  for (const line of sanityLines(result)) log(line);
-  return result.exit;
+  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
+  try {
+    const result = await runSanity({ dir, slug: opts.page, preview, auth, reskinPage: opts.reskin, env });
+    for (const line of sanityLines(result)) say(line);
+    return result.exit;
+  } catch (e) {
+    throw scrub(e);
+  }
 }
 
 async function inheritedStep(ctx) {
@@ -587,10 +600,6 @@ function rowsOutcome(step, result, lines, heading = step) {
     return outcome('ERROR', 124, `ERROR (exit 124) ${step}: ${why}`, `ERROR (exit 124): ${why}`, detail);
   }
   if (result.verdict === 'FAIL') return outcome('FAIL', 1, `FAIL ${heading} ${fraction}`, `FAIL ${fraction}`, detail);
-  if (result.verdict === 'n/a') {
-    const why = [...new Set(result.rows.map((r) => r.value))].join('; ');
-    return outcome('n/a', 0, advisoryLine(`${step} ${why}`), why, detail);
-  }
   return outcome('PASS', 0, `PASS ${step}`, passLedger(result.rows), detail);
 }
 
@@ -659,7 +668,7 @@ async function allStep(ctx) {
     ]);
     const base = { dir, slug, preview, env };
     const withToken = { ...base, auth };
-    const withPage = { ...base, reskinPage: opts.reskin };
+    const withPage = { ...withToken, reskinPage: opts.reskin };
     run = {
       content: async () => contentOutcome(await (runners.content ?? runContent)(withToken)),
       tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(withToken)),

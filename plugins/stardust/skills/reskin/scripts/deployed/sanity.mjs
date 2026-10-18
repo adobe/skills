@@ -10,11 +10,13 @@
 // and, once, at 1440, as shipped (child processes of the diff skill, the bundled Chromium, a bot challenge is exit 3):
 //   clip-probe         the clipped or hidden text and controls of the preview: count 0
 //   content-presence   the reskin page against the preview: HIDDEN + MISSING headings and links 0
-// A protected preview gets every row "n/a: protected preview": the instruments carry no site auth. The reskin page is
-// served for content-presence by serve.mjs, never file://.
-//   runSanity({ dir, slug, preview, reskinPage, widths, tools, env, edsTimeoutMs })  writes sanity.json
-//        ({ verdict, hard: true, rows }) and returns { verdict: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', exit, hard, rows }.
-//        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR' | 'n/a', artifact, detail }. A check
+// A protected preview (preview.json says auth: true) is measured with the site token, `auth`, and without one is a setup
+// error: this step's own browser and both instruments send it to the preview's origin only (the instruments by --token-env
+// and --auth-origin, the value by environment); the reskin page, served for content-presence, never gets it. A public
+// preview is sent none. The reskin page is served by serve.mjs, never file://.
+//   runSanity({ dir, slug, preview, auth, reskinPage, widths, tools, env, edsTimeoutMs })  writes sanity.json
+//        ({ verdict, hard: true, rows }) and returns { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, hard, rows }.
+//        A row is { check, width, value, bar, status: 'PASS' | 'FAIL' | 'ERROR', artifact, detail }. A check
 //        that gave no verdict (an instrument exiting 124, 1, 4 or any other unexpected exit or no number in its JSON,
 //        a page the browser could not load or that answered HTTP 400 or more) makes its row "ERROR (exit N)", the
 //        verdict ERROR and the exit 124; a bot challenge throws an error with code 3. `tools` maps clip and presence
@@ -29,8 +31,8 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
-import { callTool as call, childEnv, coded, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
-import { edsSettle, loadLiveSession } from './eds.mjs';
+import { callOnPreview, childEnv, coded, exitOf, firstLine, outputOf, parseJson, previewToken } from './child.mjs';
+import { authContextOptions, edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
 import { serveReskinPage } from './serve.mjs';
@@ -115,7 +117,6 @@ const brokenImagesIn = () => [...document.images].filter((im) => {
 // ---- rows ----------------------------------------------------------------------------------------------------------
 
 const row = (check, width, status, value, { artifact = null, detail = null } = {}) => ({ check, width, value, bar: BAR_OF[check], status, artifact, detail });
-const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}`);
 const errorRow = (check, width, code, detail) => row(check, width, 'ERROR', `ERROR (exit ${code})`, { detail });
 const toolError = (check, width, name, r) => errorRow(check, width, exitOf(r), firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message`);
 
@@ -124,8 +125,8 @@ const stallOnly = (e) => { if (e?.name !== 'TimeoutError') throw e; };
 // The four rows of one width. A challenge is thrown (code 3); an HTTP status of 400 or more (an error page measures
 // nothing about the page) and any other failure to load or read the page make the four rows "ERROR (exit 124)" with
 // "HTTP <n> at <url>" or the first line of the failure.
-async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs }) {
-  const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT });
+async function measureWidth({ browser, openPage, gotoLive, width, url, token, edsTimeoutMs }) {
+  const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT, ...authContextOptions(url, token) });
   try {
     const errors = [];
     page.on('pageerror', (e) => errors.push(firstLine(String(e?.message ?? e)) || 'uncaught error'));
@@ -150,14 +151,14 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeou
 }
 
 // { [width]: the four rows }, in one browser: the bundled Chromium, the preview is not bot-managed.
-async function browserRows({ widths, url, edsTimeoutMs }) {
+async function browserRows({ widths, url, token, edsTimeoutMs }) {
   const chromium = await loadChromium();
   const { openBrowser, openPage } = await loadMeasureLive();
   const { gotoLive } = await loadLiveSession();
   const browser = await openBrowser(chromium, { tier: 'plain' });
   const rows = {};
   try {
-    for (const width of widths) rows[width] = await measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs });
+    for (const width of widths) rows[width] = await measureWidth({ browser, openPage, gotoLive, width, url, token, edsTimeoutMs });
   } finally { await browser.close(); }
   return rows;
 }
@@ -166,9 +167,9 @@ const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8
 const counted = (r) => r.status === 0 || r.status === 2;
 
 // clip-probe of the preview at 1440: its exit is the verdict, its count the value.
-async function clipRow({ urls, out, tools, env }) {
+async function clipRow({ urls, out, tools, env, token }) {
   const file = join(out, `clip-probe-${WIDE}.json`);
-  const r = await call('clip-probe', tools.clip, [urls.preview, '--width', String(WIDE), '--plain', '--json', file], env);
+  const r = await callOnPreview('clip-probe', tools.clip, [urls.preview, '--width', String(WIDE), '--plain', '--json', file], env, { token, url: urls.preview });
   const json = counted(r) ? readJsonFile(file) : null;
   if (!Number.isFinite(json?.counts?.total)) return toolError('clip-probe', WIDE, 'clip-probe', r);
   const found = (json.findings ?? []).filter((f) => !f.advisory).map((f) => `${f.kind} "${f.text}" in ${f.clipper ?? '(page)'}`);
@@ -176,9 +177,9 @@ async function clipRow({ urls, out, tools, env }) {
 }
 
 // content-presence of the served reskin page against the preview at 1440: HIDDEN + MISSING headings and links.
-async function presenceRow({ urls, out, tools, env }) {
+async function presenceRow({ urls, out, tools, env, token }) {
   const file = join(out, `content-presence-${WIDE}.json`);
-  const r = await call('content-presence', tools.presence, [urls.reskin, urls.preview, '--width', String(WIDE), '--plain', '--json', file], env);
+  const r = await callOnPreview('content-presence', tools.presence, [urls.reskin, urls.preview, '--width', String(WIDE), '--plain', '--json', file], env, { token, url: urls.preview });
   const json = counted(r) ? readJsonFile(file) : null;
   const totals = json?.totals;
   if (!Number.isFinite(totals?.missing) || !Number.isFinite(totals?.hidden)) return toolError('content-presence', WIDE, 'content-presence', r);
@@ -188,36 +189,35 @@ async function presenceRow({ urls, out, tools, env }) {
 }
 
 // The two instrument rows, with the reskin page served for the one that reads it.
-async function instrumentRows({ reskinPage, preview, out, tools, env }) {
+async function instrumentRows({ reskinPage, preview, token, out, tools, env }) {
   const server = await serveReskinPage(reskinPage);
   try {
-    const run = { urls: { reskin: server.url, preview }, out, tools, env: childEnv(env, null) };
+    const run = { urls: { reskin: server.url, preview }, out, tools, env: childEnv(env, null), token };
     return [await clipRow(run), await presenceRow(run)];
   } finally { await server.close(); }
 }
 
-const plan = (widths) => widths.flatMap((width) => [...BROWSER_CHECKS, ...(width === WIDE ? ['clip-probe', 'content-presence'] : [])].map((check) => [check, width]));
-
-// preview is the record of `deployed-gate preview`; reskinPage the file of the local reskin page (default
-// <dir>/reskin/pages/<slug>.html).
-export async function runSanity({ dir, slug, preview, reskinPage = join(dir, 'reskin', 'pages', `${slug}.html`), widths = [1440, 360], tools = null, env = process.env, edsTimeoutMs = EDS_TIMEOUT_MS }) {
+// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null (used only when the
+// preview is protected); reskinPage the file of the local reskin page (default <dir>/reskin/pages/<slug>.html).
+export async function runSanity({ dir, slug, preview, auth = null, reskinPage = join(dir, 'reskin', 'pages', `${slug}.html`), widths = [1440, 360], tools = null, env = process.env, edsTimeoutMs = EDS_TIMEOUT_MS }) {
   const deployed = deployedDir(dir, slug);
   const out = join(deployed, 'sanity');
   const record = join(deployed, 'sanity.json');
   for (const stale of [record, out]) rmSync(stale, { recursive: true, force: true });
-  const seal = (rows, verdict = verdictOf(rows)) => {
+  const seal = (rows) => {
+    const verdict = verdictOf(rows);
     writeJson(record, { verdict, hard: true, rows });
     return { verdict, exit: EXIT[verdict], hard: true, rows };
   };
 
-  if (preview.auth) return seal(plan(widths).map(([check, width]) => naRow(check, width, 'protected preview')), 'n/a');
   if (typeof preview.url !== 'string' || !preview.url) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
+  const token = previewToken('sanity', preview, auth);
   if (!existsSync(reskinPage)) throw new UsageError(`missing ${reskinPage}: the reskin page content-presence holds the preview to (deployed-gate sanity --reskin <file>)`);
   const instruments = tools ? checkTools(tools) : diffTools();
   mkdirSync(out, { recursive: true });
 
-  const measured = await browserRows({ widths, url: preview.url, edsTimeoutMs });
-  const wide = widths.includes(WIDE) ? await instrumentRows({ reskinPage, preview: preview.url, out, tools: instruments, env }) : [];
+  const measured = await browserRows({ widths, url: preview.url, token, edsTimeoutMs });
+  const wide = widths.includes(WIDE) ? await instrumentRows({ reskinPage, preview: preview.url, token, out, tools: instruments, env }) : [];
   return seal(widths.flatMap((width) => [...measured[width], ...(width === WIDE ? wide : [])]));
 }
 
