@@ -24,17 +24,24 @@
 // Write: replace.mjs writeAll — a sibling temp file, created exclusively, renamed over the real path,
 // mode kept; indent, line endings and the trailing newline as the file had them; a result equal to the
 // file byte for byte is not written.
-// Exit codes: 0 written or unchanged · 1 I/O error · 2 usage, refusal, lock timeout, file-lock.mjs missing.
+// Exit codes: 0 written or unchanged · 1 I/O error · 2 usage, refusal, lock timeout, file-lock.mjs or
+// replace.mjs missing.
 import { existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { ownedBy, Refusal, resolveInside, UsageError, writeAll } from './replace.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SELF = fileURLToPath(import.meta.url);
 // deploy's lock, in both layouts: plugin tree (skills/stardust/scripts → ../../deploy/scripts) and project
 // copy (stardust/scripts/stardust → ../deploy). Imported after --help and argument checks.
 const FILE_LOCK = [join(HERE, '..', '..', 'deploy', 'scripts', 'file-lock.mjs'), join(HERE, '..', 'deploy', 'file-lock.mjs')];
+// replace.mjs (resolveInside, ownedBy, writeAll) sits beside this script in both layouts; imported after
+// --help and argument checks too, so the pure helpers throw json-edit's own errors (replace.mjs's shape).
+const REPLACE = join(HERE, 'replace.mjs');
+let replaceLib = null;
+
+class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
+class Refusal extends UsageError {}
 
 export const OPS = ['set', 'merge', 'append', 'delete'];
 export const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
@@ -49,6 +56,7 @@ const HELP = `Usage:
   node stardust/scripts/stardust/json-edit.mjs <file> delete <path>
        [--create]   (anywhere; -- ends the options, so a value may start with --)
   (run from the project root; <file> must lie inside it)
+  (needs replace.mjs beside it and deploy's file-lock.mjs: ../../deploy/scripts/, ../deploy/ in a project copy)
 
 One edit of a JSON file, locked and atomic — never a python or node -e rewrite of the JSON.
 Path: keys separated by "." (a.b.c); a key in double quotes is one key and may hold dots (a."b.c".d;
@@ -86,7 +94,8 @@ Output: one stdout line
   there was none, (deleted) after a delete; " unchanged" when nothing was written.
 Usage errors (exit 2, one stderr line "json-edit: <message>"): an unknown --option, a missing or extra
   argument, an unknown operation, a bad path, merge without a JSON object, set or delete on the root.
-Exit codes: 0 written or unchanged · 1 I/O error · 2 usage error, refusal, lock timeout, file-lock.mjs not found.`;
+Exit codes: 0 written or unchanged · 1 I/O error · 2 usage error, refusal, lock timeout, file-lock.mjs or
+  replace.mjs not found.`;
 
 const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isContainer = (v) => v !== null && typeof v === 'object';
@@ -338,8 +347,9 @@ function wouldBe(file, root) {
   return { abs, real, rel: toPosix(relative(lexical, abs)), realRel: toPosix(relative(base, real)) };
 }
 
-/** `file` inside the project → { abs, real, rel, realRel, present }; the guards refuse (exit 2). */
+/** `file` inside the project → { abs, real, rel, realRel, present }; the guards refuse (exit 2). Needs loadReplace() first. */
 export function locate(file, { create = false, root = process.cwd() } = {}) {
+  const { ownedBy, resolveInside } = replaceLib;
   let present = true;
   // ENOENT / ENOTDIR = absent; anything else (a symlink loop, …) is resolveInside's to report
   try { statSync(resolve(root, file)); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') present = false; }
@@ -373,12 +383,26 @@ async function loadLock() {
   return lib;
 }
 
+async function loadReplace() {
+  const lib = existsSync(REPLACE) ? await import(pathToFileURL(REPLACE).href) : null;
+  if (!lib || !['ownedBy', 'resolveInside', 'writeAll', 'Refusal', 'UsageError'].every((k) => typeof lib[k] === 'function')) {
+    throw new UsageError(`replace.mjs not found beside this script (${relative(process.cwd(), REPLACE) || REPLACE}) — copy the stardust scripts first; nothing written`);
+  }
+  replaceLib = lib;
+  return lib;
+}
+
+// json-edit's errors and replace.mjs's (resolveInside, writeAll) alike.
+const isUsage = (e) => e instanceof UsageError || (replaceLib !== null && e instanceof replaceLib.UsageError);
+const isRefusal = (e) => e instanceof Refusal || (replaceLib !== null && e instanceof replaceLib.Refusal);
+
 // ---- main --------------------------------------------------------------------------------------
 export async function main(argv) {
   const end = argv.indexOf('--');
   const options = end === -1 ? argv : argv.slice(0, end);
   if (options.includes('--help') || options.includes('-h')) { console.log(HELP); return 0; }
   const o = parseArgs(argv);
+  const { writeAll } = await loadReplace();
   const t = locate(o.file, { create: o.create });
   const start = () => (o.op === 'append' && !o.segments.length ? [] : {});
   // an absent file: a failing edit is refused before the lock creates its directory
@@ -405,8 +429,8 @@ function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && SELF === safeRealpath(process.argv[1])) {
   try { process.exitCode = await main(process.argv.slice(2)); } catch (e) {
     const msg = String(e?.message ?? e).split('\n')[0];
-    console.error(e instanceof Refusal ? `json-edit: refused — ${msg}` : `json-edit: ${msg}`);
+    console.error(isRefusal(e) ? `json-edit: refused — ${msg}` : `json-edit: ${msg}`);
     // file-lock's bounded wait ends in "lock <dir> held for over <n> ms …": a refusal, not an I/O error
-    process.exitCode = e instanceof UsageError || /^lock .+ held for over \d+ ms/.test(msg) ? 2 : 1;
+    process.exitCode = isUsage(e) || /^lock .+ held for over \d+ ms/.test(msg) ? 2 : 1;
   }
 }

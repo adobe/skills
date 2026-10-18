@@ -5,7 +5,7 @@
 // in the path and inside a value, the guards (outside the project, a symlink leaving it, an owned
 // ledger, an absent file without --create, malformed JSON), the write keeping the file's indent and
 // trailing newline, `unchanged` writing nothing, parallel writers losing no key, both script layouts,
-// a missing file-lock.mjs, `--` before a value starting with --, and --help before any I/O.
+// a missing file-lock.mjs or replace.mjs, `--` before a value starting with --, and --help before any I/O.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -362,6 +362,20 @@ check('layouts: the project copy (stardust/scripts/stardust + ../deploy/file-loc
   assert.equal(r.code, 2); assert.match(oneLine(r.err), /file-lock\.mjs not found.*deploy\/scripts\/file-lock\.mjs.*deploy\/file-lock\.mjs.*nothing written/);
   assert.equal(read(f), '{"a":1}\n');
   assert.deepEqual(readdirSync(lone).sort(), ['bin', 'x.json']);
+});
+check('layouts: a project copy without replace.mjs answers --help; an edit → exit 2, one line naming it, nothing written', () => {
+  const d = project();
+  const copy = join(d, 'stardust', 'scripts', 'stardust', 'json-edit.mjs');
+  mkdirSync(dirname(copy), { recursive: true }); mkdirSync(join(d, 'stardust', 'scripts', 'deploy'));
+  copyFileSync(SCRIPT, copy); copyFileSync(LOCK_LIB, join(d, 'stardust', 'scripts', 'deploy', 'file-lock.mjs'));
+  const f = put(join(d, 'x.json'), '{"a":1}\n');
+  const h = runWith(copy, d, ['--help']);
+  assert.equal(h.code, 0, h.err); assert.match(h.out, /Usage:/); assert.equal(h.err, '');
+  refusedCli(runWith(copy, d, ['x.json', 'set', 'a', '2']),
+    /^json-edit: replace\.mjs not found beside this script \(stardust\/scripts\/stardust\/replace\.mjs\) — copy the stardust scripts first; nothing written$/);
+  assert.equal(read(f), '{"a":1}\n');
+  assert.deepEqual(readdirSync(d).sort(), ['stardust', 'x.json']);
+  assert.deepEqual(readdirSync(dirname(copy)), ['json-edit.mjs']);
 });
 
 // ---- parallel writers --------------------------------------------------------------------------
