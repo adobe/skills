@@ -22,16 +22,20 @@ contract recorded a body-hydration state as a panel and cost two sessions and ei
   pass `pin` (stitch-shot `--pin`: a rotator control clicked on the frozen page) and a hidden per-visitor-dialog
   container (`--allow-dialog`) to both captures, and record dismiss / pin / allow in the records, live.json and the gate
   key; a capture taken with another pin list is not reused. A `clip` allowance adds the counted clip findings under its
-  selector to the allowance (gate-all row `clipAllowed`; gate.sh `--full`). A roster run with the settings in
+  selector (its clipper or whole path segments of the recorded findings) to the allowance (gate-all row `clipAllowed`;
+  gate.sh `--full`). A roster run with the settings in
   presence.json takes the captures a run with the same flags took. stitch-shot `--slug` / `--presence` reads them too.
 - **A dialog left open is INCONCLUSIVE.** stitch-shot prints `dialog-left: <name>` and records `dialogLeft` for every
   dialog the last sweep left open — hidden or not; only a hidden container allowed as a per-visitor dialog clears it
-  (`dialogsAllowed`). gate-all: `<side> capture polluted: dialog left open (<name>)`, never kept by a fix round;
-  gate.sh: `INCONCLUSIVE: dialog left open (<name>)`, no verdict (exit 1).
+  (`dialogsAllowed`), and only while that allowance stands. gate-all: `<side> capture polluted: dialog left open
+  (<name>)`, never kept by a fix round; a capture recorded before the check is never kept, re-shot under
+  `--skip-existing` and INCONCLUSIVE when measured. gate.sh: `INCONCLUSIVE: dialog left open (<name>)`, no verdict
+  (exit 1); a live.png from before the check, or taken with other dialog allowances, is retaken.
 - **A build-side hide miss is information.** gate-all and gate.sh print `info: hide matched nothing on the build
   (expected — …)`; the live side's warning is unchanged.
-- **Dead font declarations do not count.** An `@font-face` whose every requested src answered 404 is `fontsDead` with
-  one stdout line, not a `FONT LOAD FAILED` warning or a `font-not-loaded` row reason.
+- **Dead font declarations do not count.** An `@font-face` whose every requested src answered 404, beside a face of its
+  family that loaded, is `fontsDead` with one stdout line, not a `FONT LOAD FAILED` warning or a `font-not-loaded` row
+  reason; a family with no loaded face renders fallback type and still counts.
 - **chrome-explore's pollution guard.** Every top-level open state is sampled again on a fresh page; a repeat that
   differs by more than `--bar` (default 0.02) marks the state `unstable` and is re-sampled once. The contract's header
   records `stability`; `unstableAsWarn` turns chrome-compare's errors on an unstable source state into warnings

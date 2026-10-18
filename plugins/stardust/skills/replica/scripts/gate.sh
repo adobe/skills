@@ -78,7 +78,9 @@
 #   reaches both captures as stitch-shot --pin (live.json pin), and a per-visitor-dialog allowance on a container the
 #   presence hides as --allow-dialog. A round with the settings in presence.json takes the captures a round with the
 #   same flags takes, so a roster re-gate (gate-all reads the same file) reproduces the round. A live.png taken with
-#   another dismiss / pin list is retaken: `gate.sh: live.png was taken with another dismiss / pin list — retaking it`.
+#   another dismiss / pin / per-visitor-dialog allowance list (live.json dismiss.extra, pin, allowDialog) is retaken:
+#   `gate.sh: live.png was taken with another dismiss / pin / dialog-allowance list — retaking it`; so is one whose
+#   live.json predates the dialog-left check (no dialogLeft): `gate.sh: live.png predates the dialog-left check — …`.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL (bounded under run-bg — Concurrency, below), each
@@ -431,16 +433,17 @@ fi
 # One node call reads both: the hide list, a newline, then checked | unchecked | left <descriptor>.
 RETAKE=0
 if [ -f "$DIR/live.png" ]; then
-  OLD_HIDE=""; OLD_CAP=""; OLD_OVL=unchecked
+  OLD_HIDE=""; OLD_CAP=""; OLD_DLG=unchecked; OLD_OVL=unchecked
   if [ -f "$DIR/live.json" ]; then
     OLD=$(node -e "$HIDE_JS"'let j = null;
       try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { j = null; }
       const o = j && typeof j === "object" && !Array.isArray(j) ? j : {};
       const ovl = !("overlayLeft" in o) ? "unchecked" : o.overlayLeft === null ? "checked" : `left ${String(o.overlayLeft).replace(/\s+/g, " ")}`;
       const dm = o.dismiss && typeof o.dismiss === "object" ? o.dismiss : {};
-      const cap = `${dm.off ? "" : dm.extra || ""}|${JSON.stringify(Array.isArray(o.pin) ? o.pin : [])}`;
-      process.stdout.write(`${hideList(o.hide).join(",")}\n${cap}\n${ovl}`);' -- "$DIR/live.json")
-    OLD_HIDE=$(printf '%s\n' "$OLD" | sed -n 1p); OLD_CAP=$(printf '%s\n' "$OLD" | sed -n 2p); OLD_OVL=$(printf '%s\n' "$OLD" | sed -n 3p); OLD_OVL=${OLD_OVL:-unchecked}
+      const cap = `${dm.off ? "" : dm.extra || ""}|${JSON.stringify(Array.isArray(o.pin) ? o.pin : [])}|${hideList(o.allowDialog).join(",")}`;
+      process.stdout.write(`${hideList(o.hide).join(",")}\n${cap}\n${"dialogLeft" in o ? "checked" : "unchecked"}\n${ovl}`);' -- "$DIR/live.json")
+    OLD_HIDE=$(printf '%s\n' "$OLD" | sed -n 1p); OLD_CAP=$(printf '%s\n' "$OLD" | sed -n 2p); OLD_DLG=$(printf '%s\n' "$OLD" | sed -n 3p)
+    OLD_OVL=$(printf '%s\n' "$OLD" | sed -n 4p); OLD_OVL=${OLD_OVL:-unchecked}
   fi
   if [ ! -f "$DIR/live.json" ] && [ -n "$EFF_HIDE" ]; then
     echo "gate.sh: live.png has no live.json record; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
@@ -448,14 +451,17 @@ if [ -f "$DIR/live.png" ]; then
   elif [ -f "$DIR/live.json" ] && [ "$OLD_HIDE" != "$EFF_HIDE" ]; then
     echo "gate.sh: live.png was taken hiding [${OLD_HIDE//,/, }]; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
     RETAKE=1
-  elif [ -f "$DIR/live.json" ] && [ "$OLD_CAP" != "$DISMISS_ALL|$PIN_JSON" ]; then
-    echo "gate.sh: live.png was taken with another dismiss / pin list — retaking it" >&2
+  elif [ -f "$DIR/live.json" ] && [ "$OLD_CAP" != "$DISMISS_ALL|$PIN_JSON|$ALLOW_DIALOG" ]; then
+    echo "gate.sh: live.png was taken with another dismiss / pin / dialog-allowance list — retaking it" >&2
     RETAKE=1
   elif [ "$OLD_OVL" = unchecked ]; then
     echo "gate.sh: live.png predates the overlay-left check — retaking it" >&2
     RETAKE=1
   elif [ "$OLD_OVL" != checked ]; then
     echo "gate.sh: live.png's live.json records an overlay left (${OLD_OVL#left }) — retaking it" >&2
+    RETAKE=1
+  elif [ "$OLD_DLG" != checked ]; then
+    echo "gate.sh: live.png predates the dialog-left check — retaking it" >&2
     RETAKE=1
   fi
 fi
@@ -524,8 +530,8 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   # overlayLeft: null — the capture printed no overlay-left line (above). fontsFailed is three-valued: the record's list
   # (checked; [] = every declared face loaded) or null = not checked — the record's own null (its check could not run)
   # or no readable record (one stderr note). Never [] for an unchecked capture: downstream [] reads as "all loaded".
-  node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at, pinJson] = process.argv.slice(1);
-    const pin = JSON.parse(pinJson || "[]");
+  node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at, pinJson, allowDialog] = process.argv.slice(1);
+    const pin = JSON.parse(pinJson || "[]"); const allow = allowDialog ? allowDialog.split(",") : [];
     let fontsFailed = null; let read = false;
     try { const j = JSON.parse(fs.readFileSync(rec, "utf8"));
       if (Array.isArray(j.fontsFailed)) { fontsFailed = j.fontsFailed.filter((s) => typeof s === "string"); read = true; } else if (j.fontsFailed === null) read = true;
@@ -533,8 +539,8 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
     if (!read) fs.writeSync(2, `gate.sh: the live capture left no readable record (${rec}) — live.json records fontsFailed: null (not checked)\n`);
     fs.writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
       dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [],
-      ...(pin.length ? { pin } : {}), overlayLeft: null, dialogLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
-    -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_ALL" "$EFF_HIDE" "$LIVE_AT" "$PIN_JSON" \
+      ...(pin.length ? { pin } : {}), ...(allow.length ? { allowDialog: allow } : {}), overlayLeft: null, dialogLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
+    -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_ALL" "$EFF_HIDE" "$LIVE_AT" "$PIN_JSON" "$ALLOW_DIALOG" \
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 else
   hide_miss_warn   # a reused live.png: its capture's record still names a hide that matched nothing
@@ -699,11 +705,12 @@ CLIP_N=$(printf '%s' "$CLIPPED" | grep -oE '^Clipped: [0-9]+' | grep -oE '[0-9]+
 # presence.json clip allowances (presence.mjs clipAllowed — the one rule gate-all applies): the counted findings under an
 # allowance's selector do not fail the round; one line names them with their reasons
 if [ "${CLIP_N:-0}" -gt 0 ] 2>/dev/null && [ "$ALLOW_CLIP_JSON" != "[]" ] && [ -f "$DIR/clip-$LBL.json" ]; then
-  ALLOWED=$(node -e 'const [mod, file, allow] = process.argv.slice(1);
+  # presence.mjs's path goes LAST: as argv[1] its main-module guard would run its CLI on these arguments
+  ALLOWED=$(node -e 'const [file, allow, mod] = process.argv.slice(1);
     import(require("url").pathToFileURL(mod).href).then((m) => { const j = JSON.parse(require("fs").readFileSync(file, "utf8"));
       const r = m.clipAllowed(j.findings || j.groups || [], JSON.parse(allow));
       process.stdout.write(`${r.n}\t${r.by.map((x) => `${x.selector} — ${x.reason} ×${x.n}`).join("; ")}`); })
-    .catch((e) => process.stdout.write(`0\tnot applied (${String(e.message).split("\n")[0]})`));' -- "$HERE/presence.mjs" "$DIR/clip-$LBL.json" "$ALLOW_CLIP_JSON")
+    .catch((e) => process.stdout.write(`0\tnot applied (${String(e.message).split("\n")[0]})`));' -- "$DIR/clip-$LBL.json" "$ALLOW_CLIP_JSON" "$HERE/presence.mjs")
   ALLOWED_N=${ALLOWED%%$'\t'*}; ALLOWED_BY=${ALLOWED#*$'\t'}
   case "$ALLOWED_N" in ''|*[!0-9]*) ALLOWED_N=0 ;; esac
   if [ "$ALLOWED_N" -gt 0 ]; then

@@ -783,13 +783,22 @@ check('presence.json dismiss follows --dismiss on both captures; pin → --pin, 
   && stitchArgv().every((a) => argOfV(a, '--dismiss') === '.promo-x,.nl-close' && argOfV(a, '--pin') === '.dot-1' && argOfV(a, '--allow-dialog') === '#cmp-root'), `status ${r.status} ${JSON.stringify(stitchArgv())} ${r.stderr}`);
 check('… the probes and chrome-parity get the same dismiss list; live.json records dismiss.extra and pin', /--main main --dismiss \.promo-x,\.nl-close( |$)/m.test(evidence('cap1', 'content-diff-cs1.txt'))
   && / --dismiss \.promo-x,\.nl-close( |$)/m.test(evidence('cap1', 'chrome-parity-cs1.txt'))
-  && JSON.parse(liveJson('cap1')).dismiss.extra === '.promo-x,.nl-close' && JSON.stringify(JSON.parse(liveJson('cap1')).pin) === '[{"sel":".dot-1","state":"slide 1"}]' && JSON.parse(liveJson('cap1')).dialogLeft === null,
+  && JSON.parse(liveJson('cap1')).dismiss.extra === '.promo-x,.nl-close' && JSON.stringify(JSON.parse(liveJson('cap1')).pin) === '[{"sel":".dot-1","state":"slide 1"}]' && JSON.parse(liveJson('cap1')).dialogLeft === null
+  && JSON.stringify(JSON.parse(liveJson('cap1')).allowDialog) === '["#cmp-root"]',
   `${evidence('cap1', 'content-diff-cs1.txt')} | ${liveJson('cap1')}`);
 writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'], hide: ['#cmp-root'] } }));
 resetArgv();
 r = await gate(['cap1', 'https://live.example/cap1', buildUrl, '1440', 'cs2', '--marker', 'home-proposed', '--dismiss', '.promo-x'], { STUB_STITCH_ARGV: argvFile });
 check('a live.png taken with another pin (or dismiss) list is retaken, said once', r.status === 0 && stitchArgv().map((a) => a[0]).join(',') === 'LIVE,BUILD'
-  && /^gate\.sh: live\.png was taken with another dismiss \/ pin list — retaking it$/m.test(r.stderr) && stitchArgv().every((a) => argOfV(a, '--pin') === null), `${r.stderr} ${JSON.stringify(stitchArgv())}`);
+  && /^gate\.sh: live\.png was taken with another dismiss \/ pin \/ dialog-allowance list — retaking it$/m.test(r.stderr) && stitchArgv().every((a) => argOfV(a, '--pin') === null && argOfV(a, '--allow-dialog') === null), `${r.stderr} ${JSON.stringify(stitchArgv())}`);
+check('… live.json records the round\'s dialog allowances (and none once withdrawn): the first round allowed #cmp-root, this one none', !('allowDialog' in JSON.parse(liveJson('cap1'))), liveJson('cap1'));
+{ // a live.json from before the dialog-left check (no dialogLeft) is retaken once
+  const lj = JSON.parse(liveJson('cap1')); delete lj.dialogLeft; writeFileSync(join(root, gdir('cap1'), 'live.json'), JSON.stringify(lj));
+  resetArgv();
+  r = await gate(['cap1', 'https://live.example/cap1', buildUrl, '1440', 'cs2b', '--marker', 'home-proposed', '--dismiss', '.promo-x'], { STUB_STITCH_ARGV: argvFile });
+  check('a live.png whose live.json predates the dialog-left check is retaken, said once', r.status === 0 && stitchArgv().map((a) => a[0]).join(',') === 'LIVE,BUILD'
+    && /^gate\.sh: live\.png predates the dialog-left check — retaking it$/m.test(r.stderr) && JSON.parse(liveJson('cap1')).dialogLeft === null, `${r.stderr}`);
+}
 // the same settings as flags reproduce the presence run: the same capture argv (slug aside)
 writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'], hide: ['.geo-bar'] } }));
 resetArgv();
@@ -821,7 +830,7 @@ check('--full: clipped findings without an allowance fail the round (exit 2)', r
 writeFileSync(join(root, SITE_CAP), JSON.stringify({ clipa: { allow: [{ kind: 'clip', selector: 'div.card__body', reason: 'R-02' }] } }));
 r = await gate(['clipa', 'https://live.example/clipa', buildUrl, '1440', 'ca2', '--full', '--marker', 'home-proposed'], { STUB_CLIPPED: '2', STUB_CLIP_FINDINGS: CLIP_FINDINGS });
 check('--full: a presence.json clip allowance lets the findings under its selector pass — one line naming it with its reason, exit 0', r.status === 0
-  && /^clip-probe: 2 finding\(s\) allowed by presence\.json \(div\.card__body — R-02 ×2\)$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+  && /^clip-probe: 2 finding\(s\) allowed by presence\.json \(div\.card__body — R-02 ×2\)$/m.test(r.stdout) && !/unknown command|presence:/.test(r.stderr), `status ${r.status} ${r.stdout} ${r.stderr}`);
 unlinkSync(join(root, SITE_CAP));
 
 // A stale project copy of stitch-shot (from before the capture record: it rejects the flag, exit 1 — twice, read as
