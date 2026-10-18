@@ -4,7 +4,8 @@
 //   origin A  the protected site. Every request needs `Authorization: token t0k3n`; without it the answer is 401.
 //             /page and /copy are one page whose stylesheet and image come from origin B.
 //             /hop-b answers 302 to origin B's /page, /hop-a 302 to its own /page, /hop-ab 302 to its own /hop-b, /hop-pic
-//             302 to origin B's /pic.png: a redirect off the origin (a page and an image), within it, and both in a row.
+//             302 to origin B's /pic.png: a redirect off the origin (a page and an image), within it, and both in a row;
+//             /loop 302 to itself.
 //   origin B  the third party the page loads from (a font or image host, or the local reskin server). It never asks for
 //             anything, serves /style.css, /pic.png and the same /page and /copy, and records every request together
 //             with the Authorization it carried, if any — the proof that the token never left origin A.
@@ -45,6 +46,7 @@ export async function startTwoOriginServer({ hostA = '127.0.0.1', hostB = '127.0
     if (protectedSide && path === '/hop-b') send(302, 'text/plain', '', { location: `${originB}/page` });
     else if (protectedSide && path === '/hop-a') send(302, 'text/plain', '', { location: '/page' });
     else if (protectedSide && path === '/hop-ab') send(302, 'text/plain', '', { location: '/hop-b' });
+    else if (protectedSide && path === '/loop') send(302, 'text/plain', '', { location: '/loop' });
     else if (protectedSide && path === '/hop-pic') send(302, 'text/plain', '', { location: `${originB}/pic.png` });
     else if (path === '/page' || path === '/copy') send(200, 'text/html; charset=utf-8', html(originB));
     else if (!protectedSide && path === '/style.css') send(200, 'text/css', CSS);

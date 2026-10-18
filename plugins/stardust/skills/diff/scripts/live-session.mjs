@@ -228,9 +228,9 @@ const MAX_AUTH_HOPS = 10;
 //     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
 //     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
 //     answer as it came, a redirect included.
-// A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: continued, it
-// would go out without the token and the instrument would measure a 401 page as the site. One stderr line names
-// the origin. The requests here set no timeout of their own (0): the caller's navigation timeout ends a stall.
+// A request that cannot be made here (a timeout, a dropped connection), or a chain that does not end within the hop
+// budget (a loop), is ABORTED, never continued or handed on: it would go out without the token and the instrument
+// would measure a 401 page as the site. One stderr line names the origin. The requests here set no timeout of their own (0): the caller's navigation timeout ends a stall.
 async function authRoute(route, context, o, headerValue) {
   const request = route.request();
   const onOrigin = (u) => { try { return new URL(u).origin === o; } catch { return false; } };
@@ -242,6 +242,7 @@ async function authRoute(route, context, o, headerValue) {
   };
   let last;
   let replay = false;
+  let exhausted = false;
   try {
     last = await route.fetch({ headers, maxRedirects: 0, timeout: 0 });
     let next = target(last, request.url());
@@ -253,9 +254,15 @@ async function authRoute(route, context, o, headerValue) {
         last = answer;
         next = after;
       }
+      exhausted = !replay && onOrigin(next);
     }
   } catch {
     console.error(`live-session: a request to ${o} failed and was not sent again without the site token`);
+    await route.abort('failed').catch(() => {});
+    return;
+  }
+  if (exhausted) {
+    console.error(`live-session: a redirect chain inside ${o} did not end within ${MAX_AUTH_HOPS} hops (a loop?); the request was stopped, not sent on without the site token`);
     await route.abort('failed').catch(() => {});
     return;
   }

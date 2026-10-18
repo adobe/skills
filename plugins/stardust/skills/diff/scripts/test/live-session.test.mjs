@@ -249,6 +249,15 @@ else {
       if (strictToTheEnd) assert.deepEqual(srv.seen, ['token t0k3n'], 'nor at teardown');
     });
   }
+  await checkAsync('a same-origin redirect loop fails closed: the navigation fails, one stderr line names the origin, every request carried the token', () => session(live, async (fx, page) => {
+    let navigation;
+    const err = await withStderr(async () => { navigation = await page.goto(`${fx.originA}/loop`, { timeout: 15000, waitUntil: 'load' }).then(() => null, (e) => e); });
+    assert.ok(navigation, 'the navigation failed');
+    assert.match(err, new RegExp(`^live-session: a redirect chain inside ${fx.originA.replace(/[.:/]/g, '\\$&')} did not end within \\d+ hops[^\\n]*\\n$`), err);
+    assert.ok(!err.includes(fx.token), 'the token is not printed');
+    assert.ok(fx.a.log.length > 1 && fx.a.log.every((e) => e.path === '/loop' && e.status === 302 && e.authorization === fx.authorization), 'only tokened /loop requests reached the origin');
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
   await browser.close();
 }
 
