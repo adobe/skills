@@ -185,6 +185,32 @@ not-attempted, <h> hand-authored)`, is the `plan` unit's ledger detail
 (`verdict`). It is not the full plan below; render still runs every
 strict check.
 
+**Derived map, then fork — never a hand-written generator.** The encoder
+serves a template without a hand-drafted map or a hand-built sibling file,
+in this order:
+
+- `node stardust/scripts/migrate/migrate.mjs plan <slug…>` derives the slot
+  map from the archetype prototype when the capture carries no `#slots`
+  (the prototype's typed slots read through the archetype capture's
+  `<main>`), records `source: derived`, and refuses only when nothing
+  derives — the refusal then names the one command that makes it derivable
+  (capture the archetype, mark its slots, or give each sibling its slots).
+- `node stardust/scripts/migrate/migrate.mjs render --from-archetype
+  <proto>.html --capture <page.json>` forks that prototype into the
+  sibling's own `-proposed.html` — the sibling capture's texts and images
+  in the archetype's slots — when the variance report says `same` or
+  `minor`; `render <slug>` then places it. The attempt record lists each
+  forked sibling under `forked`.
+- A `major` variance (a new block — an extra probe or a `SECTIONS` delta)
+  is the only case hand-authored: build the page's HTML by hand, then
+  `node stardust/scripts/migrate/encode-attempt.mjs record --template <t>
+  --hand-authored --reason "<why>" --pages <slug>`.
+
+A generator script the agent writes for these steps — the delivered
+document, the slot map, or a sibling's source HTML — is a defect: `plan`'s
+derive, `render --from-archetype` and the deploy skill's `proto-to-doc.mjs`
+already emit them deterministically.
+
 Print the plan and wait for confirmation when the scope is large:
 
 ```
