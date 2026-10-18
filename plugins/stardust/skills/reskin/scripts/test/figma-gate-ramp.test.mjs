@@ -137,7 +137,7 @@ if (playwrightOk) {
     assert.equal(ready.drift, false);
     return runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, ...extra });
   };
-  const total = 4 * 6 + rootEntries.length;
+  const total = 8 * 6 + rootEntries.length;
 
   await check('every :root entry and type entry of the fixture passes on page.html; ramp.json and the probe files are written', async () => {
     const p = project('pass');

@@ -113,6 +113,19 @@ if (playwrightOk) {
     assert.deepEqual(geometryOf(p).results, r.results);
   });
 
+  await check('prepare hands on the coverage floor with the checks; a style no entry covers is a usage error listing it', async () => {
+    const p = project('floor');
+    const ready = await prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) });
+    assert.deepEqual(ready.coverage, { s01: { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 }, s02: { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 } });
+    assert.deepEqual(ready.checks.s01.waive, []);
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checks = JSON.parse(readFileSync(file, 'utf8'));
+    checks.sections.s01.type = checks.sections.s01.type.filter((e) => e.node !== '1:6');
+    writeFileSync(file, JSON.stringify(checks));
+    await assert.rejects(prepare({ dir: p.dir, slug: p.slug, url: urlOf(p) }), (e) => e.name === 'UsageError' && e.code === 2
+      && e.message.includes('reskin/figma-checks/home.json has 1 problem(s):\n  s01 @1440: text style 18/400/28 #1a1a1a ("A calm, readable starti…", node 1:6) has no type entry or waiver'));
+  });
+
   await check('on a local page previewSelector is not used: the entry is measured by its selector', async () => {
     const p = project('local-ignores');
     const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');

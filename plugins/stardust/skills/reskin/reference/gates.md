@@ -96,15 +96,11 @@ localizes any failure to a named slot. It asserts, from the model:
   source garbage — fidelity over repair; flag, don't fix
   (`reference/mapping-brief.md` § Flag, don't fix).
 
-Live `--rendered` targets (a staged deploy on a real host) navigate
-via the same shared `live-session.mjs` hardening as its siblings
-(real-Chrome UA + standard headers, `domcontentloaded`, challenge
-detection, webdriver spoof; `--ua` / `--wait-until` / `--headed` /
-`--locale` flags). A byte-adjacent gate must never measure a
-challenge interstitial or an error page: a bot challenge exits **3**
-(never measured; escalate with `--headed`), a non-challenge
-HTTP ≥ 400 exits 2. Local/file targets keep the legacy `networkidle`
-path — rendered page files behave as before.
+Live `--rendered` targets (a staged deploy on a real host) navigate via
+the same shared `live-session.mjs` hardening as dom-equality (`--ua` /
+`--wait-until` / `--headed` / `--locale`): a bot challenge exits **3**,
+a non-challenge HTTP ≥ 400 exits 2, neither is ever measured, and local
+and file targets keep the legacy `networkidle` path.
 
 **Pass bar (content gate):** dom-equality exit 0 AND slot-coverage
 exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
@@ -133,10 +129,9 @@ Defenses, in order:
   zero). When eyeballing, confirm each content image occupies real
   area; a rendered-size assertion (`clientWidth > 0` on visible
   content images) closes the gap the string and paint checks share.
-- The **eyeball step must check paint explicitly**: open the
-  rendered page (or the `--shot` capture) and look at the images
-  themselves, not just the layout — a broken-image icon in a
-  screenshot is easy to gloss over as "an image".
+- The **eyeball step must check paint explicitly**: look at the images
+  themselves in the page or `--shot` capture, not just the layout; a
+  broken-image icon is easy to gloss over.
 - When the source CDN is origin-locked, **Phase 6 asset
   localization is NOT optional** — it is the only fix. Hotlinking
   is not a deferrable "delivery concern" in that case: the page is
@@ -175,14 +170,12 @@ A renderer that breaks a convention fails the probe with
 skip**, because silent skips fake passes. A token path absent from
 `donor-tokens.json` is a reported SKIP.
 
-One default-spec blind spot to catch by eye: when the source's only
-h1 is visually hidden (an sr-only a11y landmark — real sites do
-this), the `main h1` display-weight assertion holds a token on an
-**invisible** element and proves nothing about the page's display
-face. Add a `--spec` entry asserting the display tokens on the
-element that actually renders as the display headline (the hero h2,
-typically) — the default assertion still passes, it just stops being
-the evidence.
+One default-spec blind spot: when the source's only h1 is visually
+hidden (an sr-only landmark), the `main h1` display-weight assertion
+holds a token on an **invisible** element and says nothing about the
+page's display face. Add a `--spec` entry asserting the display tokens
+on the element that renders as the display headline (the hero h2,
+typically).
 
 #### Tolerances
 
@@ -234,13 +227,23 @@ tolerance above 1px need a `why`.
 
 In a component kit the curated module frame is usually a documentation
 frame (a title block, notation panels, the module at desktop, tablet and
-mobile widths), and the module instance in it is content-width
-(narrower than the page). Point each section's `node` at the desktop
-instance (from the outline), `roots` at a smaller capture for entries
-that set `width`, and set `"width": 1440`: the default width is the
-root's, and the page is opened at it. The page section is full-bleed
-while the instance is not, so `left`, `right` and `top` are offset by
-the section's margins there; check widths, gaps and paddings instead.
+mobile widths) and the module instance in it is content-width. Point
+`node` at the desktop instance (from the outline), set `"width": 1440`
+(the default is the root's, and the page opens at it), and `roots` at the
+mobile instance for entries that set `width`. The page section is
+full-bleed and the instance is not, so `left`, `right` and `top` are
+offset by the section's margins: check widths, gaps and paddings.
+
+**Coverage floor.** Computed from Figma, so a file cannot cover only
+what the page got right. At every width a section is checked at, every
+text style of that width's root (family, size, weight, line height and
+letter spacing to 0.1px, colour) needs a `type` entry whose node has
+it, and a module frame holding a mobile variant (a component or
+instance named mobile, 320 to 480 wide) needs a `roots` entry up to 480
+wide. Only `waive: [{ node | "width": "mobile", why }]` lowers it:
+`node` on a frame drops that subtree (a documentation panel), on a TEXT
+node waives its style; `"width": "mobile"` waives the mobile root. A
+miss is exit 2, every one listed.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
@@ -258,8 +261,7 @@ the section's margins there; check widths, gaps and paddings instead.
 - **Fonts are recorded, not failed.** B2 names each font a section
   uses that the page does not render (no loaded `@font-face`, not
   installed where it is measured; a generic family is served); B3 compares the first
-  family of the computed `font-family`. A font the page cannot serve
-  never fails a check.
+  family of the computed `font-family`.
 - **UNASSERTED.** A property the Figma node gives no value for is
   listed in `ramp.json` and never fails.
 - **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
@@ -312,11 +314,9 @@ When a family's iteration is spent and it still fails, stop iterating
 that family and log. On the preview each round costs a push and a Code
 Sync, so (e) re-runs a matrix instead (`deployed-leg.md`).
 
-Why per family, not per page: the families fail for unrelated
-reasons (emission bugs, responsive chrome, section drift or measure
-mismatches), so a per-page budget would force independent one-edit
-fixes to be logged as residuals; per-family keeps the loop as bounded
-without absorbing real, cheap fixes.
+Per family, not per page: the families fail for unrelated reasons
+(emission bugs, responsive chrome, measure mismatches), so a per-page
+budget would push independent cheap fixes into residuals.
 
 ### Residual logging
 
@@ -391,14 +391,10 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   licensing) cannot be rebundled. Defense: adopt the font-family
   **token string** with a local fallback stack; the probe asserts the
   string, which is the honest, probe-able contract.
-- **Hotlinked source images.** `currentSrc` URLs point at the
-  source's CDN — a delivery liability always, and on an
-  **origin-locked CDN** (recorded: 403 to every non-origin request,
-  verified with curl, real-Chrome UA, with and without referrer) a
-  broken page *now*: the URL-string checks pass while nothing
-  paints. slot-coverage's paint assertion (§ Image paint) catches
-  it; when it fires, Phase 6 asset localization is **mandatory**,
-  not optional (migrate's asset bundling,
+- **Hotlinked source images.** On an **origin-locked CDN** (§ Image
+  paint) the URL-string checks pass while nothing paints, a broken page
+  *now*. slot-coverage's paint assertion catches it; when it fires,
+  Phase 6 asset localization is **mandatory** (migrate's asset bundling,
   `../../migrate/reference/content-preservation.md` § Media
   references). The gate compares host+path, so localization after
   gating requires a re-run with the localized mapping or acceptance

@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/figma-gate-checks.test.mjs — figma-gate/checks.mjs over the synthetic kit
 // (fixtures/figma-kit/nodes.json, fixtures/figma-gate/checks.json): defaults, every problem of an invalid
-// checks file collected at once, token sources, per-width roots, skip, pixel modes and rootsNamed.
+// checks file collected at once, token sources, per-width roots, skip, pixel modes and rootsNamed, and the
+// coverage floor (text styles, mobile variants, waivers) over a small module built in this file.
 // Pure, no network. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
-import { MEASURES, leavesSection, rootsNamed, scopeSelector, selectorBranches, validateChecks } from '../figma-gate/checks.mjs';
+import { MEASURES, leavesSection, mobileVariants, rootsNamed, scopeSelector, selectorBranches, styleKey, textStyles, validateChecks } from '../figma-gate/checks.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const nodes = JSON.parse(readFileSync(join(HERE, 'fixtures', 'figma-kit', 'nodes.json'), 'utf8'));
@@ -20,7 +21,14 @@ let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 const skipped = { skip: 'not under test', geometry: [], type: [] };
 const problemsOf = (sections, extra = ctx) => validateChecks({ version: 1, page: 'home', sections: { s01: skipped, ...sections } }, extra).problems.join('\n');
-const geo = (entry) => ({ s02: { geometry: [{ id: 'x', selector: '.card', ...entry }], type: [{ id: 't', selector: 'h2', node: 'I1:7;5:2' }] } });
+// The four text styles of M2's frame (1:7): section title, feature copy, card label, card button label.
+const typeS02 = [
+  { id: 't1', selector: 'h2', node: 'I1:7;5:2' },
+  { id: 't2', selector: '.feature', node: 'I1:7;5:3' },
+  { id: 't3', selector: '.card-label', node: 'I1:7;5:8' },
+  { id: 't4', selector: '.card-btn', node: 'I1:7;5:6;3:5' },
+];
+const geo = (entry) => ({ s02: { geometry: [{ id: 'x', selector: '.card', ...entry }], type: typeS02 } });
 
 check('the fixture is valid and gets its defaults', () => {
   const ok = validateChecks(fixtureChecks, ctx);
@@ -32,6 +40,11 @@ check('the fixture is valid and gets its defaults', () => {
   assert.equal(ok.sections.s02.geometry[0].index, 0);
   assert.equal(ok.sections.s02.pixel.mode, 'auto');
   assert.equal(ok.sections.s01.geometry.length, 6);
+  assert.deepEqual(ok.sections.s02.waive, []);
+  assert.deepEqual(ok.coverage, {
+    s01: { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 },
+    s02: { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 },
+  });
 });
 
 check('an invalid file lists every problem at once', () => {
@@ -81,12 +94,19 @@ check('tokens: a px value is accepted, anything else is a problem', () => {
 
 check('per-width roots: a root is found, a node must sit under it', () => {
   const roots = { 360: '1:3' };
-  const ok = validateChecks({ version: 1, page: 'home', sections: { s02: { roots, geometry: [{ id: 'x', selector: '.card', node: '1:5', measure: 'width', width: 360 }], type: [{ id: 't', selector: 'h2', node: 'I1:7;5:2' }] }, s01: { skip: 'covered by s02', geometry: [], type: [] } } }, ctx);
+  const heroAt360 = [
+    { id: 't5', selector: 'h1', node: '1:5', width: 360 },
+    { id: 't6', selector: '.lead', node: '1:6', width: 360 },
+    { id: 't7', selector: '.btn.primary', node: 'I1:20;3:5', width: 360 },
+    { id: 't8', selector: '.btn.secondary', node: 'I1:21;3:7', width: 360 },
+  ];
+  const ok = validateChecks({ version: 1, page: 'home', sections: { s02: { roots, geometry: [{ id: 'x', selector: '.card', node: '1:5', measure: 'width', width: 360 }], type: [...typeS02, ...heroAt360] }, s01: { skip: 'covered by s02', geometry: [], type: [] } } }, ctx);
   assert.deepEqual(ok.problems, []);
   assert.deepEqual(ok.sections.s02.roots, { 360: '1:3', 1440: '1:7' });
   assert.equal(ok.sections.s02.geometry[0].width, 360);
-  const bad = validateChecks({ version: 1, page: 'home', sections: { s02: { roots, geometry: [{ id: 'x', selector: '.card', node: 'I1:7;5:7', measure: 'width', width: 360 }], type: [{ id: 't', selector: 'h2', node: 'I1:7;5:2' }] }, s01: { skip: 'x', geometry: [], type: [] } } }, ctx).problems.join('\n');
+  const bad = validateChecks({ version: 1, page: 'home', sections: { s02: { roots, geometry: [{ id: 'x', selector: '.card', node: 'I1:7;5:7', measure: 'width', width: 360 }], type: typeS02 }, s01: { skip: 'x', geometry: [], type: [] } } }, ctx).problems.join('\n');
   assert.match(bad, /x: I1:7;5:7 is not inside s02's root 1:3/);
+  assert.match(bad, /s02 @360: text style 56\/700\/64 #1f3a5f \("Welcome to the kit", node 1:5\) has no type entry or waiver/, 'a second width is held to the same floor');
 });
 
 check('type entries: the node must be TEXT and inside the root', () => {
@@ -123,8 +143,185 @@ check('structure: version, page, ids, root nodes missing from the boxes', () => 
 check('rootsNamed: the roots a checks file needs loaded', () => {
   assert.deepEqual(rootsNamed(fixtureChecks, join2), ['1:3', '1:7']);
   const named = { version: 1, page: 'home', sections: { s02: { node: '1:9', roots: { 360: '1:8' }, geometry: [], type: [] } } };
-  assert.deepEqual(rootsNamed(named, join2), ['1:3', '1:9', '1:8']);
+  assert.deepEqual(rootsNamed(named, join2), ['1:3', '1:9', '1:7', '1:8'], 'the joined module frame is loaded too: the mobile rule reads it');
   assert.deepEqual(rootsNamed({}, { sections: [] }), []);
+});
+
+// The coverage floor, over one module built here: a frame that documents the card at three widths.
+const solid = (r, g, b) => [{ type: 'SOLID', color: { r: r / 255, g: g / 255, b: b / 255, a: 1 } }];
+const shape = (id, name, type, w, h, children = []) => ({ id, name, type, absoluteBoundingBox: { x: 0, y: 0, width: w, height: h }, fills: [], children });
+const words = (id, characters, family, size, weight, lineHeightPx, rgb, letterSpacing = 0) => ({
+  ...shape(id, characters, 'TEXT', 200, lineHeightPx), characters, fills: solid(...rgb), style: { fontFamily: family, fontSize: size, fontWeight: weight, lineHeightPx, letterSpacing, lineHeightUnit: 'PIXELS' },
+});
+const WHITE = [255, 255, 255]; const INK = [51, 51, 51]; const GREY = [102, 102, 102];
+const floorNodes = { nodes: { 'F:0': { document: shape('F:0', 'Page', 'FRAME', 1440, 3000, [
+  shape('F:1', 'Card module', 'FRAME', 1440, 1600, [
+    shape('F:2', 'Documentation', 'FRAME', 400, 300, [words('F:3', 'Notation for spacing and radii', 'Inter', 12, 500, 16, [136, 136, 136])]),
+    shape('F:10', 'Card, Device=Desktop', 'INSTANCE', 1440, 700, [
+      words('F:11', 'Card title for the third quarter', 'Inter Display', 24, 700, 28.8, WHITE),
+      words('F:12', 'Second title', 'Inter Display', 24, 700, 28.84, WHITE, 0.04),
+      words('F:13', 'Body copy', 'Inter', 16, 400, 24, INK),
+      shape('F:14', 'Notes', 'FRAME', 600, 40, [words('F:15', 'Legal text', 'Inter', 12, 400, 16, GREY)]),
+      shape('F:16', 'mobile', 'INSTANCE', 24, 24),
+      { ...words('F:17', 'Hidden promo', 'Comic', 99, 300, 120, GREY), visible: false },
+    ]),
+    shape('F:20', 'Card, Device=Tablet', 'INSTANCE', 768, 600, [words('F:21', 'Tablet title', 'Inter Display', 20, 700, 24, WHITE)]),
+    shape('F:30', 'Card, Device=Mobile', 'INSTANCE', 382, 900, [words('F:31', 'Mobile title', 'Inter Display', 20, 700, 24, WHITE), words('F:32', 'Body copy', 'Inter', 16, 400, 24, INK)]),
+  ]),
+  shape('G:1', 'Plain module', 'FRAME', 1440, 900, [
+    words('G:2', 'Plain heading', 'Inter Display', 24, 700, 28.8, WHITE),
+    shape('G:3', 'Plain, Device=Tablet', 'INSTANCE', 768, 500, [words('G:4', 'Tablet body', 'Inter', 16, 400, 24, INK)]),
+    shape('G:5', 'mobile', 'INSTANCE', 24, 24),
+  ]),
+]) } } };
+const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:10', 'F:30', 'G:1'] });
+const floorJoin = { sections: [{ slot: 's03', module: 'M3', node: 'F:1' }, { slot: 's04', module: 'M4', node: 'G:1' }] };
+const floorCtx = { join: floorJoin, boxes: floorBoxes, tokens: {} };
+const s04 = { geometry: [{ id: 'g1', selector: 'h2', node: 'G:2', measure: 'width' }], type: [{ id: 't1', selector: 'h2', node: 'G:2' }, { id: 't2', selector: 'p', node: 'G:4' }] };
+const at382 = [{ id: 't4', selector: 'h3', node: 'F:31', width: 382 }, { id: 't5', selector: 'p', node: 'F:32', width: 382 }];
+const s03 = (over = {}) => ({
+  node: 'F:10',
+  roots: { 382: 'F:30' },
+  geometry: [{ id: 'g1', selector: '.card', node: 'F:11', measure: 'width' }],
+  type: [{ id: 't1', selector: 'h3', node: 'F:11' }, { id: 't2', selector: 'p', node: 'F:13' }, { id: 't3', selector: '.legal', node: 'F:15' }, ...at382],
+  ...over,
+});
+const floor = (section, extra = {}) => validateChecks({ version: 1, page: 'home', sections: { s03: section, s04, ...extra } }, floorCtx);
+const floorProblems = (section) => floor(section).problems;
+const withoutType = (...ids) => s03().type.filter((e) => !ids.includes(e.id));
+const MOBILE_LINE = 's03: module has a mobile variant (Card, Device=Mobile, 382 wide) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver';
+
+check('styleKey: the tuple of family, size, weight, line height and letter spacing rounded to 0.1, and colour', () => {
+  const t = { fontFamily: 'Inter', fontSize: 24, fontWeight: 700, lineHeightPx: 28.8, letterSpacing: 0, color: 'rgb(255, 255, 255)' };
+  assert.equal(styleKey({ ...t, lineHeightPx: 28.84, letterSpacing: 0.04 }), styleKey(t), 'to 0.1px');
+  assert.equal(styleKey({ ...t, lineHeightPx: 28.86 }) === styleKey(t), false);
+  for (const other of [{ fontFamily: 'Inter Display' }, { fontSize: 25 }, { fontWeight: 600 }, { letterSpacing: -0.5 }, { color: 'rgb(0, 0, 0)' }]) assert.notEqual(styleKey({ ...t, ...other }), styleKey(t), JSON.stringify(other));
+  assert.equal(styleKey({ ...t, color: 'rgb(255, 255, 255)' }), styleKey({ ...t, color: '#ffffff' }), 'one hex form of the same colour');
+});
+
+check('textStyles: equal styles across nodes are one group; hidden nodes are not in the boxes; a container waiver drops its subtree, a TEXT waiver its style', () => {
+  const desktop = floorBoxes.roots['F:10'].box;
+  const all = textStyles(desktop);
+  assert.equal(all.size, 3);
+  const [title, body, legal] = [...all.values()];
+  assert.deepEqual(title.nodes, ['F:11', 'F:12']);
+  assert.equal(title.sample, 'Card title for the thir…');
+  assert.deepEqual(body.nodes, ['F:13']);
+  assert.deepEqual(legal.nodes, ['F:15']);
+  assert.equal(title.label, '24/700/28.8 #ffffff');
+  assert.equal(textStyles(desktop, []).size, 3);
+  assert.deepEqual([...textStyles(desktop, ['F:14']).keys()].length, 2, 'the Notes frame is waived');
+  assert.equal(textStyles(desktop, ['F:14']).has([...all.keys()][2]), false);
+  assert.deepEqual([...textStyles(desktop, ['F:15']).values()].map((s) => s.nodes[0]), ['F:11', 'F:13'], 'a TEXT waiver on the legal line');
+  assert.deepEqual([...textStyles(desktop, ['F:12']).values()].map((s) => s.nodes[0]), ['F:13', 'F:15'], 'a TEXT waiver speaks for its style, as an entry does');
+  const module = floorBoxes.roots['F:1'].box;
+  assert.ok([...textStyles(module).values()].some((s) => s.nodes.includes('F:3')), 'the documentation panel is enumerated');
+  assert.ok(![...textStyles(module, ['F:2']).values()].some((s) => s.nodes.includes('F:3')), 'and a container waiver removes it');
+});
+
+check('mobileVariants: a COMPONENT or INSTANCE named mobile, at most 480 wide; a tablet and a 24px icon named mobile are not', () => {
+  assert.deepEqual(mobileVariants(floorBoxes.roots['F:1'].box), [{ id: 'F:30', name: 'Card, Device=Mobile', w: 382 }]);
+  assert.deepEqual(mobileVariants(floorBoxes.roots['G:1'].box), [], 'a tablet instance and a 24px icon named mobile');
+  const sized = (w, name = 'Device=Mobile', type = 'INSTANCE') => ({ id: `n${w}`, name, type, w, children: [] });
+  const found = (...kids) => mobileVariants({ id: 'm', name: 'm', type: 'FRAME', w: 1440, children: kids }).map((v) => v.w);
+  assert.deepEqual(found(sized(480), sized(481), sized(320), sized(319)), [480, 320], 'a mobile page is 320 to 480 wide');
+  assert.deepEqual(found(sized(390, 'Mobile'), sized(390, 'mobile-nav'), sized(390, 'Mobilephone'), sized(390, 'Device=Tablet'), sized(390, 'Mobile', 'FRAME'), sized(390, 'Mobile', 'COMPONENT')), [390, 390, 390], 'the word, an instance or a component');
+  assert.deepEqual(found({ ...sized(900, 'Tablet'), children: [sized(375)] }), [375], 'at any depth');
+});
+
+check('coverage floor: entries for every style at both widths validate, and coverage counts them', () => {
+  const ok = floor(s03());
+  assert.deepEqual(ok.problems, []);
+  assert.deepEqual(ok.coverage, {
+    s03: { styles: { covered: 5, total: 5 }, widths: [382, 1440], waived: 0 },
+    s04: { styles: { covered: 2, total: 2 }, widths: [1440], waived: 0 },
+  });
+});
+
+check('coverage floor: one uncovered style is exactly one problem, naming its width, style, text and node', () => {
+  const lacking = floor(s03({ type: withoutType('t3') }));
+  assert.deepEqual(lacking.problems, ['s03 @1440: text style 12/400/16 #666666 ("Legal text", node F:15) has no type entry or waiver']);
+  assert.deepEqual(lacking.coverage.s03, { styles: { covered: 4, total: 5 }, widths: [382, 1440], waived: 0 });
+  assert.deepEqual(floorProblems(s03({ type: withoutType('t5') })), ['s03 @382: text style 16/400/24 #333333 ("Body copy", node F:32) has no type entry or waiver']);
+  assert.deepEqual(floorProblems(s03({ type: withoutType('t1') })), ['s03 @1440: text style 24/700/28.8 #ffffff ("Card title for the thir…", node F:11) has no type entry or waiver']);
+});
+
+check('coverage floor: a style is covered by an entry whose node has it, any node of that style, and only at the entry\'s width', () => {
+  assert.deepEqual(floorProblems(s03({ type: [...withoutType('t1'), { id: 't1', selector: 'h3', node: 'F:12' }] })), [], 'F:12 shares the title style with F:11');
+  assert.deepEqual(floorProblems(s03({ type: [...withoutType('t5'), { id: 't5', selector: 'p', node: 'F:13' }] })), ['s03 @382: text style 16/400/24 #333333 ("Body copy", node F:32) has no type entry or waiver'], 't5 now measures the 1440 copy: the 382 one is still open');
+  assert.deepEqual(floorProblems(s03({ type: [...withoutType('t5'), { id: 't5', selector: 'p', node: 'F:13', width: 382 }] })), [
+    't5: F:13 is not inside s03\'s root F:30',
+    's03 @382: text style 16/400/24 #333333 ("Body copy", node F:32) has no type entry or waiver',
+  ], 'an entry that cannot be resolved covers nothing');
+});
+
+check('coverage floor: every miss of every section and width is listed in one run', () => {
+  const lost = floor(s03({ type: [] }), { s04: { ...s04, type: [] } }).problems;
+  assert.equal(lost.filter((p) => /has no type entry or waiver/.test(p)).length, 5 + 2);
+  assert.ok(lost.includes('s03 has no type checks: add one or "skip": "<why>"'));
+});
+
+check('coverage floor: a TEXT-node waiver and a container waiver each clear their styles and count as waived', () => {
+  const text = floor(s03({ type: withoutType('t3'), waive: [{ node: 'F:15', why: 'legal line, set by the rich-text block' }] }));
+  assert.deepEqual(text.problems, []);
+  assert.deepEqual(text.coverage.s03, { styles: { covered: 4, total: 5 }, widths: [382, 1440], waived: 1 });
+  assert.deepEqual(text.sections.s03.waive, [{ node: 'F:15', why: 'legal line, set by the rich-text block' }]);
+  const container = floor(s03({ type: withoutType('t3'), waive: [{ node: 'F:14', why: 'the notes frame is documentation' }] }));
+  assert.deepEqual(container.problems, []);
+  assert.deepEqual(container.coverage.s03, { styles: { covered: 4, total: 5 }, widths: [382, 1440], waived: 1 });
+  assert.equal(floor(s03({ waive: [{ node: 'F:15', why: 'x' }] })).coverage.s03.styles.covered, 5, 'an entry still counts as covering a waived style');
+  assert.deepEqual(floorProblems(s03({ type: withoutType('t3', 't2'), waive: [{ node: 'F:15', why: 'legal' }] })), ['s03 @1440: text style 16/400/24 #333333 ("Body copy", node F:13) has no type entry or waiver'], 'a waiver clears what it names');
+});
+
+check('coverage floor: a waiver names a node inside one of the section\'s roots, one of node or width "mobile", and a why', () => {
+  const w = (waive) => floorProblems(s03({ waive }));
+  assert.deepEqual(w([{ node: 'F:15', why: '' }]), ['s03: waive[0] needs why']);
+  assert.deepEqual(w([{ node: 'F:15' }]), ['s03: waive[0] needs why']);
+  assert.deepEqual(w([{ node: 'F:15', width: 'mobile', why: 'both' }]), ['s03: waive[0] needs exactly one of node and width']);
+  assert.deepEqual(w([{ why: 'neither' }]), ['s03: waive[0] needs exactly one of node and width']);
+  assert.deepEqual(w([{ width: 390, why: 'a number' }]), ['s03: waive[0]: width must be "mobile"']);
+  assert.deepEqual(w([{ node: 'F:99', why: 'typo' }]), ['s03: waive[0]: F:99 is not inside any of the section\'s roots']);
+  assert.deepEqual(w([{ node: 'F:3', why: 'in the module frame, not in a root' }]), ['s03: waive[0]: F:3 is not inside any of the section\'s roots']);
+  assert.deepEqual(w(['F:15']), ['s03: waive[0] must be { node | width: "mobile", why }']);
+  assert.deepEqual(w({ node: 'F:15' }), ['s03: waive must be a list of { node | width: "mobile", why }']);
+  assert.deepEqual(w([{ node: 'F:15', why: 'ok' }, { node: 'F:15', why: '  ' }]), ['s03: waive[1] needs why']);
+});
+
+check('coverage floor: a module with a mobile variant needs a mobile root or a { width: "mobile" } waiver', () => {
+  const noMobile = { roots: undefined, type: withoutType('t4', 't5') };
+  assert.deepEqual(floorProblems(s03(noMobile)), [MOBILE_LINE]);
+  assert.deepEqual(floorProblems(s03({ ...noMobile, waive: [{ width: 'mobile', why: 'the card is not responsive: the page shows the desktop card scaled' }] })), []);
+  assert.deepEqual(floor(s03({ ...noMobile, waive: [{ width: 'mobile', why: 'desktop-only card' }] })).coverage.s03, { styles: { covered: 3, total: 3 }, widths: [1440], waived: 1 });
+  assert.deepEqual(floorProblems(s03({ ...noMobile, waive: [{ width: 'mobile', why: '' }] })), ['s03: waive[0] needs why']);
+  assert.deepEqual(floorProblems(s03({ node: 'F:30', roots: undefined, type: at382, geometry: [{ id: 'g1', selector: '.card', node: 'F:31', measure: 'width' }] })), [], 'a base root that is itself the mobile instance (382 wide) is a mobile root');
+  assert.deepEqual(floorProblems(s03({ roots: { 360: 'F:30' }, type: [...withoutType('t4', 't5'), ...at382.map((e) => ({ ...e, width: 360 }))] })), [], 'any root up to 480 wide');
+  assert.match(floorProblems(s03({ roots: { 768: 'F:20' }, type: [...withoutType('t4', 't5'), { id: 't6', selector: 'h3', node: 'F:21', width: 768 }] })).join('\n'), /module has a mobile variant/, 'a tablet-width root is not a mobile root');
+});
+
+check('coverage floor: a module with no mobile variant needs no mobile root (a tablet instance, a 24px icon named mobile)', () => {
+  assert.deepEqual(floor(s03()).sections.s04.roots, { 1440: 'G:1' });
+  assert.deepEqual(floor(s03()).problems, [], 's04 is the plain module: its frame holds a Device=Tablet instance and a 24px icon named mobile');
+  assert.deepEqual(validateChecks(fixtureChecks, ctx).problems, [], 'and so is a kit module documented at one width');
+});
+
+check('coverage floor: a joined module frame as the root floods the floor, a container waiver drops a documentation panel, and the mobile message says to name the desktop instance', () => {
+  const asRoot = (waive) => floorProblems({
+    geometry: s03().geometry,
+    type: [{ id: 't1', selector: 'h3', node: 'F:11' }, { id: 't2', selector: 'p', node: 'F:13' }, { id: 't3', selector: '.legal', node: 'F:15' }, { id: 't4', selector: 'h3', node: 'F:31' }],
+    ...(waive ? { waive } : {}),
+  });
+  const flood = asRoot();
+  assert.deepEqual(flood, [
+    's03 @1440: text style 12/500/16 #888888 ("Notation for spacing an…", node F:3) has no type entry or waiver',
+    `${MOBILE_LINE}; name the desktop instance in "node"`,
+  ]);
+  assert.deepEqual(asRoot([{ node: 'F:2', why: 'documentation panel: notation text, not the module' }]), [flood[1]]);
+});
+
+check('coverage floor: skip waives the floor and is counted as a waiver; coverage still reports what the root holds', () => {
+  const skippedAll = validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:10', geometry: [], type: [] }, s04 } }, floorCtx);
+  assert.deepEqual(skippedAll.problems, []);
+  assert.deepEqual(skippedAll.coverage.s03, { styles: { covered: 0, total: 3 }, widths: [1440], waived: 1 });
 });
 
 const S = 'main section[data-slot="s02"]';

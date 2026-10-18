@@ -235,7 +235,10 @@ const kitRead = (...p) => JSON.parse(readFileSync(join(HERE, 'fixtures', ...p), 
 const kit = { boxes: buildBoxes({ nodes: kitRead('figma-kit', 'nodes.json'), roots: ['1:3', '1:7'] }), tokens: kitRead('figma-gate', 'donor-tokens.json'), rules: kitRead('figma-kit', 'curation-rules.json') };
 const kitJoin = { sections: [{ slot: 's01', module: 'M1', node: '1:3', selector: 'main > div:nth-child(2)', index: 1 }, { slot: 's02', module: 'M2', node: '1:7', selector: 'main > div:nth-child(3)', index: 2 }] };
 // The M2b checks file with the deployed DOM's selectors added where the blocks rebuilt the markup.
-const PREVIEW_SELECTORS = { '.container': '.default-content-wrapper', '.btn': 'a.button', '.card': '.cards > div', '.feature': '.cards > p', '.card-label': '.badge' };
+const PREVIEW_SELECTORS = {
+  '.container': '.default-content-wrapper', '.btn': 'a.button', '.btn.secondary': 'a.button.secondary', '.lead': '.default-content-wrapper > p:nth-of-type(1)',
+  '.card': '.cards > div', '.feature': '.cards > p', '.card-label': '.badge', '.card-btn': '.cards .try',
+};
 const previewChecks = (checks = kitRead('figma-gate', 'checks.json')) => {
   for (const section of Object.values(checks.sections)) {
     for (const e of [...section.geometry, ...section.type]) if (PREVIEW_SELECTORS[e.selector]) e.previewSelector = PREVIEW_SELECTORS[e.selector];
@@ -273,8 +276,14 @@ await check('rampSpecs: on a preview the type entries are measured by previewSel
   const rootEntries = rootTokens(kit.tokens).entries;
   const { sections } = validateChecks(previewChecks(), { join: kitJoin, boxes: kit.boxes, tokens: kit.tokens });
   const selectors = (regime) => [...new Set(rampSpecs({ join: kitJoin, checks: sections, boxes: kit.boxes, rootEntries, norm, regime }).get(1440).map((e) => e.selector))].filter((s) => s !== ':root');
-  assert.deepEqual(selectors('preview'), ['main > div:nth-child(2) h1', 'main > div:nth-child(2) a.button', 'main > div:nth-child(3) h2', 'main > div:nth-child(3) .badge']);
-  assert.deepEqual(selectors('local'), ['main > div:nth-child(2) h1', 'main > div:nth-child(2) .btn', 'main > div:nth-child(3) h2', 'main > div:nth-child(3) .card-label']);
+  assert.deepEqual(selectors('preview'), [
+    'main > div:nth-child(2) h1', 'main > div:nth-child(2) a.button', 'main > div:nth-child(2) .default-content-wrapper > p:nth-of-type(1)', 'main > div:nth-child(2) a.button.secondary',
+    'main > div:nth-child(3) h2', 'main > div:nth-child(3) .badge', 'main > div:nth-child(3) .cards > p', 'main > div:nth-child(3) .cards .try',
+  ]);
+  assert.deepEqual(selectors('local'), [
+    'main > div:nth-child(2) h1', 'main > div:nth-child(2) .btn', 'main > div:nth-child(2) .lead', 'main > div:nth-child(2) .btn.secondary',
+    'main > div:nth-child(3) h2', 'main > div:nth-child(3) .card-label', 'main > div:nth-child(3) .feature', 'main > div:nth-child(3) .card-btn',
+  ]);
 });
 
 let playwrightOk = false;

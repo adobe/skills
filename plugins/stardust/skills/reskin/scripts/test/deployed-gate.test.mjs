@@ -1216,7 +1216,10 @@ if (playwrightOk) {
 
   // An eligible project holding what every step reads: the content model of the live source (at `source`), the delta file,
   // the donor tokens and, with `figma`, M2b's capture of the kit, its page and its checks file (the deployed DOM's selectors added).
-  const PREVIEW_SELECTORS = { '.container': '.default-content-wrapper', '.btn': 'a.button', '.card': '.cards > div', '.feature': '.cards > p', '.card-label': '.badge' };
+  const PREVIEW_SELECTORS = {
+    '.container': '.default-content-wrapper', '.btn': 'a.button', '.btn.secondary': 'a.button.secondary', '.lead': '.default-content-wrapper > p:nth-of-type(1)',
+    '.card': '.cards > div', '.feature': '.cards > p', '.card-label': '.badge', '.card-btn': '.cards .try',
+  };
   const realProject = (name, source, { figma = false } = {}) => {
     const root = project(name);
     const reskin = join(root, 'stardust', 'reskin');

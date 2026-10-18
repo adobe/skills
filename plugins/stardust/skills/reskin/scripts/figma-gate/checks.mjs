@@ -1,7 +1,10 @@
 // skills/reskin/scripts/figma-gate/checks.mjs — the checks file (reskin/figma-checks/<slug>.json): the agent
 // pairs page selectors with Figma nodes, this module validates the pairing against the join, the box trees
 // and donor-tokens.json and applies the defaults. Every problem is collected, never the first only. An entry may
-// carry previewSelector, the selector of the deployed DOM (selectorFor picks it on a preview).
+// carry previewSelector, the selector of the deployed DOM (selectorFor picks it on a preview). The coverage floor
+// is computed from Figma, not from the file: every text style of a root needs a type entry at that width, a module
+// that documents a mobile variant needs a mobile root, and only a waiver (node or width "mobile", with a why)
+// or a skip lowers it; validateChecks returns the per-section coverage that floor left.
 // Pure: boxes come from loadBoxes/buildBoxes (rootsNamed lists the roots to load), no I/O here.
 import { findBox } from './boxes.mjs';
 
@@ -76,8 +79,9 @@ export function leavesSection(selector) {
   return branch ? `selector "${branch}" reaches the section's siblings with a sibling combinator: scope it with a descendant, ":scope > …"` : null;
 }
 
-// The roots a checks file needs in loadBoxes: each joined module's frame (or the section's own node)
-// and every per-width root, in first-seen order.
+// The roots a checks file needs in loadBoxes: each joined module's frame (the mobile rule reads it even when the
+// section's own node is a desktop instance inside it), the section's own node and every per-width root, in
+// first-seen order.
 export function rootsNamed(checks, join) {
   const out = new Set();
   for (const j of join?.sections ?? []) {
@@ -85,12 +89,112 @@ export function rootsNamed(checks, join) {
     const section = checks?.sections?.[j.slot];
     const root = rootOf(section, j);
     if (root) out.add(root);
+    if (j.node) out.add(j.node);
     for (const node of Object.values(isObject(section?.roots) ? section.roots : {})) if (text(node)) out.add(node);
   }
   return [...out];
 }
 
 const tokenValue = (tokens, path) => path.split('.').reduce((v, k) => (isObject(v) ? v[k] : undefined), tokens);
+
+const round1 = (n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
+const RGB = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
+
+// A box's colour (rgb()/rgba() css or hex) as lower-case hex; an alpha below 1 is a fourth byte.
+function hexOf(css) {
+  const m = RGB.exec(String(css ?? '').trim());
+  if (!m) return String(css ?? '').trim().toLowerCase();
+  const byte = (n) => Math.min(255, Number(n)).toString(16).padStart(2, '0');
+  return `#${byte(m[1])}${byte(m[2])}${byte(m[3])}${m[4] !== undefined && Number(m[4]) < 1 ? byte(Math.round(Number(m[4]) * 255)) : ''}`;
+}
+
+// The text style of a TEXT box's `text`, as one key: first font family, size, weight, line height and letter
+// spacing to 0.1px, colour. The six things ramp.mjs asserts (it asserts them exactly, so equal keys are one check).
+export const styleKey = (t) => [String(t.fontFamily ?? '').split(',')[0].trim(), t.fontSize, t.fontWeight, round1(t.lineHeightPx), round1(t.letterSpacing), hexOf(t.color)].map((v) => v ?? '').join('|');
+const styleLabel = (t) => `${[t.fontSize, t.fontWeight, round1(t.lineHeightPx)].map((v) => v ?? '?').join('/')}${t.color ? ` ${hexOf(t.color)}` : ''}`;
+const sampleOf = (characters) => {
+  const s = String(characters ?? '').replace(/\s+/g, ' ').trim();
+  return s.length > 24 ? `${s.slice(0, 23)}…` : s;
+};
+
+// The text styles a root asks for → Map<styleKey, { nodes: ids in tree order, sample, label }>. A waiver on a
+// container drops everything under it; one on a TEXT node waives its style, as an entry on one node covers it.
+export function textStyles(rootBox, waived = []) {
+  const ids = new Set(waived);
+  const live = [];
+  const walk = (b) => {
+    if (ids.has(b.id) && !b.text) return;
+    if (b.text) live.push(b);
+    b.children.forEach(walk);
+  };
+  walk(rootBox);
+  const waivedKeys = new Set(live.filter((b) => ids.has(b.id)).map((b) => styleKey(b.text)));
+  const out = new Map();
+  for (const b of live) {
+    const key = styleKey(b.text);
+    if (waivedKeys.has(key)) continue;
+    if (!out.has(key)) out.set(key, { nodes: [], sample: sampleOf(b.text.characters), label: styleLabel(b.text) });
+    out.get(key).nodes.push(b.id);
+  }
+  return out;
+}
+
+// The mobile variants a joined module frame documents: a COMPONENT or INSTANCE named for mobile, 320 to 480 wide
+// (narrower is an icon or a swatch, not a page).
+export function mobileVariants(moduleBox) {
+  const found = [];
+  const walk = (b) => {
+    for (const c of b.children) {
+      if ((c.type === 'COMPONENT' || c.type === 'INSTANCE') && /\bmobile\b/i.test(c.name) && c.w >= 320 && c.w <= 480) found.push({ id: c.id, name: c.name, w: c.w });
+      walk(c);
+    }
+  };
+  walk(moduleBox);
+  return found;
+}
+
+// A section's waive list, as { node, why } or { width: 'mobile', why } entries; every malformed entry is a problem.
+function readWaivers(slot, list, inRoots, problems) {
+  if (list === undefined) return [];
+  if (!Array.isArray(list)) { problems.push(`${slot}: waive must be a list of { node | width: "mobile", why }`); return []; }
+  const out = [];
+  list.forEach((w, i) => {
+    const at = `${slot}: waive[${i}]`;
+    if (!isObject(w)) { problems.push(`${at} must be { node | width: "mobile", why }`); return; }
+    if ((w.node === undefined) === (w.width === undefined)) { problems.push(`${at} needs exactly one of node and width`); return; }
+    if (!text(w.why)) problems.push(`${at} needs why`);
+    if (w.node !== undefined) {
+      if (!text(w.node)) problems.push(`${at}: node must be a node id`);
+      else if (!inRoots(w.node)) problems.push(`${at}: ${w.node} is not inside any of the section's roots`);
+      else out.push({ node: w.node, why: w.why });
+    } else if (w.width !== 'mobile') problems.push(`${at}: width must be "mobile"`);
+    else out.push({ width: 'mobile', why: w.why });
+  });
+  return out;
+}
+
+// The coverage floor of one section: at every width it is checked at, each text style of that width's root (less
+// the waived) needs a type entry at that width whose node has the style. → { covered, total } over (width, style).
+function floorOf({ slot, roots, rootBox, type, waivedIds, enforce, problems }) {
+  let covered = 0;
+  let total = 0;
+  for (const [w, node] of Object.entries(roots)) {
+    const root = rootBox(node);
+    const have = new Set();
+    for (const e of type.filter((t) => String(t.width) === w)) {
+      const box = text(e.node) ? findBox(root, e.node) : null;
+      if (box?.text) have.add(styleKey(box.text));
+    }
+    const every = textStyles(root);
+    total += every.size;
+    covered += [...every.keys()].filter((k) => have.has(k)).length;
+    if (!enforce) continue;
+    for (const [key, s] of textStyles(root, waivedIds)) {
+      if (!have.has(key)) problems.push(`${slot} @${w}: text style ${s.label} ("${s.sample}", node ${s.nodes[0]}) has no type entry or waiver`);
+    }
+  }
+  return { covered, total };
+}
 
 function validatePixel(slot, pixel, problems) {
   const mode = pixel?.mode ?? 'auto';
@@ -104,7 +208,8 @@ function validatePixel(slot, pixel, problems) {
 export function validateChecks(checks, { join, boxes, tokens }) {
   const problems = [];
   const sections = {};
-  if (!isObject(checks)) return { sections, problems: ['the checks file must be a JSON object'] };
+  const coverage = {};
+  if (!isObject(checks)) return { sections, problems: ['the checks file must be a JSON object'], coverage };
   if (checks.version !== 1) problems.push('version must be 1');
   if (!text(checks.page)) problems.push('page must be a slug');
   const file = isObject(checks.sections) ? checks.sections : {};
@@ -209,7 +314,24 @@ export function validateChecks(checks, { join, boxes, tokens }) {
     const skipped = text(section.skip);
     if (!skipped && geometry.length === 0) problems.push(`${slot} has no geometry checks: add one or "skip": "<why>"`);
     if (!skipped && type.length === 0) problems.push(`${slot} has no type checks: add one or "skip": "<why>"`);
-    sections[slot] = { root, width, roots, geometry, type, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
+
+    const inRoots = (id) => Object.values(roots).some((node) => findBox(rootBox(node), id));
+    const waive = readWaivers(slot, section.waive, inRoots, problems);
+    const styles = floorOf({ slot, roots, rootBox, type, waivedIds: waive.flatMap((w) => (w.node ? [w.node] : [])), enforce: !skipped, problems });
+    if (!skipped) {
+      const frame = j.node && j.node !== root ? rootBox(j.node) : base;
+      if (j.node && !frame) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
+      const variants = frame ? mobileVariants(frame) : [];
+      const mobileRoot = Object.keys(roots).some((w) => Number(w) <= 480);
+      if (variants.length && !mobileRoot && !waive.some((w) => w.width === 'mobile')) {
+        const [first] = variants;
+        const more = variants.length > 1 ? `; +${variants.length - 1} more` : '';
+        const hint = root === j.node ? '; name the desktop instance in "node"' : '';
+        problems.push(`${slot}: module has a mobile variant (${first.name}, ${first.w} wide${more}) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver${hint}`);
+      }
+    }
+    coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0) };
+    sections[slot] = { root, width, roots, geometry, type, waive, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
   }
-  return { sections, problems };
+  return { sections, problems, coverage };
 }

@@ -178,7 +178,8 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
       "node"?: "<id>"                    the section root, default the join's module frame
       "width"?: 1440                     default the root's width
       "roots"?: { "<width>": "<id>" }    another capture of the module, for entries with that width
-      "skip"?: "<why>"                   replaces the required geometry and type entries
+      "skip"?: "<why>"                   replaces the required geometry and type entries (and the floor)
+      "waive"?: [ { "node": "<id>" | "width": "mobile", "why": "<why>" } ]   lowers the coverage floor below
       "geometry": [ { id, selector, previewSelector?, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
       "type": [ { id, selector, previewSelector?, node, width? } ],
       "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
@@ -193,6 +194,13 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   top and height are content-dependent: they need tolerancePx and why. tolerancePx above 1 needs why.
   A padding measure needs an auto-layout node; a type node must be TEXT; every node sits inside the root
   of its width. fixture needs fixtureUrl, off needs why. Every problem is listed at once (exit 2).
+  Coverage floor, computed from Figma (not from this file): at every width a section is checked at (its root and each
+  roots entry), every text style of that root (first font family, size, weight, line height and letter spacing to
+  0.1px, colour) needs a type entry at that width whose node has the style; a module frame that holds a mobile variant
+  (a component or instance named "mobile", 320 to 480 wide) needs a roots entry up to 480 wide. waive is the only way
+  below it, and needs a why: { node } on a frame drops that subtree (a documentation panel, notation text), on a TEXT
+  node waives that style; { width: "mobile" } waives the mobile root. A module frame that is itself the root holds its
+  documentation frames and every variant: name the desktop instance in "node".
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)

@@ -9,8 +9,9 @@ import { readInputs, workDir } from './io.mjs';
 import { runJoin } from './join.mjs';
 import { localTarget } from './target.mjs';
 
-// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, out }, where
-// rules is curation-rules.json and checks is validateChecks(...).sections. target is the regime to measure: the
+// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, out }, where
+// rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor
+// ({ styles: { covered, total }, widths, waived }). target is the regime to measure: the
 // local page at url by default, or a built Target (previewTarget for a deployed preview).
 export async function prepare({ dir, slug, url, target = localTarget(url) }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
@@ -18,9 +19,9 @@ export async function prepare({ dir, slug, url, target = localTarget(url) }) {
   const join = await runJoin({ target, inputs, out });
   if (!join.pass) return { drift: true, join, out };
   const boxes = loadBoxes(dir, rootsNamed(inputs.checks, join));
-  const { sections, problems } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens });
+  const { sections, problems, coverage } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens });
   if (problems.length) {
     throw new UsageError(`${dir}/reskin/figma-checks/${slug}.json has ${problems.length} problem(s):\n${problems.map((p) => `  ${p}`).join('\n')}`);
   }
-  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks: sections, out };
+  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks: sections, coverage, out };
 }

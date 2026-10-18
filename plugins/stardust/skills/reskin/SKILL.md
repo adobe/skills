@@ -348,8 +348,7 @@ node stardust/scripts/reskin/slot-coverage.mjs \
   --report stardust/reskin/reports/<slug>-slot-coverage.md
 ```
 
-`dom-equality.mjs` (vendored + adapted from github.com/aemcoder/skills,
-Apache-2.0) gates on whitespace-normalized visible-text **byte
+`dom-equality.mjs` gates on whitespace-normalized visible-text **byte
 equality** and the **ordered, URL-normalized visible-image set**;
 element count and tag sequence are reported but informational.
 `slot-coverage.mjs` additionally proves every model slot present
@@ -368,10 +367,10 @@ node stardust/scripts/reskin/donor-probe.mjs \
 Computed-style assertions of donor token values on the rendered page —
 bg/fg, font-family token string, display weight, button spec,
 container width, band palette, section rhythm. Tolerances: `reference/gates.md` § Tolerances.
-Then the **side-by-side judgment**: open the rendered page next to the
-donor reference-page screenshots (`canon-source/assets/screenshots/`)
-and judge adoption with your eyes — the probe proves tokens, the
-eyeball proves the page *reads as* the donor. Record the verdict.
+Then the **side-by-side judgment** (`reference/gates.md` § (b)): the
+rendered page next to the donor reference-page screenshots
+(`canon-source/assets/screenshots/`); the probe proves tokens, the
+eyeball that the page *reads as* the donor. Record the verdict.
 Paths in `donor-tokens.json` `coverage.absent` are SKIPs in
 `donor-probe` and never fail it, so copy each into every page's
 `flags[]` in `ledger.json`.
@@ -385,7 +384,9 @@ included module's outline with `figma-gate.mjs boxes --module Mn`,
 author `stardust/reskin/figma-checks/<slug>.json` (schema:
 `figma-gate.mjs --help`), then run the whole check under `run-bg` and
 read it with `wait` (repeat while it exits 75; no step blocks past
-~110 s):
+~110 s). The file must cover every text style of each root, and a mobile
+root when the module has a mobile variant; only a `waive` with a `why`
+lowers that floor (`reference/gates.md` § (d)):
 
 ```bash
 node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
@@ -398,13 +399,12 @@ node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/
 B0 (section join), B1 (geometry) and B3 (`:root` tokens and type ramp)
 block; B2 (frame pixels) is advisory and B4 (the divergence register,
 `.work/reskin/gates/<slug>/figma/register.md`) informational. Exit 124
-is no verdict: re-run it once, never a fix iteration; the same 124
-twice is a residual (needs-owner). Exit 3 is a bot challenge on a live
-target, exit 2 a setup problem (fix the input, then re-run). Residuals carry
+is no verdict (re-run once, never a fix iteration; the same 124 twice
+is a residual, needs-owner), exit 3 a bot challenge on a live target,
+exit 2 a setup problem (fix the input, re-run). Residuals carry
 `class` `figma.join` | `figma.geometry` | `figma.ramp`. Copy
 `summary.json`'s `ledgerFragment` into `ledger.json`
-`pages.<slug>.gates.figma`. UNASSERTED ramp lines and pixel numbers are
-advisory.
+`pages.<slug>.gates.figma`.
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
 project) — the page `deploy` made, on its aem.page branch preview, after
