@@ -238,6 +238,8 @@ await check('--help documents inherited; its usage errors exit 2 and write nothi
   const help = r.stdout.replace(/\s+/g, ' ');
   assert.ok(help.includes('ai-readability and qa-gate get the token by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin> (the value by environment, never argv), for that origin only'), 'the help says how a protected preview is measured');
   assert.ok(!/n\/a: protected preview|sends its header to every origin/.test(help), 'a protected preview is no longer n/a');
+  assert.ok(/qa-gate[^]*? runs on the inputs there are; one missing is a FAIL \("incomplete: no eds-schema\/<slug>\.json \(run deploy Step 2b\)", "incomplete: no design\.json \(run deployed-gate parity first\)"\), never a pass/.test(help), 'the help says a missing schema or design is a FAIL');
+  assert.ok(!/n\/a: run deploy Step 2b|n\/a: <reason> \(<rows>\)" line per reason and "by deploy/.test(help), 'qa-gate\'s missing inputs are no longer n/a');
   assert.match(r.stdout, /--auth-header[^]*?preview\s+origin only[^]*?inherited to its \.plain\.html request and to\s+ai-readability and qa-gate/, 'the --auth-header paragraph says what inherited does with the header');
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
@@ -330,23 +332,42 @@ await check('ai-readability below 98 is a FAIL naming the score and the blocks t
   assert.equal(edge.result.verdict, 'PASS', '98 is the bar');
 });
 
-await check('qa-gate: without eds-schema/home.json "n/a: run deploy Step 2b" (and it is not run); without design.json "n/a: run deployed-gate parity first (design.json)"; neither is a FAIL', async () => {
+await check('qa-gate with a missing input is a FAIL, never a pass: it still runs on the inputs there are (its schema-free checks need neither), the row names the step that writes the missing one and says what qa-gate measured', async () => {
+  const URL_AT = (origin) => `${origin}/ns/home`;
   const noSchema = await scenario('no-schema', { schema: false });
   assert.ifError(noSchema.error);
-  assert.equal(noSchema.result.verdict, 'PASS');
-  assert.deepEqual(pick(noSchema.result.rows, 'qa-gate'), { check: 'qa-gate', value: 'n/a: run deploy Step 2b', bar: '0 fail', status: 'n/a' });
-  assert.deepEqual(noSchema.stub.calls().map((c) => c.tool), ['readability'], 'qa-gate did not run');
-  assert.ok(!existsSync(join(outOf(noSchema.root), 'inherited', 'qa-gate.txt')));
-  assert.ok(inheritedLines(noSchema.result).includes('n/a: run deploy Step 2b (qa-gate)'));
+  assert.deepEqual([noSchema.result.verdict, noSchema.result.exit], ['FAIL', 1], 'the preview is not accepted without the schema');
+  const missingSchema = 'incomplete: no eds-schema/home.json (run deploy Step 2b)';
+  assert.deepEqual(pick(noSchema.result.rows, 'qa-gate'), {
+    check: 'qa-gate', value: missingSchema, bar: '0 fail', status: 'FAIL', detail: 'what it measured: 12 ok, 1 warn, 0 fail',
+  });
+  const qaCall = noSchema.stub.calls().find((c) => c.tool === 'qa');
+  assert.deepEqual(qaCall?.argv, [URL_AT(noSchema.origin), '--design', join(outOf(noSchema.root), 'design.json')], 'qa-gate ran, without --schema');
+  assert.equal(readFileSync(join(outOf(noSchema.root), 'inherited', 'qa-gate.txt'), 'utf8'), QA_PASS.stdout, 'its report is kept');
+  assert.deepEqual(inheritedLines(noSchema.result), [
+    'FAIL inherited', `  qa-gate: ${missingSchema}`, '    what it measured: 12 ok, 1 warn, 0 fail', 'by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)',
+  ]);
+  assert.ok(!inheritedLines(noSchema.result).some((l) => /n\/a/.test(l)), 'no row is n/a for a missing input');
+  assert.equal(readJson(join(outOf(noSchema.root), 'inherited.json')).verdict, 'FAIL');
 
   const noDesign = await scenario('no-design', { design: false });
-  assert.equal(noDesign.result.verdict, 'PASS');
-  assert.equal(pick(noDesign.result.rows, 'qa-gate').value, 'n/a: run deployed-gate parity first (design.json)');
-  assert.deepEqual(noDesign.stub.calls().map((c) => c.tool), ['readability']);
-  assert.ok(inheritedLines(noDesign.result).includes('n/a: run deployed-gate parity first (design.json) (qa-gate)'));
+  assert.deepEqual([noDesign.result.verdict, noDesign.result.exit], ['FAIL', 1]);
+  assert.equal(pick(noDesign.result.rows, 'qa-gate').value, 'incomplete: no design.json (run deployed-gate parity first)');
+  assert.deepEqual(noDesign.stub.calls().find((c) => c.tool === 'qa')?.argv, [URL_AT(noDesign.origin), '--schema', join(noDesign.root, 'stardust', 'eds-schema', 'home.json')], 'qa-gate ran, without --design');
 
   const neither = await scenario('no-schema-no-design', { schema: false, design: false });
-  assert.equal(pick(neither.result.rows, 'qa-gate').value, 'n/a: run deploy Step 2b', 'the schema is named first');
+  assert.equal(pick(neither.result.rows, 'qa-gate').value, `${missingSchema}; no design.json (run deployed-gate parity first)`, 'both are named, the schema first');
+  assert.deepEqual(neither.stub.calls().find((c) => c.tool === 'qa')?.argv, [URL_AT(neither.origin)]);
+
+  const failing = { exit: 1, stdout: '  ✗ exactly one <h1> — found 2\nQA GATE: FAIL — 0 ok, 0 warn, 1 fail\n' };
+  const both = await scenario('no-schema-qa-fails', { schema: false, cfg: { qa: failing } });
+  assert.deepEqual([both.result.verdict, pick(both.result.rows, 'qa-gate').value], ['FAIL', missingSchema]);
+  assert.equal(pick(both.result.rows, 'qa-gate').detail, 'what it measured: 0 ok, 0 warn, 1 fail\nexactly one <h1> — found 2', 'what qa-gate found is kept beside the missing input');
+
+  const crash = await scenario('no-schema-qa-error', { schema: false, cfg: { qa: { exit: 2, stderr: 'usage: qa-gate.mjs <harnessURL>\n' } } });
+  const row = pick(crash.result.rows, 'qa-gate');
+  assert.deepEqual([row.status, row.value, crash.result.verdict, crash.result.exit], ['ERROR', 'ERROR (exit 2)', 'ERROR', 124]);
+  assert.equal(row.detail, `usage: qa-gate.mjs <harnessURL>\n${missingSchema}`, 'a qa-gate with no verdict still says what was missing');
 });
 
 await check('qa-gate failing: FAIL with its ✗ lines; no verdict (exit 2, or a crash with no QA GATE line): ERROR (exit N), verdict ERROR, exit 124, and ERROR outranks a FAIL', async () => {
@@ -597,7 +618,7 @@ await check('a non-"token" scheme is sent as given to .plain.html and to the ins
 
 // ---- the CLI in the project-copy layout ------------------------------------------------------------------------
 
-await check('the project-copy layout: the CLI finds the instruments beside the reskin scripts; a score of 97 is FAIL inherited, no eds-schema/home.json reads "n/a: run deploy Step 2b", a row in error is exit 124, a missing instrument is exit 2', async () => {
+await check('the project-copy layout: the CLI finds the instruments beside the reskin scripts; a score of 97 is FAIL inherited, no eds-schema/home.json is a qa-gate FAIL ("incomplete"), a row in error is exit 124, a missing instrument is exit 2', async () => {
   const copy = join(scratch, 'copy');
   cpSync(SCRIPTS, join(copy, 'reskin'), { recursive: true, filter: (src) => src !== join(SCRIPTS, 'test') });
   cpSync(join(SCRIPTS, '..', '..', 'diff', 'scripts'), join(copy, 'diff'), { recursive: true });
@@ -613,10 +634,11 @@ await check('the project-copy layout: the CLI finds the instruments beside the r
     assert.equal(low.status, 1, low.all);
     assert.equal(low.stdout.split('\n')[0], 'FAIL inherited');
     assert.ok(low.stdout.includes('  ai-readability 97 < 98'), low.stdout);
-    assert.ok(low.stdout.includes('n/a: run deploy Step 2b (qa-gate)'), low.stdout);
+    assert.ok(low.stdout.includes('  qa-gate: incomplete: no eds-schema/home.json (run deploy Step 2b); no design.json (run deployed-gate parity first)'), low.stdout);
+    assert.ok(!/n\/a/.test(low.stdout), low.stdout);
     assert.ok(low.stdout.includes('by deploy (localize-links --check, davids-model-lint, block-roundtrip --ew)'), low.stdout);
     assert.equal(readJson(join(outOf(root), 'inherited.json')).verdict, 'FAIL');
-    assert.equal(pick(readJson(join(outOf(root), 'inherited.json')).rows, 'qa-gate').value, 'n/a: run deploy Step 2b');
+    assert.equal(pick(readJson(join(outOf(root), 'inherited.json')).rows, 'qa-gate').value, 'incomplete: no eds-schema/home.json (run deploy Step 2b); no design.json (run deployed-gate parity first)');
 
     const lost = await go('copy-124', { readability: { exit: 2, stderr: 'boom\n', json: undefined } });
     assert.equal(lost.status, 124, lost.all);
@@ -628,7 +650,7 @@ await check('the project-copy layout: the CLI finds the instruments beside the r
     const good = await go('copy-pass', {});
     assert.equal(good.status, 0, good.all);
     assert.equal(good.stdout.split('\n')[0], 'PASS inherited');
-    assert.ok(!/n\/a/.test(good.stdout), 'the schema and the design are there: qa-gate ran');
+    assert.ok(!/n\/a|incomplete/.test(good.stdout), 'the schema and the design are there: qa-gate ran in full');
     assert.equal(readJson(join(outOf(root), 'inherited.json')).verdict, 'PASS');
 
     rmSync(join(copy, 'deploy', 'qa-gate.mjs'));
@@ -671,6 +693,8 @@ if (playwrightOk) {
     const server = await startPreviewServer();
     try {
       const root = project('real-pass', { origin: server.origin });
+      writeSchema(root);
+      writeDesign(root);
       const stub = stubTools('real-pass');
       const result = await runInherited({ dir: join(root, 'stardust'), slug: 'home', preview: previewOf(root), tools: { readability: real.readability, qa: stub.tools.qa } });
       assert.equal(result.verdict, 'PASS', JSON.stringify(result.rows));
@@ -717,6 +741,17 @@ if (playwrightOk) {
       assert.match(broken.row.value, /, 1 fail$/);
       assert.match(broken.row.detail, /content cap 900px holds at 2560/);
       assert.deepEqual([broken.result.verdict, broken.result.exit], ['FAIL', 1]);
+
+      // The schema-free checks run without the schema; the row stays a FAIL, for the schema it lacks.
+      const bare = project('real-qa-no-schema', { origin: server.origin });
+      writeFileSync(join(outOf(bare), 'design.json'), `${JSON.stringify({ extensions: { breakpoints: { containerMaxWidth: '1200px', probeWidth: 2560 } } })}\n`);
+      const partial = await runInherited({ dir: join(bare, 'stardust'), slug: 'home', preview: previewOf(bare), tools: { readability: stubTools('real-qa-no-schema').tools.readability, qa: real.qa } });
+      const partialRow = pick(partial.rows, 'qa-gate');
+      assert.equal(partialRow.status, 'FAIL', JSON.stringify(partialRow));
+      assert.equal(partialRow.value, 'incomplete: no eds-schema/home.json (run deploy Step 2b)');
+      assert.match(partialRow.detail, /^what it measured: \d+ ok, \d+ warn, 0 fail$/);
+      assert.match(readFileSync(join(outOf(bare), 'inherited', 'qa-gate.txt'), 'utf8'), /^QA GATE: PASS — /m, 'qa-gate ran its own checks');
+      assert.deepEqual([partial.verdict, partial.exit], ['FAIL', 1]);
     } finally { await server.close(); }
   });
 

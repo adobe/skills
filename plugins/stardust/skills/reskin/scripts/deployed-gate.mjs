@@ -177,8 +177,9 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
                            HTML lacks most below it
            qa-gate         qa-gate.mjs on the delivered page with --schema <dir>/eds-schema/<slug>.json (deploy
                            Step 2b) and --design <deployed>/design.json (parity's cap-probe capture): its exit is
-                           the verdict, its ✗ lines the findings. "n/a: run deploy Step 2b" without the schema and
-                           "n/a: run deployed-gate parity first (design.json)" without the design
+                           the verdict, its ✗ lines the findings. It runs on the inputs there are; one missing is a FAIL
+                           ("incomplete: no eds-schema/<slug>.json (run deploy Step 2b)", "incomplete: no design.json
+                           (run deployed-gate parity first)"), never a pass, with what qa-gate measured below it
            by deploy       localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own
                            loop before the push and are not re-run: recorded as "by deploy", never PASS or FAIL,
                            and no part of the verdict
@@ -189,8 +190,8 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
          plain URL is not on the preview origin is exit 2 ("preview.json plain URL is not on the preview origin")
          before any request. A preview that needs no token is sent none by this step. HTTP 401 or 403 on the .plain.html is exit 2.
          Prints "PASS inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
-         "ai-readability 97 < 98", the findings below it), one "n/a: <reason> (<rows>)" line per reason and "by
-         deploy (<rows>)"; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when
+         "ai-readability 97 < 98", the findings below it) and one "by
+         deploy (<rows>)" line; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when
          a check gave no verdict (no answer or a 5xx or 429 from the preview, an instrument exiting other than 0 or
          1, no score in ai-readability's report, no QA GATE line from qa-gate: re-run once). Writes inherited.json
          ({ verdict, rows: [{ check, value, bar, status, detail? }] }) and inherited/ (ai-readability.json,

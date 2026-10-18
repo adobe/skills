@@ -7,7 +7,8 @@
 //   ai-readability      deploy's ai-readability.mjs on the preview's origin and path, --min 98: the page's code score, read
 //                       from the --json report
 //   qa-gate             deploy's qa-gate.mjs on the preview with the page's section schema (<dir>/eds-schema/<slug>.json,
-//                       deploy Step 2b) and the sizing model parity's cap-probe captured (<deployed>/design.json)
+//                       deploy Step 2b) and the sizing model parity's cap-probe captured (<deployed>/design.json); run on
+//                       the inputs there are, and a missing one makes the row a FAIL ("incomplete: ..."), never a pass
 //   by deploy           localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own loop before the
 //                       push; recorded, never PASS or FAIL, never part of the verdict
 // A protected preview (preview.json says auth: true) needs the site token, `auth`, and without one is a setup error. It goes
@@ -18,7 +19,7 @@
 //   plainAsserts(html)  the problems of an authored form, as strings; none is a pass
 //   runInherited({ dir, slug, preview, auth, tools, env })  writes inherited.json ({ verdict, rows }) and returns
 //        { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, value, bar, status: 'PASS' | 'FAIL' |
-//        'ERROR' | 'n/a' | 'by deploy', detail? }. A check that gave no verdict (no answer or a 5xx or 429 from the preview, an
+//        'ERROR' | 'by deploy', detail? }. A check that gave no verdict (no answer or a 5xx or 429 from the preview, an
 //        instrument exiting other than 0 or 1, no score in the report, no QA GATE line) is "ERROR (exit N)", the verdict
 //        ERROR and the exit 124; a bot challenge throws an error with code 3. A setup problem throws a UsageError: a record
 //        without its url or with a plain URL off its origin, a missing instrument, a protected preview and no token (or one
@@ -27,7 +28,7 @@
 //   inheritedLines(result)  the lines the CLI prints
 // Evidence: <deployed>/inherited/ (ai-readability.json, qa-gate.txt) and <deployed>/inherited.json.
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
@@ -154,7 +155,6 @@ export function plainAsserts(html) {
 // ---- rows ----------------------------------------------------------------------------------------------------------
 
 const row = (check, status, value, detail = null) => ({ check, value, bar: BAR_OF[check], status, ...(detail ? { detail } : {}) });
-const naRow = (check, reason) => row(check, 'n/a', `n/a: ${reason}`);
 const errorRow = (check, code, detail) => row(check, 'ERROR', `ERROR (exit ${code})`, detail);
 const counted = (r) => r.status === 0 || r.status === 1;
 const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8')); } catch { return null; } };
@@ -192,15 +192,24 @@ async function readabilityRow({ preview, token, out, tools, env }) {
   return score < MIN_READABILITY ? row('ai-readability', 'FAIL', String(score), gapDetail(page)) : row('ai-readability', 'PASS', String(score));
 }
 
+// qa-gate runs on whatever inputs there are (its schema-free checks need neither). An input it is meant to read that is missing
+// makes the row a FAIL naming the step that writes it: the preview is not accepted on a partial run, and the fix is a step to run.
 async function qaRow({ preview, token, schema, design, out, tools, env }) {
-  if (!existsSync(schema)) return naRow('qa-gate', 'run deploy Step 2b');
-  if (!existsSync(design)) return naRow('qa-gate', 'run deployed-gate parity first (design.json)');
-  const r = await callOnPreview('qa-gate', tools.qa, [preview.url, '--schema', schema, '--design', design], env, { token, url: preview.url });
+  const missing = [];
+  const flags = [];
+  if (existsSync(schema)) flags.push('--schema', schema); else missing.push(`no eds-schema/${basename(schema)} (run deploy Step 2b)`);
+  if (existsSync(design)) flags.push('--design', design); else missing.push('no design.json (run deployed-gate parity first)');
+  const incomplete = missing.length ? `incomplete: ${missing.join('; ')}` : null;
+  const r = await callOnPreview('qa-gate', tools.qa, [preview.url, ...flags], env, { token, url: preview.url });
   writeFileSync(join(out, 'qa-gate.txt'), r.stdout);
   const summary = r.stdout.match(/^QA GATE: (?:PASS|FAIL) — (.+)$/m)?.[1];
-  if (!counted(r) || !summary) return errorRow('qa-gate', exitOf(r), firstLine(outputOf(r, null)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`);
-  if (r.status === 0) return row('qa-gate', 'PASS', summary);
+  if (!counted(r) || !summary) {
+    const said = firstLine(outputOf(r, null)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`;
+    return errorRow('qa-gate', exitOf(r), incomplete ? `${said}\n${incomplete}` : said);
+  }
   const fails = r.stdout.split('\n').filter((l) => /^\s*✗ /.test(l)).map((l) => l.replace(/^\s*✗ /, '').trim());
+  if (incomplete) return row('qa-gate', 'FAIL', incomplete, listed([`what it measured: ${summary}`, ...fails]));
+  if (r.status === 0) return row('qa-gate', 'PASS', summary);
   return row('qa-gate', 'FAIL', summary, listed(fails));
 }
 
@@ -240,5 +249,5 @@ export async function runInherited({ dir, slug, preview, auth = null, tools = nu
 const failure = (r) => (r.check === 'ai-readability' ? `ai-readability ${r.value} < ${MIN_READABILITY}` : `${r.check}: ${r.value}`);
 
 // The lines the CLI prints: a line for the checks that gave no verdict, the verdict line, one indented line per failing
-// row (its findings below), and one line per distinct reason a row was not run (n/a) and for deploy's own gates.
-export const inheritedLines = (result) => stepLines('inherited', result, { failure, unrun: ['n/a', 'by deploy'] });
+// row (its findings below), and one line for deploy's own gates.
+export const inheritedLines = (result) => stepLines('inherited', result, { failure, unrun: ['by deploy'] });
