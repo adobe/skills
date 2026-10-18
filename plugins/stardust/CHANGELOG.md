@@ -37,6 +37,9 @@ and an optimize scorecard read 100 beside 22 `open` findings it did not score.
   out-of-scope finding is `informational`, never `open` (older ledgers migrate); the scorecard gains an
   `informational` count and its open counts equal the ledger's; both schemas accept it. Out-of-scope findings recorded
   from other audit sources no longer score or gate (maintainer ruling to confirm).
+- **`rollout/scripts/media-manifest.mjs`** lists the delivered media per page — each reference of every delivered
+  document with its source URL(s) → `media/<scope>/<file>` from the deploy media ledger, or `unmapped` / `external` /
+  `code` / `broken` — the helper three recorded runs wrote by hand. It reads only; `--json` for machines.
 
 ## 0.36.0 — local integration for the next recorded run (not a release)
 

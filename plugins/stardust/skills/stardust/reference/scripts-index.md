@@ -99,6 +99,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/findings.mjs` — record/resolve findings; out-of-scope → `informational` — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`; exit 2 = `--state` refused
 - `rollout/lib.mjs` — library, no CLI
+- `rollout/media-manifest.mjs` — delivered media per page: source URL(s) → `media/<scope>/<file>` (media ledger); unmapped/external/code/broken listed — `[--content content] [--ledger <f>] [--json [f.json]]`
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
 - `rollout/optimize.mjs` — quality findings + gate; source-parity/out-of-scope → `informational` (unscored, never open) — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
