@@ -56,6 +56,7 @@
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev-tool library: sequential page ops use awaited loops by design */
 import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 // Current stable Chrome on macOS. Chrome's UA reduction freezes the platform
 // token at 10_15_7 and the minor version at .0.0.0 — only the major matters,
@@ -176,6 +177,19 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   return ctx;
 }
 
+const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const withTokenPrefix = (v) => (/^(token|bearer) /i.test(v) ? v : `token ${v}`);
+
+// The one grammar for a site-token variable: the environment first, then the line `^NAME=(.*)$` of a `.env`
+// in `cwd`; the value is trimmed and one pair of surrounding quotes stripped. null when nothing is set.
+function readTokenVar(name, { env = process.env, cwd = process.cwd() } = {}) {
+  let v = env[name];
+  const file = join(cwd, '.env');
+  if (!v && existsSync(file)) v = (readFileSync(file, 'utf8').match(new RegExp(`^${name}=(.*)$`, 'm')) || [])[1];
+  if (!v) return null;
+  return v.trim().replace(/^["']|["']$/g, '');
+}
+
 /**
  * Origin-scoped site auth (protected demo origins: access allow-list + site
  * secret). Resolve from `--auth-header "token …"` or `--token-env NAME`
@@ -184,18 +198,16 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
  * third-party request and their CORS checks would fail a credentialed request,
  * reporting a vendor error real users never see (recorded on a video vendor's
  * playback API inside a modal). Every origin-reading instrument (stitch-shot,
- * qa, rollout verify, dynamics-check) uses these two.
+ * qa, rollout verify, dynamics-check) uses these two. Instruments that must not
+ * pick a token up by default (replica, diff) go through `instrumentAuth` below.
  */
 export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
   const idx = (k) => process.argv.indexOf(`--${k}`);
   const direct = authHeader || (idx('auth-header') >= 0 ? process.argv[idx('auth-header') + 1] : null);
   if (direct) return direct;
   const name = tokenEnv || (idx('token-env') >= 0 ? process.argv[idx('token-env') + 1] : null) || 'SITE_TOKEN';
-  let v = process.env[name];
-  if (!v && existsSync('.env')) v = (readFileSync('.env', 'utf8').match(new RegExp(`^${name}=(.*)$`, 'm')) || [])[1];
-  if (!v) return null;
-  v = v.trim().replace(/^["']|["']$/g, '');
-  return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
+  const v = readTokenVar(name);
+  return v === null ? null : withTokenPrefix(v);
 }
 export async function attachOriginAuth(context, origin, headerValue) {
   if (!headerValue || !origin) return;
@@ -205,6 +217,67 @@ export async function attachOriginAuth(context, origin, headerValue) {
     if (u === o || u.startsWith(`${o}/`)) route.continue({ headers: { ...route.request().headers(), authorization: headerValue } });
     else route.continue();
   });
+}
+
+/** The help lines every instrument prints for its site-auth flags (one source of wording). */
+export const AUTH_HELP = [
+  '--token-env <NAME>    send the site token held in the environment variable NAME (else the NAME= line of a cwd .env); no flag, no token: SITE_TOKEN is never picked up by itself; never printed',
+  '--auth-header <value> send this Authorization value instead ("token <t>" or "bearer <t>"; a bare value gets "token " in front); never printed',
+  '--auth-origin <url>   the one origin that receives it (default: the origin of the measured URL; required when the URLs span two); every other origin the page loads gets none',
+].join('\n');
+
+const usageError = (message) => Object.assign(new Error(message), { code: 2 });
+
+function distinctOrigins(urls) {
+  const out = new Set();
+  for (const u of urls) {
+    try {
+      const p = new URL(u);
+      if (p.protocol === 'http:' || p.protocol === 'https:') out.add(p.origin);
+    } catch { /* not a URL (a local file path): it has no origin to send a token to */ }
+  }
+  return [...out];
+}
+
+/**
+ * Opt-in, origin-scoped site auth for an instrument: `{ authOrigin, authHeader }` to spread into
+ * newLiveContext, or null when neither `tokenEnv` (--token-env) nor `authHeader` (--auth-header) was given —
+ * a SITE_TOKEN in the environment or .env is never used on its own, and nothing here reads argv.
+ * The origin is `authOrigin` (--auth-origin), else the one distinct origin of `urls`; two or more origins
+ * without `authOrigin` is a usage error rather than a guess, so a local page served beside the measured one
+ * never receives the token. Failures are Errors with `code = 2`; their text names the flag or the variable,
+ * never a value.
+ */
+export function instrumentAuth({ tokenEnv, authHeader, authOrigin, urls = [], env = process.env, cwd = process.cwd() } = {}) {
+  const wantsHeader = authHeader !== undefined && authHeader !== null;
+  const wantsEnv = tokenEnv !== undefined && tokenEnv !== null;
+  if (!wantsHeader && !wantsEnv) return null;
+
+  let value;
+  if (wantsHeader) {
+    value = typeof authHeader === 'string' ? authHeader.trim() : '';
+    if (!value) throw usageError('--auth-header needs a value');
+  } else {
+    // The variable's name is never echoed unless it is one: a token typed in its place would be printed.
+    if (typeof tokenEnv !== 'string' || !ENV_NAME.test(tokenEnv)) throw usageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
+    value = readTokenVar(tokenEnv, { env, cwd });
+    if (!value) throw usageError(`no site token: --token-env ${tokenEnv} is not set (or is empty) in the environment or in a ${tokenEnv}= line of .env`);
+  }
+
+  let origin;
+  if (authOrigin !== undefined && authOrigin !== null) {
+    try {
+      const p = new URL(authOrigin);
+      if (p.protocol !== 'http:' && p.protocol !== 'https:') throw new Error('not http(s)');
+      origin = p.origin;
+    } catch { throw usageError('--auth-origin needs an http(s) URL, such as https://host; only its origin is used'); }
+  } else {
+    const origins = distinctOrigins(urls);
+    if (origins.length === 0) throw usageError('the site token has no http(s) URL to take an origin from: pass --auth-origin <url>');
+    if (origins.length > 1) throw usageError(`the site token goes to one origin only and these URLs have ${origins.length} (${origins.join(', ')}): pass --auth-origin <url> to name it`);
+    [origin] = origins;
+  }
+  return { authOrigin: origin, authHeader: withTokenPrefix(value) };
 }
 
 // The marker that classifies a response as a bot-management challenge/block,
