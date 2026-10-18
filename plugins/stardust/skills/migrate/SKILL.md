@@ -352,7 +352,11 @@ it locks through deploy's `file-lock.mjs`, copied to `stardust/scripts/deploy/`)
 is a safe resume point, not a stop. A session resumed inside migrate reads
 the file and runs only the units not `done`; a unit left `running`
 re-renders its slugs — the driver is idempotent, unchanged pages are
-skipped skipped.
+skipped skipped. Other edits go through instruments too: text in a tracked
+file through the edit tool or `stardust/scripts/stardust/replace.mjs`
+(counted, atomic), a JSON value through `json-edit.mjs` beside it — an
+inline interpreter may read and print, never write a tracked file
+(`../replica/reference/reading-discipline.md`).
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 

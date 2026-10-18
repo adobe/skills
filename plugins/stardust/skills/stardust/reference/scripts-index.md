@@ -48,6 +48,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`; a 2xx denial page = bot challenge (escalates headed at the entry; never captured)
+- `extract/extract-report.mjs` — per page: outline, modules, brand tokens, slot candidates — `[--pages <glob>] [--json]`
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline; sheets/fonts/svg via the browser → `harvest-map.json` — `[--assets media,sheets,fonts,svg] [--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
@@ -125,8 +126,10 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
 - `stardust/browser-lock.mjs` — machine-wide browser slots — `acquire|status|release|reap`; 124 = no slot
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
+- `stardust/json-edit.mjs` — JSON edit, locked — `<f> set|append <path> <v>`; `merge <path> <json>`; `delete <path>`; `a."b.c"` = one key; `[--create]`; exit 2 = refused
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
 - `stardust/progress.mjs` — unit recorder for the rollout/migrate/replica progress ledger, locked, one line per write — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>]`
+- `stardust/replace.mjs` — counted text replace, atomic — `<file…> --from <t> --to <t> [--regex] [--all|--count <n>] [--files-from <glob>] [--dry-run] [--json]`; exit 2 = refused, nothing written
 - `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `exclude <slug…> --reason "<r>" [--url <u>]`; `summary [--slugs]`
 - `stardust/token-ledger.mjs` — usage per phase/unit, advisory; run it LAST (handoff end), idempotent, stamps `writtenAt` + `sessionsCovered`; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping by path, under a lock — `<unit> [--code blocks/<name>]… [--push] [--wait-s 120]`; exit 2 = refused or failed, nothing half-done; `--push` returns under 240 s

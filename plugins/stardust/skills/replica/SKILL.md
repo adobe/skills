@@ -109,8 +109,11 @@ never an authored probe; images one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
 `thumb.mjs`, is the one exception); script flags from
 `../stardust/reference/scripts-index.md` first, then `--help`, never the
-source. Write anything you will need again to a file under `stardust/` and
-read it back by query.
+source. Edits go through instruments too: text in a tracked file through the
+edit tool or `replace.mjs` (counted, atomic), a JSON value through
+`json-edit.mjs`, a ledger through `progress.mjs` — an inline interpreter may
+read and print, never write a tracked file. Write anything you will need
+again to a file under `stardust/` and read it back by query.
 
 ## Procedure
 
