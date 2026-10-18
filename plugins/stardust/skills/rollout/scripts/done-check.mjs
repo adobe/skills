@@ -57,7 +57,8 @@
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors
  *   header_parity_errors:N         any project: the undecided error findings of chrome/header-parity.json
- *                                  (counts.error − counts.decided without findings[]); no file, no gap
+ *                                  (counts.error − counts.decided without findings[]); no file, no gap; not
+ *                                  listed when header_parity already names those errors (one finding set, one gap)
  *   ledger_unpaired:N: <ends>      ledger `end` lines without an open start that no later start and end of the
  *                                  same phase re-records (stardust ledger.mjs unpairedEnds); `unchecked` when
  *                                  ledger.mjs is not found beside the rollout scripts
@@ -296,6 +297,7 @@ export function ledgerGap(unpaired) {
  * inconclusive (delivery.gate.inconclusive: reasons, or true) has no verdict: gates_inconclusive, and in
  * pages_failed only when it failed for another reason (status failed with an error not from the gate) or at a
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
+ * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
 export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, skipped = [] }) {
   const gaps = [];
@@ -314,7 +316,8 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const p1 = openP1(findings);
   if (p1.length) gaps.push(`open_p1:${p1.length}`);
   if (header) gaps.push(header);
-  if (headerErrors) gaps.push(headerErrors);
+  // one finding set, one gap: header_parity already names the undecided errors (`header_parity:<n>: <keys>`)
+  if (headerErrors && !(header && /^header_parity:\d+:/.test(header))) gaps.push(headerErrors);
   if (ledger) gaps.push(ledger);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped] };

@@ -15,7 +15,8 @@
 // whose gate failed at any recorded width (passByWidth[w] === false) is pages_failed though its last width passed;
 // a gate with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
 // override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
-// header-parity.json in any project (its findings decide; counts.error − counts.decided without them).
+// header-parity.json in any project (its findings decide; counts.error − counts.decided without them), and is left
+// out when header_parity already names those errors (one finding set, one gap).
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -468,7 +469,16 @@ check('CLI: header_parity_errors fires whenever chrome/header-parity.json has un
   assert.deepEqual(gaps({ 'stardust/chrome/header-parity.json': '{"counts": ' }), { status: 0, gaps: [] });
   const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 390: {} } };
   assert.deepEqual(gaps({ 'stardust/state.json': { flow: 'replica' }, 'stardust/chrome/header-contract.json': contract, 'stardust/chrome/header-parity.json': parity }).gaps,
-    ['header_parity:2: state-missing@1440 Shop [hover], motion@390 Open menu [click]', 'header_parity_errors:2']);
+    ['header_parity:2: state-missing@1440 Shop [hover], motion@390 Open menu [click]'], 'one finding set, one gap: header_parity already lists the undecided errors');
+  assert.deepEqual(gaps({ 'stardust/state.json': { flow: 'replica' }, 'stardust/chrome/header-contract.json': { ...contract, at: '2026-10-10T00:00:00Z' }, 'stardust/chrome/header-parity.json': parity }).gaps,
+    ['header_parity:stale: the contract is newer than the comparison', 'header_parity_errors:2'], 'another cause: both lines');
+});
+
+check('header gaps counted once: header_parity_errors is dropped when header_parity lists the same undecided errors, kept for another header_parity cause or none', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, header: 'header_parity:2: a, b', headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity:2: a, b']);
+  assert.deepEqual(doneGaps({ ...base, header: 'header_parity:unchecked: x', headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity:unchecked: x', 'header_parity_errors:2']);
+  assert.deepEqual(doneGaps({ ...base, headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity_errors:2']);
 });
 
 check('CLI: usage errors exit 2 — no pages.json; no live host without --offline', () => {
