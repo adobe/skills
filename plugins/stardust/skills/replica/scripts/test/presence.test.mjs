@@ -14,6 +14,10 @@
 // --verify with the right selector verifies once the bar arrives and writes; the old wrong selector exits 2 naming
 // the wrapper (hideMissLine) with the file untouched; suggest lists the wrapper, the add line, and warns on a stale
 // "*".hide selector; a bot challenge exits 3, an HTTP error 1. Prints a skip line otherwise.
+// Capture settings: add --dismiss / --pin --state / --allow <kind>=<sel> --reason store dismiss / pin / allow per key
+// (idempotent; a new state or reason replaces), a per-visitor-dialog allow needs its container hidden for the page, the
+// usage refusals, a malformed field refused; captureSettings ("*" then the slug, lenient) and clipAllowed (whole path
+// segments, advisory never counted) are pure; e2e --verify polls those selectors too (refused: nothing written).
 // Run: node plugins/stardust/skills/replica/scripts/test/presence.test.mjs   (about 1 s; about 12 s with playwright)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -22,7 +26,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
+import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, captureSettings, clipAllowed, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'presence.mjs');
@@ -387,6 +391,98 @@ check('applyHide is pure: the input is not mutated; no change returns the same o
   assert.equal(same.changed, false);
 });
 
+// ---- capture settings: dismiss / pin / allow (recorded where every gate reads them) ----------------------------------
+check('add --dismiss / --pin --state / --allow <kind>=<sel>: stored per key ("*" or --slug) beside hide, reasons recorded, idempotent', () => {
+  const root = project();
+  write(root, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar'] }, home: { main: 'main' } }));
+  let r = run(root, ['add', '--dismiss', '.promo-close, .nl-x', '--pin', '.hero .dot:first-child', '--state', 'slide 1', '--reason', 'R-03']);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(lines(r.out), ['*.dismiss: .promo-close, .nl-x', '*.pin: .hero .dot:first-child → slide 1', `wrote ${DEFAULT_FILE}: +3 settings, 3 reasons`]);
+  assert.deepEqual(json(root)['*'], { hide: ['.geo-bar'], dismiss: ['.promo-close', '.nl-x'], pin: [{ sel: '.hero .dot:first-child', state: 'slide 1' }], reasons: { '.promo-close': 'R-03', '.nl-x': 'R-03', '.hero .dot:first-child': 'R-03' } });
+  r = run(root, ['add', '--slug', 'home', '--allow', 'clip=div.card__body', '--reason', 'R-04']);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(lines(r.out), ['home.allow: clip div.card__body (R-04)', `wrote ${DEFAULT_FILE}: +1 setting, 0 reasons`]);
+  assert.deepEqual(json(root).home, { main: 'main', allow: [{ kind: 'clip', selector: 'div.card__body', reason: 'R-04' }] }, 'the entry\'s other fields kept, the reason on the allow itself');
+  const before = read(root);
+  r = run(root, ['add', '--slug', 'home', '--allow', 'clip=div.card__body', '--reason', 'R-04']);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /^unchanged: /m); assert.equal(read(root), before);
+  r = run(root, ['add', '--slug', 'home', '--allow', 'clip=div.card__body', '--reason', 'R-05']);
+  assert.deepEqual(json(root).home.allow, [{ kind: 'clip', selector: 'div.card__body', reason: 'R-05' }], 'a new reason replaces the old one');
+  r = run(root, ['add', '--pin', '.hero .dot:first-child', '--state', 'first slide']);
+  assert.deepEqual(json(root)['*'].pin, [{ sel: '.hero .dot:first-child', state: 'first slide' }], 'a new state for the same selector replaces it');
+});
+
+check('add --allow per-visitor-dialog: the container must be hidden for the page (the key\'s or "*"\'s hide, this call included) — else exit 2, nothing written', () => {
+  const root = project();
+  let r = run(root, ['add', '--allow', 'per-visitor-dialog=#consent-root', '--reason', 'R-06']);
+  assert.equal(r.code, 2, r.out); assert.match(r.err, /per-visitor-dialog #consent-root is not in the hide list .*--hide '#consent-root'/); assert.deepEqual(listing(root), []);
+  r = run(root, ['add', '--hide', '#consent-root', '--allow', 'per-visitor-dialog=#consent-root', '--slug', 'de', '--reason', 'R-06']);
+  assert.equal(r.code, 0, r.err);
+  assert.deepEqual(json(root), { de: { hide: ['#consent-root'], allow: [{ kind: 'per-visitor-dialog', selector: '#consent-root', reason: 'R-06' }], reasons: { '#consent-root': 'R-06' } } });
+  write(root, DEFAULT_FILE, pretty({ '*': { hide: ['#consent-root'] } }));
+  r = run(root, ['add', '--slug', 'fr', '--allow', 'per-visitor-dialog=#consent-root', '--reason', 'R-06']);
+  assert.equal(r.code, 0, `${r.err} — "*".hide covers every page`);
+});
+
+check('add capture settings: usage errors exit 2 with one stderr line, nothing written', () => {
+  const root = project();
+  for (const [args, re] of [
+    [['add', '--allow', 'clip=.x'], /--allow needs --reason R-<nn>/],
+    [['add', '--allow', 'overlay=.x', '--reason', 'R-1'], /--allow kind must be one of clip, per-visitor-dialog \(got "overlay"\)/],
+    [['add', '--allow', '.x', '--reason', 'R-1'], /--allow takes <kind>=<selector>/],
+    [['add', '--allow', 'clip=', '--reason', 'R-1'], /--allow takes <kind>=<selector>/],
+    [['add', '--pin', '.dot'], /--pin needs --state <label>/],
+    [['add', '--state', 'slide 1', '--hide', '.a'], /--state needs --pin <sel>/],
+    [['add', '--pin', '.a', '--pin', '.b', '--state', 'x'], /one --pin per call/],
+    [['add', '--dismiss', ' , '], /--dismiss names no selector/],
+    [['add', '--reason', 'R-1'], /add needs --hide, --dismiss, --pin or --allow/],
+  ]) {
+    const r = run(root, args);
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); assert.equal(r.err.trim().split('\n').length, 1); assert.equal(r.out, '');
+  }
+  assert.deepEqual(listing(root), []);
+});
+
+check('a malformed dismiss / pin / allow in the touched entry is refused: exit 1 naming it, nothing written', () => {
+  for (const [entry, why] of [
+    [{ dismiss: 5 }, /"\*"\.dismiss must be a selector string or a list of selector strings/],
+    [{ pin: [{ sel: '.a' }] }, /"\*"\.pin must be a list of \{ sel, state \}/],
+    [{ allow: [{ kind: 'nope', selector: '.a', reason: 'R-1' }] }, /"\*"\.allow must be a list of \{ kind: clip \| per-visitor-dialog, selector, reason \}/],
+  ]) {
+    const root = project(); write(root, DEFAULT_FILE, JSON.stringify({ '*': entry }));
+    const r = run(root, ['add', '--dismiss', '.x']);
+    assert.equal(r.code, 1, r.out); assert.match(r.err, why); assert.equal(read(root), JSON.stringify({ '*': entry }));
+  }
+});
+
+check('captureSettings (pure): "*" then the slug\'s — hide / dismiss de-duplicated in order, pin and allow by selector (the slug\'s wins), malformed entries skipped', () => {
+  const json = {
+    '*': { hide: ['.geo', '#cmp'], dismiss: '.a, .b', pin: [{ sel: '.dot', state: 'slide 1' }, { sel: 5 }], allow: [{ kind: 'clip', selector: '.card', reason: 'R-1' }, { kind: 'x', selector: '.y', reason: 'R-1' }] },
+    home: { hide: ['.promo'], dismiss: ['.b', '.c'], pin: [{ sel: '.dot', state: 'slide 2' }], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp', reason: 'R-6' }, { kind: 'per-visitor-dialog', selector: '.not-hidden', reason: 'R-7' }] },
+  };
+  assert.deepEqual(captureSettings(json, 'home'), {
+    hide: ['.geo', '#cmp', '.promo'], dismiss: ['.a', '.b', '.c'], pin: [{ sel: '.dot', state: 'slide 2' }],
+    allow: [{ kind: 'clip', selector: '.card', reason: 'R-1' }, { kind: 'per-visitor-dialog', selector: '#cmp', reason: 'R-6' }, { kind: 'per-visitor-dialog', selector: '.not-hidden', reason: 'R-7' }],
+    allowDialog: ['#cmp'],
+  });
+  assert.deepEqual(captureSettings(json, 'about'), { hide: ['.geo', '#cmp'], dismiss: ['.a', '.b'], pin: [{ sel: '.dot', state: 'slide 1' }], allow: [{ kind: 'clip', selector: '.card', reason: 'R-1' }], allowDialog: [] });
+  assert.deepEqual(captureSettings(null, 'x'), { hide: [], dismiss: [], pin: [], allow: [], allowDialog: [] });
+});
+
+check('clipAllowed (pure): a counted finding whose clipper is the selector, or whose path holds it as whole segments, is allowed; advisory ones never count', () => {
+  const findings = [
+    { kind: 'TEXT CLIPPED', clipper: 'div.card__body', path: 'main > div.cards > div.card__body > p' },
+    { kind: 'CONTROL HIDDEN', clipper: 'div.rail', path: 'main > div.rail > div.card > a' },
+    { kind: 'TEXT CLIPPED', clipper: 'div.rail', path: 'main > div.rail > p' },
+    { kind: 'TEXT CLAMPED', advisory: true, clipper: 'div.card__body', path: 'main > div.card__body > p' },
+  ];
+  const allow = [{ kind: 'clip', selector: 'div.card__body', reason: 'R-2' }, { kind: 'clip', selector: 'div.rail > div.card', reason: 'R-3' }, { kind: 'per-visitor-dialog', selector: 'div.rail', reason: 'R-9' }];
+  assert.deepEqual(clipAllowed(findings, allow), { n: 2, by: [{ selector: 'div.card__body', reason: 'R-2', n: 1 }, { selector: 'div.rail > div.card', reason: 'R-3', n: 1 }] });
+  assert.deepEqual(clipAllowed(findings, []), { n: 0, by: [] });
+  assert.deepEqual(clipAllowed([{ kind: 'TEXT CLIPPED', clipper: 'div.card__bodyx', path: 'main > div.card__bodyx > p' }], allow), { n: 0, by: [] }, 'a whole segment, never a prefix');
+  assert.deepEqual(clipAllowed([{ kind: 'TEXT CLIPPED', n: 3, clipper: 'div.card__body', path: 'main > p' }], allow), { n: 3, by: [{ selector: 'div.card__body', reason: 'R-2', n: 3 }] }, 'a group counts its n');
+});
+
 check('the default file is the site-wide presence path live-session reads (when it exports SITE_PRESENCE)', () => {
   assert.equal(DEFAULT_FILE, 'stardust/replica/presence.json');
   if ('SITE_PRESENCE' in liveSession) assert.equal(liveSession.SITE_PRESENCE, DEFAULT_FILE);
@@ -423,6 +519,18 @@ else {
     const right = seeded(); const wrong = seeded(); const blocked = seeded(); const missing = seeded(); const plain2 = project();
     const stale = project();
     write(stale, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
+    const settled = project(); const unsettled = project();
+    const [okSettings, refusedSettings] = await Promise.all([
+      runAsync(settled, ['add', '--dismiss', '.geo-bar', '--pin', 'header', '--state', 'at rest', '--verify', url, '--reason', 'R-02']),
+      runAsync(unsettled, ['add', '--dismiss', '.geo-bar,.nl-close', '--verify', url, '--wait-ms', '0']),
+    ]);
+    await checkAsync('e2e add --verify with capture settings: every selector of the call polled like a hide (the delayed bar found), written; one that never matches refuses the call — exit 2, named, nothing written', async () => {
+      assert.equal(okSettings.code, 0, okSettings.err);
+      assert.deepEqual(lines(okSettings.out), [`verified on ${url} @ 1440px: .geo-bar ×1, header ×1`, '*.dismiss: .geo-bar', '*.pin: header → at rest', `wrote ${DEFAULT_FILE}: +2 settings, 2 reasons`]);
+      assert.equal(refusedSettings.code, 2, refusedSettings.out);
+      assert.deepEqual(lines(refusedSettings.err), [`presence: dismiss / pin / allow matched nothing on ${url} @ 1440px (.geo-bar, .nl-close)`, `presence: refused — nothing written to ${DEFAULT_FILE}`], '--wait-ms 0: one look, before the bar arrives');
+      assert.deepEqual(listing(unsettled), []);
+    });
     const [ok, refused, listed, challengedAdd, challengedSuggest, notFound] = await Promise.all([
       runAsync(right, ['add', '--hide', '.geo-bar', '--verify', url]),
       runAsync(wrong, ['add', '--hide', '.location-bar', '--verify', url, '--reason', 'R-04']),

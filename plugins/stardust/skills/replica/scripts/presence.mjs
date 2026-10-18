@@ -14,6 +14,16 @@
  *            the selectors are checked on the live page first: a selector that matches nothing there is refused
  *            (exit 2, nothing written) — a recorded hands-off run carried a bar selector that matched nothing on
  *            the live page while the real element was the first body-level in-flow block above the header.
+ *            The same call records the page's other CAPTURE SETTINGS, so a roster re-gate takes the captures the
+ *            run took (a recorded hands-off run pinned a rotating hero with a --dismiss flag and accepted two clip
+ *            findings in prose — an independent re-gate could not reproduce either): --dismiss <sel,…> (extra
+ *            overlay closers, the key's `dismiss`), --pin <sel> --state <label> (a rotator control clicked after the
+ *            freeze — the state it pins, `pin: [{ sel, state }]`) and --allow <kind>=<selector> (`allow: [{ kind,
+ *            selector, reason }]`, kinds ALLOW_KINDS: `clip` — counted clip findings under the selector do not count;
+ *            `per-visitor-dialog` — a dialog left open whose container the page hides is no INCONCLUSIVE row; refused
+ *            unless the container is in the page's hide list, this call's --hide included). --verify polls every
+ *            selector of the call; --allow needs --reason. gate-all, gate.sh and stitch-shot (--slug) read them
+ *            (captureSettings, clipAllowed — exported, pure).
  *   seed     Setup writes the runner's overlay selectors into `"*".hide`: run.json `siteOverlays` (an array of
  *            selectors) and the env STARDUST_SITE_OVERLAYS (a comma list), in that order. No browser.
  *   suggest  lists the candidates read off the live page's DOM — the in-flow blocks above the header
@@ -22,15 +32,20 @@
  *            (never a refusal, exit 0). Writes nothing.
  *
  * Usage:
- *   node stardust/scripts/replica/presence.mjs add --hide <sel[,sel…]> [--slug <s>] [--reason <R-nn>] [--file <f>]
- *        [--verify <url> [--wait-ms 5000] [--width 1440] [--headed]]
+ *   node stardust/scripts/replica/presence.mjs add [--hide <sel[,sel…]>] [--dismiss <sel[,sel…]>] [--pin <sel> --state <label>]
+ *        [--allow <kind>=<selector>] [--slug <s>] [--reason <R-nn>] [--file <f>] [--verify <url> [--wait-ms 5000] [--width 1440] [--headed]]
  *   node stardust/scripts/replica/presence.mjs seed [--run stardust/.labs/run.json] [--file <f>]
  *   node stardust/scripts/replica/presence.mjs suggest <url> [--width 1440] [--wait-ms 5000] [--headed] [--file <f>]
  *
  *   --hide <sel,…>   selectors to append (repeatable; each value a comma list)
- *   --slug <s>       write `<s>.hide` instead of `"*".hide`
- *   --reason <R-nn>  the residual id (`R-<digits>`) recorded as `reasons[<sel>]` for every selector of the
- *                    call (a different earlier reason is replaced)
+ *   --dismiss <sel,…> extra overlay closers for the key's `dismiss` (repeatable; comma lists), clicked by both stitches
+ *   --pin <sel>      one rotator control per call, clicked after the freeze on both sides; --state <label> names the
+ *                    state it pins (required; the same selector's state is replaced)
+ *   --allow <k>=<s>  an allowance { kind, selector, reason } (repeatable; split at the first '='; kinds clip,
+ *                    per-visitor-dialog; needs --reason; the same kind + selector gets the new reason)
+ *   --slug <s>       write the `<s>` entry instead of `"*"`
+ *   --reason <R-nn>  the residual id (`R-<digits>`) recorded as `reasons[<sel>]` for every hide / dismiss / pin
+ *                    selector of the call (a different earlier reason is replaced) and as each allowance's reason
  *   --verify <url>   add: before writing, load the http(s) page and poll each selector of the call for up to
  *                    --wait-ms after the settle; every one must match at least once
  *   --wait-ms <n>    add --verify, suggest: the poll window in ms (default 5000; 0 = one look after the settle)
@@ -50,9 +65,9 @@
  * file's `"*".hide` the same way (none listed, or the file missing: no poll), then reads the candidates (a 0-px
  * wrapper is listed: a block that grows later is still hidden by the persistent display:none !important rule).
  *
- * File shape (a gate dir's presence.json shape): `{ "*": { "hide": [<sel>, …], "reasons": { "<sel>":
- * "<R-nn | seeded: …>" } }, "<slug>": { "hide": […], "main": …, "variable": […] } }`. Readers ignore
- * `reasons`. The key's list is extended in order and de-duplicated with live-session's parseHideList (each
+ * File shape (a gate dir's presence.json shape): `{ "*": { "hide": [<sel>, …], "dismiss": [<sel>, …], "pin": [{ "sel",
+ * "state" }], "allow": [{ "kind", "selector", "reason" }], "reasons": { "<sel>": "<R-nn | seeded: …>" } }, "<slug>":
+ * { "hide": […], "main": …, "variable": […] } }`. Readers ignore `reasons`. The key's list is extended in order and de-duplicated with live-session's parseHideList (each
  * stored entry may be a comma list; trimmed; empty dropped); when it changes it is stored as one selector per
  * array item (a stored comma-list string is split — same selectors, same order). seed records
  * `seeded: run.json siteOverlays` or `seeded: STARDUST_SITE_OVERLAYS` (run.json first when both name a
@@ -63,14 +78,17 @@
  * the run file, STARDUST_SITE_OVERLAYS and — suggest, add --verify — the page at the URL.
  *
  * Output (stdout): add --verify first prints `verified on <url> @ <w>px: <sel> ×<n>, …` (the highest match
- * count seen). add / seed: `<key>.hide: <sel>, <sel>` — the key's resulting list (`*.hide: …` for "*") — then
- * `wrote <file>: +<n> selector(s), <m> reason(s)` or `unchanged: <file>`, both printed only after the write
+ * count seen). add / seed: `<key>.hide: <sel>, <sel>` — the key's resulting list (`*.hide: …` for "*"); add also
+ * `<key>.dismiss: …`, `<key>.pin: <sel> → <state>, …`, `<key>.allow: <kind> <selector> (<reason>), …` for the fields
+ * the call names — then `wrote <file>: +<n> selector(s), <m> reason(s)` (`+<n> setting(s)` when the call names more
+ * than --hide) or `unchanged: <file>`, both printed only after the write
  * succeeded (a failed write prints nothing on stdout); seed with no selector from either
  * source prints `nothing to seed (<run>: <not found | no siteOverlays>; STARDUST_SITE_OVERLAYS: <unset | empty>)`
  * and touches no file. add without --verify also prints one warning line on stderr (it still writes):
  * `presence: not verified against a live page — add --verify <url> (presence.mjs suggest <url> lists candidates)`.
  * A refused add --verify prints on stderr `presence: hide matched nothing on live — candidates: <…> (<sel>, …)`
  * (live-session's hideMissLine: the in-flow blocks above the header, then the selectors that matched nothing)
+ * (a dismiss / pin / allow selector: `presence: dismiss / pin / allow matched nothing on <url> @ <w>px (<sel>, …)`)
  * and `presence: refused — nothing written to <file>`. suggest prints one line per candidate in document
  * order, `<selector>  <tag>  <h>px` (`(no unique selector)` when the page has none for it), then
  * `presence.mjs add --hide <first candidate> --verify <url>` (+ `--width <w>` off the default; shell-quoted
@@ -78,13 +96,15 @@
  * one more line on stderr, `presence: WARNING hide matched nothing on live — candidates: <…> (<sel>, …)`.
  *
  * Exit codes: 0 written, unchanged, nothing to seed, or suggest listed; 1 a malformed input file — the presence
- * file not JSON, not an object, the touched entry not an object, its `hide` not a selector string or list, its
- * `reasons` not an object of strings; the run file not JSON, not an object, `siteOverlays` not an array of
+ * file not JSON, not an object, the touched entry not an object, its `hide` / `dismiss` not a selector string or list,
+ * its `pin` / `allow` not a list of valid entries, its `reasons` not an object of strings; the run file not JSON, not an object, `siteOverlays` not an array of
  * strings — named on stderr with nothing written (add --verify and suggest check the presence file before
  * opening the page; also: a file that cannot be read or written, live-session.mjs not found, playwright not importable, the
  * page not loadable — an HTTP error, a navigation failure); 2 usage (no or unknown command, unknown flag, a flag
- * without a value, add without a selector, --reason not `R-<digits>`, a URL that is not http(s), --wait-ms /
- * --width not a whole number, --wait-ms / --width / --headed on add without --verify) — or add --verify refused:
+ * without a value, add without a setting, --reason not `R-<digits>`, a URL that is not http(s), --wait-ms /
+ * --width not a whole number, --wait-ms / --width / --headed on add without --verify, --pin without --state or twice,
+ * --allow not <kind>=<selector>, of another kind or without --reason, a per-visitor-dialog container the page does
+ * not hide) — or add --verify refused:
  * a selector matched nothing on the live page, nothing written; 3 a bot challenge on the page (suggest,
  * add --verify; nothing written — retry with --headed).
  *
@@ -110,27 +130,39 @@ export const REASON_RE = /^R-\d+$/;
 export const DEFAULT_WIDTH = 1440;
 export const DEFAULT_WAIT_MS = 5000;
 export const UNVERIFIED = 'not verified against a live page — add --verify <url> (presence.mjs suggest <url> lists candidates)';
+/** The allowance kinds: `clip` (counted clip findings under the selector — the clipper or whole path segments — do not
+ * count) and `per-visitor-dialog` (a dialog left open whose container is hidden for the page is no INCONCLUSIVE row). */
+export const ALLOW_KINDS = Object.freeze(['clip', 'per-visitor-dialog']);
 
 const HELP = `presence.mjs — write the site-wide hide list (${DEFAULT_FILE}) every gate instrument merges under a gate dir's presence.json
 
 Usage:
-  node stardust/scripts/replica/presence.mjs add --hide <sel[,sel…]> [--slug <s>] [--reason <R-nn>] [--file <f>]
-       [--verify <url> [--wait-ms ${DEFAULT_WAIT_MS}] [--width ${DEFAULT_WIDTH}] [--headed]]
+  node stardust/scripts/replica/presence.mjs add [--hide <sel[,sel…]>] [--dismiss <sel[,sel…]>] [--pin <sel> --state <label>]
+       [--allow <kind>=<selector>] [--slug <s>] [--reason <R-nn>] [--file <f>] [--verify <url> [--wait-ms ${DEFAULT_WAIT_MS}] [--width ${DEFAULT_WIDTH}] [--headed]]
   node stardust/scripts/replica/presence.mjs seed [--run ${DEFAULT_RUN}] [--file <f>]
   node stardust/scripts/replica/presence.mjs suggest <url> [--width ${DEFAULT_WIDTH}] [--wait-ms ${DEFAULT_WAIT_MS}] [--headed] [--file <f>]
 
   add      append in-flow per-visitor region selectors (a location bar above the header) to "*".hide, or to
-           <slug>.hide with --slug — the preserve-direction step records a region it identified
+           <slug>.hide with --slug — the preserve-direction step records a region it identified — and the page's
+           capture settings every gate reads (gate-all, gate.sh, stitch-shot --slug): dismiss, pin, allow
   seed     append the runner's overlay selectors to "*".hide: run.json siteOverlays (array of selectors), then
            the env ${ENV_OVERLAYS} (comma list) — run at Setup; no browser
   suggest  list the hide candidates read off the live page's DOM — the in-flow blocks above the header (where a
            per-visitor location bar sits) — and warn on a "*".hide selector of the file that matches nothing
            there; writes nothing
   --hide <sel,…>   selectors to append (repeatable; comma lists)
-  --slug <s>       write <s>.hide instead of "*".hide
-  --reason <R-nn>  residual id (R-<digits>) recorded as reasons[<sel>] for every selector of the call
-  --verify <url>   add: before writing, load the http(s) page and poll each selector for up to --wait-ms after
-                   the settle — a selector that never matches is refused (exit 2, nothing written)
+  --dismiss <sel,…> extra overlay closers both stitches click ("dismiss"; repeatable; comma lists)
+  --pin <sel>      one rotator control per call, clicked after the freeze on both sides; --state <label> (required)
+                   names the state it pins ("pin": [{ sel, state }]; the same selector's state is replaced)
+  --allow <kind>=<selector>   an allowance ("allow": [{ kind, selector, reason }]; needs --reason; repeatable):
+                   ${ALLOW_KINDS[0]} — counted clip findings whose clipper is the selector or whose path holds it do not count;
+                   ${ALLOW_KINDS[1]} — a dialog left open whose container is hidden for the page is no INCONCLUSIVE
+                   row (refused unless the selector is in the page's hide list — this call's --hide included)
+  --slug <s>       write the <s> entry instead of "*"
+  --reason <R-nn>  residual id (R-<digits>) recorded as reasons[<sel>] for every hide / dismiss / pin selector of the
+                   call, and as each --allow's reason
+  --verify <url>   add: before writing, load the http(s) page and poll each selector of the call (hide, dismiss, pin,
+                   allow) for up to --wait-ms after the settle — one that never matches is refused (exit 2, nothing written)
   --wait-ms <n>    add --verify, suggest: the poll window in ms (default ${DEFAULT_WAIT_MS}; 0 = one look after the settle)
   --width <px>     add --verify, suggest: viewport width (default ${DEFAULT_WIDTH}; height 900)
   --headed         add --verify, suggest: stealth real-Chrome tier (a bot-managed site that challenged the default)
@@ -148,12 +180,14 @@ selectors it appends); other keys and fields untouched; atomic (tmp + rename), i
 No change → the file is not rewritten.
 
 Output: add --verify first "verified on <url> @ <w>px: <sel> ×<n>, …"; then "<key>.hide: <sel>, <sel>" (the key's
-resulting list; "*.hide: …") and "wrote <file>: +<n> selector(s), <m> reason(s)" or "unchanged: <file>", printed
-after the write succeeded; seed with nothing from either source: "nothing to seed (…)", no file touched.
+resulting list; "*.hide: …"), "<key>.dismiss: …", "<key>.pin: <sel> → <state>, …", "<key>.allow: <kind> <selector>
+(<reason>), …" for the fields the call names, and "wrote <file>: +<n> selector(s), <m> reason(s)" ("+<n> setting(s)"
+beyond --hide) or "unchanged: <file>", printed after the write succeeded; seed with nothing from either source: "nothing to seed (…)", no file touched.
 add without --verify still writes and warns on stderr:
   presence: ${UNVERIFIED}
 add --verify refused (stderr, nothing written):
   presence: hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
+  presence: dismiss / pin / allow matched nothing on <url> @ <w>px (<sel>, …)
   presence: refused — nothing written to <file>
 suggest: one line per candidate in document order, "<selector>  <tag>  <h>px", then
 "presence.mjs add --hide <first candidate> --verify <url>"; no candidate: "none found above the header"; a "*".hide
@@ -179,7 +213,7 @@ async function loadLiveSession() {
 }
 
 const FLAGS = {
-  add: ['--hide', '--slug', '--reason', '--file', '--verify', '--wait-ms', '--width', '--headed'],
+  add: ['--hide', '--dismiss', '--pin', '--state', '--allow', '--slug', '--reason', '--file', '--verify', '--wait-ms', '--width', '--headed'],
   seed: ['--run', '--file'],
   suggest: ['--width', '--headed', '--wait-ms', '--file'],
 };
@@ -190,13 +224,14 @@ const wholeNumber = (flag, v, min) => {
   return Number(v);
 };
 
-/** argv after the script path → { cmd, hide: [values], slug, reason, file, run, url, verify, waitMs, width, headed };
- * throws UsageError. --help is answered before this. */
+/** argv after the script path → { cmd, hide: [values], dismiss: [values], pin: { sel, state } | null, allow: [{ kind,
+ * selector }], slug, reason, file, run, url, verify, waitMs, width, headed }; throws UsageError. --help is answered before
+ * this. */
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError(`presence: a command is required — ${COMMANDS} (see --help)`);
   if (!Object.hasOwn(FLAGS, cmd)) throw new UsageError(`presence: unknown command "${cmd}" — ${COMMANDS} (see --help)`);
-  const o = { cmd, hide: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN, url: null, verify: null, waitMs: null, width: null, headed: false };
+  const o = { cmd, hide: [], dismiss: [], pin: null, state: null, allow: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN, url: null, verify: null, waitMs: null, width: null, headed: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (cmd === 'suggest' && !a.startsWith('-')) {
@@ -210,7 +245,19 @@ export function parseArgs(argv) {
     if (v === undefined || v.startsWith('--')) throw new UsageError(`presence: ${a} needs a value (see --help)`);
     i += 1;
     if (a === '--hide') o.hide.push(v);
-    else if (a === '--slug') o.slug = v.trim();
+    else if (a === '--dismiss') o.dismiss.push(v);
+    else if (a === '--pin') {
+      if (o.pin !== null) throw new UsageError('presence: one --pin per call (each pin has its own --state)');
+      o.pin = v.trim();
+    } else if (a === '--state') o.state = v.trim();
+    else if (a === '--allow') {
+      // <kind>=<selector>, split at the FIRST '=': a kind has none, a selector may ([data-x="y"])
+      const i = v.indexOf('=');
+      const kind = i < 0 ? '' : v.slice(0, i).trim(); const selector = i < 0 ? '' : v.slice(i + 1).trim();
+      if (!kind || !selector) throw new UsageError(`presence: --allow takes <kind>=<selector> (got "${v}")`);
+      if (!ALLOW_KINDS.includes(kind)) throw new UsageError(`presence: --allow kind must be one of ${ALLOW_KINDS.join(', ')} (got "${kind}")`);
+      o.allow.push({ kind, selector });
+    } else if (a === '--slug') o.slug = v.trim();
     else if (a === '--reason') o.reason = v.trim();
     else if (a === '--file') o.file = v;
     else if (a === '--run') o.run = v;
@@ -218,7 +265,11 @@ export function parseArgs(argv) {
     else if (a === '--wait-ms') o.waitMs = wholeNumber(a, v, 0);
     else if (a === '--width') o.width = wholeNumber(a, v, 1);
   }
-  if (cmd === 'add' && !o.hide.length) throw new UsageError('presence: add needs --hide <sel[,sel…]> (see --help)');
+  if (cmd === 'add' && !o.hide.length && !o.dismiss.length && o.pin === null && !o.allow.length) throw new UsageError('presence: add needs --hide, --dismiss, --pin or --allow <…> (see --help)');
+  if (o.pin !== null && !o.pin) throw new UsageError('presence: --pin needs a selector (see --help)');
+  if (o.pin !== null && !o.state) throw new UsageError('presence: --pin needs --state <label> (the state its click pins, e.g. "slide 1")');
+  if (o.pin === null && o.state !== null) throw new UsageError('presence: --state needs --pin <sel> (see --help)');
+  if (o.allow.length && o.reason === null) throw new UsageError('presence: --allow needs --reason R-<nn> (an allowance names its register entry)');
   if (cmd === 'suggest' && o.url === null) throw new UsageError('presence: suggest needs a page URL (see --help)');
   if (cmd === 'suggest' && !isHttpUrl(o.url)) throw new UsageError(`presence: suggest needs an http(s) page URL (got "${o.url}")`);
   if (o.verify !== null && !isHttpUrl(o.verify)) throw new UsageError(`presence: --verify needs an http(s) page URL (got "${o.verify}")`);
@@ -247,14 +298,22 @@ function readJsonObject(file) {
   return { found: true, json };
 }
 
-/** Checks the entry this run touches: an object whose `hide` is a selector string or a list of them and whose
- * `reasons` is an object of strings (each may be absent; `hide: null` reads as absent). Throws InputError. */
+const isSelectorList = (v) => typeof v === 'string' || (Array.isArray(v) && v.every((s) => typeof s === 'string'));
+const nonEmpty = (v) => typeof v === 'string' && v.trim() !== '';
+const validPin = (x) => isPlainObject(x) && nonEmpty(x.sel) && nonEmpty(x.state);
+const validAllow = (x) => isPlainObject(x) && ALLOW_KINDS.includes(x.kind) && nonEmpty(x.selector) && typeof x.reason === 'string';
+
+/** Checks the entry this run touches: an object whose `hide` and `dismiss` are a selector string or a list of them,
+ * `pin` a list of { sel, state }, `allow` a list of { kind (ALLOW_KINDS), selector, reason } and `reasons` an object of
+ * strings (each may be absent; `hide: null` / `dismiss: null` read as absent). Throws InputError. */
 export function checkEntry(json, key, file) {
   const entry = own(json, key);
   if (entry === undefined) return;
   if (!isPlainObject(entry)) throw malformed(file, `"${key}" must be an object`);
-  const { hide, reasons } = entry;
-  if (hide != null && typeof hide !== 'string' && !(Array.isArray(hide) && hide.every((s) => typeof s === 'string'))) throw malformed(file, `"${key}".hide must be a selector string or a list of selector strings`);
+  const { hide, dismiss, pin, allow, reasons } = entry;
+  for (const [field, v] of [['hide', hide], ['dismiss', dismiss]]) if (v != null && !isSelectorList(v)) throw malformed(file, `"${key}".${field} must be a selector string or a list of selector strings`);
+  if (pin !== undefined && !(Array.isArray(pin) && pin.every(validPin))) throw malformed(file, `"${key}".pin must be a list of { sel, state }`);
+  if (allow !== undefined && !(Array.isArray(allow) && allow.every(validAllow))) throw malformed(file, `"${key}".allow must be a list of { kind: ${ALLOW_KINDS.join(' | ')}, selector, reason }`);
   if (reasons !== undefined && !(isPlainObject(reasons) && Object.values(reasons).every((r) => typeof r === 'string'))) throw malformed(file, `"${key}".reasons must be an object of strings`);
 }
 
@@ -266,10 +325,13 @@ export function checkEntry(json, key, file) {
  * change the input object is returned as is; otherwise a new object (the input is not mutated) whose key and field
  * order follow the input, a new key or field appended.
  */
-export function applyHide(json, key, selectors, { parse, reasonOf = null, onlyAdded = false }) {
+export function applyHide(json, key, selectors, opts) { return applyList(json, key, 'hide', selectors, opts); }
+
+/** applyHide for any selector-list field of the entry (`hide`, `dismiss`): the same rules, the same result shape. */
+export function applyList(json, key, field, selectors, { parse, reasonOf = null, onlyAdded = false }) {
   const entry = own(json, key) || {};
-  const before = parse(entry.hide);
-  const list = parse(entry.hide, selectors);
+  const before = parse(entry[field]);
+  const list = parse(entry[field], selectors);
   const added = list.filter((sel) => !before.includes(sel));
   const reasons = { ...(isPlainObject(entry.reasons) ? entry.reasons : {}) };
   let reasonChanges = 0;
@@ -281,7 +343,7 @@ export function applyHide(json, key, selectors, { parse, reasonOf = null, onlyAd
     }
   }
   if (!added.length && !reasonChanges) return { json, list, added, reasonChanges, changed: false };
-  const next = { ...entry, hide: list };
+  const next = { ...entry, [field]: list };
   if (Object.keys(reasons).length) next.reasons = reasons;
   return { json: { ...json, [key]: next }, list, added, reasonChanges, changed: true };
 }
@@ -292,6 +354,96 @@ export function seedSelectors(siteOverlays, envValue, parse) {
   const fromRun = parse(siteOverlays);
   const selectors = parse(fromRun, envValue);
   return { selectors, reasonOf: (sel) => (fromRun.includes(sel) ? SEED_REASON.run : SEED_REASON.env) };
+}
+
+/**
+ * Pure: a pin into `json[key].pin` ({ sel, state }; the same selector's state replaced in place, else appended) and its
+ * `reason` into `reasons[sel]` → { json, list, changes, reasonChanges, changed } — the input is never mutated; no change
+ * returns it as is.
+ */
+export function applyPin(json, key, pin, reason = null) {
+  const entry = own(json, key) || {};
+  const list = (Array.isArray(entry.pin) ? entry.pin : []).map((x) => ({ ...x }));
+  const at = list.findIndex((x) => x.sel === pin.sel);
+  let changes = 0;
+  if (at < 0) { list.push({ sel: pin.sel, state: pin.state }); changes = 1; } else if (list[at].state !== pin.state) { list[at].state = pin.state; changes = 1; }
+  const reasons = { ...(isPlainObject(entry.reasons) ? entry.reasons : {}) };
+  let reasonChanges = 0;
+  if (reason && own(reasons, pin.sel) !== reason) { reasons[pin.sel] = reason; reasonChanges = 1; }
+  if (!changes && !reasonChanges) return { json, list, changes, reasonChanges, changed: false };
+  return { json: { ...json, [key]: { ...entry, pin: list, ...(Object.keys(reasons).length ? { reasons } : {}) } }, list, changes, reasonChanges, changed: true };
+}
+
+/** Pure: allowances into `json[key].allow` ({ kind, selector, reason }; the same kind + selector gets the new reason in
+ * place, else appended) → { json, list, changes, changed }; the input is never mutated. */
+export function applyAllow(json, key, allows, reason) {
+  const entry = own(json, key) || {};
+  const list = (Array.isArray(entry.allow) ? entry.allow : []).map((x) => ({ ...x }));
+  let changes = 0;
+  for (const { kind, selector } of allows) {
+    const at = list.findIndex((x) => x.kind === kind && x.selector === selector);
+    if (at < 0) { list.push({ kind, selector, reason }); changes += 1; } else if (list[at].reason !== reason) { list[at].reason = reason; changes += 1; }
+  }
+  if (!changes) return { json, list, changes, changed: false };
+  return { json: { ...json, [key]: { ...entry, allow: list } }, list, changes, changed: true };
+}
+
+// live-session's parseHideList, restated so the pure readers below need no import (gate-all, stitch-shot and gate.sh read
+// presence.json through them; keep them in step): comma lists or arrays of them, trimmed, empty dropped, de-duplicated.
+const splitList = (...values) => {
+  const out = [];
+  const add = (v) => {
+    if (Array.isArray(v)) { v.forEach(add); return; }
+    if (typeof v !== 'string') return;
+    for (const part of v.split(',')) { const sel = part.trim(); if (sel && !out.includes(sel)) out.push(sel); }
+  };
+  values.forEach(add);
+  return out;
+};
+
+/**
+ * Pure: a (merged) presence.json → one page's capture settings, `"*"`'s then `<slug>`'s (a null slug: `"*"` only):
+ * { hide, dismiss } — selector lists de-duplicated in order; pin — [{ sel, state }], one per selector (the slug's state
+ * wins, the first position kept); allow — [{ kind, selector, reason }], one per kind + selector (the slug's reason wins);
+ * allowDialog — the per-visitor-dialog selectors that are in `hide` (an allowance for a container not hidden allows
+ * nothing). Lenient: a malformed field or entry is skipped (presence.mjs add refuses to write one).
+ */
+export function captureSettings(json, slug = null) {
+  const entries = ['*', ...(slug != null && slug !== '*' ? [slug] : [])].map((k) => (isPlainObject(json) && isPlainObject(json[k]) ? json[k] : {}));
+  const pin = []; const allow = [];
+  for (const e of entries) {
+    for (const x of Array.isArray(e.pin) ? e.pin.filter(validPin) : []) {
+      const at = pin.findIndex((y) => y.sel === x.sel.trim());
+      if (at < 0) pin.push({ sel: x.sel.trim(), state: x.state.trim() }); else pin[at] = { sel: pin[at].sel, state: x.state.trim() };
+    }
+    for (const x of Array.isArray(e.allow) ? e.allow.filter(validAllow) : []) {
+      const y = { kind: x.kind, selector: x.selector.trim(), reason: x.reason };
+      const at = allow.findIndex((z) => z.kind === y.kind && z.selector === y.selector);
+      if (at < 0) allow.push(y); else allow[at] = y;
+    }
+  }
+  const hide = splitList(...entries.map((e) => e.hide));
+  const allowDialog = allow.filter((x) => x.kind === 'per-visitor-dialog' && hide.includes(x.selector)).map((x) => x.selector);
+  return { hide, dismiss: splitList(...entries.map((e) => e.dismiss)), pin, allow, allowDialog: [...new Set(allowDialog)] };
+}
+
+/**
+ * Pure: the counted clip findings (clip-probe / content-presence `findings`, or `groups` with their `n`) the page's `clip`
+ * allowances cover → { n, by: [{ selector, reason, n }] } (allowance order, only those that covered one). A finding is
+ * covered when an allowance's selector is its `clipper`, or occurs in its `path` (`a > b > c`) as whole segments; the
+ * first covering allowance takes it. Advisory findings are never counted, so never allowed either.
+ */
+export function clipAllowed(findings, allow) {
+  const clips = (Array.isArray(allow) ? allow : []).filter((x) => x && x.kind === 'clip' && nonEmpty(x.selector));
+  const by = clips.map((x) => ({ selector: x.selector.trim(), reason: x.reason, n: 0 }));
+  for (const f of Array.isArray(findings) ? findings : []) {
+    if (!f || f.advisory) continue;
+    const path = ` > ${String(f.path || '')} > `;
+    const hit = by.find((x) => x.selector === f.clipper || path.includes(` > ${x.selector} > `));
+    if (hit) hit.n += Number.isInteger(f.n) && f.n > 0 ? f.n : 1;
+  }
+  const used = by.filter((x) => x.n > 0);
+  return { n: used.reduce((a, x) => a + x.n, 0), by: used };
 }
 
 /** The run file's `siteOverlays` → { found, overlays }; a missing file or key → []. Malformed → InputError naming it. */
@@ -424,46 +576,83 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     return 0;
   }
   const key = o.cmd === 'add' && o.slug ? o.slug : '*';
-  let selectors; let reasonOf = null; let onlyAdded = false;
-  if (o.cmd === 'add') {
-    selectors = parseHideList(o.hide);
-    if (!selectors.length) throw new UsageError('presence: --hide names no selector (see --help)');
-    if (o.reason) reasonOf = () => o.reason;
-    if (o.verify) {
-      // a malformed presence file is refused before the page is opened; it is read again after the wait
-      checkEntry(readJsonObject(o.file).json, key, o.file);
-      const v = await withLivePage(session, o.verify, o, async (page) => {
-        const polled = await pollSelectors(page, selectors, { waitMs: o.waitMs });
-        return { ...polled, candidates: polled.misses.length ? await session.inFlowRegionsAboveHeader(page) : [] };
-      });
-      if (v.misses.length) {
-        warn(`presence: ${session.hideMissLine(v.misses, v.candidates)}`);
-        warn(`presence: refused — nothing written to ${o.file}`);
-        return 2;
-      }
-      log(`verified on ${o.verify} @ ${o.width}px: ${selectors.map((sel, i) => `${sel} ×${v.counts[i]}`).join(', ')}`);
-    }
-  } else {
-    const run = readRun(o.run);
-    const raw = env[ENV_OVERLAYS];
-    const seed = seedSelectors(run.overlays, raw, parseHideList);
-    ({ selectors, reasonOf } = seed);
-    onlyAdded = true;
-    if (!selectors.length) {
-      // the presence file is still checked: a malformed one fails here, not at the first gate round
-      checkEntry(readJsonObject(o.file).json, key, o.file);
-      log(`nothing to seed (${o.run}: ${run.found ? 'no siteOverlays' : 'not found'}; ${ENV_OVERLAYS}: ${raw === undefined ? 'unset' : 'empty'})`);
-      return 0;
-    }
+  if (o.cmd === 'add') return add(o, key, session, { log, warn });
+  const run = readRun(o.run);
+  const raw = env[ENV_OVERLAYS];
+  const { selectors, reasonOf } = seedSelectors(run.overlays, raw, parseHideList);
+  if (!selectors.length) {
+    // the presence file is still checked: a malformed one fails here, not at the first gate round
+    checkEntry(readJsonObject(o.file).json, key, o.file);
+    log(`nothing to seed (${o.run}: ${run.found ? 'no siteOverlays' : 'not found'}; ${ENV_OVERLAYS}: ${raw === undefined ? 'unset' : 'empty'})`);
+    return 0;
   }
   const current = readJsonObject(o.file).json;
   checkEntry(current, key, o.file);
-  const r = applyHide(current, key, selectors, { parse: parseHideList, reasonOf, onlyAdded });
+  const r = applyHide(current, key, selectors, { parse: parseHideList, reasonOf, onlyAdded: true });
   // the resulting list is printed only once it is true on disk: a failed write prints nothing as written
   if (r.changed) writeAtomic(o.file, r.json);
   log(`${key}.hide: ${r.list.join(', ')}`);
   log(r.changed ? `wrote ${o.file}: +${plural(r.added.length, 'selector')}, ${plural(r.reasonChanges, 'reason')}` : `unchanged: ${o.file}`);
-  if (o.cmd === 'add' && !o.verify) warn(`presence: ${UNVERIFIED}`);
+  return 0;
+}
+
+/** `add`: the call's hide / dismiss / pin / allow → the key's entry (verified on the live page first with --verify). */
+async function add(o, key, session, { log, warn }) {
+  const { parseHideList } = session;
+  const call = { hide: parseHideList(o.hide), dismiss: parseHideList(o.dismiss) };
+  if (o.hide.length && !call.hide.length) throw new UsageError('presence: --hide names no selector (see --help)');
+  if (o.dismiss.length && !call.dismiss.length) throw new UsageError('presence: --dismiss names no selector (see --help)');
+  const reasonOf = o.reason ? () => o.reason : null;
+  // a malformed presence file is refused before the page is opened (it is read again after the wait), and so is a
+  // per-visitor-dialog allowance whose container the page does not hide ("*" and the key's hide, this call's included)
+  const pending = readJsonObject(o.file).json;
+  checkEntry(pending, key, o.file);
+  const hideOf = (k) => (isPlainObject(own(pending, k)) ? pending[k].hide : null);
+  const hidden = parseHideList(hideOf('*'), key === '*' ? null : hideOf(key), call.hide);
+  for (const a of o.allow) {
+    if (a.kind === 'per-visitor-dialog' && !hidden.includes(a.selector)) throw new UsageError(`presence: per-visitor-dialog ${a.selector} is not in the hide list of ${key === '*' ? '"*"' : key} — add --hide ${shellArg(a.selector)} in the same call (a dialog left open is allowed only when its container is hidden)`);
+  }
+  const checks = [...new Set([...call.hide, ...call.dismiss, ...(o.pin ? [o.pin] : []), ...o.allow.map((a) => a.selector)])];
+  if (o.verify) {
+    const v = await withLivePage(session, o.verify, o, async (page) => {
+      const polled = await pollSelectors(page, checks, { waitMs: o.waitMs });
+      return { ...polled, candidates: polled.misses.some((sel) => call.hide.includes(sel)) ? await session.inFlowRegionsAboveHeader(page) : [] };
+    });
+    if (v.misses.length) {
+      const hideMissed = v.misses.filter((sel) => call.hide.includes(sel)); const otherMissed = v.misses.filter((sel) => !call.hide.includes(sel));
+      if (hideMissed.length) warn(`presence: ${session.hideMissLine(hideMissed, v.candidates)}`);
+      if (otherMissed.length) warn(`presence: dismiss / pin / allow matched nothing on ${o.verify} @ ${o.width}px (${otherMissed.join(', ')})`);
+      warn(`presence: refused — nothing written to ${o.file}`);
+      return 2;
+    }
+    log(`verified on ${o.verify} @ ${o.width}px: ${checks.map((sel, i) => `${sel} ×${v.counts[i]}`).join(', ')}`);
+  }
+  const current = readJsonObject(o.file).json;
+  checkEntry(current, key, o.file);
+  let json = current; let added = 0; let reasons = 0; const lines = [];
+  for (const field of ['hide', 'dismiss']) {
+    if (!call[field].length) continue;
+    const r = applyList(json, key, field, call[field], { parse: parseHideList, reasonOf });
+    json = r.json; added += r.added.length; reasons += r.reasonChanges;
+    lines.push(`${key}.${field}: ${r.list.join(', ')}`);
+  }
+  if (o.pin) {
+    const r = applyPin(json, key, { sel: o.pin, state: o.state }, o.reason);
+    json = r.json; added += r.changes; reasons += r.reasonChanges;
+    lines.push(`${key}.pin: ${r.list.map((x) => `${x.sel} → ${x.state}`).join(', ')}`);
+  }
+  if (o.allow.length) {
+    const r = applyAllow(json, key, o.allow, o.reason);
+    json = r.json; added += r.changes;
+    lines.push(`${key}.allow: ${r.list.map((x) => `${x.kind} ${x.selector} (${x.reason})`).join(', ')}`);
+  }
+  const changed = json !== current;
+  // the resulting lists are printed only once they are true on disk: a failed write prints nothing as written
+  if (changed) writeAtomic(o.file, json);
+  for (const line of lines) log(line);
+  const hideOnly = !call.dismiss.length && !o.pin && !o.allow.length;
+  log(changed ? `wrote ${o.file}: +${plural(added, hideOnly ? 'selector' : 'setting')}, ${plural(reasons, 'reason')}` : `unchanged: ${o.file}`);
+  if (!o.verify) warn(`presence: ${UNVERIFIED}`);
   return 0;
 }
 
