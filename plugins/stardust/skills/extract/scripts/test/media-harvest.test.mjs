@@ -524,7 +524,7 @@ await check('--help (and -h, and alongside a bad flag) in an empty cwd: exit 0, 
   for (const args of [['--help'], ['-h'], ['--bogus', '--help']]) {
     const r = await run(args, cwd);
     assert.equal(r.code, 0, r.err); assert.match(r.out, /Usage:/); assert.doesNotMatch(r.out, /\/\*\*/);
-    for (const f of ['--pages <dir>', '--out <dir>', '--map <file>', '--concurrency <n>', '--max-bytes <n>', '--timeout <s>', '--assets <kinds>', '--assets-dir <dir>', '--harvest-map <file>', '--max-total-bytes <n>', 'harvest-map.json', 'Exit codes:']) assert.ok(r.out.includes(f), `header names ${f}`);
+    for (const f of ['--pages <dir>', '--out <dir>', '--map <file>', '--concurrency <n>', '--max-bytes <n>', '--timeout <s>', '--assets <kinds>', '--assets-dir <dir>', '--harvest-map <file>', '--max-total-bytes <n>', 'harvest-map.json', '<assets-dir>/<kind>/<base>-<hash8>.<ext>   one file', 'Exit codes:']) assert.ok(r.out.includes(f), `header names ${f}`);
     assert.ok(r.out.includes(`${VIDEO_MAX_BYTES} bytes`), 'header states the video default cap');
   }
   assert.deepEqual(readdirSync(cwd), []);
@@ -567,6 +567,10 @@ if (!chromium) {
     '/fonts/used.woff2': ['font/woff2', FONT_A], '/fonts/unused.woff2': ['font/woff2', FONT_B], '/fonts/huge.woff2': ['font/woff2', FONT_HUGE],
     '/img/logo.svg': ['image/svg+xml', LOGO_SVG], '/img/icon.svg': ['image/svg+xml', ICON_SVG], '/img/photo.png': ['image/png', fill(23, 50)] };
   const DENIAL = Buffer.from('<!doctype html><title>System Down</title><h1>System Down</h1>');
+  const STALL_SHEET = Buffer.from('@font-face { font-family: Stall; src: url(/fonts/stall.woff2) format("woff2"); }\n');
+  WALL['/stall-page'] = ['text/html', Buffer.from('<!doctype html><html><head><link rel="stylesheet" href="/css/stall.css"></head><body><p>x</p></body></html>')];
+  WALL['/css/stall.css'] = ['text/css', STALL_SHEET];
+  const stalled = [];
   const wallHits = []; let denyAll = false;
   const wall = createServer((req, res) => {
     const browser = Boolean(req.headers['sec-fetch-dest']);
@@ -574,6 +578,9 @@ if (!chromium) {
     // the CSS wants the fonts cross-origin-safe; the fixture serves them like a font CDN does
     res.setHeader('access-control-allow-origin', '*');
     if (!browser || (denyAll && req.url !== '/page')) { res.writeHead(200, { 'content-type': 'text/html' }); res.end(DENIAL); return; }
+    if (req.url === '/fonts/stall.woff2') { // headers and a first chunk, then nothing: the body never completes
+      res.writeHead(200, { 'content-type': 'font/woff2', 'content-length': 4000 }); res.write(fill(30, 100)); stalled.push(res); return;
+    }
     const r = WALL[req.url];
     if (!r) { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<h1>not found</h1>'); return; }
     res.writeHead(200, { 'content-type': r[0], 'content-length': r[1].length }); res.end(r[1]);
@@ -634,6 +641,26 @@ if (!chromium) {
     } finally { denyAll = false; }
   });
 
+  await check('a font whose body stalls after its headers is an `error` after --timeout (the body read and the in-page load are bounded): the run ends, the page counts as opened, the sheet beside it is ok', async () => {
+    const stall = join(root, 'wall-stall'); mkdirSync(join(stall, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(stall, 'stardust/current/pages/home.json'), `${JSON.stringify({ slug: 'home', url: `${W}/stall-page` })}\n`);
+    writeFileSync(join(stall, 'stardust/current/pages/home.html'), '<html></html>');
+    const t0 = Date.now();
+    const r = await new Promise((resolve) => {
+      const p = spawn(process.execPath, [SCRIPT, '--assets', 'sheets,fonts', '--timeout', '1'], { cwd: stall });
+      let out = ''; let err = '';
+      const kill = setTimeout(() => p.kill('SIGKILL'), 60000);
+      p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+      p.on('close', (code) => { clearTimeout(kill); resolve({ code, out, err }); });
+    });
+    assert.equal(r.code, 0, `exit ${r.code} after ${Date.now() - t0} ms: ${r.err}`);
+    const h = JSON.parse(readFileSync(join(stall, 'stardust/current/assets/harvest-map.json'), 'utf8'));
+    assert.equal(h[`${W}/css/stall.css`].status, 'ok');
+    assert.equal(h[`${W}/fonts/stall.woff2`].status, 'error');
+    assert.match(h[`${W}/fonts/stall.woff2`].error, /timeout after 1s/);
+    assert.doesNotMatch(r.out, /not opened/);
+  });
+
   await check('--assets media,sheets runs both paths: the media path (Node) is refused by the wall (photo.png not-media in media-map.json), the browser path harvests the sheets into harvest-map.json; --max-total-bytes stops the run total', async () => {
     const both = join(root, 'wall-both'); mkdirSync(join(both, 'stardust/current/pages'), { recursive: true });
     writeFileSync(join(both, 'stardust/current/pages/home.json'), `${JSON.stringify({ slug: 'home', url: `${W}/page` })}\n`);
@@ -649,6 +676,7 @@ if (!chromium) {
     assert.match(Object.values(h).find((e) => e.status === 'too-large').error, /--max-total-bytes/);
   });
 
+  for (const res of stalled) res.destroy();
   wall.closeAllConnections();
   await new Promise((resolve) => { wall.close(resolve); });
 }

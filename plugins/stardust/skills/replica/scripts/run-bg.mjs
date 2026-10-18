@@ -291,6 +291,7 @@ const HELP = `Usage:
   Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 25 min) or --until an ISO-8601 instant with an offset or Z (past = one
   pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the shell tool call a
   timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it first.
+  The default suits a session whose prompt cache lives an hour (a supervised lead); with a five-minute cache pass --max 240.
   Why: under a 110 s ceiling a recorded hands-off run polled twenty times in 35 minutes; in another one call waited 57
   minutes — a supervised session asks its runner at least every 25 minutes.
   Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)

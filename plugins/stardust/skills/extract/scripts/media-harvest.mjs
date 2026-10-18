@@ -30,7 +30,8 @@
  *                         (default: no cap, except video — 52428800 bytes = 50 MiB; video is a video/*
  *                         answer or a .mp4/.webm/.mov/.m4v/.ogv URL; on the browser path the default is
  *                         5242880 bytes = 5 MiB per file)
- *     --timeout <s>       per-request timeout in seconds, body included; decimals allowed (default 30)
+ *     --timeout <s>       per-request timeout in seconds, body included; decimals allowed (default 30); on the
+ *                         browser path it bounds each body read and each forced in-page load
  *     --assets <kinds>    comma-separated, any of media, sheets, fonts, svg (default media). media = the
  *                         Node path below (images, video, audio); sheets, fonts, svg = the browser path
  *     --assets-dir <dir>  the browser path writes <dir>/<kind>/ (default stardust/current/assets)
@@ -83,6 +84,9 @@
  *           (tmp + rename), and only when its content changes — a killed run keeps every entry it
  *           finished, and a run that changes nothing leaves it byte-identical. An existing
  *           map that is not a JSON object is refused (exit 2), never overwritten.
+ *   With --assets sheets, fonts or svg (the browser path, below), also:
+ *   <assets-dir>/<kind>/<base>-<hash8>.<ext>   one file per distinct name and kind
+ *   <harvest-map>   the map above plus "kind", under the same rules
  *
  * Re-runs: a URL whose map entry is `ok` and whose `local` file exists at the recorded `bytes`
  * is reused with no request; every failed entry (not-media included) is retried.
@@ -99,8 +103,10 @@
  * fragment removed) is recorded once per run. A non-2xx answer is `http-<code>`; an answer whose
  * content-type is not the kind's (text/css; font/*, application/(x-)font-*, the embedded-type font or
  * octet-stream; image/svg+xml or octet-stream — none declared passes) is `not-media` (a denial page served
- * to the browser itself); a body the browser cannot hand over is `error`; past the per-file cap or the run
- * total, `too-large`. Files: <assets-dir>/<kind>/<base>-<hash8>.<ext>, named like the media path (ext: the
+ * to the browser itself); a body the browser cannot hand over within --timeout, or a request it never answers
+ * while the page is open, is `error`; past the per-file
+ * cap or the run total, `too-large`. Each forced load waits at most --timeout too; one the page cannot finish
+ * is recorded by its response or not at all, never failing the page. Files: <assets-dir>/<kind>/<base>-<hash8>.<ext>, named like the media path (ext: the
  * URL's own of the kind, else the content-type's, else css / bin / svg). Map: <harvest-map>, the media
  * map's format plus `kind` ("sheets" | "fonts" | "svg") after `status`, written after every page under the
  * same rules (sorted, tmp + rename, only on change; a map that is not a JSON object is refused, exit 2).
@@ -484,11 +490,12 @@ export function summarizeAssets({ pages, kinds, byKind, downloaded, reused, fail
 }
 
 // Runs in the page (serialised by playwright — no outer-scope references): loads every declared @font-face and
-// each given URL as an image, so the browser fetches what no element asked for; each image load waits at most
+// each given URL as an image, so the browser fetches what no element asked for; each load waits at most
 // timeoutMs. Returns how many loads it started.
 export async function forceLoadInPage({ fonts, urls, timeoutMs }) {
   const jobs = [];
-  if (fonts && document.fonts) document.fonts.forEach((f) => { if (f.status === 'unloaded') jobs.push(f.load().catch(() => null)); });
+  const bounded = (p) => Promise.race([p.catch(() => null), new Promise((done) => { setTimeout(done, timeoutMs); })]);
+  if (fonts && document.fonts) document.fonts.forEach((f) => { if (f.status === 'unloaded') jobs.push(bounded(f.load())); });
   for (const u of urls) {
     jobs.push(new Promise((done) => {
       const img = new Image();
@@ -656,8 +663,14 @@ async function browserTools() {
   return { chromium, session: await import(pathToFileURL(found).href) };
 }
 
-const FORCE_LOAD_MS = 10000;
 const firstLine = (e) => String(e?.message ?? e).split('\n')[0];
+// A body the browser never finishes must not hold the run: each read races --timeout. The losing read is caught
+// here, so a page closed under it later is no unhandled rejection.
+function within(promise, ms, label) {
+  promise.catch(() => {});
+  let t;
+  return Promise.race([promise, new Promise((_, reject) => { t = setTimeout(() => reject(new Error(label)), ms); })]).finally(() => clearTimeout(t));
+}
 
 async function harvestBrowser(o, prevText, prev, { chromium, session }) {
   const kinds = o.assets.filter((k) => k !== 'media');
@@ -688,13 +701,15 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
     else downloaded += 1;
     results[src] = entry;
   };
+  const timeoutMs = o.timeout * 1000;
+  const timedOut = `timeout after ${o.timeout}s`;
   const answer = async (resp, kind, type, src) => {
     if (!resp.ok()) return { status: `http-${resp.status()}` };
     if (!assetTypeOk(kind, type)) return { status: 'not-media', contentType: type };
     const declared = resp.headers()['content-length'];
     if (declared !== undefined && Number(declared) > cap.bytes) return { status: 'too-large', error: `content-length ${Number(declared)} > ${cap.label}` };
     let body;
-    try { body = await resp.body(); } catch (e) { return { status: 'error', error: `body unavailable: ${firstLine(e)}` }; }
+    try { body = await within(resp.body(), timeoutMs, timedOut); } catch (e) { return { status: 'error', error: `body unavailable: ${firstLine(e)}` }; }
     if (!body.length) return { status: 'error', error: 'empty response body' };
     if (body.length > cap.bytes) return { status: 'too-large', error: `body ${body.length} > ${cap.label}` };
     if (total + body.length > o.maxTotalBytes) return { status: 'too-large', error: `the run total would pass --max-total-bytes ${o.maxTotalBytes}` };
@@ -703,17 +718,29 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
     try { writeMedia(local, body); } catch (e) { return { status: 'error', error: `write failed: ${e.code || e.message}` }; }
     return { status: 'ok', local, bytes: body.length, contentType: type };
   };
+  const isHttp = (u) => /^https?:/i.test(u);
+  // Asset requests sent and not yet answered, per page: one the browser never answers in full (a body stalled before
+  // the browser reports the response) is recorded as a timeout when the page ends, not lost.
+  const inflight = new Map();
+  const onRequest = (req) => {
+    let src;
+    try { src = originalUrl(req); } catch { return; }
+    const kind = isHttp(src) && assetKind({ resourceType: req.resourceType(), url: src, contentType: null });
+    if (kind && want.has(kind) && !seen.has(src)) inflight.set(src, kind);
+  };
   const onResponse = async (resp) => {
     const status = resp.status();
     if (status >= 300 && status < 400) return; // the redirected request answers for it
     const req = resp.request();
     let src;
     try { src = originalUrl(req); } catch { return; }
+    inflight.delete(src);
+    if (!isHttp(src)) return;
     const type = mediaType(resp.headers()['content-type']);
     const kind = assetKind({ resourceType: req.resourceType(), url: src, contentType: type });
     if (!kind) return;
     if (kind === 'sheets' && want.has('svg') && resp.ok() && assetTypeOk('sheets', type)) {
-      const css = await resp.body().catch(() => null);
+      const css = await within(resp.body(), timeoutMs, timedOut).catch(() => null);
       if (css) for (const u of cssAssetRefs(css.toString('utf8'), resp.url()).svg) sheetSvg.add(u);
     }
     if (!want.has(kind) || seen.has(src)) return;
@@ -723,6 +750,8 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
   const onFailed = (req) => {
     let src;
     try { src = originalUrl(req); } catch { return; }
+    inflight.delete(src);
+    if (!isHttp(src)) return;
     const kind = assetKind({ resourceType: req.resourceType(), url: src, contentType: null });
     if (!kind || !want.has(kind) || seen.has(src)) return;
     seen.add(src);
@@ -741,30 +770,46 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
     const ctx = await session.newLiveContext(browser, { viewport: { width: 1440, height: 900 } });
     for (const { slug, url } of pages) {
       const page = await ctx.newPage();
-      // One queue per page: responses are handled in arrival order, so the run total is deterministic.
+      // One queue per page: responses are handled one at a time in arrival order, so the run total never overshoots
+      // --max-total-bytes; which asset reaches the cap first follows the browser's arrival order.
       let queue = Promise.resolve();
       const onResp = (resp) => { queue = queue.then(() => onResponse(resp)).catch((e) => console.error(`media-harvest: ${slug}: ${firstLine(e)}`)); };
       const onFail = (req) => { queue = queue.then(() => onFailed(req)); };
+      inflight.clear();
+      page.on('request', onRequest);
       page.on('response', onResp);
       page.on('requestfailed', onFail);
+      let pageOpened = false;
       try {
         await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), settleMs: session.isLiveHttpUrl(url) ? 2500 : 1200 });
         await session.dismissOverlays(page, { lateWindowMs: session.lateWindowFor(url) });
         await queue;
+        opened += 1;
+        pageOpened = true;
         const svgUrls = [...sheetSvg].filter((u) => !seen.has(u)).sort();
         if (want.has('fonts') || svgUrls.length) {
-          await session.withDeadline(page.evaluate(forceLoadInPage, { fonts: want.has('fonts'), urls: svgUrls, timeoutMs: FORCE_LOAD_MS }), FORCE_LOAD_MS + 5000, 'force-load');
-          await page.waitForTimeout(300);
+          // A load the page cannot finish is recorded by its response (or not at all); it never un-opens the page.
+          try {
+            await session.withDeadline(page.evaluate(forceLoadInPage, { fonts: want.has('fonts'), urls: svgUrls, timeoutMs }), timeoutMs + 5000, 'force-load');
+            await page.waitForTimeout(300);
+          } catch (e) { console.error(`media-harvest: ${slug}: force-load: ${firstLine(e)}`); }
         }
         await queue;
-        opened += 1;
       } catch (e) {
         if (e?.name === 'BotChallengeError') challenged += 1;
         console.error(`media-harvest: ${slug}: ${e?.name || 'Error'}: ${firstLine(e)} — page not opened`);
       } finally {
+        page.off('request', onRequest);
         page.off('response', onResp);
         page.off('requestfailed', onFail);
         await queue;
+        if (pageOpened) {
+          for (const [src, kind] of [...inflight].sort(([a], [b]) => (a < b ? -1 : 1))) {
+            if (seen.has(src)) continue;
+            seen.add(src);
+            record(src, kind, { status: 'error', error: `${timedOut}: no complete answer while the page was open` });
+          }
+        }
         await page.close().catch(() => {});
       }
       saveMap();
