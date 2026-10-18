@@ -17,6 +17,17 @@
  * submitted (the submit URL). The header's position is sampled at top / scrolled down / up /
  * back. Navigations are answered 204 so the page never leaves.
  *
+ * Pollution guard (a first click right after load can catch the page hydrating, not the panel): every top-level state
+ * that opened is sampled again on a FRESH page visited exactly as the first one was (the same visit: wait, overlay
+ * dismissal, settle; then hide and baseline — a quick reload would click earlier after load), the same control and
+ * action: its links, headings, images, inputs and, with pngjs + pixelmatch, its crop. A repeat that differs from the
+ * first sample by more than --bar (sampleDelta: the larger of the structural and the crop pixel ratio) marks the state
+ * `unstable: { delta, resample: 'agrees'|'differs', resampleDelta }` and is sampled once more: `agrees` (≤ bar) → the
+ * state holds the re-sample (the settled sample, crop `…-settled.png`), `differs` → the repeat. The header records
+ * `stability: { bar, checked, unstable: ['<w> <path> [<action>]'], crops? }` (`crops: 'skipped: <why>'` when crops were
+ * not compared) or `'skipped: --no-repeat'`, printed after the summary. unstableAsWarn(findings, source) turns
+ * chrome-compare's errors on an unstable state into warnings.
+ *
  * Usage: node skills/diff/scripts/chrome-explore.mjs <url> <out.json> [options]
  *   --width <w,…>        viewport widths (default 1440,390; below 768 is touch: no hover)
  *   --root <sel>         header root (default: first visible header, [role=banner], .header)
@@ -28,11 +39,13 @@
  *   --hide <sel,…>       hide in-flow regions (a location bar above the header) after every load; repeatable
  *   --slug <slug>        the page's key in presence.json: its `hide` too, after "*"'s (optional)
  *   --presence <file>    also hide a gate dir's presence.json `hide` ("*", then the slug; needs --slug)
+ *   --bar <ratio>        pollution guard: a fresh-page repeat differing by more is unstable (default 0.02, chrome-compare's)
+ *   --no-repeat          skip the guard (recorded: stability 'skipped: --no-repeat')
  * The site-wide stardust/replica/presence.json is read by default (its "*" `hide`, plus the --slug entry's), merged
  * under --presence's file (that file's field wins per key); its selectors are tagged `site presence.json`.
  * A hide list is recorded as `hide: { list, presence, site?, perWidth }` with one `<w>: hidden …` line per width.
  * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `hideArgs`,
- * `effectiveHide` are exported.
+ * `effectiveHide`, `sampleDelta`, `cropDeps`, `cropRatio`, `unstableAsWarn`, `stabilityLine` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -63,14 +76,14 @@ export function controlKind({ name = '', role = '', type = '', hint = '' }) {
 /** One line per width: controls, states, distinct links, depth, kinds, truncation. Pure. */
 export function summarize(doc) {
   return Object.entries(doc.widths || {}).map(([w, d]) => {
-    const links = new Set(); let states = 0; let depth = 0; const kinds = {};
+    const links = new Set(); let states = 0; let depth = 0; let unstable = 0; const kinds = {};
     const opens = (c) => c.search || Object.values(c.actions || {}).some((s) => s && s.opened);
     const walk = (cs, lvl) => {
       for (const c of cs) {
         if (lvl === 1 && opens(c)) kinds[c.kind] = (kinds[c.kind] || 0) + 1;
         for (const s of Object.values(c.actions || {})) {
           if (!s || !s.opened) continue;
-          states += 1; depth = Math.max(depth, lvl);
+          states += 1; depth = Math.max(depth, lvl); if (s.unstable) unstable += 1;
           for (const l of s.panel.links) links.add(`${normName(l.text)} ${l.href}`);
         }
         walk(c.children || [], lvl + 1);
@@ -78,8 +91,83 @@ export function summarize(doc) {
     };
     walk(d.controls || [], 1);
     const k = Object.entries(kinds).map(([n, c]) => `${c} ${n}`).join(', ');
-    return `${w}: ${(d.controls || []).filter(opens).length} controls (${k || 'none'}), ${states} states, ${links.size} links, depth ${depth}${d.truncated ? `, TRUNCATED at ${d.truncated}` : ''}`;
+    return `${w}: ${(d.controls || []).filter(opens).length} controls (${k || 'none'}), ${states} states, ${links.size} links, depth ${depth}${unstable ? `, ${unstable} unstable` : ''}${d.truncated ? `, TRUNCATED at ${d.truncated}` : ''}`;
   });
+}
+
+const r4 = (x) => Math.round(x * 10000) / 10000;
+const OPENERS = ['click', 'hover', 'key'];
+
+/** Two samples of one state (the first, a repeat on a fresh page) → { delta, structural, crop }, 4 dp. `structural`: the
+ * symmetric difference over the union of the panel's link keys (normName(text) + href), headings, images and inputs,
+ * each counted; one side open and the other not = 1. `cropRatio`: the crops' cropRatio(), or why there is none →
+ * `crop: 'skipped: <why>'` (default `no crops`), never counted as equal. `delta` = the larger part. Pure. */
+export function sampleDelta(first, repeat, { cropRatio: ratio = null } = {}) {
+  const on = (s) => !!(s && s.opened);
+  const items = (s) => {
+    const p = s.panel || {}; const n = {};
+    const keys = [...(p.links || []).map((l) => `l ${normName(l.text)} ${l.href}`), ...(p.headings || []).map((h) => `h ${normName(h)}`), ...Array(p.images || 0).fill('i'), ...(p.inputs || []).map((t) => `n ${t}`)];
+    return new Set(keys.map((k) => { n[k] = (n[k] || 0) + 1; return `${k} #${n[k]}`; }));
+  };
+  let structural = on(first) === on(repeat) ? 0 : 1;
+  if (on(first) && on(repeat)) {
+    const a = items(first); const b = items(repeat); const union = new Set([...a, ...b]);
+    structural = union.size ? [...union].filter((k) => !(a.has(k) && b.has(k))).length / union.size : 0;
+  }
+  const crop = typeof ratio === 'number' ? r4(ratio) : `skipped: ${ratio || 'no crops'}`;
+  return { delta: r4(Math.max(structural, typeof crop === 'number' ? crop : 0)), structural: r4(structural), crop };
+}
+
+let depsP = null;
+/** pngjs + pixelmatch from the project (cwd), else beside this script → { PNG, pixelmatch }, or null when not installed. */
+export function cropDeps() {
+  const load = async (name) => {
+    try { const req = createRequire(join(process.cwd(), 'package.json')); const m = await import(pathToFileURL(req.resolve(name)).href); return m.default || m; } catch { /* fall through */ }
+    const m = await import(name); return m.default || m;
+  };
+  depsP = depsP || (async () => { try { return { PNG: (await load('pngjs')).PNG, pixelmatch: await load('pixelmatch') }; } catch { return null; } })();
+  return depsP;
+}
+
+/** Two PNG crops → differing pixels (pixelmatch 0.1) over the union box, a size difference counting as different:
+ * chrome-compare's visual measure, 4 dp. `deps` = cropDeps(). */
+export function cropRatio(a, b, { PNG, pixelmatch }) {
+  const x = PNG.sync.read(a); const y = PNG.sync.read(b);
+  const w = Math.min(x.width, y.width); const h = Math.min(x.height, y.height);
+  const crop = (img) => { const o = new PNG({ width: w, height: h }); PNG.bitblt(img, o, 0, 0, w, h, 0, 0); return o.data; };
+  const diff = w && h ? pixelmatch(crop(x), crop(y), null, w, h, { threshold: 0.1 }) : 0;
+  const union = Math.max(x.width, y.width) * Math.max(x.height, y.height);
+  return union ? r4((diff + (union - w * h)) / union) : 0;
+}
+
+/** chrome-compare findings + the source contract → every `error` on a source state marked `unstable` becomes `warn` with
+ * `unstable: true` and a note on its detail: same width and path (`<name or kind>` joined by ` > `, as chrome-compare
+ * builds it) and the state's action — or no action (close paths, a missing control) and child paths when the state is
+ * the control's opener (click, hover, key: the first that opened). Pure; new objects, the input untouched. */
+export function unstableAsWarn(findings, sourceDoc) {
+  const marks = [];
+  const walk = (cs, width, path) => {
+    for (const c of cs || []) {
+      if (c.role === 'input') continue;
+      const p = path ? `${path} > ${c.name || c.kind}` : (c.name || c.kind);
+      const opener = OPENERS.find((a) => c.actions && c.actions[a] && c.actions[a].opened);
+      for (const [a, s] of Object.entries(c.actions || {})) if (s && s.unstable) marks.push({ width, p, a, opener: a === opener });
+      walk(c.children, width, p);
+    }
+  };
+  for (const [w, d] of Object.entries((sourceDoc && sourceDoc.widths) || {})) walk(d.controls, Number(w), '');
+  const hit = (f) => marks.some((m) => Number(f.width) === m.width && (f.path === m.p ? (f.action ? f.action === m.a : m.opener) : m.opener && String(f.path || '').startsWith(`${m.p} > `)));
+  return findings.map((f) => (f.severity === 'error' && hit(f) ? { ...f, severity: 'warn', unstable: true, detail: `${f.detail} (source state unstable: sampled differently on a fresh page)` } : f));
+}
+
+/** The header's `stability` → one stdout line; null for a record without one (explored before the guard). Pure. */
+export function stabilityLine(doc) {
+  const st = doc && doc.stability;
+  if (!st) return null;
+  if (typeof st === 'string') return `stability ${st} — first samples were not repeated on a fresh page`;
+  const crops = st.crops ? ` (crops ${st.crops})` : '';
+  if (st.unstable.length) return `UNSTABLE: ${st.unstable.length} state(s) sampled differently on a fresh page (${st.unstable.join(', ')}) — contract findings on them are warnings${crops}`;
+  return `stability: ${st.checked} top-level state(s) repeated on a fresh page, all within the bar ${st.bar}${crops}`;
 }
 
 /** argv → { hide: [<sel>…] (every --hide, comma lists), presence, slug }. Pure; a usage error throws (chrome-compare
@@ -291,8 +379,9 @@ async function loadPlaywright() {
 const call = async (page, fn, arg = {}) => { try { return await page.evaluate(async ({ f, a }) => (window.__sdtc ? { v: await window.__sdtc[f](a) } : null), { f: fn, a: arg }); } catch { return null; } };
 
 /** Explore one width. Returns { root, controls[], scroll[], truncated, states, probe } (+ `hidden`, the first load's
- * hide records, when `hide` is set: applied after every load, before the baseline). */
-export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, hide = [] }) {
+ * hide records, when `hide` is set: applied after every load, before the baseline; + `stability: { checked, unstable,
+ * crops? }` when `repeat`: the pollution guard, top-level open states repeated on a fresh `gotoFn` visit against `bar`). */
+export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, hide = [], repeat = true, bar = 0.02 }) {
   const touch = width < TOUCH_BELOW;
   const vh = page.viewportSize().height;
   const hideList = hideEntries(hide);
@@ -304,11 +393,12 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     return route.fallback();
   });
   let at = url; let loads = 0;
-  // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered)
+  // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered);
+  // `full` repeats the first visit (the guard's fresh page: sampled no earlier after load than the first sample was)
   // navigations are answered 204 throughout (the page never leaves), except our own reloads
-  const load = async () => {
+  const load = async ({ full = false } = {}) => {
     armed = false;
-    if (loads++ === 0) { await gotoFn(page, url, visitOpts); at = page.url(); } else { await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
+    if (loads++ === 0 || full) { await gotoFn(page, url, visitOpts); at = page.url(); } else { await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
     // an in-flow bar above the header is gone before the root, its controls and the closed baseline are read
     const recs = await hideRegions(page, hideList, { settleMs });
     if (!hidden) hidden = recs;
@@ -336,25 +426,35 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   };
   // re-open the parents, then measure from there: a child's state is what IT reveals
   const replay = async (path) => { for (const step of path) { await act(step.c, step.action); await C('motionSettle', { maxMs: 1500 }); await page.waitForTimeout(settleMs); } if (path.length) await C('snapshot'); };
-  const shot = async (rect, tag) => {
+  const grab = async (rect) => {
     if (!shotsDir || !rect || rect[2] < 4 || rect[3] < 4) return null;
-    shotN += 1; const f = join(shotsDir, `${width}-${String(shotN).padStart(3, '0')}-${tag.replace(/[^\w-]+/g, '-').slice(0, 40)}.png`);
-    try { await page.screenshot({ path: f, clip: { x: rect[0], y: rect[1], width: rect[2], height: rect[3] } }); return basename(f); } catch { return null; }
+    try { return await page.screenshot({ clip: { x: rect[0], y: rect[1], width: rect[2], height: rect[3] } }); } catch { return null; }
   };
-  const observe = async (c, action, path) => {
-    await reset(); await replay(path);
+  const save = (png, tag) => {
+    if (!png) return null;
+    shotN += 1; const f = join(shotsDir, `${width}-${String(shotN).padStart(3, '0')}-${tag.replace(/[^\w-]+/g, '-').slice(0, 40)}.png`);
+    try { writeFileSync(f, png); return basename(f); } catch { return null; }
+  };
+  // one sample on the page as it is → [state, crop PNG]; the crop is saved only with a tag (a repeat keeps it in memory)
+  const take = async (c, action, tag) => {
     nav = null;
     await C('motionStart');
-    if (!await act(c, action)) return null;
+    if (!await act(c, action)) return [null, null];
     const motion = await C('motionSettle', { maxMs: 2000 });
     await page.waitForTimeout(settleMs);
     const s = await C('state', { sel: c.sel });
-    if (nav) return { opened: false, navigates: nav };
-    if (!s || !s.opened) return s && s.hidden ? { opened: false, hides: s.hidden } : null;
-    states += 1;
+    if (nav) return [{ opened: false, navigates: nav }, null];
+    if (!s || !s.opened) return [s && s.hidden ? { opened: false, hides: s.hidden } : null, null];
     s.motion = motion;
-    s.shot = await shot(s.panel.rect, `${c.name || c.role}-${action}`);
+    const png = await grab(s.panel.rect);
+    s.shot = tag ? save(png, tag) : null;
     if (action === 'key') { await page.keyboard.press('Tab'); await page.waitForTimeout(80); s.tabReachesPanel = await C('focusIn'); }
+    return [s, png];
+  };
+  const observe = async (c, action, path) => {
+    await reset(); await replay(path);
+    const [s] = await take(c, action, `${c.name || c.role}-${action}`);
+    if (s && s.opened) states += 1;
     return s;
   };
   const closes = async (c, action, path) => {
@@ -410,8 +510,43 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     }
     return out;
   };
+  // the pollution guard: a first click right after load can catch the page hydrating, not the panel — every top-level
+  // open state is sampled again on a fresh page, the same control found the same way; over the bar it is sampled once more
+  const fresh = async (node, action) => {
+    await load({ full: true }); await reset();
+    const cs = (await C('controls', { scope: 'root' })) || [];
+    const c = cs.find((x) => x.sel === node.sel) || cs.find((x) => normName(x.name) === node.key && x.role === node.role);
+    return c ? take(c, action) : [null, null];
+  };
+  const guard = async (controls) => {
+    const out = { checked: 0, unstable: [] };
+    const deps = shotsDir ? await cropDeps() : null;
+    const why = !shotsDir ? 'no crops' : deps ? null : 'pngjs + pixelmatch not installed in this project';
+    if (why) out.crops = `skipped: ${why}`;
+    const delta = ([a, pa], [b, pb]) => sampleDelta(a, b, { cropRatio: why || (pa && pb ? cropRatio(pa, pb, deps) : 'one sample has no crop') }).delta;
+    for (const node of controls) {
+      for (const a of OPENERS) {
+        const first = node.actions && node.actions[a];
+        if (!first || !first.opened) continue;
+        out.checked += 1;
+        let png = null; try { png = first.shot ? readFileSync(join(shotsDir, first.shot)) : null; } catch { /* no crop */ }
+        const rep = await fresh(node, a);
+        const d1 = delta([first, png], rep);
+        if (d1 <= bar) continue;
+        const re = await fresh(node, a);
+        const d2 = delta(rep, re);
+        const [settled, settledPng] = d2 <= bar ? re : rep;
+        const unstable = { delta: d1, resample: d2 <= bar ? 'agrees' : 'differs', resampleDelta: d2 };
+        // a settled sample that opens nothing keeps the first one's fields: the state stays recorded, marked
+        node.actions[a] = settled && settled.opened ? { ...settled, shot: save(settledPng, `${node.name || node.role}-${a}-settled`), unstable } : { ...first, unstable };
+        out.unstable.push(`${width} ${node.name || node.kind} [${a}]`);
+      }
+    }
+    return out;
+  };
   const rootPath = await C('root');
   const controls = rootPath ? await explore('root', [], 1) : [];
+  const stability = repeat ? (rootPath ? await guard(controls) : { checked: 0, unstable: [] }) : null;
   await reset();
   const scroll = [];
   const docH = await page.evaluate(() => Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0));
@@ -422,15 +557,17 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     }
   }
   await page.unroute('**/*');
-  return { root: rootPath, controls, scroll, states, truncated, loads, ...(hideList.length ? { hidden } : {}) };
+  return { root: rootPath, controls, scroll, states, truncated, loads, ...(hideList.length ? { hidden } : {}), ...(stability ? { stability } : {}) };
 }
 
 async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
-  const [url, out] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && !['--plain'].includes(argv[i - 1])));
-  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain]'); process.exit(1); }
+  const [url, out] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && !['--plain', '--no-repeat'].includes(argv[i - 1])));
+  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--bar 0.02] [--no-repeat]'); process.exit(1); }
+  const bar = Number(arg('bar', '0.02')); const repeat = !argv.includes('--no-repeat');
+  if (!(bar >= 0 && bar <= 1)) { console.error(`chrome-explore: --bar needs a ratio in [0, 1] (default 0.02), not ${arg('bar', '')}`); process.exit(1); }
   let hide;
   try { hide = effectiveHide(hideArgs(argv)); } catch (e) { console.error(`chrome-explore: ${e.message}`); process.exit(1); }
   if (hide.found === false || (hide.presence && !existsSync(hide.presence))) console.error(`chrome-explore: ${hide.note}`);
@@ -444,7 +581,7 @@ async function main() {
   const { openBrowser, openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
   const { chromium } = await loadPlaywright();
   const browser = await openBrowser(chromium, { tier: argv.includes('--plain') ? 'plain' : 'stealth' });
-  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, ...(hide.site ? { site: hide.site } : {}), perWidth: {} } } : {}), widths: {} };
+  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, ...(hide.site ? { site: hide.site } : {}), perWidth: {} } } : {}), stability: repeat ? { bar, checked: 0, unstable: [] } : 'skipped: --no-repeat', widths: {} };
   try {
     for (const width of widths) {
       const { ctx, page } = await openPage(browser, { width, height: width < TOUCH_BELOW ? 844 : 900, locale: arg('locale', 'en-US') });
@@ -456,9 +593,10 @@ async function main() {
         probe = await page.evaluate(() => ((document.querySelector('header nav,header') || document.body).innerText.match(/\p{L}{4,}/u) || ['news'])[0].toLowerCase());
       }
       doc.probe = probe;
-      const { hidden, ...record } = await exploreWidth(page, { url, width, rootSel: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), probe, shotsDir, gotoFn, hide: hide.entries });
+      const { hidden, stability, ...record } = await exploreWidth(page, { url, width, rootSel: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), probe, shotsDir, gotoFn, hide: hide.entries, repeat, bar });
       doc.widths[width] = record;
       if (doc.hide) doc.hide.perWidth[width] = hidden;
+      if (stability) { doc.stability.checked += stability.checked; doc.stability.unstable.push(...stability.unstable); if (stability.crops) doc.stability.crops = doc.stability.crops || stability.crops; }
       await ctx.close();
     }
   } catch (e) {
@@ -469,6 +607,7 @@ async function main() {
   await browser.close();
   writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
   for (const line of summarize(doc)) console.log(`chrome-explore ${line}`);
+  if (stabilityLine(doc)) console.log(`chrome-explore ${stabilityLine(doc)}`);
   for (const [w, recs] of Object.entries(doc.hide ? doc.hide.perWidth : {})) console.log(`chrome-explore ${w}: hidden ${formatHidden(recs)}`);
   console.log(`→ ${out} (crops in ${shotsDir})`);
 }

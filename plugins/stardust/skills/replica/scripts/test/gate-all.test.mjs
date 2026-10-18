@@ -64,6 +64,15 @@
 // do not triage, a fix round writes triage.{json,md} and prints the md head before the totals line, a throwing or absent
 // gate-triage is one "triage: skipped" line — the exit code as measured. The other sandboxes clear the round
 // state before each run (clearRounds) — their repeated --only runs are independent scenarios.
+// Capture settings (presence.json dismiss / pin / allow): capturePollution (a dialog left open, another pin list), the
+// reuse deciders (pin list, a dialog left open), gateKeyParts (the effective dismiss, pin, allowances — the flag and the
+// file give one key); the hide sandbox: presence dismiss reproduces a --dismiss run (argv, records, key settings,
+// verdicts), pin / per-visitor-dialog reach both stitches and a capture without them is re-shot, a clip allowance passes
+// the findings under its selector (clipAllowed); the build side's "hide matched nothing" is an info line. The trust
+// sandbox: a dialog left open on either side (STUB_DIALOG_*) → INCONCLUSIVE, and never kept by a fix round.
+// C-final reuse (the reuse sandbox): a --skip-existing run on the live host keeps the preview-host gate's EDS capture while
+// both keys are known and differ only by the build host (logged, the row's buildReused); a changed document, or a live
+// host not proven to serve it, re-shoots.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -89,7 +98,7 @@ const content = (missing, hidden, controlState = 0) => ({ totals: { missing, hid
 // stitch-shot's --json capture record, written by every stitch stub: overlayLeft = STUB_OVERLAY_<ORIGIN|EDS>, fontsFailed =
 // STUB_FONTS_<ORIGIN|EDS> (a comma list), or null with a fontCheck note when STUB_FONTS_NULL_<ORIGIN|EDS> is set (the
 // check could not run). `side` is an expression in the stub that evaluates to 'ORIGIN' or 'EDS'.
-const SHOT_RECORD = (side) => `if (process.argv.includes('--json')) writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ overlayLeft: process.env['STUB_OVERLAY_' + ${side}] || null, ...(process.env['STUB_FONTS_NULL_' + ${side}] ? { fontsFailed: null, fontCheck: 'failed: stub font check' } : { fontsFailed: (process.env['STUB_FONTS_' + ${side}] || '').split(',').filter(Boolean) }) }));`;
+const SHOT_RECORD = (side) => `if (process.argv.includes('--json')) writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ overlayLeft: process.env['STUB_OVERLAY_' + ${side}] || null, ...(process.env.STUB_NO_DIALOG_KEY ? {} : { dialogLeft: process.env['STUB_DIALOG_' + ${side}] ? process.env['STUB_DIALOG_' + ${side}].split(',') : null }), ...(process.env['STUB_FONTS_NULL_' + ${side}] ? { fontsFailed: null, fontCheck: 'failed: stub font check' } : { fontsFailed: (process.env['STUB_FONTS_' + ${side}] || '').split(',').filter(Boolean) }) }));`;
 
 check('the recorded card page: pixel PASS, elements FAIL — pixelOnlyPass true, pass false, both reasons named', () => {
   const v = verdict({ pixel: px(6.68, 69, 29326), clip: clip(379), content: content(0, 284, 2) });
@@ -791,7 +800,7 @@ const base = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-reuse-')));
 const reuseRoot = join(base, 'site'); const replica = join(reuseRoot, 'stardust/scripts/replica'); const diffDir = join(reuseRoot, 'stardust/scripts/diff');
 const COUNT = join(base, 'count.txt'); const REUSE_OUT = join(reuseRoot, 'stardust/replica/gates/all-1440');
 mkdirSync(replica, { recursive: true }); mkdirSync(diffDir, { recursive: true });
-cpSync(SCRIPT, join(replica, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs'));
+cpSync(SCRIPT, join(replica, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(replica, 'foundation-freeze.mjs')); cpSync(join(HERE, '..', 'presence.mjs'), join(replica, 'presence.mjs'));
 // gate-all takes the run anchor and the freshness rule from the diff dir's live-session.mjs (node: imports only).
 cpSync([resolve(HERE, '../../../diff/scripts'), resolve(HERE, '../../diff')].map((x) => join(x, 'live-session.mjs')).find((x) => existsSync(x)), join(diffDir, 'live-session.mjs'));
 // Every instrument appends one line to STUB_COUNT; pixel-compare fails the slugs listed in STUB_FAIL.
@@ -962,6 +971,38 @@ check('fix rounds: an --only --skip-existing row reused whole is no round (round
   assert.equal(measured.row.round, 1); assert.deepEqual(JSON.parse(readFileSync(pageFile('home', 'rounds.json'), 'utf8')), { rounds: 1, max: 3, at: [measured.doc._provenance.writtenAt] });
   assert.match(measured.log, /rounds @1440: home 1\/3$/m);
 });
+// C-final reuse: the unit gates measure the preview host, the final roster gate the live host (--eds-host). Under
+// --skip-existing a page's EDS capture is kept across that host change while both keys are known (each host provably
+// serves the hashed tree) and the parts are equal but for build.origin — the delivered document and every code hash.
+check('C-final reuse: a --skip-existing run on the live host keeps each page\'s EDS capture from its preview-host gate while only the build origin differs — logged "reused build capture (unchanged since <ts>)", the row says so and keeps the host the pixels came from; a page whose document changed is re-shot, and so is one the live host is not proven to serve', () => {
+  const LIVE = 'https://main--site--org.aem.live'; const PREVIEW = 'https://main--site--org.aem.page';
+  let a = gateAll(['--skip-existing']);
+  assert.equal(a.status, 0, a.stderr);
+  const at = (slug) => JSON.parse(readFileSync(pageFile(slug, 'eds.json'), 'utf8')).at;
+  const before = { home: at('home'), about: at('about') };
+  a = gateAll(['--skip-existing', '--eds-host', LIVE]);
+  assert.equal(a.status, 0, a.stderr); assert.equal(a.n.eds, 0, 'no EDS stitch: the same tree');
+  for (const slug of ['home', 'about']) {
+    assert.ok(a.stdout.includes(`eds ${slug} → reused build capture (unchanged since ${before[slug]}) — taken on ${PREVIEW}, the same tree ${LIVE} serves`), a.stdout);
+    const x = row(summary(), slug); assert.deepEqual([x.host, x.buildReused, x.gateKey], [PREVIEW, { host: PREVIEW, at: before[slug] }, null]);
+  }
+  assert.match(readFileSync(join(REUSE_OUT, 'summary.md'), 'utf8'), /^Build capture reused from another host \(the same tree — the gate key equal but for the host; its pixels are that host's\): `\/` \(https:\/\/main--site--org\.aem\.page\), `\/about` \(https:\/\/main--site--org\.aem\.page\)$/m);
+  const ledger = readFileSync(join(reuseRoot, 'content/.deploy-ledger.json'), 'utf8'); const aboutDoc = readFileSync(join(reuseRoot, 'content/about.html'), 'utf8');
+  try {
+    put('content/about.html', '<main><div><div class="cards"></div><p>new copy</p></div></main>');
+    const l = JSON.parse(ledger); l['/about'] = { ...l['/about'], contentSha: sha('content/about.html'), ts: '2026-01-02T00:00:00.000Z' }; put('content/.deploy-ledger.json', JSON.stringify(l));
+    const b = gateAll(['--skip-existing', '--eds-host', LIVE]);
+    assert.equal(b.status, 0, b.stderr); assert.equal(b.n.eds, 1, 'about only');
+    assert.match(b.stdout, /eds home → reused build capture/); assert.doesNotMatch(b.stdout, /eds about → reused build capture/);
+    assert.equal(row(summary(), 'about').host, LIVE); assert.equal('buildReused' in row(summary(), 'about'), false);
+    const m = JSON.parse(ledger); m['/index'] = { ...m['/index'], status: 'previewed' }; put('content/.deploy-ledger.json', JSON.stringify({ ...l, '/index': m['/index'] }));
+    const c = gateAll(['--skip-existing', '--eds-host', LIVE]);
+    assert.equal(c.n.eds >= 1, true); assert.doesNotMatch(c.stdout, /eds home → reused build capture/, 'the live host is not proven to serve the document: no reuse');
+  } finally {
+    put('content/about.html', aboutDoc); put('content/.deploy-ledger.json', ledger);
+  }
+});
+
 rmSync(base, { recursive: true, force: true });
 
 // ---- origin reuse: the pure deciders, --origin-max-age, the pool budgets ----------------------------------
@@ -970,7 +1011,7 @@ const { freshness } = await import(pathToFileURL(join(DIFF, 'live-session.mjs'))
 const RUN = '2026-10-16T08:00:00.000Z'; const NOW = Date.parse('2026-10-16T09:00:00.000Z');
 const U = 'https://www.example.com/'; const AT = '2026-10-16T08:30:00.000Z';
 const ask = { stage: 'published', only: ['home'], recaptureEds: false, recaptureOrigin: false, url: U, width: 1440, vh: null };
-const prev = { instrument: 'stitch-live', url: U, width: 1440, locale: 'en-US', vh: null, overlayLeft: null, at: AT };
+const prev = { instrument: 'stitch-live', url: U, width: 1440, locale: 'en-US', vh: null, overlayLeft: null, dialogLeft: null, at: AT };
 const fr = (meta, o = {}) => freshness(meta, { runStart: RUN, maxAgeH: null, now: NOW, ...o });
 check('originReusePlan: a fix round reuses this run\'s origin; stale, no anchor, --recapture-origin, other stage or a full round recapture', () => {
   assert.deepEqual(originReusePlan(ask, prev, fr(prev)), { reuse: true, why: 'same-run' });
@@ -990,12 +1031,12 @@ check('originReusePlan: url / width / vh / locale mismatches and crawl / error o
   const no = (p) => assert.equal(originReusePlan(ask, p, fr(p)).reuse, false, JSON.stringify(p));
   no({ ...prev, url: 'https://www.example.com/other' }); no({ ...prev, width: 360 }); no({ ...prev, vh: 900 }); no({ ...prev, locale: 'de-DE' });
   no({ ...prev, instrument: 'crawl-fullpage', asymmetric: true }); no({ ...prev, error: 'stitch exit 1' }); no({ ...prev, instrument: 'none' });
-  const legacy = { instrument: 'stitch-live', url: U, overlayLeft: null, at: AT };
+  const legacy = { instrument: 'stitch-live', url: U, overlayLeft: null, dialogLeft: null, at: AT };
   assert.equal(originReusePlan(ask, legacy, fr(legacy)).reuse, true);
   assert.equal(originReusePlan({ ...ask, vh: 900 }, legacy, fr(legacy)).reuse, false, 'a legacy capture had no --vh');
 });
 check('liveReusePlan: the archetype round\'s live.png is reused only when live.json matches every capture parameter of gate-all\'s own stitch and is fresh', () => {
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   assert.deepEqual(liveReusePlan(la, live, fr(live)), { reuse: true, why: 'same-run' });
   assert.equal(liveReusePlan(la, null, null).reuse, false, 'a legacy live.png without live.json is never reused');
@@ -1019,7 +1060,7 @@ check('originReusePlan / liveReusePlan: a capture taken before the overlay-left 
   assert.deepEqual(originReusePlan(ask, unchecked, fr(unchecked)), { reuse: false, why: 'previous origin predates the overlay-left check' });
   const left = { ...prev, overlayLeft: '#cmpbox (consent root visible)' };
   assert.deepEqual(originReusePlan(ask, left, fr(left)), { reuse: false, why: 'previous origin left an overlay (#cmpbox (consent root visible))' });
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   const old = { ...live }; delete old.overlayLeft;
   assert.deepEqual(liveReusePlan(la, old, fr(old)), { reuse: false, why: 'live.png predates the overlay-left check' });
@@ -1035,7 +1076,7 @@ check('hide: originReusePlan / liveReusePlan refuse a capture taken hiding anoth
   assert.deepEqual(originReusePlan({ ...ask, hide: HL }, prev, fr(prev)), { reuse: false, why: 'hide list differs' }, 'a record without hide hid nothing');
   assert.equal(originReusePlan({ ...ask, hide: ['.geo-bar'] }, hid, fr(hid)).why, 'hide list differs', 'a shorter list');
   assert.equal(originReusePlan({ ...ask, hide: [...HL].reverse() }, hid, fr(hid)).why, 'hide list differs', 'another order');
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
   assert.deepEqual(liveReusePlan({ ...la, hide: HL }, { ...live, hide: HL }, fr(live)), { reuse: true, why: 'same-run' });
   assert.deepEqual(liveReusePlan(la, { ...live, hide: [] }, fr(live)), { reuse: true, why: 'same-run' }, 'gate.sh records [] for none');
@@ -1089,7 +1130,7 @@ check('dismiss: originReusePlan / liveReusePlan refuse a capture taken with anot
   assert.deepEqual(originReusePlan(ask, kept, fr(kept)), { reuse: false, why: 'dismiss list differs' }, 'taken with a list, this run has none');
   assert.deepEqual(originReusePlan({ ...ask, dismiss: DL }, prev, fr(prev)), { reuse: false, why: 'dismiss list differs' }, 'a record without dismiss dismissed no extra');
   assert.equal(originReusePlan({ ...ask, dismiss: [...DL].reverse() }, kept, fr(kept)).why, 'dismiss list differs');
-  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: AT };
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
   const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 }; const ex = (extra, consent = null) => ({ ...live, dismiss: { off: false, consent, extra } });
   assert.deepEqual(liveReusePlan({ ...la, dismiss: DL }, ex('.nl-close,#promo-x'), fr(live)), { reuse: true, why: 'same-run' });
   assert.deepEqual(liveReusePlan(la, ex('.nl-close'), fr(live)), { reuse: false, why: 'live.json dismiss list differs' });
@@ -1198,6 +1239,7 @@ const pages = [{ slug: 'home', url: 'https://www.example.com/', liveUrl: 'https:
   { slug: 'about', url: 'https://www.example.com/about', liveUrl: 'https://main--site--org.aem.live/about', status: 'deployed', template: 'page' }];
 writeFileSync(join(root, 'stardust/state.json'), JSON.stringify({ pages }));
 cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(RS, 'foundation-freeze.mjs')); // gate-all imports it (gate keys)
+cpSync(join(HERE, '..', 'presence.mjs'), join(RS, 'presence.mjs')); // and the capture settings' readers
 const LEDGER = join(root, 'stardust/status.jsonl');
 const opener = (ts) => appendFileSync(LEDGER, `${JSON.stringify({ ts, skill: 'stardust:rollout', phase: 'A-inventory', event: 'start' })}\n`);
 opener(new Date(Date.now() - 60e3).toISOString());
@@ -1346,7 +1388,7 @@ check('sandbox 6: the published stage reuses the archetype round\'s fresh live.p
   const g = join(root, 'stardust/replica/gates/about-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   opener(new Date().toISOString());
   const liveAt = new Date().toISOString();
-  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/about', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: liveAt };
+  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/about', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: liveAt };
   writeFileSync(join(g, 'live.json'), JSON.stringify(live));
   const r = gate(['--only', 'about']);
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.origin, 0); assert.equal(r.eds, 1);
@@ -1373,13 +1415,13 @@ check('sandbox 8: the prototype stage records the archetype round\'s live.png as
   const row = () => read('stardust/replica/gates/prototypes-1440/summary.json').rows.find((x) => x.slug === 'home');
   const protoLog = () => readFileSync(join(root, 'stardust/replica/gates/prototypes-1440/_run.log'), 'utf8');
   const oldAt = new Date(Date.now() - 3600e3).toISOString();
-  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, at: oldAt }));
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, dialogLeft: null, at: oldAt }));
   const r = gate(args);
   assert.equal(r.origin, 0, r.stderr + r.stdout);
   const o = row().originReused; assert.equal(o.from, 'stardust/replica/gates/home-1440/live.png'); assert.equal(o.at, oldAt); assert.equal(o.policy, 'prototype-stage'); assert.match(o.stale, /captured before this run/);
   assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').at, oldAt); assert.equal(read('stardust/replica/gates/prototypes-1440/home/origin.json').overlayLeft, null);
   assert.match(protoLog(), /origin home → stitch-live reused .*prototype-stage\) WARN captured before this run/);
-  const nowAt = new Date().toISOString(); writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, at: nowAt }));
+  const nowAt = new Date().toISOString(); writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, overlayLeft: null, dialogLeft: null, at: nowAt }));
   gate(args); assert.deepEqual(row().originReused, { from: 'stardust/replica/gates/home-1440/live.png', at: nowAt, policy: 'prototype-stage', stale: null });
   writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, at: nowAt }));
   assert.equal(gate(args).origin, 1); assert.match(protoLog(), /origin home → live\.png not reused \(live\.png predates the overlay-left check\)/);
@@ -1546,7 +1588,7 @@ check('--skip-existing with origin.png gone and a fresh live.png older than the 
   opener(new Date().toISOString());
   const g = join(root, 'stardust/replica/gates/home-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
   const liveAt = new Date().toISOString();
-  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, at: liveAt }));
+  writeFileSync(join(g, 'live.json'), JSON.stringify({ writtenBy: 'gate.sh', url: 'https://www.example.com/', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: liveAt }));
   const first = olGate(['--only', 'home', '--recapture-origin']); // a stitched origin, then probes (presence cache written)
   assert.equal(first.status, 0, first.stderr + first.stdout); assert.equal(first.origin, 1); assert.ok(pageJson('home', 'probes.json').at > liveAt);
   assert.ok(existsSync(join(root, presence('home'))));
@@ -1587,13 +1629,66 @@ check('one-load 7: --stage prototype --one-load — the archetype live.png is no
 rmSync(root, { recursive: true, force: true });
 
 // ---- hide (F6) sandbox: presence.json `hide` reaches both stitches, content-presence and clip-probe; records; reuse -----
+// ---- capture settings from presence.json (dismiss / pin / allow): per page, recorded and compared like --dismiss -------
+const PIN = [{ sel: '.dot-1', state: 'slide 1' }];
+check('capture settings: capturePollution — a dialog left open on either side → "<side> capture polluted: dialog left open (<name>, …)"; null / absent / [] adds nothing; a kept capture taken with another pin list is named', () => {
+  const at = (extra = {}) => ({ instrument: 'stitch-live', overlayLeft: null, ...extra });
+  assert.deepEqual(capturePollution(at({ dialogLeft: ['div#cmp-dialog'] }), at({ dialogLeft: null })), ['origin capture polluted: dialog left open (div#cmp-dialog)']);
+  assert.deepEqual(capturePollution(at(), at({ dialogLeft: ['dialog.region', 'div#x'] })), ['build capture polluted: dialog left open (dialog.region, div#x)']);
+  assert.deepEqual(capturePollution(at({ dialogLeft: [] }), at()), [], 'a legacy record (no dialogLeft) and an empty list add nothing');
+  assert.deepEqual(capturePollution(at({ pin: PIN }), at({ pin: PIN }), { hide: [], dismiss: [], pin: PIN }), []);
+  assert.deepEqual(capturePollution(at(), at({ pin: PIN }), { hide: [], dismiss: [], pin: PIN }), ['origin capture polluted: kept origin taken with another pin list']);
+  // a capture whose dialog an allowance cleared, the allowance since withdrawn: the dialog is left open again
+  const allowed = at({ dialogLeft: null, dialogsAllowed: [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }] });
+  assert.deepEqual(capturePollution(allowed, at(), { hide: [], dismiss: [], pin: [], allowDialog: ['#cmp-root'] }), []);
+  assert.deepEqual(capturePollution(allowed, at(), { hide: [], dismiss: [], pin: [], allowDialog: [] }), ['origin capture polluted: dialog left open (div#cmp-dialog) — its per-visitor-dialog allowance (#cmp-root) is withdrawn']);
+  // --compare-only hands in a stitched record from before the dialog-left check as unchecked
+  assert.deepEqual(capturePollution(at({ dialogCheck: 'unchecked' }), at()), ['origin capture polluted: unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)']);
+});
+check('capture settings: originReusePlan / liveReusePlan refuse a capture taken with another pin list (absent = none) or one that left a dialog open', () => {
+  const U = 'https://www.example.com/'; const AT = new Date().toISOString(); const fr = () => ({ fresh: true, policy: 'same-run' });
+  const ask = { stage: 'published', only: ['home'], recaptureEds: false, recaptureOrigin: false, url: U, width: 1440, vh: null };
+  const prev = { instrument: 'stitch-live', url: U, width: 1440, locale: 'en-US', overlayLeft: null, dialogLeft: null, at: AT };
+  assert.deepEqual(originReusePlan({ ...ask, pin: PIN }, { ...prev, pin: PIN }, fr()), { reuse: true, why: 'same-run' });
+  const { dialogLeft: _drop, ...legacy } = prev;
+  assert.deepEqual(originReusePlan(ask, legacy, fr()), { reuse: false, why: 'previous origin predates the dialog-left check' });
+  const cleared = { ...prev, allowDialog: ['#cmp-root'], dialogsAllowed: [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }] };
+  assert.deepEqual(originReusePlan({ ...ask, allowDialog: ['#cmp-root'] }, cleared, fr()), { reuse: true, why: 'same-run' });
+  assert.deepEqual(originReusePlan(ask, cleared, fr()), { reuse: false, why: 'dialog allowances differ' });
+  assert.deepEqual(originReusePlan(ask, { ...cleared, allowDialog: undefined }, fr()), { reuse: false, why: 'previous origin relied on a withdrawn per-visitor-dialog allowance (#cmp-root)' }, 'a record without the list: its cleared dialog still names the allowance');
+  assert.deepEqual(originReusePlan({ ...ask, pin: PIN }, prev, fr()), { reuse: false, why: 'pin list differs' });
+  assert.deepEqual(originReusePlan(ask, { ...prev, dialogLeft: ['div#cmp-dialog'] }, fr()), { reuse: false, why: 'previous origin left a dialog open (div#cmp-dialog)' });
+  const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
+  const la = { stage: 'published', recaptureOrigin: false, url: U, width: 1440 };
+  assert.deepEqual(liveReusePlan({ ...la, pin: PIN }, { ...live, pin: PIN }, fr()), { reuse: true, why: 'same-run' });
+  const { dialogLeft: _d, ...oldLive } = live;
+  assert.deepEqual(liveReusePlan(la, oldLive, fr()), { reuse: false, why: 'live.png predates the dialog-left check' });
+  assert.deepEqual(liveReusePlan(la, { ...live, allowDialog: ['#cmp-root'] }, fr()), { reuse: false, why: 'live.json per-visitor-dialog allowances differ' });
+  assert.deepEqual(liveReusePlan({ ...la, allowDialog: ['#cmp-root'] }, { ...live, allowDialog: ['#cmp-root'] }, fr()), { reuse: true, why: 'same-run' });
+  assert.deepEqual(liveReusePlan({ ...la, pin: PIN }, live, fr()), { reuse: false, why: 'live.json pin list differs' });
+  assert.deepEqual(liveReusePlan(la, { ...live, dialogLeft: ['div#cmp-dialog'] }, fr()), { reuse: false, why: 'live.png left a dialog open (div#cmp-dialog)' });
+});
+check('capture settings: gateKeyParts records the page\'s effective dismiss (--dismiss, then presence.json\'s), pin and allowances — the same settings give the same key whichever way they were given', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-capture-key-'));
+  mkdirSync(join(root, 'content'), { recursive: true }); writeFileSync(join(root, 'content/index.html'), '<main></main>');
+  const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' };
+  const base = { root, foundation: { hash: 'f', runtime: 'r', why: null }, shared: { hash: 's' }, chrome: { files: {}, names: [] }, instruments: 'i' };
+  const viaFlag = gateKeyParts(page, { ...base, opts: parseArgs(['node', 'x', '--dismiss', '.nl-close']) }).parts;
+  const viaFile = gateKeyParts(page, { ...base, opts: parseArgs(['node', 'x']), dismissOf: () => ['.nl-close'] }).parts;
+  assert.deepEqual(viaFile.build.settings.dismiss, ['.nl-close']); assert.equal(gateKeyOf(viaFile), gateKeyOf(viaFlag));
+  const pinned = gateKeyParts(page, { ...base, opts: parseArgs(['node', 'x']), pinOf: () => PIN, allowOf: () => [{ kind: 'clip', selector: '.card', reason: 'R-2' }] }).parts;
+  assert.deepEqual([pinned.build.settings.pin, pinned.build.settings.allow], [PIN, [{ kind: 'clip', selector: '.card', reason: 'R-2' }]]);
+  assert.notEqual(gateKeyOf(pinned), gateKeyOf(gateKeyParts(page, { ...base, opts: parseArgs(['node', 'x']) }).parts));
+  assert.equal('pin' in gateKeyParts(page, { ...base, opts: parseArgs(['node', 'x']) }).parts.build.settings, false, 'none → no field: keys from runs without one hold');
+});
+
 // Its own project: stub instruments log `<NAME> <argv>` (stitch-shot: ORIGIN = the www.example.com side, else EDS); the
 // real live-session.mjs (presenceHide, freshness) and foundation-freeze.mjs.
 const hroot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-hide-')));
 const HRS = join(hroot, 'stardust/scripts/replica'); const HDS = join(hroot, 'stardust/scripts/diff'); const HLOG = join(hroot, 'argv.log');
 const HOUT = join(hroot, 'stardust/replica/gates/all-1440'); const HPROTO = join(hroot, 'stardust/replica/gates/prototypes-1440');
 mkdirSync(HRS, { recursive: true }); mkdirSync(HDS, { recursive: true });
-cpSync(SCRIPT, join(HRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(HRS, 'foundation-freeze.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(HDS, 'live-session.mjs'));
+cpSync(SCRIPT, join(HRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(HRS, 'foundation-freeze.mjs')); cpSync(join(HERE, '..', 'presence.mjs'), join(HRS, 'presence.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(HDS, 'live-session.mjs'));
 const argvLog = (name) => `appendFileSync(${JSON.stringify(HLOG)}, ${name} + ' ' + process.argv.slice(2).join(' ') + '\\n');`;
 stub(HRS, 'stitch-shot.mjs', `import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
 ${argvLog("(/www\\.example\\.com/.test(process.argv[2]) ? 'ORIGIN' : 'EDS')")}
@@ -1619,7 +1714,7 @@ if (process.env.STUB_LATE_HIDE && a.includes('--json') && a.includes('--hide')) 
 stub(HRS, 'pixel-compare.mjs', 'console.log(JSON.stringify({ pct: 1.5, heightDelta: 0, compared: { width: 1440, height: 3000 }, pass: true }));');
 stub(HDS, 'content-presence.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 ${argvLog("'CONTENT'")}
-const a = process.argv; const clip = { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [] };
+const a = process.argv; const clip = process.env.STUB_CLIP ? JSON.parse(process.env.STUB_CLIP) : { counts: { total: 0, textClipped: 0, textHidden: 0, controlHidden: 0, controlClipped: 0 }, groups: [] };
 writeFileSync(a[a.indexOf('--json') + 1], JSON.stringify({ _provenance: { at: new Date().toISOString(), tier: 'chrome' }, scope: 'root', totals: { missing: 0, hidden: 0, controlState: 0 }, eds: { clip }, origin: { clip } }));`);
 stub(HDS, 'clip-probe.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 ${argvLog("'CLIP'")}
@@ -1630,7 +1725,7 @@ appendFileSync(join(hroot, 'stardust/status.jsonl'), `${JSON.stringify({ ts: new
 const setPresence = (json, out = HOUT) => { mkdirSync(out, { recursive: true }); writeFileSync(join(out, 'presence.json'), JSON.stringify(json)); };
 const hgate = (args, env = {}) => {
   rmSync(HLOG, { force: true }); clearRounds(HOUT, HPROTO);
-  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC', 'STUB_HIDE_MISS', 'STUB_LATE_HIDE']) if (!(k in env)) delete e[k];
+  const e = { ...process.env, ...env }; for (const k of ['STARDUST_ORIGIN_MAX_AGE_H', 'STARDUST_BROWSER_SLOT', 'STARDUST_BROWSERS_PER_SLOT', 'RUN_BG_DEADLINE_SEC', 'STUB_HIDE_MISS', 'STUB_LATE_HIDE', 'STUB_CLIP']) if (!(k in env)) delete e[k];
   const r = spawnSync(process.execPath, [join(HRS, 'gate-all.mjs'), '--width', '1440', ...args], { cwd: hroot, env: e, encoding: 'utf8', timeout: 60e3 });
   const all = lines(HLOG); const run = (r.stdout.match(/run → (.*)/) || [])[1]; const out = args.includes('prototype') ? HPROTO : HOUT;
   const doc = (() => { try { return JSON.parse(readFileSync(run ? join(hroot, run) : join(out, 'summary.json'), 'utf8')); } catch { return null; } })(); // read now: the next run clears runs/
@@ -1639,7 +1734,7 @@ const hgate = (args, env = {}) => {
 const hideArg = (l) => { const a = l.split(' '); const i = a.indexOf('--hide'); return i < 0 ? null : a[i + 1]; };
 const hjson = (slug, f, out = HOUT) => JSON.parse(readFileSync(join(out, slug, f), 'utf8'));
 const hlog = (out = HOUT) => readFileSync(join(out, '_run.log'), 'utf8');
-const liveJson = (url, hide) => ({ writtenBy: 'gate.sh', url, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, ...(hide ? { hide } : {}), headed: false, overlayLeft: null, at: new Date().toISOString() });
+const liveJson = (url, hide) => ({ writtenBy: 'gate.sh', url, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, ...(hide ? { hide } : {}), headed: false, overlayLeft: null, dialogLeft: null, at: new Date().toISOString() });
 setPresence({ '*': { hide: ['.geo-bar'] }, home: { hide: ['.promo-strip'] } });
 check('hide 1: presence.json "*" + a slug\'s hide → both stitches and content-presence get --hide "*" then the slug\'s; a page without its own entry gets "*"\'s; origin.json / eds.json / probes.json inputs / the row record the list', () => {
   const r = hgate([]);
@@ -1656,7 +1751,8 @@ check('hide 1: presence.json "*" + a slug\'s hide → both stitches and content-
   assert.equal(hjson('home', 'eds.json').hidden, '.geo-bar ×0 [--hide]; .promo-strip ×0 [--hide]');
   assert.equal(hjson('about', 'origin.json').hidden, '.geo-bar ×1 (88px) [--hide]');
   assert.equal((r.stdout.match(/ origin home → hide /g) || []).length, 1, r.stdout); assert.match(r.stdout, / origin home → hide matched nothing: \.promo-strip$/m);
-  assert.match(r.stdout, / eds home → hide matched nothing: \.geo-bar, \.promo-strip$/m); assert.doesNotMatch(r.stdout, / origin about → hide /, 'every selector matched');
+  assert.match(r.stdout, / eds home → info: hide matched nothing on the build \(expected — it has no per-visitor region to hide\): \.geo-bar, \.promo-strip$/m); assert.doesNotMatch(r.stdout, / origin about → hide /, 'every selector matched');
+  assert.doesNotMatch(r.stdout, /eds home → .*WARNING|WARNING.* eds home/, 'the build side never warns about a hide that matched nothing');
 });
 check('hide 2: a fix round (--only) with the list unchanged reuses the origin; the EDS stitch hides the same list', () => {
   const r = hgate(['--only', 'home']);
@@ -1740,7 +1836,7 @@ check('hide 10: a ×0 selector the capture record\'s recount found (nAtCapture >
   const r = hgate([], { STUB_LATE_HIDE: '.promo-strip' });
   assert.equal(r.status, 0, r.stderr + r.stdout); assert.equal(r.by('ORIGIN', 'home').length, 1);
   assert.doesNotMatch(r.stdout, / origin home → hide /, 'the origin\'s only ×0 was found at capture');
-  assert.match(r.stdout, / eds home → hide matched nothing: \.geo-bar$/m, 'the build\'s ×0 not found at capture is still named');
+  assert.match(r.stdout, / eds home → info: hide matched nothing on the build \(expected — it has no per-visitor region to hide\): \.geo-bar$/m, 'the build\'s ×0 not found at capture is still named, as info');
   assert.equal(hjson('home', 'origin.json').hidden, '.geo-bar ×1 (88px) [--hide]; .promo-strip ×0 [--hide]');
 });
 const argOf = (l, flag) => { const a = l.split(' '); const i = a.indexOf(flag); return i < 0 ? null : a[i + 1]; };
@@ -1795,6 +1891,59 @@ check('dismiss 4: --stage prototype — the archetype live.png only with the sam
   assert.equal(d.status, 0, d.stderr + d.stdout); assert.equal(argOf(d.by('ORIGIN', 'home')[0], '--dismiss'), '.nl-close'); assert.equal(argOf(d.by('EDS', 'home')[0], '--dismiss'), '.nl-close');
   assert.match(hlog(HPROTO), /origin home → not reused \(--skip-existing: dismiss list differs\)/); assert.match(hlog(HPROTO), /eds home → not reused \(--skip-existing: dismiss list differs\)/);
   rmSync(g, { recursive: true, force: true });
+});
+check('capture settings 1: presence.json dismiss reproduces a run that used --dismiss — the same stitch argv, records, probes.json inputs, gate key settings and verdicts; the flag and the file together are one list', () => {
+  setPresence({ '*': { hide: ['.geo-bar'] } });
+  const flag = hgate(['--dismiss', '.nl-close,#promo-x']);
+  assert.equal(flag.status, 0, flag.stderr + flag.stdout);
+  const snap = (r) => ({ argv: ['ORIGIN', 'EDS'].flatMap((n) => ['home', 'about'].map((slug) => r.by(n, slug)[0])), rec: ['home', 'about'].map((slug) => [hjson(slug, 'origin.json').dismiss, hjson(slug, 'eds.json').dismiss, hjson(slug, 'probes.json').inputs.dismiss]), rows: ['home', 'about'].map((slug) => [r.row(slug).pass, r.row(slug).reasons]) });
+  const a = snap(flag);
+  setPresence({ '*': { hide: ['.geo-bar'], dismiss: ['.nl-close', '#promo-x'] } });
+  const file = hgate([]);
+  assert.equal(file.status, 0, file.stderr + file.stdout);
+  assert.deepEqual(snap(file), a, 'a roster run with the presence settings takes the captures the flag run took');
+  setPresence({ '*': { hide: ['.geo-bar'], dismiss: ['#promo-x'] } });
+  const both = hgate(['--dismiss', '.nl-close']);
+  assert.equal(argOf(both.by('ORIGIN', 'home')[0], '--dismiss'), '.nl-close,#promo-x', 'the flag first, then the file\'s');
+});
+check('capture settings 2: presence.json pin and per-visitor-dialog allowances reach both stitches (--pin, --allow-dialog), are recorded in origin.json / eds.json, and a capture taken without them is not kept', () => {
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'], pin: [{ sel: '.dot-1', state: 'slide 1' }], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp-root', reason: 'R-06' }, { kind: 'per-visitor-dialog', selector: '.not-hidden', reason: 'R-07' }] } });
+  const r = hgate(['--only', 'home']);
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  for (const name of ['ORIGIN', 'EDS']) { const l = r.by(name, 'home')[0]; assert.equal(argOf(l, '--pin'), '.dot-1', l); assert.equal(argOf(l, '--allow-dialog'), '#cmp-root', `${l}: only a hidden container`); }
+  for (const f of ['origin.json', 'eds.json']) assert.deepEqual(hjson('home', f).pin, [{ sel: '.dot-1', state: 'slide 1' }], f);
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'] } });
+  const again = hgate(['--only', 'home']);
+  assert.equal(again.by('ORIGIN', 'home').length, 1); assert.match(hlog(), /origin home → not reused \(pin list differs\)/);
+  assert.equal(argOf(again.by('EDS', 'home')[0], '--pin'), null);
+  // --skip-existing re-shoots a capture taken with other per-visitor-dialog allowances (recorded: origin.json / eds.json allowDialog)
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp-root', reason: 'R-06' }] } });
+  const allowed = hgate(['--only', 'home']); assert.deepEqual(hjson('home', 'origin.json').allowDialog, ['#cmp-root']);
+  assert.equal(allowed.status, 0, allowed.stderr + allowed.stdout);
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'] } });
+  const skip = hgate(['--only', 'home', '--skip-existing']);
+  assert.equal(skip.by('ORIGIN', 'home').length + skip.by('EDS', 'home').length, 2, skip.stdout);
+  assert.match(hlog(), /origin home → not reused \(--skip-existing: dialog allowances differ\)/);
+});
+check('capture settings 3: clip allowances in presence.json (kind clip) let the counted findings under their selectors pass — the row\'s clipAllowed names them with their reasons; findings are matched by clipper or path, groups (no findings) by clipper only', () => {
+  const findings = [{ kind: 'TEXT CLIPPED', clipper: 'div.card__body', path: 'main > div.cards > div.card__body > p' }, { kind: 'TEXT CLIPPED', clipper: 'div.inner', path: 'main > section.rail > div.inner > p' }];
+  const groups = [{ kind: 'TEXT CLIPPED', advisory: false, n: 1, clipper: 'div.card__body', path: findings[0].path, text: 'Card' }, { kind: 'TEXT CLIPPED', advisory: false, n: 1, clipper: 'div.inner', path: findings[1].path, text: 'Rail' }];
+  const clip = { counts: { total: 2, textClipped: 2, textHidden: 0, controlHidden: 0, controlClipped: 0 }, findings, groups };
+  setPresence({ '*': { hide: ['.geo-bar'] } });
+  const no = hgate(['--only', 'home'], { STUB_CLIP: JSON.stringify(clip) });
+  assert.equal(no.status, 2, no.stderr + no.stdout); assert.equal(no.row('home').clipPass, false); assert.equal('clipAllowed' in no.row('home'), false);
+  setPresence({ '*': { hide: ['.geo-bar'] }, home: { allow: [{ kind: 'clip', selector: 'div.card__body', reason: 'R-02' }] } });
+  const one = hgate(['--only', 'home'], { STUB_CLIP: JSON.stringify(clip) });
+  assert.equal(one.status, 2, 'one of two findings allowed: the other still fails the row');
+  assert.deepEqual([one.row('home').clipAllowance, one.row('home').clipAllowed], [1, { n: 1, by: [{ selector: 'div.card__body', reason: 'R-02', n: 1 }] }]);
+  setPresence({ '*': { hide: ['.geo-bar'] }, home: { allow: [{ kind: 'clip', selector: 'div.card__body', reason: 'R-02' }, { kind: 'clip', selector: 'section.rail', reason: 'R-03' }] } });
+  const ok = hgate(['--only', 'home'], { STUB_CLIP: JSON.stringify(clip) });
+  assert.equal(ok.status, 0, ok.stderr + ok.stdout);
+  const row = ok.row('home'); assert.deepEqual([row.clipPass, row.pass, row.clipAllowance], [true, true, 2]);
+  assert.deepEqual(row.clipAllowed, { n: 2, by: [{ selector: 'div.card__body', reason: 'R-02', n: 1 }, { selector: 'section.rail', reason: 'R-03', n: 1 }] }, 'the rail finding by its path segment');
+  const grp = hgate(['--only', 'home'], { STUB_CLIP: JSON.stringify({ counts: clip.counts, groups }) });
+  assert.equal(grp.status, 2, 'groups only: a path segment is not trusted (a group\'s path is its first finding\'s) — the rail clip still counts');
+  assert.deepEqual(grp.row('home').clipAllowed, { n: 1, by: [{ selector: 'div.card__body', reason: 'R-02', n: 1 }] });
 });
 // ---- the site-wide presence.json (stardust/replica/presence.json), merged UNDER the gate dir's (live-session mergePresence)
 const SITE = join(hroot, 'stardust/replica/presence.json');
@@ -1927,7 +2076,7 @@ const troot = realpathSync(mkdtempSync(join(tmpdir(), 'gate-all-trust-')));
 const TRS = join(troot, 'stardust/scripts/replica'); const TDS = join(troot, 'stardust/scripts/diff'); const TLOG = join(troot, 'stitch.log');
 const TOUT = join(troot, 'stardust/replica/gates/all-1440');
 mkdirSync(TRS, { recursive: true }); mkdirSync(TDS, { recursive: true });
-cpSync(SCRIPT, join(TRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(TRS, 'foundation-freeze.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(TDS, 'live-session.mjs'));
+cpSync(SCRIPT, join(TRS, 'gate-all.mjs')); cpSync(join(HERE, '..', 'foundation-freeze.mjs'), join(TRS, 'foundation-freeze.mjs')); cpSync(join(HERE, '..', 'presence.mjs'), join(TRS, 'presence.mjs')); cpSync(join(DIFF, 'live-session.mjs'), join(TDS, 'live-session.mjs'));
 stub(TRS, 'stitch-shot.mjs', `import { appendFileSync, writeFileSync } from 'node:fs';
 const a = process.argv.slice(2); const side = /www\\.example\\.com/.test(a[0]) ? 'ORIGIN' : 'EDS';
 appendFileSync(${JSON.stringify(TLOG)}, side + ' ' + a.join(' ') + '\\n');
@@ -1979,6 +2128,42 @@ check('trust 3: an overlay left on the build capture → "build capture polluted
   assert.equal(r.status, 2, r.stderr + r.stdout); assert.equal(r.row('a').inconclusive, true);
   assert.deepEqual(r.row('a').reasons, ['build capture polluted: overlay left — div.modal (fixed, 92 % of the viewport)']);
   assert.match(tlog(), /eds a → stitch-live WARN overlay left — div\.modal/);
+});
+check('trust dialog 1: a dialog left open on the origin capture (the stitch record\'s dialogLeft) → INCONCLUSIVE "origin capture polluted: dialog left open (<name>)", exit 2; the log names it; a fix round re-stitches it', () => {
+  const r = tgate([], { STUB_DIALOG_ORIGIN: 'div#cmp-dialog' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.deepEqual([r.row('a').inconclusive, r.row('a').pass], [true, false]);
+  assert.deepEqual(r.row('a').reasons, ['origin capture polluted: dialog left open (div#cmp-dialog)']);
+  assert.match(r.md, /\| INCONCLUSIVE \| origin capture polluted: dialog left open \(div#cmp-dialog\) \|/);
+  assert.deepEqual(tjson('a', 'origin.json').dialogLeft, ['div#cmp-dialog']);
+  assert.match(tlog(), /origin a → stitch-live WARN dialog left open \(div#cmp-dialog\)/);
+  const again = tgate(['--only', 'a']);
+  assert.equal(again.status, 0, again.stderr + again.stdout); assert.equal(again.stitches('ORIGIN').length, 1);
+  assert.match(tlog(), /origin a → not reused \(previous origin left a dialog open \(div#cmp-dialog\)\)/);
+});
+check('trust dialog 3: a stitch record without the dialog-left check (an older stitch-shot copy) → INCONCLUSIVE "unchecked (no dialog-left record …)" on both sides; --compare-only reads it the same; --skip-existing re-shoots it (logged)', () => {
+  const UNCH = (side) => `${side} capture polluted: unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)`;
+  const r = tgate([], { STUB_NO_DIALOG_KEY: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout); assert.deepEqual(r.row('a').reasons, [UNCH('origin'), UNCH('build')]);
+  assert.equal('dialogLeft' in tjson('a', 'origin.json'), false);
+  const c = tgate(['--compare-only']);
+  assert.equal(c.status, 2, c.stderr + c.stdout); assert.deepEqual(c.row('a').reasons, [UNCH('origin'), UNCH('build')]);
+  const s = tgate(['--skip-existing']);
+  assert.equal(s.status, 0, s.stderr + s.stdout); assert.equal(s.stitches('ORIGIN').length + s.stitches('EDS').length, 2);
+  assert.match(tlog(), /origin a → not reused \(--skip-existing: no dialog-left record\)/, 'the EDS side is re-shot anyway here: the sandbox has no gate key');
+});
+check('trust dialog 4: a failed --recapture-origin keeping an origin recorded before the dialog-left check → "unchecked (no dialog-left record …)", INCONCLUSIVE', () => {
+  tgate([]);
+  const legacy = tjson('a', 'origin.json'); delete legacy.dialogLeft; delete legacy.dialogCheck; writeFileSync(join(TOUT, 'a', 'origin.json'), JSON.stringify(legacy)); // an origin.json written before the check
+  const r = tgate(['--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.deepEqual(r.row('a').reasons, ['origin capture polluted: unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)']);
+});
+check('trust dialog 2: on the build capture → "build capture polluted: dialog left open (<name>)"', () => {
+  const r = tgate([], { STUB_DIALOG_EDS: 'dialog.region' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.deepEqual(r.row('a').reasons, ['build capture polluted: dialog left open (dialog.region)']);
+  assert.match(tlog(), /eds a → stitch-live WARN dialog left open \(dialog\.region\)/);
 });
 check('trust 4: a crawl-fullpage origin fallback (the stitch failed, a crawl shot in --crawl-shots) → INCONCLUSIVE, the reason names the fallback and its note', () => {
   mkdirSync(join(troot, 'shots'), { recursive: true }); writeFileSync(join(troot, 'shots/a.png'), 'png');
@@ -2076,7 +2261,7 @@ check('trust 10: a font check that could not run (record fontsFailed: null) → 
   assert.equal(kept.status, 2, kept.stderr + kept.stdout); assert.deepEqual(kept.row('a').reasons, ['font-check-skipped:origin'], 'the kept origin\'s null is not read as all fonts loaded');
   assert.equal(tjson('a', 'origin.json').fontsFailed, null);
   const g = join(troot, 'stardust/replica/gates/a-1440'); mkdirSync(g, { recursive: true }); writeFileSync(join(g, 'live.png'), 'png');
-  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/a', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, fontsFailed: null, at: new Date().toISOString() };
+  const live = { writtenBy: 'gate.sh', url: 'https://www.example.com/a', width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, fontsFailed: null, at: new Date().toISOString() };
   writeFileSync(join(g, 'live.json'), JSON.stringify(live));
   const l = tgate([]);
   assert.equal(l.status, 2, l.stderr + l.stdout); assert.equal(l.stitches('ORIGIN').length, 0); assert.equal(l.row('a').originReused.from, 'stardust/replica/gates/a-1440/live.png');

@@ -137,10 +137,37 @@ document.querySelector('.updates').addEventListener('click', () => { document.qu
 
 export const PAGES = { rich: doc(RICH_BODY, RICH_CSS, RICH_JS), stock: doc(STOCK_BODY, STOCK_CSS, STOCK_JS), geo: doc(GEO_BODY, GEO_CSS, GEO_JS) };
 
-/** Serve /rich, /rich2 (an identical copy), /stock and /geo; every other path answers 404 text. Resolves { origin, close }. */
+// HYDRATE = a click disclosure whose panel, on the FIRST load of its URL (query included), holds hydration placeholder
+// content (a "Loading" heading, two teaser links) and its real links on every later load: the polluted first sample a
+// recorded hands-off run wrote into a contract. The server counts loads per URL; each test uses its own query.
+const HY_REAL = `<h3>Products</h3><ul>${columns('products', 4)}</ul>`;
+const HYDRATE_BODY = (first) => `<header><div class="bar"><a href="/" class="logo">Brand</a>
+<nav><ul><li class="dd"><button aria-expanded="false" aria-controls="hy-panel">Products</button>
+<div id="hy-panel" class="sub" hidden>${first ? '<h3>Loading</h3><ul><li><a href="/teaser/a">Teaser A</a></li><li><a href="/teaser/b">Teaser B</a></li></ul>' : HY_REAL}</div></li></ul></nav></div></header>`;
+const HYDRATE_JS = `
+const b = document.querySelector('.dd > button'); const l = document.getElementById('hy-panel');
+const set = (o) => { b.setAttribute('aria-expanded', String(o)); l.hidden = !o; };
+b.addEventListener('click', () => set(l.hidden));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !l.hidden) { set(false); b.focus(); } });
+document.addEventListener('click', (e) => { if (!e.target.closest('.dd')) set(false); });
+`;
+const hydratePage = (first) => doc(HYDRATE_BODY(first), STOCK_CSS, HYDRATE_JS);
+const loadsOf = new Map();
+// LATE = the same disclosure hydrating on a timer: placeholder content until 1.8 s after EVERY load, then the real links.
+// A page visited as the first sample's was (wait, overlays, settle) is hydrated; a quick reload's click comes before.
+const LATE_PAGE = doc(HYDRATE_BODY(true), STOCK_CSS, `${HYDRATE_JS}setTimeout(() => { l.innerHTML = ${JSON.stringify(HY_REAL)}; }, 1800);\n`);
+
+/** Serve /rich, /rich2 (an identical copy), /stock, /geo, /hydrate (placeholder panel on its URL's first load) and /late
+ * (placeholder for 1.8 s after every load), the last two never cached; every other path answers 404 text. Resolves
+ * { origin, close }. */
 export function serve() {
   const srv = createServer((req, res) => {
     const p = req.url.split('?')[0];
+    if (p === '/hydrate') {
+      loadsOf.set(req.url, (loadsOf.get(req.url) || 0) + 1);
+      res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }); res.end(hydratePage(loadsOf.get(req.url) === 1)); return;
+    }
+    if (p === '/late') { res.writeHead(200, { 'content-type': 'text/html', 'cache-control': 'no-store' }); res.end(LATE_PAGE); return; }
     const html = p === '/rich' || p === '/rich2' ? PAGES.rich : p === '/stock' ? PAGES.stock : p === '/geo' ? PAGES.geo : null;
     res.writeHead(html ? 200 : 404, { 'content-type': 'text/html' }); res.end(html || 'not here');
   });

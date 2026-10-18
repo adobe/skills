@@ -4,6 +4,49 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#NNN)
+
+The recorded hands-off runs: an independent roster re-gate of one run reproduced 8/10 instead of its 10/10 — the run
+pinned a rotating hero with a `--dismiss` flag and accepted two clip findings in prose, and neither was where the roster
+gate reads. In another run four origin captures kept a consent dialog open and still passed, because the dialog's
+container was on a per-slug hide list. Build-side "hide matched nothing" lines read as warnings although nothing
+matching on the build is expected; a duplicate always-404 `@font-face` failed rows as a font-load failure; a header
+contract recorded a body-hydration state as a panel and cost two sessions and eight re-explores.
+
+- **Capture settings live in presence.json (`replica/scripts/presence.mjs`).** `add` takes `--dismiss <sel,…>`,
+  `--pin <sel> --state <label>` and `--allow <kind>=<selector>` (kinds `clip`, `per-visitor-dialog`) beside `--hide`,
+  per key (`"*"` or `--slug`), with the same `--verify <url>` poll (every selector of the call) and `--reason R-<nn>`
+  rule; an allowance needs a reason, a per-visitor-dialog allowance needs its container hidden for the page. The pure
+  readers `captureSettings` and `clipAllowed` are what the gates share. The register's Kind line names the new kinds.
+- **The gates read them.** gate-all and gate.sh add presence.json's `dismiss` after `--dismiss` (one list per page),
+  pass `pin` (stitch-shot `--pin`: a rotator control clicked on the frozen page) and a hidden per-visitor-dialog
+  container (`--allow-dialog`) to both captures, and record dismiss / pin / allow in the records, live.json and the gate
+  key; a capture taken with another pin list is not reused. A `clip` allowance adds the counted clip findings under its
+  selector (its clipper or whole path segments of the recorded findings) to the allowance (gate-all row `clipAllowed`;
+  gate.sh `--full`). A roster run with the settings in
+  presence.json takes the captures a run with the same flags took. stitch-shot `--slug` / `--presence` reads them too.
+- **A dialog left open is INCONCLUSIVE.** stitch-shot prints `dialog-left: <name>` and records `dialogLeft` for every
+  dialog the last sweep left open — hidden or not; only a hidden container allowed as a per-visitor dialog clears it
+  (`dialogsAllowed`), and only while that allowance stands. gate-all: `<side> capture polluted: dialog left open
+  (<name>)`, never kept by a fix round; a capture recorded before the check is never kept, re-shot under
+  `--skip-existing` and INCONCLUSIVE when measured. gate.sh: `INCONCLUSIVE: dialog left open (<name>)`, no verdict
+  (exit 1); a live.png from before the check, or taken with other dialog allowances, is retaken.
+- **A build-side hide miss is information.** gate-all and gate.sh print `info: hide matched nothing on the build
+  (expected — …)`; the live side's warning is unchanged.
+- **Dead font declarations do not count.** An `@font-face` whose every requested src answered 404, beside a face of the
+  same family, weight and style that loaded, is `fontsDead` with one stdout line, not a `FONT LOAD FAILED` warning or a
+  `font-not-loaded` row reason; a 404 face with no loaded twin (another weight, or none) renders fallback type and still
+  counts.
+- **C-final re-captures only what changed.** Under `--skip-existing`, gate-all keeps a page's EDS capture from its
+  unit gate on the preview host when the final roster gate measures the live host and both gate keys are known and
+  equal but for the build host (the delivered document, the chrome documents and every code hash unchanged since that
+  gate): `reused build capture (unchanged since <ts>)`, the row's `buildReused`, its `host` the one the pixels came from,
+  and one summary.md line naming those rows.
+- **chrome-explore's pollution guard.** Every top-level open state is sampled again on a fresh page; a repeat that
+  differs by more than `--bar` (default 0.02) marks the state `unstable` and is re-sampled once. The contract's header
+  records `stability`; `unstableAsWarn` turns chrome-compare's errors on an unstable source state into warnings
+  (`--no-repeat` skips the guard, recorded as skipped).
+
 ## 0.36.x — the instruments behind the inline scripts; asset harvest through the browser (#NNN)
 
 The recorded hands-off runs wrote 99–287 inline interpreter scripts each: 56–120 whole-file rewrites of CSS and JS,

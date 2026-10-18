@@ -180,8 +180,10 @@ One entry per inconsistency. **Kind / Selector** is optional; every other field 
   "lift footer link color to #9e9e9e (4.5:1); no other footer change">
 - **Status:** applied | deferred
 - **Where:** <page types / sections affected>
-- **Kind / Selector:** <only for a per-visitor in-flow region: `per-visitor-region` /
-  `body > section.<bar-wrapper>` — the selector `presence.mjs add` writes to the site-wide hide list>
+- **Kind / Selector:** <only for a capture setting: `per-visitor-region` (`presence.mjs add --hide`), `dismiss`
+  (`--dismiss`), `pin` (`--pin <sel> --state <label>`), `clip` or `per-visitor-dialog` (`--allow <kind>=<sel>`) /
+  `body > section.<bar-wrapper>` — the selector `presence.mjs add --reason R-<nn>` writes to presence.json, where
+  every gate reads it>
 ```
 
 Rules:

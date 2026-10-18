@@ -20,8 +20,10 @@
 // sorts; --help names both; --json without a value is a usage error. e2e a fixed full-viewport backdrop with no close
 // control → one `overlay-left: div.backdrop (fixed, 100 % of the viewport)` line before the overflow line, exit 0, the
 // record's overlayLeft (also under --no-dismiss, where dismissed is null); hidden with --hide → no line, null; a clean
-// page's record exactly (key order, height = the PNG's); a declared face that 404s → fontsFailed ['Brand Sans'] beside
-// the WARNING; a font check that cannot run (fontCheckOutcome; e2e document.fonts throws) → fontsFailed null +
+// page's record exactly (key order — dialogLeft null after overlayLeft —, height = the PNG's); a declared face whose file
+// answers 500 → fontsFailed ['Other Sans'] beside the WARNING, one whose every src 404s → fontsDead ['Brand Sans'] and the
+// info line, not counted (deadFontFaces table: a dead duplicate beside a loading twin, the only face, mixed statuses, an
+// unread sheet, an unrequested src); a font check that cannot run (fontCheckOutcome; e2e document.fonts throws) → fontsFailed null +
 // fontCheck "failed: <msg>" and its own WARNING — skipped, never []; dismissed across the --settle sweeps (consent =
 // last non-null, marketing = union); a consent-sweep click that leaves the page → overlayLeft `(consent sweep
 // navigated to <url>)`; a failed capture (HTTP 404) writes no record.
@@ -54,15 +56,21 @@
 // capture.json's
 // browserBuild ('chromium' here) and hints ('ua-metadata'; 'native' under --hints native), denialCheck 'ok', dismissed
 // null under --no-dismiss.
+// Capture settings: --pin / --allow-dialog / --slug / --presence parsing, withPresence (the flags, then presence.json's),
+// dialogOutcome (pure); e2e a consent dialog no sweep closes → `dialog-left:` + dialogLeft, still with its container
+// hidden by --hide alone, none with the container hidden AND --allow-dialog (dialogsAllowed); --slug reads the site
+// presence.json (hide, allow, pin state); --pin clicks a rotator control on the frozen page (the hero pinned), a
+// selector matching nothing is named.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { captureHintRecord, fontCheckOutcome, fontFamilies, hideMissOutcome, isHeaderMorph, launchCaptureBrowser, mergeDismissed, overflowLine, parseArgs, recheckDenial, sessionNavTimeout } from '../stitch-shot.mjs';
+import { captureHintRecord, deadFontFaces, dialogOutcome, fontCheckOutcome, fontFamilies, hideMissOutcome, isHeaderMorph, launchCaptureBrowser, mergeDismissed, overflowLine, parseArgs, recheckDenial, sessionNavTimeout, withPresence } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -238,6 +246,47 @@ await check('--hide: --help names it; a missing value (end of argv or a flag nex
     assert.deepEqual(readdirSync(cwd), []);
   } finally { rmSync(cwd, { recursive: true, force: true }); }
 });
+await check('capture settings: --pin / --allow-dialog take comma lists (repeatable, de-duplicated), --slug / --presence a value; none → [] / null', () => {
+  const o = parseArgs(['node', 'stitch-shot.mjs', 'https://x.test/', 'o.png', '--pin', ' .dot-2 , .tab-1', '--pin', '.dot-2', '--allow-dialog', '#cmp-root', '--slug', 'home', '--presence', 'g/presence.json'], { env: {}, crawlLog: null }).opts;
+  assert.deepEqual([o.pin, o.allowDialog, o.slug, o.presence], [['.dot-2', '.tab-1'], ['#cmp-root'], 'home', 'g/presence.json']);
+  const d = parseArgs(['node', 'stitch-shot.mjs', 'https://x.test/', 'o.png'], { env: {}, crawlLog: null }).opts;
+  assert.deepEqual([d.pin, d.allowDialog, d.slug, d.presence], [[], [], null, null]);
+});
+
+await check('withPresence: the presence settings after the flags — hide / dismiss / allowDialog de-duplicated in order, a pin keeps the flag\'s position and takes the file\'s state (a flag alone: state null)', () => {
+  const opts = { hide: ['.geo'], dismiss: ['.x'], pin: ['.dot-2', '.tab'], allowDialog: [] };
+  const got = withPresence(opts, { hide: ['.geo', '#cmp-root'], dismiss: ['.y'], pin: [{ sel: '.dot-2', state: 'slide 2' }, { sel: '.z', state: 'first' }], allowDialog: ['#cmp-root'] });
+  assert.deepEqual(got, { hide: ['.geo', '#cmp-root'], dismiss: ['.x', '.y'], pins: [{ sel: '.dot-2', state: 'slide 2' }, { sel: '.tab', state: null }, { sel: '.z', state: 'first' }], allowDialog: ['#cmp-root'] });
+  assert.deepEqual(withPresence(opts, null).pins, [{ sel: '.dot-2', state: null }, { sel: '.tab', state: null }]);
+});
+
+await check('dialogOutcome: a dialog left open is dialogLeft — hidden or not — unless its hiding container is an allowed per-visitor dialog (then dialogsAllowed); none left → null', () => {
+  const hiders = new Map([['div#cmp-dialog', '#cmp-root'], ['dialog.region', null]]);
+  assert.deepEqual(dialogOutcome([], hiders, ['#cmp-root']), { dialogLeft: null, allowed: [] });
+  assert.deepEqual(dialogOutcome(['dialog.region'], hiders, ['#cmp-root']), { dialogLeft: ['dialog.region'], allowed: [] }, 'not hidden');
+  assert.deepEqual(dialogOutcome(['div#cmp-dialog'], hiders, []), { dialogLeft: ['div#cmp-dialog'], allowed: [] }, 'a hide alone no longer silences it');
+  assert.deepEqual(dialogOutcome(['div#cmp-dialog', 'dialog.region'], hiders, ['#cmp-root']), { dialogLeft: ['dialog.region'], allowed: [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }] });
+  assert.deepEqual(dialogOutcome(['div#gone'], new Map(), ['#cmp-root']), { dialogLeft: ['div#gone'], allowed: [] }, 'not found at the check: still left');
+});
+
+await check('deadFontFaces: a family with a face that loaded, whose every failed face is an @font-face whose every requested src returned 404, is dead (not counted); any other failure counts', () => {
+  const B = 'https://o.test/fonts/'; const st = { [`${B}a.woff2`]: 404, [`${B}a.woff`]: 404, [`${B}ok.woff2`]: 200, [`${B}c.woff2`]: 500, [`${B}d.woff2`]: 404, [`${B}d.woff`]: 200 };
+  const rules = [
+    { family: '"Brand Sans"', srcs: [`${B}ok.woff2`] }, { family: '"Brand Sans"', srcs: [`${B}a.woff2`, `${B}a.woff`, `${B}a.eot`] }, // a loading twin + a dead duplicate (the .eot never requested)
+    { family: 'Solo', srcs: [`${B}a.woff2`] }, // the only face, 404: the site's real visitors get the same fallback
+    { family: 'Five', srcs: [`${B}c.woff2`] }, { family: 'Mixed', srcs: [`${B}d.woff2`, `${B}d.woff`] }, { family: 'Never', srcs: [`${B}n.woff2`] },
+  ];
+  const loaded = ['"Brand Sans"', 'Solo Bold'];
+  assert.deepEqual(deadFontFaces({ errored: ['Brand Sans', '"Solo"', 'Five', 'Mixed', 'Hidden Sheet', 'Never'], loaded, rules, statuses: st }), { failed: ['Five', 'Hidden Sheet', 'Mixed', 'Never', 'Solo'], dead: ['Brand Sans'] }, 'a family whose only face 404s renders fallback type: it counts');
+  assert.deepEqual(deadFontFaces({ errored: ['Brand Sans', 'Brand Sans'], loaded, rules, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'two failed faces, one dead declaration: one failure is unexplained');
+  assert.deepEqual(deadFontFaces({ errored: ['Brand Sans'], loaded: [], rules, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'no face of the family loaded: a fallback, counted');
+  assert.deepEqual(deadFontFaces({ errored: [], loaded, rules, statuses: st }), { failed: [], dead: [] });
+  // faces are keyed by family + weight + style: a 404 bold beside a regular that loaded renders the bold in fallback type
+  const bold = [{ family: 'Brand Sans', weight: '400', srcs: [`${B}ok.woff2`] }, { family: 'Brand Sans', weight: 'bold', srcs: [`${B}a.woff2`] }];
+  assert.deepEqual(deadFontFaces({ errored: [{ family: 'Brand Sans', weight: '700', style: 'normal' }], loaded: [{ family: 'Brand Sans', weight: 'normal', style: 'normal' }], rules: bold, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'another weight loaded: counted');
+  assert.deepEqual(deadFontFaces({ errored: [{ family: 'Brand Sans', weight: '700' }], loaded: [{ family: 'Brand Sans', weight: 'bold' }], rules: bold, statuses: st }), { failed: [], dead: ['Brand Sans'] }, 'the same weight loaded (bold = 700): dead');
+});
+
 await check('fontFamilies: surrounding quotes stripped, trimmed, empties dropped, unique, sorted — the record\'s fontsFailed', () => {
   assert.deepEqual(fontFamilies(['"A B"', "'C'", 'A B', '']), ['A B', 'C']);
   assert.deepEqual(fontFamilies([' "Z" ', 'Brand Sans', '"Brand Sans"']), ['Brand Sans', 'Z']);
@@ -339,7 +388,8 @@ if (chromium) {
   }, 6500));</script>`;
   Object.assign(pages, {
     '/backdrop': page('<section><p style="margin:0;padding-top:430px;font:40px/40px sans-serif;text-align:center">Page content beneath the backdrop</p></section><section></section><div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"></div>'),
-    '/font-fail': page('<section>Brand type</section><section></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/missing.woff2)}body{font-family:"Brand Sans",sans-serif}</style>'),
+    // a face whose only src 404s (a dead declaration: not counted) and one whose src answers 500 (counted)
+    '/font-fail': page('<section style="font-family:\'Brand Sans\',sans-serif">Brand type <b>bold</b></section><section style="font-family:\'Other Sans\',sans-serif">Other type</section><section style="font-family:\'Solo Sans\',sans-serif">Solo type</section><section style="font-family:\'Bold Sans\',sans-serif">Bold <b>type</b></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/brand.ttf) format("truetype")}@font-face{font-family:"Brand Sans";src:url(/missing.woff2) format("woff2")}@font-face{font-family:"Bold Sans";src:url(/brand.ttf) format("truetype")}@font-face{font-family:"Bold Sans";font-weight:700;src:url(/bold-gone.woff2) format("woff2")}@font-face{font-family:"Other Sans";src:url(/broken.woff2) format("woff2")}@font-face{font-family:"Solo Sans";src:url(/gone.woff2) format("woff2")}</style>'),
     // a page whose document.fonts throws: the font-load check cannot run
     '/fonts-unreadable': page('<section>Text</section><section></section>', '<script>Object.defineProperty(document, \'fonts\', { configurable: true, get() { throw new Error(\'fonts unavailable\'); } });</script>'),
     '/consent-popup': page('<div id="banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><button id="onetrust-accept-btn-handler" onclick="this.parentNode.remove()">OK</button></div><section></section><section></section>', popupLate),
@@ -398,7 +448,17 @@ if (chromium) {
     'error-heading': [null, denial('Error', '<h1>Something went wrong</h1><p>Please try again in a few minutes.</p>')],
   };
   for (const [name, [, html]] of Object.entries(DENIALS)) pages[`/denied-${name}`] = html;
+  // capture settings: a consent dialog no sweep closes (no control, Escape ignored) in a container, and a hero whose
+  // rotator a timer advances (red / blue) with a control that pins it green
+  Object.assign(pages, {
+    '/cmp-stuck': page('<div id="cmp-root"><div id="cmp-dialog" role="dialog" aria-modal="true" style="position:fixed;left:0;right:0;bottom:0;height:300px;background:#123;color:#fff">Choose your privacy settings</div></div><section></section><section></section>'),
+    '/rotator': page('<div id="hero" style="height:400px;background:#c33"></div><button class="dot-2" onclick="document.getElementById(\'hero\').style.background=\'#3c3\'">2</button><section></section><script>let k = 0; setInterval(() => { k += 1; document.getElementById(\'hero\').style.background = k % 2 ? \'#33c\' : \'#c33\'; }, 300);</script>'),
+  });
+  // a valid TrueType file for the face that loads: the one playwright-core ships (its trace viewer's icon font), when found
+  const BRAND_TTF = (() => { try { const dir = join(dirname(createRequire(import.meta.url).resolve('playwright-core/package.json')), 'lib'); const f = readdirSync(dir, { recursive: true }).map(String).find((x) => x.endsWith('.ttf')); return f ? readFileSync(join(dir, f)) : null; } catch { return null; } })();
   const server = createServer((req, res) => {
+    if (req.url === '/broken.woff2') { res.writeHead(500); res.end('down'); return; }
+    if (req.url === '/brand.ttf' && BRAND_TTF) { res.writeHead(200, { 'content-type': 'font/ttf' }); res.end(BRAND_TTF); return; }
     const body = pages[req.url.split('?')[0]];
     res.writeHead(body ? 200 : 404, { 'content-type': 'text/html; charset=utf-8' }); res.end(body || 'nope');
   });
@@ -693,17 +753,21 @@ if (chromium) {
       assert.deepEqual(ovlLines(r), [], r.stdout);
       assert.equal(lastTwo(r)[0], 'overflow: scrollWidth=1440 viewport=1440 delta=0');
       const want = { url: `${base}/fit`, out: 'fit-rec.png', width: 1440, vh: 900, settle: false, dismissed: { consent: null, extra: [], marketing: [] },
-        overlayLeft: null, fontsFailed: [], hidden: [], hideMiss: null, height: pngHeight('fit-rec.png'), overflow: { scrollWidth: 1440, viewport: 1440, delta: 0 } };
+        overlayLeft: null, dialogLeft: null, fontsFailed: [], hidden: [], hideMiss: null, height: pngHeight('fit-rec.png'), overflow: { scrollWidth: 1440, viewport: 1440, delta: 0 } };
       assert.equal(readFileSync(join(work, 'fit-rec.json'), 'utf8'), `${JSON.stringify(want, null, 2)}\n`);
     });
-    await check('e2e --json fontsFailed: a declared face whose file 404s → [\'Brand Sans\'], beside the one FONT LOAD FAILED warning', async () => {
+    await check('e2e --json fontsFailed: a face whose file answers 500 and a family whose only face 404s count (the one FONT LOAD FAILED warning); a 404 duplicate beside a face of its family that loaded is a dead declaration — fontsDead, one info line, not counted', async () => {
       const r = await shots.font;
       assert.equal(r.status, 0, r.stderr);
       const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
       assert.equal(warnings.length, 1, r.stderr);
-      assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) "?Brand Sans"?/);
-      assert.deepEqual(record('font.json').fontsFailed, ['Brand Sans']);
-      assert.ok(!('fontCheck' in record('font.json')), 'a check that ran carries no fontCheck');
+      assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) .*"?Other Sans"?, "?Solo Sans"? — /, 'a 500, and a 404 that leaves its family without a loaded face, count');
+      const j = record('font.json');
+      if (!BRAND_TTF) { console.log('skip  e2e dead declaration beside a loaded face (no .ttf found in playwright-core)'); return; }
+      assert.doesNotMatch(warnings[0], /Brand Sans/);
+      assert.match(r.stdout, /^fonts: not counted — @font-face whose every src returned 404 beside a face of its family, weight and style that loaded \(a dead declaration, the same for every visitor\): Brand Sans$/m);
+      assert.deepEqual([j.fontsFailed, j.fontsDead], [['Bold Sans', 'Other Sans', 'Solo Sans'], ['Brand Sans']], 'a 404 bold beside a regular that loaded still counts (Bold Sans)');
+      assert.ok(!('fontCheck' in j), 'a check that ran carries no fontCheck');
     });
     await check('e2e --json: a font-load check that cannot run (document.fonts throws) → fontsFailed null + fontCheck right after it, one stderr WARNING, exit 0', async () => {
       const r = await shots.fontUnread;
@@ -785,6 +849,48 @@ if (chromium) {
       assert.equal(j.hideMiss, null);
       assert.equal(barPixels('bar-late.png'), 0);
       assert.equal(pngHeight('bar-late.png'), pngHeight('bar-right.png'));
+    });
+    // capture settings: dialogs left open, pins, presence.json read with --slug
+    const proj = join(work, 'proj'); mkdirSync(join(proj, 'stardust/replica'), { recursive: true });
+    writeFileSync(join(proj, 'stardust/replica/presence.json'), JSON.stringify({ '*': { pin: [{ sel: '.dot-2', state: 'slide 2' }] }, de: { hide: ['#cmp-root'], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp-root', reason: 'R-06' }] } }));
+    const settings = {
+      left: run([`${base}/cmp-stuck`, 'cmp-left.png', '--json', 'cmp-left.json'], work),
+      hiddenOnly: run([`${base}/cmp-stuck`, 'cmp-hidden.png', '--hide', '#cmp-root', '--json', 'cmp-hidden.json'], work),
+      allowed: run([`${base}/cmp-stuck`, 'cmp-allowed.png', '--hide', '#cmp-root', '--allow-dialog', '#cmp-root', '--json', 'cmp-allowed.json'], work),
+      viaSlug: run([`${base}/cmp-stuck`, join(work, 'cmp-slug.png'), '--slug', 'de', '--json', join(work, 'cmp-slug.json')], proj),
+      otherSlug: run([`${base}/cmp-stuck`, join(work, 'cmp-other.png'), '--slug', 'fr', '--json', join(work, 'cmp-other.json')], proj),
+      pinned: run([`${base}/rotator`, 'rot-pin.png', '--pin', '.dot-2,.no-such-dot', '--json', 'rot-pin.json'], work),
+      pinSlug: run([`${base}/rotator`, join(work, 'rot-slug.png'), '--slug', 'home', '--json', join(work, 'rot-slug.json')], proj),
+      unpinned: run([`${base}/rotator`, 'rot-none.png', '--json', 'rot-none.json'], work),
+    };
+    const dlgLines = (r) => r.stdout.split('\n').filter((l) => l.startsWith('dialog-left:'));
+    await check('e2e dialog left open: a consent dialog no sweep closes → one `dialog-left:` line and dialogLeft [name]; hidden by --hide alone it still is (a hide no longer silences it); hidden by an --allow-dialog container → no line, dialogLeft null, dialogsAllowed', async () => {
+      const [left, hid, ok] = [await settings.left, await settings.hiddenOnly, await settings.allowed];
+      for (const r of [left, hid, ok]) assert.equal(r.status, 0, r.stderr);
+      assert.deepEqual(dlgLines(left), ['dialog-left: div#cmp-dialog'], left.stdout); assert.deepEqual(record('cmp-left.json').dialogLeft, ['div#cmp-dialog']);
+      assert.deepEqual(dlgLines(hid), ['dialog-left: div#cmp-dialog (hidden by #cmp-root — not an allowed per-visitor dialog)'], hid.stdout);
+      assert.deepEqual(record('cmp-hidden.json').dialogLeft, ['div#cmp-dialog']); assert.equal(record('cmp-hidden.json').overlayLeft, null, 'the hide took the layer out of the capture');
+      assert.deepEqual(dlgLines(ok), [], ok.stdout); assert.match(ok.stdout, /^dialog left open, hidden as a per-visitor dialog: div#cmp-dialog \(#cmp-root\)$/m);
+      const j = record('cmp-allowed.json');
+      assert.deepEqual([j.dialogLeft, j.dialogsAllowed], [null, [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }]]);
+    });
+    await check('e2e --slug: presence.json (the site file, cwd-relative) adds the page\'s hide / allow / pin — the allowed page carries no dialog-left, another slug does', async () => {
+      const [de, fr] = [await settings.viaSlug, await settings.otherSlug];
+      assert.equal(de.status, 0, de.stderr); assert.equal(fr.status, 0, fr.stderr);
+      assert.match(de.stdout, /^hidden: #cmp-root ×1 \(0px\) \[presence\.json\]$/m, de.stdout);
+      assert.deepEqual(dlgLines(de), []); assert.deepEqual(JSON.parse(readFileSync(join(work, 'cmp-slug.json'), 'utf8')).dialogsAllowed, [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }]);
+      assert.deepEqual(dlgLines(fr), ['dialog-left: div#cmp-dialog'], fr.stdout);
+    });
+    const heroGreen = (f) => { const png = PNG.sync.read(readFileSync(f)); const i = (200 * png.width + 700) * 4; return [png.data[i], png.data[i + 1], png.data[i + 2]].join(','); };
+    await check('e2e --pin: the control clicked after the freeze on the frozen page (the hero pinned green), one line per pin, a selector matching nothing named; --slug reads the pin\'s state from presence.json', async () => {
+      const [pin, slug, none] = [await settings.pinned, await settings.pinSlug, await settings.unpinned];
+      for (const r of [pin, slug, none]) assert.equal(r.status, 0, r.stderr);
+      assert.match(pin.stdout, /^pinned: \.dot-2 \(clicked\)$/m); assert.match(pin.stdout, /^pin not applied: \.no-such-dot \(no visible match\)$/m);
+      assert.deepEqual(record('rot-pin.json').pinned, [{ sel: '.dot-2', state: null, clicked: true }, { sel: '.no-such-dot', state: null, clicked: false }]);
+      assert.equal(heroGreen(join(work, 'rot-pin.png')), '51,204,51');
+      assert.notEqual(heroGreen(join(work, 'rot-none.png')), '51,204,51'); assert.ok(!('pinned' in record('rot-none.json')), 'no pin, no field');
+      assert.deepEqual(JSON.parse(readFileSync(join(work, 'rot-slug.json'), 'utf8')).pinned, [{ sel: '.dot-2', state: 'slide 2', clicked: true }]);
+      assert.equal(heroGreen(join(work, 'rot-slug.png')), '51,204,51');
     });
   } finally {
     server.close();
