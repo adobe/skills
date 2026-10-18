@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x (stardust/r16-census-and-clock) — the style census survives a stuck page, presence suggests on a miss, and a unit brief carries a clock (#151)
+## 0.36.x (stardust/r16-census-and-clock) — the style census survives a stuck page, presence suggests on a miss, and a unit brief carries a clock (#154)
 
 Recorded hands-off runs: on a site with a consent manager the style census (`--concurrency 2`) hung after its first
 page and ran to its whole deadline (exit 124); a second census was killed after 14 minutes with its results lost,
@@ -34,7 +34,7 @@ absolute time left.
   unless the unit is resumable (`gate-all --skip-existing`, encoder batches). One worked example of the arithmetic is
   included.
 
-## 0.36.x — from prototype to document, and from archetype to sibling, without a hand-written generator (#NNN)
+## 0.36.x (stardust/r16-proto-to-doc) — from prototype to document, and from archetype to sibling, without a hand-written generator (#153)
 
 The recorded hands-off runs wrote the same generators again and again: a gated prototype's `<main>` into the
 delivered document, a prototype grouped into `<section>`s because the schema reader found none, and each sibling's
@@ -58,7 +58,7 @@ hand-built `--source` file. Those generators also carried the bugs behind two ex
   (derived) → `render --from-archetype` for identical/minor siblings → hand-authored only for `major` variance,
   with the one-line commands — and the rule that a generator script the agent writes for these steps is a defect.
 
-## 0.36.x — the lead waits five minutes, not twenty-five, and starts every disjoint unit at once (#NNN)
+## 0.36.x (stardust/r16-wait-and-waves) — the lead waits five minutes, not twenty-five, and starts every disjoint unit at once (#152)
 
 The recorded hands-off runs: the lead handed each delivery unit to a subagent and then polled with foreground `sleep`
 calls of 9–23 minutes — one 93-minute session held 15 such sleeps totalling 99 minutes, another 83 of 97, a third 76
@@ -106,7 +106,7 @@ push (median 5–6 minutes, p90 10) is paid serially by serial units and overlap
   printed `lost — re-run` for a job that had ended (seen under load). The run-bg tests match a job's own output line,
   never the command the wrapper echoes.
 
-## 0.36.x — the file edits the agents make, as instruments (#NNN)
+## 0.36.x (stardust/r16-edit-instruments) — the file edits the agents make, as instruments (#151)
 
 Four recorded hands-off runs made 4177 shell calls: 598 heredocs and 345 inline interpreter calls. 238 heredocs were
 python programs; ~150 of them read a tracked HTML or CSS file, replaced a string or a regex and wrote it back — one
@@ -386,6 +386,22 @@ stays 0.36.0). Merged, in this order, each under its own `0.36.x (<branch>)` hea
   off by default; the replica card names `presence.mjs add`'s capture settings; this renumbering.
 
 Not in this image: none — every run-16 branch is merged.
+
+**+r17** — the run-17 image (`stardust/local-integration-run17`, on the run-16 image above at 2fe5cbbf; the version
+stays 0.36.0). Batch 1, merged in this order, each under its own `0.36.x (<branch>)` heading above this one:
+
+- `stardust/r16-edit-instruments` — 0.36.x (#151 local).
+- `stardust/r16-wait-and-waves` — 0.36.x (#152 local).
+- `stardust/r16-proto-to-doc` — 0.36.x (#153 local).
+- `stardust/r16-census-and-clock` — 0.36.x (#154 local).
+- Local-only commits: the new scripts-index rows trimmed and the lint cap raised to 20 KiB + 96 bytes for the
+  four-branch union (a maintainer question); the extract SKILL and scripts-index name style-census's `--page-timeout`
+  and `--resume`; the validate workflow runs the inline-writes lint beside the other stardust lints; a pre-existing
+  "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; this
+  renumbering.
+
+Not in this image yet: `stardust/r16-gates-and-jobs` and `stardust/r16-export-fresh` (verifications pending — the
+integration branch stays open for later batches).
 
 ## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
 
