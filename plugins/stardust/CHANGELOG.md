@@ -4,6 +4,40 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — hands-off header decisions: the agent decides, with a reason (#NNN)
+
+A recorded hands-off run ended `needs_human` with every page passing, because three documents disagreed on who clears
+a header-parity finding: diff/SKILL.md and chrome-compare's `--help` ignored every agent-signed decision, while the
+handoff contract ("fix the header or record a decision") and the run's instructions ("fix or decide every error")
+asked the agent to decide. The agent wrote its proposals, with rationale, into a candidates file and never a decision;
+a sibling run fixed its findings in code instead. Touches #132 (the header contract).
+
+- **One rule, word for word,** in diff/SKILL.md § The header contract, chrome-compare's `--help`, the handoff contract
+  (**Header findings**, its `header_parity` / `header_parity_errors` remedy) and replica/SKILL.md, a test keeping the
+  four identical: fix or decide every error (hands-off: you decide, with a reason). In a hands-off run
+  (`state.json` `handsOff: true`) the agent is the deciding party — `{ finding, decision: accept|fix-later|artefact,
+  reason, by: "agent", at }`, one exact key per entry, a reason of at least 40 characters naming the evidence;
+  chrome-compare counts it as decided and lists it for the owner's review. In an attended run the owner rule stays.
+- **chrome-compare:** `--state <file>` (default `stardust/state.json`); an agent entry that is attended, a prefix*
+  key, another decision or a reason under 40 characters is ignored and reported (`decision-invalid`, naming why); an
+  agent word anywhere in `by` ("subagent", "the agent", a bot) signs as the agent, never as the owner; a bare `*` key
+  clears nothing for anyone; a site owner's entry wins over the agent's for the same key. The verdict gains `handsOff`, `counts.decidedByAgent`
+  and `decidedByAgent[]` (`{ key, decision, reason, at }`); the printed report a `🔵 decided by the agent:` line per
+  entry and `(n by the agent, hands-off — for the owner's review)` on the counts line (attended: the counts line is
+  unchanged; the warning for an ignored agent entry now names the attended rule).
+- **`chrome-compare.mjs decide <key> --decision <d> --reason "<r>"`** turns a proposal into a decision: the
+  agent-signed entry, written atomically; the same entry again changes nothing, a changed decision or reason
+  replaces it, a site owner's entry is kept; refused in an attended run (exit 3, the owner sentence), usage exit 1.
+- **qa's `chrome` check** applies the same rule; its message names an agent's decision for the owner's review.
+- **A hide-list offset is a measurement artefact, not an error:** when the panels' top edges differ by the height of a
+  region hidden at that width (±2 px, from the records' `hide.perWidth`), the panels are as wide, the lower panel is
+  at most that much shorter (the shift only lets the viewport clip its bottom) and the shared, top-aligned crop area
+  is within the bar, the `panel-visual` finding is `info` with `evidence: { kind: "hide-offset",
+  region, h, dy, shared }`; a shared area over the bar stays an error and names the offset. chrome-compare prints
+  `info` findings (⚪) and counts them (an `info` count beside `error` and `warn`).
+- **The owner report** lists "decisions the agent took" — every `decidedByAgent` entry (diff/SKILL.md).
+- done-check is unchanged: it reads `findings[].decided`, which an accepted agent decision sets.
+
 ## 0.36.0 — local integration for the next recorded run (not a release)
 
 A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,

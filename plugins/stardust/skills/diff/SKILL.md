@@ -133,9 +133,8 @@ and "read more" heuristics are English word lists (`--count-words`, `--more-word
 
 ## The header contract (#132)
 
-Every probe above sees the header at rest (pointer parked, motion frozen), so it passes with every menu wrong;
-runs shipped boilerplate click dropdowns for hover mega menus, search and cart as plain links, a static list for a
-drill-down drawer. The header's behaviour is recorded from the source once and the build compared with it:
+Every probe above sees the header at rest (pointer parked, motion frozen), so it passes with every menu wrong. The
+header's behaviour is recorded from the source once and the build compared with it:
 
 ```bash
 node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
@@ -152,11 +151,27 @@ The explorer hovers (desktop), clicks and keys every header control and records 
 headings, crop, `aria-expanded`, focus, scroll lock, motion, close paths), nested levels within `--max-states 400
 --max-depth 4`, search typeahead and submit, and the header scrolled; its summary line sizes the work. The comparer
 exits 2 on a missing control or state (hover rebuilt as click included), panel links, keyboard, close paths or
-scroll lock; `replica` adds open-state crops (2 %), motion (max(80 ms, 25 %)) and scroll states. **Only the site
-owner clears a finding**: `stardust/chrome/header-decisions.json` (`{ decisions: [{ finding, decision, reason, by,
-at }] }`), never signed by an agent. It runs at extract `--prep` (the contract), on the foundation shell and in
-deploy Step 10, on the live host before handover (`done-check` `header_parity`), and in qa. Crops stay in
+scroll lock; `replica` adds open-state crops (2 %), motion (max(80 ms, 25 %)) and scroll states. It runs at extract
+`--prep` (the contract), on the foundation shell and in deploy Step 10, on the live host before handover
+(`done-check` `header_parity`), and in qa (its `chrome` check applies the same decisions). Crops stay in
 `stardust/.work/chrome/`.
+
+**Who clears a finding — two modes.** Fix or decide every error (hands-off: you decide, with a reason). In a
+hands-off run (`stardust/state.json` `handsOff: true`) the agent is the deciding party: `chrome-compare.mjs decide
+<finding> --decision accept|fix-later|artefact --reason "<r>"` signs `{ finding, decision, reason, by: "agent", at }`
+into `stardust/chrome/header-decisions.json`, one exact finding key per entry, with a reason of at least 40
+characters naming the evidence (a measurement artefact, a host-bound feature, a third-party component, a hide-list
+offset); chrome-compare counts it as decided and lists it in `decidedByAgent` for the owner's review. In an attended
+run (`handsOff` false or absent) only the site owner clears a finding (`by`, `at`); an agent-signed entry is ignored
+and reported. A site owner's entry (`{ finding: "<key or prefix*>", decision, reason, by, at }`) counts in both modes
+and wins over the agent's for the same key. A proposals file is no decision: each proposal becomes a `decide` or a fix.
+A crop difference the hide list explains — the panels' tops a hidden region's height apart, the lower panel at most
+that much shorter, the shared area within the bar — is `info` with its `evidence`, never an error.
+
+**Decisions the agent took (for the owner report).** The run's final report — rollout's `H-report`, replica's
+`handoff end` detail — lists every `decidedByAgent` entry of `stardust/chrome/header-parity.json` (key, decision,
+reason) under that title, so the site owner reviews each one: an owner who disagrees signs their own entry for the
+key, which wins, or has the header fixed; none listed → the report says "none".
 
 ## Reading content-diff
 

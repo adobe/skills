@@ -495,8 +495,9 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   subagent that authors AND deploys its part and returns, its own checkpoint
   and boundary ask; when that archetype page flips to `deployed`, the main
   agent runs the foundation-first gate ONCE on it against the published
-  origin, the header contract included (`chrome-compare` exit 0,
-  `../diff/SKILL.md` § The header contract), and the gate closes the
+  origin, the header contract included (`chrome-compare` exit 0 — fix or
+  decide, **Header findings** below; `../diff/SKILL.md` § The header
+  contract), and the gate closes the
   archetype; after the three, `foundation-freeze.mjs freeze` ONCE + commit; C-archetype — per template, the
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
@@ -518,6 +519,18 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   session; no frozen file is edited mid-wave, and fan-out subagents honour
   `STARDUST_PAUSE_FILE` (`reference/handoff-contract.md` § Fan-out
   discipline).
+- **Header findings** (`../diff/SKILL.md` § The header contract): Fix or
+  decide every error (hands-off: you decide, with a reason). In a hands-off
+  run (`stardust/state.json` `handsOff: true`) the agent is the deciding
+  party: `chrome-compare.mjs decide <finding> --decision
+  accept|fix-later|artefact --reason "<r>"` signs `{ finding, decision,
+  reason, by: "agent", at }` into `stardust/chrome/header-decisions.json`,
+  one exact finding key per entry, with a reason of at least 40 characters
+  naming the evidence (a measurement artefact, a host-bound feature, a
+  third-party component, a hide-list offset); chrome-compare counts it as
+  decided and lists it in `decidedByAgent` for the owner's review. In an
+  attended run (`handsOff` false or absent) only the site owner clears a
+  finding (`by`, `at`); an agent-signed entry is ignored and reported.
 - **The final gate runs against the PUBLISHED origin — not the harness**
   (`reference/source-fidelity-gate.md` § The published-origin gate): deploy
   first (`PUT → preview`, then `update-coverage.mjs <slug> --status deployed
