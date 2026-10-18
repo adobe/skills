@@ -58,7 +58,7 @@
  *                                  of the wrong profile (replica flow: replica; redesign, reskin: functional),
  *                                  short of a contract width, not run on the live host, or has undecided errors
  *   header_parity_errors:N         any project: the undecided error findings of chrome/header-parity.json
- *                                  (counts.error − counts.decided without findings[]); no file, no gap; not
+ *                                  (counts.error without findings[] — it leaves the decided out); no file, no gap; not
  *                                  listed when header_parity already names those errors (one finding set, one gap)
  *   ledger_unpaired:N: <ends>      ledger `end` lines without an open start that no later start and end of the
  *                                  same phase re-records (stardust ledger.mjs unpairedEnds); `unchecked` when
@@ -79,7 +79,9 @@
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
  * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude);
  * blocks_pending:N: <names> — record each, the module blocks of coverage/blocks.json delivered (instances in the
- * content files) without a conversion record (update-coverage.mjs --block … converted|deployed|verified|not-delivered).
+ * content files) without a conversion record (update-coverage.mjs --block … converted|deployed|verified|not-delivered);
+ * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
+ * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -145,16 +147,32 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
 
 /**
  * header_parity_errors, or null: the undecided error findings of chrome/header-parity.json in any project. Its
- * findings[] decide when present (chrome-compare's counts.error already leaves the decided out); without them,
- * counts.error − counts.decided, floored at 0. An absent or unreadable file (`parity` null) is no gap. Pure.
+ * findings[] decide when present; without them, counts.error — chrome-compare's count already leaves the decided
+ * (owner's and, hands-off, the agent's) out, the same reading as findings[]. An absent or unreadable file (`parity`
+ * null) is no gap. Pure.
  */
 export function headerParityErrors(parity) {
   if (!isMap(parity)) return null;
   const counts = isMap(parity.counts) ? parity.counts : {};
   const n = Array.isArray(parity.findings)
     ? parity.findings.filter((f) => f && f.severity === 'error' && !f.decided).length
-    : Math.max(0, (Number(counts.error) || 0) - (Number(counts.decided) || 0));
+    : Math.max(0, Number(counts.error) || 0);
   return n > 0 ? `header_parity_errors:${n}` : null;
+}
+
+/**
+ * header_decided_by_agent (info, never a gap), or null: the header findings a hands-off agent decided
+ * (`decided.agent: true`, by key) — else, without findings[], counts.decidedByAgent — for the owner's review. Pure.
+ */
+export function headerDecidedByAgent(parity) {
+  if (!isMap(parity)) return null;
+  const tail = ' — for the owner\'s review';
+  if (Array.isArray(parity.findings)) {
+    const keys = parity.findings.filter((f) => f && isMap(f.decided) && f.decided.agent === true).map((f) => f.key);
+    return keys.length ? `header_decided_by_agent:${keys.length}: ${listed(keys)}${tail}` : null;
+  }
+  const n = isMap(parity.counts) ? Number(parity.counts.decidedByAgent) || 0 : 0;
+  return n > 0 ? `header_decided_by_agent:${n}${tail}` : null;
 }
 
 const REF = /\bR-\d+\b/;
@@ -350,7 +368,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], pendingBlocks = [], skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], pendingBlocks = [], headerAgent = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -378,6 +396,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const info = [
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
     ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
+    ...(headerAgent ? [headerAgent] : []),
   ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
 }
@@ -522,6 +541,7 @@ async function main() {
     exported: exported.gap,
     excluded: pagesDoc.excluded,
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
+    headerAgent: headerDecidedByAgent(parity),
     skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped, ...(pendingKnown ? [] : ['blocks_pending: workspace-manifest.mjs not found beside done-check.mjs'])],
   });
 

@@ -26,7 +26,9 @@ freshness check caught it, and nothing re-ran it. done-check counted the same he
   `generatedAt` than `pages.json`. One line, the three commands as the remedy; a handed-over export is a `skipped:`
   line. The handoff contract's gap-closure exit re-runs the export before `handoff end` when an input changed.
 - **Header gaps counted once.** `header_parity_errors` is left out when `header_parity` already names the same
-  undecided errors; for another `header_parity` cause it stays.
+  undecided errors; for another `header_parity` cause it stays. Without `findings[]` it reads `counts.error` alone
+  (chrome-compare already leaves the decided out), and the header decisions a hands-off agent took are
+  `info: header_decided_by_agent:N` for the owner's review, never a gap.
 - **A planned page the source no longer serves leaves with a record.** `state.mjs exclude <slug…> --reason "<why>"`
   writes `excluded { reason, at }` on the page (`--url <url>` lists one `init` never had in a top-level
   `excluded[]`); `inventory.mjs` moves it out of `pages[]` into a `pages.json` `excluded[]` row (`status:

@@ -15,7 +15,7 @@
 // whose gate failed at any recorded width (passByWidth[w] === false) is pages_failed though its last width passed;
 // a gate with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
 // override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
-// header-parity.json in any project (its findings decide; counts.error − counts.decided without them), and is left
+// header-parity.json in any project (its findings decide; counts.error alone without them), and is left
 // out when header_parity already names those errors (one finding set, one gap). export_stale (judged only when
 // rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
@@ -500,15 +500,32 @@ check('CLI: a replica project without a header contract is not complete', () => 
 });
 
 const herr = (key, decided) => ({ key, severity: 'error', ...(decided ? { decided: { decision: 'accepted', by: 'Site owner', at: '2026-10-09T12:00:00Z', reason: 'r' } } : {}) });
-check('headerParityErrors: the undecided error findings of header-parity.json; counts.error − counts.decided (floored at 0) only when it has no findings[]', () => {
+check('headerParityErrors: the undecided error findings of header-parity.json; without findings[], counts.error alone (chrome-compare already leaves the decided out of it)', () => {
   assert.equal(headerParityErrors({ findings: ['a', 'b', 'c', 'd'].map((k) => herr(k)) }), 'header_parity_errors:4');
   assert.equal(headerParityErrors({ findings: [herr('a', true), herr('b', true), herr('c'), { key: 'w', severity: 'warn' }] }), 'header_parity_errors:1');
   // chrome-compare writes counts.error without the decided findings: the findings decide whenever they are there
   assert.equal(headerParityErrors({ counts: { error: 3, warn: 0, decided: 2 }, findings: [herr('a'), herr('b'), herr('c'), herr('d', true), herr('e', true)] }), 'header_parity_errors:3');
-  assert.equal(headerParityErrors({ counts: { error: 5, warn: 1, decided: 2 } }), 'header_parity_errors:3');
-  assert.equal(headerParityErrors({ counts: { error: 1, decided: 3 } }), null);
+  assert.equal(headerParityErrors({ counts: { error: 5, warn: 1, decided: 2 } }), 'header_parity_errors:5', 'the same reading as with findings[]: decided ones are not in counts.error');
+  assert.equal(headerParityErrors({ counts: { error: 1, decided: 3 } }), 'header_parity_errors:1');
+  assert.equal(headerParityErrors({ counts: { error: 0, decided: 3 } }), null);
   assert.equal(headerParityErrors({ counts: { error: 2, decided: 0 }, findings: [] }), null);
   for (const parity of [null, undefined, 'x', [], {}, { counts: null }, { counts: { error: 'many' } }]) assert.equal(headerParityErrors(parity), null, JSON.stringify(parity));
+});
+
+check('header decisions the agent took (decided.agent, else counts.decidedByAgent) are an info line for the owner\'s review, never a gap; none → no line', () => {
+  const { headerDecidedByAgent } = doneCheck;
+  const agent = (key) => ({ key, severity: 'error', decided: { decision: 'accept', by: 'agent', agent: true, reason: 'r'.repeat(40), at: '2026-10-09T12:00:00Z' } });
+  assert.equal(headerDecidedByAgent({ findings: [agent('motion@390 Menu [click]'), herr('focus@1440 Search', true), agent('state-missing@1440 Shop [hover]'), herr('x')] }),
+    'header_decided_by_agent:2: motion@390 Menu [click], state-missing@1440 Shop [hover] — for the owner\'s review');
+  assert.equal(headerDecidedByAgent({ counts: { error: 0, decided: 3, decidedByAgent: 2 } }), 'header_decided_by_agent:2 — for the owner\'s review');
+  for (const parity of [null, {}, { findings: [herr('a', true)] }, { counts: { decidedByAgent: 0 } }]) assert.equal(headerDecidedByAgent(parity), null, JSON.stringify(parity));
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], headerAgent: 'header_decided_by_agent:1 — for the owner\'s review' });
+  assert.deepEqual([v.complete, v.info], [true, ['header_decided_by_agent:1 — for the owner\'s review']]);
+  const proj = project({ files: { 'stardust/chrome/header-parity.json': { counts: { error: 0, decided: 1, decidedByAgent: 1 }, findings: [agent('motion@390 Menu [click]')] } } });
+  const r = run(proj, ['--offline', '--json']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(JSON.parse(r.stdout).info, ['header_decided_by_agent:1: motion@390 Menu [click] — for the owner\'s review']);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 check('CLI: header_parity_errors fires whenever chrome/header-parity.json has undecided errors — any project, right after header_parity; absent or unreadable → no gap', () => {
