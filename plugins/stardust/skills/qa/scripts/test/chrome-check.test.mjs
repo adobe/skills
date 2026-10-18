@@ -3,8 +3,9 @@
 // finding and launches nothing; with one, the comparer and its decisions are diff's (chrome-compare.test.mjs, and
 // chrome-explore.test.mjs for the browser run). The explorer's argv is checked in a sandbox project copy
 // (qa/checks/chrome.mjs copied, diff/chrome-compare.mjs re-exporting the real one, diff/chrome-explore.mjs a stub that
-// logs its argv and writes the contract's widths back, recording its --hide list): a contract `hide` list reaches the
-// explorer, so the live record carries it too.
+// logs its argv and writes the contract's widths — or its `liveWidths` — back, recording its --hide list): a contract
+// `hide` list reaches the explorer, so the live record carries it too; an agent's decision counts only when the state
+// file says hands-off, and its message names it for the owner's review.
 // Run: node plugins/stardust/skills/qa/scripts/test/chrome-check.test.mjs
 import assert from 'node:assert/strict';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
@@ -32,14 +33,14 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 const argv = process.argv.slice(2); const out = argv[1]; const at = argv.indexOf('--hide');
 const contract = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'header-contract.json'), 'utf8'));
-const doc = { widths: contract.widths, shots: join(dirname(out), 'shots') };
+const doc = { widths: contract.liveWidths || contract.widths, shots: join(dirname(out), 'shots') };
 if (at >= 0) doc.hide = { list: argv[at + 1].split(','), presence: null, perWidth: {} };
 mkdirSync(dirname(out), { recursive: true });
 writeFileSync(out, JSON.stringify(doc));
 writeFileSync(out + '.argv.json', JSON.stringify(argv));
 `;
 const reexport = (file) => `export * from ${JSON.stringify(pathToFileURL(file).href)};\n`;
-const sandboxRun = async (contract) => {
+const sandboxRun = async (contract, { state, decisions } = {}) => {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'qa-chrome-')));
   mkdirSync(join(root, 'qa', 'checks'), { recursive: true }); mkdirSync(join(root, 'diff'));
   copyFileSync(join(QA, 'checks', 'chrome.mjs'), join(root, 'qa', 'checks', 'chrome.mjs'));
@@ -47,9 +48,11 @@ const sandboxRun = async (contract) => {
   writeFileSync(join(root, 'diff', 'chrome-compare.mjs'), reexport(join(DIFF, 'chrome-compare.mjs')));
   writeFileSync(join(root, 'diff', 'chrome-explore.mjs'), EXPLORE_STUB);
   writeFileSync(join(root, 'header-contract.json'), JSON.stringify(contract));
+  writeFileSync(join(root, 'state.json'), JSON.stringify(state || {}));
+  writeFileSync(join(root, 'header-decisions.json'), JSON.stringify({ decisions: decisions || [] }));
   const { run: sandboxed } = await import(pathToFileURL(join(root, 'qa', 'checks', 'chrome.mjs')).href);
   const outDir = join(root, 'out');
-  const findings = await sandboxed({ base: 'https://example.com/', opts: { headerContract: join(root, 'header-contract.json'), outDir } });
+  const findings = await sandboxed({ base: 'https://example.com/', opts: { headerContract: join(root, 'header-contract.json'), outDir, state: join(root, 'state.json'), headerDecisions: join(root, 'header-decisions.json') } });
   const out = join(outDir, 'chrome', 'header-live.json');
   const argv = existsSync(`${out}.argv.json`) ? JSON.parse(readFileSync(`${out}.argv.json`, 'utf8')) : null;
   rmSync(root, { recursive: true });
@@ -67,5 +70,20 @@ await check('contract without hide: the explorer argv is unchanged (no --hide)',
   const { findings, argv, out, shots } = await sandboxRun({ widths });
   assert.deepEqual(argv, ['https://example.com/', out, '--width', '390,1440', '--shots', shots]);
   assert.deepEqual(findings, []);
+});
+
+// the live header lacks the source's Shop menu: one error, `control-missing@1440 Shop`
+const shop = { name: 'Shop', key: 'shop', role: 'toggle', kind: 'menu', actions: { click: { opened: true, panel: { links: [], headings: [], images: 0, inputs: [] } } } };
+const missingShop = { widths: { 1440: { root: { sel: 'header' }, controls: [shop] } }, liveWidths: { 1440: { root: { sel: 'header' }, controls: [] } } };
+const agentDecision = { finding: 'control-missing@1440 Shop', decision: 'fix-later', reason: 'the menu opens a third-party component the build cannot host', by: 'agent', at: '2026-10-18T10:00:00Z' };
+await check('hands-off (state handsOff true): an agent decision with a reason turns the error into info, named as the agent\'s for the owner\'s review', async () => {
+  const { findings } = await sandboxRun(missingShop, { state: { handsOff: true }, decisions: [agentDecision] });
+  assert.deepEqual(findings.map((f) => [f.id, f.severity]), [['control-missing', 'info']]);
+  assert.match(findings[0].message, /\(decided by the agent: fix-later — the menu opens a third-party component the build cannot host; for the owner's review\)$/);
+});
+await check('attended (no handsOff): the same agent decision is ignored and reported; the error stays', async () => {
+  const { findings } = await sandboxRun(missingShop, { state: {}, decisions: [agentDecision] });
+  assert.deepEqual(findings.map((f) => [f.id, f.severity]), [['control-missing', 'error'], ['decision-invalid', 'warn']]);
+  assert.match(findings[1].message, /an attended run: only the site owner clears a finding/);
 });
 process.exit(failed ? 1 : 0);
