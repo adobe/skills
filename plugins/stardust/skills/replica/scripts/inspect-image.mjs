@@ -48,7 +48,10 @@ Usage: node inspect-image.mjs <in.png> [--y <px> --height <px>] [--out <file.jpg
 Look at the copy, never the full-resolution PNG: the PNG stays untouched as the
 measurement input of pixel-compare / crop-compare. Baseline JPEG, 4:4:4 (no chroma
 subsampling), alpha composited on white, deterministic: the same PNG and flags
-give the same bytes.
+give the same bytes. This is how a capture is looked at — never an image library in
+an inline script (the recorded runs measured pixels that way 40 times in one run).
+It measures nothing: an element's box comes from dom-probe.mjs, a pixel delta from
+pixel-compare / crop-compare.
 
 Prints one line: inspect-image: <in> <w>×<h> [band y<y> h<h>] → <out> <w2>×<h2> q<q> (<n> KB)
 Requires: pngjs (a project devDependency, imported only after --help). Missing →

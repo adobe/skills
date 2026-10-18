@@ -37,25 +37,31 @@ print the part that matters, capped, and say what they left out:
 - **Instrument output**: never `cat` a log or a capture; gate rounds run
   through `run-bg.mjs` (Phase 4) and are read back with `wait` summaries
   and `log --grep`.
-- **Live vs prototype boxes**: `measure.mjs <live-url> --against
-  <prototype-url> --selectors "<css>,…" [--width 1440,360]` — rect +
-  computed values per selector, one delta line per box (Phase 3); never an
-  authored probe or a one-off `node -e` evaluate.
-- **Any other look at a page**: `page-probe.mjs <url> [--hide <sel>]
-  [--click <sel>] [--eval <expr>] [--shot <png>]`, `--sbs <a> <b> <out>`
-  — the one ad-hoc browser tool (the gate's navigation and consent
-  handling; `--hide` through live-session's hide helpers when exported,
-  `hidden <n>` counting distinct elements; capped JPEGs, `../SKILL.md`
-  Phase 3 (b)); for looking, never gate evidence.
+- **Questions → instruments.** The recorded runs wrote 16–40 screenshot
+  inspections, box probes and DOM-skeleton dumps each, 40 of them pixel
+  measures in an image library; each question below has one shipped call,
+  capped. Measure with these, never with an image library or an evaluate you
+  wrote: a hand-rolled number is not reproducible by the next session or the gate.
+
+  | Question | Instrument |
+  |---|---|
+  | where an element sits and how big (x/y/w/h, display, position); a section's DOM skeleton or text outline; both for two documents | `dom-probe.mjs <url\|file> [--selector <css>] [--width <px>] [--compare <url\|file>]` |
+  | computed values of a few selectors, live against prototype, per width | `measure.mjs <live-url> --against <prototype-url> --selectors "<css>,…" [--width 1440,360]` (Phase 3) |
+  | what a gate image shows in its failing band | `inspect-image.mjs <png> --y <top> --height <h>` |
+  | how far two captures differ, and where | the gate's lines: `pixel-compare.mjs`, `crop-compare.mjs` bands |
+  | any other look: click, evaluate, screenshot | `page-probe.mjs <url> [--hide <sel>] [--click <sel>] [--eval <expr>] [--shot <png>]`, `--sbs <a> <b> <out>` — the gate's navigation and consent handling, capped JPEGs; for looking, never gate evidence |
+- **Editing a tracked file** is the edit/write tool's job, never an
+  interpreter's: an inline `python3`, `node -e` or heredoc script may read and
+  print, never rewrite a tracked file (recorded: 56–120 such whole-file
+  rewrites of CSS and JS per run, none reviewable as a change). A mechanical
+  change over many files is one edit per file or a shipped script.
 - **Images**: one crop per fact, never a full stitched page (it is
   downscaled past legibility and costs a step), never the live/build/diff
   triplet — the diff crop of the first hot band (`crop-compare.mjs`) is the
   one image a round needs. Recorded: 21 image reads in one run, most of
   them full pages or triplets, for facts the verdict lines already held.
-  Look only at capped copies: `crop-compare.mjs` writes capped JPEGs,
-  `inspect-image.mjs <png> --y <band top> --height <band height>` makes one
-  of any other gate image's failing band, never of a whole page (gate doc
-  § Per-breakpoint procedure).
+  Look only at capped copies: `crop-compare.mjs` JPEGs, or an
+  `inspect-image.mjs` band (table above) — never a whole page.
   Step 10's eyeball of the DEPLOYED page is the published `gate.sh --full`
   round plus header/footer `crop-compare.mjs` bands (gate doc § Pass bar,
   item 5), not a full-page image.
@@ -65,15 +71,11 @@ print the part that matters, capped, and say what they left out:
   100 is followed by its `--offset` slice) — the whole page per archetype,
   never the raw capture.
 - **Script flags**: every shipped CLI script answers `--help` (and `-h`) with
-  its usage header before it parses anything, touches a file or opens a
-  browser; the header names the flags, the exit codes and, for a script that
-  writes artifacts, a `Writes:` block listing every path. The Phase 5
-  contract card's usage table (`reference/handoff-contract.md` § 4) remains
-  the one place with the full invocation shape per deploy and rollout
-  script. Never `sed`/`head`/
-  `grep` a script's source to learn its flags or what it writes (16 such
-  reads in one recorded session, four greps over one crawler in another):
-  run it with `--help`. **Index first:** `../stardust/reference/scripts-index.md`
+  its usage header — flags, exit codes, a `Writes:` block — before it touches
+  anything; the full invocation shape per deploy and rollout script is the
+  Phase 5 card's usage table (`reference/handoff-contract.md` § 4). Never
+  `sed`/`head`/`grep` a script's source to learn its flags (16 such reads in
+  one recorded session). **Index first:** `../stardust/reference/scripts-index.md`
   has every shipped script on one line (what, key flags) — ask `--help` only for
   a flag it does not name (a recorded run asked `--help` 78 times).
 
