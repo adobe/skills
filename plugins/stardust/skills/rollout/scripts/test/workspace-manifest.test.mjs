@@ -12,7 +12,8 @@
 // moved after coverage was built with absolute flags is not stale. The mapping is required once
 // captures exist: without workspace/mapping.json the manifest is written without handover, the
 // missing line is printed and the exit is 2 (--allow-no-mapping and a project without captures keep
-// handover null, exit 0). Also the
+// handover null, exit 0). A block is pending only with delivered instances and no conversion record
+// (pendingBlocks; one placeholders line). Also the
 // identity helpers in lib.mjs (patterns, tokens, linear time). Every run works on a copy in a temp
 // dir, never inside a repository unless a check makes one.
 // Run: node plugins/stardust/skills/rollout/scripts/test/workspace-manifest.test.mjs
@@ -529,6 +530,26 @@ check('judgement: default names are kebab(type || id), made unique in id order w
   assert.equal(j.defaults.templates.b.description, 'article-page-2: 2 page(s); blocks hero-banner, teaser-row.');
   assert.equal(j.defaults.templates.a.description, 'article-page: 1 page(s); blocks none.');
   assert.equal(j.defaults.templates.d.description, 'article-page-3: 1 page(s); blocks none.');
+});
+
+check('pendingBlocks: a module block is pending only with delivered instances and no conversion record (converted, deployed, verified, not-delivered); unused rows, default content and chrome never are; EDS names sorted', () => {
+  const { pendingBlocks } = wm;
+  const row = (id, status, instances) => ({ id, kind: 'module', delivery: { status, edsBlockName: id }, ...(instances == null ? {} : { variants: [{ id: `v_${id}`, classes: [], pages: 1, instances }] }) });
+  const blocksDoc = { blocks: [
+    row('zeta', 'pending', 2), row('alpha', 'failed', 1), row('idle', 'pending', 0), row('unused', 'pending', null),
+    row('done', 'converted', 3), row('live', 'deployed', 1), row('ok', 'verified', 1), row('skipped', 'not-delivered', 1),
+    { id: 'text', kind: 'module', delivery: { status: 'pending', edsBlockName: 'default-content' }, variants: [{ instances: 4 }] },
+    { id: 'header', kind: 'chrome', delivery: { status: 'pending' }, variants: [{ instances: 1 }] },
+  ] };
+  assert.deepEqual(pendingBlocks(blocksDoc), ['alpha', 'zeta']);
+  for (const empty of [null, {}, { blocks: null }]) assert.deepEqual(pendingBlocks(empty), []);
+});
+
+check('placeholders: blocks delivered without a conversion record are one line naming update-coverage.mjs --block', () => {
+  const dir = copy('pending-blocks');
+  ok(node(dir, 'update-coverage.mjs', '--block', 'hero-banner', '--status', 'pending'));
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').placeholders, [...BASE_PLACEHOLDERS, 'blocks[].delivery: 1 block(s) delivered without a conversion record (update-coverage.mjs --block)'].sort(byStr));
 });
 
 check('placeholders: the "(not judged)" summary lines from coverage, sorted; pages with delivered: null counted (a state roster page without a content file)', () => {

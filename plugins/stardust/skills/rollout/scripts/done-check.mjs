@@ -76,7 +76,9 @@
  * verdicts of done units' rows gated before passByWidth (proven on the last width's pass); the export once a client
  * took it over (workspace/handover.json, or a manifest recording a handover).
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
- * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude).
+ * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude);
+ * blocks_pending:N: <names> — record each, the module blocks of coverage/blocks.json delivered (instances in the
+ * content files) without a conversion record (update-coverage.mjs --block … converted|deployed|verified|not-delivered).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -341,7 +343,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], pendingBlocks = [], skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -363,9 +365,13 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   if (ledger) gaps.push(ledger);
   if (exported) gaps.push(exported);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
-  // planned pages the source no longer serves (coverage excluded[]): named, never a gap
+  // planned pages the source no longer serves (coverage excluded[]) and blocks delivered without a conversion record:
+  // named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
-  const info = out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : [];
+  const info = [
+    ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
+    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name> --status converted`] : []),
+  ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
 }
 
@@ -391,12 +397,16 @@ export function readLedger(path) {
   return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } });
 }
 
+/** workspace-manifest.mjs, imported here, never at load, so its own --help never answers for this script; null when absent. */
+async function loadManifestLib() {
+  try { return await import(pathToFileURL(join(HERE, 'workspace-manifest.mjs')).href); } catch { return null; }
+}
+
 /**
  * The migration export as on disk, judged by exportGap: the cwd is the project root (content/, blocks/,
- * stardust/current/pages/ — the captures), keys project-relative as workspace-manifest.mjs writes them.
- * workspace-manifest.mjs is imported here, never at load, so its own --help never answers for this script.
+ * stardust/current/pages/ — the captures), keys project-relative as workspace-manifest.mjs (`wm`) writes them.
  */
-async function exportState({ out, config, pagesDoc }) {
+async function exportState({ out, config, pagesDoc, wm }) {
   const listed = Array.isArray(config && config.exports) && config.exports.includes('migration-workspace');
   if (!listed) return exportGap();
   const ws = join(out, 'workspace');
@@ -405,8 +415,6 @@ async function exportState({ out, config, pagesDoc }) {
   // the marker as workspace-manifest.mjs reads it: any entry at that path
   const handedOver = existsSync(join(ws, 'handover.json')) ? join(ws, 'handover.json')
     : isMap(manifest) && manifest.handover ? `${join(ws, 'manifest.json')} records one` : null;
-  let wm = null;
-  try { wm = await import(pathToFileURL(join(HERE, 'workspace-manifest.mjs')).href); } catch { wm = null; }
   const project = resolve('.');
   const rel = (abs) => relative(project, abs).split(sep).join('/');
   let tree = null;
@@ -493,7 +501,10 @@ async function main() {
   const chrome = arg('chrome', 'stardust/chrome');
   const parity = readJSON(join(chrome, 'header-parity.json'));
   const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity, liveHost: OFFLINE ? null : host });
-  const exported = await exportState({ out: OUT, config, pagesDoc });
+  const wm = await loadManifestLib();
+  const exported = await exportState({ out: OUT, config, pagesDoc, wm });
+  const blocksDoc = readJSON(join(OUT, 'coverage', 'blocks.json'));
+  const pendingKnown = !blocksDoc || (wm && typeof wm.pendingBlocks === 'function');
   const verdict = doneGaps({
     pages, findings, ledgerLines, notLive, header,
     headerErrors: headerParityErrors(parity),
@@ -503,7 +514,8 @@ async function main() {
     ledger: ledgerGap(typeof unpairedEnds === 'function' ? unpairedEnds(ledgerLines) : null),
     exported: exported.gap,
     excluded: pagesDoc.excluded,
-    skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped],
+    pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
+    skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped, ...(pendingKnown ? [] : ['blocks_pending: workspace-manifest.mjs not found beside done-check.mjs'])],
   });
 
   if (JSON_OUT) console.log(JSON.stringify(verdict));

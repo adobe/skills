@@ -19,8 +19,8 @@
 // out when header_parity already names those errors (one finding set, one gap). export_stale (judged only when
 // rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
-// than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows are an
-// info line (pages_excluded), never a gap.
+// than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows and module
+// blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -86,6 +86,23 @@ check('pages_excluded: excluded[] rows of pages.json are info, never a gap — t
   const excluded = [{ slug: 'news', path: '/news', status: 'excluded', reason: 'r' }, { slug: 'old', path: null, status: 'excluded', reason: 'r' }];
   const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded });
   assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [], info: ['pages_excluded:2: /news, /old'] });
+});
+check('blocks_pending: blocks delivered without a conversion record are info naming the remedy, never a gap — after pages_excluded', () => {
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], pendingBlocks: ['hero', 'teaser'] });
+  assert.equal(v.complete, true);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name> --status converted']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [] }).info, []);
+});
+check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
+  const blocks = { blocks: [
+    { id: 'hero-banner', kind: 'module', delivery: { status: 'pending', edsBlockName: 'hero' }, variants: [{ id: 'v_1', classes: [], pages: 1, instances: 2 }] },
+    { id: 'three-up', kind: 'module', delivery: { status: 'converted', edsBlockName: 'columns' }, variants: [{ id: 'v_2', classes: [], pages: 1, instances: 1 }] },
+  ] };
+  const proj = project({ files: { 'stardust/rollout/coverage/blocks.json': blocks } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name> --status converted'), r.stdout);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 check('unfinished counts every not-yet-verified status, and only those', () => {

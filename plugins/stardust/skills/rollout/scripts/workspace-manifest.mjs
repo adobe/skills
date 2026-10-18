@@ -19,7 +19,8 @@
  * and of <out>/workspace/mapping.json when present (outputs) and of what the coverage was built
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
- * (fields not judged, pages without a content file) and the handover state. It refuses (exit 1,
+ * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
+ * in the content files, no update-coverage.mjs --block record) and the handover state. It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
  * a file blocks.json records in _provenance.inputs that changed or is gone, a judgement.json it did
@@ -175,7 +176,19 @@ export function moduleBlocks(blocksDoc) {
   return byName;
 }
 
-/** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file. Sorted. */
+// a conversion record: update-coverage.mjs --block … --status converted|deployed|verified, or not-delivered with its reason
+const RECORDED = new Set(['converted', 'deployed', 'verified', 'not-delivered']);
+/**
+ * The module blocks still pending, by EDS name, sorted: delivered instances (variants[].instances, from the pages'
+ * content files) and no conversion record. A row no page delivers is not pending — nothing of it shipped. Pure.
+ */
+export function pendingBlocks(blocksDoc) {
+  const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !RECORDED.has(b.delivery && b.delivery.status))
+    .map(([name]) => name).sort(byStr);
+}
+
+/** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file, blocks pending (pendingBlocks). Sorted. */
 export function placeholdersOf(coverage) {
   const templates = coverage.templates.templates;
   const blocks = [...moduleBlocks(coverage.blocks).values()];
@@ -187,6 +200,7 @@ export function placeholdersOf(coverage) {
     ['blocks[].purpose', count(blocks, (b) => !b.purpose), 'block(s) without purpose (not judged)'],
     ['blocks[].reuseGuidance', count(blocks, (b) => !b.reuseGuidance), 'block(s) without reuse guidance (not judged)'],
     ['pages[].delivered', count(coverage.pages.pages, (p) => p.delivered == null), 'page(s) without a content file (null)'],
+    ['blocks[].delivery', pendingBlocks(coverage.blocks).length, 'block(s) delivered without a conversion record (update-coverage.mjs --block)'],
   ].filter(([, n]) => n).map(([field, n, why]) => `${field}: ${n} ${why}`).sort(byStr);
 }
 
