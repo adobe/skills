@@ -33,10 +33,10 @@ and an optimize scorecard read 100 beside 22 `open` findings it did not score.
 - **`token-ledger.mjs`** runs LAST (handoff end) and idempotently: `usage.json` carries `writtenAt` and
   `sessionsCovered { count, first, last }` (one line in `usage.md`); unchanged inputs write nothing; the harness cost
   sums each session's last cost line and per-model costs across sessions.
-- **An `informational` finding status** (`rollout/scripts/optimize.mjs`, `findings.mjs`, `lib.mjs`): a source-parity or
-  out-of-scope finding is `informational`, never `open` (older ledgers migrate); the scorecard gains an
-  `informational` count and its open counts equal the ledger's; both schemas accept it. Out-of-scope findings recorded
-  from other audit sources no longer score or gate (maintainer ruling to confirm).
+- **An `informational` finding status** (`rollout/scripts/optimize.mjs`, `findings.mjs`, `lib.mjs`): a source-parity
+  finding is `informational`, never `open` (older ledgers migrate; `resolve --status informational` for a parity
+  finding); the scorecard gains an `informational` count and its open counts equal the ledger's; both schemas accept
+  it. Every other finding, out-of-scope ones included, is scored and gated as before.
 - **`rollout/scripts/media-manifest.mjs`** lists the delivered media per page — each reference of every delivered
   document with its source URL(s) → `media/<scope>/<file>` from the deploy media ledger, or `unmapped` / `external` /
   `code` / `broken` — the helper three recorded runs wrote by hand. It reads only; `--json` for machines.

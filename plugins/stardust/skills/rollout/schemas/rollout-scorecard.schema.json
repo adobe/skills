@@ -64,7 +64,7 @@
         },
         "informational": {
           "type": "object",
-          "description": "Findings with status informational (out-of-scope, source parity included): counted here, never in severity or the scores.",
+          "description": "Findings with status informational (source parity): counted here, never in severity or the scores.",
           "additionalProperties": false,
           "properties": {
             "total": { "type": "integer", "minimum": 0 },

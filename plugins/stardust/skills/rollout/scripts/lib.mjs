@@ -251,14 +251,14 @@ export function sourceParityCounts(findings) {
 }
 
 /**
- * The informational disposition: a live finding's status follows its fixability — out-of-scope
- * (source parity included) is `informational`, anything else open/in-progress (an informational
- * one that is no longer out-of-scope becomes `open`); fixed, accepted and wontfix are kept.
+ * The informational disposition: a live finding's status follows its source-parity tag — a parity
+ * finding is `informational`, anything else (non-parity out-of-scope included) open/in-progress (an
+ * informational one that is no longer parity becomes `open`); fixed, accepted and wontfix are kept.
  */
 const LIVE_STATUSES = ['open', 'in-progress', 'informational'];
 export function liveStatus(f, status) {
   if (!LIVE_STATUSES.includes(status)) return status;
-  if (isSourceParity(f) || f.fixability === 'out-of-scope') return 'informational';
+  if (isSourceParity(f)) return 'informational';
   return status === 'informational' ? 'open' : status;
 }
 export const withLiveStatus = (f) => (liveStatus(f, f.status) === f.status ? f : { ...f, status: liveStatus(f, f.status) });

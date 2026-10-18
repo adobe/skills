@@ -6,10 +6,11 @@
 // out-of-scope` with the `source parity: ` evidence prefix and autofix unavailable; such findings are
 // listed in their own report section, excluded from the health score and the open P1/P2/P3 counts and
 // never gate; a finding the source does NOT share keeps its routing; without a capture nothing is tagged
-// and the same P1 gates. The informational disposition: every parity or out-of-scope finding is recorded
+// and the same P1 gates. The informational disposition: every source-parity finding is recorded
 // `status: informational` (never open) — new, carried over, migrated from an older `open` ledger and on
-// regression — and becomes `open` again when it stops being informational; findings.json and the
-// scorecard agree (its `informational` count, its open counts = the ledger's open rows); health is what
+// regression — and becomes `open` again when it stops being parity; a non-parity out-of-scope finding stays
+// open, scored and gating; findings.json and the scorecard agree (its `informational` count, its open
+// counts = the ledger's open rows); health is what
 // it was for the same input. Offline (--root + --current fixtures). --help writes nothing.
 // Run: node plugins/stardust/skills/rollout/scripts/test/optimize.test.mjs
 import assert from 'node:assert/strict';
@@ -18,7 +19,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { computeScorecard, isSourceParity, markSourceParity, sourceParityCounts, SOURCE_PARITY_PREFIX } from '../lib.mjs';
+import { computeScorecard, isSourceParity, liveStatus, markSourceParity, sourceParityCounts, SOURCE_PARITY_PREFIX } from '../lib.mjs';
 import { loadSchema, validate } from './schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -107,13 +108,24 @@ check('lib: computeScorecard excludes open parity findings from every score and 
 });
 
 check('lib: computeScorecard counts informational rows by severity and never scores them; sourceParityCounts reads informational parity rows too', () => {
-  const row = (id, severity, status, fixability = 'out-of-scope') => ({ id, layer: 'seo', check: 'x', severity, fixability, evidence: 'e', status });
-  const parity = markSourceParity(row('p', 'P1', 'informational', 'platform-migration'), 'why');
-  const s = computeScorecard([parity, row('i', 'P2', 'informational'), row('o', 'P3', 'open', 'platform-migration')], 'run-1', 'now');
+  const row = (id, severity, status, fixability = 'platform-migration') => ({ id, layer: 'seo', check: 'x', severity, fixability, evidence: 'e', status });
+  const parity = markSourceParity(row('p', 'P1', 'informational'), 'why');
+  const s = computeScorecard([parity, markSourceParity(row('q', 'P2', 'informational'), 'why'), row('o', 'P3', 'open')], 'run-1', 'now');
   assert.deepEqual(s.informational, { total: 2, P1: 1, P2: 1, P3: 0 });
   assert.deepEqual(s.severity, { P1: 0, P2: 0, P3: 1 });
   assert.equal(s.dimensions.seo, 96);
   assert.deepEqual(sourceParityCounts([parity]), { total: 1, P1: 1, P2: 0, P3: 0 });
+});
+
+check('lib: liveStatus — informational is for source parity only; a non-parity out-of-scope finding stays open/in-progress', () => {
+  const plain = { fixability: 'out-of-scope', evidence: 'e' };
+  const parity = markSourceParity({ fixability: 'platform-migration', evidence: 'e' }, 'why');
+  assert.equal(liveStatus(parity, 'open'), 'informational');
+  assert.equal(liveStatus(parity, 'in-progress'), 'informational');
+  assert.equal(liveStatus(plain, 'open'), 'open');
+  assert.equal(liveStatus(plain, 'in-progress'), 'in-progress');
+  assert.equal(liveStatus(plain, 'informational'), 'open', 'no longer parity → open');
+  assert.equal(liveStatus(parity, 'accepted'), 'accepted');
 });
 
 const { proj, out, root, cur } = fixture();
@@ -228,28 +240,27 @@ check('findings.json and the scorecard agree: no informational finding is open, 
   const r1 = run(t.proj, t.root, t.cur);
   assert.equal(r1.status, 0, r1.stdout);
   const health = scorecard(t.out).current.overall;
-  // a plain out-of-scope P1 from another audit source (not parity) joins the same ledger
-  const rec = record(t.out, ['--source', 'audit:external', '--layer', 'seo', '--check', 'hreflang', '--severity', 'P1', '--fixability', 'out-of-scope', '--scope-ids', 'home', '--evidence', 'no hreflang alternates']);
+  // a plain out-of-scope P2 from another audit source (not parity) joins the same ledger: open and scored, as before
+  const rec = record(t.out, ['--source', 'audit:external', '--layer', 'seo', '--check', 'hreflang', '--severity', 'P2', '--fixability', 'out-of-scope', '--scope-ids', 'home', '--evidence', 'no hreflang alternates']);
   assert.equal(rec.status, 0, rec.stderr);
-  assert.equal(scorecard(t.out).current.overall, health, 'recording an informational finding leaves health unchanged');
   const r2 = run(t.proj, t.root, t.cur);
-  assert.equal(r2.status, 0, `an informational P1 never gates\n${r2.stdout}`);
+  assert.equal(r2.status, 0, r2.stdout);
   const F = findings(t.out).findings; const sc = scorecard(t.out).current;
-  const info = F.filter((f) => isSourceParity(f) || f.fixability === 'out-of-scope');
-  assert.ok(info.some((f) => isSourceParity(f)) && info.some((f) => !isSourceParity(f)), 'both parity and plain out-of-scope findings are present');
-  assert.deepEqual(info.filter((f) => f.status !== 'informational').map((f) => `${f.check} ${f.status}`), [], 'every informational finding carries status informational');
-  assert.equal(F.filter((f) => f.status === 'informational').length, info.length, 'only informational findings carry it');
+  const info = F.filter(isSourceParity);
+  const ext = F.find((f) => f.check === 'hreflang');
+  assert.ok(info.length > 0); assert.equal(ext.status, 'open', 'a non-parity out-of-scope finding stays open');
+  assert.deepEqual(info.filter((f) => f.status !== 'informational').map((f) => `${f.check} ${f.status}`), [], 'every parity finding carries status informational');
+  assert.equal(F.filter((f) => f.status === 'informational').length, info.length, 'only parity findings carry it');
   assert.deepEqual(sc.informational, { total: info.length, P1: sevOf(info, 'P1'), P2: sevOf(info, 'P2'), P3: sevOf(info, 'P3') });
   const open = F.filter((f) => f.status === 'open');
-  assert.ok(open.length > 0, 'scored findings exist');
   assert.deepEqual(sc.severity, { P1: sevOf(open, 'P1'), P2: sevOf(open, 'P2'), P3: sevOf(open, 'P3') });
-  assert.equal(sc.overall, health);
+  assert.ok(sc.overall < health, 'the out-of-scope P2 is scored');
   // the same input as before this status existed: the informational rows were `open`, and the score skipped the parity ones
-  const before = F.filter((f) => f.source !== 'audit:external').map((f) => (f.status === 'informational' ? { ...f, status: 'open' } : f));
+  const before = F.map((f) => (f.status === 'informational' ? { ...f, status: 'open' } : f));
   assert.equal(computeScorecard(before, 'run-x', 'now').overall, sc.overall, 'health unchanged for the same input');
   assert.match(r2.stdout, new RegExp(`^Health {6}${sc.overall}/100 · informational ${info.length} {3}\\(a11y `, 'm'));
   assert.match(r2.stdout, /^out-of-scope — informational:$/m);
-  assert.match(r2.stdout, /^ {2}P1 seo\/hreflang \[home\] — no hreflang alternates$/m);
+  assert.match(r2.stdout, /^ {2}P2 seo\/hreflang \[home\] — no hreflang alternates$/m);
   assert.match(r2.stdout, /^source parity — informational /m);
   assert.match(r2.stdout, /✓ GATE: no open P1 findings\./);
   const schemaErrors = [
@@ -267,7 +278,7 @@ check('findings.json and the scorecard agree: no informational finding is open, 
   rmSync(t.proj, { recursive: true, force: true });
 });
 
-check('a ledger written before the informational status migrates on the next run: open parity and out-of-scope rows become informational, firstSeenRun kept', () => {
+check('a ledger written before the informational status migrates on the next run: open parity rows become informational (firstSeenRun kept); a non-parity out-of-scope row stays as it was', () => {
   const t = fixture();
   run(t.proj, t.root, t.cur);
   const doc = findings(t.out);
@@ -281,9 +292,26 @@ check('a ledger written before the informational status migrates on the next run
   assert.ok(parity.length >= 8);
   for (const f of parity) { assert.equal(f.status, 'informational', f.check); assert.equal(f.firstSeenRun, 'run-legacy', f.check); }
   const ext = F.find((f) => f.id === 'f-external01');
-  assert.equal(ext.status, 'informational'); assert.equal(ext.firstSeenRun, 'recorded');
+  assert.equal(ext.status, 'in-progress'); assert.equal(ext.firstSeenRun, 'recorded');
   assert.equal(F.filter((f) => f.status === 'fixed').length, 0);
-  assert.equal(scorecard(t.out).current.informational.total, parity.length + 1);
+  assert.equal(scorecard(t.out).current.informational.total, parity.length);
+  rmSync(t.proj, { recursive: true, force: true });
+});
+
+check('no gate weakened: a non-parity out-of-scope P1 recorded from another source stays open, counts as an open P1 and gates optimize', () => {
+  const t = fixture();
+  assert.equal(run(t.proj, t.root, t.cur).status, 0, 'only the parity P1 exists so far');
+  const rec = record(t.out, ['--source', 'audit:external', '--layer', 'accessibility', '--check', 'focus-order', '--severity', 'P1', '--fixability', 'out-of-scope', '--scope-ids', 'about', '--evidence', 'focus order skips the form']);
+  assert.equal(rec.status, 0, rec.stderr);
+  assert.match(rec.stdout, /→ open /);
+  assert.equal(scorecard(t.out).current.severity.P1, 1);
+  const r = run(t.proj, t.root, t.cur);
+  assert.equal(r.status, 1, r.stdout);
+  const f = findings(t.out).findings.find((x) => x.check === 'focus-order');
+  assert.equal(f.status, 'open');
+  assert.equal(scorecard(t.out).current.severity.P1, 1);
+  assert.match(r.stdout, /^ {2}P1 accessibility\/focus-order \[about\] — focus order skips the form$/m);
+  assert.match(r.stdout, /✗ GATE: 1 open P1 finding\(s\)/);
   rmSync(t.proj, { recursive: true, force: true });
 });
 

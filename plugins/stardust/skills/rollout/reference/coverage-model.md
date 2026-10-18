@@ -169,8 +169,8 @@ each delivered path back to a file for testing against a local export.
 (per-layer 0–100, `null` for unassessed judgment layers, + `history[]`). The gate
 exits non-zero while any **open P1** is in scope; fixability routes the fix
 (platform-migration → rollout re-deploys; design-pass → upstream; out-of-scope →
-informational). In the diagram, live = `open`/`in-progress`, or `informational` for out-of-scope
-findings (source parity: `checks.md`), which are excluded from the score, the open counts and the gate.
+informational). In the diagram, live = `open`/`in-progress`, or `informational` for source-parity
+findings (`checks.md` § Source parity), which are excluded from the score, the open counts and the gate.
 See `checks.md` for the catalog.
 
 ## Roll-ups

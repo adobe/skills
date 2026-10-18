@@ -52,7 +52,7 @@ Normalization rules of thumb:
 
 - **platform-migration** → the AEM autofix engine and/or a re-`deploy` resolve it.
 - **design-pass** → upstream (`migrate` / `prototype`); rollout **surfaces only**.
-- **out-of-scope** → `status: informational`; never scored, never gates.
+- **out-of-scope** → informational; never gates beyond its severity.
 
 ## AEM autofix registry (`autofix-aem.mjs`)
 

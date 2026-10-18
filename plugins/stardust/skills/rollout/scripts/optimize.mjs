@@ -11,10 +11,10 @@
  *   design-pass        → upstream (fix in migrate/prototype); rollout surfaces only
  *   out-of-scope       → informational
  *
- * Status: open | in-progress | fixed | accepted | wontfix | informational. A source-parity or
- * out-of-scope finding is `informational` (new, carried over or regressed; an older ledger's open
- * ones migrate, firstSeenRun kept), never open/in-progress — not scored, not gated; one that stops
- * being informational becomes `open` again; any no longer detected becomes `fixed`.
+ * Status: open | in-progress | fixed | accepted | wontfix | informational. Source-parity →
+ * informational (new, carried over or regressed; an older ledger's open ones migrate, firstSeenRun
+ * kept), never open/in-progress — not scored, not gated; one that stops being parity becomes `open`
+ * again; any no longer detected becomes `fixed`. A non-parity out-of-scope finding is open and gates.
  *
  * Source parity: when the page's capture exists (`<current>/pages/<slug>.json`, with its
  * rendered-DOM sidecar `pages/<slug>.html`), a finding whose condition the SOURCE shares — the
@@ -262,7 +262,7 @@ console.log(`Health      ${overall}/100 · informational ${snapshot.informationa
 console.log(`Open        P1 ${snapshot.severity.P1} · P2 ${snapshot.severity.P2} · P3 ${snapshot.severity.P3}   ·   Fixed this history: P1 ${snapshot.fixed.P1} · P2 ${snapshot.fixed.P2} · P3 ${snapshot.fixed.P3}`);
 if (captures.size) console.log(`Source parity  ${parityCounts.total} (P1 ${parityCounts.P1} · P2 ${parityCounts.P2} · P3 ${parityCounts.P3}) — mirror the source capture (${captures.size}/${inspectedSlugs.size} pages captured under ${join(CURRENT, 'pages')}); informational, not scored`);
 else console.log(`Source parity  not assessed — no capture under ${join(CURRENT, 'pages')} (pass --current <dir> to point at the extract capture)`);
-const route = (fx) => (fx === 'out-of-scope' ? informational.filter((x) => !isSourceParity(x)) : scored.filter((x) => x.fixability === fx));
+const route = (fx) => scored.filter((x) => x.fixability === fx);
 for (const fx of ['platform-migration', 'design-pass', 'out-of-scope']) {
   const items = route(fx);
   if (!items.length) continue;

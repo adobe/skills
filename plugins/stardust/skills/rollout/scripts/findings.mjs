@@ -16,17 +16,19 @@
  *            [--note "…"] [--out <rolloutDir>]
  *   --out defaults to stardust/rollout.
  *
- * Status: open | in-progress | fixed | accepted | wontfix | informational. An out-of-scope finding
- * (source-parity tagged included) is `informational`, never open/in-progress — listed, not scored,
- * never gated; re-recorded with another --fixability it is `open` again. Every write applies this
- * to the whole ledger (an older ledger's open out-of-scope rows migrate); resolve refuses
- * `informational` for a scored finding and `open`/`in-progress` for an out-of-scope one.
+ * Status: open | in-progress | fixed | accepted | wontfix | informational. Source-parity →
+ * informational: a finding tagged by optimize's source parity (`--fixability out-of-scope` + the
+ * `source parity: ` evidence prefix) is `informational`, never open/in-progress — listed, not
+ * scored, never gated; re-recorded without the tag it is `open` again. Any other finding, a plain
+ * out-of-scope one included, is open, scored and gated. Every write applies this to the whole
+ * ledger (an older ledger's open parity rows migrate); resolve refuses `informational` for a
+ * non-parity finding and `open`/`in-progress` for a parity one.
  *
  * Writes (under <out>/optimize/): findings.json (the ledger; created when absent) and
  * scorecard.json (current snapshot, with its `informational` {total,P1,P2,P3} count; history
  * preserved). One result line on stdout: the status, health and the informational count.
- * Exit 0 ok, 2 usage, 1 when resolve names an unknown id or a status the finding's fixability
- * rules out (nothing is written).
+ * Exit 0 ok, 2 usage, 1 when resolve names an unknown id or a status the finding's source-parity
+ * tag rules out (nothing is written).
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
@@ -111,8 +113,8 @@ if (cmd === 'resolve') {
   if (!f) { console.error(`resolve: no finding ${id}`); process.exit(1); }
   if (liveStatus(f, status) !== status) {
     console.error(status === 'informational'
-      ? `resolve: ${id} is not out-of-scope (fixability ${f.fixability}) — informational is for out-of-scope findings; use accepted|wontfix, or re-record it with --fixability out-of-scope`
-      : `resolve: ${id} is out-of-scope — its live status is informational, never ${status}; re-record it with another --fixability to score it`);
+      ? `resolve: ${id} is not source parity — informational is for source-parity findings; use accepted|wontfix to set it aside`
+      : `resolve: ${id} is source parity — its live status is informational, never ${status}; re-record it without the parity tag to score it`);
     process.exit(1);
   }
   f.status = status;
