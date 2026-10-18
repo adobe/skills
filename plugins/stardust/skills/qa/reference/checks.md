@@ -86,7 +86,8 @@ Flows, not presence — each check replays a user-visible flow through `skills/d
 ## chrome (L, browser; the header contract)
 
 The live header against `stardust/chrome/header-contract.json` (`../../diff/SKILL.md` § The header contract): comparer
-ids and severities, owner-decided ones info; `header-contract-missing` info, `header-explore-failed` error.
+ids and severities, decided ones info (the owner's; the agent's in a hands-off run); `header-contract-missing` info,
+`header-explore-failed` error.
 
 ## visual (E, browser)
 
