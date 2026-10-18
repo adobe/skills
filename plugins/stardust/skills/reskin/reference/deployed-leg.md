@@ -18,7 +18,10 @@ for every branch. Either **`--sandbox`**, a repo of one's own (the safest; waive
 **`--namespace <ns>`** in a shared repo: every path the leg writes starts with `/<ns>/` (the page, `/<ns>/nav`,
 `/<ns>/footer`, DA media under `--scope <ns>`), the page's `metadata` block carries `nav` and `footer` rows naming
 `/<ns>/nav` and `/<ns>/footer`, and both chrome documents are on the publish roster or the chrome 404s. `preview` enforces
-the rows (read from the delivered head) and the path: rules in `deployed-gate.mjs --help`.
+the rows (read from the delivered head) and the path: rules in `deployed-gate.mjs --help`. One new page path in the
+site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`, no chrome document written) is
+`--sandbox`: `--namespace` refuses it for want of the `/<ns>/` path and rows. `--sandbox` waives those checks
+(recorded in `preview.json`), so make sure the path is new.
 
 ## Recipe
 
@@ -27,8 +30,9 @@ the rows (read from the delivered head) and the path: rules in `deployed-gate.mj
    `qa-gate`'s input). `deploy` authors the content page (Step 9); generating it from the model is not built, so
    its differences are declared in the delta file. Step 10's reconcile is this leg, the reskin page its reference.
    `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page:
-   `.cards` matches the inner grids, `.tabs` the tab row. Give one `--map <block>=section.m-<module>[,section.m-<module>…]`
-   per block, the instances in page order.
+   `.cards` matches the inner grids, `.tabs` the tab row. Give one `--map <block>=section[data-slot=sNN][,section[data-slot=sMM]…]`
+   per block (Phase 4's `data-slot`, a class is not general), the instances in page order. It compares CTA text by
+   `textContent`: a block that moves children into wrappers keeps a whitespace text node between them.
 2. **Push the branch, force Code Sync** and poll until an edited block file is served
    (`../../deploy/da-deploy-protocol.md` § Deploy, step 0).
 3. **Write the documents to DA and preview them, never publish:**
@@ -46,14 +50,13 @@ the rows (read from the delivered head) and the path: rules in `deployed-gate.mj
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
 
 A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
-`auth: true`). A protected preview takes `--auth-header "<value>"` or `--token-env <NAME>` on every step; a value starting
-with neither `token ` nor `bearer ` gets `token ` put in front. Without one, `preview` stops with exit 2 (`the preview
-needs a site token`) rather than poll, and every later step does before it crawls or measures anything; a token it
-refuses (401 or 403 once sent) is exit 2 too, not a poll to 124. Every step then measures a protected preview as any
-other, `parity` and `sanity` included, never `n/a`. The token goes to the preview origin and no other (not a font or image
-host, not the local reskin page), to child processes by environment (`--token-env`, `--auth-origin` the preview) and
-never argv, output, records or the ledger. A token a public preview never asked for (`tokenUnused: true`) is sent by
-nothing, `preview` itself sending it only after a refusal. A sandbox repo's preview is public by default.
+`auth: true`). It takes `--auth-header "<value>"` or `--token-env <NAME>` on every step (a value starting with neither
+`token ` nor `bearer ` gets `token ` put in front). Without one `preview` stops with exit 2 rather than poll, and every
+later step does before it measures anything; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124.
+Every step then measures it as any other, `parity` and `sanity` included, never `n/a`. The token goes to the preview
+origin only (not a font or image host, not the local reskin page), to child processes by environment (`--token-env`,
+`--auth-origin` the preview) and never argv, output, records or the ledger; a public preview is sent none
+(`tokenUnused: true` when one was offered). A sandbox repo's preview is public by default.
 
 ## The delta file
 
@@ -74,7 +77,9 @@ nothing, `preview` itself sending it only after a refusal. A sandbox repo's prev
 - `version`: required, `1`; any other value, or none, is an invalid file.
 - `blocking`: `false` makes a failed check advisory (exit 0, `ADVISORY`); left out it is `true`, as with no file.
 - `text.allow`: `id` (unique), `from` and `why` required, `to` defaults to `""`. Each entry replaces its literal
-  `from` on the source side (slot text and CTA text), in file order, every occurrence.
+  `from` on the source side (slot text and CTA text), in file order, every occurrence. Only these entries carry a
+  `why`: record the why of an `images`, `metadata` or `jsonLd` choice in the page's ledger `residuals[]` (`detail`,
+  verdict `accepted`).
 - `images`: `"count+alt+width"`, the only mode, replaces the host+path comparison: same count, same alt in order,
   every rendered width above 0. `slot-coverage` attributes images to slots positionally by cumulative count, so an
   image moved across a slot boundary with the order kept, or replaced by one with the same alt, goes undetected; its
@@ -134,9 +139,8 @@ verdict (exit 124, or an instrument that did not run) does not count: re-run onc
 
 ## Defaults
 
-- **Fonts.** A Figma donor supplies no font files, so there is nothing to metric-match: `<brand>-fallback` is the token's
+- **Fonts.** A Figma donor supplies no font files, so nothing is metric-matched: `<brand>-fallback` is the token's
   second family at `size-adjust: 100%`, unless the user supplies files (`deploy`'s own rule). `tokens` asserts every
   `:root` token verbatim, so `--body-font-family` / `--heading-font-family` stay the token string and the rendered stack
-  (`"<Brand>", "<brand>-fallback", <generic>`) goes in its own property, e.g. `--font-stack`, that `body` and the
-  headings use. "Font not served" is a declared difference, never a failure: `tokens` compares the first family, the
-  Figma pixel check records `served: false`.
+  (`"<Brand>", "<brand>-fallback", <generic>`) goes in its own property, e.g. `--font-stack`. "Font not served" is a
+  declared difference, never a failure: `tokens` compares the first family, the Figma pixel check records `served: false`.

@@ -89,16 +89,12 @@ regression check instead of a debugging tool.
    from `skills/deploy/scripts/` to `stardust/scripts/deploy/`,
    `eds-path.mjs`, `qa-gate.mjs` (it finds `replica/cap-probe.mjs`),
    `ai-readability.mjs` and `site-auth.mjs` (both import it) — what
-   `deployed-gate.mjs` resolves. Every reskin
-   gate script (capture-content, dom-equality, donor-probe, slot-coverage)
-   needs `diff/live-session.mjs` and exits 2 without the copy, even for a
-   local-file `--rendered` target; only `capture-content` also fails
-   `--help` (the other three answer it with nothing beside them).
-   `live-session.mjs` supplies ALL
-   live-target hardening (real-Chrome UA + standard headers, challenge
-   detection, headed-stealth escalation). The scripts resolve one
-   another from sibling dirs (`../diff/`, `../replica/`, `../deploy/` next to
-   `../reskin/`), so keep them siblings. Run the copies.
+   `deployed-gate.mjs` resolves. Every gate script (capture-content,
+   dom-equality, donor-probe, slot-coverage) needs `diff/live-session.mjs`
+   (all the live-target hardening: real-Chrome UA and headers, challenge
+   detection, headed-stealth) and exits 2 without it, even for a local file;
+   only `capture-content` also fails `--help`. Keep the directories siblings
+   (`../diff/`, `../replica/`, `../deploy/` next to `../reskin/`) and run the copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -303,9 +299,10 @@ modeled on the experiment's `render-reskin.mjs`) that:
 - takes its surface exclusively from `donor-tokens.json` + the donor
   module patterns assigned in `mapping.md`: it imports `rootTokens`
   from `../../scripts/reskin/render/root-tokens.mjs`, emits its `css`
-  first in the first `<style>` and styles through `var(--…)` (the
-  `--type-*` names for per-module text styles); root names the donor
-  does not supply (`absent`) go to the page's `flags[]`. Use the rendered-page conventions the Phase 5 probe
+  first in the first `<style>` and styles through `var(--…)` (per-module
+  text styles are `--type-<kebab(key)>-*`: `cardTitle` is
+  `--type-card-title-size`, and a camelCase name silently falls back);
+  root names the donor does not supply (`absent`) go to the page's `flags[]`. Use the rendered-page conventions the Phase 5 probe
   asserts against: content in `<main>`, `.container` for the measure,
   `.btn` for the donor primary button (`reference/gates.md`
   § Rendered-page conventions);
@@ -350,10 +347,9 @@ node stardust/scripts/reskin/slot-coverage.mjs \
 
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
 equality** and the **ordered, URL-normalized visible-image set**;
-element count and tag sequence are reported but informational.
-`slot-coverage.mjs` additionally proves every model slot present
-(slot text substring, every CTA as a (text, absolute-href) pair,
-every image) and asserts metadata carry-over field by field.
+`slot-coverage.mjs` additionally proves every slot, CTA (text and
+absolute href) and image present and asserts metadata carry-over
+(`reference/gates.md` § (a)).
 
 **(b) DESIGN-ADOPTION GATE:**
 
@@ -385,7 +381,8 @@ author `stardust/reskin/figma-checks/<slug>.json` (schema:
 `figma-gate.mjs --help`), then run the whole check under `run-bg` and
 read it with `wait` (repeat while it exits 75; no step blocks past
 ~110 s). The file must cover every text style of each root and, if the
-module has a mobile variant, a mobile root; only a `waive` with a `why`
+module has a mobile variant, a mobile root keyed at the variant's own
+width (`w` of its box); only a `waive` or a section `skip`, with a `why`,
 lowers that (`reference/gates.md` § (d)):
 
 ```bash
@@ -424,24 +421,18 @@ node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.wo
 ```
 
 On a protected preview add `--token-env <NAME>` to the `all` command, never
-`--auth-header`: `run-bg` saves and prints the command it runs, so a header
-value would be written to disk. Every step then measures the preview; without
-the token `all` stops with exit 2.
+`--auth-header` (`run-bg` saves and prints its command, so a header value would
+reach disk); without the token `all` stops with exit 2.
 
 `all` prints one verdict line per step and writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124
 and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 
-**One fix iteration per gate family** — content; design-adoption/sanity;
-and, for a Figma donor, Figma fidelity. On a failure in a family, fix
-once, re-run all gates (a fix for one gate can break another); (e) has
-its own budget (`reference/deployed-leg.md`). Residual
-failures after a family's iteration is spent are logged in
-`stardust/reskin/ledger.json` under the page's `residuals[]` — never
-silently absorbed, never looped on indefinitely. Per family because the
-families fail for unrelated reasons (renderer emission, responsive
-chrome, section drift); a single shared iteration would force false
-residuals.
+**One fix iteration per gate family** (content; design-adoption/sanity;
+Figma fidelity): fix once, re-run all gates; (e) has its own budget
+(`reference/deployed-leg.md`). What still fails is logged in
+`stardust/reskin/ledger.json` under `residuals[]`, never absorbed
+(`reference/gates.md` § One fix iteration per gate family).
 
 ### Phase 6 — HANDOFF
 

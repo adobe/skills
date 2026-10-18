@@ -223,10 +223,9 @@ match (type).
 In a component kit the curated module frame is usually a documentation
 frame (title block, notation, the module at desktop, tablet and mobile
 widths) and the module instance in it is content-width: point `node` at
-the desktop instance, set `"width": 1440` (the page opens at it) and
-`roots` at the mobile instance. The page section is full-bleed and the
-instance is not, so check widths, gaps and paddings, not `left`, `right`
-or `top`.
+the desktop instance, set `"width": 1440` and `roots` at the mobile one.
+The page section is full-bleed and the instance is not, so check widths,
+gaps and paddings, not `left`, `right` or `top`.
 
 **Coverage floor.** Computed from Figma, so a file cannot cover only
 what the page got right. Every root (`node`, each `roots` entry) is the
@@ -238,11 +237,15 @@ at, every text style of that width's root (family, size, weight, line
 height and letter spacing to 0.1px, colour) needs a `type` entry whose
 node has it; a module frame holding a mobile variant (a component or
 instance named mobile, 320 to 480 wide) needs a `roots` entry up to 480
-wide that is one of them, and some root is checked wider than 480. Only
-`waive: [{ node | "width": "mobile" | "desktop", why }]` lowers it:
-`node` on a frame drops that subtree (a documentation panel), on a TEXT
-node waives its style; the widths waive the mobile or the desktop root.
-A miss is exit 2, every one listed.
+wide that is one of them (the desktop root's own set when the frame holds
+several), keyed at the variant's own width (its `w` in `boxes`: 414, not a
+phone width such as 360), and some root is checked wider than 480. Only
+`waive: [{ node | "width": "mobile" | "desktop", why }]` (or a section `skip`)
+lowers it: `node` on a frame drops that subtree (a documentation panel), on a
+TEXT node waives its style; the widths waive the mobile or the desktop root.
+A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
+last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
+letter spacing a style is keyed by.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
@@ -252,11 +255,10 @@ A miss is exit 2, every one listed.
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
 | B4 register | informational | `mandated` (passes on results of this checks file, every text style covered, no waiver; results of an older file give a `stale` row: re-run `all`), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
 
-- **Waivers show.** A `waived` row names the waived node (name and id) or
-  `mobile`/`desktop`, quotes its `why` and says how many text styles and nodes it
-  drops at which width, so a container waiver cannot hide a page area. The
-  ledger fragment keeps the totals: `coverage` is `text styles 8/8 ·
-  widths 1440 · waived 1`.
+- **Waivers show.** A `waived` row names the node (or `mobile`/`desktop`),
+  quotes its `why` and counts the text styles and nodes it drops per width, so
+  a container waiver cannot hide a page area; the fragment's `coverage` keeps
+  the totals (`text styles 8/8 · widths 1440 · waived 1`).
 - **`n/a: frame content differs`.** B2 compares pixels only where the
   frame's copy is the section's copy (visible text, whitespace and
   case ignored). Reskin keeps the *source's* bytes, so a section
@@ -286,14 +288,13 @@ fetches `.plain.html` without a browser.
 | `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
-| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
+| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a token the preview refuses is exit 2, any other page answering HTTP 400 or more no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
-- **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`).
-  Every step measures it with the site token, sent to the preview origin
-  only, and stops with exit 2 when given none: no row is `n/a` for want of
-  one.
+- **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`):
+  every step measures it with the site token, or stops with exit 2 without
+  one; no row is `n/a` for want of one.
 - **Figma on a preview.** Sections are the preview's authored
   `.plain.html` sections, found again as `main > div:nth-child(k)` of the
   decorated page (decoration can prepend or drop sections; a moved slot
