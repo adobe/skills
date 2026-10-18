@@ -570,6 +570,7 @@ check('exclude refuses, nothing written: no or empty --reason, no slug, an unkno
     [['exclude', '--reason', 'x'], /exclude needs at least one <slug>/],
     [['exclude', 'ghost', '--reason', 'x'], /unknown slug\(s\): ghost — .*--url <url>/],
     [['exclude', 'blog', '--url', 'https://www.example.com/blog', '--reason', 'x'], /blog is in pages\[\]: exclude it without --url/],
+    [['exclude', 'old-blog', '--url', 'https://example.com/blog/', '--reason', 'x'], /https:\/\/example\.com\/blog\/ is the URL of blog in pages\[\]: exclude blog without --url/],
     [['exclude', 'a', 'b', '--url', 'https://www.example.com/a', '--reason', 'x'], /--url names one page: one <slug>/],
     [['exclude', 'gone', '--url', 'gone', '--reason', 'x'], /--url "gone" is not an absolute http\(s\) URL/],
     [['exclude', 'blog', '--reason', 'x', '--to', 'directed'], /--to does not apply to exclude/],

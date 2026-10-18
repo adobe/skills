@@ -90,7 +90,7 @@ check('pages_excluded: excluded[] rows of pages.json are info, never a gap — t
 check('blocks_pending: blocks delivered without a conversion record are info naming the remedy, never a gap — after pages_excluded', () => {
   const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], pendingBlocks: ['hero', 'teaser'] });
   assert.equal(v.complete, true);
-  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name> --status converted']);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name|id> --status converted']);
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [] }).info, []);
 });
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
@@ -101,7 +101,7 @@ check('CLI: coverage blocks.json rows delivered without a conversion record prin
   const proj = project({ files: { 'stardust/rollout/coverage/blocks.json': blocks } });
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
-  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name> --status converted'), r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name|id> --status converted'), r.stdout);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -278,6 +278,14 @@ check('unit_unproven: one page short of the 360 gate, failing, or without a cove
   assert.deepEqual(units({ pages: failing }).gaps, ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story']);
   assert.deepEqual(units({ pages: UNIT_PAGES.slice(1) }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html']);
   assert.deepEqual(units({ pages: short, widths: ['1440'] }).gaps, []);
+});
+
+check('unit_unproven: a unit page excluded since (coverage excluded[] by path, no row in pages[]) leaves the unit\'s count; a unit of excluded pages only is no gap', () => {
+  const excluded = [{ slug: 'news-a', path: '/news/a', status: 'excluded' }];
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded }).gaps, []);
+  const short = UNIT_PAGES.slice(1).map(withGate('news-b', { atByWidth: { 1440: AT[1440] } }));
+  assert.deepEqual(units({ pages: short, excluded }).gaps, ['unit_unproven:cluster-news: 1/1 pages without a passing gate at 1440 and 360: /news/b/']);
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(0, 2), excluded: [{ slug: 'story', path: '/story', status: 'excluded' }] }).gaps, []);
 });
 
 const LEGACY_SKIP = (n) => `unit_unproven: ${n} row(s) without per-width verdicts — proven on the last width's pass`;

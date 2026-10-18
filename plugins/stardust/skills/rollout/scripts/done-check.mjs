@@ -48,7 +48,8 @@
  *                                  width's own verdict) and a recorded gate time at every --widths width, with
  *                                  `delivery.gate.pass === true` (the last width ingested); a row gated before
  *                                  passByWidth is proven on that pass alone and counted as skipped (pages
- *                                  matched by deploy's eds-path pathKey)
+ *                                  matched by deploy's eds-path pathKey; a page excluded since — a pages.json
+ *                                  excluded[] path — leaves its unit's count)
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -220,10 +221,12 @@ export function overrideGap({ pages = [], register = '', readTable = () => null 
  * passByWidth was recorded (none on the gate) is proven on `pass` and its gate times alone; each such row
  * proven is counted in one skipped line, so the weaker proof is never silent. Pure.
  */
-export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths = DEFAULT_WIDTHS, pathKey, out = 'stardust/rollout' } = {}) {
+export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths = DEFAULT_WIDTHS, pathKey, out = 'stardust/rollout', excluded = [] } = {}) {
   if (progress == null) return { gaps: [], skipped: [`unit_unproven: no ${join(out, 'progress.json')}`] };
   if (!isMap(progress) || !isMap(progress.units)) return { gaps: [], skipped: [`unit_unproven: ${join(out, 'progress.json')} has no units map`] };
   const { units } = progress;
+  // a page excluded since (coverage excluded[]) has no row to prove: it leaves its unit's count
+  const gone = new Set((Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e.path === 'string').map((e) => pathKey(e.path)));
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
   const legacy = new Set();
@@ -244,8 +247,12 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
     const text = Object.hasOwn(unitPaths, name) ? unitPaths[name] : null;
     if (text == null) { gaps.push(`unit_unproven:${name}: no ${file}`); continue; }
     const byKey = new Map();
-    for (const l of contentLines(text)) if (!byKey.has(pathKey(l))) byKey.set(pathKey(l), l);
-    if (!byKey.size) { gaps.push(`unit_unproven:${name}: no pages in ${file}`); continue; }
+    let left = 0;
+    for (const l of contentLines(text)) {
+      if (gone.has(pathKey(l))) { left += 1; continue; }
+      if (!byKey.has(pathKey(l))) byKey.set(pathKey(l), l);
+    }
+    if (!byKey.size) { if (!left) gaps.push(`unit_unproven:${name}: no pages in ${file}`); continue; }
     const unproven = [...byKey].filter(([k]) => !proven(k)).map(([, l]) => l);
     if (unproven.length) gaps.push(`unit_unproven:${name}: ${unproven.length}/${byKey.size} pages without a passing gate at ${widths.join(' and ')}: ${listed(unproven)}`);
   }
@@ -370,7 +377,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
   const info = [
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
-    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name> --status converted`] : []),
+    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
   ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
 }
@@ -490,7 +497,7 @@ async function main() {
   const units = progress === NOT_JSON
     ? { gaps: [], skipped: [`unit_unproven: ${progressFile} is not JSON`] }
     // a file holding JSON null exists: a record without a units map, never "no progress.json"
-    : unitGaps({ progress: progressExists && progress === null ? {} : progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT });
+    : unitGaps({ progress: progressExists && progress === null ? {} : progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT, excluded: pagesDoc.excluded });
   const flow = (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null;
   // seed-redirects.mjs routes the sources the sheet cannot match to redirects-cdn.tsv beside it: a line there counts
   const redirects = [textOf(REDIRECTS), textOf(join(dirname(REDIRECTS), 'redirects-cdn.tsv'))].join('\n');

@@ -153,8 +153,9 @@ exclude  records that the source no longer serves a planned page (a 404 at crawl
          coverage/pages.json excluded[], done-check.mjs counts them (pages_excluded, info, not a
          gap). The same reason again writes nothing ("unchanged"); another reason replaces it.
          Re-stamps _provenance (writtenBy stardust:extract unless --skill). All-or-nothing: no
-         --reason, an unknown slug without --url, --url for a page in pages[] or with more than one
-         slug, or a --url that is not an absolute http(s) URL exits 2, nothing written.
+         --reason, an unknown slug without --url, --url naming a page in pages[] (its slug or its URL)
+         or with more than one slug, or a --url that is not an absolute http(s) URL exits 2, nothing
+         written.
 summary  prints page counts by status (· excluded <n> when any), then one line per archetype when
          any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
          archetype), then the slugs per status with --slugs.
@@ -364,6 +365,8 @@ export function excludePages(state, slugs, { reason, url = null, at = nowIso() }
     try { parsed = new URL(url); } catch { parsed = null; }
     if (!parsed || !/^https?:$/.test(parsed.protocol)) throw new UsageError(`--url "${url}" is not an absolute http(s) URL`);
     if (bySlug.has(unique[0])) throw new UsageError(`${unique[0]} is in pages[]: exclude it without --url (the record goes on the page)`);
+    const owner = state.pages.find((p) => typeof p.url === 'string' && (() => { try { return urlKey(p.url) === urlKey(url); } catch { return false; } })());
+    if (owner) throw new UsageError(`${url} is the URL of ${owner.slug} in pages[]: exclude ${owner.slug} without --url (the record goes on the page)`);
   } else {
     const missing = unique.filter((s) => !bySlug.has(s));
     if (missing.length) throw new UsageError(`unknown slug(s): ${missing.join(', ')} — ${state.pages.length} page(s) in state.json; a planned page init never had: exclude <slug> --url <url> --reason "<why>"`);
