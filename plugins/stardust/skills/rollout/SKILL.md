@@ -297,14 +297,15 @@ background subagent each; disjoint by construction) and each cluster (its first
 sub-unit) the moment its archetype is `done`; never serialize disjoint units to
 spare browsers — the browser slot queue paces captures, not the number of units
 (recorded: a run that started four units in one turn finished ten in the time a
-serial run finished five). The lead's loop: `progress.mjs wait` → record what
-ended (handoff contract § 5) → `progress.mjs show --waves`: record every `done`
-or `failed` unit not yet recorded, then start everything its `can start now:`
-line names → wait again;
+serial run finished five). The lead's loop: `progress.mjs wait` →
+`progress.mjs show --waves` → for each unit that ended, handoff contract § 5's
+other steps (block records, freeze check, boundary ask) → start everything its
+`can start now:` line names → wait again;
 C-final only once that line names `gate-all` (a wait's exit 2 is no signal).
-Each subagent's last command is its own `progress.mjs unit done|failed`; at an
-exit 75, one that returned with its unit still `running` (it died first) the
-lead records from its report (handoff contract § Fan-out discipline). The one exception: a unit that edits a shared
+Each unit records its own end: its subagent's last act, after its commit, is
+`progress.mjs unit done|failed` with its counts and verdict; the lead records
+one only for a unit that died without flipping it, `unit failed <unit> --verdict
+"<reason>"` (handoff contract § Fan-out discipline). The one exception: a unit that edits a shared
 file waits for that file's lock as the contract's shared-ledgers bullet
 describes — inside its writer, never by starting later. Waits: the master
 skill's wait discipline.
@@ -316,8 +317,8 @@ P="node skills/stardust/scripts/progress.mjs"   # project copy: stardust/scripts
 $P unit start cluster-page      --kind cluster   --templates page
 $P unit start archetype-article --kind archetype --templates article
 $P unit start archetype-product --kind archetype --templates product
-$P wait          # exit 0: "progress rollout archetype-product: done …" → record it (handoff contract § 5)
-$P show --waves  # before each wait: record any end the last wait did not print; can start now: cluster-product
+$P wait          # exit 0: "progress rollout archetype-product: done …" (its own flip) → its § 5 steps
+$P show --waves  # before each wait: § 5 steps for any end the last wait did not print; can start now: cluster-product
 $P unit start cluster-product --kind cluster --templates product
 $P wait          # exit 75 at --max (300 s; 240 under a five-minute cache): show --waves, wait again
 # … until show --waves says "can start now: gate-all" → C-final. Exit 76 = the pause file: start
