@@ -714,14 +714,14 @@ const runAll = async (root, { over = {}, extra = [], figmaGate, env = {} } = {})
   return { code, error, lines, called: started.map((s) => s.name), args: Object.fromEntries(started.map((s) => [s.name, s.args])) };
 };
 
-// A stand-in for figma-gate.mjs: logs its argv and the token variable, writes `summary` where figma-gate does, prints
-// stdout and stderr and exits with `exit`.
+// A stand-in for figma-gate.mjs: logs its argv and the token variable, writes `summary` where figma-gate writes a
+// preview run's (`dir`), prints stdout and stderr and exits with `exit`.
 const FRAGMENT = {
   regime: 'preview', figmaVersion: '100', join: 'PASS', geometry: 'PASS 10/10', ramp: 'PASS 8/8', pixel: 's01 0.00%, s02 0.00%',
-  register: 'mandated 2 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0', literals: 0, invocation: 'figma-gate.mjs all --page home',
+  register: 'mandated 2 · waived 0 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0', coverage: 'text styles 8/8 · widths 1440 · waived 0', literals: 0, invocation: 'figma-gate.mjs all --page home',
 };
 let stubCount = 0;
-const stubFigma = ({ exit = 0, summary = { regime: 'preview', ledgerFragment: FRAGMENT }, stdout = '', stderr = '' } = {}) => {
+const stubFigma = ({ exit = 0, summary = { regime: 'preview', ledgerFragment: FRAGMENT }, stdout = '', stderr = '', dir = 'figma-preview' } = {}) => {
   stubCount += 1;
   const file = join(scratch, `figma-stub-${stubCount}.mjs`);
   const log = join(scratch, `figma-stub-${stubCount}.jsonl`);
@@ -733,7 +733,7 @@ const stubFigma = ({ exit = 0, summary = { regime: 'preview', ledgerFragment: FR
     `appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv, token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null }) + '\\n');`,
     `const summary = ${JSON.stringify(summary)};`,
     "if (summary) {",
-    "  const out = join(flag('--dir'), '.work', 'reskin', 'gates', flag('--page'), 'figma');",
+    `  const out = join(flag('--dir'), '.work', 'reskin', 'gates', flag('--page'), ${JSON.stringify(dir)});`,
     '  mkdirSync(out, { recursive: true });',
     "  writeFileSync(join(out, 'summary.json'), JSON.stringify(summary));",
     '}',
@@ -1035,9 +1035,13 @@ await check('all: figma-gate\'s exit 1 is "FAIL figma" with its fragment; 3 and 
   const run = async (name, stub, extra = []) => {
     const root = allRoot(name, { checks: true });
     const figma = stubFigma(stub);
-    const stale = join(dirOf(root), '.work', 'reskin', 'gates', 'home', 'figma');
+    const gates = join(dirOf(root), '.work', 'reskin', 'gates', 'home');
+    const stale = join(gates, 'figma-preview');
     mkdirSync(stale, { recursive: true });
     writeFileSync(join(stale, 'summary.json'), JSON.stringify({ regime: 'preview', ledgerFragment: { stale: true } }));
+    // A local figma-gate run's evidence is not the deployed leg's to read or delete.
+    mkdirSync(join(gates, 'figma'), { recursive: true });
+    writeFileSync(join(gates, 'figma', 'summary.json'), JSON.stringify({ regime: 'preview', ledgerFragment: { local: true } }));
     const r = await runAll(root, { figmaGate: figma.file, extra });
     return { ...r, root, figma, line: verdictLines(r.lines).at(-1), fragment: existsSync(join(deployedDir(dirOf(root), 'home'), 'summary.json')) ? summaryAt(root).ledgerFragment : null };
   };
@@ -1045,6 +1049,10 @@ await check('all: figma-gate\'s exit 1 is "FAIL figma" with its fragment; 3 and 
   assert.equal(one.code, 1);
   assert.equal(one.line, 'FAIL figma: geometry FAIL 2/10, ramp FAIL 1/8');
   assert.deepEqual(one.fragment.figma, failing);
+  assert.deepEqual(JSON.parse(readFileSync(join(dirOf(one.root), '.work', 'reskin', 'gates', 'home', 'figma', 'summary.json'), 'utf8')), { regime: 'preview', ledgerFragment: { local: true } }, 'the local run\'s summary.json was left alone');
+  const wrongDir = await run('fig-legacy-dir', { exit: 0, dir: 'figma' });
+  assert.equal(wrongDir.code, 124, 'a summary.json under figma/ (a local run\'s) is not the preview run\'s');
+  assert.equal(wrongDir.line, 'ERROR (exit 124) figma: figma-gate exited 0 but wrote no summary.json for the preview run');
   const three = await run('fig-3', { exit: 3, summary: null, stdout: 'ERROR (exit 3) join CHALLENGE: bot challenge\n' });
   assert.equal(three.code, 3);
   assert.equal(three.line, 'ERROR (exit 3) figma: join CHALLENGE: bot challenge');
@@ -1377,7 +1385,7 @@ if (playwrightOk) {
       assert.equal(p.status, 0, p.all.replaceAll(CANARY, '[token]'));
       const scanFiles = () => {
         const files = walk(join(dirOf(root), '.work'));
-        assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma', 'summary.json'))), 'the scan covers deployed/ and figma/');
+        assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma-preview', 'summary.json'))), 'the scan covers deployed/ and figma-preview/');
         return files.filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
       };
       for (const [label, extra, envName] of [['--auth-header', ['--auth-header', header], null], ['--token-env', ['--token-env', 'STARDUST_T12_PREVIEW_TOKEN'], 'STARDUST_T12_PREVIEW_TOKEN']]) {

@@ -17,7 +17,7 @@
 //   all      The whole leg in one run: content, tokens, parity, sanity, inherited in this process, then figma-gate
 //            all --target preview as a child process when the page has a figma-checks file. One verdict line per
 //            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
-// Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/ (and, for the figma-gate child, its own figma/).
+// Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/ (and, for the figma-gate child, its own figma-preview/).
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
 // halt · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
@@ -270,7 +270,7 @@ DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, nev
 Evidence, all under <dir>/.work/reskin/gates/<slug>/deployed/: preview.json (preview); content.json,
 content-dom-equality.md, content-slot-coverage.md; tokens.json, tokens-spec.json, tokens-probe.md,
 tokens-probe.json; parity.json, parity/, design.json; sanity.json, sanity/; inherited.json, inherited/;
-summary.json (all). The figma-gate child writes its own files under <dir>/.work/reskin/gates/<slug>/figma/.
+summary.json (all). The figma-gate child writes its own files under <dir>/.work/reskin/gates/<slug>/figma-preview/.
 The tracked input is <dir>/reskin/deltas/<slug>.json.
 
 Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or
@@ -613,7 +613,7 @@ function passLedger(rows) {
 // summary.json of the preview regime it wrote) is the step's ledger value; a setup error (its exit 2) stops the run.
 async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, redact, UsageError }) {
   const [{ childEnv, coded, firstLine, runChild, tokenFlags }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
-  const summaryPath = join(workDir(dir, slug), 'summary.json');
+  const summaryPath = join(workDir(dir, slug, 'preview'), 'summary.json');
   rmSync(summaryPath, { force: true });
   const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, ...tokenFlags(auth), '--dir', dir];
   let r;
@@ -636,7 +636,7 @@ async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, 
   try { summary = readJsonIf(summaryPath); } catch { /* unreadable: no verdict, below */ }
   if (summary?.regime !== 'preview' || !summary.ledgerFragment) throw coded(124, `figma-gate exited ${exit} but wrote no summary.json for the preview run`);
   const fragment = summary.ledgerFragment;
-  const detail = [...['join', 'geometry', 'ramp', 'pixel', 'register'].map((k) => `  ${k}: ${fragment[k]}`), `  report: ${join(workDir(dir, slug), 'register.md')}`];
+  const detail = [...['join', 'geometry', 'ramp', 'pixel', 'register', 'coverage'].map((k) => `  ${k}: ${fragment[k]}`), `  report: ${join(workDir(dir, slug, 'preview'), 'register.md')}`];
   if (exit === 0) return outcome('PASS', 0, 'PASS figma', fragment, detail);
   const failing = ['join', 'geometry', 'ramp'].filter((k) => /^FAIL/.test(fragment[k])).map((k) => `${k} ${fragment[k]}`);
   return outcome('FAIL', 1, `FAIL figma${failing.length ? `: ${failing.join(', ')}` : ''}`, fragment, detail);

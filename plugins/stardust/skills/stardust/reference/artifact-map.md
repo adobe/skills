@@ -400,7 +400,7 @@ excluded folders tracked deletes that line or adds a negation below it.
 | `qa/shots/**`, `qa/baselines/**` | **no** | qa | screenshots; baselines are per machine, a clone re-creates them |
 | `scripts/**` | yes (for now) | extract / reskin / replica / spec | byte copies of plugin scripts so ESM resolves the project's `node_modules`; stale against the installed plugin — removing the copies is a planned change |
 | `_pre-publish-backup/**`, `_palette-pick.html`, `*.generated.*` drafts | backup yes; picker no | prototype / direct / dynamics | |
-| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps; `.work/reskin/figma/` is the raw Figma REST cache, `.work/reskin/gates/` the gate evidence (Figma box trees, per-page checks and register; `<slug>/deployed/` the deployed leg's preview record, step evidence and `summary.json`) |
+| `.work/**` | **no** | any | run residue: logs, harness page, pre-renders, probe dumps; `.work/reskin/figma/` is the raw Figma REST cache, `.work/reskin/gates/` the gate evidence (Figma box trees, per-page checks and register: `<slug>/figma/` for the local page, `<slug>/figma-preview/` for the preview; `<slug>/deployed/` the deployed leg's preview record, step evidence and `summary.json`) |
 | `*.log`, `*.err`, `*.out`, `last-run.json` anywhere | **no** | any | safety net until every writer routes to `.work/logs/` |
 | `_storage-state.json`, `*-clearance.json` | **never** | extract | captured session cookies; secrets |
 

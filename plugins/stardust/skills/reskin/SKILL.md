@@ -384,9 +384,9 @@ included module's outline with `figma-gate.mjs boxes --module Mn`,
 author `stardust/reskin/figma-checks/<slug>.json` (schema:
 `figma-gate.mjs --help`), then run the whole check under `run-bg` and
 read it with `wait` (repeat while it exits 75; no step blocks past
-~110 s). The file must cover every text style of each root, and a mobile
-root when the module has a mobile variant; only a `waive` with a `why`
-lowers that floor (`reference/gates.md` § (d)):
+~110 s). The file must cover every text style of each root and, if the
+module has a mobile variant, a mobile root; only a `waive` with a `why`
+lowers that (`reference/gates.md` § (d)):
 
 ```bash
 node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
@@ -396,9 +396,9 @@ node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
 node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 ```
 
-B0 (section join), B1 (geometry) and B3 (`:root` tokens and type ramp)
+B0 (join), B1 (geometry) and B3 (`:root` tokens, type ramp)
 block; B2 (frame pixels) is advisory and B4 (the divergence register,
-`.work/reskin/gates/<slug>/figma/register.md`) informational. Exit 124
+`.work/reskin/gates/<slug>/figma/register.md`) informational: a section with a waiver is `waived` there, never `mandated`. Exit 124
 is no verdict (re-run once, never a fix iteration; the same 124 twice
 is a residual, needs-owner), exit 3 a bot challenge on a live target,
 exit 2 a setup problem (fix the input, re-run). Residuals carry
@@ -520,7 +520,7 @@ for URL and directory donors, `figma-donor.mjs stamp` for Figma).
 | `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
 | `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
 | `stardust/.work/reskin/figma/` | Figma donor only: raw REST cache and frame PNGs (git-ignored) |
-| `stardust/.work/reskin/gates/<slug>/figma/` | Figma donor only: the checks' evidence, `summary.json` and the divergence register (git-ignored) |
+| `stardust/.work/reskin/gates/<slug>/figma/` | Figma donor only: the checks' evidence, `summary.json` and the divergence register (git-ignored); `figma-preview/` holds the deployed leg's run |
 | `stardust/.work/reskin/gates/<slug>/deployed/` | Deployed leg: the preview record, each step's evidence and `summary.json` (git-ignored) |
 
 ## References

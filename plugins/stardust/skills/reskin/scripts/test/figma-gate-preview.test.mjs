@@ -15,7 +15,7 @@ import { parseNormalizations } from '../figma/rules.mjs';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
 import { selectorFor, validateChecks } from '../figma-gate/checks.mjs';
 import { runGeometry } from '../figma-gate/geometry.mjs';
-import { includedModules, readInputs, workDir } from '../figma-gate/io.mjs';
+import { includedModules, readInputs, workDir as workDirOf } from '../figma-gate/io.mjs';
 import { runJoin } from '../figma-gate/join.mjs';
 import { anchors, parseMapping } from '../figma-gate/mapping.mjs';
 import { plainJoin, plainSections } from '../figma-gate/plain-join.mjs';
@@ -33,6 +33,8 @@ const FIX = join(HERE, 'fixtures', 'figma-gate');
 const scratch = mkdtempSync(join(tmpdir(), 'figma-gate-preview-'));
 const TOKEN = 'hlxtok-0123456789abcdef';
 let failed = 0;
+// Every run in this file is on a preview unless a call names the local regime.
+const workDir = (dir, slug, regime = 'preview') => workDirOf(dir, slug, regime);
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
 // One CLI run: { status, stdout, stderr, all }. Async: the fake preview lives in this process. The ambient hooks are cleared.
@@ -424,7 +426,8 @@ if (playwrightOk) {
     const p = project('cli-local');
     const r = await run(['join', '--page', p.slug, '--url', p.page, '--target', 'local', '--dir', p.dir], { cwd: p.root });
     assert.equal(r.status, 0, r.all);
-    assert.equal(joinJson(p).regime, 'local');
+    assert.equal(JSON.parse(readFileSync(join(workDir(p.dir, p.slug, 'local'), 'join.json'), 'utf8')).regime, 'local');
+    assert.equal(existsSync(join(workDir(p.dir, p.slug), 'join.json')), false, 'a local run writes nothing under figma-preview/');
   });
 
   await check('CLI join --target preview: an extra non-empty authored section is exit 1 with "section drift: plain section 3 matches no slot"', async () => {
@@ -774,6 +777,24 @@ if (playwrightOk) {
     });
   });
 
+  await check('CLI all --target preview beside a local run: the local run\'s files stay in figma/, the preview run\'s are written to figma-preview/', async () => {
+    await withPreview({}, async (server) => {
+      const p = previewProject('cli-all-beside-local');
+      const local = workDir(p.dir, p.slug, 'local');
+      mkdirSync(local, { recursive: true });
+      const kept = Object.fromEntries(['join.json', 'geometry.json', 'ramp.json', 'pixel.json', 'register.json', 'register.md', 'summary.json'].map((f) => [f, `local run ${f}\n`]));
+      for (const [f, text] of Object.entries(kept)) writeFileSync(join(local, f), text);
+      const r = await run(stepArgs('all', p, `${server.origin}/ns/home`), { cwd: p.root });
+      assert.equal(r.status, 0, r.all);
+      assert.deepEqual(readdirSync(local).sort(), Object.keys(kept).sort(), 'the preview run added nothing to the local directory');
+      for (const [f, text] of Object.entries(kept)) assert.equal(readFileSync(join(local, f), 'utf8'), text, `${f} of the local run was deleted or overwritten`);
+      assert.ok(workDir(p.dir, p.slug).endsWith(join('gates', 'home', 'figma-preview')));
+      assert.equal(stepFile(p, 'summary.json').regime, 'preview');
+      assert.ok(r.stdout.trimEnd().split('\n').at(-1).endsWith(join('figma-preview', 'register.md')), r.stdout);
+      assert.match(stepFile(p, 'summary.json').ledgerFragment.coverage, /^text styles 8\/8 · widths 1440 · waived 0$/);
+    });
+  });
+
   await check('CLI all --target preview on a protected preview: the probe and every request carry the token; no output and no file holds it', async () => {
     await withPreview({ token: TOKEN }, async (server) => {
       const url = `${server.origin}/ns/home`;
@@ -882,7 +903,7 @@ await check('a mistyped secret flag is never echoed: --auth-header=<value>, an u
   assert.match(known.stderr, /unknown flag --bogus for join/);
 });
 
-await check('geometry, ramp, pixel and all take --target preview like join: it needs --reskin and --reskin needs it, exit 2 before any browser; register has no --target', async () => {
+await check('geometry, ramp, pixel and all take --target preview like join: it needs --reskin and --reskin needs it, exit 2 before any browser; register takes --target alone, to read the preview run', async () => {
   const p = makeProject(join(scratch, 'later'));
   const url = 'http://127.0.0.1:9/ns/home';
   for (const step of ['geometry', 'ramp', 'pixel', 'all']) {
@@ -899,8 +920,13 @@ await check('geometry, ramp, pixel and all take --target preview like join: it n
   }
   const r = await run(['register', '--page', p.slug, '--target', 'preview', '--dir', p.dir], { cwd: p.root });
   assert.equal(r.status, 2, r.all);
-  assert.match(r.stderr, /unknown flag --target for register/);
-  assert.equal(existsSync(join(workDir(p.dir, p.slug), 'summary.json')), false);
+  assert.match(r.stderr, /no .*figma-preview[/\\]join\.json/, 'register --target preview looks in the preview run\'s directory');
+  for (const flag of [['--reskin', p.page], ['--token-env', 'X'], ['--auth-header', 'token x']]) {
+    const other = await run(['register', '--page', p.slug, '--target', 'preview', ...flag, '--dir', p.dir], { cwd: p.root });
+    assert.equal(other.status, 2, other.all);
+    assert.match(other.stderr, new RegExp(`unknown flag ${flag[0]} for register`));
+  }
+  assert.equal(existsSync(join(workDir(p.dir, p.slug, 'preview'), 'summary.json')), false);
 });
 
 await check('every line the gate prints and every error it throws has the token redacted', async () => {

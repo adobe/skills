@@ -9,19 +9,27 @@ import { readInputs, workDir } from './io.mjs';
 import { runJoin } from './join.mjs';
 import { localTarget } from './target.mjs';
 
-// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, out }, where
-// rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor
-// ({ styles: { covered, total }, widths, waived }). target is the regime to measure: the
-// local page at url by default, or a built Target (previewTarget for a deployed preview).
-export async function prepare({ dir, slug, url, target = localTarget(url) }) {
-  const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
-  const out = workDir(dir, slug);
-  const join = await runJoin({ target, inputs, out });
-  if (!join.pass) return { drift: true, join, out };
+// The boxes of the roots a passed join and its checks file name, the validated checks and their per-slot coverage
+// floor ({ styles: { covered, total }, widths, waived }); an invalid checks file is a usage error listing every problem.
+// inputs holds checks and donorTokens (readInputs).
+export function checksFor({ dir, slug, inputs, join }) {
   const boxes = loadBoxes(dir, rootsNamed(inputs.checks, join));
   const { sections, problems, coverage } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens });
   if (problems.length) {
     throw new UsageError(`${dir}/reskin/figma-checks/${slug}.json has ${problems.length} problem(s):\n${problems.map((p) => `  ${p}`).join('\n')}`);
   }
-  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks: sections, coverage, out };
+  return { boxes, checks: sections, coverage };
+}
+
+// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, out }, where
+// rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor.
+// target is the regime to measure: the local page at url by default, or a built Target (previewTarget for a
+// deployed preview); out is that regime's work dir.
+export async function prepare({ dir, slug, url, target = localTarget(url) }) {
+  const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
+  const out = workDir(dir, slug, target.regime);
+  const join = await runJoin({ target, inputs, out });
+  if (!join.pass) return { drift: true, join, out };
+  const { boxes, checks, coverage } = checksFor({ dir, slug, inputs, join });
+  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, out };
 }

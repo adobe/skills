@@ -13,7 +13,8 @@ import { writeCurrent } from '../figma/cache.mjs';
 import { canonicalFigmaUrl } from '../figma/url.mjs';
 import { buildBoxes } from '../figma-gate/boxes.mjs';
 import { workDir } from '../figma-gate/io.mjs';
-import { buildRegister, contrast, mandateConflicts, registerMd } from '../figma-gate/register.mjs';
+import { buildRegister, contrast, coverageLine, mandateConflicts, registerMd } from '../figma-gate/register.mjs';
+import { waiverImpacts } from '../figma-gate/waivers.mjs';
 import { KEY, VERSION, makeProject } from './fixtures/figma-gate/setup.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -89,11 +90,15 @@ const ramp = { results: [
   { slot: 's01', id: 't1', node: '1:5', property: 'fontSize', status: 'PASS' },
   { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'PASS' },
 ] };
-const base = { join: joined, geometry, ramp, pixel: { results: [] }, mapping: [...mapping, { slot: 's04', module: null, status: 'new-module' }], boxes, flags: ['source JSON-LD carried verbatim'], link };
+const full = { styles: { covered: 4, total: 4 }, widths: [1440], waived: 0 };
+const coverage = { s01: full, s02: full };
+const checks = { s01: { root: '1:3', roots: { 1440: '1:3' }, waive: [] }, s02: { root: '1:7', roots: { 1440: '1:7' }, waive: [] } };
+const base = { join: joined, geometry, ramp, pixel: { results: [] }, mapping: [...mapping, { slot: 's04', module: null, status: 'new-module' }], boxes, flags: ['source JSON-LD carried verbatim'], link, checks, coverage };
+const COUNTS = { mandated: 1, waived: 0, unmandated: 1, 'out-of-kit': 1, conflict: 0, 'pre-existing': 1 };
 
 check('buildRegister: one class per kind, counts, and Figma links on the rows with a node', () => {
   const reg = buildRegister(base);
-  assert.deepEqual(reg.counts, { mandated: 1, unmandated: 1, 'out-of-kit': 1, conflict: 0, 'pre-existing': 1 });
+  assert.deepEqual(reg.counts, COUNTS);
   assert.match(reg.rows.find((r) => r.class === 'unmandated').link, /node-id=I1-7%3B5-7$/);
   const un = reg.rows.find((r) => r.class === 'unmandated');
   assert.deepEqual([un.slot, un.module, un.node, un.check, un.detail], ['s02', 'M2', 'I1:7;5:7', 'geometry g1 width', '540 vs 560 (±1)']);
@@ -143,7 +148,7 @@ check('buildRegister: a failing type entry is unmandated too; UNASSERTED is igno
     { slot: 's02', id: 't1', node: 'I1:7;5:2', property: 'fontSize', status: 'PASS' },
   ] };
   const reg = buildRegister({ ...base, ramp: r, geometry: { results: [{ slot: 's02', id: 'g1', node: 'x', measure: 'width', status: 'PASS' }] } });
-  assert.deepEqual(reg.counts, { mandated: 1, unmandated: 1, 'out-of-kit': 1, conflict: 0, 'pre-existing': 1 });
+  assert.deepEqual(reg.counts, COUNTS);
   assert.equal(reg.rows.find((x) => x.class === 'mandated').slot, 's02');
   assert.equal(reg.rows.find((x) => x.class === 'unmandated').check, 'type t1 fontSize');
 });
@@ -205,7 +210,7 @@ check('registerMd: counts, rows, the not-run line and the advisory pixel block w
   const reg = { page: 'home', ...buildRegister({ ...base, pixel, ramp: null }) };
   const md = registerMd(reg);
   assert.match(md, /^# Divergence register: home/);
-  assert.match(md, /mandated 0 · unmandated 1 · out-of-kit 1 · conflict 0 · pre-existing 1/);
+  assert.match(md, /mandated 0 · waived 0 · unmandated 1 · out-of-kit 1 · conflict 0 · pre-existing 1/);
   assert.match(md, /Not run: ramp/);
   assert.match(md, /geometry g1 width/);
   assert.match(md, /540 vs 560/);
@@ -218,10 +223,111 @@ check('registerMd: counts, rows, the not-run line and the advisory pixel block w
   assert.match(registerMd({ page: 'home', ...buildRegister({ ...base, pixel: null }) }), /Not run: pixel/);
 });
 
+const passing = {
+  geometry: { results: [
+    { slot: 's01', id: 'g1', node: '1:4', measure: 'width', status: 'PASS' },
+    { slot: 's02', id: 'g1', node: 'I1:7;5:7', measure: 'width', status: 'PASS' },
+  ] },
+  ramp,
+};
+const waiving = (slot, section, cov) => ({ ...base, ...passing, checks: { ...checks, [slot]: { ...checks[slot], ...section } }, coverage: { ...coverage, [slot]: { ...full, ...cov } } });
+
+check('buildRegister: a passing section with full coverage and no waiver is mandated', () => {
+  const reg = buildRegister({ ...base, ...passing });
+  assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s01', 's02']);
+  assert.deepEqual(reg.counts, { ...COUNTS, mandated: 2, unmandated: 0 });
+});
+
+check('buildRegister: one waiver makes the same section not mandated, with one waived row: node name and id, why, what it drops, the Figma link', () => {
+  const reg = buildRegister(waiving('s01', { waive: [{ node: '1:6', why: 'lead copy is long-form' }] }, { styles: { covered: 3, total: 4 }, waived: 1 }));
+  assert.deepEqual(reg.counts, { ...COUNTS, mandated: 1, unmandated: 0, waived: 1 });
+  assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s02']);
+  const w = reg.rows.find((r) => r.class === 'waived');
+  assert.deepEqual([w.slot, w.module, w.node, w.check], ['s01', 'M1', '1:6', 'waive node "Lead" (1:6)']);
+  assert.equal(w.detail, '"lead copy is long-form": drops 1 text style (1 text node) at 1440px · 1 geometry and 1 type entries pass');
+  assert.match(w.link, /node-id=1-6$/);
+});
+
+check('buildRegister: a container waiver says how many styles and nodes its subtree drops; a failing section keeps its unmandated rows beside it', () => {
+  const reg = buildRegister(waiving('s02', { waive: [{ node: 'I1:7;5:7', why: 'card is a documentation panel' }] }, { styles: { covered: 2, total: 4 }, waived: 1 }));
+  const w = reg.rows.find((r) => r.class === 'waived');
+  assert.deepEqual([w.slot, w.check, w.detail], ['s02', 'waive node "Card" (I1:7;5:7)', '"card is a documentation panel": drops 2 text styles (2 text nodes) at 1440px · 1 geometry and 1 type entries pass']);
+  const failed = buildRegister({ ...waiving('s02', { waive: [{ node: 'I1:7;5:7', why: 'card is a documentation panel' }] }, { waived: 1 }), geometry });
+  assert.deepEqual([failed.counts.waived, failed.counts.unmandated, failed.counts.mandated], [1, 1, 1]);
+  assert.equal(failed.rows.find((r) => r.class === 'waived').detail, '"card is a documentation panel": drops 2 text styles (2 text nodes) at 1440px', 'no pass tally on a failing section');
+});
+
+check('buildRegister: a TEXT waiver drops its style wherever the root has it', () => {
+  const reg = buildRegister(waiving('s02', { waive: [{ node: 'I1:7;5:3', why: 'two feature lines, one style' }] }, { waived: 1 }));
+  assert.match(reg.rows.find((r) => r.class === 'waived').detail, /^"two feature lines, one style": drops 1 text style \(2 text nodes\) at 1440px/);
+});
+
+check('buildRegister: a skipped section has no mandated row and a waived row for the skip; no coverage floor left but the skip says what it drops', () => {
+  const reg = buildRegister({ ...base, ...passing, geometry: { results: [passing.geometry.results[1]] }, ramp: { results: [ramp.results[1]] },
+    checks: { ...checks, s01: { root: '1:3', roots: { 1440: '1:3' }, waive: [], skip: 'composed beyond the kit' } },
+    coverage: { ...coverage, s01: { styles: { covered: 0, total: 4 }, widths: [1440], waived: 1 } } });
+  assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s02']);
+  const w = reg.rows.find((r) => r.class === 'waived');
+  assert.deepEqual([w.slot, w.check, w.node, w.detail], ['s01', 'skip', '1:3', '"composed beyond the kit": drops the whole section, no geometry or type entries required: 4 text styles (4 text nodes) at 1440px']);
+});
+
+check('buildRegister: incomplete coverage with no waiver is an unmandated "coverage" row, never mandated', () => {
+  const reg = buildRegister(waiving('s01', {}, { styles: { covered: 3, total: 4 } }));
+  assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s02']);
+  const row = reg.rows.find((r) => r.class === 'unmandated');
+  assert.deepEqual([row.slot, row.check, row.detail], ['s01', 'coverage', 'text styles 3/4 have a type entry']);
+});
+
+check('buildRegister: no coverage means nothing is mandated and "coverage" is not run (a join drift says only that)', () => {
+  const reg = buildRegister({ ...base, ...passing, checks: undefined, coverage: undefined });
+  assert.equal(reg.counts.mandated, 0);
+  assert.deepEqual(reg.notRun, ['coverage']);
+  assert.deepEqual(buildRegister({ ...base, join: { ...joined, pass: false }, checks: undefined, coverage: undefined }).notRun, ['join drift']);
+});
+
+const text = (id, size) => ({ id, name: id, type: 'TEXT', x: 0, y: 0, w: 10, h: 10, layout: null, fill: null, fillKind: 'NONE', children: [], text: { characters: 'x', fontFamily: 'Inter', fontSize: size, fontWeight: 400, lineHeightPx: 20, letterSpacing: 0, color: 'rgb(0, 0, 0)' } });
+const group = (id, name, type, w, kids) => ({ id, name, type, x: 0, y: 0, w, h: 10, layout: null, text: null, fill: null, fillKind: 'NONE', children: kids });
+
+check('waiverImpacts: a container whose style also lives outside it drops the nodes, not the style; the widths are the roots holding it', () => {
+  const desktop = group('D', 'Desktop', 'INSTANCE', 1440, [group('A', 'Panel', 'FRAME', 600, [text('a1', 16), text('a2', 40)]), text('b1', 16)]);
+  const tablet = group('T', 'Tablet', 'INSTANCE', 768, [group('A', 'Panel', 'FRAME', 600, [text('a3', 12)])]);
+  const synth = { roots: { D: { box: desktop }, T: { box: tablet } } };
+  const section = { root: 'D', roots: { 1440: 'D', 768: 'T' }, waive: [{ node: 'A', why: 'notation' }] };
+  const [w] = waiverImpacts(section, { node: 'D' }, synth);
+  assert.equal(w.check, 'waive node "Panel" (A)');
+  assert.equal(w.detail, '"notation": drops 1 text style (1 text node) at 768px; 1 text style (2 text nodes) at 1440px');
+});
+
+check('waiverImpacts: a mobile waiver names the mobile variant of the module frame, its styles, nodes and width', () => {
+  const desktop = group('D', 'Desktop', 'INSTANCE', 1440, [text('d1', 16)]);
+  const mobile = group('V', 'Hero / Mobile', 'INSTANCE', 360, [text('m1', 14), text('m2', 18), text('m3', 14)]);
+  const kit = group('M', 'Hero', 'FRAME', 2000, [desktop, mobile]);
+  const synth = { roots: { M: { box: kit }, D: { box: desktop } } };
+  const section = { root: 'D', roots: { 1440: 'D' }, waive: [{ width: 'mobile', why: 'phone layout is built later' }] };
+  const [w] = waiverImpacts(section, { node: 'M' }, synth);
+  assert.deepEqual([w.check, w.node], ['waive width mobile', 'V']);
+  assert.equal(w.detail, '"phone layout is built later": drops the mobile root "Hero / Mobile" (V): 2 text styles (3 text nodes) at 360px');
+  const [none] = waiverImpacts(section, { node: 'D' }, { roots: { D: { box: desktop } } });
+  assert.equal(none.detail, '"phone layout is built later": drops the mobile root, which the module frame does not hold: 0 text styles (0 text nodes)');
+});
+
+check('coverageLine: text styles, the widths of every section, waivers; empty is none', () => {
+  assert.equal(coverageLine({ s01: { styles: { covered: 4, total: 4 }, widths: [360, 1440], waived: 0 }, s02: { styles: { covered: 3, total: 4 }, widths: [1440], waived: 1 } }), 'text styles 7/8 · widths 360,1440 · waived 1');
+  assert.equal(coverageLine({}), 'text styles 0/0 · widths none · waived 0');
+});
+
+check('registerMd: a waived section lists each waiver row with its node name and id, why and what it drops', () => {
+  const reg = buildRegister(waiving('s02', { waive: [{ node: 'I1:7;5:7', why: 'card is a documentation panel' }] }, { waived: 1 }));
+  const md = registerMd({ page: 'home', ...reg });
+  assert.match(md, /mandated 1 · waived 1 · /);
+  assert.match(md, /## waived \(1\)/);
+  assert.match(md, /\| s02 \| M2 \| I1:7;5:7 \| waive node "Card" \(I1:7;5:7\) \| "card is a documentation panel": drops 2 text styles \(2 text nodes\) at 1440px/);
+});
+
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
 let n = 0;
 const project = () => { n += 1; return makeProject(join(scratch, `p${n}`)); };
-const put = (p, name, obj) => { const d = workDir(p.dir, p.slug); mkdirSync(d, { recursive: true }); writeFileSync(join(d, name), `${JSON.stringify(obj, null, 2)}\n`); };
+const put = (p, name, obj, regime = 'local') => { const d = workDir(p.dir, p.slug, regime); mkdirSync(d, { recursive: true }); writeFileSync(join(d, name), `${JSON.stringify(obj, null, 2)}\n`); };
 const seed = (p, extra = {}) => {
   put(p, 'join.json', joined);
   put(p, 'geometry.json', { pass: true, results: geometry.results });
@@ -250,7 +356,7 @@ check('register reads the step files, writes register.json and register.md, prin
   writeFileSync(join(p.dir, 'reskin', 'ledger.json'), JSON.stringify({ pages: { home: { flags: ['carried verbatim'] } } }));
   const r = run(['register', '--page', 'home'], p.root);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /register written: mandated 1 · unmandated 1 · out-of-kit 0 · conflict 0 · pre-existing 1/);
+  assert.match(r.stdout, /register written: mandated 1 · waived 0 · unmandated 1 · out-of-kit 0 · conflict 0 · pre-existing 1/);
   const md = join(workDir(p.dir, p.slug), 'register.md');
   assert.ok(r.stdout.includes(join('stardust', '.work', 'reskin', 'gates', 'home', 'figma', 'register.md')), r.stdout);
   const reg = JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
@@ -262,14 +368,88 @@ check('register reads the step files, writes register.json and register.md, prin
   assert.match(readFileSync(md, 'utf8'), /carried verbatim/);
 });
 
-check('register on step files whose results carry root: the rows and register.md link to the root, the regime comes from join.json', () => {
+check('register --target preview reads and writes the preview run\'s directory; the local run\'s files stay as they were', () => {
   const p = project();
-  put(p, 'join.json', { ...joined, regime: 'preview' });
-  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] });
-  put(p, 'ramp.json', { pass: true, results: [] });
+  seed(p);
+  put(p, 'join.json', { ...joined, regime: 'preview' }, 'preview');
+  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] }, 'preview');
+  put(p, 'ramp.json', { pass: true, results: [] }, 'preview');
+  const local = workDir(p.dir, p.slug);
+  const preview = workDir(p.dir, p.slug, 'preview');
+  assert.ok(preview.endsWith(join('gates', 'home', 'figma-preview')) && local.endsWith(join('gates', 'home', 'figma')), `${preview} ${local}`);
+  const before = readFileSync(join(local, 'geometry.json'), 'utf8');
+  const r = run(['register', '--page', 'home', '--target', 'preview'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.includes(join(preview, 'register.md').replace(`${p.root}/`, '')), r.stdout);
+  const reg = JSON.parse(readFileSync(join(preview, 'register.json'), 'utf8'));
+  assert.equal(reg.regime, 'preview');
+  assert.deepEqual(reg.rows.find((x) => x.class === 'unmandated').node, '9:9');
+  assert.equal(existsSync(join(local, 'register.json')), false, 'nothing was written to the local directory');
+  assert.equal(readFileSync(join(local, 'geometry.json'), 'utf8'), before);
+  assert.equal(run(['register', '--page', 'home'], p.root).status, 0);
+  assert.equal(JSON.parse(readFileSync(join(local, 'register.json'), 'utf8')).regime, 'local');
+  assert.equal(JSON.parse(readFileSync(join(preview, 'register.json'), 'utf8')).regime, 'preview', 'the local register did not overwrite the preview one');
+});
+
+check('register without a join.json of its regime names the other regime\'s when there is one', () => {
+  const p = project();
+  put(p, 'join.json', { ...joined, regime: 'preview' }, 'preview');
+  const local = run(['register', '--page', 'home'], p.root);
+  assert.equal(local.status, 2);
+  assert.match(local.stderr, /figma[/\\]join\.json/);
+  assert.match(local.stderr, /there is a join\.json for --target preview/);
+  const none = run(['register', '--page', 'home', '--target', 'preview'], project().root);
+  assert.equal(none.status, 2);
+  assert.match(none.stderr, /figma-preview[/\\]join\.json.*--target preview --reskin/);
+  assert.equal(run(['register', '--page', 'home', '--target', 'remote'], p.root).status, 2);
+  assert.equal(run(['register', '--page', 'home', '--reskin', 'x.html'], p.root).status, 2, 'local takes no --reskin');
+});
+
+check('register reads the waivers of the checks file: a waived row names the node, quotes the why, counts what it drops; the section is not mandated', () => {
+  const p = project();
+  seed(p);
+  const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+  const checksFile = JSON.parse(readFileSync(file, 'utf8'));
+  checksFile.sections.s01.waive = [{ node: '1:6', why: 'lead copy is long-form' }];
+  writeFileSync(file, JSON.stringify(checksFile));
   const r = run(['register', '--page', 'home'], p.root);
   assert.equal(r.status, 0, r.stderr);
-  const out = workDir(p.dir, p.slug);
+  assert.match(r.stdout, /register written: mandated 0 · waived 1 · unmandated 1 /);
+  const reg = JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
+  const w = reg.rows.find((x) => x.class === 'waived');
+  assert.deepEqual([w.slot, w.module, w.node, w.check], ['s01', 'M1', '1:6', 'waive node "Lead" (1:6)']);
+  assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
+  assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /## waived \(1\)[^]*waive node "Lead" \(1:6\)[^]*"lead copy is long-form"/);
+});
+
+check('register needs the checks file: missing or invalid is exit 2 naming it, a drifted join excepted from validation', () => {
+  const p = project();
+  seed(p);
+  const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+  const good = readFileSync(file, 'utf8');
+  const bad = JSON.parse(good);
+  bad.sections.s01.waive = [{ node: '1:6' }];
+  writeFileSync(file, JSON.stringify(bad));
+  const invalid = run(['register', '--page', 'home'], p.root);
+  assert.equal(invalid.status, 2);
+  assert.match(invalid.stderr, /home\.json has 1 problem\(s\)[^]*waive\[0\] needs why/);
+  assert.equal(existsSync(join(workDir(p.dir, p.slug), 'register.json')), false);
+  put(p, 'join.json', { ...joined, pass: false, problems: ['section drift: s02 before s01'] });
+  assert.equal(run(['register', '--page', 'home'], p.root).status, 0, 'a drifted join has no sections to validate');
+  rmSync(file);
+  const missing = run(['register', '--page', 'home'], p.root);
+  assert.equal(missing.status, 2);
+  assert.match(missing.stderr, /missing .*figma-checks[/\\]home\.json/);
+});
+
+check('register on step files whose results carry root: the rows and register.md link to the root, the regime comes from join.json', () => {
+  const p = project();
+  put(p, 'join.json', { ...joined, regime: 'preview' }, 'preview');
+  put(p, 'geometry.json', { pass: false, results: [{ ...geometry.results[1], root: '9:9' }] }, 'preview');
+  put(p, 'ramp.json', { pass: true, results: [] }, 'preview');
+  const r = run(['register', '--page', 'home', '--target', 'preview'], p.root);
+  assert.equal(r.status, 0, r.stderr);
+  const out = workDir(p.dir, p.slug, 'preview');
   const reg = JSON.parse(readFileSync(join(out, 'register.json'), 'utf8'));
   assert.equal(reg.regime, 'preview');
   const un = reg.rows.find((x) => x.class === 'unmandated');
@@ -283,7 +463,7 @@ check('register without geometry/ramp/pixel files: those steps are "not run", no
   put(p, 'join.json', joined);
   const r = run(['register', '--page', 'home'], p.root);
   assert.equal(r.status, 0, r.stderr);
-  assert.match(r.stdout, /mandated 0 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0/);
+  assert.match(r.stdout, /mandated 0 · waived 0 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0/);
   const reg = JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
   assert.deepEqual(reg.notRun, ['geometry', 'ramp', 'pixel']);
   assert.match(readFileSync(join(workDir(p.dir, p.slug), 'register.md'), 'utf8'), /Not run: geometry, ramp, pixel/);

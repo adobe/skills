@@ -1,12 +1,16 @@
 // skills/reskin/scripts/figma-gate/register.mjs — B4, the divergence register: what the Figma checks say
-// about a page, in five classes. mandated (a joined module section whose geometry and type entries all
-// pass: the page follows Figma there; none after a join drift), unmandated (each failing entry), out-of-kit (each new-module
-// mapping row: nothing in Figma to follow), conflict (a Figma text color that misses WCAG contrast on its
-// own ground, so following Figma would ship an unreadable page) and pre-existing (each ledger flag).
+// about a page, in six classes. mandated (a joined module section whose geometry and type entries all
+// pass, whose coverage floor is complete and that has no waiver: the page follows Figma there; none after a join
+// drift), waived (each waiver of a section: its node's name and id or its width, its why, and the text styles and nodes
+// it drops at which width; that section is not mandated), unmandated (each failing
+// entry), out-of-kit (each new-module mapping row: nothing in Figma to follow), conflict (a Figma text color that
+// misses WCAG contrast on its own ground, so following Figma would ship an unreadable page) and pre-existing (each
+// ledger flag).
 // Pure: the CLI reads the step files and writes register.json and register.md.
 import { REFERENCE_CLASSES } from './pixel.mjs';
+import { waiverImpacts } from './waivers.mjs';
 
-const CLASSES = ['mandated', 'unmandated', 'out-of-kit', 'conflict', 'pre-existing'];
+const CLASSES = ['mandated', 'waived', 'unmandated', 'out-of-kit', 'conflict', 'pre-existing'];
 const RGB = /^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i;
 
 function luminance(css) {
@@ -49,28 +53,35 @@ export function mandateConflicts(box) {
 const failing = (r) => r.status !== 'PASS' && r.status !== 'UNASSERTED';
 const asserted = (r) => r.status !== 'UNASSERTED';
 
-export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, flags, link }) {
+// checks is the validated checks (prepare's checks: each section's root, roots, waive and skip) and coverage its per-slot
+// coverage floor ({ styles: { covered, total }, widths, waived }); boxes must hold the roots the checks name. Without
+// coverage nothing is mandated: it is not run. A waived row names its node or width, quotes the why and says what it drops.
+export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, flags, link, checks, coverage }) {
   const rows = [];
   const row = (cls, slot, module, node, check, detail) => rows.push({ class: cls, slot, module, node, check, detail, link: node ? link(node) : null });
   const sections = join.sections || [];
   const moduleOf = (slot) => sections.find((s) => s.slot === slot)?.module ?? null;
   const drifted = join.pass === false;
-  const notRun = [...(drifted ? ['join drift'] : []), ...[['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k)];
+  const notRun = [...(drifted ? ['join drift'] : []), ...[['geometry', geometry], ['ramp', ramp], ['pixel', pixel]].filter(([, v]) => !v).map(([k]) => k), ...(!drifted && !coverage ? ['coverage'] : [])];
 
   const geo = geometry?.results || [];
   const typ = ramp?.results || [];
 
   // A row points at the checks root its results were measured against. Results that carry none (step files written
   // before roots were recorded) fall back to the join's module frame for a mandated row, to the entry's own node for a failing one.
-  if (geometry && ramp && !drifted) {
-    for (const s of sections.filter((x) => x.module)) {
-      const g = geo.filter((r) => r.slot === s.slot && asserted(r));
-      const t = typ.filter((r) => r.slot === s.slot && asserted(r));
-      if (g.length + t.length && ![...g, ...t].some(failing)) {
-        const root = [...g, ...t].find((r) => r.root)?.root ?? s.node;
-        row('mandated', s.slot, s.module, root, 'geometry and type', `${g.length} geometry and ${t.length} type entries pass`);
-      }
+  // A section is mandated only when it passes, its text styles are all covered and nothing in it was waived; its
+  // waivers are rows of their own, whatever its results.
+  for (const s of drifted ? [] : sections.filter((x) => x.module)) {
+    const g = geo.filter((r) => r.slot === s.slot && asserted(r));
+    const t = typ.filter((r) => r.slot === s.slot && asserted(r));
+    const cov = coverage?.[s.slot];
+    const passes = Boolean(geometry && ramp) && g.length + t.length > 0 && ![...g, ...t].some(failing);
+    const tally = `${g.length} geometry and ${t.length} type entries pass`;
+    if (passes && cov?.waived === 0) {
+      if (cov.styles.covered === cov.styles.total) row('mandated', s.slot, s.module, [...g, ...t].find((r) => r.root)?.root ?? s.node, 'geometry and type', tally);
+      else row('unmandated', s.slot, s.module, s.node, 'coverage', `text styles ${cov.styles.covered}/${cov.styles.total} have a type entry`);
     }
+    for (const w of waiverImpacts(checks?.[s.slot], s, boxes)) row('waived', s.slot, s.module, w.node ?? s.node, w.check, passes ? `${w.detail} · ${tally}` : w.detail);
   }
   for (const r of geo.filter(failing)) row('unmandated', r.slot, moduleOf(r.slot), r.root ?? r.node ?? null, `geometry ${r.id} ${r.measure}`, r.detail ?? '');
   for (const r of typ.filter(failing)) {
@@ -95,6 +106,15 @@ export function buildRegister({ join, geometry, ramp, pixel, mapping, boxes, fla
 }
 
 export const countsLine = (counts) => CLASSES.map((c) => `${c} ${counts[c]}`).join(' · ');
+
+// The coverage of all the module sections as the ledger records it: text styles with a type entry over all of them, the
+// widths checked, the waivers (a section skip counts as one).
+export function coverageLine(coverage) {
+  const all = Object.values(coverage ?? {});
+  const sum = (f) => all.reduce((n, c) => n + f(c), 0);
+  const widths = [...new Set(all.flatMap((c) => c.widths))].sort((a, b) => a - b);
+  return `text styles ${sum((c) => c.styles.covered)}/${sum((c) => c.styles.total)} · widths ${widths.join(',') || 'none'} · waived ${sum((c) => c.waived)}`;
+}
 
 const cell = (s) => String(s ?? '').replace(/\|/g, '\\|').replace(/\s*\n\s*/g, ' ');
 

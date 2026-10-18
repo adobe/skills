@@ -218,17 +218,15 @@ run command is SKILL.md Phase 5 (d).
 agent's reading of the frames, taken from `figma-gate.mjs boxes
 --module Mn` outlines: per section, the page selectors and the Figma
 node each is measured against (geometry) or whose text style it must
-match (type). Content-dependent measures (`top`, `height`) and any
-tolerance above 1px need a `why`.
+match (type).
 
 In a component kit the curated module frame is usually a documentation
-frame (a title block, notation panels, the module at desktop, tablet and
-mobile widths) and the module instance in it is content-width. Point
-`node` at the desktop instance (from the outline), set `"width": 1440`
-(the default is the root's, and the page opens at it), and `roots` at the
-mobile instance for entries that set `width`. The page section is
-full-bleed and the instance is not, so `left`, `right` and `top` are
-offset by the section's margins: check widths, gaps and paddings.
+frame (title block, notation, the module at desktop, tablet and mobile
+widths) and the module instance in it is content-width: point `node` at
+the desktop instance, set `"width": 1440` (the page opens at it) and
+`roots` at the mobile instance. The page section is full-bleed and the
+instance is not, so check widths, gaps and paddings, not `left`, `right`
+or `top`.
 
 **Coverage floor.** Computed from Figma, so a file cannot cover only
 what the page got right. Every root (`node`, each `roots` entry) is the
@@ -250,23 +248,26 @@ every one listed.
 | B1 geometry | blocks | width, height, left, right, top, gaps, paddings of page boxes against Figma nodes (relative to the module root) or a token | ±1px (Figma has half pixels, `measure-live` rounds) unless an entry says why |
 | B3 ramp | blocks | the `:root` block `donor-tokens.json` yields, and per type entry fontSize, fontWeight, lineHeight, letterSpacing, first fontFamily, color against the Figma text node | exact; lineHeight and letterSpacing ±0.1px |
 | B2 pixel | advisory | the section's slice of the frame image against the section's screenshot | none: orientation only; reference classes (light text 3%, inverted 3.5%, raster ground 4%) are uncalibrated |
-| B4 register | informational | mandated, unmandated, out-of-kit, conflict and pre-existing divergences, with Figma node links | none |
+| B4 register | informational | `mandated` (passes, every text style covered, no waiver), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
 
+- **Waivers show.** A `waived` row names the waived node (name and id) or
+  `mobile`, quotes its `why` and says how many text styles and nodes it
+  drops at which width, so a container waiver cannot hide a page area. The
+  ledger fragment keeps the totals: `coverage` is `text styles 8/8 ·
+  widths 1440 · waived 1`.
 - **`n/a: frame content differs`.** B2 compares pixels only where the
   frame's copy is the section's copy (visible text, whitespace and
   case ignored). Reskin keeps the *source's* bytes, so a section
   whose copy differs is n/a; geometry and ramp carry it. A `fixture`
   pixel mode screenshots a hand-made stand-in with the frame's copy.
 - **Fonts are recorded, not failed.** B2 names each font a section
-  uses that the page does not render (no loaded `@font-face`, not
-  installed where it is measured; a generic family is served); B3 compares the first
+  uses that the page does not render; B3 compares only the first
   family of the computed `font-family`.
 - **UNASSERTED.** A property the Figma node gives no value for is
   listed in `ramp.json` and never fails.
 - **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
   deadline): re-run once, never a fix iteration; the same 124 twice is
-  a residual (needs-owner). Exit 3 (bot challenge on a live target)
-  outranks 124 and 1 in `all`'s exit, and exit 2 outranks both.
+  a residual (needs-owner). `all`'s exit order is in `--help`.
 
 ## (e) Deployed acceptance (aem.page preview)
 
@@ -293,13 +294,13 @@ fetches `.plain.html` without a browser.
   Every step measures it with the site token, sent to the preview origin
   only, and stops with exit 2 when given none: no row is `n/a` for want of
   one.
-- **Figma on a preview.** B0 finds each slot in the preview's
-  `.plain.html`, then in the decorated page: the section is
-  `main > div:nth-child(k)` of the decorated div, since decoration can
-  prepend or drop sections (a moved slot gets a note in `join.json`). An
-  entry is measured by its `previewSelector`, else its `selector`, scoped
-  to that section; no match is "unmeasurable", a FAIL. Register rows
-  point at the checks root.
+- **Figma on a preview.** Sections are the preview's authored
+  `.plain.html` sections, found again as `main > div:nth-child(k)` of the
+  decorated page (decoration can prepend or drop sections; a moved slot
+  gets a note in `join.json`). An entry is measured by its
+  `previewSelector`, else its `selector`; no match is "unmeasurable", a
+  FAIL. Evidence goes to `gates/<slug>/figma-preview/`, so a local run's
+  `figma/` survives it.
 - **No verdict, exit 3.** As (d); the budget is in `deployed-leg.md`.
 
 ## One fix iteration per gate family, then residuals

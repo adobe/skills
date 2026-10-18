@@ -168,7 +168,7 @@ check('main with steps.boxes replaced returns its code and passes dir and opts',
 check('--help lists every subcommand with its flags and the run-bg launch hint', () => {
   const r = run(['--help'], join(scratch, 'empty'));
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'waived', 'figma-preview', 'run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
 
 check('all without --page or --url exits 2', () => {
@@ -250,12 +250,13 @@ if (playwrightOk && pngOk) {
     assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);
     assert.ok(Array.isArray(s.steps.geometry.detail));
     const f = s.ledgerFragment;
-    assert.deepEqual(Object.keys(f), ['regime', 'figmaVersion', 'join', 'geometry', 'ramp', 'pixel', 'register', 'literals', 'invocation']);
+    assert.deepEqual(Object.keys(f), ['regime', 'figmaVersion', 'join', 'geometry', 'ramp', 'pixel', 'register', 'coverage', 'literals', 'invocation']);
     assert.deepEqual([f.regime, f.figmaVersion, f.join], ['local', VERSION, 'PASS']);
     assert.match(f.geometry, /^PASS (\d+)\/\1$/);
     assert.match(f.ramp, /^PASS (\d+)\/\1/);
     assert.match(f.pixel, /^s01 \d+\.\d\d%, s02 \d+\.\d\d%$/);
-    assert.match(f.register, /^mandated 2 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0$/);
+    assert.match(f.register, /^mandated 2 · waived 0 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0$/);
+    assert.equal(f.coverage, 'text styles 8/8 · widths 1440 · waived 0');
     assert.ok(Number.isInteger(f.literals));
     assert.equal(f.invocation, `figma-gate.mjs all --page home --url ${p.page} --dir ${p.dir}`);
     assert.equal(s.invocation, f.invocation);
@@ -299,13 +300,31 @@ if (playwrightOk && pngOk) {
     for (const k of ['geometry', 'ramp', 'pixel']) assert.match(r.stdout, new RegExp(`^FAIL ${k} not run: section drift$`, 'm'));
     const s = summaryOf(p);
     assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.steps[k].verdict), Array(3).fill('not run: section drift'));
-    assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.ledgerFragment[k]), Array(3).fill('not run: section drift'));
+    assert.deepEqual(['geometry', 'ramp', 'pixel', 'coverage'].map((k) => s.ledgerFragment[k]), Array(4).fill('not run: section drift'));
     assert.equal(s.ledgerFragment.join, 'FAIL');
     assert.equal(s.steps.register.verdict, 'written');
     const reg = registerOf(p);
     assert.equal(reg.counts.mandated, 0);
     assert.ok(reg.notRun.includes('join drift'));
     for (const f of ['geometry.json', 'ramp.json', 'pixel.json']) assert.ok(!existsSync(join(work(p), f)), f);
+  });
+
+  queue('all with a waiver in the checks file: the register has no mandated row for that section and a waived row with what it drops; the fragment counts the waiver', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checksFile = JSON.parse(readFileSync(file, 'utf8'));
+    checksFile.sections.s01.waive = [{ node: '1:6', why: 'lead copy is long-form' }];
+    writeFileSync(file, JSON.stringify(checksFile));
+    const r = await runAll(p);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const f = summaryOf(p).ledgerFragment;
+    assert.equal(f.coverage, 'text styles 8/8 · widths 1440 · waived 1');
+    assert.match(f.register, /^mandated 1 · waived 1 · unmandated 0 /);
+    const rows = registerOf(p).rows;
+    assert.deepEqual(rows.filter((x) => x.class === 'mandated').map((x) => x.slot), ['s02']);
+    const w = rows.find((x) => x.class === 'waived');
+    assert.deepEqual([w.slot, w.node, w.check], ['s01', '1:6', 'waive node "Lead" (1:6)']);
+    assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
   });
 
   queue('a drifted run after a passing one never reuses the earlier step files', async () => {

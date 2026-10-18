@@ -19,7 +19,7 @@
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup · 3 bot challenge on a live target
 // · 124 no verdict (a step crashed or timed out: re-run, never a fix iteration).
-import { realpathSync, rmSync } from 'node:fs';
+import { existsSync, realpathSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -33,9 +33,10 @@ export const HELP = `Usage:
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
-  node figma-gate.mjs register --page <slug> [--dir stardust]
+  node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
-  (geometry, ramp, pixel and all take --target preview --reskin <file> [--auth-header <value> | --token-env <NAME>] like join)
+  (geometry, ramp, pixel and all take --target preview --reskin <file> [--auth-header <value> | --token-env <NAME>] like join;
+   register takes --target preview alone, to read the preview run's files)
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
 
@@ -117,24 +118,29 @@ pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates
          Exit 0, or 124 when a comparison hit its deadline (no verdict: re-run). On --target preview the screenshot is
          the decorated section at the join's selector once the decoration has settled; the number stays advisory.
 register B4, the divergence register. Reads join.json and whichever of geometry.json, ramp.json and
-         pixel.json the earlier steps left under <dir>/.work/reskin/gates/<slug>/figma/ (no browser, no
-         --url; a missing join.json is exit 2: run the join first). A step with no file is "not run":
-         the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
-         Five classes: mandated (a joined module section whose geometry and type entries all pass;
-         UNASSERTED ignored), unmandated (each failing entry, a failing :root token included),
+         pixel.json the earlier steps left under <dir>/.work/reskin/gates/<slug>/figma/ (figma-preview/ with --target
+         preview: the run to read; no browser, no --url; a missing join.json is exit 2: run the join first), and the
+         checks file as it stands now, for its waivers and coverage (a missing or invalid one is exit 2). A step with no
+         file is "not run": the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
+         Six classes: mandated (a joined module section whose geometry and type entries all pass, whose text styles
+         all have a type entry and that has no waiver; UNASSERTED ignored), waived (one row per waiver of a section, a
+         skip included: the node's name and id, or the mobile root, its why in quotes, and how many text styles and text
+         nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
+         failing :root token included),
          out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
          on its own solid ground: 4.5, or 3 for large text; gradient and image grounds are skipped)
          and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
          Rows carry the Figma node and a file link; under --confidential the links are left out. A row's node is the
          checks root its results were measured against (their root), the join's module frame for a mandated section
-         whose results carry none, and the entry's own node for a failing entry with none. The register's regime is the
+         whose results carry none, the waived node (the section's root for a mobile-root waiver or a skip), and the
+         entry's own node for a failing entry with none. The register's regime is the
          join's.
          Writes register.json and register.md (counts, rows, a "Not run" line, then the pixel results as
          an advisory block with the uncalibrated reference classes) beside the step files, prints
-         "register written: mandated 1 · unmandated 1 · …" and the register.md path; exit 0.
+         "register written: mandated 1 · waived 0 · unmandated 1 · …" and the register.md path; exit 0.
 all      The whole run: join, geometry, ramp, pixel, register. The page is joined and the checks file
          validated once, and every step works from that result. First it deletes the previous geometry.json,
-         ramp.json, pixel.json, register.json, register.md and summary.json, so a drifted or crashed run never
+         ramp.json, pixel.json, register.json, register.md and summary.json of its own regime's directory, so a drifted or crashed run never
          feeds stale files to the register or the summary. A join drift ends in exit 1 with geometry, ramp
          and pixel "not run: section drift" (the register still runs, with nothing mandated and "join drift"
          under Not run). A step that throws anything but a usage error or a bot challenge is "CRASH: <message>" (exit 124);
@@ -153,15 +159,17 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          invocation names --target preview and --reskin (a site token flag only as a placeholder, never its value):
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
              asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
-             register: the counts line, literals: <token literals outside :root>, invocation }
+             register: the counts line, coverage: "text styles <covered>/<total> · widths <w1>,<w2> · waived <n>"
+             (over every module section; a section skip counts as a waiver), literals: <token literals outside :root>, invocation }
          A step that did not run carries its verdict instead ("not run: section drift", "CRASH: <message>").
          Run it under run-bg when it may exceed a shell's limit:
            run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node <scripts>/figma-gate.mjs all --page <slug> --url <url|file>
            run-bg.mjs wait figma-<slug> --dir stardust/.work/reskin/bg
 --dir <d>  the stardust directory (default stardust).
 --target local|preview  the regime of --url (default local: the reskin page). preview is a deployed (aem.page) page and takes
-         every step with a --url (join, geometry, ramp, pixel, all; register has no --target, it reads the regime from
-         join.json). The sections are the join's, main > div:nth-child(k) of the decorated page, and each checks entry is
+         every step with a --url (join, geometry, ramp, pixel, all; register takes it only to say which run to read). A
+         preview run keeps its files in <slug>/figma-preview/ beside the local run's <slug>/figma/, so neither
+         deletes the other's evidence. The sections are the join's, main > div:nth-child(k) of the decorated page, and each checks entry is
          measured by its previewSelector, else its selector, scoped to that section: a selector that matches nothing there
          is "unmeasurable", a FAIL, never a skip. Each of those steps opens the preview and waits for the EDS decoration
          first (a stall is exit 124), and every step file records regime "preview". preview needs --reskin <file>;
@@ -219,7 +227,7 @@ const SPEC = {
   geometry: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
   ramp: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
   pixel: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
-  register: { values: ['--page', '--dir'], bools: [], positional: [] },
+  register: { values: ['--page', '--target', '--dir'], bools: [], positional: [] },
   all: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
 };
 
@@ -327,7 +335,7 @@ async function joinStep({ dir, opts, log, UsageError, auth }) {
   const [{ readInputs, workDir }, { runJoin }] = await Promise.all([helper('io'), helper('join')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
   const target = await targetFor(opts, auth);
-  const result = await runJoin({ target, inputs, out: workDir(dir, opts.page) });
+  const result = await runJoin({ target, inputs, out: workDir(dir, opts.page, target.regime) });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
@@ -392,21 +400,29 @@ async function pixelStep({ dir, opts, log, UsageError, ready: given, auth }) {
   return results.some((r) => r.verdict === 'no verdict') ? 124 : 0;
 }
 
-async function registerStep({ dir, opts, log, UsageError }) {
+// --target names which run's directory to read (local by default); `all` hands over its prepared checks as ready.
+async function registerStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('register needs --page <slug>');
-  const [{ readInputs, workDir }, { loadBoxes }, { buildRegister, countsLine, registerMd }, { readCurrent }, { canonicalFigmaUrl }, { readJsonIf, writeFileAtomic, writeJson }] = await Promise.all([
-    helper('io'), helper('boxes'), helper('register'), helper('cache', 'figma'), helper('url', 'figma'), helper('io', 'figma'),
+  const [{ readInputs, workDir }, { loadBoxes }, { checksFor }, { buildRegister, countsLine, registerMd }, { readCurrent }, { canonicalFigmaUrl }, { readJsonIf, writeFileAtomic, writeJson }] = await Promise.all([
+    helper('io'), helper('boxes'), helper('prepare'), helper('register'), helper('cache', 'figma'), helper('url', 'figma'), helper('io', 'figma'),
   ]);
-  const out = workDir(dir, opts.page);
+  const regime = opts.target ?? 'local';
+  const out = workDir(dir, opts.page, regime);
   const read = (name) => {
     try { return readJsonIf(join(out, name)); } catch (e) { throw new UsageError(`${join(out, name)} is not valid JSON: ${e.message}`); }
   };
   const joinResult = read('join.json');
-  if (!joinResult) throw new UsageError(`no ${join(out, 'join.json')}: run the join first (node figma-gate.mjs all --page ${opts.page} --url <url|file>, or join)`);
-  const { mapping: mappingMd, ledger } = readInputs(dir, opts.page, ['mapping', 'ledger']);
+  if (!joinResult) {
+    const other = regime === 'preview' ? 'local' : 'preview';
+    const hint = existsSync(join(workDir(dir, opts.page, other), 'join.json')) ? ` (there is a join.json for --target ${other})` : '';
+    throw new UsageError(`no ${join(out, 'join.json')}: run the join first (node figma-gate.mjs all --page ${opts.page} --url <url|file>${regime === 'preview' ? ' --target preview --reskin <file>' : ''}, or join)${hint}`);
+  }
+  const inputs = readInputs(dir, opts.page, ['mapping', 'ledger', 'checks', 'donorTokens']);
+  // The waivers and coverage of the checks file as it stands; a drifted join has no sections to check.
+  const prepared = joinResult.pass === false ? null : given && !given.drift ? given : checksFor({ dir, slug: opts.page, inputs, join: joinResult });
   const current = readCurrent(dir);
   const sectionNodes = [...new Set((joinResult.sections || []).map((s) => s.node).filter(Boolean))];
-  const boxes = sectionNodes.length ? loadBoxes(dir, sectionNodes) : { roots: {} };
+  const boxes = prepared?.boxes ?? (sectionNodes.length ? loadBoxes(dir, sectionNodes) : { roots: {} });
   const link = (nodeId) => (current?.confidential || !current?.fileKey ? null : canonicalFigmaUrl({ fileKey: current.fileKey, nodeId }));
   const register = {
     page: opts.page,
@@ -415,10 +431,12 @@ async function registerStep({ dir, opts, log, UsageError }) {
       geometry: read('geometry.json'),
       ramp: read('ramp.json'),
       pixel: read('pixel.json'),
-      mapping: (await helper('mapping')).parseMapping(mappingMd),
+      mapping: (await helper('mapping')).parseMapping(inputs.mapping),
       boxes,
-      flags: ledger?.pages?.[opts.page]?.flags || [],
+      flags: inputs.ledger?.pages?.[opts.page]?.flags || [],
       link,
+      checks: prepared?.checks,
+      coverage: prepared?.coverage,
     }),
   };
   writeJson(join(out, 'register.json'), register);
@@ -454,13 +472,13 @@ function pixelFragment(file) {
 async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, redact }) {
   if (!opts.page) throw new UsageError('all needs --page <slug>');
   if (!opts.url) throw new UsageError('all needs --url <url|file>: the page to check');
-  const [{ prepare }, { workDir }, { countsLine }, { readCurrent }, { provenance, readJsonIf, writeJson }] = await Promise.all([
+  const [{ prepare }, { workDir }, { countsLine, coverageLine }, { readCurrent }, { provenance, readJsonIf, writeJson }] = await Promise.all([
     helper('prepare'), helper('io'), helper('register'), helper('cache', 'figma'), helper('io', 'figma'),
   ]);
   const target = await targetFor(opts, auth);
   const regime = target.regime;
   const scrub = (m) => (redact ? redact(m) : m);
-  const out = workDir(dir, opts.page);
+  const out = workDir(dir, opts.page, regime);
   for (const f of STALE_FILES) rmSync(join(out, f), { force: true });
 
   const isSetup = (e) => e instanceof UsageError || e?.code === 2;
@@ -518,7 +536,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
     else notRun(name, joinStopped, joinStoppedPrefix);
   }
   const registerPath = join(out, 'register.md');
-  if (ready) await exec('register', steps.register, {}, { hide: registerPath });
+  if (ready) await exec('register', steps.register, { ready }, { hide: registerPath });
   else notRun('register', joinStopped, joinStoppedPrefix);
 
   const read = (name) => readJsonIf(join(out, name));
@@ -536,6 +554,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
     ramp: fragmentOf('ramp', rampFragment),
     pixel: fragmentOf('pixel', pixelFragment),
     register: fragmentOf('register', (f) => countsLine(f.counts)),
+    coverage: runnable ? coverageLine(ready.coverage) : ready ? NOT_RUN_DRIFT : joinStopped,
     literals: files.ramp ? files.ramp.literals?.length ?? 0 : null,
     invocation,
   };

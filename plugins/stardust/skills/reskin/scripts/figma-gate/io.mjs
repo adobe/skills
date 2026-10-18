@@ -8,7 +8,8 @@ import { UsageError } from '../figma/errors.mjs';
 import { assertIgnored } from '../figma/guard.mjs';
 import { readJson } from '../figma/io.mjs';
 
-export const workDir = (dir, slug) => join(dir, '.work', 'reskin', 'gates', slug, 'figma');
+// A preview run has its own directory, so it never deletes or overwrites the evidence of a local run.
+export const workDir = (dir, slug, regime = 'local') => join(dir, '.work', 'reskin', 'gates', slug, regime === 'preview' ? 'figma-preview' : 'figma');
 
 // need names: mapping, contentModel, rules, donorTokens, checks (required when named), ledger (optional).
 const FILES = {
