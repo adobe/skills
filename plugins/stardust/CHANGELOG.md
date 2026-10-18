@@ -40,6 +40,14 @@ occurrences and regexes in one call without a prior read. replace.mjs now offers
   file-write call (`open(…)` with a write mode, `write_text`, `json.dump`, `writeFileSync`, …) in one fenced block or
   paragraph; a read-only probe, or a prohibition naming `node -e`, stays clean. The validate workflow lists the lints
   one by one and does not run it yet — the integrator adds the step.
+- **The extract summary, one script (`extract/scripts/extract-report.mjs`).** The four runs wrote 95 distinct helper
+  scripts; one run alone wrote seven extract-analysis helpers (outline, brand tokens, slots, modules, design, review,
+  aggregate). Per page of `stardust/current/pages/*.json` it prints the heading outline, the modules (the main
+  landmark's sections with purpose and headline, component counts), the brand tokens (custom properties as colours,
+  fonts and other; font families; theme colour) and the slot candidates (headline, lede, title, description, up to 8
+  CTAs, image alt counts, one line per main section), then one aggregate line. It reads both the crawler's record and
+  the documented schema (`extract/reference/current-state-schema.md`), a missing field left out; `--pages <glob>`
+  keeps the matching pages, `--json` prints one object, uncapped. Read-only: it writes nothing.
 
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
