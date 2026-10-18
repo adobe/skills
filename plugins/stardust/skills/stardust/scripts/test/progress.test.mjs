@@ -4,7 +4,7 @@
 // key inside the entry, JSON or string value, __proto__ / constructor / prototype refused), the
 // shape refusals (not JSON, not an object, a non-object map or entry, a replica file holding one
 // archetype's bare record), the replica ledger's other top-level keys kept as they were, the one
-// status line, show, both script layouts, and parallel writers losing no entry; wait (the watched set and
+// status line, show, show --waves (the planned units, the dependency rules, can start now), both script layouts, and parallel writers losing no entry; wait (the watched set and
 // --unit, a unit ending mid-wait, --max with its notice and clamp, the pause file at the start and mid-wait,
 // a watched unit gone, a ledger unreadable at the bound, --json, no file-lock.mjs needed). Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -14,8 +14,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  applyUnit, formatLine, parseArgs, parseSetValue, pauseState, pickWatched, setPath, waitBound, waitEndedLine, waitPausedLine,
-  waitState, waitTimeoutLine,
+  applyUnit, C0_ARCHETYPE, formatLine, formatWaves, parseArgs, parseSetValue, pauseState, pickWatched, setPath, waitBound, waitEndedLine,
+  waitPausedLine, waitState, waitTimeoutLine, wavesView,
 } from '../progress.mjs';
 
 // A supervised session's pause file must not end these waits; the pause tests set their own.
@@ -232,12 +232,117 @@ check('pauseState: unset / empty / missing = no pause; JSON {at, reason}; anythi
   }
 });
 
+// ---- show --waves (pure) --------------------------------------------------------------------------
+const MID_RUN = {
+  'foundation-chrome': { status: 'done', kind: 'foundation' },
+  'foundation-styles': { status: 'done', kind: 'foundation' },
+  'archetype-article': { status: 'running', kind: 'archetype', templates: ['article'] },
+  'archetype-page': { status: 'done', kind: 'archetype' },
+  'cluster-page': { status: 'running', kind: 'cluster', templates: ['page'] },
+};
+const TEMPLATES = [{ id: 'article', pageCount: 5 }, { id: 'page', pageCount: 3 }, { id: 'product', pageCount: 18 }, { id: 'home', pageCount: 1 }];
+const MID_RUN_TEXT = [
+  'progress waves rollout: stardust/rollout/progress.json — planned from coverage/templates.json; foundation frozen',
+  'foundation: foundation-chrome done · foundation-styles done',
+  'archetypes: archetype-article running · archetype-home planned · archetype-page done · archetype-product planned',
+  'clusters: cluster-article planned (after archetype-article) · cluster-page running · cluster-product-1 planned (after archetype-product) · cluster-product-2 planned (after cluster-product-1)',
+  'final: gate-all planned (after every unit above)',
+  'can start now: archetype-home, archetype-product',
+];
+const unmetOf = (view, wave, name) => view.waves[wave].find((u) => u.name === name)?.after;
+check('wavesView: a mid-run ledger + templates — planned units by the contract\'s names, unmet dependencies, can start now', () => {
+  const v = wavesView(MID_RUN, { templates: TEMPLATES, frozen: true });
+  assert.deepEqual(formatWaves(v, ROLLOUT), MID_RUN_TEXT);
+  assert.equal(v.planned, true); assert.equal(v.frozen, true);
+  assert.deepEqual(v.canStart, ['archetype-home', 'archetype-product']);
+  assert.deepEqual(v.waves.foundation, [{ name: 'foundation-chrome', state: 'done', after: [] }, { name: 'foundation-styles', state: 'done', after: [] }]);
+  assert.deepEqual(unmetOf(v, 'final', 'gate-all'), ['archetype-article', 'archetype-home', 'archetype-product', 'cluster-article', 'cluster-page', 'cluster-product-1', 'cluster-product-2']);
+  assert.deepEqual(v.waves.other, []);
+  const recordedOnly = wavesView(MID_RUN, { templates: null, frozen: true });
+  assert.equal(recordedOnly.planned, false);
+  assert.deepEqual(Object.values(recordedOnly.waves).flat().map((u) => u.name), Object.keys(MID_RUN));
+  assert.match(formatWaves(recordedOnly, 'x.json')[0], /^progress waves rollout: x\.json — recorded units only \(no coverage\/templates\.json\); foundation frozen$/);
+  assert.equal(formatWaves(recordedOnly, 'x.json')[4], 'final: none');
+});
+check('wavesView: the foundation first; before the freeze C0\'s archetype alone can start, and once an archetype is recorded the others wait for foundation-freeze', () => {
+  const tpl = [{ id: 'article', pageCount: 4 }, { id: 'page', pageCount: 1 }];
+  assert.deepEqual(wavesView({}, { templates: tpl }).canStart, ['foundation-chrome']);
+  const chrome = wavesView({ 'foundation-chrome': { status: 'running' } }, { templates: tpl });
+  assert.deepEqual(chrome.canStart, []);
+  assert.deepEqual(unmetOf(chrome, 'foundation', 'foundation-styles'), ['foundation-chrome']);
+  assert.deepEqual(unmetOf(chrome, 'archetypes', 'archetype-page'), ['foundation-chrome', 'foundation-styles', 'foundation-freeze']);
+  const fdone = { 'foundation-chrome': { status: 'done' }, 'foundation-styles': { status: 'done' } };
+  const before = wavesView(fdone, { templates: tpl });
+  assert.deepEqual(before.canStart, [C0_ARCHETYPE]);
+  assert.equal(C0_ARCHETYPE, "C0's archetype (archetype-<shell template>)");
+  assert.deepEqual(unmetOf(before, 'archetypes', 'archetype-article'), ['foundation-freeze']);
+  assert.deepEqual(unmetOf(before, 'clusters', 'cluster-article'), ['archetype-article', 'foundation-freeze']);
+  assert.equal(formatWaves(before, ROLLOUT).at(-1), "can start now: C0's archetype (archetype-<shell template>)");
+  assert.match(formatWaves(before, ROLLOUT)[0], /; foundation not frozen$/);
+  const one = wavesView({ ...fdone, 'archetype-page': { status: 'running', kind: 'archetype' } }, { templates: tpl });
+  assert.deepEqual(one.canStart, []);
+  assert.match(formatWaves(one, ROLLOUT)[2], /^archetypes: archetype-article planned \(after foundation-freeze\) · archetype-page running$/);
+  const c0failed = wavesView({ ...fdone, 'archetype-page': { status: 'failed', kind: 'archetype' } }, { templates: tpl });
+  assert.deepEqual(c0failed.canStart, ['archetype-page'], 'a recorded archetype needs no freeze');
+  assert.deepEqual(wavesView({ ...fdone, 'archetype-page': { status: 'done' } }, { templates: tpl, frozen: true }).canStart, ['archetype-article']);
+});
+check('wavesView: more than 16 siblings → sub-units cluster-<t>-1…n, each after the one before; the first after the archetype and the freeze', () => {
+  const names = (pageCount) => wavesView({}, { templates: [{ id: 'p', pageCount }] }).waves.clusters.map((u) => u.name);
+  assert.deepEqual(names(1), []);
+  assert.deepEqual(names(2), ['cluster-p']);
+  assert.deepEqual(names(17), ['cluster-p']);
+  assert.deepEqual(names(18), ['cluster-p-1', 'cluster-p-2']);
+  assert.deepEqual(names(34), ['cluster-p-1', 'cluster-p-2', 'cluster-p-3']);
+  const map = { 'foundation-chrome': { status: 'done' }, 'foundation-styles': { status: 'done' }, 'archetype-p': { status: 'done' }, 'cluster-p-1': { status: 'done', kind: 'cluster' } };
+  const v = wavesView(map, { templates: [{ id: 'p', pageCount: 40 }], frozen: true });
+  assert.deepEqual(v.waves.clusters.map((u) => [u.name, u.state, u.after]), [['cluster-p-1', 'done', []], ['cluster-p-2', 'planned', []], ['cluster-p-3', 'planned', ['cluster-p-2']]]);
+  assert.deepEqual(v.canStart, ['cluster-p-2']);
+});
+check('wavesView: a failed archetype can start again and holds its cluster; a recorded non-scheme cluster for a template stops planning cluster-<t>', () => {
+  const base = { 'foundation-chrome': { status: 'done' }, 'foundation-styles': { status: 'done' } };
+  const f = wavesView({ ...base, 'archetype-news': { status: 'failed', kind: 'archetype' } }, { templates: [{ id: 'news', pageCount: 6 }], frozen: true });
+  assert.deepEqual(f.canStart, ['archetype-news']);
+  assert.deepEqual(unmetOf(f, 'clusters', 'cluster-news'), ['archetype-news']);
+  const custom = { ...base, 'archetype-news': { status: 'done' }, 'news-2024': { status: 'pending', kind: 'cluster', templates: ['news'] } };
+  const c = wavesView(custom, { templates: [{ id: 'news', pageCount: 6 }, { id: 'big', pageCount: 30 }], frozen: false });
+  assert.deepEqual(c.waves.clusters.map((u) => u.name), ['cluster-big-1', 'cluster-big-2', 'news-2024']);
+  assert.deepEqual(unmetOf(c, 'clusters', 'news-2024'), ['foundation-freeze']);
+  const whole = wavesView({ ...base, 'cluster-big': { status: 'running', templates: ['big'] } }, { templates: [{ id: 'big', pageCount: 30 }] });
+  assert.deepEqual(whole.waves.clusters.map((u) => u.name), ['cluster-big'], 'a recorded whole cluster covers a template the scheme would split');
+});
+check('wavesView: kinds inferred from names, other: never starts; everything done but gate-all → can start now: gate-all', () => {
+  const map = { 'gate-all': { status: 'pending' }, hotfix: { status: 'pending' }, 'foundation-chrome': { status: 'done' }, 'cluster-x': { status: 'done' }, 'archetype-x': { status: 'done' }, 'foundation-styles': { status: 'done', kind: 'foundation' } };
+  const v = wavesView(map, { templates: [{ id: 'x', pageCount: 2 }], frozen: true });
+  assert.deepEqual(Object.fromEntries(Object.entries(v.waves).map(([w, us]) => [w, us.map((u) => u.name)])), {
+    foundation: ['foundation-chrome', 'foundation-styles'], archetypes: ['archetype-x'], clusters: ['cluster-x'], final: ['gate-all'], other: ['hotfix'],
+  });
+  assert.deepEqual(v.canStart, ['gate-all']);
+  const text = formatWaves(v, ROLLOUT);
+  assert.equal(text.at(-2), 'other: hotfix pending'); assert.equal(text.at(-1), 'can start now: gate-all');
+  const open = wavesView({ ...map, 'cluster-x': { status: 'failed' } }, { templates: [{ id: 'x', pageCount: 2 }], frozen: true });
+  assert.deepEqual(open.canStart, ['cluster-x']);
+  assert.deepEqual(unmetOf(open, 'final', 'gate-all'), ['cluster-x']);
+  assert.match(formatWaves(open, ROLLOUT).at(-3), /^final: gate-all pending \(after every unit above\)$/);
+});
+check('parseArgs: --waves on show only, rollout only, without a <name>', () => {
+  assert.equal(parseArgs(['show', '--waves', '--json']).waves, true);
+  const bad = (argv, re) => assert.throws(() => parseArgs(argv), (e) => e.code === 2 && re.test(e.message), `${argv.join(' ')} → ${re}`);
+  bad(['show', '--waves', '--ledger', 'migrate'], /^--waves reads the rollout ledger \(foundation → archetypes → clusters → final\)$/);
+  bad(['show', '--waves', '--ledger', 'replica'], /^--waves reads the rollout ledger/);
+  bad(['show', 'c1', '--waves'], /^show --waves shows every unit — drop the name c1$/);
+  bad(['wait', '--waves'], /^--waves applies to show only$/);
+  bad(['unit', 'start', 'c1', '--waves'], /^--waves applies to show only$/);
+  bad(['show', '--waves', '--waves'], /--waves given twice/);
+});
+
 // ---- the CLI -----------------------------------------------------------------------------------
 check('--help: exit 0, usage on stdout, nothing written (also before a bad flag)', () => {
   const d = project();
   const h = runIn(d, '--help');
   assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /progress\.mjs unit <start\|done\|failed> <name>/); assert.match(h.out, /Exit codes: 0/);
   assert.match(h.out, /progress\.mjs wait \[--ledger …\] \[--file …\] \[--unit <name>\]… \[--max <seconds>\] \[--json\]/);
+  assert.match(h.out, /progress\.mjs show --waves \[--file …\] \[--json\]/);
+  assert.match(h.out, /^show --waves /m);
   assert.match(h.out, /^wait: /m);
   assert.match(h.out, /75 wait: none ended within --max · 76 wait: the pause file is present/);
   assert.equal(runIn(d, 'unit', 'start', 'c1', '--frob', '-h').code, 0);
@@ -414,6 +519,50 @@ check('show: one line per entry sorted by name, the named one, --json; a missing
   assert.equal(n.code, 0); assert.equal(n.out, ''); assert.match(n.err, /no stardust\/migrate\/progress\.json/);
   assert.equal(runIn(empty, 'show', 'c1').code, 2);
   assert.deepEqual(readdirSync(empty), []);
+});
+check('show --waves via the CLI: the text view, --json, the header variants, notes for an absent ledger or an unreadable optional file; writes nothing', () => {
+  const d = project();
+  put(join(d, ROLLOUT), { units: MID_RUN });
+  put(join(d, 'stardust', 'rollout', 'coverage', 'templates.json'), { templates: TEMPLATES, counts: { total: 27 } });
+  put(join(d, 'stardust', 'rollout', 'foundation-freeze.json'), { frozenAt: T0, root: '.', paths: ['styles/'], files: {} });
+  const inputs = [ROLLOUT, 'stardust/rollout/coverage/templates.json', 'stardust/rollout/foundation-freeze.json'];
+  const snapshot = () => [readdirSync(join(d, 'stardust', 'rollout')), ...inputs.map((p) => readFileSync(join(d, p), 'utf8'))];
+  const before = snapshot();
+  const t = runIn(d, 'show', '--waves');
+  assert.equal(t.code, 0, t.err); assert.equal(t.err, '');
+  assert.equal(t.out, `${MID_RUN_TEXT.join('\n')}\n`);
+  const j = runIn(d, 'show', '--waves', '--json');
+  assert.equal(j.code, 0, j.err);
+  const parsed = JSON.parse(oneLine(j.out));
+  assert.deepEqual(Object.keys(parsed), ['ledger', 'frozen', 'planned', 'waves', 'canStart']);
+  assert.deepEqual(parsed, { ledger: 'rollout', ...wavesView(MID_RUN, { templates: TEMPLATES, frozen: true }) });
+  assert.deepEqual(Object.keys(parsed.waves), ['foundation', 'archetypes', 'clusters', 'final', 'other']);
+  assert.deepEqual(snapshot(), before);
+  put(join(d, 'stardust', 'rollout', 'foundation-freeze.json'), 'half');
+  const u = runIn(d, 'show', '--waves');
+  assert.equal(u.code, 0, u.err);
+  assert.match(oneLine(u.err), /^progress: stardust\/rollout\/foundation-freeze\.json unreadable \(.+\) — treated as absent: foundation not frozen$/);
+  assert.match(u.out, /^progress waves rollout: stardust\/rollout\/progress\.json — planned from coverage\/templates\.json; foundation not frozen\n/);
+  rmSync(join(d, 'stardust', 'rollout', 'coverage'), { recursive: true });
+  const r = runIn(d, 'show', '--waves', '--file', ROLLOUT);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^progress waves rollout: stardust\/rollout\/progress\.json — recorded units only \(no coverage\/templates\.json\); foundation not frozen\n/);
+  const fresh = project();
+  put(join(fresh, 'stardust', 'rollout', 'coverage', 'templates.json'), { templates: [{ id: 'page', pageCount: 1 }] });
+  const n = runIn(fresh, 'show', '--waves');
+  assert.equal(n.code, 0, n.err); assert.equal(n.err, `progress: no ${ROLLOUT}\n`);
+  assert.equal(n.out, [
+    `progress waves rollout: ${ROLLOUT} — planned from coverage/templates.json; foundation not frozen`,
+    'foundation: foundation-chrome planned · foundation-styles planned (after foundation-chrome)',
+    'archetypes: archetype-page planned (after foundation-chrome, foundation-styles, foundation-freeze)',
+    'clusters: none',
+    'final: gate-all planned (after every unit above)',
+    'can start now: foundation-chrome',
+  ].join('\n') + '\n');
+  assert.ok(!existsSync(join(fresh, ROLLOUT)), 'show --waves creates no ledger');
+  const m = runIn(d, 'show', '--waves', '--ledger', 'migrate');
+  assert.equal(m.code, 2); assert.equal(m.out, '');
+  assert.equal(m.err, 'progress: --waves reads the rollout ledger (foundation → archetypes → clusters → final)\n');
 });
 check('layouts: the project copy (stardust/scripts/stardust + ../deploy/file-lock.mjs) works; no file-lock.mjs → exit 2 naming both paths, nothing written', () => {
   const d = project();

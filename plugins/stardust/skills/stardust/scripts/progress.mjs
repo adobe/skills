@@ -6,6 +6,7 @@
 //        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
 //        [--set <key>=<value>]… [--again] [--json]
 //   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
+//   node stardust/scripts/stardust/progress.mjs show --waves [--file …] [--json]      (rollout: what can start now)
 //   node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
 //
 // Ledgers (paths relative to the project root, the cwd):
@@ -73,12 +74,16 @@ export const WAIT_CEILING_SEC = 1500;
 export const WAIT_POLL_MS = 5000;
 export const STILL_RUNNING_EXIT = 75;
 export const PAUSED_EXIT = 76;
+// show --waves: a cluster's pages per unit (more siblings → sub-units), and the can-start entry for C0's archetype.
+export const CLUSTER_MAX_PAGES = 16;
+export const C0_ARCHETYPE = "C0's archetype (archetype-<shell template>)";
 
 const HELP = `Usage:
   node stardust/scripts/stardust/progress.mjs unit <start|done|failed> <name> [--ledger rollout|migrate|replica]
        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
        [--set <key>=<value>]… [--again] [--json]
   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
+  node stardust/scripts/stardust/progress.mjs show --waves [--file …] [--json]
   node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
   (run from the project root; <name> matches ${NAME_RE}, never ${UNSAFE_KEYS.join(', ')})
 
@@ -112,6 +117,20 @@ Output: one stdout line per write, fields omitted when unset —
   (one line; "-" when an entry has no status). --json prints the entry as JSON instead.
 show: one such line per entry, sorted by name, or the named one (missing → exit 2); --json prints
   the entry, or the map of entries by name. An absent ledger → nothing printed, a note on stderr. Writes nothing.
+show --waves (rollout ledger only; --ledger migrate|replica or a <name> → exit 2): the dependency view, one line
+  per wave — foundation, archetypes, clusters, final (and other: for a unit no kind or name places) — units sorted,
+  " · " between, each "<name> <state>" plus "(after <unmet>)" when it cannot start and is not running or done;
+  then "can start now: <names>" (or none). Reads, without the lock: the ledger (absent = no unit recorded),
+  <dir>/coverage/templates.json (inventory's templates[] {id, pageCount}) and <dir>/foundation-freeze.json (present =
+  foundation frozen), <dir> the ledger's directory; an unreadable one → one stderr note, treated as absent. With
+  templates.json the units not yet recorded are shown "planned", by the contract's names: foundation-chrome,
+  foundation-styles, archetype-<id>, cluster-<id> (siblings = pageCount − 1, at most ${CLUSTER_MAX_PAGES}) or
+  cluster-<id>-1…n (n = ⌈siblings ÷ ${CLUSTER_MAX_PAGES}⌉), gate-all — never where a recorded unit already covers the template.
+  Order: foundation-styles after foundation-chrome; an archetype after the foundation and, unless recorded, after
+  foundation-freeze (C0's archetype runs before it: with no archetype recorded yet, can start names
+  "${C0_ARCHETYPE}"); a cluster after its archetype is done and foundation-freeze;
+  sub-unit k after k−1; gate-all after every unit above. --json: {"ledger","frozen","planned","waves":{"foundation",
+  "archetypes","clusters","final","other": [{"name","state","after":[…]}]},"canStart":[…]}. Writes nothing.
 wait: returns as soon as a watched unit ends — the lead's wait for its unit subagents, never a long sleep.
   Watched: every unit running when the wait starts; --unit <name> (repeatable) narrows it, and a named unit
   that is not running gets one stderr note and is not watched. The ledger is read every ${WAIT_POLL_MS / 1000} s without the
@@ -180,7 +199,7 @@ const seconds = (flag, v) => {
 };
 
 export function parseArgs(argv) {
-  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false, units: [], max: null };
+  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false, units: [], max: null, waves: false };
   const pos = [];
   const seen = new Set();
   const given = [];
@@ -209,6 +228,7 @@ export function parseArgs(argv) {
     } else if (a === '--set') { given.push(a); o.sets.push(parseSet(need())); }
     else if (a === '--unit') { given.push(a); o.units.push(need()); }
     else if (a === '--max') { once(); o.max = seconds(a, need()); }
+    else if (a === '--waves') { once(); o.waves = true; }
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
   }
@@ -226,6 +246,8 @@ export function parseArgs(argv) {
     const misplaced = given.find((f) => UNIT_ONLY.includes(f));
     if (misplaced) throw new UsageError(`${misplaced} applies to unit only`);
     if (waitOnly) throw new UsageError(`${waitOnly} applies to wait only`);
+    if (o.waves && rest.length) throw new UsageError(`show --waves shows every unit — drop the name ${rest[0]}`);
+    if (o.waves && o.ledger !== 'rollout') throw new UsageError('--waves reads the rollout ledger (foundation → archetypes → clusters → final)');
     o.cmd = 'show';
     o.name = rest.length ? checkName(rest[0]) : null;
     return o;
@@ -234,6 +256,7 @@ export function parseArgs(argv) {
     if (rest.length) throw new UsageError(`unexpected argument(s) after wait: ${rest.join(' ')} — name a unit with --unit <name>`);
     const misplaced = given.find((f) => UNIT_ONLY.includes(f));
     if (misplaced) throw new UsageError(`${misplaced} applies to unit only`);
+    if (o.waves) throw new UsageError('--waves applies to show only');
     o.cmd = 'wait';
     o.units = [...new Set(o.units.map(checkName))];
     o.max ??= DEFAULT_WAIT_SEC;
@@ -246,6 +269,7 @@ export function parseArgs(argv) {
   if (extra.length) throw new UsageError(`unexpected argument(s) after unit ${event} ${name}: ${extra.join(' ')}`);
   o.cmd = 'unit'; o.event = event; o.name = checkName(name);
   if (waitOnly) throw new UsageError(`${waitOnly} applies to wait only`);
+  if (o.waves) throw new UsageError('--waves applies to show only');
   if (o.again && event !== 'start') throw new UsageError('--again applies to unit start only');
   const { kinds } = LEDGERS[o.ledger];
   if (hasOwn(o.fields, 'kind')) {
@@ -379,6 +403,116 @@ export const waitTimeoutLine = (n, sec, running) => `progress wait: none of ${n}
 /** `running` null = the ledger could not be read at that moment. */
 export const waitPausedLine = (p, running) => `progress wait: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — start nothing new; still running: ${running == null ? 'unknown' : list(running)}`;
 
+// ---- show --waves (pure helpers exported for tests) ---------------------------------------------
+export const WAVES = ['foundation', 'archetypes', 'clusters', 'final'];
+const WAVE_OF_KIND = { foundation: 'foundation', archetype: 'archetypes', cluster: 'clusters', final: 'final' };
+const FREEZE_DEP = 'foundation-freeze';
+const STARTABLE = ['planned', 'pending', 'failed'];
+
+const waveOf = (name, entry) => {
+  if (typeof entry.kind === 'string' && hasOwn(WAVE_OF_KIND, entry.kind)) return WAVE_OF_KIND[entry.kind];
+  if (name.startsWith('foundation-')) return 'foundation';
+  if (name.startsWith('archetype-')) return 'archetypes';
+  if (name.startsWith('cluster-')) return 'clusters';
+  return name === 'gate-all' ? 'final' : 'other';
+};
+const firstTemplate = (entry) => (Array.isArray(entry.templates) && typeof entry.templates[0] === 'string' && entry.templates[0] ? entry.templates[0] : null);
+// A unit's template (its templates[0], else from the name) and, for a cluster sub-unit cluster-<t>-<k>, its k.
+function unitTemplate(name, entry, wave, ids) {
+  const t = firstTemplate(entry);
+  if (wave === 'archetypes') return { template: t ?? (name.startsWith('archetype-') ? name.slice('archetype-'.length) : null), sub: null };
+  if (wave !== 'clusters') return { template: null, sub: null };
+  if (t) {
+    const rest = name.startsWith(`cluster-${t}-`) ? name.slice(`cluster-${t}-`.length) : '';
+    return { template: t, sub: /^\d+$/.test(rest) ? Number(rest) : null };
+  }
+  if (!name.startsWith('cluster-')) return { template: null, sub: null };
+  const rest = name.slice('cluster-'.length);
+  const m = rest.match(/^(.+)-(\d+)$/);
+  return !ids.has(rest) && m ? { template: m[1], sub: Number(m[2]) } : { template: rest, sub: null };
+}
+const covers = (u, id) => u.template === id || (Array.isArray(u.entry.templates) && u.entry.templates.includes(id));
+
+/**
+ * The rollout's dependency view. `map` = the ledger's units; `templates` = inventory's templates[] ({ id, pageCount }) or
+ * null (recorded units only); `frozen` = the foundation freeze manifest is present.
+ * → { frozen, planned, waves: { foundation, archetypes, clusters, final, other: [{ name, state, after[] }] }, canStart[] }
+ * `after` = the unmet dependencies of a unit that is neither running nor done (foundation-freeze for the freeze).
+ */
+export function wavesView(map, { templates = null, frozen = false } = {}) {
+  const units = new Map();
+  for (const name of Object.keys(isMap(map) ? map : {}).sort()) {
+    const entry = isMap(map[name]) ? map[name] : {};
+    units.set(name, { name, entry, recorded: true, state: typeof entry.status === 'string' && entry.status ? entry.status : '-', wave: waveOf(name, entry) });
+  }
+  const tpl = new Map();
+  for (const t of Array.isArray(templates) ? templates : []) {
+    if (isMap(t) && typeof t.id === 'string' && t.id && !tpl.has(t.id)) tpl.set(t.id, Number.isInteger(t.pageCount) && t.pageCount > 0 ? t.pageCount : 0);
+  }
+  for (const u of units.values()) Object.assign(u, unitTemplate(u.name, u.entry, u.wave, tpl));
+  const recordedIn = (wave) => [...units.values()].filter((u) => u.recorded && u.wave === wave);
+  const plan = (name, wave, template = null, sub = null) => { if (!units.has(name)) units.set(name, { name, entry: {}, recorded: false, state: 'planned', wave, template, sub }); };
+  const planned = Array.isArray(templates);
+  if (planned) {
+    plan('foundation-chrome', 'foundation');
+    plan('foundation-styles', 'foundation');
+    const archetypes = recordedIn('archetypes');
+    const clusters = recordedIn('clusters');
+    for (const [id, pageCount] of tpl) {
+      if (!archetypes.some((u) => covers(u, id))) plan(`archetype-${id}`, 'archetypes', id);
+      const siblings = pageCount - 1;
+      if (siblings <= 0) continue;
+      const n = Math.ceil(siblings / CLUSTER_MAX_PAGES);
+      const scheme = n === 1 ? [`cluster-${id}`] : Array.from({ length: n }, (_, i) => `cluster-${id}-${i + 1}`);
+      // recorded names win: a recorded cluster unit for this template outside the scheme covers it
+      if (clusters.some((u) => covers(u, id) && !scheme.includes(u.name))) continue;
+      scheme.forEach((name, i) => plan(name, 'clusters', id, n === 1 ? null : i + 1));
+    }
+    if (!recordedIn('final').length) plan('gate-all', 'final');
+  }
+  const all = [...units.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const inWave = (wave) => all.filter((u) => u.wave === wave);
+  const names = (us) => us.map((u) => u.name);
+  const anyArchetypeRecorded = recordedIn('archetypes').length > 0;
+  const depsOf = (u) => {
+    if (u.wave === 'foundation') return u.name === 'foundation-styles' ? ['foundation-chrome'] : [];
+    if (u.wave === 'archetypes') return [...names(inWave('foundation')), ...(!frozen && !u.recorded ? [FREEZE_DEP] : [])];
+    if (u.wave === 'clusters') {
+      if (u.sub != null && u.sub > 1) return [`cluster-${u.template}-${u.sub - 1}`];
+      const own = u.template == null ? [] : names(inWave('archetypes').filter((a) => a.template === u.template));
+      return [...(u.template == null ? [] : own.length ? own : [`archetype-${u.template}`]), FREEZE_DEP];
+    }
+    if (u.wave === 'final') return names(all.filter((x) => ['foundation', 'archetypes', 'clusters'].includes(x.wave)));
+    return [];
+  };
+  const met = (dep) => (dep === FREEZE_DEP ? frozen : units.get(dep)?.state === 'done');
+  const view = { frozen: Boolean(frozen), planned, waves: {}, canStart: [] };
+  for (const wave of [...WAVES, 'other']) {
+    view.waves[wave] = inWave(wave).map((u) => {
+      const unmet = depsOf(u).filter((d) => !met(d));
+      if (wave !== 'other' && STARTABLE.includes(u.state) && !unmet.length) view.canStart.push(u.name);
+      return { name: u.name, state: u.state, after: ['running', 'done'].includes(u.state) ? [] : unmet };
+    });
+    // C0's archetype runs before the freeze, and the view cannot tell which template is the shell
+    const foundation = view.waves.foundation;
+    if (wave === 'archetypes' && !frozen && !anyArchetypeRecorded && foundation.length && foundation.every((u) => u.state === 'done')) view.canStart.push(C0_ARCHETYPE);
+  }
+  return view;
+}
+
+/** The text form: a header, one line per wave (` · ` between units; an other: line only when there is one), then can start now. */
+export function formatWaves(view, file) {
+  const lines = [`progress waves rollout: ${file} — ${view.planned ? 'planned from coverage/templates.json' : 'recorded units only (no coverage/templates.json)'}; ${view.frozen ? 'foundation frozen' : 'foundation not frozen'}`];
+  const unit = (u, wave) => `${u.name} ${u.state}${u.after.length ? ` (after ${wave === 'final' ? 'every unit above' : u.after.join(', ')})` : ''}`;
+  for (const wave of [...WAVES, 'other']) {
+    const us = view.waves[wave];
+    if (wave === 'other' && !us.length) continue;
+    lines.push(`${wave}: ${us.length ? us.map((u) => unit(u, wave)).join(' · ') : 'none'}`);
+  }
+  lines.push(`can start now: ${list(view.canStart)}`);
+  return lines;
+}
+
 function readDoc(file) {
   const raw = readFileSync(file, 'utf8');
   try { return JSON.parse(raw); } catch (e) { throw new UsageError(`${file} is not JSON (${e.message.split('\n')[0]}) — nothing written`); }
@@ -466,6 +600,33 @@ async function loadLock() {
 }
 
 // ---- main --------------------------------------------------------------------------------------
+/** An optional JSON input of show --waves: → the parsed object, or null when absent; unreadable → one stderr note, null. */
+function readOptional(path, what) {
+  if (!existsSync(path)) return null;
+  let j; let why = null;
+  try { j = JSON.parse(readFileSync(path, 'utf8')); } catch (e) { why = e.message.split('\n')[0]; }
+  if (why === null && isMap(j)) return j;
+  console.error(`progress: ${path} unreadable (${why ?? 'not a JSON object'}) — treated as absent: ${what}`);
+  return null;
+}
+
+function showWaves(o, file) {
+  let map = {};
+  if (existsSync(file)) {
+    const doc = readDoc(file);
+    checkDoc(doc, o.ledger, file);
+    map = doc.units ?? {};
+    checkDoc(doc, o.ledger, file, Object.keys(map));
+  } else console.error(`progress: no ${file}`);
+  const dir = dirname(file);
+  const inv = readOptional(join(dir, 'coverage', 'templates.json'), 'recorded units only');
+  if (inv && !Array.isArray(inv.templates)) console.error(`progress: ${join(dir, 'coverage', 'templates.json')} has no templates[] — treated as absent: recorded units only`);
+  const frozen = readOptional(join(dir, 'foundation-freeze.json'), 'foundation not frozen') !== null;
+  const view = wavesView(map, { templates: Array.isArray(inv?.templates) ? inv.templates : null, frozen });
+  console.log(o.json ? JSON.stringify({ ledger: o.ledger, ...view }) : formatWaves(view, file).join('\n'));
+  return 0;
+}
+
 export async function main(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
   const o = parseArgs(argv);
@@ -474,6 +635,7 @@ export async function main(argv) {
 
   // wait reads without the lock, so it needs no file-lock.mjs
   if (o.cmd === 'wait') return waitCmd(o, file);
+  if (o.cmd === 'show' && o.waves) return showWaves(o, file);
 
   if (o.cmd === 'show') {
     if (!existsSync(file)) {
