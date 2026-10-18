@@ -4,7 +4,7 @@
 // --until <ISO> clamped to the same ceiling; exit 76 at once on the pause file $STARDUST_PAUSE_FILE, which status
 // shows too; exit 77 when the runner's wake file stardust/.labs/wake grows), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
-// slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
+// slot, is never signalled; a just-exited wrapper's state is read again first — settled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
 // holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
 // STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
@@ -21,7 +21,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, describe, gateAllTimeout, isBrowserJob, lockWaitS, report, settled, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -190,6 +190,19 @@ await check('a stored pid that now names another process (recycled) is lost, not
   fakeState('spawning', { wrapperPid: null, launchedAt: null, queuedAt: new Date().toISOString() });
   assert.match(bg('status', 'spawning').out, /^spawning {2}queued/m, 'a pid-less state younger than the spawn grace is still spawning');
   rmSync(join(dir, 'spawning.json')); rmSync(join(dir, 'spawning.log'));
+});
+await check('settled: a state read just before its wrapper wrote the exit, its wrapper gone by the liveness check, is read again — done exit=…, not lost; a file without endedAt stays lost', () => {
+  const sd = join(lockRoot, 'settled'); mkdirSync(sd, { recursive: true });
+  const q = new Date(Date.now() - 60000).toISOString();
+  // Our own pid with another start time stands in for the wrapper that has just exited.
+  const stale = { name: 'just', ownerPid: process.pid, cmd: 'true', args: [], cwd: sd, timeoutSec: 0, slots: 1, queuedAt: q, wrapperPid: process.pid, wrapperStart: 'Mon Jan  1 00:00:00 2001', launchedAt: q, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  const ended = { ...stale, endedAt: new Date().toISOString(), exit: 2 };
+  for (const st of [ended, { ...stale, name: 'gone' }]) { writeFileSync(join(sd, `${st.name}.json`), JSON.stringify(st)); writeFileSync(join(sd, `${st.name}.log`), ''); }
+  assert.match(describe(stale), /^just {2}lost/, 'the stale read alone looks lost');
+  assert.deepEqual(settled(sd, stale), ended); assert.match(describe(settled(sd, stale)), /^just {2}done exit=2/);
+  assert.match(report(sd, ['just']).text, /^just {2}done exit=2/m);
+  const gone = { ...stale, name: 'gone' };
+  assert.equal(settled(sd, gone), gone, 'no endedAt on disk: the given state'); assert.match(report(sd, ['gone']).text, /^gone {2}lost — wrapper gone/m);
 });
 await check('with no names and nothing going, wait/status report the caller\'s latest batch — the earlier job folds into the first line; --all shows every job on disk', () => {
   const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // an earlier session's finished job, this caller's

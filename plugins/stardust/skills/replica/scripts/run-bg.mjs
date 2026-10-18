@@ -180,7 +180,7 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), settled(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -436,6 +436,14 @@ export function phase(st) {
 const isPending = (st) => ['queued', 'running'].includes(phase(st));
 // lost, but the instrument the wrapper launched is still running.
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
+// A state read just before its wrapper wrote the exit, checked after the wrapper quit, looks lost: the wrapper writes
+// endedAt before it exits, so a lost-looking state without endedAt is read once more → the fresh state when it now carries
+// endedAt, else `st` (a truly lost job stays lost). Every report and selection classifies through it.
+export function settled(dir, st) {
+  if (!st || st.endedAt || phase(st) !== 'lost') return st;
+  const fresh = readState(dir, st.name);
+  return fresh?.endedAt ? fresh : st;
+}
 
 // ---- start -------------------------------------------------------------------------------------
 export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS, lock = 'auto', owner = callerOwner() } = {}) {
@@ -614,7 +622,7 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
   if (pause) lines.unshift(pauseLine(pause));
   else if (wake != null) lines.unshift(`wake: ${wake}`);
   for (const name of names) {
-    const st = readState(dir, name);
+    const st = settled(dir, readState(dir, name));
     if (!st) { lines.push(`${name}  no such job in ${dir}`); continue; }
     if (isPending(st)) pending += 1;
     lines.push(describe(st));
@@ -644,7 +652,7 @@ function current(jobs, pending, { onDisk = false } = {}) {
 // or --all only. hidden = the jobs --all would add.
 function pickNames(dir, requested, { all = false, owner = null } = {}) {
   if (requested.length) return { names: requested, scope: 'named', hidden: 0 };
-  const jobs = listJobs(dir).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
+  const jobs = listJobs(dir).map((j) => settled(dir, j)).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
   const pending = new Set(jobs.filter(isPending).map((j) => j.name)); // one phase per job: both selections see the same
   const everyone = current(jobs, pending, { onDisk: true });
   if (all) return { names: everyone.picked.map((j) => j.name), scope: `all owners, ${everyone.what}`, hidden: 0 };
@@ -676,7 +684,7 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
   for (;;) {
     pause = pauseState(pauseFile);
     if (pause) break;
-    const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
+    const pending = names.map((n) => settled(dir, readState(dir, n))).filter((st) => st && isPending(st));
     const size = wakeSize(wakePath);
     if (size > wakeBase) woken = wakeText(wakePath); // also with every job ended: a coincident wake is reported, not swallowed
     if (!pending.length || woken != null) break;
