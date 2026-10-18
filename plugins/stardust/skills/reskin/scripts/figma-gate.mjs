@@ -129,8 +129,9 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          skip included: the node's name and id, or the mobile or desktop root, its why in quotes, and how many text styles and text
          nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
          failing :root token included; a "stale" row for a section whose results are not of this checks file: re-run all),
-         out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
-         on its own solid ground: 4.5, or 3 for large text; gradient and image grounds are skipped)
+         out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast in a root the
+         section checks, its alpha composited over its solid ground: 4.5, or 3 for large text; gradient and image grounds are
+         skipped, and so is a translucent color with no opaque ground behind it, named in a "Contrast not assessed" line)
          and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
          Rows carry the Figma node and a file link; under --confidential the links are left out. A row's node is the
          checks root its results were measured against (their root), the join's module frame for a mandated section

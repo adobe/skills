@@ -31,11 +31,58 @@ const t = (size, weight, color = 'rgb(200, 200, 200)') => ({ id: 'T', type: 'TEX
 const frame = (fill, kids, fillKind = fill ? 'SOLID' : 'NONE') => ({ id: 'F', type: 'FRAME', x: 0, y: 0, w: 10, h: 10, layout: null, text: null, fill, fillKind, children: kids });
 const WHITE = 'rgb(255, 255, 255)';
 
-check('contrast: equal colors 1, black on white 21, rgba alpha ignored', () => {
+check('contrast: equal colors 1, black on white 21, in either order', () => {
   assert.equal(contrast(WHITE, WHITE), 1);
   assert.equal(contrast('rgb(0, 0, 0)', WHITE).toFixed(1), '21.0');
-  assert.equal(contrast('rgba(0, 0, 0, 0.5)', WHITE).toFixed(1), '21.0');
   assert.equal(contrast(WHITE, 'rgb(0, 0, 0)').toFixed(1), '21.0');
+  assert.ok(Number.isNaN(contrast('not a color', WHITE)));
+});
+
+check('contrast: a translucent foreground is composited over the ground first (20% black on white is 204 grey, 1.61:1, not 21:1)', () => {
+  assert.equal(contrast('rgba(0, 0, 0, 0.2)', WHITE).toFixed(3), '1.606');
+  assert.equal(contrast('rgba(0, 0, 0, 0.2)', WHITE).toFixed(3), contrast('rgb(204, 204, 204)', WHITE).toFixed(3));
+  assert.equal(contrast('rgba(0, 0, 0, 0.5)', WHITE).toFixed(2), '3.95');
+  assert.equal(contrast('rgba(0, 0, 0, 1)', WHITE).toFixed(1), '21.0');
+  assert.equal(contrast('rgba(0, 0, 0, 0)', WHITE), 1, 'fully transparent is the ground itself');
+  assert.equal(contrast('rgba(255, 255, 255, 0.2)', 'rgb(0, 0, 0)').toFixed(2), contrast('rgb(51, 51, 51)', 'rgb(0, 0, 0)').toFixed(2), 'light on dark composites too');
+});
+
+check('contrast: a translucent ground has no color of its own to measure against: NaN until it is composited', () => {
+  assert.ok(Number.isNaN(contrast('rgb(0, 0, 0)', 'rgba(255, 255, 255, 0.5)')));
+  assert.ok(Number.isNaN(contrast('rgba(0, 0, 0, 0.2)', 'rgba(255, 255, 255, 0.5)')));
+});
+
+check('mandateConflicts: translucent text is assessed as composited: 20% black on white is a conflict naming the colors as authored, 90% black is not', () => {
+  const [hit] = mandateConflicts(frame(WHITE, [t(16, 400, 'rgba(0, 0, 0, 0.2)')]));
+  assert.deepEqual([hit.node, hit.ratio, hit.need, hit.fg, hit.bg], ['T', 1.61, 4.5, 'rgba(0, 0, 0, 0.2)', WHITE]);
+  assert.deepEqual(mandateConflicts(frame(WHITE, [t(16, 400, 'rgba(0, 0, 0, 0.9)')])), []);
+});
+
+check('mandateConflicts: a translucent ground is composited over the ones behind it; the text is measured on the result', () => {
+  const white40 = 'rgba(255, 255, 255, 0.4)';
+  const onDark = frame('rgb(0, 0, 0)', [frame(white40, [t(16, 400, 'rgb(153, 153, 153)')])]);
+  const [hit] = mandateConflicts(onDark);
+  assert.equal(hit.bg, 'rgb(102, 102, 102)', 'white at 40% over black');
+  assert.equal(hit.ratio, Math.round(contrast('rgb(153, 153, 153)', 'rgb(102, 102, 102)') * 100) / 100);
+  assert.deepEqual(mandateConflicts(frame('rgb(0, 0, 0)', [frame(white40, [t(16, 400, 'rgb(255, 255, 255)')])])), [], 'white on that grey passes');
+  const twice = frame(WHITE, [frame('rgba(0, 0, 0, 0.5)', [frame('rgba(0, 0, 0, 0.5)', [t(16, 400, 'rgb(0, 0, 0)')])])]);
+  assert.equal(mandateConflicts(twice)[0].bg, 'rgb(64, 64, 64)', 'two half-black layers over white');
+});
+
+check('mandateConflicts: a translucent ground or text with no opaque ground to composite over is unassessable, not assumed opaque: no hit, reported', () => {
+  const lacking = [];
+  assert.deepEqual(mandateConflicts(frame('rgba(255, 255, 255, 0.5)', [t(16, 400, 'rgb(250, 250, 250)')]), { unassessable: lacking }), [], 'rgba(255,255,255,.5) as if white would call it 1.05:1');
+  assert.deepEqual(lacking.map((u) => [u.node, u.fg]), [['T', 'rgb(250, 250, 250)']]);
+  assert.match(lacking[0].why, /translucent ground/);
+  const textOnly = [];
+  assert.deepEqual(mandateConflicts(frame(null, [t(16, 400, 'rgba(0, 0, 0, 0.2)')]), { unassessable: textOnly }), [], 'no ground at all');
+  assert.match(textOnly[0].why, /translucent text color/);
+  const behindGradient = [];
+  assert.deepEqual(mandateConflicts(frame('rgba(255, 255, 255, 0.5)', [t(16, 400, 'rgb(250, 250, 250)')], 'SOLID'), { grounds: [frame(null, [], 'GRADIENT_LINEAR')], unassessable: behindGradient }), []);
+  assert.equal(behindGradient.length, 1, 'translucent over a gradient');
+  const opaqueOnGradient = [];
+  assert.deepEqual(mandateConflicts(frame(null, [t(16, 400)], 'GRADIENT_LINEAR'), { unassessable: opaqueOnGradient }), []);
+  assert.deepEqual(opaqueOnGradient, [], 'an opaque text on a gradient stays skipped, as before');
 });
 
 check('mandateConflicts: need 4.5 for body text, 3 for large text (24px, or 18.66px at 700)', () => {
@@ -208,6 +255,65 @@ check('buildRegister: a section with a conflict is not for that reason unmandate
   const reg = buildRegister({ ...base, boxes: bad, link: () => null });
   assert.equal(reg.counts.mandated, 1);
   assert.ok(reg.rows.every((r) => r.link === null));
+});
+
+// A module frame on a white ground holding the checked desktop instance (9:2), a mobile variant (9:6) and a documentation
+// panel (9:4); every box has its own id. `kids` of each are [id, color] texts.
+const node = (id, kids = [], over = {}) => ({ id, type: 'FRAME', x: 0, y: 0, w: 10, h: 10, layout: null, text: null, fill: null, fillKind: 'NONE', children: kids, ...over });
+const word = (id, color) => ({ ...t(16, 400, color), id });
+const GOOD = 'rgb(0, 0, 0)';
+const PALE = 'rgb(200, 200, 200)';
+const kit = ({ desktop = [word('9:3', GOOD)], mobile = [word('9:7', GOOD)], docs = [word('9:5', GOOD)], desktopFill = null } = {}) => node('9:1', [
+  node('9:2', desktop, { fill: desktopFill, fillKind: desktopFill ? 'SOLID' : 'NONE' }),
+  node('9:4', docs),
+  node('9:6', mobile),
+], { fill: WHITE, fillKind: 'SOLID' });
+const scoped = (frameBox, roots, extra = {}) => buildRegister({
+  ...base,
+  join: { ...joined, sections: [{ slot: 's01', module: 'M1', node: '9:1', selector: '[data-slot="s01"]', index: 0 }] },
+  boxes: { roots: { '9:1': { box: frameBox }, ...extra } },
+  checks: { s01: { root: Object.values(roots)[0], width: 1440, roots, geometry: [], type: [], waive: [] } },
+  geometry: null, ramp: null, pixel: null, mapping: [], flags: [],
+});
+const conflictsOf = (reg) => reg.rows.filter((r) => r.class === 'conflict').map((r) => r.node);
+
+check('buildRegister: a documentation panel beside the checked instance raises no conflict; a bad node inside the checked root does, measured on the frame\'s ground', () => {
+  assert.deepEqual(conflictsOf(scoped(kit({ docs: [word('9:5', PALE)] }), { 1440: '9:2' })), [], 'the panel is neither rendered nor checked');
+  const reg = scoped(kit({ desktop: [word('9:3', PALE)] }), { 1440: '9:2' });
+  assert.deepEqual(conflictsOf(reg), ['9:3']);
+  assert.match(reg.rows.find((r) => r.class === 'conflict').detail, /\(rgb\(200, 200, 200\) on rgb\(255, 255, 255\)\)$/, 'the white of the module frame above the root is its ground');
+  assert.deepEqual(conflictsOf(scoped(kit({ desktop: [word('9:3', GOOD)], docs: [word('9:5', PALE)], mobile: [word('9:7', PALE)] }), { 1440: '9:2' })), [], 'a variant it does not check is not scanned either');
+  assert.equal(conflictsOf(scoped(kit({ docs: [word('9:5', PALE)] }), { 1440: '9:1' })).length, 1, 'a section rooted at the frame itself still scans all of it');
+});
+
+check('buildRegister: every per-width root is scanned, and a node two roots share is one conflict', () => {
+  const mobileBad = scoped(kit({ mobile: [word('9:7', PALE)], docs: [word('9:5', PALE)] }), { 1440: '9:2', 390: '9:6' });
+  assert.deepEqual(conflictsOf(mobileBad), ['9:7'], 'the mobile root is checked, the panel still is not');
+  const shared = node('9:1', [node('9:2', [node('9:8', [word('9:9', PALE)])])], { fill: WHITE, fillKind: 'SOLID' });
+  assert.deepEqual(conflictsOf(scoped(shared, { 1440: '9:2', 390: '9:8' })), ['9:9'], 'the nested root\'s text is assessed once');
+  assert.deepEqual(conflictsOf(scoped(shared, { 390: '9:8', 1440: '9:2' })), ['9:9'], 'whichever root comes first');
+});
+
+check('buildRegister: a checked root outside the joined frame is scanned on its own box; the ground above a root inside it is every painting ancestor, composited', () => {
+  const alone = node('8:1', [word('8:2', PALE)], { fill: WHITE, fillKind: 'SOLID' });
+  assert.deepEqual(conflictsOf(scoped(kit(), { 1440: '8:1' }, { '8:1': { box: alone } })), ['8:2']);
+  const tinted = (color) => scoped(kit({ desktop: [word('9:3', color)], desktopFill: 'rgba(0, 0, 0, 0.5)' }), { 1440: '9:2' });
+  assert.deepEqual(conflictsOf(tinted('rgb(150, 150, 150)')), ['9:3']);
+  assert.match(tinted('rgb(150, 150, 150)').rows.find((r) => r.class === 'conflict').detail, /on rgb\(128, 128, 128\)\)$/, 'the root\'s half black composited over the frame\'s white');
+  assert.deepEqual(conflictsOf(tinted(GOOD)), [], 'black on that grey passes');
+});
+
+check('buildRegister: translucent text over a ground that cannot be resolved is reported unassessable, never a conflict: in register.unassessable and a line of the markdown', () => {
+  const ghost = node('9:1', [node('9:2', [word('9:3', 'rgba(0, 0, 0, 0.2)')])]);
+  const reg = scoped(ghost, { 1440: '9:2' });
+  assert.deepEqual(conflictsOf(reg), []);
+  assert.deepEqual(reg.unassessable.map((u) => [u.slot, u.module, u.node]), [['s01', 'M1', '9:3']]);
+  assert.match(registerMd({ page: 'home', ...reg }), /^Contrast not assessed: 1 text whose color or ground is translucent with no opaque ground behind it \(9:3\)$/m);
+  assert.doesNotMatch(registerMd({ page: 'home', ...scoped(kit(), { 1440: '9:2' }) }), /Contrast not assessed/);
+  assert.deepEqual(scoped(kit(), { 1440: '9:2' }).unassessable, []);
+  const faded = scoped(node('9:1', [node('9:2', [word('9:3', 'rgba(0, 0, 0, 0.2)')])], { fill: WHITE, fillKind: 'SOLID' }), { 1440: '9:2' });
+  assert.deepEqual(conflictsOf(faded), ['9:3'], 'on the frame\'s white it resolves: 20% black is 1.61:1');
+  assert.match(faded.rows.find((r) => r.class === 'conflict').detail, /^1\.61:1 < 4\.5:1 \(rgba\(0, 0, 0, 0\.2\) on rgb\(255, 255, 255\)\)$/);
 });
 
 check('registerMd: counts, rows, the not-run line and the advisory pixel block with uncalibrated classes', () => {
@@ -468,7 +574,7 @@ check('register reads the step files, writes register.json and register.md, prin
   const md = join(workDir(p.dir, p.slug), 'register.md');
   assert.ok(r.stdout.includes(join('stardust', '.work', 'reskin', 'gates', 'home', 'figma', 'register.md')), r.stdout);
   const reg = JSON.parse(readFileSync(join(workDir(p.dir, p.slug), 'register.json'), 'utf8'));
-  assert.deepEqual(Object.keys(reg), ['page', 'regime', 'counts', 'rows', 'notRun', 'pixel']);
+  assert.deepEqual(Object.keys(reg), ['page', 'regime', 'counts', 'rows', 'notRun', 'unassessable', 'pixel']);
   assert.equal(reg.page, 'home');
   assert.equal(reg.regime, 'local');
   assert.deepEqual(reg.notRun, []);
