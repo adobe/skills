@@ -20,7 +20,9 @@
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
- * in the content files, no update-coverage.mjs --block record) and the handover state. It refuses (exit 1,
+ * in the content files, no update-coverage.mjs --block record), the handover state and `handoverNotes` (owner
+ * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
+ * value, the owner names them). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
  * a file blocks.json records in _provenance.inputs that changed or is gone, a judgement.json it did
@@ -70,6 +72,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WRITTEN_BY = 'stardust:rollout/workspace-manifest';
 const FILES = { manifest: 'manifest.json', judgement: 'judgement.json', handover: 'handover.json', mapping: 'mapping.json' };
 const COVERAGE = ['pages', 'templates', 'blocks'];
+// The standard base types a delivered block can be judged as — the candidate list the draft offers for an unjudged one
+// (`unknown` is not among them: it is not a judged value, it is the absence of one).
+const BASE_TYPE_CANDIDATES = ['accordion', 'breadcrumbs', 'cards', 'carousel', 'columns', 'embed', 'form', 'fragment', 'hero', 'modal', 'quote', 'search', 'table', 'tabs', 'video'];
 const VALUE_FLAGS = ['out', 'project', 'content', 'blocks', 'captures'];
 const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json', 'allow-no-mapping'];
 const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
@@ -225,6 +230,11 @@ export function pendingBlocks(blocksDoc) {
     .map(([name]) => name).sort(byStr);
 }
 
+/** The delivered module blocks whose base type is not judged (`unknown` or missing — `unknown` is not a judged value), by EDS name, sorted. done-check.mjs reads this too. */
+export function unjudgedBaseTypes(blocksDoc) {
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => !b.baseType || b.baseType === 'unknown').map(([name]) => name).sort(byStr);
+}
+
 /** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file, blocks pending (pendingBlocks). Sorted. */
 export function placeholdersOf(coverage) {
   const templates = coverage.templates.templates;
@@ -267,7 +277,8 @@ export function draftJudgement(coverage, provenance, tokens = []) {
   for (const [name, b] of [...moduleBlocks(coverage.blocks)].sort(([a], [c]) => byStr(a, c))) {
     const baseType = b.baseType && b.baseType !== 'unknown' ? b.baseType : '';
     blocks[name] = { baseType, purpose: '', reuseGuidance: { suitableFor: [], notSuitableFor: [] }, colorScheme: '' };
-    defaults.blocks[name] = { baseType: b.baseType || 'unknown' };
+    // unknown is not a judged value: an unjudged block stays in toFill and the owner picks from the candidate list.
+    defaults.blocks[name] = { baseType: b.baseType || 'unknown', ...(baseType ? {} : { baseTypeCandidates: BASE_TYPE_CANDIDATES }) };
     toFill.push(`blocks.${name}.purpose`, `blocks.${name}.reuseGuidance`);
     if (!baseType) toFill.push(`blocks.${name}.baseType`);
   }
@@ -434,6 +445,11 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
+  // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.
+  const unjudged = unjudgedBaseTypes(coverage.blocks);
+  const handoverNotes = unjudged.length
+    ? [`${unjudged.length} delivered block(s) have no judged base type; the owner names them (${unjudged.join(', ')})`]
+    : [];
   const manifest = {
     _provenance: provenance,
     formatVersion: FORMAT_VERSION,
@@ -442,6 +458,7 @@ function main(argv) {
     placeholders,
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
+    ...(handoverNotes.length ? { handoverNotes } : {}),
     ...(degraded ? { degraded } : {}),
   };
   const text = serialize(manifest);

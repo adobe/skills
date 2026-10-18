@@ -105,6 +105,23 @@ check('CLI: coverage blocks.json rows delivered without a conversion record prin
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('CLI: blocks_unjudged — a migration-workspace export with delivered blocks whose base type is not judged (unknown or missing) is a gap; a judged base type clears it; not an export → not judged here', () => {
+  const blocks = (bt) => ({ blocks: [
+    { id: 'hero-banner', kind: 'module', delivery: { status: 'converted', edsBlockName: 'hero' }, ...(bt.hero !== undefined ? { baseType: bt.hero } : {}), variants: [{ id: 'v1', classes: [], pages: 1, instances: 1 }] },
+    { id: 'link-list', kind: 'module', delivery: { status: 'converted', edsBlockName: 'teaser' }, ...(bt.teaser !== undefined ? { baseType: bt.teaser } : {}), variants: [{ id: 'v2', classes: [], pages: 1, instances: 1 }] },
+  ] });
+  const unjudged = (listed, bt) => {
+    const proj = project({ files: { 'stardust/rollout/rollout.json': listed ? { exports: ['migration-workspace'] } : {}, 'stardust/rollout/coverage/blocks.json': blocks(bt) } });
+    const g = JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((x) => x.startsWith('blocks_unjudged'));
+    rmSync(proj, { recursive: true, force: true });
+    return g;
+  };
+  assert.deepEqual(unjudged(true, { hero: 'unknown', teaser: 'cards' }), ['blocks_unjudged:1'], 'unknown is not a judged value; cards is');
+  assert.deepEqual(unjudged(true, {}), ['blocks_unjudged:2'], 'both missing a base type');
+  assert.deepEqual(unjudged(true, { hero: 'hero', teaser: 'cards' }), [], 'both judged → no gap');
+  assert.deepEqual(unjudged(false, {}), [], 'not a migration-workspace export: base types are not judged here');
+});
+
 check('unfinished counts every not-yet-verified status, and only those', () => {
   const pages = ['pending', 'content-pending', 'converting', 'deployed', 'stale', 'verified', 'failed'].map((s, i) => row(`p${i}`, `/p${i}`, s));
   const v = doneGaps({ pages, ledgerLines: ENDED, notLive: [] });

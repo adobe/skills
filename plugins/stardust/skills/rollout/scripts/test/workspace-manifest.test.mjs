@@ -122,7 +122,9 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   ok(run(dir));
   const mf = doc(dir, 'manifest.json');
   assert.equal(mf.formatVersion, '0.1.0');
-  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'handover']);
+  // the fixture's teaser has no judged base type, so the manifest carries handoverNotes (unknown is not judged)
+  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'handover', 'handoverNotes']);
+  assert.deepEqual(mf.handoverNotes, ['1 delivered block(s) have no judged base type; the owner names them (teaser)']);
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
   broken.outputs[COV[0]] = 'sha256:xyz';
@@ -489,9 +491,11 @@ check('judgement: --draft-judgement writes only judgement.json, only when absent
   assert.deepEqual(j.templates, { 'about-us': { name: '', description: '' }, home: { name: '', description: '' } });
   assert.deepEqual(j.blocks, { breadcrumb: { baseType: 'breadcrumbs', ...open }, columns: { baseType: 'columns', ...open }, hero: { baseType: 'hero', ...open }, teaser: { baseType: '', ...open } });
   const modules = 'blocks hero-banner, link-list, three-up.';
+  const CANDIDATES = ['accordion', 'breadcrumbs', 'cards', 'carousel', 'columns', 'embed', 'form', 'fragment', 'hero', 'modal', 'quote', 'search', 'table', 'tabs', 'video'];
   assert.deepEqual(j.defaults, {
     templates: { 'about-us': { name: 'article', description: `article: 2 page(s); ${modules}` }, home: { name: 'home', description: `home: 1 page(s); ${modules}` } },
-    blocks: { breadcrumb: { baseType: 'breadcrumbs' }, columns: { baseType: 'columns' }, hero: { baseType: 'hero' }, teaser: { baseType: 'unknown' } },
+    // an unjudged block (teaser) offers the candidate list; unknown is not among the candidates (it is the absence of a judgement)
+    blocks: { breadcrumb: { baseType: 'breadcrumbs' }, columns: { baseType: 'columns' }, hero: { baseType: 'hero' }, teaser: { baseType: 'unknown', baseTypeCandidates: CANDIDATES } },
   });
   assert.deepEqual(j.toFill, [
     ...['about-us', 'home'].flatMap((t) => [`templates.${t}.name`, `templates.${t}.description`]),

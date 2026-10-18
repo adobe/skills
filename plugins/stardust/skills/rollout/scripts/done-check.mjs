@@ -73,6 +73,10 @@
  *                                  stardust/current/pages holds a capture, unreadable, or its generatedAt is not
  *                                  pages.json's. Remedy, in order: inventory.mjs + blocks.mjs, block-origin.mjs
  *                                  --verify, workspace-manifest.mjs. Not judged once handed over (skipped line)
+ *   blocks_unjudged:N              migration-workspace export only (rollout.json `exports`): N delivered module
+ *                                  blocks of coverage/blocks.json whose base type is not judged (unknown or missing
+ *                                  — unknown is not a judged value); a gap, not a hard stop, until the owner names
+ *                                  them (workspace-manifest.mjs lists them under handoverNotes)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
  * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
@@ -389,7 +393,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], pendingBlocks = [], headerAgent = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -410,6 +414,8 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   if (headerErrors && !(header && /^header_parity:\d+:/.test(header))) gaps.push(headerErrors);
   if (ledger) gaps.push(ledger);
   if (exported) gaps.push(exported);
+  // delivered blocks with no judged base type: a gap (not a hard stop) until the owner names them — unknown is not judged
+  if (blocksUnjudged > 0) gaps.push(`blocks_unjudged:${blocksUnjudged}`);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   // planned pages the source no longer serves (coverage excluded[]) and blocks delivered without a conversion record:
   // named, never a gap
@@ -558,6 +564,9 @@ async function main() {
   const exported = await exportState({ out: OUT, config, pagesDoc, wm });
   const blocksDoc = readJSON(join(OUT, 'coverage', 'blocks.json'));
   const pendingKnown = !blocksDoc || (wm && typeof wm.pendingBlocks === 'function');
+  // judged only for the migration-workspace export the adopter reads (where unknown base types were emitted as judged)
+  const exportListed = Array.isArray(config.exports) && config.exports.includes('migration-workspace');
+  const unjudgedKnown = exportListed && blocksDoc && wm && typeof wm.unjudgedBaseTypes === 'function';
   const verdict = doneGaps({
     pages, findings, ledgerLines, notLive, header,
     headerErrors: headerParityErrors(parity),
@@ -566,6 +575,7 @@ async function main() {
     units: units.gaps,
     ledger: ledgerGap(typeof unpairedEnds === 'function' ? unpairedEnds(ledgerLines) : null),
     exported: exported.gap,
+    blocksUnjudged: unjudgedKnown ? wm.unjudgedBaseTypes(blocksDoc).length : 0,
     excluded: pagesDoc.excluded,
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
     headerAgent: headerDecidedByAgent(parity),
