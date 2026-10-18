@@ -103,10 +103,10 @@
  * fragment removed) is recorded once per run. A non-2xx answer is `http-<code>`; an answer whose
  * content-type is not the kind's (text/css; font/*, application/(x-)font-*, the embedded-type font or
  * octet-stream; image/svg+xml or octet-stream — none declared passes) is `not-media` (a denial page served
- * to the browser itself); a body the browser cannot hand over within --timeout, or a request it never answers
- * while the page is open, is `error`; past the per-file
- * cap or the run total, `too-large`. Each forced load waits at most --timeout too; one the page cannot finish
- * is recorded by its response or not at all, never failing the page. Files: <assets-dir>/<kind>/<base>-<hash8>.<ext>, named like the media path (ext: the
+ * to the browser itself); a body the browser cannot hand over within --timeout is `error`, and so is a request
+ * no page that asked for it saw answered in full while it was open (recorded at the end of the run); past the
+ * per-file cap or the run total, `too-large`. Each forced load waits at most --timeout too and never fails its
+ * page. Files: <assets-dir>/<kind>/<base>-<hash8>.<ext>, named like the media path (ext: the
  * URL's own of the kind, else the content-type's, else css / bin / svg). Map: <harvest-map>, the media
  * map's format plus `kind` ("sheets" | "fonts" | "svg") after `status`, written after every page under the
  * same rules (sorted, tmp + rename, only on change; a map that is not a JSON object is refused, exit 2).
@@ -722,6 +722,7 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
   // Asset requests sent and not yet answered, per page: one the browser never answers in full (a body stalled before
   // the browser reports the response) is recorded as a timeout when the page ends, not lost.
   const inflight = new Map();
+  const unanswered = new Map();
   const onRequest = (req) => {
     let src;
     try { src = originalUrl(req); } catch { return; }
@@ -803,18 +804,18 @@ async function harvestBrowser(o, prevText, prev, { chromium, session }) {
         page.off('response', onResp);
         page.off('requestfailed', onFail);
         await queue;
-        if (pageOpened) {
-          for (const [src, kind] of [...inflight].sort(([a], [b]) => (a < b ? -1 : 1))) {
-            if (seen.has(src)) continue;
-            seen.add(src);
-            record(src, kind, { status: 'error', error: `${timedOut}: no complete answer while the page was open` });
-          }
-        }
+        if (pageOpened) for (const [src, kind] of inflight) if (!seen.has(src)) unanswered.set(src, kind);
         await page.close().catch(() => {});
       }
       saveMap();
     }
   } finally { await browser.close().catch(() => {}); }
+  // Unanswered on every page that asked for it: a later page's answer wins, so this is recorded only at the end.
+  for (const [src, kind] of [...unanswered].sort(([a], [b]) => (a < b ? -1 : 1))) {
+    if (seen.has(src)) continue;
+    seen.add(src);
+    record(src, kind, { status: 'error', error: `no complete answer while its page was open (bodies and forced loads wait --timeout ${o.timeout}s)` });
+  }
   saveMap();
   const pageErrors = pages.length - opened;
   const lines = summarizeAssets({ pages: pages.length, kinds, byKind, downloaded, reused, failures, pageErrors, map: o.harvestMap });

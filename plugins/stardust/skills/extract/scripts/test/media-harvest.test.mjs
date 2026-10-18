@@ -657,7 +657,7 @@ if (!chromium) {
     const h = JSON.parse(readFileSync(join(stall, 'stardust/current/assets/harvest-map.json'), 'utf8'));
     assert.equal(h[`${W}/css/stall.css`].status, 'ok');
     assert.equal(h[`${W}/fonts/stall.woff2`].status, 'error');
-    assert.match(h[`${W}/fonts/stall.woff2`].error, /timeout after 1s/);
+    assert.match(h[`${W}/fonts/stall.woff2`].error, /no complete answer while its page was open/);
     assert.doesNotMatch(r.out, /not opened/);
   });
 
