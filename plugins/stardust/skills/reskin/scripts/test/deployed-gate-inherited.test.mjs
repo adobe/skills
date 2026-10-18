@@ -564,6 +564,10 @@ await check('an instrument that echoes the token has it redacted from its row an
   assert.ifError(leaky.error);
   assert.deepEqual([pick(leaky.result.rows, 'ai-readability').status, pick(leaky.result.rows, 'ai-readability').detail], ['ERROR', 'request failed: [redacted]']);
   assert.ok(!readFileSync(join(outOf(leaky.root), 'inherited.json'), 'utf8').includes(SECRET));
+  const inReport = await scenario('protected-leak-in-report', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { readability: { exit: 1, json: { pages: [{ path: '/ns/home', error: `served fetch refused ${SECRET}` }] } } } });
+  assert.ifError(inReport.error);
+  assert.deepEqual([pick(inReport.result.rows, 'ai-readability').status, pick(inReport.result.rows, 'ai-readability').detail], ['ERROR', '/ns/home: served fetch refused [redacted]']);
+  assert.ok(!readFileSync(join(outOf(inReport.root), 'inherited.json'), 'utf8').includes(SECRET), 'the error text of the report is redacted in the record');
   const challenged = await scenario('protected-challenge', { token: SECRET, record: { auth: true }, auth: `token ${SECRET}`, cfg: { qa: { exit: 3, stdout: '', stderr: `bot challenge for ${SECRET}\n` } } });
   assert.equal(challenged.error?.code, 3, String(challenged.error));
   assert.equal(challenged.error.message, 'bot challenge for [redacted]');

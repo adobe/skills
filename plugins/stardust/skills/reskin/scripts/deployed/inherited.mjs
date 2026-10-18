@@ -32,6 +32,7 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { callOnPreview, exitOf, firstLine, outputOf, parseJson, previewToken } from './child.mjs';
+import { redact } from './eds.mjs';
 import { fetchOnce } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
@@ -185,7 +186,7 @@ async function readabilityRow({ preview, token, out, tools, env }) {
   const page = counted(r) ? readJsonFile(file)?.pages?.[0] : null;
   const score = page?.code?.score;
   if (!Number.isFinite(score)) {
-    const said = page?.error ? `${page.path}: ${page.error}` : firstLine(outputOf(r, null));
+    const said = page?.error ? redact(`${page.path}: ${page.error}`, token) : firstLine(outputOf(r, null));
     return errorRow('ai-readability', exitOf(r), said || `ai-readability exited ${exitOf(r)} without a score`);
   }
   return score < MIN_READABILITY ? row('ai-readability', 'FAIL', String(score), gapDetail(page)) : row('ai-readability', 'PASS', String(score));
