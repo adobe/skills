@@ -21,11 +21,11 @@
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 55 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, mayLaunch, pickNames, procInfo, startKind, status, stop as stopJobs, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, mayLaunch, pickNames, procInfo, stallNotices, startKind, status, stop as stopJobs, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -803,6 +803,25 @@ await check('stop escalates: a server that ignores SIGTERM gets SIGKILL after th
   assert.doesNotMatch(logIn(sd, 'stubborn'), /ended exit=/, 'the wrapper was killed before it could record an end');
   assert.deepEqual(noVerdict(stateIn(sd, 'stubborn')), [true, true, 124, true]);
   assert.equal(bgIn(sd, {}, 'clean').code, 0); assert.deepEqual(readdirSync(sd), [], 'every stopped job is ended: clean removes it');
+});
+
+await check('wait --stall: a running job whose log has not grown for --stall min adds one `stall: <job> no output for N min (deadline in M min)` line under its report; a fresh log and a server get none; --stall 0 is off', async () => {
+  const d = join(lockRoot, 'stall', 'bg'); mkdirSync(d, { recursive: true });
+  const wrapperStart = procInfo(process.pid, { fresh: true }).start; // this test process stands in for a live wrapper
+  const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
+  const put = (name, fields) => { writeFileSync(join(d, `${name}.json`), JSON.stringify({ name, runKind: 'job', ownerPid: 'agent-a', cmd: 'node', args: [], cwd: d, timeoutSec: 3600, slots: 3, lock: 'off', queuedAt: ago(700), wrapperPid: process.pid, wrapperStart, launchedAt: ago(700), childPid: 999999, childStart: 'x', endedAt: null, exit: null, timedOut: false, ...fields })); writeFileSync(join(d, `${name}.log`), ''); };
+  put('quiet', {}); put('busy', {}); put('srv', { runKind: 'server' });
+  const stale = new Date(Date.now() - 6 * 60000); // the quiet job and the server have had no output for 6 minutes
+  utimesSync(join(d, 'quiet.log'), stale, stale); utimesSync(join(d, 'srv.log'), stale, stale);
+  const map = stallNotices(d, ['quiet', 'busy', 'srv'], 5);
+  assert.deepEqual([...map.keys()], ['quiet'], 'only the quiet running job stalls — a fresh log and a server do not');
+  assert.match(map.get('quiet'), /^stall: quiet no output for [67] min \(deadline in \d+ min\)$/);
+  assert.deepEqual([...stallNotices(d, ['quiet'], 0).keys()], [], '--stall 0 is off');
+  const w = await wait(d, ['quiet', 'busy', 'srv'], { maxSec: 0, owner: 'agent-a', pauseFile: '', stallMin: 5 });
+  assert.match(w.text, /^stall: quiet no output for [67] min \(deadline in \d+ min\)$/m, 'wait prints the stall line');
+  assert.doesNotMatch(w.text, /^stall: (busy|srv)/m, 'not the fresh job, not the server');
+  assert.doesNotMatch((await wait(d, ['quiet'], { maxSec: 0, owner: 'agent-a', pauseFile: '', stallMin: 0 })).text, /^stall:/m, 'wait --stall 0 prints none');
+  rmSync(join(lockRoot, 'stall'), { recursive: true, force: true });
 });
 
 rmSync(dir, { recursive: true, force: true });

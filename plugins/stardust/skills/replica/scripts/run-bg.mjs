@@ -26,7 +26,7 @@
  *   node run-bg.mjs log    <job> [--tail <n>] [--grep <re>]
  *   node run-bg.mjs clean  [--all]
  *   (every form: [--dir <d>], default stardust/.work/replica/bg, env RUN_BG_DIR)
- *   A value flag (--name --kind --dir --timeout --slots --max --until --tail --grep) followed by
+ *   A value flag (--name --kind --dir --timeout --slots --max --until --stall --tail --grep) followed by
  *   nothing or by another --flag is a usage error (exit 125) naming the flag —
  *   never a silently swallowed value. --timeout is a start flag: on wait or
  *   status it is a usage error (exit 125) naming --max, never silently ignored.
@@ -224,12 +224,12 @@
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run; also 124 (with
  * stopped) = ended by `stop` — no verdict, like a deadline.
  *
- * Also importable: start(), wait(), status(), stop(), pickNames(), startKind(), mayLaunch(), isServer(), serverLine(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), stop(), pickNames(), startKind(), mayLaunch(), isServer(), serverLine(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), stallNotices(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn, spawnSync } from 'node:child_process';
-import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
@@ -259,6 +259,9 @@ export const DEFAULT_SLOTS = 3;
 export const DEFAULT_MAX_SEC = 300;
 export const MAX_CEILING_SEC = 1500;
 export const WAIT_NOTICE_SEC = 600;
+// wait flags a running job whose log has not grown for this many minutes (0 = off), so a lead kills a hung job instead
+// of waiting out its deadline; a recorded hands-off lead sat 57 minutes on a silent call.
+export const DEFAULT_STALL_MIN = 5;
 const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
 // --until: an instant, never a local wall-clock time — the offset (or Z) is required.
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
@@ -341,7 +344,7 @@ export async function gateAllTimeout(cmd, args = [], { cwd = process.cwd(), give
 
 const HELP = `Usage:
   node run-bg.mjs start --name <job> [--kind job|server] [--timeout <s>=${DEFAULT_TIMEOUT_SEC}, server ${SERVER_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] [--lock|--no-lock] -- <cmd> [args…]
-  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC} | --until <ISO>] [--all] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
+  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC} | --until <ISO>] [--stall <min>=${DEFAULT_STALL_MIN}] [--all] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
   node run-bg.mjs status [--all] [--tail <n>] [--grep <re>] [<job>…]
   node run-bg.mjs stop   <job>… | --servers [--all]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
@@ -360,6 +363,8 @@ const HELP = `Usage:
   shell tool call a timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it
   first. --max 240 where the prompt cache lives five minutes.
   Rule: wait in steps of at most five minutes, lead and subagents alike — \`run-bg.mjs wait\` for jobs, \`progress.mjs wait\` for units; a \`sleep\` is never a wait.
+  Stall: a running job whose log has not grown for --stall minutes (default ${DEFAULT_STALL_MIN}, 0 = off; servers excluded) adds one line
+  \`stall: <job> no output for N min (deadline in M min)\` under its report line, so a hung job is killed, not waited out.
   Why: recorded hands-off leads waited 9–23 minutes per poll while ended units sat unseen; with a one-hour cache a
   five-minute poll costs about three cents. A ceiling stays: in another run one call waited 57 minutes.
   Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)
@@ -715,7 +720,25 @@ const SERVERS_HEAD = {
   all: 'of all owners — not waited for; `stop <name>` or `stop --servers --all` ends them',
   named: 'named — `stop <name>` ends one; `wait <name>` waits until it is stopped or at its deadline',
 };
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, skipped = 0, servers = [], serversOf = 'yours', elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
+// name → `stall: <job> no output for N min (deadline in M min)` for every selected RUNNING job (never a server, which
+// runs quiet by design) whose log has not grown for `stallMin` minutes (0 = off). A lead reads it and kills the hung job
+// instead of waiting out the deadline. mtime, not a byte count: the wrapper's last write to the log is the last output.
+export function stallNotices(dir, names, stallMin, { now = Date.now() } = {}) {
+  const out = new Map();
+  if (!(stallMin > 0)) return out;
+  for (const name of names) {
+    const st = readState(dir, name);
+    if (!st || isServer(st) || phase(st) !== 'running') continue;
+    let mtimeMs; try { mtimeMs = statSync(logPath(dir, name)).mtimeMs; } catch { continue; }
+    const idleMs = now - mtimeMs;
+    if (idleMs < stallMin * 60000) continue;
+    const deadlineMs = st.launchedAt && st.timeoutSec > 0 ? Date.parse(st.launchedAt) + st.timeoutSec * 1000 : null;
+    const left = deadlineMs != null ? `deadline in ${Math.max(0, Math.floor((deadlineMs - now) / 60000))} min` : 'no deadline';
+    out.set(name, `stall: ${name} no output for ${Math.floor(idleMs / 60000)} min (${left})`);
+  }
+  return out;
+}
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, skipped = 0, servers = [], serversOf = 'yours', elapsedSec = 0, ceilingSec = 0, pause = null, stalls = new Map() } = {}) {
   const sts = servers.map((n) => readState(dir, n)).filter(Boolean);
   const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${serversOf === 'named' && sts.length ? `, ${sts.length} server(s)` : ''}${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}${skipped ? `; ${skipped} server(s) not waited for — status lists them` : ''}`]; let pending = 0;
   if (pause) lines.unshift(pauseLine(pause));
@@ -725,6 +748,7 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
     if (isPending(st)) pending += 1;
     lines.push(describe(st));
     if (!isPending(st)) for (const l of verdictLines(logPath(dir, name), { tail, grep })) lines.push(`  ${l}`);
+    if (stalls.has(name)) lines.push(stalls.get(name));
   }
   if (!names.length) { if (!sts.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`); }
   else if (pending && pause) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — paused: no further wait; they keep running, \`status\` reads them later; logs: ${dir}/<job>.log`);
@@ -771,7 +795,7 @@ export function pickNames(dir, requested, { all = false, owner = null } = {}) {
 
 // The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. The
 // pause file (pauseState) is checked before the first poll and on every poll: present → return at once, `paused`.
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, stallMin = DEFAULT_STALL_MIN, pauseFile = process.env.STARDUST_PAUSE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
   let ceilingSec;
   if (untilMs != null) {
     if (!Number.isFinite(untilMs)) throw new UsageError(`${UNTIL_USAGE} (got ${untilMs})\n${HELP}`);
@@ -792,7 +816,7 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
     if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, skipped, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause });
+  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, skipped, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause, stalls: stallNotices(dir, names, stallMin) });
 }
 
 // Named, a server goes under servers: too (by name), with the fields a bare or --all status gives it.
@@ -950,6 +974,10 @@ function parse(argv) {
       o.timeoutSec = num(a, value()); o.timeoutGiven = true;
     }
     else if (a === '--slots') o.slots = num(a, value());
+    else if (a === '--stall') {
+      if (sub !== 'wait') throw new UsageError(`run-bg: --stall is a wait flag — it flags a running job whose log has not grown\n${HELP}`);
+      o.stallMin = num(a, value());
+    }
     else if (a === '--max') { o.maxSec = num(a, value()); o.maxGiven = true; }
     else if (a === '--until') {
       if (sub !== 'wait') throw new UsageError(`run-bg: --until is a wait flag — status reports at once; start takes --timeout <s>\n${HELP}`);
@@ -989,7 +1017,7 @@ async function cli(argv) {
       console.log(`run-bg: started server ${r.name} → ${r.log}   (not waited for: \`status\` lists it under servers:, \`stop ${r.name}\` ends it${timeoutSec ? `, else its ${timeoutSec} s deadline` : ''})`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, stallMin: o.stallMin, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
     case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'stop': { const r = await stop(o.dir, o.names, { servers: o.servers, all: o.all }); console.log(r.text); return r.code; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
