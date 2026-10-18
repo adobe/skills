@@ -244,15 +244,19 @@ check('round trip: the export as the skill runs it (block-origin.mjs --verify, t
   assert.deepEqual(exportGaps(), []);
 });
 
-check('mapping required: --allow-no-mapping keeps the manifest as before (handover null, exit 0) with captures present', () => {
+check('mapping required: --allow-no-mapping keeps the manifest written (handover null, exit 0) with captures present; the captures are hashed under inputs so a changed capture is export_stale', () => {
   const dir = withCaptures('allow-no-mapping');
   const r = run(dir, '--allow-no-mapping');
   ok(r);
   assert.equal(r.stderr.includes('missing:'), false, r.stderr);
   assert.equal(doc(dir, 'manifest.json').handover, null);
+  const inputs = doc(dir, 'manifest.json').inputs;
+  const capKeys = Object.keys(inputs).filter((k) => k.startsWith('stardust/current/pages/') && k.endsWith('.html'));
+  assert.ok(capKeys.length >= 1, `the captures block-origin reads are inputs: ${Object.keys(inputs).join(', ')}`);
+  for (const k of capKeys) assert.equal(inputs[k], sha(readFileSync(join(dir, k))), k);
   const plain = copy('allow-no-mapping-plain');
   ok(run(plain));
-  assert.equal(text(dir, 'manifest.json'), text(plain, 'manifest.json'), 'the same bytes as a project without captures');
+  assert.equal(Object.keys(doc(plain, 'manifest.json').inputs).some((k) => k.startsWith('stardust/current/pages/')), false, 'a project without captures hashes none');
 });
 
 check('idempotent: a second run is "unchanged" and rewrites nothing, also after inventory and blocks re-run and from another cwd; deleting and re-running gives the same bytes; --dry-run writes nothing', () => {

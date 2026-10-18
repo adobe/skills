@@ -32,7 +32,7 @@ import { fileURLToPath } from 'node:url';
 import * as doneCheck from '../done-check.mjs';
 import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
-import { inputHashes } from '../workspace-manifest.mjs';
+import { blockOriginInputDirs, inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
 
@@ -737,7 +737,7 @@ check('CLI: export_stale reads the project — fresh after the three commands, s
   const proj = project({ files });
   const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
   const writeManifest = () => {
-    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json') });
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
     const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].filter((f) => existsSync(join(proj, f))).map((f) => [f, sha(f)]));
     writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
   };
@@ -757,6 +757,40 @@ check('CLI: export_stale reads the project — fresh after the three commands, s
   rmSync(join(proj, WS, 'handover.json'));
   writeFileSync(join(proj, 'stardust/rollout/rollout.json'), JSON.stringify({ exports: [] }));
   assert.deepEqual(stale(), [], 'not listed: not judged');
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: export_stale on block-origin\'s own inputs — an eds-schema sidecar (or a capture) changed after the mapping is a differing hash, named, with the remedy', () => {
+  const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
+  const files = {
+    'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
+    'stardust/rollout/coverage/pages.json': pagesDoc,
+    'stardust/rollout/coverage/templates.json': { templates: [] },
+    'stardust/rollout/coverage/blocks.json': { blocks: [] },
+    'stardust/current/pages/home.html': '<main><h1>Home</h1></main>',
+    'stardust/eds-schema/home.json': { slug: 'home', sections: [{ items: [{ role: 'heading', text: 'Home' }] }] },
+    'content/index.html': '<main><div><h1>Home</h1></div></main>',
+    'blocks/hero/hero.css': '.hero { margin: 0; }',
+    'blocks/hero/hero.js': 'export default function decorate() {}',
+    [`${WS}/mapping.json`]: { formatVersion: '0.1.0', generatedAt: pagesDoc.generatedAt, skipped: [], templates: [] },
+  };
+  const proj = project({ files });
+  const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
+  const writeManifest = () => {
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
+    const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
+    writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
+  };
+  const stale = () => JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((g) => g.startsWith('export_stale'));
+  writeManifest();
+  assert.deepEqual(stale(), [], 'the sidecar and capture are hashed into the manifest; a fresh export is no gap');
+  // a gap-closure that rewrites a sidecar AFTER the mapping is the stale case the export must catch
+  writeFileSync(join(proj, 'stardust/eds-schema/home.json'), JSON.stringify({ slug: 'home', sections: [{ items: [{ role: 'eyebrow', text: 'Welcome' }] }] }));
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/eds-schema/home.json — ${REMEDY}`]);
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  writeFileSync(join(proj, 'stardust/current/pages/home.html'), '<main><h1>Home v2</h1></main>');
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/current/pages/home.html — ${REMEDY}`]);
   rmSync(proj, { recursive: true, force: true });
 });
 

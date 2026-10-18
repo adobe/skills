@@ -447,7 +447,9 @@ async function exportState({ out, config, pagesDoc, wm }) {
   let treeError = null;
   if (wm && typeof wm.inputHashes === 'function') {
     try {
-      const { inputs } = wm.inputHashes({ project, contentDir: resolve('content'), blocksDir: resolve('blocks'), judgementFile: resolve(ws, 'judgement.json') });
+      // the same block-origin inputs (captures, eds-schema sidecars, encoder maps) the manifest hashed
+      const dirs = typeof wm.blockOriginInputDirs === 'function' ? wm.blockOriginInputDirs(project) : {};
+      const { inputs } = wm.inputHashes({ project, contentDir: resolve('content'), blocksDir: resolve('blocks'), judgementFile: resolve(ws, 'judgement.json'), ...dirs });
       const files = [...['pages', 'templates', 'blocks'].map((n) => resolve(out, 'coverage', `${n}.json`)), resolve(ws, 'mapping.json')];
       tree = { inputs, outputs: Object.fromEntries(files.filter(isFile).map((f) => [rel(f), sha256(readFileSync(f))])) };
     } catch (e) { treeError = e.message; }

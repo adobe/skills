@@ -579,6 +579,15 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   `gates/all-<width>/triage.md` — act on causes with rows on your own pages:
   fix each cause once and re-gate the scope it names; the rows stay the
   verdict.
+- **Close the export in order, then the ledger LAST**
+  (`../rollout/reference/delivery-gates.md` § Export freshness): a gap-closure
+  fix WRITES FIRST, then `block-origin.mjs --verify`, then
+  `workspace-manifest.mjs`, then `done-check.mjs` — never the other way round,
+  or the manifest records inputs (captures, eds-schema sidecars, encoder maps)
+  the mapping was never built from and `done-check` raises `export_stale`. Run
+  `token-ledger.mjs` LAST of all, after the final session's last cost line —
+  before it, `harnessCost` stops one session short (it records `costLinesSeen` /
+  `lastCostAt` so a reader can tell).
 
 **State:** replica writes its own state under `stardust/replica/` — the
 inconsistency register, `progress.json` (one map: `types.<archetype>` —

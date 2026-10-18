@@ -137,6 +137,36 @@ function walkHtml(dir, acc = []) {
   return acc;
 }
 
+/** Every file under `dir` (recursively, dotfiles skipped) whose basename `match` accepts, absolute paths. */
+function walkMatch(dir, match, acc = []) {
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    if (e.isDirectory()) walkMatch(join(dir, e.name), match, acc);
+    else if (e.isFile() && match(e.name)) acc.push(join(dir, e.name));
+  }
+  return acc;
+}
+
+const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+
+/**
+ * block-origin.mjs's own inputs under `project`, so the export's freshness is measured on what the
+ * mapping was built from: the captures (<project>/stardust/current/pages/<slug>.html, or `capturesDir`),
+ * the eds-schema sidecars (the .json files under <project>/stardust/eds-schema) and the encoder maps
+ * (a vocabulary.json under <project>/stardust/import or stardust/migrate/encode — the dirs block-origin
+ * reads). The same set the tree is hashed from in done-check.mjs, so a sidecar, capture or map changed
+ * after the mapping shows as a differing hash.
+ */
+export function blockOriginInputDirs(project, capturesDir = join(project, 'stardust', 'current', 'pages')) {
+  return {
+    capturesDir,
+    edsDir: join(project, 'stardust', 'eds-schema'),
+    encodeDirs: [join(project, 'stardust', 'import'), join(project, 'stardust', 'migrate', 'encode')].filter(isDir),
+  };
+}
+
 /** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
 export function hasCaptures(dir) {
   try { return readdirSync(dir, { withFileTypes: true }).some((e) => e.isFile() && !e.name.startsWith('.') && /\.(html|json)$/.test(e.name)); } catch { return false; }
@@ -144,11 +174,13 @@ export function hasCaptures(dir) {
 
 /**
  * The manifest's inputs as on disk, keys sorted: `content` {files, sha256[, tracked when given]} (one hash over the
- * sorted "<project-relative path> <sha>" lines of every <content>/**.html), each <blocks>/<n>/<n>.{js,css}, and the
- * judgement when it is a file. Also returns the content hashes by content-relative path and the counts readArtifacts
- * needs. done-check.mjs compares a manifest against it.
+ * sorted "<project-relative path> <sha>" lines of every <content>/**.html), each <blocks>/<n>/<n>.{js,css}, the
+ * judgement when it is a file, and — so the export's freshness covers what block-origin.mjs built the mapping from —
+ * each capture (an .html under <capturesDir>), each eds-schema sidecar (a .json under <edsDir>) and each
+ * encoder map (a vocabulary.json under <encodeDirs>), by project-relative path to sha256. Also returns the content hashes by
+ * content-relative path and the counts readArtifacts needs. done-check.mjs compares a manifest against it.
  */
-export function inputHashes({ project, contentDir, blocksDir, judgementFile, tracked }) {
+export function inputHashes({ project, contentDir, blocksDir, judgementFile, tracked, capturesDir = null, edsDir = null, encodeDirs = [] }) {
   const relP = (abs) => relative(project, abs).split(sep).join('/');
   const contentHashes = new Map(walkHtml(contentDir).map((abs) => [relative(contentDir, abs).split(sep).join('/'), sha256(readFileSync(abs))]));
   const lines = [...contentHashes].map(([rel, sha]) => `${relP(join(contentDir, rel))} ${sha}\n`).sort(byStr);
@@ -162,6 +194,11 @@ export function inputHashes({ project, contentDir, blocksDir, judgementFile, tra
   }
   const judged = isFile(judgementFile);
   if (judged) inputs[relP(judgementFile)] = sha256(readFileSync(judgementFile));
+  // block-origin's inputs: a capture, sidecar or map changed after the mapping is a differing hash here.
+  const addFiles = (files) => { for (const abs of files) inputs[relP(abs)] = sha256(readFileSync(abs)); };
+  if (capturesDir) addFiles(walkMatch(capturesDir, (n) => n.endsWith('.html')));
+  if (edsDir) addFiles(walkMatch(edsDir, (n) => n.endsWith('.json')));
+  for (const d of encodeDirs) addFiles(walkMatch(d, (n) => n === 'vocabulary.json'));
   return { inputs: Object.fromEntries(Object.keys(inputs).sort(byStr).map((k) => [k, inputs[k]])), contentHashes, contentFiles: lines.length, blockFiles, judged };
 }
 
@@ -314,7 +351,8 @@ function main(argv) {
 
   // --- Inputs: what the coverage was built from ------------------------------------
   const judgementFile = join(W, FILES.judgement);
-  const { inputs: sortedInputs, contentHashes, contentFiles, blockFiles, judged } = inputHashes({ project, contentDir, blocksDir, judgementFile, tracked });
+  const { capturesDir: edsCapturesDir, edsDir, encodeDirs } = blockOriginInputDirs(project, capturesDir);
+  const { inputs: sortedInputs, contentHashes, contentFiles, blockFiles, judged } = inputHashes({ project, contentDir, blocksDir, judgementFile, tracked, capturesDir: edsCapturesDir, edsDir, encodeDirs });
 
   const readArtifacts = [...Object.keys(outputs), ...(contentFiles ? [relP(contentDir)] : []),
     ...(blockFiles ? [relP(blocksDir)] : []), ...(judged ? [relP(judgementFile)] : [])].sort(byStr);
