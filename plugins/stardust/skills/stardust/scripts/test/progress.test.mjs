@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // skills/stardust/scripts/test/progress.test.mjs — the progress.mjs contract: the unit transitions
-// (start / resume / done / failed, --again), the per-ledger map and --kind vocabulary, --set (dotted
+// (start / resume / done / failed, --again, a re-recorded end keeping endedAt), the per-ledger map and --kind vocabulary, --set (dotted
 // key inside the entry, JSON or string value, __proto__ / constructor / prototype refused), the
 // shape refusals (not JSON, not an object, a non-object map or entry, a replica file holding one
 // archetype's bare record), the replica ledger's other top-level keys kept as they were, the one
@@ -137,6 +137,20 @@ check('applyUnit: start / resume / done / failed / --again transitions, field or
   assert.equal(re.resumed, false); assert.equal(re.entry.startedAt, '2026-01-03T00:00:00Z'); assert.ok(!('endedAt' in re.entry), 'a restart after failed drops endedAt');
   assert.throws(() => applyUnit(doc, opts({ event: 'done', name: 'c9' }), T1), (e) => e.code === 2 && e.message === `no unit c9 in ${ROLLOUT} — progress.mjs unit start c9 first`);
   assert.throws(() => applyUnit({ units: { c1: { status: 'blocked' } } }, opts({ event: 'start', name: 'c1' }), T1), /status "blocked" is not one of pending\|running\|done\|failed/);
+});
+check('applyUnit: a re-recorded end keeps endedAt and applies the fields; a different prior status sets a new endedAt', () => {
+  const T2 = '2026-01-02T05:00:00Z';
+  const doc = { units: { c1: { status: 'done', kind: 'cluster', startedAt: T0, endedAt: T1, verdict: 'pass' } } };
+  const again = applyUnit(doc, opts({ event: 'done', name: 'c1', fields: { pages: 12, verdict: 'pass 12/12' }, sets: [{ path: ['gates', '1440'], value: 1.2 }] }), T2);
+  assert.deepEqual(again.entry, { status: 'done', kind: 'cluster', pages: 12, gates: { 1440: 1.2 }, startedAt: T0, endedAt: T1, verdict: 'pass 12/12' });
+  const toFailed = applyUnit(doc, opts({ event: 'failed', name: 'c1' }), T2);
+  assert.equal(toFailed.entry.status, 'failed'); assert.equal(toFailed.entry.endedAt, T2, 'done → failed: a new end');
+  const T3 = '2026-01-02T06:00:00Z';
+  assert.equal(applyUnit(doc, opts({ event: 'failed', name: 'c1', fields: { verdict: 'fail: 2 bands' } }), T3).entry.endedAt, T2, 'failed → failed keeps it');
+  assert.equal(doc.units.c1.verdict, 'fail: 2 bands');
+  assert.equal(applyUnit(doc, opts({ event: 'done', name: 'c1' }), T3).entry.endedAt, T3, 'failed → done: a new end');
+  const noEnd = { units: { c2: { status: 'done', startedAt: T0 } } };
+  assert.equal(applyUnit(noEnd, opts({ event: 'done', name: 'c2' }), T1).entry.endedAt, T1, 'done without an endedAt gets one');
 });
 check('applyUnit: shape refusals (not an object, map, entry, a replica bare record)', () => {
   const bad = (doc, o, re) => assert.throws(() => applyUnit(doc, opts(o), T0), (e) => e.code === 2 && re.test(e.message), String(re));
@@ -309,6 +323,19 @@ check('done unit: start refused without --again (exit 2, file untouched); --agai
   assert.equal(a.code, 0, a.err);
   const c1 = readJ(file).units.c1;
   assert.equal(c1.status, 'running'); assert.notEqual(c1.startedAt, T0); assert.ok(!('endedAt' in c1));
+});
+check('re-record via the CLI: unit done on a done unit keeps the subagent\'s endedAt and completes the fields; the line shape is unchanged', () => {
+  const d = project();
+  const file = join(d, ROLLOUT);
+  put(file, { units: { c1: { status: 'done', startedAt: T0, endedAt: T1, verdict: 'pass' } } });
+  const r = runIn(d, 'unit', 'done', 'c1', '--kind', 'cluster', '--pages', '12', '--blocks', '2', '--set', 'gates.1440={"archetype":1.3}');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(oneLine(r.out), `progress rollout c1: done kind=cluster pages=12 blocks=2 startedAt=${T0} endedAt=${T1} verdict=pass`);
+  assert.deepEqual(readJ(file).units.c1, { status: 'done', kind: 'cluster', pages: 12, blocks: 2, gates: { 1440: { archetype: 1.3 } }, startedAt: T0, endedAt: T1, verdict: 'pass' });
+  const f = runIn(d, 'unit', 'failed', 'c1', '--verdict', 'fail: reopened');
+  assert.equal(f.code, 0, f.err);
+  const c1 = readJ(file).units.c1;
+  assert.equal(c1.status, 'failed'); assert.match(c1.endedAt, ISO); assert.notEqual(c1.endedAt, T1);
 });
 check('done / failed on a unit that was never started: exit 2, one stderr line, nothing written (no file created)', () => {
   const d = project();

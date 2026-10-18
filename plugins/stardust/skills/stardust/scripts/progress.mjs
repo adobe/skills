@@ -24,7 +24,9 @@
 // Transitions. start: an absent / pending / failed entry → running, startedAt = now, endedAt removed;
 // a running entry stays running with its startedAt (a resume, the line says "(resumed)"); a done entry
 // is refused unless --again (then a fresh start). done / failed: the entry must exist; status set,
-// endedAt = now. --kind, --pages, --blocks, --templates and --verdict set their fields; --set sets a
+// endedAt = now — kept when the entry already has that status: the unit's subagent records its own end
+// and the lead's later re-record only completes the fields, so endedAt stays the unit's, not the lead's
+// bookkeeping time. --kind, --pages, --blocks, --templates and --verdict set their fields; --set sets a
 // dotted key inside the entry (value parsed as JSON when it parses, else kept as a string).
 // Shape refusals write nothing: a file that is not JSON or not an object, a map or entry that is not an
 // object, an unknown status, a replica file holding one archetype's bare record at the top level.
@@ -91,7 +93,8 @@ unit start:   absent / pending / failed → running, startedAt = now (UTC, secon
               running → kept, startedAt kept, the line says "(resumed)";
               done → exit 2 "unit <name> is done — pass --again to run it again" (--again: a fresh start)
 unit done|failed: the unit must exist (else exit 2 "no unit <name> in <file> — progress.mjs unit start
-              <name> first"); status set, endedAt = now
+              <name> first"); status set, endedAt = now — kept when the entry already has that status:
+              a re-record completes the fields (done → done keeps endedAt; failed → done sets it anew)
 Fields: --kind (the ledger's vocabulary), --pages / --blocks (integer ≥ 0), --templates a,b (an array),
   --verdict (one line; line breaks folded to spaces). --set <key>=<value> (repeatable): a dotted key
   inside the entry (gates.1440={"archetype":1.3}); the value is JSON when it parses, else the string.
@@ -291,8 +294,9 @@ export function applyUnit(doc, o, now) {
     entry.status = 'running';
   } else {
     if (!had) throw new UsageError(`no unit ${o.name} in ${o.file} — progress.mjs unit start ${o.name} first`);
+    // a re-record of the same end (the lead completing the fields) keeps the unit's own endedAt
+    if (!(status === o.event && entry.endedAt != null)) entry.endedAt = now;
     entry.status = o.event;
-    entry.endedAt = now;
   }
   for (const [k, v] of Object.entries(o.fields || {})) entry[k] = v;
   for (const { path, value } of o.sets || []) setPath(entry, path, value);
