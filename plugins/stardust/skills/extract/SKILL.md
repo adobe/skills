@@ -326,6 +326,11 @@ file or `node -e`: `node stardust/scripts/stardust/state.mjs init
 URL per line) — one `extracted` page per URL, the check above applied
 at write time (a failing page: exit 2, nothing written — drop it from
 the list). Types and representatives change later via `state.mjs set`.
+Other edits go through instruments too: text in a tracked file through the
+edit tool or `stardust/scripts/stardust/replace.mjs` (counted, atomic), a
+JSON value through `json-edit.mjs` beside it — an inline interpreter may
+read and print, never write a tracked file
+(`../replica/reference/reading-discipline.md`).
 If a page fails, record the error in `_crawl-log.json` and continue —
 extraction is best-effort per page.
 
