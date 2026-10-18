@@ -526,9 +526,11 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   wrote 513k tokens of cache, **$6.30 for one silent gap, more than the
   rounds it waited for**. So: `run-bg.mjs start --name <slug>-<w>-<iter> -- gate.sh …`
   for every round at once (the slots pace them, replica SKILL.md § Setup),
-  then `run-bg.mjs wait` prints one line per job plus its verdict lines;
+  then `run-bg.mjs wait` prints one line per job plus its verdict lines
+  within `--max` (default and ceiling 1500 s, a lead whose cache holds an
+  hour; `--max 240` under a five-minute cache, a fan-out subagent's);
   exit 75 means "still going — `wait` again as your NEXT step", never in a
-  shell loop. The full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
+  shell loop; exit 76 means the pause file appeared — stop waiting. The full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
   read it with `run-bg.mjs log <job> --grep <re>`, not with `cat`: a verdict
   is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a

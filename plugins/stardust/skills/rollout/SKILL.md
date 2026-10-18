@@ -519,9 +519,9 @@ tags each by **fixability**, and gates the rollout. Sources (full mapping in
 and its rendered sidecar; `--current <dir>` to point elsewhere), baseline findings the
 SOURCE shares — the same `<title>`, no description on the source either, no JSON-LD on
 the source either, the same title shared by the same pages — are tagged `fixability:
-out-of-scope` with the evidence prefix `source parity:` and listed in their own report
-section: informational, excluded from the health score and the open P1/P2/P3 counts,
-never gated, never auto-fixed. A recorded hands-off run accepted 63 such findings by
+out-of-scope` with the evidence prefix `source parity:`, recorded with `status:
+informational` (never `open`) and listed in their own report section: excluded from the
+health score and the open P1/P2/P3 counts, never gated, never auto-fixed. A recorded hands-off run accepted 63 such findings by
 hand. Everything else routes as before (`reference/checks.md` § Source parity).
 
 Normalize each source's findings into the ledger with the writer:
