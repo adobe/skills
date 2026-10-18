@@ -715,8 +715,9 @@ rather than erroring.
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
     and warns loudly with the family names; an `@font-face` whose every
-    requested src answered 404, beside a face of its family that loaded, is a
-    dead declaration (the same for every visitor — `fontsDead`, not counted). On the warning, decide before gating: load the face in a real
+    requested src answered 404, beside a face of the same family, weight and
+    style that loaded, is a dead declaration (the same for every visitor —
+    `fontsDead`, not counted). On the warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,

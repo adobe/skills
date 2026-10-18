@@ -281,6 +281,10 @@ await check('deadFontFaces: a family with a face that loaded, whose every failed
   assert.deepEqual(deadFontFaces({ errored: ['Brand Sans', 'Brand Sans'], loaded, rules, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'two failed faces, one dead declaration: one failure is unexplained');
   assert.deepEqual(deadFontFaces({ errored: ['Brand Sans'], loaded: [], rules, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'no face of the family loaded: a fallback, counted');
   assert.deepEqual(deadFontFaces({ errored: [], loaded, rules, statuses: st }), { failed: [], dead: [] });
+  // faces are keyed by family + weight + style: a 404 bold beside a regular that loaded renders the bold in fallback type
+  const bold = [{ family: 'Brand Sans', weight: '400', srcs: [`${B}ok.woff2`] }, { family: 'Brand Sans', weight: 'bold', srcs: [`${B}a.woff2`] }];
+  assert.deepEqual(deadFontFaces({ errored: [{ family: 'Brand Sans', weight: '700', style: 'normal' }], loaded: [{ family: 'Brand Sans', weight: 'normal', style: 'normal' }], rules: bold, statuses: st }), { failed: ['Brand Sans'], dead: [] }, 'another weight loaded: counted');
+  assert.deepEqual(deadFontFaces({ errored: [{ family: 'Brand Sans', weight: '700' }], loaded: [{ family: 'Brand Sans', weight: 'bold' }], rules: bold, statuses: st }), { failed: [], dead: ['Brand Sans'] }, 'the same weight loaded (bold = 700): dead');
 });
 
 await check('fontFamilies: surrounding quotes stripped, trimmed, empties dropped, unique, sorted — the record\'s fontsFailed', () => {
@@ -385,7 +389,7 @@ if (chromium) {
   Object.assign(pages, {
     '/backdrop': page('<section><p style="margin:0;padding-top:430px;font:40px/40px sans-serif;text-align:center">Page content beneath the backdrop</p></section><section></section><div class="backdrop" style="position:fixed;inset:0;background:rgba(0,0,0,.5)"></div>'),
     // a face whose only src 404s (a dead declaration: not counted) and one whose src answers 500 (counted)
-    '/font-fail': page('<section style="font-family:\'Brand Sans\',sans-serif">Brand type <b>bold</b></section><section style="font-family:\'Other Sans\',sans-serif">Other type</section><section style="font-family:\'Solo Sans\',sans-serif">Solo type</section>', '<style>@font-face{font-family:"Brand Sans";font-weight:400;src:url(/brand.ttf) format("truetype")}@font-face{font-family:"Brand Sans";font-weight:700;src:url(/missing.woff2) format("woff2")}@font-face{font-family:"Other Sans";src:url(/broken.woff2) format("woff2")}@font-face{font-family:"Solo Sans";src:url(/gone.woff2) format("woff2")}</style>'),
+    '/font-fail': page('<section style="font-family:\'Brand Sans\',sans-serif">Brand type <b>bold</b></section><section style="font-family:\'Other Sans\',sans-serif">Other type</section><section style="font-family:\'Solo Sans\',sans-serif">Solo type</section><section style="font-family:\'Bold Sans\',sans-serif">Bold <b>type</b></section>', '<style>@font-face{font-family:"Brand Sans";src:url(/brand.ttf) format("truetype")}@font-face{font-family:"Brand Sans";src:url(/missing.woff2) format("woff2")}@font-face{font-family:"Bold Sans";src:url(/brand.ttf) format("truetype")}@font-face{font-family:"Bold Sans";font-weight:700;src:url(/bold-gone.woff2) format("woff2")}@font-face{font-family:"Other Sans";src:url(/broken.woff2) format("woff2")}@font-face{font-family:"Solo Sans";src:url(/gone.woff2) format("woff2")}</style>'),
     // a page whose document.fonts throws: the font-load check cannot run
     '/fonts-unreadable': page('<section>Text</section><section></section>', '<script>Object.defineProperty(document, \'fonts\', { configurable: true, get() { throw new Error(\'fonts unavailable\'); } });</script>'),
     '/consent-popup': page('<div id="banner" style="position:fixed;bottom:0;left:0;right:0;height:120px;background:#123"><button id="onetrust-accept-btn-handler" onclick="this.parentNode.remove()">OK</button></div><section></section><section></section>', popupLate),
@@ -757,12 +761,12 @@ if (chromium) {
       assert.equal(r.status, 0, r.stderr);
       const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
       assert.equal(warnings.length, 1, r.stderr);
-      assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) "?Other Sans"?, "?Solo Sans"? — /, 'a 500, and a 404 that leaves its family without a loaded face, count');
+      assert.match(warnings[0], /FONT LOAD FAILED for declared face\(s\) .*"?Other Sans"?, "?Solo Sans"? — /, 'a 500, and a 404 that leaves its family without a loaded face, count');
       const j = record('font.json');
       if (!BRAND_TTF) { console.log('skip  e2e dead declaration beside a loaded face (no .ttf found in playwright-core)'); return; }
       assert.doesNotMatch(warnings[0], /Brand Sans/);
-      assert.match(r.stdout, /^fonts: not counted — @font-face whose every src returned 404 beside a face of its family that loaded \(a dead declaration, the same for every visitor\): Brand Sans$/m);
-      assert.deepEqual([j.fontsFailed, j.fontsDead], [['Other Sans', 'Solo Sans'], ['Brand Sans']]);
+      assert.match(r.stdout, /^fonts: not counted — @font-face whose every src returned 404 beside a face of its family, weight and style that loaded \(a dead declaration, the same for every visitor\): Brand Sans$/m);
+      assert.deepEqual([j.fontsFailed, j.fontsDead], [['Bold Sans', 'Other Sans', 'Solo Sans'], ['Brand Sans']], 'a 404 bold beside a regular that loaded still counts (Bold Sans)');
       assert.ok(!('fontCheck' in j), 'a check that ran carries no fontCheck');
     });
     await check('e2e --json: a font-load check that cannot run (document.fonts throws) → fontsFailed null + fontCheck right after it, one stderr WARNING, exit 0', async () => {

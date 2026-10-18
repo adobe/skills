@@ -89,9 +89,9 @@
  *     answered 404 (recorded: a duplicate always-404 face beside the one that
  *     loaded) fails for every visitor alike — `fontsDead` and one stdout line
  *     `fonts: not counted — …`, never the warning (deadFontFaces: only beside a
- *     face of the family that loaded; a family counts while none loaded — it
- *     renders fallback type —, it has more failed faces than dead
- *     declarations, or a rule sits in a stylesheet that cannot be read).
+ *     face of the same family, weight and style that loaded; a 404 face with no
+ *     loaded twin renders fallback type and counts, as does a failure no 404
+ *     explains or a rule in a stylesheet that cannot be read).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -320,8 +320,8 @@ sweep left open, after the overlay-left line — a hide alone does not take it o
 --allow-dialog does (\`dialog left open, hidden as a per-visitor dialog: <name> (<sel>)\`). Exit stays 0; gate.sh gives
 no verdict, gate-all marks the row INCONCLUSIVE ("dialog left open (<name>)").
 A face that failed is counted (WARNING FONT LOAD FAILED) unless it is a dead declaration — an @font-face whose every
-requested src answered 404, the same for every visitor, beside a face of its family that loaded (a family with no loaded
-face renders fallback type and counts): \`fonts: not counted — … : <families>\`, the record's fontsDead.
+requested src answered 404, the same for every visitor, beside a face of the same family, weight and style that loaded
+(a 404 face with no loaded twin renders fallback type and counts): \`fonts: not counted — … : <families>\`, the record's fontsDead.
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
 vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop, back at the top with
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
@@ -551,24 +551,31 @@ export function dialogOutcome(names, hiders, allowDialog = []) {
  * 'error' (one entry per face), `rules` = the readable @font-face rules ({ family, srcs: absolute URLs }), `statuses` =
  * url → HTTP status of every font response the page received. A rule is dead when at least one of its srcs was requested
  * and every requested one answered 404 (srcs the browser skipped — an unsupported format — are not requested): every
- * visitor gets the same failure, so it is no capture defect. A family is dead when a face of it loaded (`loaded`: the
- * families of the faces whose status is 'loaded' — the text is in the family, not in fallback type) and it has no more
- * failed faces than dead rules (each dead rule is a failed face); else it still counts — a family with no loaded face
- * renders fallback type, a failure no 404 explains, a rule in a stylesheet that cannot be read. → { failed, dead }:
- * unquoted families, unique, sorted.
+ * visitor gets the same failure, so it is no capture defect. Faces are keyed by family + weight + style (`errored`,
+ * `loaded` and `rules` entries are { family, weight, style } — a plain string is a family at the defaults; normal = 400,
+ * bold = 700): a failed face is dead only when a face with the same key loaded (`loaded`: status 'loaded' — the text in
+ * that weight and style is in the family, not in fallback type; the recorded case: a duplicate always-404 declaration)
+ * and the key has no more failed faces than dead rules (each dead rule is a failed face); else it counts — a 404 weight
+ * beside another that loaded renders fallback type, a failure no 404 explains, a rule in a stylesheet that cannot be
+ * read. → { failed, dead }: unquoted families, unique, sorted (a family with a counted face is not dead).
  */
 export function deadFontFaces({ errored = [], loaded = [], rules = [], statuses = {} } = {}) {
-  const key = (f) => fontFamilies([f])[0] || '';
+  const family = (f) => fontFamilies([typeof f === 'string' ? f : f && f.family])[0] || '';
+  // a face's identity: family + weight + style (normal = 400, bold = 700; an absent descriptor is the default)
+  const weight = (w) => { const v = String(w || '').trim().toLowerCase(); return !v || v === 'normal' ? '400' : v === 'bold' ? '700' : v; };
+  const style = (s) => String(s || '').trim().toLowerCase() || 'normal';
+  const key = (f) => (typeof f === 'string' ? `${family(f).toLowerCase()}|400|normal` : `${family(f).toLowerCase()}|${weight(f && f.weight)}|${style(f && f.style)}`);
   const deadN = new Map(); const failedN = new Map(); const names = new Map();
-  const hasLoaded = new Set(loaded.map((f) => key(f).toLowerCase()));
+  const hasLoaded = new Set(loaded.map(key));
   for (const r of rules) {
     const asked = (r.srcs || []).filter((u) => Object.hasOwn(statuses, u));
-    if (asked.length && asked.every((u) => statuses[u] === 404)) deadN.set(key(r.family).toLowerCase(), (deadN.get(key(r.family).toLowerCase()) || 0) + 1);
+    if (asked.length && asked.every((u) => statuses[u] === 404)) deadN.set(key(r), (deadN.get(key(r)) || 0) + 1);
   }
-  for (const f of errored) { const k = key(f).toLowerCase(); if (!k) continue; failedN.set(k, (failedN.get(k) || 0) + 1); if (!names.has(k)) names.set(k, key(f)); }
+  for (const f of errored) { if (!family(f)) continue; const k = key(f); failedN.set(k, (failedN.get(k) || 0) + 1); if (!names.has(k)) names.set(k, family(f)); }
   const failed = []; const dead = [];
   for (const [k, n] of failedN) (hasLoaded.has(k) && n <= (deadN.get(k) || 0) ? dead : failed).push(names.get(k));
-  return { failed: fontFamilies(failed), dead: fontFamilies(dead) };
+  // a family with a counted face is failed, whatever its other faces did
+  return { failed: fontFamilies(failed), dead: fontFamilies(dead).filter((f) => !failed.includes(f)) };
 }
 
 // <stem>.capture.json beside the PNG (build.png → build.capture.json) — never <stem>.json: gate.sh / gate-all write
@@ -821,14 +828,15 @@ async function main() {
     let fontError = null;
     const fontRead = await page.evaluate(async () => {
       await document.fonts.ready;
-      const errored = [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family);
-      const loaded = [...document.fonts].filter((f) => f.status === 'loaded').map((f) => f.family);
+      const face = (f) => ({ family: f.family, weight: f.weight, style: f.style });
+      const errored = [...document.fonts].filter((f) => f.status === 'error').map(face);
+      const loaded = [...document.fonts].filter((f) => f.status === 'loaded').map(face);
       const rules = [];
       const walk = (list, base) => {
         for (const r of list) {
           if (r instanceof CSSFontFaceRule) {
             const srcs = [...r.style.getPropertyValue('src').matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)].map((m) => { try { return new URL(m[2], base).href; } catch { return m[2]; } });
-            rules.push({ family: r.style.getPropertyValue('font-family'), srcs });
+            rules.push({ family: r.style.getPropertyValue('font-family'), weight: r.style.getPropertyValue('font-weight'), style: r.style.getPropertyValue('font-style'), srcs });
           } else if (r instanceof CSSImportRule) { try { if (r.styleSheet) walk(r.styleSheet.cssRules, r.styleSheet.href || base); } catch { /* unreadable import */ } } else if (r.cssRules) walk(r.cssRules, base);
         }
       };
@@ -839,7 +847,7 @@ async function main() {
     const failedFonts = fontSplit.failed;
     const fonts = { ...fontCheckOutcome(fontRead ? failedFonts : null, fontError), ...(fontSplit.dead.length ? { fontsDead: fontSplit.dead } : {}) };
     if (fonts.fontCheck) console.error(`stitch-shot WARNING: font-load check failed (${fonts.fontCheck.slice('failed: '.length)}) — the record says fontsFailed: null (not checked)`);
-    if (fontSplit.dead.length) console.log(`fonts: not counted — @font-face whose every src returned 404 beside a face of its family that loaded (a dead declaration, the same for every visitor): ${fontSplit.dead.join(', ')}`);
+    if (fontSplit.dead.length) console.log(`fonts: not counted — @font-face whose every src returned 404 beside a face of its family, weight and style that loaded (a dead declaration, the same for every visitor): ${fontSplit.dead.join(', ')}`);
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
