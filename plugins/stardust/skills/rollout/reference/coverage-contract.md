@@ -18,7 +18,10 @@ they differ: spec's source-side fields (`source[]`, `path`, `nested_in`, `crop`)
 absent (sections live in `delivered.sections`, chrome in the blocks.json chrome rows); `kind` is `block` or `default`;
 `section` keeps spec's meaning (the style of the enclosing section, or null) and `sectionPos` is that section's ordinal.
 
-## pages.json: `delivered` (after `blocks`; every other field unchanged)
+## pages.json: `delivered` (after `blocks`) and `excluded[]`; every other field unchanged
+
+`excluded[]` (top level, only when there is one): planned pages the source no longer serves (`state.mjs exclude`), as
+`{slug, path, sourceUrl, status: "excluded", reason, at}` — never rows of `pages[]`, so never counted.
 
 | Field | Meaning |
 |---|---|

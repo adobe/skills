@@ -19,7 +19,8 @@
 // out when header_parity already names those errors (one finding set, one gap). export_stale (judged only when
 // rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
-// than pages.json, with inventory → block-origin → manifest as the remedy.
+// than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows are an
+// info line (pages_excluded), never a gap.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -79,7 +80,12 @@ check('deliveredPaths probes each row where it was deployed — a folder index a
 });
 check('a clean run is complete, with the live probe recorded as run', () => {
   const v = doneGaps({ pages: CLEAN_PAGES, findings: [], ledgerLines: ENDED, notLive: [] });
-  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [] });
+  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [], info: [] });
+});
+check('pages_excluded: excluded[] rows of pages.json are info, never a gap — the run stays complete', () => {
+  const excluded = [{ slug: 'news', path: '/news', status: 'excluded', reason: 'r' }, { slug: 'old', path: null, status: 'excluded', reason: 'r' }];
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded });
+  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [], info: ['pages_excluded:2: /news, /old'] });
 });
 
 check('unfinished counts every not-yet-verified status, and only those', () => {
@@ -420,7 +426,7 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   const proj = project();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false, skipped: [OFFLINE_SKIP, 'unit_unproven: no stardust/rollout/progress.json'] });
+  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false, skipped: [OFFLINE_SKIP, 'unit_unproven: no stardust/rollout/progress.json'], info: [] });
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -429,6 +435,15 @@ check('CLI: gaps exit 1, one line each, then the summary line', () => {
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1);
   assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', `skipped: ${OFFLINE_SKIP}`, 'skipped: unit_unproven: no stardust/rollout/progress.json', '✗ 2 gap(s) (live probe skipped: --offline)']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: pages.json excluded[] rows print as an info line after the skipped ones and keep a clean run complete (exit 0)', () => {
+  const proj = project({ files: { 'stardust/rollout/coverage/pages.json': { pages: CLEAN_PAGES, excluded: [{ slug: 'news', path: '/news', sourceUrl: 'https://example.com/news', status: 'excluded', reason: 'the source answers 404', at: AT[1440] }] } } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(r.stdout.trim().split('\n').slice(-2), ['info: pages_excluded:1: /news', '✓ complete (live probe skipped: --offline)']);
+  assert.deepEqual(JSON.parse(run(proj, ['--offline', '--json']).stdout).info, ['pages_excluded:1: /news']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -523,7 +538,7 @@ check('CLI: --json lists every new gap in order and every check that did not run
   const proj = proofProject();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 1, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
+  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'], info: [] });
   const text = run(proj, ['--offline']).stdout.trim().split('\n');
   assert.deepEqual(text.slice(-3), [`skipped: ${OFFLINE_SKIP}`, 'skipped: sidecars_missing redirects: 1 delivered rows without source.sourceUrl', '✗ 5 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });

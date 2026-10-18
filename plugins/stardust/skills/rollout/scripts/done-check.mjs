@@ -20,7 +20,7 @@
  *   --schemas    per-page section schemas, <slug>.json (default stardust/eds-schema)
  *   --redirects  redirects sheet, one `source<TAB>destination` per line (default stardust/redirects.tsv); the
  *                redirects-cdn.tsv beside it (seed-redirects.mjs: sources the sheet cannot match) counts too
- *   --json       print { complete, gaps[], liveChecked, skipped[] } instead of one line per gap
+ *   --json       print { complete, gaps[], liveChecked, skipped[], info[] } instead of one line per gap
  * Writes nothing; the live probe sends one HEAD request per delivered page.
  *
  * Delivered rows are coverage rows `deployed` or `verified`. Gaps, one per line in this order; complete = none:
@@ -75,6 +75,8 @@
  * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table; the per-width
  * verdicts of done units' rows gated before passByWidth (proven on the last width's pass); the export once a client
  * took it over (workspace/handover.json, or a manifest recording a handover).
+ * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
+ * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -339,7 +341,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, excluded = [], skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -361,7 +363,10 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   if (ledger) gaps.push(ledger);
   if (exported) gaps.push(exported);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
-  return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped] };
+  // planned pages the source no longer serves (coverage excluded[]): named, never a gap
+  const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
+  const info = out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : [];
+  return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
 }
 
 /** HEAD each path on the live host; returns the paths that do not answer 200. */
@@ -492,6 +497,7 @@ async function main() {
     units: units.gaps,
     ledger: ledgerGap(typeof unpairedEnds === 'function' ? unpairedEnds(ledgerLines) : null),
     exported: exported.gap,
+    excluded: pagesDoc.excluded,
     skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped],
   });
 
@@ -499,6 +505,7 @@ async function main() {
   else {
     for (const g of verdict.gaps) console.log(g);
     for (const s of verdict.skipped) console.log(`skipped: ${s}`);
+    for (const i of verdict.info) console.log(`info: ${i}`);
     console.log(`${verdict.complete ? '✓ complete' : `✗ ${verdict.gaps.length} gap(s)`}${verdict.liveChecked ? '' : ' (live probe skipped: --offline)'}`);
   }
   process.exit(verdict.complete ? 0 : 1);

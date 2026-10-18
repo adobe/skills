@@ -10,7 +10,24 @@
     "_provenance": { "$ref": "#/$defs/provenance" },
     "formatVersion": { "$ref": "#/$defs/formatVersion" },
     "generatedAt": { "type": "string", "format": "date-time" },
-    "pages": { "type": "array", "items": { "$ref": "#/$defs/page" } }
+    "pages": { "type": "array", "items": { "$ref": "#/$defs/page" } },
+    "excluded": {
+      "type": "array",
+      "description": "Planned pages the source no longer serves (state.mjs exclude), by slug: never in pages[], so never in a denominator, a pass or a fail. Present only when there is one.",
+      "items": {
+        "type": "object",
+        "required": ["slug", "path", "sourceUrl", "status", "reason", "at"],
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "path": { "type": ["string", "null"] },
+          "sourceUrl": { "type": ["string", "null"] },
+          "status": { "type": "string", "enum": ["excluded"] },
+          "reason": { "type": ["string", "null"] },
+          "at": { "type": ["string", "null"] }
+        }
+      }
+    }
   },
   "$defs": {
     "provenance": {
