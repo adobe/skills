@@ -9,7 +9,8 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -585,6 +586,82 @@ await check('--confidential checks every screenshot destination before writing c
   assert.equal(fake.requests.length, 0);
   const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: p, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
   assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+});
+await check('--confidential checks where a swap parks the old capture: refused before anything moves; with the backup ignored, a swap cut short by an I/O error stays ignored and readable', async () => {
+  reset();
+  const lines = [...IGNORE_ALL.filter((l) => l !== '.work/'), '.work/reskin/figma/current.json', '.work/reskin/figma/*/latest.json', '.work/reskin/figma/*/v1/', '.work/reskin/figma/*/.staging/'];
+  const p = withIgnore(gitProject(), lines);
+  const args = ['capture', URL_FILE, '--frames', '1:2', '--confidential'];
+  assert.equal((await run(args, { cwd: p, env: NOGLOBAL })).code, 0);
+  const work = join(p, 'stardust', '.work');
+  const root = join(work, 'reskin', 'figma', KEY);
+  const before = hashTree(work);
+  reset();
+  const refused = await run([...args, '--refresh'], { cwd: p, env: NOGLOBAL });
+  assert.equal(refused.code, 2, refused.stderr);
+  assert.match(refused.stderr, /stardust\/\.work\/reskin\/figma\/AbCdEf1234567890\/\.prev\/v1\/nodes\.json/);
+  assert.deepEqual(hashTree(work), before, 'nothing written or moved');
+  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+
+  // The same refresh with the backup ignored, in-process, with an I/O error on both renames after the first.
+  withIgnore(p, [...lines, '.work/reskin/figma/*/.prev/']);
+  const { runCapture } = await import('../figma/capture.mjs');
+  const { createClient } = await import('../figma/client.mjs');
+  const { cacheFor } = await import('../figma/cache.mjs');
+  const realRename = fs.renameSync;
+  const here = process.cwd();
+  Object.assign(process.env, NOGLOBAL);
+  process.chdir(p);
+  fs.renameSync = (from, to) => {
+    if (/\/\.(staging|prev)\/[^/]+$/.test(String(from))) throw Object.assign(new Error(`EIO: i/o error, rename '${from}'`), { code: 'EIO' });
+    return realRename(from, to);
+  };
+  syncBuiltinESMExports();
+  reset();
+  try {
+    await assert.rejects(runCapture({ url: URL_FILE, frames: ['1:2'], refresh: true, confidential: true, dir: 'stardust', client: createClient({ token: TOKEN, base: fake.base }), warn: () => {} }), /EIO/);
+  } finally {
+    fs.renameSync = realRename;
+    syncBuiltinESMExports();
+    process.chdir(here);
+    for (const k of Object.keys(NOGLOBAL)) delete process.env[k];
+  }
+  assert.ok(existsSync(join(root, '.prev', 'v1', 'nodes.json')) && !existsSync(join(root, 'v1')), 'the old capture is parked');
+  const gitEnv = { ...process.env, ...NOGLOBAL };
+  assert.equal(spawnSync('git', ['check-ignore', '-q', `stardust/.work/reskin/figma/${KEY}/.prev/v1/nodes.json`], { cwd: p, env: gitEnv }).status, 0, 'and ignored');
+  const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: p, encoding: 'utf8', env: gitEnv }).stdout;
+  assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+  assert.deepEqual(cacheFor(join(p, 'stardust'), KEY).version('v1').read('manifest.json').frames, ['1:2'], 'readers get it from the backup');
+  reset();
+  const back = await run(args, { cwd: p, env: NOGLOBAL, token: '' });
+  assert.equal(back.code, 0, back.stderr);
+  assert.equal(fake.requests.length, 0);
+  assert.ok(existsSync(join(root, 'v1', 'manifest.json')) && !existsSync(join(root, '.prev')), 'the next capture puts it back');
+});
+await check('curate and stamp read the last complete capture while a swap is cut short (version dir parked in .prev); the next capture puts it back', async () => {
+  const p = await curated();
+  const root = join(p, 'stardust', '.work', 'reskin', 'figma', KEY);
+  const outputs = () => ({ ...hashTree(join(p, 'stardust', 'reskin')), ...hashTree(join(p, 'stardust', 'canon-source')) });
+  const before = outputs();
+  mkdirSync(join(root, '.prev'), { recursive: true });
+  renameSync(join(root, 'v1'), join(root, '.prev', 'v1'));
+  const cur = await run(['curate'], { cwd: p, token: '' });
+  assert.equal(cur.code, 0, cur.stderr);
+  assert.deepEqual(outputs(), before);
+  const stamp = await run(['stamp'], { cwd: p, token: '' });
+  assert.equal(stamp.code, 0, stamp.stderr);
+  assert.ok(!existsSync(join(root, 'v1')), 'reading moves nothing');
+  const cap = await run(['capture', URL_PAGE], { cwd: p, token: '' });
+  assert.equal(cap.code, 0, cap.stderr);
+  assert.ok(existsSync(join(root, 'v1', 'manifest.json')) && !existsSync(join(root, '.prev')));
+});
+await check('capture --list --confidential needs no ignore rules and writes nothing', async () => {
+  reset();
+  const p = gitProject();
+  const r = await run(['capture', URL_FILE, '--list', '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 0, r.stderr);
+  assert.match(r.stdout, /2 pages, 3 top-level nodes/);
+  assert.deepEqual(untouched(p), []);
 });
 await check('every file capture and curate write is covered by the --confidential guard lists', async () => {
   const { CAPTURE_NAMESPACES, CAPTURE_OUTPUTS, CURATE_OUTPUTS } = await import('../figma/guard.mjs');

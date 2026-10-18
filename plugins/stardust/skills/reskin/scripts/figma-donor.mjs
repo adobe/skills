@@ -52,7 +52,9 @@ capture  reads one version of the file over the Figma REST API (files depth=2, t
          refuses (exit 2) a cache whose manifest, saved selection and nodes disagree.
          --refresh fetches the file's current version into a staging dir and swaps it in only when
          complete: a failed or stopped refresh leaves the last complete capture (even of the same
-         version) in place and served, and re-running the same selection resumes it.
+         version) in place and served, and re-running the same selection resumes it. If a swap
+         itself is cut short, readers (curate, stamp) still get that capture from its backup and
+         the next capture restores it.
          --max-wait <s>: the longest Retry-After a 429 may impose before stopping (default 60).
 curate   offline and deterministic: canon-source/foundation + module-candidates.json + the agent-
          authored <dir>/reskin/curation-rules.json → <dir>/reskin/donor-tokens.json (reskin's token
@@ -66,12 +68,14 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
          stardust/scripts/stardust/state.mjs in a project copy). Needs state.json (from
          $stardust extract <content-url>) and canon-source/DESIGN.{md,json} (from curate); exit 2 otherwise.
 --confidential  for a design that must not reach git: capture and curate first check, with
-         git check-ignore, every path they would write (every foundation file, every screenshot,
-         the cache files once the file version is known) and refuse (exit 2, nothing written to
-         it, no request for the fixed outputs) when one is not ignored or is already tracked, or
-         when any file under foundation/, the screenshots or the cache is tracked; the message
-         names the path and the exact lines to add to <dir>/.gitignore (or the git rm --cached a
-         tracked file needs); stamp stores designSource.url as "figma:redacted" (state.json stays tracked).
+         git check-ignore, every path they would write or move (every foundation file, every
+         screenshot, the cache files and the backup of a replaced capture once the file version is
+         known) and refuse (exit 2, nothing written to it, no request for the fixed outputs) when
+         one is not ignored or is already tracked, or when any file under foundation/, the
+         screenshots or the cache is tracked; the message names the path and the exact lines to
+         add to <dir>/.gitignore (or the git rm --cached a tracked file needs); capture --list
+         writes nothing and is not checked; stamp stores designSource.url as "figma:redacted"
+         (state.json stays tracked).
          Sticky: after capture --confidential, curate, stamp and later captures in this dir apply it
          too. Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
@@ -189,9 +193,8 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     }
     const maxFrames = intFlag(opts, 'max-frames', 25, UsageError);
     const maxWaitSec = intFlag(opts, 'max-wait', 60, UsageError);
-    const confidential = await confidentialMode(dir, opts, log);
+    // --list writes nothing, so --confidential has nothing to check for it.
     if (opts.list) {
-      if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS.filter(([rel]) => rel.startsWith('.work/')), { dir }); }
       const { listInventory } = await helper('capture');
       const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
       const { lines } = await listInventory({ url: positional[0], refresh: Boolean(opts.refresh), dir, client });
@@ -199,6 +202,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       log('next: capture <figma-url> --frames <id,id,…> with the foundation frames and one representative frame per module');
       return 0;
     }
+    const confidential = await confidentialMode(dir, opts, log);
     if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES }); }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });

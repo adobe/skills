@@ -39,13 +39,15 @@ function selectFrames(file, nodeId, frames) {
 export async function runCapture({ url, frames = null, maxFrames = 25, refresh = false, confidential = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
   const { fileKey, mainFileKey, nodeId } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
-  cache.recover();
   const request = { nodeId, frames, maxFrames };
   const latest = cache.latest();
-  // --confidential: the CLI checks the fixed outputs before any request; what depends on the file
-  // version, the frames and their names is checked here, each set before its first write.
+  // --confidential: the CLI checks the fixed outputs before any request; every other destination — a
+  // capture parked or put back by a swap, and what depends on the file version, the frames and their
+  // names — is checked here, each set before its first write or move.
   const guard = (entries) => { if (confidential) assertIgnored(entries, { dir }); };
   const cachePath = (p) => [relative(dir, p), '.work/'];
+  guard(cache.moveTargets().map(cachePath));
+  cache.recover();
 
   if (latest && !refresh) {
     const v = cache.version(latest.version);
@@ -86,7 +88,7 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   // the manifest is written and the staging dir is promoted.
   const v = cache.staging(version, selected);
   const names = ['file.json', 'selection.json', 'nodes.json', 'variables.json', 'images.json', 'manifest.json', ...batches(selected).map((_, i) => `nodes.part-${i}.json`), ...selected.map((id) => v.imageFile(id))];
-  guard([v, cache.version(version)].flatMap((h) => names.map((n) => cachePath(h.path(n)))));
+  guard([...[v, cache.version(version)].flatMap((h) => names.map((n) => cachePath(h.path(n)))), ...cache.moveTargets(version).map(cachePath)]);
   v.write('file.json', file);
   const resume = JSON.stringify(v.read('selection.json')) === JSON.stringify({ frames: selected });
   v.write('selection.json', { frames: selected });
@@ -165,7 +167,6 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
 export async function listInventory({ url, refresh = false, dir = 'stardust', client }) {
   const { fileKey } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
-  cache.recover();
   const latest = cache.latest();
   let file = latest && !refresh ? cache.version(latest.version).read('file.json') : null;
   const fromCache = Boolean(file);

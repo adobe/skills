@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/figma-cache.test.mjs — the capture cache (pure, temp dirs, no network):
 // a staging capture is promoted whole and replaces the complete one without keeping any of its files,
-// staging dirs are per version and selection, a run killed between promote()'s two renames is
-// recovered, and cacheProblem names a manifest, selection and node set that disagree.
+// staging dirs are per version and selection, a swap cut short between its two renames (an injected
+// EIO, or a killed run) leaves the last complete capture readable through version() — the API every
+// consumer uses — and recover() or the next promote() puts it back, moveTargets lists where a swap
+// parks files, and cacheProblem names a manifest, selection and node set that disagree.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { cacheFor, cacheProblem } from '../figma/cache.mjs';
@@ -15,6 +18,15 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
 const scratch = mkdtempSync(join(tmpdir(), 'figma-cache-test-'));
 let n = 0;
 const fresh = () => { n += 1; return cacheFor(join(scratch, `d${n}`), 'AbCdEf1234567890'); };
+// An I/O error on the renames `fails(from)` matches; the live named imports of node:fs follow.
+const realRename = fs.renameSync;
+const withFailingRenames = (fails, fn) => {
+  fs.renameSync = (from, to) => { if (fails(String(from))) throw Object.assign(new Error(`EIO: i/o error, rename '${from}'`), { code: 'EIO' }); return realRename(from, to); };
+  syncBuiltinESMExports();
+  try { return fn(); } finally { fs.renameSync = realRename; syncBuiltinESMExports(); }
+};
+const intoStaging = (from) => /\/\.staging\/[^/]+$/.test(from);
+const fromParking = (from) => /\/\.prev\/[^/]+$/.test(from);
 const capture = (v, frames, extra = {}) => {
   v.write('file.json', { version: 'v1' });
   v.write('selection.json', { frames });
@@ -61,15 +73,68 @@ check('a failed capture never reaches the complete one: nothing but promote() wr
   assert.equal(cacheProblem(c.version('v1'), c.version('v1').read('manifest.json')), null);
   assert.deepEqual(c.stalled(), ['v1']);
 });
-check('recover: a run killed between the two renames of promote() gets the previous capture back', () => {
+check('recover: a run killed between the two renames of promote() gets the previous capture back; readers had it meanwhile', () => {
   const c = fresh();
   c.promote('v1', capture(c.staging('v1', ['1:2']), ['1:2']));
   mkdirSync(join(c.root, '.prev'), { recursive: true });
   renameSync(c.version('v1').dir, join(c.root, '.prev', 'v1'));
-  assert.equal(c.version('v1').read('manifest.json'), null);
+  assert.deepEqual(c.version('v1').read('manifest.json').frames, ['1:2'], 'served from .prev while the version dir is missing');
   c.recover();
+  assert.ok(existsSync(join(c.root, 'v1', 'manifest.json')));
   assert.deepEqual(c.version('v1').read('manifest.json').frames, ['1:2']);
   assert.ok(!existsSync(join(c.root, '.prev')));
+});
+check('promote cut short after its first rename (injected EIO, rollback failing too): version() still serves the last complete capture, and a retry finishes the swap', () => {
+  const c = fresh();
+  c.promote('v1', capture(c.staging('v1', ['1:2']), ['1:2']));
+  const next = capture(c.staging('v1', ['1:9']), ['1:9']);
+  assert.throws(() => withFailingRenames((from) => intoStaging(from) || fromParking(from), () => c.promote('v1', next)), /EIO/);
+  assert.ok(!existsSync(join(c.root, 'v1')), 'the version dir is gone');
+  assert.ok(existsSync(join(c.root, '.prev', 'v1', 'nodes.json')), 'parked');
+  // the calls the box cache, curate and stamp make
+  const v = c.version('v1');
+  assert.deepEqual(v.read('manifest.json').frames, ['1:2']);
+  assert.deepEqual(Object.keys(v.read('nodes.json').nodes), ['1:2']);
+  assert.ok(v.has('images.json') && existsSync(v.path('nodes.json')) && v.dir.endsWith('/.prev/v1'));
+  assert.equal(cacheProblem(v, v.read('manifest.json')), null);
+  assert.deepEqual(c.latest(), { version: 'v1' });
+  c.promote('v1', next);
+  assert.deepEqual(c.version('v1').read('manifest.json').frames, ['1:9']);
+  assert.deepEqual(readdirSync(c.root).sort(), ['latest.json', 'v1']);
+});
+check('promote: an I/O error on the second rename alone puts the previous capture back and keeps the staged one for a retry', () => {
+  const c = fresh();
+  c.promote('v1', capture(c.staging('v1', ['1:2']), ['1:2']));
+  const next = capture(c.staging('v1', ['1:9']), ['1:9']);
+  assert.throws(() => withFailingRenames(intoStaging, () => c.promote('v1', next)), /EIO/);
+  assert.deepEqual(c.version('v1').read('manifest.json').frames, ['1:2']);
+  assert.ok(existsSync(join(c.root, 'v1', 'manifest.json')) && !existsSync(join(c.root, '.prev', 'v1')));
+  assert.ok(next.has('manifest.json'));
+  c.promote('v1', next);
+  assert.deepEqual(c.version('v1').read('manifest.json').frames, ['1:9']);
+});
+check('a write through a version handle lands in the version dir, never in the parked copy it reads from', () => {
+  const c = fresh();
+  c.promote('v1', capture(c.staging('v1', ['1:2']), ['1:2']));
+  mkdirSync(join(c.root, '.prev'), { recursive: true });
+  renameSync(c.version('v1').dir, join(c.root, '.prev', 'v1'));
+  const v = c.version('v1');
+  v.write('probe.json', { ok: true });
+  assert.ok(existsSync(join(c.root, 'v1', 'probe.json')) && !existsSync(join(c.root, '.prev', 'v1', 'probe.json')));
+  assert.deepEqual(v.read('manifest.json').frames, ['1:2'], 'still the complete capture');
+});
+check('moveTargets: where a promote parks the old files, and where recover would put parked ones', () => {
+  const c = fresh();
+  assert.deepEqual(c.moveTargets('v1'), []);
+  c.promote('v1', capture(c.staging('v1', ['1:2']), ['1:2']));
+  mkdirSync(join(c.root, 'v1', 'images'), { recursive: true });
+  writeFileSync(join(c.root, 'v1', 'images', '1-2.png'), 'x');
+  const names = ['file.json', 'images.json', 'images/1-2.png', 'manifest.json', 'nodes.json', 'selection.json'];
+  assert.deepEqual(c.moveTargets('v1').sort(), names.map((f) => join(c.root, '.prev', 'v1', f)));
+  assert.deepEqual(c.moveTargets(), []);
+  mkdirSync(join(c.root, '.prev'), { recursive: true });
+  renameSync(join(c.root, 'v1'), join(c.root, '.prev', 'v1'));
+  assert.deepEqual(c.moveTargets().sort(), names.map((f) => join(c.root, 'v1', f)));
 });
 check('recover: a new capture already in place wins; an incomplete leftover is dropped', () => {
   const c = fresh();
