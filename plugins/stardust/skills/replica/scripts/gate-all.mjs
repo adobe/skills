@@ -176,12 +176,16 @@
  * from a table written under this run's criteria, measured on this run's build host (`host`), with a fingerprint equal to
  * this run's. Every other page is gated: no row, a FAIL or INCONCLUSIVE latest row (an older matching PASS does not
  * count), a null or missing fingerprint, other criteria or another host, a gate key unknown now (no content document, the
- * host not proven to serve the tree, a frozen file edited since the freeze); with --only, of those. One stdout line first
- * (`changedOnlyLine`, sorted): `gate-all changed-only: <n> to gate (<slug>, …) · <m> unchanged since their PASS (<slug>
- * <fingerprint, 12 hex> <PASS measured at>, …)`; _run.log names why each page is gated. The run is then an --only run over
- * the gated pages (runs/<ts>-<slug>.json, summary.* untouched, fix rounds and the --max-rounds refusal as for --only; the
- * table's _provenance.changedOnly lists the pages left out). Nothing to gate → `gate-all changed-only: nothing changed since
- * the last PASS — <m> page(s) keep their rows`, nothing written, exit 0. It only selects — no verdict, row or reuse rule
+ * host not proven to serve the tree, a frozen file edited since the freeze); with --only, of those. A page it would gate
+ * that is at the fix-round cap (roundsOf ≥ --max-rounds) is left out instead of refusing the run — unless --only names it:
+ * named, the cap refuses as for any --only run (--round-reset unchanged). One stdout line first (`changedOnlyLine`,
+ * sorted): `gate-all changed-only: <n> to gate (<slug>, …) · <m> unchanged since their PASS (<slug> <fingerprint, 12 hex>
+ * <PASS measured at>, …)[ · at the cap: <slug>, … — C-final's roster gate measures them]`; _run.log names why each page is
+ * gated or left out at the cap. The run is then an --only run over the gated pages (runs/<ts>-<slug>.json, summary.*
+ * untouched, fix rounds counted as for --only; the table's _provenance.changedOnly lists the pages left out — unchanged,
+ * atCap). Nothing to gate → `gate-all changed-only: nothing changed since the last PASS — <m> page(s) keep their rows`
+ * (after `gate-all changed-only: at the cap: <slug>, … — C-final's roster gate measures them` when any), nothing written,
+ * exit 0. It only selects — no verdict, row or reuse rule
  * changes, and a full roster gate (no --changed-only) stays the final word. run-bg's deadline estimate (rosterEstimate)
  * counts the roster without it (erring high).
  *
@@ -325,11 +329,13 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --changed-only            published stage: gate only what changed — a page whose latest row in <out> (the newest
                             table across summary.json and runs/*.json, by its writtenAt) is a PASS (not INCONCLUSIVE,
                             not an override) written under this run's criteria, on this run's build host, with this
-                            run's fingerprint is left out; the rest (with --only: of those) run as an --only run
-                            (runs/, fix rounds, the cap). First line: gate-all changed-only: <n> to gate (<slug>, …) ·
-                            <m> unchanged since their PASS (<slug> <fingerprint> <at>, …); nothing to gate → "… nothing
-                            changed since the last PASS — <m> page(s) keep their rows", nothing written, exit 0. With
-                            --stage prototype → exit 2
+                            run's fingerprint is left out, and so is one at the fix-round cap unless --only names it
+                            (named: the cap refuses, as for --only); the rest (with --only: of those) run as an --only
+                            run (runs/, fix rounds). First line: gate-all changed-only: <n> to gate (<slug>, …) · <m>
+                            unchanged since their PASS (<slug> <fingerprint> <at>, …)[ · at the cap: <slug>, … —
+                            C-final's roster gate measures them]; nothing to gate → "… nothing changed since the last
+                            PASS — <m> page(s) keep their rows" (after "… at the cap: …" when any), nothing written,
+                            exit 0. With --stage prototype → exit 2
   --skip-existing           reuse captures (not a stitched one recorded before the overlay-left check:
                             re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
@@ -1235,29 +1241,39 @@ function changedWhy(k, prior, host, opts) {
   return null;
 }
 /**
- * changedOnly(slugs, { latest, keys, hosts, opts }) → { gate: [{ slug, why }], unchanged: [{ slug, fingerprint, at, from }] },
- * each sorted by slug: --changed-only's selection over the roster's slugs (--only already applied). `latest` = latestRows(<out>,
- * width), read before the run — per page the row of the newest table across summary.json and runs/*.json, newest by the
- * table's _provenance.writtenAt (when that run wrote it; a row reused whole there was re-affirmed then); `keys` = slug → this
- * run's { fingerprint, why } (fingerprint null while the gate key is unknown); `hosts` = slug → this run's build origin. A
+ * changedOnly(slugs, { latest, keys, hosts, rounds, opts }) → { gate: [{ slug, why }], unchanged: [{ slug, fingerprint, at,
+ * from }], atCap: [{ slug, why, rounds }] }, each sorted by slug: --changed-only's selection over the roster's slugs (--only
+ * already applied). `latest` = latestRows(<out>, width), read before the run — per page the row of the newest table across
+ * summary.json and runs/*.json, newest by the table's _provenance.writtenAt (when that run wrote it; a row reused whole
+ * there was re-affirmed then); `keys` = slug → this run's { fingerprint, why } (fingerprint null while the gate key is
+ * unknown); `hosts` = slug → this run's build origin. A
  * page is left out only when that row is a PASS (pass true: not INCONCLUSIVE, not lifted by an override alone, not on an
  * asymmetric origin) from a table written under this run's criteria (sameCriteria), measured on this run's build host, with
- * a fingerprint equal to this run's; `at` = when that PASS was measured (a row reused whole: its own measured time). Pure.
+ * a fingerprint equal to this run's; `at` = when that PASS was measured (a row reused whole: its own measured time). A page
+ * it would gate that is at the fix-round cap (`rounds` = slug → roundsOf count, ≥ opts.maxRounds) goes to atCap instead —
+ * unless opts.only (the --only the user gave) names it: named, it is gated and the cap refuses the run as for --only. Pure.
  */
-export function changedOnly(slugs, { latest = {}, keys = {}, hosts = {}, opts }) {
-  const gate = []; const unchanged = [];
+export function changedOnly(slugs, { latest = {}, keys = {}, hosts = {}, rounds = {}, opts }) {
+  const gate = []; const unchanged = []; const atCap = [];
+  const named = new Set(opts.only || []); const max = opts.maxRounds ?? MAX_ROUNDS;
   for (const slug of [...new Set(slugs)].sort()) {
     const prior = latest[slug]; const why = changedWhy(keys[slug], prior, hosts[slug], opts);
-    if (why) gate.push({ slug, why });
-    else unchanged.push({ slug, fingerprint: prior.row.fingerprint, at: prior.row.reused && prior.row.reused.what === 'row' ? prior.row.reused.at : prior.at, from: prior.from });
+    if (!why) unchanged.push({ slug, fingerprint: prior.row.fingerprint, at: prior.row.reused && prior.row.reused.what === 'row' ? prior.row.reused.at : prior.at, from: prior.from });
+    else if ((rounds[slug] ?? 0) >= max && !named.has(slug)) atCap.push({ slug, why, rounds: rounds[slug] });
+    else gate.push({ slug, why });
   }
-  return { gate, unchanged };
+  return { gate, unchanged, atCap };
 }
-/** changedOnlyLine({ gate, unchanged }) → the one line --changed-only prints before gating (nothing to gate: the line that ends the run). */
-export function changedOnlyLine({ gate, unchanged }) {
-  if (!gate.length) return `gate-all changed-only: nothing changed since the last PASS — ${unchanged.length} page(s) keep their rows`;
+/**
+ * changedOnlyLine({ gate, unchanged, atCap }) → what --changed-only prints before gating: one line, ending ` · at the cap:
+ * <slug>, … — C-final's roster gate measures them` when pages were left out at the cap. Nothing to gate: the line that
+ * ends the run (every page keeps its row), after a line `gate-all changed-only: at the cap: …` when any.
+ */
+export function changedOnlyLine({ gate, unchanged, atCap = [] }) {
+  const cap = atCap.length ? `at the cap: ${atCap.map((c) => c.slug).join(', ')} — C-final's roster gate measures them` : '';
+  if (!gate.length) return `${cap ? `gate-all changed-only: ${cap}\n` : ''}gate-all changed-only: nothing changed since the last PASS — ${unchanged.length + atCap.length} page(s) keep their rows`;
   const kept = unchanged.map((u) => `${u.slug} ${u.fingerprint.slice(0, 12)} ${u.at}`).join(', ');
-  return `gate-all changed-only: ${gate.length} to gate (${gate.map((g) => g.slug).join(', ')}) · ${unchanged.length} unchanged since their PASS${kept ? ` (${kept})` : ''}`;
+  return `gate-all changed-only: ${gate.length} to gate (${gate.map((g) => g.slug).join(', ')}) · ${unchanged.length} unchanged since their PASS${kept ? ` (${kept})` : ''}${cap ? ` · ${cap}` : ''}`;
 }
 
 // ---- fix rounds: <out>/<slug>/rounds.json counts the measured --only verdicts of a page already gated — the cap is mechanical
@@ -1620,10 +1636,12 @@ async function main() {
       KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), fingerprint: why ? null : fingerprintOf(k.parts), why, parts: k.parts, upstream: code.upstream || null, deployed };
     }
   }
-  // --changed-only: the pages whose fingerprint moved since their PASS (or that cannot show it) — then an --only run over
-  // them; nothing to gate → the one line, nothing written, exit 0
-  const CHANGED = opts.changedOnly ? changedOnly(pages.map((p) => p.slug), { latest: latestRows(opts.out, opts.width), keys: KEYS, hosts: Object.fromEntries(pages.map((p) => [p.slug, hostOf(p)])), opts }) : null;
-  if (CHANGED) {
+  // --changed-only: the pages whose fingerprint moved since their PASS (or that cannot show it), less those at the fix-round
+  // cap that --only does not name — then an --only run over them; nothing to gate → the line(s), nothing written, exit 0
+  let CHANGED = null;
+  if (opts.changedOnly) {
+    const tables = runTables(opts.out); const rounds = Object.fromEntries(pages.map((p) => [p.slug, roundsOf(opts.out, p.slug, tables).rounds]));
+    CHANGED = changedOnly(pages.map((p) => p.slug), { latest: latestRows(opts.out, opts.width), keys: KEYS, hosts: Object.fromEntries(pages.map((p) => [p.slug, hostOf(p)])), rounds, opts });
     console.log(changedOnlyLine(CHANGED));
     if (!CHANGED.gate.length) return;
     const sel = CHANGED.gate.map((g) => g.slug); pages = pages.filter((p) => sel.includes(p.slug)); opts.only = sel;
@@ -1649,7 +1667,7 @@ async function main() {
   const REGISTER = (() => { try { return { file: REGISTER_FILE, found: true, ids: registerIds(readFileSync(REGISTER_FILE, 'utf8')) }; } catch { return { file: REGISTER_FILE, found: false, ids: [] }; } })();
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
   log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${estimateText(R)})${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}; ${buildHostText(buildHost(pages, { edsHost: opts.edsHost, stage: opts.stage, protoBase: opts.protoBase, source: cov ? 'coverage' : 'state' }))}`);
-  if (CHANGED) log(`changed-only: gating ${CHANGED.gate.map((g) => `${g.slug} (${g.why})`).join(', ')}; unchanged since their PASS: ${CHANGED.unchanged.map((u) => `${u.slug} ${u.fingerprint.slice(0, 12)} ${u.at} (${u.from})`).join(', ') || 'none'}`);
+  if (CHANGED) log(`changed-only: gating ${CHANGED.gate.map((g) => `${g.slug} (${g.why})`).join(', ')}; unchanged since their PASS: ${CHANGED.unchanged.map((u) => `${u.slug} ${u.fingerprint.slice(0, 12)} ${u.at} (${u.from})`).join(', ') || 'none'}${CHANGED.atCap.length ? `; at the cap, left out (C-final's roster gate measures them): ${CHANGED.atCap.map((c) => `${c.slug} ${c.rounds}/${opts.maxRounds} (${c.why})`).join(', ')}` : ''}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;
@@ -2043,7 +2061,7 @@ async function main() {
   totals.originReused = n((r) => r.originReused);
   totals.hideMiss = n((r) => hideMissOf(r.hideMiss));
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, ...dismissField(opts.dismiss), only: opts.only, ...(CHANGED ? { changedOnly: { unchanged: CHANGED.unchanged.map(({ slug, fingerprint, at }) => ({ slug, fingerprint, at })) } } : {}), maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, ...dismissField(opts.dismiss), only: opts.only, ...(CHANGED ? { changedOnly: { unchanged: CHANGED.unchanged.map(({ slug, fingerprint, at }) => ({ slug, fingerprint, at })), ...(CHANGED.atCap.length ? { atCap: CHANGED.atCap.map((c) => c.slug) } : {}) } } : {}), maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${writtenAt.replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }

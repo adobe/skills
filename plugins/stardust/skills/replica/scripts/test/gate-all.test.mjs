@@ -76,11 +76,12 @@
 // Fingerprint and --changed-only: fingerprintOf (the delivered parts: a block CSS / JS, styles, page or chrome document byte
 // moves it; the EDS origin, a threshold, a mask, a dismiss list, the instruments do not — the gate key moves) and
 // rowFingerprint (only beside a known key its parts hash to); changedOnly / changedOnlyLine over real tables (latestRows):
-// an unchanged PASS left out, every other case gated with its why; --changed-only --stage prototype → exit 2, nothing
-// written. The reuse sandbox: live-host PASS rows → both pages gated on the preview host as an --only run; nothing changed →
-// the one line, nothing written (with --only too); a pushed block CSS byte → that page alone; a newer FAIL over a matching
-// PASS → gated, and refused at the fix-round cap like --only. A killed roster run (the reuse sandbox's stitch stub kills
-// gate-all in the last EDS capture): the landed capture's gate-key.json is on disk, --skip-existing re-shoots only the other.
+// an unchanged PASS left out, every other case gated with its why, a capped one left out unless --only names it;
+// --changed-only --stage prototype → exit 2, nothing written. The reuse sandbox: live-host PASS rows → both pages gated on
+// the preview host as an --only run; nothing changed → the one line, nothing written (with --only too); a pushed block CSS
+// byte → that page alone; a newer FAIL over a matching PASS → gated; at the fix-round cap left out (the at-the-cap line),
+// refused when --only names it. A killed roster run (the reuse sandbox's stitch stub kills gate-all in the last EDS
+// capture): the landed capture's gate-key.json is on disk, --skip-existing re-shoots only the other.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -554,6 +555,23 @@ check('changedOnly: only an unchanged PASS is left out — a changed fingerprint
   assert.equal(changedOnlyLine(only), 'gate-all changed-only: nothing changed since the last PASS — 2 page(s) keep their rows');
   assert.equal(changedOnlyLine(changedOnly(['b'], { latest, keys, hosts, opts })), 'gate-all changed-only: 1 to gate (b) · 0 unchanged since their PASS');
   rmSync(out, { recursive: true, force: true });
+});
+check('changedOnly at the fix-round cap: a page it would gate that is at --max-rounds is left out (atCap, its why kept) instead of refusing the run — unless --only names it (gated: the cap then refuses as for --only); an unchanged capped page is just unchanged; changedOnlyLine names them on the line, or before the nothing-to-gate line', () => {
+  const prov = { stage: 'published', threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, criteria: { pixel: true, height: true, clip: true, content: true } };
+  const H = 'https://main--site--org.aem.page'; const F = (x) => createHash('sha256').update(x).digest('hex');
+  const latest = Object.fromEntries(['a', 'b', 'c', 'd'].map((x) => [x, { row: { slug: x, pct: 2, pass: true, host: H, gateKey: `k-${x}`, fingerprint: F(x) }, at: T(1), from: 'summary.json', prov }]));
+  const keys = { a: { fingerprint: F('a2') }, b: { fingerprint: F('b2') }, c: { fingerprint: F('c') }, d: { fingerprint: F('d2') } };
+  const hosts = { a: H, b: H, c: H, d: H }; const rounds = { a: 3, b: 1, c: 3, d: 2 }; const opts = parseArgs(['node', 'x', '--changed-only']);
+  const sel = changedOnly(['d', 'c', 'b', 'a'], { latest, keys, hosts, rounds, opts });
+  assert.deepEqual(sel.gate.map((g) => g.slug), ['b', 'd']); assert.deepEqual(sel.unchanged.map((u) => u.slug), ['c'], 'unchanged at the cap: unchanged');
+  assert.deepEqual(sel.atCap, [{ slug: 'a', why: `changed since the PASS (${F('a').slice(0, 12)} → ${F('a2').slice(0, 12)})`, rounds: 3 }]);
+  assert.equal(changedOnlyLine(sel), `gate-all changed-only: 2 to gate (b, d) · 1 unchanged since their PASS (c ${F('c').slice(0, 12)} ${T(1)}) · at the cap: a — C-final's roster gate measures them`);
+  const lowered = changedOnly(['d', 'b', 'a'], { latest, keys, hosts, rounds, opts: { ...opts, maxRounds: 2 } });
+  assert.deepEqual([lowered.gate.map((g) => g.slug), lowered.atCap.map((c) => c.slug)], [['b'], ['a', 'd']], '--max-rounds 2');
+  const named = changedOnly(['a', 'b'], { latest, keys, hosts, rounds, opts: { ...opts, only: ['a', 'b'] } });
+  assert.deepEqual([named.gate.map((g) => g.slug), named.atCap], [['a', 'b'], []], 'named by --only: gated, and the cap refuses the run as for --only');
+  assert.equal(changedOnlyLine(changedOnly(['a', 'c'], { latest, keys, hosts, rounds, opts })), "gate-all changed-only: at the cap: a — C-final's roster gate measures them\ngate-all changed-only: nothing changed since the last PASS — 2 page(s) keep their rows", 'every changed page at the cap');
+  assert.deepEqual(changedOnly(['a'], { latest, keys, hosts, opts }).atCap, [], 'no round count given: none at the cap');
 });
 check('--changed-only with --stage prototype: a usage error before any I/O — exit 2, one stderr line and the usage line, nothing written (either order); parseArgs reads the flag', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-changed-proto-'));
@@ -1137,13 +1155,17 @@ check('--changed-only, 3: one byte of the cards CSS (about\'s block), pushed —
   assert.notEqual(row(doc, 'about').fingerprint, row(co1, 'about').fingerprint); assert.equal(row(doc, 'about').fingerprint, fpOf('about'));
   assert.match(readFileSync(join(REUSE_OUT, '_run.log'), 'utf8'), /changed-only: gating about \(changed since the PASS \([0-9a-f]{12} → [0-9a-f]{12}\)\); unchanged since their PASS: home [0-9a-f]{12} \S+ \(runs\/\S+-about\.json\)$/m);
 });
-check('--changed-only, 4: a FAIL after a matching PASS is gated (the newest row counts); a page at the fix-round cap refuses the run as --only would (no verdict, exit 2, nothing written)', () => {
+check('--changed-only, 4: a FAIL after a matching PASS is gated (the newest row counts); at the fix-round cap it is left out — the at-the-cap line, then the nothing-to-gate line, exit 0, nothing written — while --only naming it refuses as before (no verdict, exit 2, nothing written)', () => {
   const failed = gateAll(['--only', 'about'], { STUB_FAIL: 'about' });
   assert.equal(failed.status, 2, failed.stderr); assert.equal(row(runOf(failed), 'about').pass, false); assert.equal(row(runOf(failed), 'about').round, 3);
   const snap = outSnap();
   const capped = gateAll(['--changed-only']);
-  assert.equal(capped.status, 2, capped.stderr); assert.equal(capped.stdout.split('\n')[0].startsWith('gate-all changed-only: 1 to gate (about) · 1 unchanged since their PASS (home '), true, capped.stdout);
-  assert.match(capped.stderr, /no verdict — cap reached — re-prototype decision: about 3\/3 @1440/); assert.deepEqual(capped.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.deepEqual(outSnap(), snap);
+  assert.equal(capped.status, 0, capped.stderr); assert.equal(capped.stderr, '');
+  assert.equal(capped.stdout, "gate-all changed-only: at the cap: about — C-final's roster gate measures them\ngate-all changed-only: nothing changed since the last PASS — 2 page(s) keep their rows\n");
+  assert.deepEqual(capped.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.deepEqual(outSnap(), snap, 'left out at the cap: nothing written');
+  const named = gateAll(['--changed-only', '--only', 'about']);
+  assert.equal(named.status, 2, named.stderr); assert.equal(named.stdout.split('\n')[0], 'gate-all changed-only: 1 to gate (about) · 0 unchanged since their PASS');
+  assert.match(named.stderr, /no verdict — cap reached — re-prototype decision: about 3\/3 @1440/); assert.deepEqual(named.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.deepEqual(outSnap(), snap, 'named by --only: refused, nothing written');
   zeroRounds();
   const x = gateAll(['--changed-only']);
   assert.equal(x.status, 0, x.stderr + x.stdout); assert.deepEqual([x.n.eds, x.n.compares], [1, 1]); assert.equal(row(runOf(x), 'about').pass, true);
