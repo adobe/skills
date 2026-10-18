@@ -4,6 +4,36 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r16-census-and-clock) — the style census survives a stuck page, presence suggests on a miss, and a unit brief carries a clock (#151)
+
+Recorded hands-off runs: on a site with a consent manager the style census (`--concurrency 2`) hung after its first
+page and ran to its whole deadline (exit 124); a second census was killed after 14 minutes with its results lost,
+because the instrument wrote nothing until the end; a third at concurrency 1 did eight pages in 4.6 minutes — 51 minutes
+of census against 5.6 in an earlier run of the same site, and the extract phase took 67 minutes against 41. On the same
+site a `presence.mjs add --dismiss <sel> --verify` refused with "matched nothing" and the agent then walked the DOM by
+hand for 14 minutes to find the control, although `presence.mjs suggest` already existed. And a unit told to "return
+within 45 minutes" either stopped eight minutes in or was cut by the session end, because nobody had computed the
+absolute time left.
+
+- **The census survives a stuck page (`extract/scripts/style-census.mjs`).** A per-measurement deadline
+  (`--page-timeout`, default 120 s, raised to the navigation timeout + 60 s when that is longer) records a page that
+  never settles as `timed_out` and the census continues. `<out>` is rewritten after every measurement in roster order,
+  so the file is valid after each page and `--resume` continues a killed pass, re-measuring only its timed-out and
+  failed records. A timeout above `--concurrency 1` finishes the rest of the roster at concurrency 1 and says so on one
+  WARNING line. Exit 0 when at least one page was measured (the timed-out ones listed under `_provenance.timedOut[]`),
+  exit 2 only when none was.
+- **Presence suggests on a miss (`replica/scripts/presence.mjs`).** An `add … --verify` whose selector matches nothing
+  now runs `suggest` on the same URL and width and prints the top three candidates of that kind (selector, text, role),
+  each with the exact `add` command to try, before exiting 2 — no hand-walking of the DOM. `suggest --kind
+  hide|dismiss|pin` lists the same candidates standalone. A suggested selector is always a single light-DOM match and
+  never holds a comma (which `add` splits on) or rests on a transient state class.
+- **A unit brief carries an absolute clock (`replica/reference/handoff-contract.md`, § Unit briefs).** The subagent
+  brief template now states `deadline: <UTC HH:MM>` — the earlier of the unit's own budget and the session end minus
+  five minutes — with the rule to stop at the next clean point, flip the unit to `paused` with what remains, and return
+  if it cannot be met. The main agent does not launch a unit whose expected duration does not fit before the session end
+  unless the unit is resumable (`gate-all --skip-existing`, encoder batches). One worked example of the arithmetic is
+  included.
+
 ## 0.36.x — from prototype to document, and from archetype to sibling, without a hand-written generator (#NNN)
 
 The recorded hands-off runs wrote the same generators again and again: a gated prototype's `<main>` into the

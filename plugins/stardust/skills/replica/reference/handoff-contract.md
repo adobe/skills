@@ -82,6 +82,16 @@ The `phase` strings below — `<Letter>-<first word of the phase heading, lowerc
   "startedAt": "<ISO>", "endedAt": "<ISO>", "verdict": "<row C's verdict line>" } } }
 ```
 
+**Unit briefs carry an absolute clock, not a relative budget** (row C's subagent briefs; recorded: units launched late were cut by the session end). `deadline:` (UTC `HH:MM`) = the earlier of the unit's own budget (launch + row C's 90-minute target, or a shorter one the main agent sets) and the session end − 5 min; session end = a boundary reply's time (§ 5) − the elapsed time it names + 90 min (no reply has named one yet → the unit's own budget alone). `expected:` = the main agent's estimate (gate-all's roster estimate for a gate run, else a recorded unit of its kind):
+
+```text
+deadline: 21:25 UTC
+expected: 45 min
+If the deadline cannot be met, stop at the next clean point, flip your unit entry to `paused` with what remains, and return.
+```
+
+`paused` on disk: the entry stays `running`, its verdict set by `node stardust/scripts/stardust/progress.mjs unit start <unit> --verdict "paused: <what remains>"` (the pause file's form, below); a resumed session re-runs it like any in-flight unit (§ 5). Launch + `expected` past a known session end − 5 min → not launched (it waits for the next session), unless resumable (`gate-all --skip-existing`, encoder batches) — then launched with the session deadline, pausing at it. Example: a reply at 21:04 UTC names 64 min elapsed → session 20:00–21:30; a cluster sub-unit at 21:05 (own budget 22:35) gets `deadline: 21:25`; `expected: 45 min` → 21:50 → not launched; another template's sub-unit whose remaining work is its `gate-all --only <its pages> --skip-existing` run is resumable → launched with `deadline: 21:25`, pauses there, the next session resumes it.
+
 **Fan-out discipline (C-deliver, main agent + subagents) — re-read at every session start:**
 - **Foundation first, then frozen:** C0's sub-units commit one by one (§ 5), then C0 ends with `node stardust/scripts/replica/foundation-freeze.mjs freeze` + the checkpoint commit, BEFORE the first cluster subagent spawns; until C-final nobody edits a frozen file — `styles/`, `fonts/`, `head.html`, `scripts/`, `blocks/header/`, `blocks/footer/` (the script's default set; `--paths` when a project's foundation lives elsewhere). A recorded main-agent edit under four running clusters cost 23 minutes of rework.
 - **Change requests:** a cluster's foundation finding is ONE appended line in `stardust/rollout/foundation-requests.md` — `- <unit> | <what> | <evidence: instrument + numbers> | <templates affected>`; the cluster ships with a scoped override inside its OWN block CSS and does not wait; never a rule on a frozen file. The main agent applies the queue ONCE at C-final (row C).

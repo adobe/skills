@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // skills/extract/scripts/test/style-census.test.mjs — the style-census.mjs contract. Part (a): the pure
 // aggregate (colour parsing + clustering, roles and sources, type families/sizes/levels, motifs, hover
-// deltas, the logo chain, icon font, order independence), argument parsing, the page list and the guarded
-// navigation timeout (a live-session.mjs older than navTimeout keeps 20000) — no browser. Part (b): end-to-end
-// against a fixture site served from this process (two pages, known
-// colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page for the shared
-// navigation timeout — --timeout-ms bounds it; env STARDUST_NAV_TIMEOUT_MS alone is a floor), and a project copy
-// whose live-session.mjs predates the shared consent table refused — runs only where
+// deltas, the logo chain, icon font, order independence), argument parsing, the page list, the guarded
+// navigation timeout (a live-session.mjs older than navTimeout keeps 20000), the per-measurement deadline's
+// resolution (--page-timeout), the incremental writer's deterministic order and --resume's refusal of a file that is
+// not a census file — no browser. Part (b): end-to-end against a fixture site served from this process
+// (two pages, known colours/fonts/radius/shadow/gradient/hover, a consent overlay, an inline SVG logo; a slow page
+// for the shared navigation timeout — --timeout-ms bounds it; env STARDUST_NAV_TIMEOUT_MS alone is a floor; a page
+// that never settles — recorded timed_out at its page deadline, the census continues (at concurrency 1 once one
+// timed out at more), exit 2 when nothing was measured; a pass killed mid-run leaves a valid file that --resume
+// continues), and a project copy whose
+// live-session.mjs predates the shared consent table refused — runs only where
 // playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync, spawn } from 'node:child_process';
@@ -15,7 +19,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, sessionNavTimeout, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
+import { aggregate, clusterColors, parseColor, toHex, parseArgs, listUrls, sessionNavTimeout, resolvePageTimeoutMs, assembleCensus, UsageError, DEFAULTS, DEFAULT_UA, DEFAULT_TIMEOUT_MS } from '../style-census.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'style-census.mjs');
@@ -126,11 +130,36 @@ await check('parseArgs: defaults, repeatable + comma widths deduped, usage error
   for (const bad of [['--bogus'], ['--width'], ['--width', 'wide'], ['--width', '100'], ['--concurrency', '0'], ['--timeout-ms', '10'], ['--pages', 'p', '--urls', 'https://a.test/'], ['--urls', '']]) assert.throws(() => parseArgs(bad), UsageError, bad.join(' '));
 });
 await check('parseArgs: a value flag followed by nothing or by another --flag is a usage error naming the flag (never swallows the flag)', () => {
-  for (const [flag, ...tail] of [['--pages'], ['--urls'], ['--out'], ['--width'], ['--concurrency'], ['--max-pages'], ['--timeout-ms'], ['--ua'], ['--dismiss'], ['--locale'], ['--out', '--headed'], ['--concurrency', '--width', '360'], ['--urls', '--out', 'x.json'], ['--locale', '--headed']]) {
+  for (const [flag, ...tail] of [['--pages'], ['--urls'], ['--out'], ['--width'], ['--concurrency'], ['--max-pages'], ['--timeout-ms'], ['--page-timeout'], ['--ua'], ['--dismiss'], ['--locale'], ['--out', '--headed'], ['--concurrency', '--width', '360'], ['--urls', '--out', 'x.json'], ['--locale', '--headed'], ['--page-timeout', '--resume']]) {
     assert.throws(() => parseArgs([flag, ...tail]), (e) => e instanceof UsageError && e.code === 2 && e.message.startsWith(`${flag} needs a value`), `${flag} ${tail.join(' ')}`);
   }
   const r = run(['--out', '--headed']); assert.equal(r.code, 2); assert.match(r.err, /style-census: --out needs a value/);
   assert.ok(existsSync(join(HERE, '..', '..', '..', 'diff', 'scripts', 'live-session.mjs')), 'the plugin-tree layout the script resolves first');
+});
+await check('parseArgs --page-timeout <s>: integer seconds ≥ 1 (not given → null, main resolves it); 0, a fraction, a negative or junk value is a usage error; --resume is a switch', () => {
+  assert.equal(parseArgs([]).pageTimeout, null); assert.equal(parseArgs(['--page-timeout', '45']).pageTimeout, 45);
+  for (const bad of [['--page-timeout', '0'], ['--page-timeout', '1.5'], ['--page-timeout', '-5'], ['--page-timeout', 'soon']]) assert.throws(() => parseArgs(bad), (e) => e instanceof UsageError && /^--page-timeout needs an integer ≥ 1/.test(e.message), bad.join(' '));
+  assert.equal(parseArgs([]).resume, false); assert.equal(parseArgs(['--resume', '--page-timeout', '3']).resume, true);
+});
+await check('resolvePageTimeoutMs: not given → 120 s, raised to the navigation timeout + 60 s when that is longer (never cuts a navigation before its own timeout); the flag always wins, even below the navigation timeout', () => {
+  assert.equal(resolvePageTimeoutMs(null, 20000), 120000);
+  assert.equal(resolvePageTimeoutMs(null, 90000), 150000);
+  assert.equal(resolvePageTimeoutMs(null, 180000), 240000);
+  assert.equal(resolvePageTimeoutMs(3, 90000), 3000);
+});
+await check('assembleCensus (every incremental write): pages in roster order whatever the completion order, carried-only URLs after them sorted, widths ascending; carried records merge with this run\'s; failed[] and timedOut[] in roster order', () => {
+  const [a, b, c] = ['https://x.test/a', 'https://x.test/b', 'https://x.test/c'];
+  const roster = [b, a, c].flatMap((url) => [1440, 360].map((width) => ({ url, width })));
+  const outcomes = [];
+  outcomes[5] = { deadlineMs: 3000 }; outcomes[3] = { rec: { n: 'a360' } }; outcomes[1] = { rec: { n: 'b360' } }; outcomes[4] = { deadlineMs: 3000 }; outcomes[2] = { error: 'HTTP 404' };
+  const carried = { 'https://x.test/z': { 1440: { n: 'z' } }, [b]: { 1440: { n: 'b1440' } }, 'https://x.test/y': { 800: { n: 'y' } } };
+  const s = assembleCensus(roster, outcomes, carried);
+  assert.deepEqual(Object.keys(s.pages), [b, a, 'https://x.test/y', 'https://x.test/z']);
+  assert.deepEqual(Object.keys(s.pages[b]), ['360', '1440']); assert.deepEqual(s.pages[b], { 360: { n: 'b360' }, 1440: { n: 'b1440' } });
+  assert.deepEqual(s.failed, [{ url: a, width: 1440, error: 'HTTP 404' }]);
+  assert.deepEqual(s.timedOut, [{ url: c, width: 1440, deadlineMs: 3000 }, { url: c, width: 360, deadlineMs: 3000 }]);
+  assert.equal(s.measured, 5);
+  assert.equal(JSON.stringify(assembleCensus(roster, [...outcomes], Object.fromEntries(Object.entries(carried).reverse()))), JSON.stringify(s), 'same bytes whatever the carried key order');
 });
 await check('sessionNavTimeout: a current live-session answers through its navTimeout (fallback 20000); one without navTimeout (an older project copy) — no throw, the old default 20000 with source default, ONE stderr line per process', () => {
   const asked = [];
@@ -158,9 +187,17 @@ await check('listUrls: finalUrl over url, non-records skipped, deduped in file o
 });
 await check('CLI: --help exits 0 with Usage + Writes before any work; usage errors exit 2 and write nothing', () => {
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /Writes \(nothing else\):/); assert.match(h.out, /--max-pages/);
+  assert.match(h.out, /--page-timeout <s> /); assert.match(h.out, /timedOut\[\]/); assert.match(h.out, /--resume /); assert.match(h.out, /rewritten after every\s+measurement/); assert.match(h.out, /fellBackAfter/);
   assert.match(h.out, /--timeout-ms <ms> .*\(default: max\(env STARDUST_NAV_TIMEOUT_MS,\s+2 × crawl\.navMs\.p95 from stardust\/current\/_crawl-log\.json\) clamped to\s+20000–180000, else 20000; the flag always wins\)/, 'the floor precedence on the --timeout-ms line');
   const e = run(['--bogus']); assert.equal(e.code, 2); assert.match(e.err, /unknown argument --bogus/);
   const m = run(['--pages', join(root, 'missing')]); assert.equal(m.code, 2); assert.match(m.err, /not a directory/);
+});
+await check('CLI --resume on an <out> that is not a census file (not JSON; JSON without a pages object) → exit 2 naming it, the file untouched, before any browser work', () => {
+  for (const [name, body] of [['not-json.json', 'half a {census'], ['no-pages.json', '{"_provenance":{},"pages":[]}']]) {
+    const f = join(root, name); writeFileSync(f, body);
+    const r = run(['--resume', '--urls', 'http://127.0.0.1:9/', '--out', f]);
+    assert.equal(r.code, 2, r.err); assert.ok(r.err.includes(`style-census: --resume: ${f} `) && /not a census file/.test(r.err), r.err); assert.equal(readFileSync(f, 'utf8'), body);
+  }
 });
 
 // ---- part (b): end-to-end against a fixture site (needs playwright) --------------------------------------
@@ -186,8 +223,12 @@ if (playwrightOk) {
     if (req.url === '/about') return res.setHeader('content-type', 'text/html').end(html('About headline', promo));
     // answers after 2.5 s — past a 1000 ms navigation timeout, inside an explicit --timeout-ms 10000
     if (req.url === '/slow') return setTimeout(() => { if (!res.destroyed) res.setHeader('content-type', 'text/html').end(html('Slow headline', '')); }, 2500);
+    // the first bytes of a document and never the rest: domcontentloaded never fires — a page that never settles
+    if (req.url === '/hang') { res.writeHead(200, { 'content-type': 'text/html' }); return res.write('<!doctype html><html><head><title>Hang</title></head><body><h1>Hang'); }
     res.statusCode = 404; return res.end('nope');
   });
+  const sockets = new Set();
+  server.on('connection', (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const origin = `http://127.0.0.1:${server.address().port}`;
   const runAsync = (args, env = process.env) => new Promise((resolve) => {
@@ -204,6 +245,7 @@ if (playwrightOk) {
     assert.equal(r.code, 0, r.err); assert.match(r.out, /^style-census: 2 pages × 2 widths → .*_computed-styles\.json\n$/); assert.match(r.err, /\[style-census\] OK {3}http:\/\/127\.0\.0\.1:\d+\/ @1440 /);
     doc = JSON.parse(readFileSync(outFile, 'utf8'));
     assert.equal(doc._provenance.writtenBy, 'stardust:extract'); assert.deepEqual(doc._provenance.widths, [1440, 360]); assert.deepEqual(doc._provenance.failed, []); assert.deepEqual(doc._provenance.synthesizedInputs, []); assert.equal(doc._provenance.readArtifacts.length, 2);
+    assert.deepEqual(doc._provenance.concurrency, { requested: 1, final: 1 }); assert.doesNotMatch(r.err, /WARNING/);
   });
   const home = () => doc.pages[`${origin}/`]['1440'];
   const about = () => doc.pages[`${origin}/about`]['1440'];
@@ -236,9 +278,9 @@ if (playwrightOk) {
     assert.equal(a.logo.source, 'inline-svg'); assert.equal(a.logo.url, `${origin}/`); assert.deepEqual(a.iconFont.glyphs.map((g) => g.codepoint), ['U+E928']);
     assert.deepEqual(a.counts, { pages: 2, widths: [360, 1440], measurements: 4 });
   });
-  await check('e2e failures: every page failing → exit 1, aggregate null, error recorded; one failing → exit 0 with the count in the summary', async () => {
+  await check('e2e failures: every page failing → exit 2 (no measurement succeeded), aggregate null, error recorded; one failing → exit 0 with the count in the summary', async () => {
     const all = await runAsync(['--urls', `${origin}/missing`, '--out', join(root, 'fail.json')]);
-    assert.equal(all.code, 1); assert.match(all.out, /1 of 1 measurements failed/); const f = JSON.parse(readFileSync(join(root, 'fail.json'), 'utf8')); assert.equal(f.aggregate, null); assert.equal(f._provenance.failed[0].error, 'HTTP 404');
+    assert.equal(all.code, 2); assert.match(all.out, /1 of 1 measurements failed/); assert.match(all.err, /no measurement succeeded — 1 failed, 0 timed out/); const f = JSON.parse(readFileSync(join(root, 'fail.json'), 'utf8')); assert.equal(f.aggregate, null); assert.equal(f._provenance.failed[0].error, 'HTTP 404');
     const part = await runAsync(['--urls', `${origin}/about,${origin}/missing`, '--out', join(root, 'part.json')]);
     assert.equal(part.code, 0); assert.match(part.out, /1 pages × 1 widths .* \(1 of 2 measurements failed/); assert.match(part.err, /FAIL .*\/missing @1440 {2}HTTP 404/);
   });
@@ -256,9 +298,94 @@ if (playwrightOk) {
       runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-flag.json'), '--timeout-ms', '1000'], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '45000' }),
       runAsync(['--urls', `${origin}/slow`, '--out', join(root, 'slow-env.json')], { ...process.env, STARDUST_NAV_TIMEOUT_MS: '1000' }),
     ]);
-    assert.equal(byFlag.code, 1, byFlag.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-flag.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
+    assert.equal(byFlag.code, 2, byFlag.err); assert.match(JSON.parse(readFileSync(join(root, 'slow-flag.json'), 'utf8'))._provenance.failed[0].error, /Timeout 1000ms exceeded/);
     assert.equal(byEnv.code, 0, byEnv.err); assert.match(byEnv.out, /^style-census: 1 pages × 1 widths → /);
   });
+  // A page that never settles: the per-measurement deadline (--page-timeout) records it timed_out and the census
+  // moves on, far inside the 60 s navigation timeout. The 10 s deadline in (a) sits well above /about's own
+  // measurement (its full-page promo makes both hover probes wait out their 1.5 s actionability timeouts).
+  // (b): a pass killed mid-run keeps what it measured (the file is rewritten after every measurement), and
+  // --resume continues it: `/` is carried, only /hang is measured again.
+  const resumeOut = join(root, 'resume', 'census.json');
+  const killAndResume = async () => {
+    const killed = await new Promise((resolve) => {
+      const child = spawn(process.execPath, [SCRIPT, '--resume', '--urls', `${origin}/,${origin}/hang`, '--out', resumeOut, '--page-timeout', '30', '--timeout-ms', '60000'], { cwd: root });
+      let err = ''; let partial = null;
+      child.stderr.on('data', (d) => { err += d; });
+      const poll = setInterval(() => {
+        try {
+          const d = JSON.parse(readFileSync(resumeOut, 'utf8'));
+          if (d.pages[`${origin}/`] && d._provenance.complete === false) { partial = d; clearInterval(poll); child.kill('SIGKILL'); }
+        } catch { /* not written yet */ }
+      }, 100);
+      const timer = setTimeout(() => { clearInterval(poll); child.kill('SIGKILL'); }, 60000);
+      child.on('close', (code, signal) => { clearTimeout(timer); clearInterval(poll); resolve({ signal, err, partial }); });
+    });
+    const left = readFileSync(resumeOut, 'utf8');
+    const resumed = await runAsync(['--resume', '--urls', `${origin}/,${origin}/hang`, '--out', resumeOut, '--page-timeout', '3', '--timeout-ms', '60000']);
+    return { killed, left, resumed };
+  };
+  const t0 = Date.now();
+  const [hangMix, hangOnly, kr, hangPair] = await Promise.all([
+    runAsync(['--urls', `${origin}/,${origin}/hang,${origin}/about`, '--out', join(root, 'hang-mix.json'), '--concurrency', '2', '--page-timeout', '10', '--timeout-ms', '60000']),
+    runAsync(['--urls', `${origin}/hang`, '--out', join(root, 'hang-only.json'), '--page-timeout', '3', '--timeout-ms', '60000']),
+    killAndResume(),
+    // both workers start on /hang (two widths) and both time out: one fallback, two `/` jobs left for worker 0
+    runAsync(['--urls', `${origin}/hang,${origin}/`, '--width', '1440,360', '--out', join(root, 'hang-pair.json'), '--concurrency', '2', '--page-timeout', '6', '--timeout-ms', '60000']),
+  ]);
+  const hangWall = Date.now() - t0;
+  await check('e2e page deadline: a page that never settles is recorded timed_out (one TIMEOUT line, the summary lists it, _provenance.timedOut names it) and the census continues at concurrency 1 (one WARNING line) — exit 0 with the other pages measured, well inside the navigation timeout', () => {
+    assert.equal(hangMix.code, 0, hangMix.err); assert.ok(hangWall < 45000, `${hangWall} ms`);
+    assert.equal(hangMix.err.match(/\[style-census\] TIMEOUT /g).length, 1, hangMix.err);
+    assert.match(hangMix.err, /\[style-census\] TIMEOUT http:\/\/127\.0\.0\.1:\d+\/hang @1440 {2}page deadline 10 s exceeded — recorded timed_out, continuing/);
+    assert.equal(hangMix.err.match(/\[style-census\] WARNING /g).length, 1, hangMix.err);
+    assert.match(hangMix.err, /\[style-census\] WARNING http:\/\/127\.0\.0\.1:\d+\/hang @1440 timed out at concurrency 2 — finishing the remaining \d+ measurements at concurrency 1\n/);
+    assert.match(hangMix.out, /^style-census: 2 pages × 1 widths → .*hang-mix\.json — 1 timed out \(page deadline 10 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440\n$/);
+    const d = JSON.parse(readFileSync(join(root, 'hang-mix.json'), 'utf8'));
+    assert.deepEqual(Object.keys(d.pages), [`${origin}/`, `${origin}/about`]); assert.ok(d.pages[`${origin}/about`]['1440'].headings.length);
+    assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 10000 }]); assert.deepEqual(d._provenance.failed, []); assert.equal(d._provenance.pageTimeoutMs, 10000); assert.equal(d._provenance.complete, true);
+    assert.deepEqual(d._provenance.concurrency, { requested: 2, final: 1, fellBackAfter: { url: `${origin}/hang`, width: 1440 } });
+  });
+  await check('e2e concurrency fallback: both workers time out — ONE WARNING (the remaining 2 measurements), both timeouts recorded in roster order, the rest measured at concurrency 1, exit 0', () => {
+    assert.equal(hangPair.code, 0, hangPair.err);
+    assert.equal(hangPair.err.match(/\[style-census\] TIMEOUT /g).length, 2, hangPair.err);
+    assert.equal(hangPair.err.match(/\[style-census\] WARNING /g).length, 1, hangPair.err);
+    assert.match(hangPair.err, /\[style-census\] WARNING http:\/\/127\.0\.0\.1:\d+\/hang @(1440|360) timed out at concurrency 2 — finishing the remaining 2 measurements at concurrency 1\n/);
+    assert.match(hangPair.out, /— 2 timed out \(page deadline 6 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440, http:\/\/127\.0\.0\.1:\d+\/hang @360\n$/);
+    const d = JSON.parse(readFileSync(join(root, 'hang-pair.json'), 'utf8'));
+    assert.deepEqual(Object.keys(d.pages[`${origin}/`]), ['360', '1440']);
+    assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 6000 }, { url: `${origin}/hang`, width: 360, deadlineMs: 6000 }]);
+    assert.equal(d._provenance.concurrency.final, 1); assert.equal(d._provenance.concurrency.fellBackAfter.url, `${origin}/hang`);
+  });
+  await check('e2e page deadline: no measurement succeeded (the only page timed out) → exit 2 saying so, aggregate null, timedOut lists it', () => {
+    assert.equal(hangOnly.code, 2, hangOnly.err); assert.match(hangOnly.err, /no measurement succeeded — 0 failed, 1 timed out/); assert.doesNotMatch(hangOnly.err, /WARNING/, 'no fallback at concurrency 1');
+    assert.match(hangOnly.out, /^style-census: 0 pages × 1 widths → .* — 1 timed out \(page deadline 3 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440\n$/);
+    const d = JSON.parse(readFileSync(join(root, 'hang-only.json'), 'utf8'));
+    assert.equal(d.aggregate, null); assert.deepEqual(d.pages, {}); assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 3000 }]); assert.equal(d._provenance.complete, true);
+  });
+  await check('e2e incremental + --resume: a pass SIGKILLed mid-run left a valid census file (`/` measured, aggregate, complete false); --resume carries `/` (one resume line, no OK line for it), re-attempts only /hang, exit 0', () => {
+    const { killed, left, resumed } = kr;
+    assert.equal(killed.signal, 'SIGKILL'); assert.ok(killed.partial, `never saw a partial file\n${killed.err}`);
+    assert.ok(killed.err.includes(`[style-census] nothing to resume at ${resumeOut} — starting fresh`), killed.err);
+    const d0 = JSON.parse(left);
+    assert.equal(d0._provenance.complete, false); assert.equal(d0.aggregate.counts.measurements, 1); assert.deepEqual(Object.keys(d0.pages), [`${origin}/`]);
+    assert.equal(resumed.code, 0, resumed.err);
+    assert.ok(resumed.err.includes(`[style-census] resume: 1 of 2 measurements already recorded in ${resumeOut} — measuring 1\n`), resumed.err);
+    assert.doesNotMatch(resumed.err, /\[style-census\] OK /); assert.match(resumed.err, /\[style-census\] TIMEOUT http:\/\/127\.0\.0\.1:\d+\/hang @1440 {2}page deadline 3 s exceeded/);
+    assert.match(resumed.out, /^style-census: 1 pages × 1 widths → .* — 1 timed out \(page deadline 3 s\): http:\/\/127\.0\.0\.1:\d+\/hang @1440\n$/);
+    const d = JSON.parse(readFileSync(resumeOut, 'utf8'));
+    assert.deepEqual(d.pages[`${origin}/`], d0.pages[`${origin}/`], 'the carried record, unchanged'); assert.equal(d.aggregate.counts.measurements, 1);
+    assert.deepEqual(d._provenance.timedOut, [{ url: `${origin}/hang`, width: 1440, deadlineMs: 3000 }]); assert.equal(d._provenance.complete, true);
+  });
+  await check('e2e --resume with nothing left to measure: no browser launch (none is installable here), the file rewritten complete with the carried record, exit 0', async () => {
+    const before = JSON.parse(readFileSync(resumeOut, 'utf8'));
+    const r = await runAsync(['--resume', '--urls', `${origin}/`, '--out', resumeOut], { ...process.env, PLAYWRIGHT_BROWSERS_PATH: join(root, 'no-browsers') });
+    assert.equal(r.code, 0, r.err); assert.ok(r.err.includes(`resume: 1 of 1 measurements already recorded in ${resumeOut} — measuring 0`), r.err);
+    assert.match(r.out, /^style-census: 1 pages × 1 widths → .*census\.json\n$/);
+    const d = JSON.parse(readFileSync(resumeOut, 'utf8'));
+    assert.deepEqual(d.pages, before.pages); assert.deepEqual(d._provenance.timedOut, [], 'timed-out entries are not carried'); assert.equal(d._provenance.complete, true);
+  });
+  for (const s of sockets) s.destroy();
   server.close();
 }
 
