@@ -151,7 +151,8 @@ wait: returns as soon as a watched unit ends — the lead's wait for its unit su
   a file that exists — checked before the first read and on every poll — exit ${PAUSED_EXIT} at once:
     progress wait: paused — <path> present (reason: <r>, at <at>) — start nothing new; still running: <a, b|none|unknown>
   Wake: the runner appends a line to ${WAKE_FILE} (from the cwd) when a background agent finishes; grown since
-  the wait started (checked on every poll, after a watched unit's end — that wins with exit 0) → exit ${WAKE_EXIT}:
+  the wait started (checked on every poll, after a watched unit's end — that wins with exit 0, and an exit 0 also
+  prints a wake line that arrived with it, before its summary) → exit ${WAKE_EXIT}:
     wake: <its last non-empty line, or "(no text)">
     progress wait: woken — none of <n> ended; still running: <a, b>
   An absent file means nothing; a file that shrank (truncated, rotated) is the new baseline. Never written here.
@@ -582,6 +583,14 @@ async function waitCmd(o, file) {
   // The wake file's size (0 when absent, null on another read error); read only once it has grown.
   const wakeSize = () => { try { return statSync(WAKE_FILE).size; } catch (e) { return e.code === 'ENOENT' ? 0 : null; } };
   let wakeBase = wakeSize() ?? 0;
+  // → the wake line when the file has grown past its baseline, else null (a shrunk file becomes the baseline)
+  const wakeNow = () => {
+    const w = wakeStep(wakeBase, wakeSize());
+    if (!w.grew) { wakeBase = w.baseline; return null; }
+    let buf = null;
+    try { buf = readFileSync(WAKE_FILE); } catch { /* unreadable this poll: try again at the next */ }
+    return buf && wakeLine(buf.toString('utf8'), buf.subarray(wakeBase).toString('utf8'));
+  };
   // On a pause the names come from a fresh best-effort read: the watched units still running, or unknown.
   const paused = (p, watched) => {
     const r = readLedger(file, o.ledger, watched);
@@ -611,22 +620,18 @@ async function waitCmd(o, file) {
       watched = [...Object.keys(state.ended), ...state.running].sort();
       const ended = Object.keys(state.ended).sort();
       if (ended.length) {
-        print(state.ended, state.running, null, [...ended.map((n) => formatLine(o.ledger, n, state.ended[n])), waitEndedLine(ended.length, watched.length, state.running)]);
+        const wake = wakeNow();
+        print(state.ended, state.running, null, [...ended.map((n) => formatLine(o.ledger, n, state.ended[n])), ...(wake == null ? [] : [`wake: ${wake}`]), waitEndedLine(ended.length, watched.length, state.running)], wake);
         return 0;
       }
       if (!watched.length) throw new UsageError(`nothing left to wait for in ${file}; progress.mjs show --waves lists what ended and what can start`);
     }
-    // after a watched unit's end (the more useful news), before the bound
-    const w = wakeStep(wakeBase, wakeSize());
-    if (w.grew) {
-      let buf = null;
-      try { buf = readFileSync(WAKE_FILE); } catch { /* unreadable this poll: try again at the next */ }
-      if (buf) {
-        const line = wakeLine(buf.toString('utf8'), buf.subarray(wakeBase).toString('utf8'));
-        print({}, state.running, null, [`wake: ${line}`, waitWokenLine(watched.length, state.running)], line);
-        return WAKE_EXIT;
-      }
-    } else wakeBase = w.baseline;
+    // after a watched unit's end (the more useful news; it prints the wake too), before the bound
+    const wake = wakeNow();
+    if (wake != null) {
+      print({}, state.running, null, [`wake: ${wake}`, waitWokenLine(watched.length, state.running)], wake);
+      return WAKE_EXIT;
+    }
     if (Date.now() >= deadline) {
       if (unreadable) throw new UsageError(`${unreadable} — still unreadable at the end of the wait (${sec}s)`);
       print({}, state.running, null, [waitTimeoutLine(watched.length, sec, state.running)]);

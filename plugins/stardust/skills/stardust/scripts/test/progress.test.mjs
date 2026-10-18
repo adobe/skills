@@ -690,8 +690,8 @@ const runAsync = (cwd, args, env = {}) => new Promise((res) => {
   c.on('close', (code) => res({ code, out, err, ms: Date.now() - t }));
 });
 const after = (ms, fn) => new Promise((res) => { setTimeout(() => res(fn()), ms); });
-const S = Object.fromEntries(['ends', 'max1', 'pause', 'narrow', 'ignores', 'json', 'gone', 'broken', 'wakeIdle', 'wake', 'wakeEnd', 'wakeJson'].map((k) => [k, project()]));
-for (const k of ['ends', 'narrow', 'ignores', 'gone', 'wake', 'wakeEnd']) put(join(S[k], ROLLOUT), running(['a', 'b']));
+const S = Object.fromEntries(['ends', 'max1', 'pause', 'narrow', 'ignores', 'json', 'gone', 'broken', 'wakeIdle', 'wake', 'wakeEnd', 'wakeJson', 'wakeEndJson'].map((k) => [k, project()]));
+for (const k of ['ends', 'narrow', 'ignores', 'gone', 'wake', 'wakeEnd', 'wakeEndJson']) put(join(S[k], ROLLOUT), running(['a', 'b']));
 for (const k of ['max1', 'pause', 'broken', 'wakeIdle', 'wakeJson']) put(join(S[k], ROLLOUT), running(['a']));
 put(join(S.json, REPLICA), { _provenance: { writtenBy: 'gate-evidence.mjs' }, types: { home: { status: 'running', startedAt: T0 } } });
 const WAKE = 'stardust/.labs/wake';
@@ -712,6 +712,7 @@ const [W, fired] = await Promise.all([
     runAsync(S.wake, ['wait', '--max', '30']),
     runAsync(S.wakeEnd, ['wait', '--max', '30']),
     runAsync(S.wakeJson, ['wait', '--json', '--max', '30']),
+    runAsync(S.wakeEndJson, ['wait', '--json', '--max', '30']),
   ]).then((rs) => Object.fromEntries(Object.keys(S).map((k, i) => [k, rs[i]]))),
   Promise.all([
     after(TRIGGER_MS, () => runAsync(S.ends, ['unit', 'done', 'a', '--verdict', 'pass'])),
@@ -725,6 +726,7 @@ const [W, fired] = await Promise.all([
     after(TRIGGER_MS, () => appendWake(S.wake, '  agent\tb-check   finished \n')),
     after(TRIGGER_MS, () => runAsync(S.wakeEnd, ['unit', 'done', 'a']).then((r) => { appendWake(S.wakeEnd, 'agent a finished\n'); return r; })),
     after(TRIGGER_MS, () => appendWake(S.wakeJson, '\n \n')),
+    after(TRIGGER_MS, () => runAsync(S.wakeEndJson, ['unit', 'failed', 'a']).then((r) => { appendWake(S.wakeEndJson, 'agent a stopped\n'); return r; })),
   ]),
 ]);
 check('wait: the unit done / failed calls made during the waits succeeded', () => {
@@ -755,11 +757,13 @@ check('wait: a line appended to the wake file → exit 77 at the next poll: the 
   assert.equal(r.out, 'wake: agent b-check finished\nprogress wait: woken — none of 2 ended; still running: a, b\n');
   assert.ok(r.ms >= TRIGGER_MS && r.ms < 7000, `returned after ${r.ms} ms`);
 });
-check('wait: a watched unit ending in the same poll as a wake → exit 0 with the unit\'s line (the end wins)', () => {
+check('wait: a watched unit ending in the same poll as a wake → exit 0 (the end wins): the unit\'s line, the wake line, the summary; --json carries both', () => {
   const r = W.wakeEnd;
   assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, `${formatLine('rollout', 'a', readJ(join(S.wakeEnd, ROLLOUT)).units.a)}\nprogress wait: 1 of 2 ended — still running: b\n`);
-  assert.ok(existsSync(join(S.wakeEnd, WAKE)), 'the wake did land');
+  assert.equal(r.out, `${formatLine('rollout', 'a', readJ(join(S.wakeEnd, ROLLOUT)).units.a)}\nwake: agent a finished\nprogress wait: 1 of 2 ended — still running: b\n`);
+  const j = W.wakeEndJson;
+  assert.equal(j.code, 0, j.err);
+  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: { a: readJ(join(S.wakeEndJson, ROLLOUT)).units.a }, running: ['b'], paused: null, wake: 'agent a stopped' });
 });
 check('wait --json on a wake: "wake" carries the line — "(no text)" when the new bytes hold none', () => {
   const r = W.wakeJson;
