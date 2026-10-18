@@ -292,12 +292,35 @@ should run the bundled, resumable driver rather than a serial loop:
 --branch <branch> --content <dir>`. The driver and every batch run in the background; its log and ledger are the
 progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
-(step 4's order). **Foundation first** (C0's sub-units, committed and
-frozen before the first cluster spawns), **disjoint clusters spawn
-concurrently**, and **every tool call stays within the prompt cache's life, the
-main agent's included** — long instruments through `run-bg.mjs start`, `wait` the
-NEXT call (`--max 240` under a five-minute cache; the master skill's wait
-discipline; handoff contract § Fan-out discipline).
+(step 4's order). **Schedule (replica's Phase 5 fan-out):** once C0's sub-units
+are committed and frozen, start EVERY archetype unit in the same turn (one
+background subagent each; disjoint by construction) and each cluster (its first
+sub-unit) the moment its archetype is `done`; never serialize disjoint units to
+spare browsers — the browser slot queue paces captures, not the number of units
+(recorded: a run that started four units in one turn finished ten while a serial
+one finished five, each serial unit paying the post-push code propagation,
+median 5–6 min, alone). The lead's loop: `progress.mjs wait` → record what ended
+(handoff contract § 5) → start what is now unblocked → wait again; each
+subagent's last command is its own `progress.mjs unit done|failed` (handoff
+contract § Fan-out discipline). The one exception: a unit that edits a shared
+file waits for that file's lock as the contract's shared-ledgers bullet
+describes — inside its writer, never by starting later. Waits: the master
+skill's wait discipline.
+
+```bash
+P="node skills/stardust/scripts/progress.mjs"   # project copy: stardust/scripts/stardust/progress.mjs
+# C0 (archetype-page, the shell template's, included) committed and frozen → ONE turn, each unit
+# recorded, then its background subagent spawned: page's cluster and every other archetype
+$P unit start cluster-page      --kind cluster   --templates page
+$P unit start archetype-article --kind archetype --templates article
+$P unit start archetype-product --kind archetype --templates product
+$P wait   # exit 0: "progress rollout archetype-product: done …" — its subagent's own last command
+#   record it (handoff contract § 5, steps 0–4), then start its cluster and spawn that subagent:
+$P unit start cluster-product --kind cluster --templates product
+$P wait   # exit 75 at --max (300 s; 240 under a five-minute cache), nothing ended: wait again
+$P wait   # archetype-article done → record it, start cluster-article; and so on until nothing
+          # runs (exit 2) → C-final. Exit 76 = the pause file: start nothing new, collect the returns
+```
 
 ### Phase D — Site assembly (whole-site artifacts)
 
