@@ -284,9 +284,8 @@ edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
 per page; then background batches with a per-page OK/FAIL ledger, re-driving
 FAILs only. For clusters of 6–20+ siblings, the full flow is
-`reference/delivery-gates.md` § Batched delivery (it also names the one
-variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
-per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
+`reference/delivery-gates.md` § Batched delivery (and its one self-deploying
+variant, replica's Phase 5 fan-out). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>`. The driver and every batch run in the background; its log and ledger are the
@@ -297,31 +296,32 @@ are committed and frozen, start EVERY archetype unit in the same turn (one
 background subagent each; disjoint by construction) and each cluster (its first
 sub-unit) the moment its archetype is `done`; never serialize disjoint units to
 spare browsers — the browser slot queue paces captures, not the number of units
-(recorded: four units started in one turn finished ten while a serial run
-finished five, each serial unit paying the 5–6 min post-push propagation
-alone). The lead's loop: `progress.mjs wait` → record what ended (handoff
-contract § 5) → start what is now unblocked (`progress.mjs show --waves` ends
-with `can start now: …`) → wait again; each
-subagent's last command is its own `progress.mjs unit done|failed` (handoff
-contract § Fan-out discipline). The one exception: a unit that edits a shared
+(recorded: a run that started four units in one turn finished ten in the time a
+serial run finished five). The lead's loop: `progress.mjs wait` → record what
+ended (handoff contract § 5) → `progress.mjs show --waves`: record every `done`
+or `failed` unit not yet recorded, then start everything its `can start now:`
+line names → wait again;
+C-final only once that line names `gate-all` (a wait's exit 2 is no signal).
+Each subagent's last command is its own `progress.mjs unit done|failed`; at an
+exit 75, one that returned with its unit still `running` (it died first) the
+lead records from its report (handoff contract § Fan-out discipline). The one exception: a unit that edits a shared
 file waits for that file's lock as the contract's shared-ledgers bullet
 describes — inside its writer, never by starting later. Waits: the master
 skill's wait discipline.
 
 ```bash
 P="node skills/stardust/scripts/progress.mjs"   # project copy: stardust/scripts/stardust/progress.mjs
-# C0 (archetype-page, the shell template's, included) committed and frozen → ONE turn, each unit
-# recorded, then its background subagent spawned: page's cluster and every other archetype
+# C0 (with archetype-page, the shell template's) committed and frozen → ONE turn: record, then
+# spawn in the background, page's cluster and every other archetype
 $P unit start cluster-page      --kind cluster   --templates page
 $P unit start archetype-article --kind archetype --templates article
 $P unit start archetype-product --kind archetype --templates product
-$P wait   # exit 0: "progress rollout archetype-product: done …" — its subagent's own last command
-#   record it (handoff contract § 5, steps 0–4), then start what is unblocked:
-$P show --waves   # … can start now: cluster-product
+$P wait          # exit 0: "progress rollout archetype-product: done …" → record it (handoff contract § 5)
+$P show --waves  # before each wait: record any end the last wait did not print; can start now: cluster-product
 $P unit start cluster-product --kind cluster --templates product
-$P wait   # exit 75 at --max (300 s; 240 under a five-minute cache), nothing ended: wait again
-$P wait   # archetype-article done → record it, start cluster-article; and so on until nothing
-          # runs (exit 2) → C-final. Exit 76 = the pause file: start nothing new, collect the returns
+$P wait          # exit 75 at --max (300 s; 240 under a five-minute cache): show --waves, wait again
+# … until show --waves says "can start now: gate-all" → C-final. Exit 76 = the pause file: start
+# nothing new, collect the returns
 ```
 
 ### Phase D — Site assembly (whole-site artifacts)

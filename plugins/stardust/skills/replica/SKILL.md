@@ -78,15 +78,15 @@ none" (198/198 nodes).
    two dirs siblings). Never copy into the project-root
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary). `run-bg.mjs` takes one machine-wide
-   browser slot per browser job (`browser-lock.mjs`,
+   browser slot per browser job (`browser-lock.mjs`, slot files in
    `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (`0` = off)
    concurrent browser jobs across projects, `RUN_BG_SLOTS` paces one
    project's jobs inside them. A job holding a slot gets
    `STARDUST_BROWSERS_PER_SLOT` = max(1, floor(`STARDUST_BROWSER_BUDGET` B
    (default 3, the contract's, across all jobs) /
    `STARDUST_BROWSER_SLOTS`)); a larger machine raises only B; unset
-   slots follow it: 3 when B is 3 or 6, else 2 (B < 2: max(1, floor(B))),
-   so no budgeted browser idles. gate-all clamps its pools to it
+   slots follow it: 3 when B is 3 or 6, else 2 (B < 2: max(1, floor(B))).
+   gate-all clamps its pools to it
    (captures sequential at 1) and sizes its roster estimate accordingly;
    gate.sh runs its `--full` probes that many at a time — their times add up,
    hence `--timeout 1800` on a `--full` round (examples below). A job
