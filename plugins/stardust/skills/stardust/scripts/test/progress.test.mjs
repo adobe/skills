@@ -6,16 +6,16 @@
 // archetype's bare record), the replica ledger's other top-level keys kept as they were, the one
 // status line, show, show --waves (the planned units, the dependency rules, can start now), both script layouts, and parallel writers losing no entry; wait (the watched set and
 // --unit, a unit ending mid-wait, --max with its notice and clamp, the pause file at the start and mid-wait,
-// a watched unit gone, a ledger unreadable at the bound, --json, no file-lock.mjs needed). Run: node <this file>.
+// a watched unit gone, a ledger unreadable at the bound, the runner's wake file, --json, no file-lock.mjs needed). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   applyUnit, C0_ARCHETYPE, formatLine, formatWaves, parseArgs, parseSetValue, pauseState, pickWatched, setPath, waitBound, waitEndedLine,
-  waitPausedLine, waitState, waitTimeoutLine, wavesView,
+  waitPausedLine, waitState, waitTimeoutLine, waitWokenLine, wakeLine, wakeStep, wavesView,
 } from '../progress.mjs';
 
 // A supervised session's pause file must not end these waits; the pause tests set their own.
@@ -232,6 +232,22 @@ check('pauseState: unset / empty / missing = no pause; JSON {at, reason}; anythi
   }
 });
 
+// ---- wait: the wake file (pure) -------------------------------------------------------------------
+check('wake helpers: wakeStep (grown → wake; absent = 0; shrunk = the new baseline; a read error changes nothing), wakeLine, the woken line', () => {
+  assert.deepEqual(wakeStep(0, 0), { baseline: 0, grew: false });
+  assert.deepEqual(wakeStep(10, 10), { baseline: 10, grew: false });
+  assert.deepEqual(wakeStep(10, 11), { baseline: 10, grew: true });
+  assert.deepEqual(wakeStep(100, 2), { baseline: 2, grew: false }, 'truncated: keep waiting from its new size');
+  assert.deepEqual(wakeStep(2, 50), { baseline: 2, grew: true }, 'then growing past the new baseline wakes');
+  assert.deepEqual(wakeStep(10, 0), { baseline: 0, grew: false }, 'removed');
+  assert.deepEqual(wakeStep(10, null), { baseline: 10, grew: false }, 'unreadable this poll');
+  assert.equal(wakeLine('old\n  agent\t a  done \n\n'), 'agent a done');
+  assert.equal(wakeLine('old\nnew', 'new'), 'new');
+  assert.equal(wakeLine('old line\n\n \n', '\n \n'), '(no text)');
+  assert.equal(wakeLine(''), '(no text)');
+  assert.equal(wakeLine(`${'x'.repeat(300)}\n`).length, 200);
+  assert.equal(waitWokenLine(2, ['a', 'b']), 'progress wait: woken — none of 2 ended; still running: a, b');
+});
 // ---- show --waves (pure) --------------------------------------------------------------------------
 const MID_RUN = {
   'foundation-chrome': { status: 'done', kind: 'foundation' },
@@ -345,7 +361,7 @@ check('--help: exit 0, usage on stdout, nothing written (also before a bad flag)
   assert.match(h.out, /progress\.mjs show --waves \[--file …\] \[--json\]/);
   assert.match(h.out, /^show --waves /m);
   assert.match(h.out, /^wait: /m);
-  assert.match(h.out, /75 wait: none ended within --max · 76 wait: the pause file is present/);
+  assert.match(h.out, /75 wait: none ended within --max · 76 wait: the pause file is present\n  · 77 wait: the runner's wake file grew \(a background agent finished\)/);
   assert.equal(runIn(d, 'unit', 'start', 'c1', '--frob', '-h').code, 0);
   assert.equal(runIn(d, 'wait', '--max', '-1', '--help').code, 0);
   assert.deepEqual(readdirSync(d), []);
@@ -590,7 +606,7 @@ check('wait --max 0: one pass, exit 75 with the still-running line (and --json);
   assert.equal(r.code, 75, r.err); assert.equal(r.err, '');
   assert.equal(r.out, 'progress wait: none of 2 ended within 0s — still running: a, b — wait again as the next call\n');
   const j = runIn(d, 'wait', '--max', '0', '--json');
-  assert.equal(j.code, 75, j.err); assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: null });
+  assert.equal(j.code, 75, j.err); assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: null, wake: null });
   const u = runIn(d, 'wait', '--max', '0', '--unit', 'b', '--unit', 'c', '--unit', 'z');
   assert.equal(u.code, 75, u.err); assert.equal(u.out, 'progress wait: none of 1 ended within 0s — still running: b — wait again as the next call\n');
   assert.equal(u.err, 'progress wait: --unit c is done — not watched\nprogress wait: --unit z is absent — not watched\n');
@@ -615,7 +631,7 @@ check('wait: the pause file at the start → exit 76 at once, before the ledger 
   put(P, 'half written');
   const j = runWith(SCRIPT, d, ['wait', '--json'], { STARDUST_PAUSE_FILE: 'pause.json' });
   assert.equal(j.code, 76); assert.equal(j.err, '');
-  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: { path: 'pause.json', reason: 'unreadable', at: 'unknown' } });
+  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: { path: 'pause.json', reason: 'unreadable', at: 'unknown' }, wake: null });
   const empty = project();
   const n = runWith(SCRIPT, empty, ['wait'], { STARDUST_PAUSE_FILE: P });
   assert.equal(n.code, 76, n.err); assert.match(n.out, /— start nothing new; still running: unknown\n$/, 'no ledger: the pause still wins');
@@ -674,10 +690,14 @@ const runAsync = (cwd, args, env = {}) => new Promise((res) => {
   c.on('close', (code) => res({ code, out, err, ms: Date.now() - t }));
 });
 const after = (ms, fn) => new Promise((res) => { setTimeout(() => res(fn()), ms); });
-const S = Object.fromEntries(['ends', 'max1', 'pause', 'narrow', 'ignores', 'json', 'gone', 'broken'].map((k) => [k, project()]));
-for (const k of ['ends', 'narrow', 'ignores', 'gone']) put(join(S[k], ROLLOUT), running(['a', 'b']));
-for (const k of ['max1', 'pause', 'broken']) put(join(S[k], ROLLOUT), running(['a']));
+const S = Object.fromEntries(['ends', 'max1', 'pause', 'narrow', 'ignores', 'json', 'gone', 'broken', 'wakeIdle', 'wake', 'wakeEnd', 'wakeJson'].map((k) => [k, project()]));
+for (const k of ['ends', 'narrow', 'ignores', 'gone', 'wake', 'wakeEnd']) put(join(S[k], ROLLOUT), running(['a', 'b']));
+for (const k of ['max1', 'pause', 'broken', 'wakeIdle', 'wakeJson']) put(join(S[k], ROLLOUT), running(['a']));
 put(join(S.json, REPLICA), { _provenance: { writtenBy: 'gate-evidence.mjs' }, types: { home: { status: 'running', startedAt: T0 } } });
+const WAKE = 'stardust/.labs/wake';
+const appendWake = (d, text) => { mkdirSync(join(d, 'stardust', '.labs'), { recursive: true }); appendFileSync(join(d, WAKE), text); };
+put(join(S.wakeIdle, WAKE), 'agent x finished\n');
+put(join(S.wake, WAKE), 'an earlier agent finished\n');
 const [W, fired] = await Promise.all([
   Promise.all([
     runAsync(S.ends, ['wait', '--max', '30']),
@@ -688,6 +708,10 @@ const [W, fired] = await Promise.all([
     runAsync(S.json, ['wait', '--ledger', 'replica', '--json', '--max', '30']),
     runAsync(S.gone, ['wait', '--max', '30']),
     runAsync(S.broken, ['wait', '--max', '6']),
+    runAsync(S.wakeIdle, ['wait', '--max', '1']),
+    runAsync(S.wake, ['wait', '--max', '30']),
+    runAsync(S.wakeEnd, ['wait', '--max', '30']),
+    runAsync(S.wakeJson, ['wait', '--json', '--max', '30']),
   ]).then((rs) => Object.fromEntries(Object.keys(S).map((k, i) => [k, rs[i]]))),
   Promise.all([
     after(TRIGGER_MS, () => runAsync(S.ends, ['unit', 'done', 'a', '--verdict', 'pass'])),
@@ -698,6 +722,9 @@ const [W, fired] = await Promise.all([
     after(TRIGGER_MS, () => runAsync(S.json, ['unit', 'done', 'home', '--ledger', 'replica', '--set', 'pageType=landing'])),
     after(TRIGGER_MS, () => put(join(S.gone, ROLLOUT), { units: { a: { status: 'pending' } } })),
     after(TRIGGER_MS, () => put(join(S.broken, ROLLOUT), '{ "units": { "a": ')),
+    after(TRIGGER_MS, () => appendWake(S.wake, '  agent\tb-check   finished \n')),
+    after(TRIGGER_MS, () => runAsync(S.wakeEnd, ['unit', 'done', 'a']).then((r) => { appendWake(S.wakeEnd, 'agent a finished\n'); return r; })),
+    after(TRIGGER_MS, () => appendWake(S.wakeJson, '\n \n')),
   ]),
 ]);
 check('wait: the unit done / failed calls made during the waits succeeded', () => {
@@ -715,6 +742,29 @@ check('wait --max 1 → exit 75 after ≥ 1 s and < 6 s, naming the unit still r
   assert.equal(r.code, 75, r.err);
   assert.equal(r.out, 'progress wait: none of 1 ended within 1s — still running: a — wait again as the next call\n');
   assert.ok(r.ms >= 1000 && r.ms < 6000, `returned after ${r.ms} ms`);
+});
+check('wait: a wake file present at the start that does not grow wakes nothing (75 at --max)', () => {
+  const r = W.wakeIdle;
+  assert.equal(r.code, 75, r.err);
+  assert.equal(r.out, 'progress wait: none of 1 ended within 1s — still running: a — wait again as the next call\n');
+  assert.equal(readFileSync(join(S.wakeIdle, WAKE), 'utf8'), 'agent x finished\n', 'never written');
+});
+check('wait: a line appended to the wake file → exit 77 at the next poll: the wake line (folded), then the woken line', () => {
+  const r = W.wake;
+  assert.equal(r.code, 77, r.err); assert.equal(r.err, '');
+  assert.equal(r.out, 'wake: agent b-check finished\nprogress wait: woken — none of 2 ended; still running: a, b\n');
+  assert.ok(r.ms >= TRIGGER_MS && r.ms < 7000, `returned after ${r.ms} ms`);
+});
+check('wait: a watched unit ending in the same poll as a wake → exit 0 with the unit\'s line (the end wins)', () => {
+  const r = W.wakeEnd;
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `${formatLine('rollout', 'a', readJ(join(S.wakeEnd, ROLLOUT)).units.a)}\nprogress wait: 1 of 2 ended — still running: b\n`);
+  assert.ok(existsSync(join(S.wakeEnd, WAKE)), 'the wake did land');
+});
+check('wait --json on a wake: "wake" carries the line — "(no text)" when the new bytes hold none', () => {
+  const r = W.wakeJson;
+  assert.equal(r.code, 77, r.err);
+  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'rollout', ended: {}, running: ['a'], paused: null, wake: '(no text)' });
 });
 check('wait: a pause file that appears during the wait (relative, from the cwd) ends it with 76 at the next poll', () => {
   const r = W.pause;
@@ -741,7 +791,7 @@ check('wait --json on the replica ledger: the ended record under its archetype n
   assert.equal(r.code, 0, r.err);
   const home = readJ(join(S.json, REPLICA)).types.home;
   assert.equal(home.status, 'done'); assert.equal(home.pageType, 'landing');
-  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'replica', ended: { home }, running: [], paused: null });
+  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'replica', ended: { home }, running: [], paused: null, wake: null });
 });
 check('wait: every watched unit gone (pending again, removed) → a note each, then exit 2 "nothing left to wait for"', () => {
   const r = W.gone;
