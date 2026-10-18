@@ -100,7 +100,9 @@
  * page's `dismiss` follows --dismiss (one list per page, wherever it was given: the same stitch argv, records and gate key
  * settings), `pin` reaches both stitches (--pin; recorded and compared like the dismiss list: `pin list differs`),
  * `allow` kind clip adds the counted clip findings under its selector to the allowance (presence.mjs clipAllowed; the
- * row's clipAllowed { n, by }) and kind per-visitor-dialog passes a hidden container as --allow-dialog. The gate key
+ * row's clipAllowed { n, by }) and kind per-visitor-dialog passes a hidden container as --allow-dialog (recorded as
+ * origin.json / eds.json `allowDialog`; a capture taken with other dialog allowances is not kept by a fix round or
+ * --skip-existing: `dialog allowances differ`). The gate key
  * records the page's dismiss, pin and allow (only when non-empty). A DIALOG LEFT OPEN (the stitch record's dialogLeft —
  * stitch-shot names it hidden or not; only an allowed per-visitor-dialog container clears it) makes the row
  * INCONCLUSIVE: `<side> capture polluted: dialog left open (<name>, …)`, logged `WARN dialog left open (…)`; a kept
@@ -152,7 +154,8 @@
  * differs by build.origin; a stored key and a current key that are both known (each host proven to serve the hashed
  * tree — the live tier only by `live` ledger rows) and equal but for build.origin keep the EDS capture
  * (sameTreeOtherHost): logged `eds <slug> → reused build capture (unchanged since <ts>) — taken on <host>, the same
- * tree <host> serves`, the row's `buildReused` { host, at } and `host` the one the pixels came from; gate-key.json
+ * tree <host> serves`, the row's `buildReused` { host, at } and `host` the one the pixels came from, one summary.md line
+ * naming those rows (`Build capture reused from another host (…): <path> (<host>), …`); gate-key.json
  * keeps the gate that took it, so a full-site C-final re-captures only the pages whose document or code changed. A
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
@@ -790,7 +793,9 @@ export function formatSummary(summary) {
   const oversized = summary.rows.filter((r) => !r.pass && exceedsMagnitude(r.override)).map((r) => r.path);
   // the rows whose origin capture had a hide selector that matched nothing (a warning: their verdicts stand as measured)
   const missed = summary.rows.filter((r) => hideMissOf(r.hideMiss)).map((r) => r.path);
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, '', ...(oversized.length ? [`Override exceeds magnitude (fix the capture / hide list, not a deviation): ${oversized.join(', ')}`, ''] : []), ...(missed.length ? [`Hide matched nothing on live (a warning, not a verdict — fix the hide list; candidates in the row's hideMiss and _run.log): ${missed.join(', ')}`, ''] : [])];
+  // rows whose EDS pixels came from another host's capture of the same tree (C-final reuse) — said in the table, not only the row
+  const rebuilt = summary.rows.filter((r) => r.buildReused && r.buildReused.host).map((r) => `\`${r.path}\` (${r.buildReused.host})`);
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error${t.inconclusive ? ` / ${t.inconclusive} INCONCLUSIVE` : ''} of ${t.pages}**${ovClause}${t.reusedRows || t.reusedProbes ? ` · reused: ${t.reusedRows || 0} rows, ${t.reusedProbes || 0} probe sets` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, '', ...(oversized.length ? [`Override exceeds magnitude (fix the capture / hide list, not a deviation): ${oversized.join(', ')}`, ''] : []), ...(missed.length ? [`Hide matched nothing on live (a warning, not a verdict — fix the hide list; candidates in the row's hideMiss and _run.log): ${missed.join(', ')}`, ''] : []), ...(rebuilt.length ? [`Build capture reused from another host (the same tree — the gate key equal but for the host; its pixels are that host's): ${rebuilt.join(', ')}`, ''] : [])];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons | reused |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
@@ -1271,6 +1276,7 @@ export function originReusePlan({ stage, only, recaptureEds, recaptureOrigin, ur
   if (!sameHide(prev.hide, hide)) return no('hide list differs');
   if (!sameDismiss(prev.dismiss, dismiss)) return no('dismiss list differs');
   if (!samePin(prev.pin, pin)) return no('pin list differs');
+  if (!sameHide(prev.allowDialog, allowDialog)) return no('dialog allowances differ');
   const left = overlayWhy(prev, 'previous origin') || dialogWhy(prev, 'previous origin'); if (left) return no(left);
   const gone = withdrawnAllowances(prev.dialogsAllowed, allowDialog); if (gone.length) return no(`previous origin relied on a withdrawn per-visitor-dialog allowance (${gone.map((x) => x.hiddenBy).join(', ')})`);
   if (!fresh || !fresh.fresh) return no((fresh && fresh.reason) || 'no freshness verdict');
@@ -1562,7 +1568,7 @@ async function main() {
     return { overlayLeft: j.overlayLeft || null, ...dialog, fontsFailed: Array.isArray(j.fontsFailed) ? j.fontsFailed : null, ...(typeof j.fontCheck === 'string' ? { fontCheck: j.fontCheck } : {}), ...(Array.isArray(j.fontsDead) && j.fontsDead.length ? { fontsDead: j.fontsDead } : {}), ...(side === 'origin' ? missField(j.hideMiss) : {}) };
   };
   const stitch = (p, side, url, out, extra = {}, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out, { ...extra, dismiss: dismissOf(p), cap: capArgs(p), json: shotFile(p, side) }), ...tail]); };
-  const capFields = (p) => ({ ...dismissField(dismissOf(p)), ...pinField(pinOf(p)) });
+  const capFields = (p) => ({ ...dismissField(dismissOf(p)), ...pinField(pinOf(p)), ...(capOf(p).allowDialog.length ? { allowDialog: capOf(p).allowDialog } : {}) });
   // a copied live.png carries live.json's record of the same check (the reuse deciders admit only overlayLeft: null);
   // fontsFailed null (the check could not run) stays null, an absent key stays absent; the hideMiss of its capture record
   // (gate.sh's live-shot.json beside it)
@@ -1647,7 +1653,7 @@ async function main() {
         warn = `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept${!(sameHide(kept.hide, hide) && sameDismiss(kept.dismiss, dismissOf(p))) ? ' (taken with another dismiss/hide list: no verdict)' : !samePin(kept.pin, pinOf(p)) ? ' (taken with another pin list: no verdict)' : ''}`;
         // a kept origin from before the overlay-left check is unchecked, never clean (the row is INCONCLUSIVE); its font
         // record: an absent key reads [] (legacy), a null (or other non-array) stays null — never "all loaded"
-        const checked = 'overlayLeft' in kept ? {} : { overlayLeft: 'unchecked (previous origin predates the overlay-left check)' };
+        const checked = { ...('overlayLeft' in kept ? {} : { overlayLeft: 'unchecked (previous origin predates the overlay-left check)' }), ...(noDialogRecord(kept) ? { dialogCheck: 'unchecked' } : {}) };
         const fontRec = !('fontsFailed' in kept) ? { fontsFailed: [] } : Array.isArray(kept.fontsFailed) ? {} : { fontsFailed: null };
         r = { ...kept, ...checked, ...fontRec, ...reuseOf(out, kept, f.fresh ? f.policy : 'recapture-failed'), stale: f.fresh ? undefined : f.reason, note: warn };
       }
@@ -1713,14 +1719,14 @@ async function main() {
     // and the --dismiss list (absent = none) — a crawl shot dismissed nothing either
     dismissChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !sameDismiss(m.dismiss, dismissOf(p)); },
     // and the presence.json pin list (absent = none)
-    pinChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !samePin(m.pin, pinOf(p)); },
+    pinChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && (!samePin(m.pin, pinOf(p)) || !sameHide(m.allowDialog, capOf(p).allowDialog)); },
     unchecked: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return legacyStitch(m) || noDialogRecord(m); } };
   // --skip-existing would have kept the capture but for its hide list, its --dismiss list or a record from before the
   // overlay-left check (logged, then re-shot)
   const notKept = (p, side) => {
     if (!skipCapture(p, side, { ...capCtx, hideChanged: undefined, dismissChanged: undefined, pinChanged: undefined, unchecked: undefined })) return null;
     const m = readSafe(join(dir(p), `${side}.json`));
-    return capCtx.hideChanged(p, side) ? 'hide list differs' : capCtx.dismissChanged(p, side) ? 'dismiss list differs' : capCtx.pinChanged(p, side) ? 'pin list differs' : legacyStitch(m) ? 'no overlay-left record' : noDialogRecord(m) ? 'no dialog-left record' : null;
+    return capCtx.hideChanged(p, side) ? 'hide list differs' : capCtx.dismissChanged(p, side) ? 'dismiss list differs' : capCtx.pinChanged(p, side) ? (samePin(m && m.pin, pinOf(p)) ? 'dialog allowances differ' : 'pin list differs') : legacyStitch(m) ? 'no overlay-left record' : noDialogRecord(m) ? 'no dialog-left record' : null;
   };
   const logNotKept = (p, side) => { const why = notKept(p, side); if (why) log(`${side} ${p.slug} → not reused (--skip-existing: ${why})`); };
   // The post-spawn record of each probe, shared by the fresh and the replayed path so both build the same row.

@@ -986,6 +986,7 @@ check('C-final reuse: a --skip-existing run on the live host keeps each page\'s 
     assert.ok(a.stdout.includes(`eds ${slug} → reused build capture (unchanged since ${before[slug]}) — taken on ${PREVIEW}, the same tree ${LIVE} serves`), a.stdout);
     const x = row(summary(), slug); assert.deepEqual([x.host, x.buildReused, x.gateKey], [PREVIEW, { host: PREVIEW, at: before[slug] }, null]);
   }
+  assert.match(readFileSync(join(REUSE_OUT, 'summary.md'), 'utf8'), /^Build capture reused from another host \(the same tree — the gate key equal but for the host; its pixels are that host's\): `\/` \(https:\/\/main--site--org\.aem\.page\), `\/about` \(https:\/\/main--site--org\.aem\.page\)$/m);
   const ledger = readFileSync(join(reuseRoot, 'content/.deploy-ledger.json'), 'utf8'); const aboutDoc = readFileSync(join(reuseRoot, 'content/about.html'), 'utf8');
   try {
     put('content/about.html', '<main><div><div class="cards"></div><p>new copy</p></div></main>');
@@ -1651,9 +1652,10 @@ check('capture settings: originReusePlan / liveReusePlan refuse a capture taken 
   assert.deepEqual(originReusePlan({ ...ask, pin: PIN }, { ...prev, pin: PIN }, fr()), { reuse: true, why: 'same-run' });
   const { dialogLeft: _drop, ...legacy } = prev;
   assert.deepEqual(originReusePlan(ask, legacy, fr()), { reuse: false, why: 'previous origin predates the dialog-left check' });
-  const cleared = { ...prev, dialogsAllowed: [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }] };
+  const cleared = { ...prev, allowDialog: ['#cmp-root'], dialogsAllowed: [{ name: 'div#cmp-dialog', hiddenBy: '#cmp-root' }] };
   assert.deepEqual(originReusePlan({ ...ask, allowDialog: ['#cmp-root'] }, cleared, fr()), { reuse: true, why: 'same-run' });
-  assert.deepEqual(originReusePlan(ask, cleared, fr()), { reuse: false, why: 'previous origin relied on a withdrawn per-visitor-dialog allowance (#cmp-root)' });
+  assert.deepEqual(originReusePlan(ask, cleared, fr()), { reuse: false, why: 'dialog allowances differ' });
+  assert.deepEqual(originReusePlan(ask, { ...cleared, allowDialog: undefined }, fr()), { reuse: false, why: 'previous origin relied on a withdrawn per-visitor-dialog allowance (#cmp-root)' }, 'a record without the list: its cleared dialog still names the allowance');
   assert.deepEqual(originReusePlan({ ...ask, pin: PIN }, prev, fr()), { reuse: false, why: 'pin list differs' });
   assert.deepEqual(originReusePlan(ask, { ...prev, dialogLeft: ['div#cmp-dialog'] }, fr()), { reuse: false, why: 'previous origin left a dialog open (div#cmp-dialog)' });
   const live = { writtenBy: 'gate.sh', url: U, width: 1440, locale: 'en-US', settle: true, dismiss: { off: false, consent: null, extra: null }, headed: false, overlayLeft: null, dialogLeft: null, at: AT };
@@ -1914,6 +1916,14 @@ check('capture settings 2: presence.json pin and per-visitor-dialog allowances r
   const again = hgate(['--only', 'home']);
   assert.equal(again.by('ORIGIN', 'home').length, 1); assert.match(hlog(), /origin home → not reused \(pin list differs\)/);
   assert.equal(argOf(again.by('EDS', 'home')[0], '--pin'), null);
+  // --skip-existing re-shoots a capture taken with other per-visitor-dialog allowances (recorded: origin.json / eds.json allowDialog)
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp-root', reason: 'R-06' }] } });
+  const allowed = hgate(['--only', 'home']); assert.deepEqual(hjson('home', 'origin.json').allowDialog, ['#cmp-root']);
+  assert.equal(allowed.status, 0, allowed.stderr + allowed.stdout);
+  setPresence({ '*': { hide: ['.geo-bar', '#cmp-root'] } });
+  const skip = hgate(['--only', 'home', '--skip-existing']);
+  assert.equal(skip.by('ORIGIN', 'home').length + skip.by('EDS', 'home').length, 2, skip.stdout);
+  assert.match(hlog(), /origin home → not reused \(--skip-existing: dialog allowances differ\)/);
 });
 check('capture settings 3: clip allowances in presence.json (kind clip) let the counted findings under their selectors pass — the row\'s clipAllowed names them with their reasons; findings are matched by clipper or path, groups (no findings) by clipper only', () => {
   const findings = [{ kind: 'TEXT CLIPPED', clipper: 'div.card__body', path: 'main > div.cards > div.card__body > p' }, { kind: 'TEXT CLIPPED', clipper: 'div.inner', path: 'main > section.rail > div.inner > p' }];
@@ -2141,6 +2151,13 @@ check('trust dialog 3: a stitch record without the dialog-left check (an older s
   const s = tgate(['--skip-existing']);
   assert.equal(s.status, 0, s.stderr + s.stdout); assert.equal(s.stitches('ORIGIN').length + s.stitches('EDS').length, 2);
   assert.match(tlog(), /origin a → not reused \(--skip-existing: no dialog-left record\)/, 'the EDS side is re-shot anyway here: the sandbox has no gate key');
+});
+check('trust dialog 4: a failed --recapture-origin keeping an origin recorded before the dialog-left check → "unchecked (no dialog-left record …)", INCONCLUSIVE', () => {
+  tgate([]);
+  const legacy = tjson('a', 'origin.json'); delete legacy.dialogLeft; delete legacy.dialogCheck; writeFileSync(join(TOUT, 'a', 'origin.json'), JSON.stringify(legacy)); // an origin.json written before the check
+  const r = tgate(['--recapture-origin'], { STUB_ORIGIN_RC: '1' });
+  assert.equal(r.status, 2, r.stderr + r.stdout);
+  assert.deepEqual(r.row('a').reasons, ['origin capture polluted: unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)']);
 });
 check('trust dialog 2: on the build capture → "build capture polluted: dialog left open (<name>)"', () => {
   const r = tgate([], { STUB_DIALOG_EDS: 'dialog.region' });
