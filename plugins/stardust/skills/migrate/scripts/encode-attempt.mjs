@@ -51,7 +51,7 @@
  *   when <t> is the single approved / migrated page of its type, those aside — every other page of that type that is
  *   not approved / migrated and names no representative.
  *   One stdout line per template: `encode-attempt <t>: <verdict> — <reason or roundtrip line>` (hand-authored adds
- *   ` (<n> page(s): <slug, …>)`). A record is
+ *   ` (<n> page(s): <slug, …>)`; a record whose source is derived or forked adds ` · source <source>: <sourceReason>`). A record is
  *   rewritten on every `record`; the verdict is information, not a failure (exit 0 whatever it is; 2 when a template
  *   was refused).
  * check — every named template needs a readable record (valid JSON, its own template name, a verdict above):
@@ -305,10 +305,12 @@ export function recordFork(root, template, slug, { prototype = null } = {}) {
   return next;
 }
 
-/** `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, a hand-authored record's pages after it. */
+/** `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, a hand-authored record's pages after it, then ` · source
+ * <derived | forked>: <sourceReason>` when the fork has a slot map. */
 export function attemptLine(rec) {
   const pages = Array.isArray(rec.pages) ? ` (${rec.pages.length} page(s)${rec.pages.length ? `: ${rec.pages.join(', ')}` : ''})` : '';
-  return `encode-attempt ${rec.template}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${pages}`;
+  const source = rec.source === 'derived' || rec.source === 'forked' ? ` · source ${rec.source}: ${rec.sourceReason}` : '';
+  return `encode-attempt ${rec.template}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${pages}${source}`;
 }
 
 /** `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`; null entries add ` · <k> without a record`. */

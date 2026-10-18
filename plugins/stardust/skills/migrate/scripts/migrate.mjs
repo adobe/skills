@@ -23,7 +23,7 @@
  *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
  *        [--variance-dir <dir>] [--stardust-version <v>]
  *   node migrate.mjs plan <slug…|--all> [--force] [--encoder <file>] [--source <slug>=<file>]…
- *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype]
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--current stardust/current]
  *                                                                    → stardust/migrate/encode/<template>.json
  *   node migrate.mjs gate <slug> <gate-name> [--evidence "…"]          → gatesPassed[] / gateEvidence
  *   node migrate.mjs deviation <slug> --kind <k> [--source <s>] [--target <t>] --reason <r>
@@ -92,16 +92,24 @@
  *   record (any verdict) is kept, --force re-records — except an automatic not-attempted (no map / no encoder, no
  *   reason given), which is always recorded again, so a map drafted since is picked up; else recordAttempt runs the
  *   encoder (encode.mjs beside encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error)
- *   and writes stardust/migrate/encode/<template>.json under the project root (the cwd). Encoder first: a template
- *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record — its stderr line
- *   is encode-attempt.mjs's refusal, nothing is written (an earlier automatic record goes), and after the per-template
+ *   and writes stardust/migrate/encode/<template>.json under the project root (the cwd). Derivation, before each
+ *   record (the fork's `derived` slot map): slot names = the archetype prototype's data-slot marks inside <main>
+ *   (markers marked), else deriveSlots' (markers derived); when any sibling's page JSON has no `slots` key, the
+ *   archetype's capture HTML (<current>/pages/<archetype>.html) must exist and slot-map.mjs deriveRecipes must locate
+ *   ≥ 1 slot in it. Not derivable: `no slot in <proto>'s <main>`, `the archetype capture <path> is absent`, `none of
+ *   <proto>'s <n> slot(s) is found in <capture>`. Encoder first: a template
+ *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record unless it derives (the
+ *   record then says source derived and the fork builds the siblings) — its stderr line
+ *   is encode-attempt.mjs's refusal plus `; no slot map derives either (<cause>) — <the one command>` (the extract
+ *   crawl.mjs run that captures the archetype, or the edit then `run: …/migrate.mjs plan <slugs>`), nothing is
+ *   written (an earlier automatic record goes), and after the per-template
  *   lines one stdout line names them all: `maps due: <k> template(s) — <t> (<n> siblings), … — draft each map in
  *   the C-archetype unit (…), or record why not: … --reason "<why>"`; with --force, a decision on record (a reason,
  *   hand-authored) is kept when nothing new can run (no map, no encoder) — ` (kept from <at>; a recorded decision —
  *   nothing new could run)`. Siblings: the state's (encode-attempt.mjs siblingsOf, delivered ones by their migrate
  *   sidecar) and this set's. One line per template
- *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, with ` (kept from <at>; --force re-records)`
- *   when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
+ *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, plus ` · source derived: <sourceReason>` (or forked)
+ *   when the fork has a slot map, and ` (kept from <at>; --force re-records)` when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
  *   `encode-attempt <t>: not recorded — <why>`. The LAST stdout line is the count for the plan unit's ledger
  *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`, plus ` · <k>
  *   without a record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
@@ -1147,13 +1155,40 @@ function pageSet(o, pages, bySlug, cmd) {
 const byStr = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
 // plan (Phase 1): each page's branch as render chooses it, then per template with A′ siblings in the set its encode attempt
 // (kept when recorded, unless --force), the count last. Writes the attempt records only.
+// plan's derivation of a template's slot map (the fork's `derived` source) → { prototype, markers, slots, located, total,
+// capture } (located / total / capture null when every sibling's page JSON has slots), or { cause, fix } — not derivable, and
+// the one command that would make it so. Slot names: the prototype's data-slot marks inside <main>, else deriveSlots'.
+function planDerive(run, archetype, sibs, planned) {
+  const proto = toPosix(sourceFor(run, archetype)); const replan = `node stardust/scripts/migrate/migrate.mjs plan ${planned.join(' ')}`;
+  const d = deriveSlots(readFileSync(proto, 'utf8')); const markers = d.derived ? 'derived' : 'marked';
+  const slots = d.derived ? d.slots : slotNamesIn(d.html);
+  if (!slots.length) return { cause: `no slot in ${proto}'s <main>`, fix: `mark the typed slots in ${proto} (data-slot inside <main>; stardust/reference/data-attributes.md § Slot identity), then run: ${replan}` };
+  if (sibs.every((s) => hasSlotsKey(readJson(join(run.currentDir, 'pages', `${s}.json`))))) return { prototype: proto, markers, slots, located: null, total: null, capture: null };
+  const capture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`));
+  if (!isFile(capture)) {
+    const own = readJson(join(run.currentDir, 'pages', `${archetype.slug}.json`)); let url = own?.finalUrl || own?.url || archetype.url;
+    try { url = new URL(url, run.originUrl || undefined).href; } catch { /* keep the state's url as given */ }
+    return { cause: `the archetype capture ${capture} is absent`, fix: `run: node stardust/scripts/extract/crawl.mjs --url ${url} --pages ${url} --out ${toPosix(run.currentDir)}` };
+  }
+  const { recipes } = deriveRecipes(d.html, readFileSync(capture, 'utf8'));
+  const total = Object.keys(recipes).length; const located = Object.values(recipes).filter((r) => (Array.isArray(r) ? r : [r]).every((x) => x.anchor)).length;
+  if (!located) return { cause: `none of ${proto}'s ${total} slot(s) is found in ${capture}`, fix: `give each sibling's page JSON its slots (extract/reference/prep-mode.md § 4), then run: ${replan}` };
+  return { prototype: proto, markers, slots, located, total, capture };
+}
+// The data-slot names inside a page's <main>, sorted.
+function slotNamesIn(html) {
+  const mi = html.search(/<main\b/i); const mj = html.toLowerCase().lastIndexOf('</main>');
+  const open = mi >= 0 && mj > mi ? html.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
+  return open ? [...new Set(elementsOf(html.slice(mi + open[0].length, mj)).map((e) => slotNameOf(e.attrs)).filter(Boolean))].sort(byStr) : [];
+}
 export function planRun(o) {
   const state = loadState(o.state); const pages = state.pages; const bySlug = new Map(pages.map((p) => [p.slug, p]));
   flowGuard(state, o.state);
   if (o.encoder && !isFile(o.encoder)) throw new UsageError(`--encoder ${o.encoder} does not exist`);
   const set = pageSet(o, pages, bySlug, 'plan');
   const pageMap = buildPageMap(pages, state.site?.originUrl || null);
-  const run = { stateFile: o.state, pages, bySlug, protoDir: o.protoDir, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), fromArchetype: !!o.fromArchetype };
+  const run = { stateFile: o.state, pages, bySlug, protoDir: o.protoDir, sources: new Map(Object.entries(o.sources || {})), archetypes: new Map(Object.entries(o.archetypes || {})), branchB: o.branchB instanceof Set ? o.branchB : new Set(o.branchB || []), fromArchetype: !!o.fromArchetype,
+    currentDir: o.current, originUrl: state.site?.originUrl || null };
   const groups = { A: [], B: [], passthrough: [], refused: [] }; const siblings = new Map(); let nSiblings = 0;
   for (const slug of set) {
     if (pageMap.bySlug.get(slug).passthrough) { groups.passthrough.push(slug); continue; }
@@ -1176,10 +1211,11 @@ export function planRun(o) {
     let kept = !o.force && prior && !isAutoNotAttempted(prior) ? prior : null;
     let rec = kept;
     if (!rec) {
-      const sibs = [...new Set([...siblingsOf(state, t, sidecars), ...siblings.get(t).map((s) => s.replace(/ \(fork\)$/, ''))])];
+      const planned = siblings.get(t).map((s) => s.replace(/ \(fork\)$/, ''));
+      const sibs = [...new Set([...siblingsOf(state, t, sidecars), ...planned])];
       // --force on a template whose record is a decision (a reason, hand-authored) keeps it when nothing new can run
       try {
-        rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs, keepDecision: true });
+        rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs, keepDecision: true, derive: planDerive(run, bySlug.get(t), sibs, planned) });
         if (prior && rec.at === prior.at && rec.verdict === prior.verdict) kept = rec;
       } catch (e) {
         if (e instanceof AttemptRefusal) { console.error(e.message); due.push(`${t} (${sibs.length} siblings)`); }
