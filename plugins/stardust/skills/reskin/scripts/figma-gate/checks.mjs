@@ -25,20 +25,31 @@ const rootOf = (section, joined) => (text(section?.node) ? section.node : joined
 // reskin page was written with), its selector otherwise. Either one is scoped to the section the join found.
 export const selectorFor = (entry, regime) => (regime === 'preview' ? entry.previewSelector ?? entry.selector : entry.selector);
 
-// The branches of a selector list: it splits at the commas that stand at the top level, none inside (…) or […] or a
-// quoted string, none escaped. The pieces are not trimmed.
-export function selectorBranches(selector) {
-  const branches = [];
-  let depth = 0; let quote = null; let from = 0;
+// Walks a selector for its structure: `visit(char, index, depth)` is called for every character that is not escaped
+// and not inside a quoted string, with `depth` the nesting of (…) and […] that surrounds it (a bracket itself is
+// visited at the depth outside the pair it opens or closes). visit returns true to stop. The one lexical scan
+// selectorBranches and leavesSection share, so a quote or an escape means the same to both.
+function scanSelector(selector, visit) {
+  let depth = 0; let quote = null;
   for (let i = 0; i < selector.length; i += 1) {
     const c = selector[i];
     if (c === '\\') i += 1;
     else if (quote) { if (c === quote) quote = null; }
     else if (c === '"' || c === "'") quote = c;
-    else if (c === '(' || c === '[') depth += 1;
-    else if (c === ')' || c === ']') depth = Math.max(0, depth - 1);
-    else if (c === ',' && depth === 0) { branches.push(selector.slice(from, i)); from = i + 1; }
+    else if (c === '(' || c === '[') { if (visit(c, i, depth)) return; depth += 1; }
+    else if (c === ')' || c === ']') { depth = Math.max(0, depth - 1); if (visit(c, i, depth)) return; }
+    else if (visit(c, i, depth)) return;
   }
+}
+
+// The branches of a selector list: it splits at the commas that stand at the top level, none inside (…) or […] or a
+// quoted string, none escaped. The pieces are not trimmed.
+export function selectorBranches(selector) {
+  const branches = [];
+  let from = 0;
+  scanSelector(selector, (c, i, depth) => {
+    if (c === ',' && depth === 0) { branches.push(selector.slice(from, i)); from = i + 1; }
+  });
   branches.push(selector.slice(from));
   return branches;
 }
@@ -61,20 +72,19 @@ export function scopeSelector(sectionSel, selector) {
 
 // Why a selector cannot stay inside its section, or null: a branch that, once its :scope (if any) and the compound
 // on it are set aside, begins with a sibling combinator (`:scope + p`, `:scope.x ~ p`, `+ p`) reaches the section's
-// siblings.
+// siblings. The compound ends at the first space or combinator that is outside every (…), […], quoted string and escape.
 export function leavesSection(selector) {
   const reaches = (b) => {
-    let i = 0;
+    let end = 0;
     if (SCOPE.test(b)) {
-      for (let depth = 0, at = ':scope'.length; at <= b.length; at += 1) {
-        i = at;
-        const c = b[at];
-        if (c === '(' || c === '[') depth += 1;
-        else if (c === ')' || c === ']') depth -= 1;
-        else if (depth === 0 && (c === undefined || /[\s>+~]/.test(c))) break;
-      }
+      end = b.length;
+      scanSelector(b, (c, i, depth) => {
+        if (i < ':scope'.length || depth !== 0 || !/[\s>+~]/.test(c)) return false;
+        end = i;
+        return true;
+      });
     }
-    return /^\s*[+~]/.test(b.slice(i));
+    return /^\s*[+~]/.test(b.slice(end));
   };
   const branch = selectorBranches(selector).map((b) => b.trim()).find(reaches);
   return branch ? `selector "${branch}" reaches the section's siblings with a sibling combinator: scope it with a descendant, ":scope > …"` : null;

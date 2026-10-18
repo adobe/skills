@@ -528,11 +528,34 @@ check('leavesSection: a branch whose first combinator, after any :scope and its 
   assert.match(leavesSection('.a, ~ p'), /^selector "~ p" reaches/);
 });
 
+check('leavesSection reads the selector as selectorBranches does: a ( ) [ ] or sibling combinator inside a quoted value or after a backslash is text, so the compound ends where the real one does', () => {
+  for (const ok of [
+    ':scope[data-note="("] > section h2', ':scope[data-note=")"] .a', ':scope[data-note="]"] .a', ':scope[data-note="["] > .a', ":scope[data-note='('] .a",
+    ':scope[title="say \\"hi\\" ("] > p', ":scope[title='it\\'s ('] .a", ':scope[data-x="a + b"] .a', ':scope.a\\+b > p', ':scope.a\\(b .c', ':scope[data-note="("] .a + .b',
+    '.a[data-note="("] + .b',
+  ]) assert.equal(leavesSection(ok), null, ok);
+  for (const bad of [
+    ':scope[data-note="("] + section h2', ':scope[data-note=")"] ~ p', ':scope[data-note="]"] + p', ':scope[data-note="["]+p', ":scope[data-note='('] + p",
+    ':scope[title="say \\"hi\\" ("] + p', ":scope[title='it\\'s ('] ~ p", ':scope[data-x="a + b"] + p', ':scope.a\\ b + p', ':scope[data-note="("] +', ':scope[data-note="("], .a, :scope[data-note=")"] ~ p',
+  ]) assert.match(leavesSection(bad), /reaches the section's siblings/, bad);
+  assert.match(leavesSection(':scope[data-note="("] + section h2'), /^selector ":scope\[data-note="\("\] \+ section h2" reaches/);
+  assert.deepEqual(selectorBranches(':scope[data-note="("] + section h2, .a'), [':scope[data-note="("] + section h2', ' .a'], 'the same scan splits the list');
+});
+
 check('a selector or previewSelector that reaches the section\'s siblings is a problem, naming the entry', () => {
   assert.equal(problemsOf(geo({ selector: ':scope > .card', node: 'I1:7;5:7', measure: 'width' })), '');
   assert.equal(problemsOf(geo({ selector: '.card, :scope', node: 'I1:7;5:7', measure: 'width' })), '');
   assert.match(problemsOf(geo({ selector: ':scope + .card', node: 'I1:7;5:7', measure: 'width' })), /^x: selector ":scope \+ \.card" reaches the section's siblings/);
   assert.match(problemsOf(geo({ selector: '.card', previewSelector: '.a, ~ .b', node: 'I1:7;5:7', measure: 'width' })), /^x: previewSelector: selector "~ \.b" reaches the section's siblings/);
+});
+
+check('a quoted ( or ) before a sibling combinator no longer hides it: the entry is a problem in selector and in previewSelector, and the file that passes only scopes inside its section', () => {
+  const quoted = ':scope[data-note="("] + section h2';
+  assert.match(problemsOf(geo({ selector: quoted, node: 'I1:7;5:7', measure: 'width' })), /^x: selector ":scope\[data-note="\("\] \+ section h2" reaches the section's siblings/);
+  assert.match(problemsOf(geo({ selector: '.card', previewSelector: quoted, node: 'I1:7;5:7', measure: 'width' })), /^x: previewSelector: selector ":scope\[data-note="\("\] \+ section h2" reaches the section's siblings/);
+  assert.match(problemsOf(geo({ selector: ':scope[title="a ) ]"] ~ p', node: 'I1:7;5:7', measure: 'width' })), /reaches the section's siblings/);
+  assert.equal(problemsOf(geo({ selector: ':scope[data-note="("] > section h2', previewSelector: ':scope[data-note=")"] .a', node: 'I1:7;5:7', measure: 'width' })), '', 'a descendant after the same value is inside the section');
+  assert.equal(scopeSelector(S, ':scope[data-note="("] + section h2'), `${S}[data-note="("] + section h2`, 'what the rejected selector would have measured: the section that follows');
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
