@@ -321,9 +321,10 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
 # (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
 # exit 75 = still going → `wait` again as your NEXT step, never in a shell loop, never after a `sleep`;
-# exit 76 = the pause file appeared, stop waiting; --max 240 under a five-minute cache (default 1500)
+# exit 76 = the pause file appeared, stop waiting; --max 240 under a five-minute cache (default 300)
 # (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
 # '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
+# wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # your agent process's jobs (--all: every agent's; agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg call); full output: run-bg.mjs log <job> --grep <re>
