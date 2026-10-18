@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#NNN)
+
+The recorded hands-off runs: an independent roster re-gate of one run reproduced 8/10 instead of its 10/10 — the run
+pinned a rotating hero with a `--dismiss` flag and accepted two clip findings in prose, and neither was where the roster
+gate reads. In another run four origin captures kept a consent dialog open and still passed, because the dialog's
+container was on a per-slug hide list. Build-side "hide matched nothing" lines read as warnings although nothing
+matching on the build is expected; a duplicate always-404 `@font-face` failed rows as a font-load failure; a header
+contract recorded a body-hydration state as a panel and cost two sessions and eight re-explores.
+
+- **Capture settings live in presence.json (`replica/scripts/presence.mjs`).** `add` takes `--dismiss <sel,…>`,
+  `--pin <sel> --state <label>` and `--allow <kind>=<selector>` (kinds `clip`, `per-visitor-dialog`) beside `--hide`,
+  per key (`"*"` or `--slug`), with the same `--verify <url>` poll (every selector of the call) and `--reason R-<nn>`
+  rule; an allowance needs a reason, a per-visitor-dialog allowance needs its container hidden for the page. The pure
+  readers `captureSettings` and `clipAllowed` are what the gates share. The register's Kind line names the new kinds.
+- **The gates read them.** gate-all and gate.sh add presence.json's `dismiss` after `--dismiss` (one list per page),
+  pass `pin` (stitch-shot `--pin`: a rotator control clicked on the frozen page) and a hidden per-visitor-dialog
+  container (`--allow-dialog`) to both captures, and record dismiss / pin / allow in the records, live.json and the gate
+  key; a capture taken with another pin list is not reused. A `clip` allowance adds the counted clip findings under its
+  selector to the allowance (gate-all row `clipAllowed`; gate.sh `--full`). A roster run with the settings in
+  presence.json takes the captures a run with the same flags took. stitch-shot `--slug` / `--presence` reads them too.
+- **A dialog left open is INCONCLUSIVE.** stitch-shot prints `dialog-left: <name>` and records `dialogLeft` for every
+  dialog the last sweep left open — hidden or not; only a hidden container allowed as a per-visitor dialog clears it
+  (`dialogsAllowed`). gate-all: `<side> capture polluted: dialog left open (<name>)`, never kept by a fix round;
+  gate.sh: `INCONCLUSIVE: dialog left open (<name>)`, no verdict (exit 1).
+- **A build-side hide miss is information.** gate-all and gate.sh print `info: hide matched nothing on the build
+  (expected — …)`; the live side's warning is unchanged.
+- **Dead font declarations do not count.** An `@font-face` whose every requested src answered 404 is `fontsDead` with
+  one stdout line, not a `FONT LOAD FAILED` warning or a `font-not-loaded` row reason.
+- **chrome-explore's pollution guard.** Every top-level open state is sampled again on a fresh page; a repeat that
+  differs by more than `--bar` (default 0.02) marks the state `unstable` and is re-sampled once. The contract's header
+  records `stability`; `unstableAsWarn` turns chrome-compare's errors on an unstable source state into warnings
+  (`--no-repeat` skips the guard, recorded as skipped).
+
 ## 0.36.0 — local integration for the next recorded run (not a release)
 
 A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,
