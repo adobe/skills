@@ -297,15 +297,15 @@ background subagent each; disjoint by construction) and each cluster (its first
 sub-unit) the moment its archetype is `done`; never serialize disjoint units to
 spare browsers — the browser slot queue paces captures, not the number of units
 (recorded: a run that started four units in one turn finished ten in the time a
-serial run finished five). The lead's loop: `progress.mjs wait` →
-`progress.mjs show --waves` → for each unit that ended, handoff contract § 5's
-other steps (block records, freeze check, boundary ask) → start everything its
-`can start now:` line names → wait again;
+serial run finished five). The lead's loop (the example below, by exit code):
+`progress.mjs wait` → `progress.mjs show --waves` → for each unit that ended,
+handoff contract § 5's other steps → start everything its `can start now:` line
+names, each launch line naming the unit's `deadline: <UTC HH:MM>` (the brief
+carries the clock, contract § Unit briefs) → wait again;
 C-final only once that line names `gate-all` (a wait's exit 2 is no signal).
-Each unit records its own end: its subagent's last act, after its commit, is
-`progress.mjs unit done|failed` with its counts and verdict; the lead records
-one only for a unit that died without flipping it, `unit failed <unit> --verdict
-"<reason>"` (handoff contract § Fan-out discipline). The one exception: a unit that edits a shared
+Each unit's subagent flips its own end as its last act, after its commit; the
+lead marks `failed` only a unit that died first (handoff contract § Fan-out
+discipline). The one exception: a unit that edits a shared
 file waits for that file's lock as the contract's shared-ledgers bullet
 describes — inside its writer, never by starting later. Waits: the master
 skill's wait discipline.
@@ -313,16 +313,23 @@ skill's wait discipline.
 ```bash
 P="node skills/stardust/scripts/progress.mjs"   # project copy: stardust/scripts/stardust/progress.mjs
 # C0 (with archetype-page, the shell template's) committed and frozen → ONE turn: record, then
-# spawn in the background, page's cluster and every other archetype
+# spawn in the background, page's cluster and every other archetype; each launch line names the
+# unit's deadline — "deadline: 22:25": 21:10 UTC + 90 min = 22:40; session end 22:30 − 5 min =
+# 22:25; the earlier wins
 $P unit start cluster-page      --kind cluster   --templates page
 $P unit start archetype-article --kind archetype --templates article
 $P unit start archetype-product --kind archetype --templates product
-$P wait          # exit 0: "progress rollout archetype-product: done …" (its own flip) → its § 5 steps
-$P show --waves  # before each wait: § 5 steps for any end the last wait did not print; can start now: cluster-product
+$P wait          # --max 300 (240 under a five-minute cache); by exit code:
+#  0   a unit flipped its own end ("progress rollout archetype-product: done …") → its § 5 steps
+#      (block records, freeze check, boundary ask — no end record), then the two lines below
+#  75  nothing ended within --max → wait again
+#  76  the pause file → start nothing new, let running units return, ask the boundary
+#  77  a background agent finished (the wake line) → show --waves: its unit flipped → as 0; still
+#      `running` (no paused: report) → it died before its flip: $P unit failed <unit> --verdict
+#      "<reason>"; then wait again
+$P show --waves  # before every wait — an end between two waits goes unprinted; can start now: cluster-product
 $P unit start cluster-product --kind cluster --templates product
-$P wait          # exit 75 at --max (300 s; 240 under a five-minute cache): show --waves, wait again
-# … until show --waves says "can start now: gate-all" → C-final. Exit 76 = the pause file: start
-# nothing new, collect the returns
+$P wait          # … until show --waves says "can start now: gate-all" → C-final
 ```
 
 ### Phase D — Site assembly (whole-site artifacts)
