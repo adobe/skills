@@ -7,10 +7,11 @@
 # capture's own overflow line, runs pixel-compare, and prints the verdict lines
 # that drive the loop (size / height delta / differing % / hot bands /
 # overflow). The prototype/build side is re-captured every round; the live side
-# only when live.png is absent, was taken hiding a different list (--hide) or
-# has no live.json recording the overlay-left check — delete it explicitly to
+# only when live.png is absent, was taken hiding a different list (--hide),
+# dismissing or pinning a different one (--dismiss + presence.json dismiss, pin)
+# or has no live.json recording the overlay-left check — delete it explicitly to
 # re-take for anything else (site changed, capture hardening changed, a new
-# --consent / --dismiss selector).
+# --consent selector).
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
@@ -64,6 +65,20 @@
 #   anything is compared — never retried (the same flags leave the same overlay). A live one also drops live.png,
 #   live.json and the probes' live caches; a build one stops before pixel-compare and the overflow line. Both captures
 #   write their record (--json live-shot.json / build-shot.json in the evidence dir).
+#   A dialog the capture's last sweep left open is no verdict either: stitch-shot prints `dialog-left: <name>` (a
+#   container hidden by --hide / presence.json does not clear it — only one presence.json allows as a per-visitor
+#   dialog, passed as --allow-dialog); the round prints `gate.sh: INCONCLUSIVE: dialog left open (<name>) on the
+#   <live|build> capture — no verdict: close it (--dismiss / presence.mjs add --dismiss), or hide its container AND
+#   allow it as a per-visitor dialog (presence.mjs add --hide <container> --allow per-visitor-dialog=<container>
+#   --reason R-<nn>)` and exits 1 — a live one drops live.png like an overlay left (a recorded hands-off run passed four
+#   origin captures with a consent dialog open because its container was on a per-slug hide list).
+# Capture settings (presence.json, written by presence.mjs add — the same files and merge as `hide`, below; "*" then
+#   <slug>): `dismiss` follows --dismiss as one list (captures, the diff probes, chrome-parity, live.json dismiss.extra;
+#   under --no-dismiss it is not applied: `gate.sh: presence.json dismiss not applied (--no-dismiss): <sel>, …`), `pin`
+#   reaches both captures as stitch-shot --pin (live.json pin), and a per-visitor-dialog allowance on a container the
+#   presence hides as --allow-dialog. A round with the settings in presence.json takes the captures a round with the
+#   same flags takes, so a roster re-gate (gate-all reads the same file) reproduces the round. A live.png taken with
+#   another dismiss / pin list is retaken: `gate.sh: live.png was taken with another dismiss / pin list — retaking it`.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL (bounded under run-bg — Concurrency, below), each
@@ -98,7 +113,9 @@
 #            a round with no pixel verdict does not spend three Chromiums.
 #            Exit with --full: the pixel rc when it is not a verdict (above); 124 on
 #            any probe deadline; else the pixel verdict, then 2 on a structural 🔴,
-#            a chrome delta, a clipped count > 0, a content-presence MISSING / HIDDEN
+#            a chrome delta, a clipped count > 0 (less the findings a presence.json `allow` kind clip covers —
+#            presence.mjs clipAllowed, gate-all's rule: `clip-probe: <n> finding(s) allowed by presence.json
+#            (<selector> — R-<nn> ×<n>; …)`), a content-presence MISSING / HIDDEN
 #            link or heading, or a required unit off; 1 when a probe errored (it gave
 #            no verdict), 0 only when every probe ran and passed.
 #            Concurrency: run directly, a --full round starts every probe at once — up
@@ -146,6 +163,9 @@
 #                       `(<tag>, 0px now — a block that grows later is still hidden by the persistent display:none
 #                       !important rule)`; none → `none found above the header`) and the selectors that missed — put
 #                       the right one in the hide list. A warning only: the verdict and the exit code are unchanged.
+#                       On the build capture a selector that matched nothing is expected (no per-visitor region
+#                       there): one stdout info line, `gate.sh: info: hide matched nothing on the build (expected — it
+#                       has no per-visitor region to hide): <sel>, …`.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -161,8 +181,9 @@
 # the build side), 3 bot challenge, 1 capture/compare error (after the one
 # retry — re-queue, not a verdict), a malformed presence.json — the gate
 # dir's or the site-wide stardust/replica/presence.json (fix the file;
-# re-queuing won't help), an overlay left on either capture (no
-# verdict: fix the capture — --consent / --dismiss / --hide — not the page)
+# re-queuing won't help), an overlay left on either capture or a dialog left
+# open there (no verdict: fix the capture — --consent / --dismiss / --hide —
+# not the page)
 # or a project stitch-shot.mjs that predates --json (re-copy it; no capture),
 # 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
@@ -224,6 +245,61 @@ done
 if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
   echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
 fi
+# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
+case "${GATE_REGIME:-auto}" in
+  prototype|published) REGIME=$GATE_REGIME ;;
+  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
+esac
+# gate-all's presence.json: this regime's sidecar first (published → gates/all-<w>/, prototype → gates/prototypes-<w>/),
+# then the other stage's at the same width; under it the site-wide stardust/replica/presence.json (project root = cwd).
+# chrome-parity reads the presence itself (variable regions and `hide`): --presence <gate-dir file>, else the site file.
+PRES=""
+if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
+for st in $STAGES; do
+  [ -f "stardust/replica/gates/$st-$W/presence.json" ] && { PRES="stardust/replica/gates/$st-$W/presence.json"; break; }
+done
+SITE_PRES=""
+[ -f "stardust/replica/presence.json" ] && SITE_PRES="stardust/replica/presence.json"
+# The effective hide list (header § --hide): the --hide list, then the merged presence's "*".hide and <slug>.hide; comma
+# lists split, trimmed, empty dropped, de-duplicated in order, joined with ','. The merge: the site file under the gate
+# dir's — per top-level key { ...site[k], ...gate[k] } (the gate dir's field wins; keys / fields only one file has are
+# kept; a missing file = {}). hideList / mergePresence restate live-session.mjs's parseHideList / presenceHide /
+# mergePresence on purpose — node -e here imports nothing (a pixel round needs no diff skill); keep them in step. Either
+# file malformed is exit 1 before any capture, naming it. Captures and probes get one --hide "$EFF_HIDE".
+HIDE_JS='const hideList = (...v) => { const out = []; const add = (x) => { if (Array.isArray(x)) { x.forEach(add); return; }
+  if (typeof x !== "string") return; for (const p of x.split(",")) { const s = p.trim(); if (s && !out.includes(s)) out.push(s); } };
+  v.forEach(add); return out; };'
+EFF_HIDE=""; DISMISS_ALL="$DISMISS_EXTRA"; PRES_DISMISS=""; PIN_SELS=""; ALLOW_DIALOG=""; PIN_JSON="[]"; ALLOW_CLIP_JSON="[]"
+if [ -n "$HIDE" ] || [ -n "$PRES" ] || [ -n "$SITE_PRES" ]; then
+  # one node call, seven lines: the effective hide list; --dismiss then the presence dismiss; the presence dismiss alone;
+  # the pin selectors; the per-visitor-dialog containers the presence hides; the pins as JSON; the clip allowances as
+  # JSON — presence.mjs captureSettings restated (import-free, like hideList; keep them in step)
+  CAP=$(node -e "$HIDE_JS"'const fs = require("fs"); const [gateFile, siteFile, slug, flag, cliDismiss] = process.argv.slice(1);
+    const read = (f) => { if (!f) return {}; try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {
+      fs.writeSync(2, `gate.sh: presence.json ${f} unreadable (${String(e.message).replace(/\s+/g, " ")}) — fix or delete it; nothing captured\n`); process.exit(1); } };
+    const obj = (x) => (x && typeof x === "object" ? x : {});
+    const mergePresence = (site, gate) => { const s = obj(site); const g = obj(gate); const out = {};
+      for (const k of new Set([...Object.keys(s), ...Object.keys(g)])) out[k] = { ...s[k], ...g[k] }; return out; };
+    const gate = read(gateFile); const j = mergePresence(read(siteFile), gate);
+    const es = ["*", slug].map((k) => (j[k] && typeof j[k] === "object" && !Array.isArray(j[k]) ? j[k] : {}));
+    const str = (v) => typeof v === "string" && v.trim() !== "";
+    const pins = []; const allow = [];
+    for (const e of es) {
+      for (const x of Array.isArray(e.pin) ? e.pin : []) { if (!x || !str(x.sel) || !str(x.state)) continue; const at = pins.findIndex((y) => y.sel === x.sel.trim()); const v = { sel: x.sel.trim(), state: x.state.trim() }; if (at < 0) pins.push(v); else pins[at] = v; }
+      for (const x of Array.isArray(e.allow) ? e.allow : []) { if (!x || !["clip", "per-visitor-dialog"].includes(x.kind) || !str(x.selector) || typeof x.reason !== "string") continue; const v = { kind: x.kind, selector: x.selector.trim(), reason: x.reason }; const at = allow.findIndex((y) => y.kind === v.kind && y.selector === v.selector); if (at < 0) allow.push(v); else allow[at] = v; }
+    }
+    const presHide = hideList(...es.map((e) => e.hide)); const presDismiss = hideList(...es.map((e) => e.dismiss));
+    process.stdout.write([hideList(flag, presHide).join(","), presDismiss.length ? hideList(cliDismiss, presDismiss).join(",") : cliDismiss, presDismiss.join(","),
+      pins.map((x) => x.sel).join(","), [...new Set(allow.filter((x) => x.kind === "per-visitor-dialog" && presHide.includes(x.selector)).map((x) => x.selector))].join(","),
+      JSON.stringify(pins), JSON.stringify(allow.filter((x) => x.kind === "clip"))].join("\n"));' -- "$PRES" "$SITE_PRES" "$SLUG" "$HIDE" "$DISMISS_EXTRA") || exit 1
+  EFF_HIDE=$(printf '%s\n' "$CAP" | sed -n 1p); DISMISS_ALL=$(printf '%s\n' "$CAP" | sed -n 2p); PRES_DISMISS=$(printf '%s\n' "$CAP" | sed -n 3p)
+  PIN_SELS=$(printf '%s\n' "$CAP" | sed -n 4p); ALLOW_DIALOG=$(printf '%s\n' "$CAP" | sed -n 5p); PIN_JSON=$(printf '%s\n' "$CAP" | sed -n 6p); ALLOW_CLIP_JSON=$(printf '%s\n' "$CAP" | sed -n 7p)
+fi
+# --no-dismiss turns every dismissal off, presence.json's too (said once); pins and allowances still apply
+if [ "$DISMISS" = 0 ]; then
+  [ -n "$PRES_DISMISS" ] && echo "gate.sh: presence.json dismiss not applied (--no-dismiss): ${PRES_DISMISS//,/, }" >&2
+  DISMISS_ALL=""
+fi
 # Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel> and
 # --dismiss <sel,…>; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
 # selectors are joined for them; both stitched captures also pin --locale en-US, the locale gate-all's stitches pin.
@@ -231,8 +307,8 @@ fi
 STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
 if [ "$DISMISS" = 1 ]; then
   [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
-  [ -n "$DISMISS_EXTRA" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_EXTRA"); CHROME_OPTS+=(--dismiss "$DISMISS_EXTRA"); }
-  EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
+  [ -n "$DISMISS_ALL" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_ALL"); CHROME_OPTS+=(--dismiss "$DISMISS_ALL"); }
+  EXTRA="${CONSENT:+$CONSENT,}$DISMISS_ALL"; EXTRA=${EXTRA%,}
   if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
 else
   STITCH_OPTS=(--no-dismiss)
@@ -254,46 +330,14 @@ OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
 
-# Regime (gate-evidence.mjs regimeOf semantics): localhost / 127.0.0.1 / file: build URL = prototype, else published.
-case "${GATE_REGIME:-auto}" in
-  prototype|published) REGIME=$GATE_REGIME ;;
-  *) case "$BUILD_URL" in http://localhost*|http://127.0.0.1*|file:*) REGIME=prototype ;; *) REGIME=published ;; esac ;;
-esac
-# gate-all's presence.json: this regime's sidecar first (published → gates/all-<w>/, prototype → gates/prototypes-<w>/),
-# then the other stage's at the same width; under it the site-wide stardust/replica/presence.json (project root = cwd).
 # chrome-parity reads the presence itself (variable regions and `hide`): --presence <gate-dir file>, else the site file.
-PRES=""
-if [ "$REGIME" = published ]; then STAGES="all prototypes"; else STAGES="prototypes all"; fi
-for st in $STAGES; do
-  [ -f "stardust/replica/gates/$st-$W/presence.json" ] && { PRES="stardust/replica/gates/$st-$W/presence.json"; break; }
-done
-SITE_PRES=""
-[ -f "stardust/replica/presence.json" ] && SITE_PRES="stardust/replica/presence.json"
 if [ -n "$PRES" ]; then CHROME_OPTS+=(--presence "$PRES" --slug "$SLUG")
 elif [ -n "$SITE_PRES" ]; then CHROME_OPTS+=(--presence "$SITE_PRES" --slug "$SLUG"); fi
-# The effective hide list (header § --hide): the --hide list, then the merged presence's "*".hide and <slug>.hide; comma
-# lists split, trimmed, empty dropped, de-duplicated in order, joined with ','. The merge: the site file under the gate
-# dir's — per top-level key { ...site[k], ...gate[k] } (the gate dir's field wins; keys / fields only one file has are
-# kept; a missing file = {}). hideList / mergePresence restate live-session.mjs's parseHideList / presenceHide /
-# mergePresence on purpose — node -e here imports nothing (a pixel round needs no diff skill); keep them in step. Either
-# file malformed is exit 1 before any capture, naming it. Captures and probes get one --hide "$EFF_HIDE".
-HIDE_JS='const hideList = (...v) => { const out = []; const add = (x) => { if (Array.isArray(x)) { x.forEach(add); return; }
-  if (typeof x !== "string") return; for (const p of x.split(",")) { const s = p.trim(); if (s && !out.includes(s)) out.push(s); } };
-  v.forEach(add); return out; };'
-EFF_HIDE=""
-if [ -n "$HIDE" ] || [ -n "$PRES" ] || [ -n "$SITE_PRES" ]; then
-  EFF_HIDE=$(node -e "$HIDE_JS"'const fs = require("fs"); const [gateFile, siteFile, slug, flag] = process.argv.slice(1);
-    const read = (f) => { if (!f) return {}; try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch (e) {
-      fs.writeSync(2, `gate.sh: presence.json ${f} unreadable (${String(e.message).replace(/\s+/g, " ")}) — fix or delete it; nothing captured\n`); process.exit(1); } };
-    const obj = (x) => (x && typeof x === "object" ? x : {});
-    const mergePresence = (site, gate) => { const s = obj(site); const g = obj(gate); const out = {};
-      for (const k of new Set([...Object.keys(s), ...Object.keys(g)])) out[k] = { ...s[k], ...g[k] }; return out; };
-    const gate = read(gateFile); const j = mergePresence(read(siteFile), gate);
-    const of = (k) => (j[k] && typeof j[k] === "object" ? j[k].hide : null);
-    process.stdout.write(hideList(flag, of("*"), of(slug)).join(","));' -- "$PRES" "$SITE_PRES" "$SLUG" "$HIDE") || exit 1
-fi
 HIDE_OPTS=()
 [ -n "$EFF_HIDE" ] && { STITCH_OPTS+=(--hide "$EFF_HIDE"); HIDE_OPTS=(--hide "$EFF_HIDE"); }
+# presence.json pins and per-visitor-dialog allowances reach both captures (stitch-shot --pin / --allow-dialog)
+[ -n "$PIN_SELS" ] && STITCH_OPTS+=(--pin "$PIN_SELS")
+[ -n "$ALLOW_DIALOG" ] && STITCH_OPTS+=(--allow-dialog "$ALLOW_DIALOG")
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
 # final. $1 names the step for the log line; the rest is the command (a function or a program).
@@ -387,20 +431,25 @@ fi
 # One node call reads both: the hide list, a newline, then checked | unchecked | left <descriptor>.
 RETAKE=0
 if [ -f "$DIR/live.png" ]; then
-  OLD_HIDE=""; OLD_OVL=unchecked
+  OLD_HIDE=""; OLD_CAP=""; OLD_OVL=unchecked
   if [ -f "$DIR/live.json" ]; then
     OLD=$(node -e "$HIDE_JS"'let j = null;
       try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { j = null; }
       const o = j && typeof j === "object" && !Array.isArray(j) ? j : {};
       const ovl = !("overlayLeft" in o) ? "unchecked" : o.overlayLeft === null ? "checked" : `left ${String(o.overlayLeft).replace(/\s+/g, " ")}`;
-      process.stdout.write(`${hideList(o.hide).join(",")}\n${ovl}`);' -- "$DIR/live.json")
-    OLD_HIDE=${OLD%$'\n'*}; OLD_OVL=${OLD##*$'\n'}; OLD_OVL=${OLD_OVL:-unchecked}
+      const dm = o.dismiss && typeof o.dismiss === "object" ? o.dismiss : {};
+      const cap = `${dm.off ? "" : dm.extra || ""}|${JSON.stringify(Array.isArray(o.pin) ? o.pin : [])}`;
+      process.stdout.write(`${hideList(o.hide).join(",")}\n${cap}\n${ovl}`);' -- "$DIR/live.json")
+    OLD_HIDE=$(printf '%s\n' "$OLD" | sed -n 1p); OLD_CAP=$(printf '%s\n' "$OLD" | sed -n 2p); OLD_OVL=$(printf '%s\n' "$OLD" | sed -n 3p); OLD_OVL=${OLD_OVL:-unchecked}
   fi
   if [ ! -f "$DIR/live.json" ] && [ -n "$EFF_HIDE" ]; then
     echo "gate.sh: live.png has no live.json record; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
     RETAKE=1
   elif [ -f "$DIR/live.json" ] && [ "$OLD_HIDE" != "$EFF_HIDE" ]; then
     echo "gate.sh: live.png was taken hiding [${OLD_HIDE//,/, }]; this round hides [${EFF_HIDE//,/, }] — retaking it" >&2
+    RETAKE=1
+  elif [ -f "$DIR/live.json" ] && [ "$OLD_CAP" != "$DISMISS_ALL|$PIN_JSON" ]; then
+    echo "gate.sh: live.png was taken with another dismiss / pin list — retaking it" >&2
     RETAKE=1
   elif [ "$OLD_OVL" = unchecked ]; then
     echo "gate.sh: live.png predates the overlay-left check — retaking it" >&2
@@ -415,6 +464,22 @@ fi
 overlay_left() {
   grep -qE '^overlay-left: ' "$2" || return 1
   echo "gate.sh: overlay left on the $1 capture — $(grep -E '^overlay-left: ' "$2" | tail -1 | sed -E 's/^overlay-left: //') — no verdict: fix the capture (--consent / --dismiss / --hide), not the page" >&2
+}
+# A dialog the capture's last sweep left open (stitch-shot's `dialog-left: <name>` lines — a hidden container does not
+# clear it, only an allowed per-visitor-dialog one) gives no verdict either: one stderr line, return 0 — the caller exits 1.
+dialog_left() {
+  grep -qE '^dialog-left: ' "$2" || return 1
+  local names; names=$(grep -E '^dialog-left: ' "$2" | sed -E 's/^dialog-left: //; s/ \(hidden by .*$//' | paste -sd ',' - | sed 's/,/, /g')
+  echo "gate.sh: INCONCLUSIVE: dialog left open ($names) on the $1 capture — no verdict: close it (--dismiss / presence.mjs add --dismiss), or hide its container AND allow it as a per-visitor dialog (presence.mjs add --hide <container> --allow per-visitor-dialog=<container> --reason R-<nn>)" >&2
+}
+# The build capture's hideMiss: a selector that matched nothing there is expected (the build has no per-visitor region)
+# — one info line on stdout, never a warning.
+hide_miss_info() {
+  [ -f "$DIR/build-shot.json" ] || return 0
+  node -e 'let j = null; try { j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); } catch (e) { j = null; }
+    const m = j && typeof j === "object" && j.hideMiss && typeof j.hideMiss === "object" ? j.hideMiss : null;
+    const sels = m && Array.isArray(m.sels) ? m.sels.filter((s) => typeof s === "string" && s) : [];
+    if (sels.length) process.stdout.write(`gate.sh: info: hide matched nothing on the build (expected — it has no per-visitor region to hide): ${sels.join(", ")}\n`);' -- "$DIR/build-shot.json"
 }
 # A hide selector that matched nothing on live (header § --hide): the live capture's record carries
 # hideMiss { sels, candidates } (null when none) → one stderr WARNING line, never a verdict. The text restates
@@ -451,7 +516,7 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live.json"   # never leave a partial live capture to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
   hide_miss_warn
-  if overlay_left live "$LIVE_OUT"; then
+  if overlay_left live "$LIVE_OUT" || dialog_left live "$LIVE_OUT"; then
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"
     exit 1
   fi
@@ -459,7 +524,8 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   # overlayLeft: null — the capture printed no overlay-left line (above). fontsFailed is three-valued: the record's list
   # (checked; [] = every declared face loaded) or null = not checked — the record's own null (its check could not run)
   # or no readable record (one stderr note). Never [] for an unchecked capture: downstream [] reads as "all loaded".
-  node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at] = process.argv.slice(1);
+  node -e 'const fs = require("fs"); const [f, rec, url, w, dismiss, consent, extra, hide, at, pinJson] = process.argv.slice(1);
+    const pin = JSON.parse(pinJson || "[]");
     let fontsFailed = null; let read = false;
     try { const j = JSON.parse(fs.readFileSync(rec, "utf8"));
       if (Array.isArray(j.fontsFailed)) { fontsFailed = j.fontsFailed.filter((s) => typeof s === "string"); read = true; } else if (j.fontsFailed === null) read = true;
@@ -467,8 +533,8 @@ if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
     if (!read) fs.writeSync(2, `gate.sh: the live capture left no readable record (${rec}) — live.json records fontsFailed: null (not checked)\n`);
     fs.writeFileSync(f, `${JSON.stringify({ writtenBy: "gate.sh", url, width: Number(w), locale: "en-US", settle: true,
       dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [],
-      overlayLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
-    -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_EXTRA" "$EFF_HIDE" "$LIVE_AT" \
+      ...(pin.length ? { pin } : {}), overlayLeft: null, dialogLeft: null, fontsFailed, headed: false, at }, null, 2)}\n`);' \
+    -- "$DIR/live.json" "$DIR/live-shot.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_ALL" "$EFF_HIDE" "$LIVE_AT" "$PIN_JSON" \
     || echo "gate.sh: could not write $DIR/live.json — gate-all will not reuse this live.png" >&2
 else
   hide_miss_warn   # a reused live.png: its capture's record still names a hide that matched nothing
@@ -491,6 +557,8 @@ retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
 overlay_left build "$OVF" && exit 1
+dialog_left build "$OVF" && exit 1
+hide_miss_info
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): the build capture's own root line — BUILD side
 # only, no live hit, no second page load. The verdict line is printed after pixel-compare's so the loop reads
@@ -628,6 +696,23 @@ verdict "$RC_CP" "chrome-parity" "${CHROME:-no summary line}" "$CP"
 CLIPPED=$(grep -E '^Clipped:' "$CL" | head -1 | cut -c1-160)
 verdict "$RC_CL" "clip-probe" "${CLIPPED:-no Clipped line}" "$CL"
 CLIP_N=$(printf '%s' "$CLIPPED" | grep -oE '^Clipped: [0-9]+' | grep -oE '[0-9]+$' || echo 0)
+# presence.json clip allowances (presence.mjs clipAllowed — the one rule gate-all applies): the counted findings under an
+# allowance's selector do not fail the round; one line names them with their reasons
+if [ "${CLIP_N:-0}" -gt 0 ] 2>/dev/null && [ "$ALLOW_CLIP_JSON" != "[]" ] && [ -f "$DIR/clip-$LBL.json" ]; then
+  ALLOWED=$(node -e 'const [mod, file, allow] = process.argv.slice(1);
+    import(require("url").pathToFileURL(mod).href).then((m) => { const j = JSON.parse(require("fs").readFileSync(file, "utf8"));
+      const r = m.clipAllowed(j.findings || j.groups || [], JSON.parse(allow));
+      process.stdout.write(`${r.n}\t${r.by.map((x) => `${x.selector} — ${x.reason} ×${x.n}`).join("; ")}`); })
+    .catch((e) => process.stdout.write(`0\tnot applied (${String(e.message).split("\n")[0]})`));' -- "$HERE/presence.mjs" "$DIR/clip-$LBL.json" "$ALLOW_CLIP_JSON")
+  ALLOWED_N=${ALLOWED%%$'\t'*}; ALLOWED_BY=${ALLOWED#*$'\t'}
+  case "$ALLOWED_N" in ''|*[!0-9]*) ALLOWED_N=0 ;; esac
+  if [ "$ALLOWED_N" -gt 0 ]; then
+    echo "clip-probe: $ALLOWED_N finding(s) allowed by presence.json ($ALLOWED_BY)"
+    CLIP_N=$(( CLIP_N > ALLOWED_N ? CLIP_N - ALLOWED_N : 0 ))
+  elif [ "${ALLOWED_BY#not applied}" != "$ALLOWED_BY" ]; then
+    echo "gate.sh: clip allowances $ALLOWED_BY" >&2
+  fi
+fi
 PRESENCE_N=0
 if [ -n "$P_PR" ]; then
   PRESENCE=$(grep -E '^Content:' "$PR" | head -1 | cut -c1-200)

@@ -12,7 +12,10 @@
 // hideMiss, also for a reused live.png; never a verdict), a project stitch-shot.mjs that predates
 // --json (no verdict before any capture), the --full probe bound while run-bg holds a machine browser slot (at most
 // STARDUST_BROWSERS_PER_SLOT probes at a time, in order; the verdict lines and every exit code those of the unbounded
-// round), with stub instruments (no browser, no network), run by /bin/bash (macOS: bash 3.2) where it exists.
+// round), presence.json's capture settings (dismiss after --dismiss, pin, per-visitor-dialog allowances; the same argv
+// as the flags; a live.png taken with another dismiss / pin list retaken), a dialog left open (no verdict), the build-side
+// hide miss as info and a clip allowance under --full, with stub instruments (no browser, no network), run by /bin/bash
+// (macOS: bash 3.2) where it exists.
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -41,6 +44,7 @@ mkdirSync(diff, { recursive: true });
 cpSync(join(scripts, 'gate.sh'), join(replica, 'gate.sh'));
 chmodSync(join(replica, 'gate.sh'), 0o755);
 cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
+cpSync(join(scripts, 'presence.mjs'), join(replica, 'presence.mjs')); // clip allowances: gate.sh reads presence.mjs clipAllowed
 
 // Stubs read their behaviour from environment variables so one sandbox covers every case. stitch-shot: per side
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
@@ -81,6 +85,8 @@ stub(replica, 'stitch-shot.mjs', `
   if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
   const overlayLeft = process.env['STUB_OVERLAY_' + side] || null;
   if (overlayLeft) console.log('overlay-left: ' + overlayLeft);
+  const dialogLeft = process.env['STUB_DIALOG_' + side] ? process.env['STUB_DIALOG_' + side].split(',') : null;
+  for (const name of dialogLeft || []) console.log('dialog-left: ' + name + (process.env.STUB_DIALOG_HIDDEN ? ' (hidden by ' + process.env.STUB_DIALOG_HIDDEN + ' — not an allowed per-visitor dialog)' : ''));
   const o = Number(process.env.STUB_OVERFLOW || 0);
   writeFileSync(out, 'png'); ovf(o);
   const json = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
@@ -88,7 +94,7 @@ stub(replica, 'stitch-shot.mjs', `
     : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
   if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
   else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: w, vh: null, settle: process.argv.includes('--settle'),
-    dismissed: process.argv.includes('--no-dismiss') ? null : { consent: null, extra: [], marketing: [] }, overlayLeft,
+    dismissed: process.argv.includes('--no-dismiss') ? null : { consent: null, extra: [], marketing: [] }, overlayLeft, dialogLeft,
     ...fonts, hidden: [], hideMiss: process.env['STUB_HIDEMISS_' + side] ? JSON.parse(process.env['STUB_HIDEMISS_' + side]) : null,
     height: 2000, overflow: { scrollWidth: w + o, viewport: w, delta: o } }, null, 2) + '\\n');
   console.log('stitched ' + out);`);
@@ -112,6 +118,7 @@ stub(diff, 'content-diff.mjs', `${TIMED('content-diff')}
 stub(diff, 'clip-probe.mjs', `${TIMED('clip-probe')}
   ${ARGV_LOG}
   const n = Number(process.env.STUB_CLIPPED || 0);
+  if (process.env.STUB_CLIP_FINDINGS && process.argv.includes('--json')) (await import('node:fs')).writeFileSync(process.argv[process.argv.indexOf('--json') + 1], JSON.stringify({ counts: { total: n }, findings: JSON.parse(process.env.STUB_CLIP_FINDINGS) }));
   console.log('Clipped: ' + n + ' (text clipped ' + n + ', text hidden 0, controls hidden 0, controls clipped 0; advisory: clamped 0)');
   process.exit(n ? 2 : 0);`);
 stub(diff, 'content-presence.mjs', `${TIMED('content-presence')}
@@ -761,6 +768,61 @@ check('a malformed site file with no --hide and no gate-dir file: exit 1, one st
   && /^gate\.sh: presence\.json stardust\/replica\/presence\.json unreadable \(.+\) — fix or delete it; nothing captured$/.test(r.stderr.trim())
   && attempts().length === 0 && !/differing/.test(r.stdout), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
 unlinkSync(join(root, SITE));
+
+// Capture settings from presence.json (presence.mjs add): "*" then <slug> `dismiss` follows --dismiss (one list for the
+// captures, the probes and chrome-parity; live.json dismiss.extra), `pin` reaches both captures as --pin (live.json pin),
+// per-visitor-dialog allowances on a hidden container as --allow-dialog; a live.png taken with another dismiss / pin list
+// is retaken; under --no-dismiss the file's dismiss is not applied (one line). A dialog left open (stitch-shot's
+// `dialog-left:` line) gives no verdict; a build-side hide miss is an info line; a clip allowance lets its findings pass.
+const SITE_CAP = 'stardust/replica/presence.json';
+const argOfV = (argv, flag) => { const i = argv.indexOf(flag); return i < 0 ? null : argv[i + 1]; };
+writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'], hide: ['#cmp-root'], pin: [{ sel: '.dot-1', state: 'slide 1' }], allow: [{ kind: 'per-visitor-dialog', selector: '#cmp-root', reason: 'R-06' }] } }));
+resetArgv();
+r = await gate(['cap1', 'https://live.example/cap1', buildUrl, '1440', 'cs1', '--full', '--marker', 'home-proposed', '--dismiss', '.promo-x'], { GATE_REGIME: 'published', STUB_STITCH_ARGV: argvFile });
+check('presence.json dismiss follows --dismiss on both captures; pin → --pin, a hidden per-visitor-dialog container → --allow-dialog', r.status === 0 && stitchArgv().length === 2
+  && stitchArgv().every((a) => argOfV(a, '--dismiss') === '.promo-x,.nl-close' && argOfV(a, '--pin') === '.dot-1' && argOfV(a, '--allow-dialog') === '#cmp-root'), `status ${r.status} ${JSON.stringify(stitchArgv())} ${r.stderr}`);
+check('… the probes and chrome-parity get the same dismiss list; live.json records dismiss.extra and pin', /--main main --dismiss \.promo-x,\.nl-close( |$)/m.test(evidence('cap1', 'content-diff-cs1.txt'))
+  && / --dismiss \.promo-x,\.nl-close( |$)/m.test(evidence('cap1', 'chrome-parity-cs1.txt'))
+  && JSON.parse(liveJson('cap1')).dismiss.extra === '.promo-x,.nl-close' && JSON.stringify(JSON.parse(liveJson('cap1')).pin) === '[{"sel":".dot-1","state":"slide 1"}]' && JSON.parse(liveJson('cap1')).dialogLeft === null,
+  `${evidence('cap1', 'content-diff-cs1.txt')} | ${liveJson('cap1')}`);
+writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'], hide: ['#cmp-root'] } }));
+resetArgv();
+r = await gate(['cap1', 'https://live.example/cap1', buildUrl, '1440', 'cs2', '--marker', 'home-proposed', '--dismiss', '.promo-x'], { STUB_STITCH_ARGV: argvFile });
+check('a live.png taken with another pin (or dismiss) list is retaken, said once', r.status === 0 && stitchArgv().map((a) => a[0]).join(',') === 'LIVE,BUILD'
+  && /^gate\.sh: live\.png was taken with another dismiss \/ pin list — retaking it$/m.test(r.stderr) && stitchArgv().every((a) => argOfV(a, '--pin') === null), `${r.stderr} ${JSON.stringify(stitchArgv())}`);
+// the same settings as flags reproduce the presence run: the same capture argv (slug aside)
+writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'], hide: ['.geo-bar'] } }));
+resetArgv();
+await gate(['capfile', 'https://live.example/capx', buildUrl, '1440', 'f1', '--marker', 'home-proposed'], { STUB_STITCH_ARGV: argvFile });
+const viaFile = stitchArgv().map((a) => a.join(' ').replace(/capfile/g, 'X'));
+unlinkSync(join(root, SITE_CAP)); resetArgv();
+await gate(['capflag', 'https://live.example/capx', buildUrl, '1440', 'f1', '--marker', 'home-proposed', '--dismiss', '.nl-close', '--hide', '.geo-bar'], { STUB_STITCH_ARGV: argvFile });
+const viaFlag = stitchArgv().map((a) => a.join(' ').replace(/capflag/g, 'X'));
+check('a round with the settings in presence.json takes the captures a round with the same flags takes (the same argv)', viaFile.length === 2 && JSON.stringify(viaFile) === JSON.stringify(viaFlag), `${JSON.stringify(viaFile)} vs ${JSON.stringify(viaFlag)}`);
+writeFileSync(join(root, SITE_CAP), JSON.stringify({ '*': { dismiss: ['.nl-close'] } }));
+resetArgv();
+r = await gate(['cap3', 'https://live.example/cap3', buildUrl, '1440', 'cs3', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGV: argvFile });
+check('--no-dismiss: presence.json dismiss is not applied — one stderr line, no --dismiss on either capture', r.status === 0 && stitchArgv().every((a) => a.includes('--no-dismiss') && !a.includes('--dismiss'))
+  && /^gate\.sh: presence\.json dismiss not applied \(--no-dismiss\): \.nl-close$/m.test(r.stderr), `${r.stderr} ${JSON.stringify(stitchArgv())}`);
+unlinkSync(join(root, SITE_CAP));
+r = await gate(['dlg1', 'https://live.example/dlg1', buildUrl, '1440', 'd1', '--marker', 'home-proposed'], { STUB_DIALOG_LIVE: 'div#cmp-dialog' });
+check('a dialog left open on the live capture: INCONCLUSIVE, no verdict (exit 1) — live.png and live.json dropped, nothing compared', r.status === 1 && !/differing/.test(r.stdout)
+  && /^gate\.sh: INCONCLUSIVE: dialog left open \(div#cmp-dialog\) on the live capture — no verdict: close it \(--dismiss \/ presence\.mjs add --dismiss\), or hide its container AND allow it as a per-visitor dialog \(presence\.mjs add --hide <container> --allow per-visitor-dialog=<container> --reason R-<nn>\)$/m.test(r.stderr)
+  && !existsSync(join(root, gdir('dlg1'), 'live.png')) && !existsSync(join(root, gdir('dlg1'), 'live.json')), `status ${r.status} ${r.stderr}`);
+r = await gate(['dlg2', 'https://live.example/dlg2', buildUrl, '1440', 'd2', '--marker', 'home-proposed'], { STUB_DIALOG_BUILD: 'dialog.region', STUB_DIALOG_HIDDEN: '#region-root' });
+check('… on the build capture (hidden, not allowed — a hide alone does not silence it): the same, before pixel-compare', r.status === 1 && !/differing/.test(r.stdout)
+  && /^gate\.sh: INCONCLUSIVE: dialog left open \(dialog\.region\) on the build capture — no verdict/m.test(r.stderr), `status ${r.status} ${r.stderr}`);
+r = await gate(['bmiss', 'https://live.example/bmiss', buildUrl, '1440', 'b1', '--marker', 'home-proposed', '--hide', '.geo-bar'], { STUB_HIDEMISS_BUILD: JSON.stringify({ sels: ['.geo-bar'], candidates: [] }) });
+check('a build-side hide that matched nothing is an info line, never a WARNING; the verdict stands', r.status === 0
+  && /^gate\.sh: info: hide matched nothing on the build \(expected — it has no per-visitor region to hide\): \.geo-bar$/m.test(`${r.stdout}\n${r.stderr}`) && !/WARNING/.test(r.stderr), `status ${r.status} ${r.stdout} ${r.stderr}`);
+const CLIP_FINDINGS = JSON.stringify([{ kind: 'TEXT CLIPPED', clipper: 'div.card__body', path: 'main > div.card__body > p' }, { kind: 'TEXT CLIPPED', clipper: 'div.card__body', path: 'main > div.card__body > h3' }]);
+r = await gate(['clipa', 'https://live.example/clipa', buildUrl, '1440', 'ca1', '--full', '--marker', 'home-proposed'], { STUB_CLIPPED: '2', STUB_CLIP_FINDINGS: CLIP_FINDINGS });
+check('--full: clipped findings without an allowance fail the round (exit 2)', r.status === 2, `status ${r.status}`);
+writeFileSync(join(root, SITE_CAP), JSON.stringify({ clipa: { allow: [{ kind: 'clip', selector: 'div.card__body', reason: 'R-02' }] } }));
+r = await gate(['clipa', 'https://live.example/clipa', buildUrl, '1440', 'ca2', '--full', '--marker', 'home-proposed'], { STUB_CLIPPED: '2', STUB_CLIP_FINDINGS: CLIP_FINDINGS });
+check('--full: a presence.json clip allowance lets the findings under its selector pass — one line naming it with its reason, exit 0', r.status === 0
+  && /^clip-probe: 2 finding\(s\) allowed by presence\.json \(div\.card__body — R-02 ×2\)$/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+unlinkSync(join(root, SITE_CAP));
 
 // A stale project copy of stitch-shot (from before the capture record: it rejects the flag, exit 1 — twice, read as
 // "re-queue the round"): no verdict before any capture, one stderr line naming the file and the fix.
