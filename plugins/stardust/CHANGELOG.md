@@ -28,16 +28,17 @@ push (median 5–6 minutes, p90 10) is paid serially by serial units and overlap
 - **Every disjoint unit starts at once (rollout Phase C, delivery-gates).** After C0 is committed and frozen, every
   archetype unit starts in the same turn, each cluster the moment its archetype is `done`; disjoint units are never
   serialized to spare browsers — the browser slot queue paces captures. The lead's loop is `progress.mjs wait` →
-  record what ended → start what is now unblocked → wait again, with a worked example; the one exception is a unit
-  that edits a shared file, which waits for that file's lock.
+  record what ended (the wait's lines and any end `show --waves` lists that the last wait did not print) → start what
+  is now unblocked → wait again, with a worked example; the one exception is a unit that edits a shared file, which
+  waits for that file's lock.
 - **A re-recorded end keeps its time (`progress.mjs unit done|failed`).** On an entry that already has that status the
   fields still apply and `endedAt` stays the subagent's own end, so the lead's bookkeeping re-record does not move it.
 - **`progress.mjs show --waves`.** The dependency view foundation → archetypes → clusters → final, each unit with its
   state (recorded, or `planned` from `coverage/templates.json`), and a last line `can start now: <names>`.
-- **The browser budget is used whole (`run-bg.mjs`).** With `STARDUST_BROWSER_SLOTS` unset, run-bg derives it from
+- **The slots follow the browser budget (`run-bg.mjs`).** With `STARDUST_BROWSER_SLOTS` unset, run-bg derives it from
   `STARDUST_BROWSER_BUDGET` — 3 slots when the budget is 3 or 6, otherwise 2 (a budget under 2: one slot per browser) —
-  so budget 4 runs 2 slots × 2 browsers instead of 3 × 1 with one idle; an explicit `STARDUST_BROWSER_SLOTS` still
-  wins, and the job log names a derived count.
+  so budget 4 runs 2 slots × 2 browsers instead of 3 × 1 with one idle (budgets 3, 4 and 6 are used whole, 5 runs 4);
+  an explicit `STARDUST_BROWSER_SLOTS` still wins, and the job log names a derived count.
 
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
