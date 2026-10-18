@@ -294,9 +294,10 @@ progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
 (step 4's order). **Foundation first** (C0's sub-units, committed and
 frozen before the first cluster spawns), **disjoint clusters spawn
-concurrently**, and **every tool call stays under 4 minutes, the main agent's
-included** — long instruments through `run-bg.mjs start`, `wait` the NEXT call
-(the master skill's wait discipline; handoff contract § Fan-out discipline).
+concurrently**, and **every tool call stays within the prompt cache's life, the
+main agent's included** — long instruments through `run-bg.mjs start`, `wait` the
+NEXT call (`--max 240` under a five-minute cache; the master skill's wait
+discipline; handoff contract § Fan-out discipline).
 
 ### Phase D — Site assembly (whole-site artifacts)
 
