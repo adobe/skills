@@ -22,6 +22,9 @@
  *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--slots mapping|page-json|derived]
  *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
  *        [--variance-dir <dir>] [--stardust-version <v>]
+ *   node migrate.mjs render --from-archetype <proto.html> --capture <page.json> [--force] [--state …] [--proto-dir …]
+ *        [--current …] [--variance-dir <dir>] [--media-map <file>] [--media-ledger <file>]
+ *                                                                    → the sibling's <slug>-proposed.html
  *   node migrate.mjs plan <slug…|--all> [--force] [--encoder <file>] [--source <slug>=<file>]…
  *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--current stardust/current]
  *                                                                    → stardust/migrate/encode/<template>.json
@@ -81,6 +84,26 @@
  *   (--force overrides), `passthrough` for a non-HTML leaf,
  *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
+ *
+ * render --from-archetype <proto.html> --capture <page.json> — the sibling-build mode: writes a sibling's own source HTML
+ *   from the archetype prototype and the sibling's capture (no hand-written generator). --from-archetype takes a value only
+ *   as --from-archetype=<file> or before a token ending in .html / .htm (else it is render's switch); --capture needs it
+ *   and no slugs. Sibling = the capture's basename without .json (a state page); archetype = the state page whose source
+ *   HTML is <proto> (same real file), else <proto>'s basename without -proposed.html when a state page; else usage error.
+ *   Flow guard as render. Refused (exit 2, nothing written): no encode attempt record for the template (strict
+ *   encode-attempt — run: node stardust/scripts/migrate/migrate.mjs plan <slug>); the variance (<variance-dir>/<archetype>.json,
+ *   default as render) has no file or no row for the sibling (strict variance — run: node
+ *   stardust/scripts/replica/sibling-variance.mjs <archetype-url> <sibling-url>, URLs from the captures' finalUrl || url);
+ *   a major variance — verdict differs with a missing or extra probe or a SECTIONS delta (strict variance naming them: a
+ *   new block is hand-authored only for major variance, then node stardust/scripts/migrate/encode-attempt.mjs record
+ *   --template <a> --hand-authored --reason "<why>" --pages <slug>). Class: identical (verdict same) · minor (differs,
+ *   none of those). Fork: as render's A′ fork — a markerless prototype's slots derive; values from the page JSON slots
+ *   when it has the key, else derived (both <current>/pages/<archetype>.html and <current>/pages/<slug>.html required);
+ *   the repeats check; render's media resolver. Target: the page's prototypePath, else <proto-dir>/<slug>-proposed.html —
+ *   an identical file → `unchanged <slug> → <path>`; a different one → refused (strict source: a sibling file is never
+ *   overwritten) unless --force; atomic write, stdout `forked <slug> → <path> (archetype <a>; <identical|minor>; <n>
+ *   slot(s), slots <page-json|derived>)`. Then encode-attempt.mjs recordFork lists the sibling in the template record's
+ *   `forked` (source forked). Writes no migrated page, sidecar or state. Exit 0 · 2 refused · 1 usage.
  *
  * plan — Phase 1 (SKILL.md § Phase 1 — Plan): render's page set (--all prints the same `skip` lines) and each
  *   page's branch as render chooses it (the same flags; a strict branch / source refusal is printed as render
@@ -247,16 +270,18 @@
  *   gate/deviation/decision/variant/modules rewrite one sidecar (a malformed sidecar is a usage
  *   error naming the file, not overwritten); harness rewrites the archetype's sidecar (passedOn)
  *   only when the record changes; summary and pagemap write nothing.
- *   stardust/migrate/encode/<t>.json  plan only: the template's encode attempt record (encode-attempt.mjs --help)
+ *   stardust/migrate/encode/<t>.json  plan: the template's encode attempt record (encode-attempt.mjs --help);
+ *                                    render --from-archetype … --capture …: its `forked` list (recordFork)
+ *   <proto-dir>/<slug>-proposed.html render --from-archetype … --capture … only (or the page's prototypePath)
  * Exit: 0 clean · 2 any page refused, a template left without an encode attempt record (plan), the flow guard or a
  *   refused harness record · 1 usage error (message on stderr).
  */
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anchorsFor, deriveRecipes, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
-import { attemptLine, isAutoNotAttempted, readAttempt, sidecarsBySlug, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
+import { attemptLine, isAutoNotAttempted, readAttempt, sidecarsBySlug, recordAttempt, recordFork, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -914,11 +939,7 @@ export function renderPage(run, page, entry) {
     if (derived.slots.length) { archetypeHtml = derived.html; derivedSlots = derived.slots; repeats = derived.repeats; run.slotsDerived.set(archetype.slug, derived.slots); }
     slotPlan = slotSourceFor(run, page, archetype, capture);
     if (slotPlan.mode !== 'page-json') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath), slotPlan.mode);
-    // A derived slot repeated across containers (a card list) needs one value per container: the fork clones or drops
-    // elements, never their containers — a card would land inside its neighbour.
-    const given = slotValues(mapped ? mapped.slots : capture?.slots).map;
-    const off = Object.entries(repeats).filter(([n, r]) => given.has(n) && given.get(n).length !== r.count);
-    if (off.length) throw new Refusal(slug, 'slots', `derived slot(s) of archetype ${archetype.slug} repeat across containers: ${off.map(([n, r]) => `${n} (${r.count} under ${r.where}, ${given.get(n).length} value(s))`).join('; ')}`, 'mark the repeated container in the prototype (replica recreation-procedure.md § Slot markers), or give one value per container');
+    checkRepeats(slug, archetype.slug, repeats, mapped ? mapped.slots : capture?.slots);
     forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture), deriveHint: mapped ? null : deriveHintFor(run, page, archetype, capture) });
     sourceHtml = forked.html;
   } else sourceHtml = readFileSync(source, 'utf8');
@@ -970,6 +991,18 @@ export function renderPage(run, page, entry) {
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
   return { status: 'rendered', branch, fork: forked ? archetype.slug : null, slotSource: mapped ? slotPlan.mode : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped', varianceHeld: variance?.verdict === 'differs' && !run.acceptVariance };
 }
+// A derived slot repeated across containers (a card list) needs one value per container: the fork clones or drops elements,
+// never their containers — a card would land inside its neighbour.
+function checkRepeats(slug, archetype, repeats, slots) {
+  const given = slotValues(slots).map;
+  const off = Object.entries(repeats).filter(([n, r]) => given.has(n) && given.get(n).length !== r.count);
+  if (off.length) throw new Refusal(slug, 'slots', `derived slot(s) of archetype ${archetype} repeat across containers: ${off.map(([n, r]) => `${n} (${r.count} under ${r.where}, ${given.get(n).length} value(s))`).join('; ')}`, 'mark the repeated container in the prototype (replica recreation-procedure.md § Slot markers), or give one value per container');
+}
+// A page's URL for a command line: its capture's finalUrl || url, else its state url resolved against the origin.
+function pageUrlOf(capture, page, originUrl) {
+  const url = capture?.finalUrl || capture?.url || page.url;
+  try { return new URL(url, originUrl || undefined).href; } catch { return url; }
+}
 // The fork's slot source for a page → { mode: 'mapping' | 'page-json' | 'derived', skipped: reason | null }. --slots as given
 // (an explicit mapping or derived refuses in mappedSlots when it cannot be used); by default the mapping when readMapping finds
 // it usable, it has a verified selector for the archetype and both captures (the archetype's, this page's) exist; else the page
@@ -1009,8 +1042,9 @@ function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath, 
   const { slug } = page; const [archCapture, ownCapture] = captureHtmls(run, page, archetype); const key = `${mode}\n${archetype.slug}\n${sha(archetypeHtml)}`;
   let recipes; let base; let label; let via;
   if (mode === 'derived') {
-    if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to derive its slot map from`, 're-capture the archetype (extract), or pass --slots page-json');
-    if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the derived slots from`, 're-capture the page (extract), or pass --slots page-json');
+    const orSlots = `or give ${capturePath} its slots (extract/reference/prep-mode.md § 4)`;
+    if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to derive its slot map from`, `re-capture the archetype (extract), ${orSlots}`);
+    if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the derived slots from`, `re-capture the page (extract), ${orSlots}`);
     if (!run.recipeCache.has(key)) run.recipeCache.set(key, deriveRecipes(archetypeHtml, readFileSync(archCapture, 'utf8')));
     const d = run.recipeCache.get(key); recipes = d.recipes;
     const total = Object.keys(recipes).length; const located = Object.values(recipes).filter((r) => (Array.isArray(r) ? r : [r]).every((x) => x.anchor)).length;
@@ -1031,7 +1065,7 @@ function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath, 
   const own = capture?.slots; const explicit = slotValues(own).map; const problems = [];
   for (const [name, r] of Object.entries(recipes)) { const none = (Array.isArray(r) ? r : [r]).find((x) => !x.anchor); if (none && !explicit.has(name)) problems.push(`${name} (no recipe: ${none.reason})`); }
   for (const u of unresolved) if (!explicit.has(u.slot)) problems.push(`${u.slot} (${u.reason})`);
-  if (problems.length) throw new Refusal(slug, 'slots', `${label} gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, `add each name to ${capturePath}#slots (a page value wins over the ${mode === 'derived' ? 'derived' : 'mapped'} one), or pass --slots page-json`);
+  if (problems.length) throw new Refusal(slug, 'slots', `${label} gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, mode === 'derived' ? `add each name to ${capturePath}#slots (a page value wins over the derived one)` : `add each name to ${capturePath}#slots (a page value wins over the mapped one), or pass --slots page-json`);
   const names = Object.keys(derived).filter((n) => !explicit.has(n)).sort();
   const entries = Array.isArray(own) ? [...own] : own && typeof own === 'object' ? Object.entries(own).map(([name, value]) => ({ name, value })) : [];
   for (const name of names) entries.push({ name, value: derived[name] });
@@ -1166,8 +1200,7 @@ function planDerive(run, archetype, sibs, planned) {
   if (sibs.every((s) => hasSlotsKey(readJson(join(run.currentDir, 'pages', `${s}.json`))))) return { prototype: proto, markers, slots, located: null, total: null, capture: null };
   const capture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`));
   if (!isFile(capture)) {
-    const own = readJson(join(run.currentDir, 'pages', `${archetype.slug}.json`)); let url = own?.finalUrl || own?.url || archetype.url;
-    try { url = new URL(url, run.originUrl || undefined).href; } catch { /* keep the state's url as given */ }
+    const url = pageUrlOf(readJson(join(run.currentDir, 'pages', `${archetype.slug}.json`)), archetype, run.originUrl);
     return { cause: `the archetype capture ${capture} is absent`, fix: `run: node stardust/scripts/extract/crawl.mjs --url ${url} --pages ${url} --out ${toPosix(run.currentDir)}` };
   }
   const { recipes } = deriveRecipes(d.html, readFileSync(capture, 'utf8'));
@@ -1294,6 +1327,72 @@ export function renderRun(o) {
   return counts.refused.length ? 2 : 0;
 }
 
+// render --from-archetype <proto.html> --capture <page.json>: the sibling-build mode — the archetype prototype forked with a
+// sibling capture's slots, written as the sibling's own source HTML (never a migrated page, sidecar or state).
+export function forkRun(o) {
+  if (typeof o.fromArchetype !== 'string') throw new UsageError('--capture <page.json> needs --from-archetype <proto.html>');
+  if (o.capture == null) throw new UsageError('--from-archetype <proto.html> needs --capture <page.json> (alone, --from-archetype is the switch that forks listed siblings)');
+  if (o.all || o.slugs.length) throw new UsageError('render --from-archetype <proto.html> --capture <page.json> takes no slugs (the capture names the sibling)');
+  const proto = o.fromArchetype; const capFile = o.capture;
+  if (!isFile(proto)) throw new UsageError(`--from-archetype ${proto} does not exist`);
+  if (!isFile(capFile)) throw new UsageError(`--capture ${capFile} does not exist`);
+  for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
+  if (o.varianceDir && !existsSync(o.varianceDir)) throw new UsageError(`--variance-dir ${o.varianceDir} does not exist`);
+  const state = loadState(o.state); flowGuard(state, o.state);
+  const pages = state.pages; const bySlug = new Map(pages.map((p) => [p.slug, p]));
+  const slug = basename(capFile).replace(/\.json$/i, ''); const page = bySlug.get(slug);
+  if (!page) throw new UsageError(`--capture ${capFile}: ${slug} is not a page in ${toPosix(o.state)} (the capture's file name is the sibling's slug)`);
+  const capture = readJson(capFile);
+  if (!capture || typeof capture !== 'object' || Array.isArray(capture)) throw new UsageError(`--capture ${capFile} is not a JSON object`);
+  const run = { stateFile: o.state, pages, bySlug, protoDir: o.protoDir, currentDir: o.current, sources: new Map(Object.entries(o.sources || {})), rolloutDir: join(dirname(o.state), 'rollout'),
+    bundler: new Bundler({ protoDir: o.protoDir, currentDir: o.current, outDir: o.out }), mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
+    mapping: null, recipeCache: new Map(), slotsDerivedFrom: new Map() };
+  // The archetype: the state page whose source HTML is this file, else the page the file is named after (<a>-proposed.html).
+  const real = safeRealpath(resolve(proto)); const named = bySlug.get(basename(proto).replace(/-proposed\.html?$/i, ''));
+  const archetype = pages.find((p) => p.slug !== slug && isFile(sourceFor(run, p)) && safeRealpath(resolve(sourceFor(run, p))) === real)
+    || (named && named.slug !== slug && /-proposed\.html?$/i.test(proto) ? named : null);
+  if (!archetype) throw new UsageError(`--from-archetype ${proto} is the source HTML of no state page (and not <archetype>-proposed.html of one)`);
+  const target = page.prototypePath || join(o.protoDir, `${slug}-proposed.html`); const targetRel = toPosix(target);
+  if (safeRealpath(resolve(target)) === real) throw new UsageError(`${slug}'s source HTML ${targetRel} is the archetype prototype itself`);
+  if (requireEncodeAttempt(PROJECT_ROOT, archetype.slug)) throw new Refusal(slug, 'encode-attempt', `template ${archetype.slug} has no encode attempt record (stardust/migrate/encode/${archetype.slug}.json)`, `run: node stardust/scripts/migrate/migrate.mjs plan ${slug}`);
+  const variance = forkVariance(o, run, state, page, archetype, capture);
+  // the fork, as render's: a markerless prototype's slots derive; values from the page JSON slots when it has the key, else derived
+  let archetypeHtml = readFileSync(proto, 'utf8'); let repeats = {};
+  const derived = deriveSlots(archetypeHtml); if (derived.slots.length) { archetypeHtml = derived.html; repeats = derived.repeats; }
+  const mode = hasSlotsKey(capture) ? 'page-json' : 'derived'; const capRel = toPosix(capFile);
+  const mapped = mode === 'derived' ? mappedSlots(run, page, archetype, archetypeHtml, capture, capRel, 'derived') : null;
+  checkRepeats(slug, archetype.slug, repeats, mapped ? mapped.slots : capture.slots);
+  const forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: capRel, resolveMedia: mediaResolver(run, slug, capture), deriveHint: mapped ? null : deriveHintFor(run, page, archetype, capture) });
+  if (isFile(target) && readFileSync(target, 'utf8') === forked.html) console.log(`unchanged ${slug} → ${targetRel}`);
+  else {
+    if (isFile(target) && !o.force) throw new Refusal(slug, 'source', `${targetRel} exists and differs from the fork (a sibling file is never overwritten)`, `compare the two, then re-run with --force to replace it — or render ${slug} from the file as it is`);
+    mkdirSync(dirname(target), { recursive: true }); const tmp = `${target}.${process.pid}.tmp`;
+    try { writeFileSync(tmp, forked.html); renameSync(tmp, target); } catch (e) { rmSync(tmp, { force: true }); throw e; }
+    console.log(`forked ${slug} → ${targetRel} (archetype ${archetype.slug}; ${variance}; ${forked.slots.length} slot(s), slots ${mode})`);
+  }
+  recordFork(PROJECT_ROOT, archetype.slug, slug, { prototype: toPosix(proto) });
+  return 0;
+}
+// The fork mode's variance class from <variance-dir>/<archetype>.json → 'identical' (verdict same) | 'minor' (differs, no missing or
+// extra probe and no SECTIONS delta); a major variance, no file, no row or a malformed one → Refusal (strict variance).
+function forkVariance(o, run, state, page, archetype, capture) {
+  const dir = o.varianceDir || join(dirname(o.state), 'rollout', 'variance'); const rel = toPosix(join(dir, `${archetype.slug}.json`));
+  const origin = state.site?.originUrl || null; const archetypeUrl = pageUrlOf(readJson(join(o.current, 'pages', `${archetype.slug}.json`)), archetype, origin);
+  const probe = `run: node stardust/scripts/replica/sibling-variance.mjs ${archetypeUrl} ${pageUrlOf(capture, page, origin)}${o.varianceDir ? ` --variance-dir ${toPosix(o.varianceDir)}` : ''}`;
+  const unknown = `so its variance against archetype ${archetype.slug} is unknown`;
+  if (!isFile(rel)) throw new Refusal(page.slug, 'variance', `no variance probe file ${rel}, ${unknown}`, probe);
+  const doc = readJson(rel); const rows = doc && typeof doc === 'object' && Array.isArray(doc.siblings) ? doc.siblings.filter((x) => x && typeof x === 'object') : null;
+  if (!rows) throw new Refusal(page.slug, 'variance', `${rel} is not a variance probe record (no siblings[])`, probe);
+  const row = rows.find((x) => x.slug === page.slug);
+  if (!row) throw new Refusal(page.slug, 'variance', `${rel} has no row for ${page.slug}, ${unknown}`, probe);
+  if (row.verdict === 'same') return 'identical';
+  if (row.verdict !== 'differs') throw new Refusal(page.slug, 'variance', `${rel} gives ${page.slug} the verdict ${JSON.stringify(row.verdict ?? null)} (same or differs expected)`, probe);
+  const list = (v) => (Array.isArray(v) ? v : []); const sections = list(row.deltas).filter((d) => d?.kind === 'SECTIONS');
+  if (!list(row.missing).length && !list(row.extra).length && !sections.length) return 'minor';
+  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug} beyond a fork: missing [${list(row.missing).join(', ')}], extra [${list(row.extra).join(', ')}]${sections.map((d) => `, SECTIONS ${d.msg ?? ''}`.trimEnd()).join('')}`,
+    `a new block is hand-authored only for major variance: build ${page.slug}'s HTML by hand, then record it: node stardust/scripts/migrate/encode-attempt.mjs record --template ${archetype.slug} --hand-authored --reason "<why>" --pages ${page.slug}`);
+}
+
 // ---- sidecar subcommands: judgments the driver cannot make ------------------------------------
 function sidecarPath(o, slug) {
   const state = loadState(o.state); const page = state.pages.find((p) => p.slug === slug);
@@ -1407,7 +1506,7 @@ export function pagemapCmd(o) {
 const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null, encoder: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null, encoder: null, capture: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1415,12 +1514,15 @@ export function parseArgs(argv) {
     const eq = a.indexOf('='); const name = (eq > 0 ? a.slice(2, eq) : a.slice(2)); let val = eq > 0 ? a.slice(eq + 1) : undefined;
     // --json is a switch on summary and takes an object on decision
     if (name === 'json' && val === undefined && argv[i + 1]?.startsWith('{')) val = argv[++i];
+    // --from-archetype is a switch, valued only as --from-archetype=<file> or before a token ending in .html / .htm
+    if (name === 'from-archetype' && val === undefined && /\.html?$/i.test(argv[i + 1] || '') && !argv[i + 1].startsWith('--')) val = argv[++i];
+    if (name === 'from-archetype' && val !== undefined && !val.trim()) throw new UsageError('--from-archetype= needs a file (the archetype prototype)');
     if (BOOL.has(name) && val === undefined) { o[{ 'inline-canon': 'inlineCanon', 'from-archetype': 'fromArchetype' }[name] || name] = true; continue; }
     // A value flag never swallows the next flag: `--evidence --force` is a forgotten value, not the text "--force".
     if (val === undefined) { val = argv[++i]; if (val === undefined) throw new UsageError(`--${name} needs a value`); if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`); }
     if (REPEAT.has(name)) { raw[name].push(val); continue; }
     if (name === 'branch-b') { for (const t of val.split(',')) if (t.trim()) o.branchB.add(t.trim()); continue; }
-    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir', slots: 'slotSource' }[name] || name;
+    const key = { 'proto-dir': 'protoDir', 'canon-css': 'canonCss', 'stardust-version': 'stardustVersion', 'media-map': 'mediaMap', 'media-ledger': 'mediaLedger', 'accept-variance': 'acceptVariance', 'variance-dir': 'varianceDir', slots: 'slotSource', 'from-archetype': 'fromArchetype' }[name] || name;
     if (!(key in o)) throw new UsageError(`unknown flag --${name}`);
     o[key] = val;
   }
@@ -1433,8 +1535,10 @@ export function main(argv) {
   const { o, positional } = parseArgs(argv);
   const [cmd, ...rest] = positional;
   switch (cmd) {
-    case 'render': o.slugs = rest; return renderRun(o);
-    case 'plan': o.slugs = rest; return planRun(o);
+    case 'render': o.slugs = rest; return typeof o.fromArchetype === 'string' || o.capture != null ? forkRun(o) : renderRun(o);
+    case 'plan':
+      if (typeof o.fromArchetype === 'string' || o.capture != null) throw new UsageError('plan takes --from-archetype as a switch only, and no --capture');
+      o.slugs = rest; return planRun(o);
     case 'gate': return gateCmd(o, rest[0], rest[1]);
     case 'deviation': return deviationCmd(o, rest[0]);
     case 'decision': return decisionCmd(o, rest[0]);

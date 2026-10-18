@@ -1150,6 +1150,71 @@ check('plan with nothing derivable (≥ 2 siblings without slots, no map) keeps 
   assert.ok(tail(bare).endsWith("; no slot map derives either (no slot in stardust/prototypes/docks-proposed.html's <main>) — mark the typed slots in stardust/prototypes/docks-proposed.html (data-slot inside <main>; stardust/reference/data-attributes.md § Slot identity), then run: node stardust/scripts/migrate/migrate.mjs plan dock-one dock-two"), tail(bare));
   assert.ok(!has(ENC('docks')), 'nothing recorded');
 });
+const FORK = (slug, ...extra) => ['render', '--from-archetype', `${P}/ferries-proposed.html`, '--capture', `stardust/current/pages/${slug}.json`, ...extra];
+const ferryRow = (slug, verdict, extra = [], deltas = []) => ({ slug, url: `https://example.test/ferries/${slug.slice('ferry-'.length)}/`, verdict, missing: [], extra, deltas });
+write('stardust/rollout/variance/ferries.json', `${JSON.stringify({ template: 'ferries', archetype: 'https://example.test/ferries/', at: '2026-10-03T00:00:00Z', siblings: [
+  ferryRow('ferry-east', 'differs', ['promo'], [{ kind: 'EXTRA', probe: 'promo', msg: '"div.promo" matches 0 on the archetype, 1 on the sibling' }, { kind: 'SECTIONS', msg: '2 vs 3 top-level sections (archetype: hero, article; sibling: hero, promo, article) — a different template family or an extra/missing section' }]),
+  ferryRow('ferry-north', 'same'),
+  ferryRow('ferry-south', 'differs', [], [{ kind: 'COUNT', probe: 'li', msg: '3 → 4 matches' }]),
+] }, null, 2)}\n`);
+check('render --from-archetype <proto> --capture <page.json> forks an identical sibling into its own source HTML (the texts and images of its capture HTML), lists it in the record\'s forked; a re-run is unchanged, a changed file is never overwritten without --force', () => {
+  const stateBefore = read(STATE); const FN = `${P}/ferry-north-proposed.html`;
+  const r = run(FORK('ferry-north')); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+  assert.equal(r.out, `forked ferry-north → ${FN} (archetype ferries; identical; 4 slot(s), slots derived)\n`);
+  const html = read(FN); const m = mainOf(html);
+  assert.match(m, /<h1 data-slot="hero-h1">Northern crossings<\/h1>/); assert.match(m, /<p data-slot="hero-p">Two sailings a day to the north isles\.<\/p>/);
+  assert.match(m, /<img src="https:\/\/example\.test\/content\/media\/ferry-north\.jpg" alt="The north pier at dawn" data-slot="hero-img">/);
+  assert.match(m, /<p data-slot="body-p">Seats on the north route are booked at the pier\.<\/p>/); assert.ok(!/Island ferries|harbour/.test(m), 'no archetype content left');
+  assert.match(html, /<title>North ferries<\/title>/);
+  const rec = json(ENC('ferries')); assert.deepEqual(rec.forked, ['ferry-north']); assert.equal(rec.source, 'forked'); assert.equal(rec.derive.prototype, `${P}/ferries-proposed.html`);
+  assert.equal(read(STATE), stateBefore, 'state untouched'); assert.ok(!has(`${OUT}/ferries/north/index.html`) && !has(`${OUT}/ferries/north/_meta.json`), 'no migrated page, no sidecar');
+  const again = run(FORK('ferry-north')); assert.equal(again.status, 0, again.err); assert.equal(again.out, `unchanged ferry-north → ${FN}\n`);
+  write(FN, html.replace('Northern crossings', 'Edited by hand'));
+  const changed = run(FORK('ferry-north')); assert.equal(changed.status, 2);
+  assert.match(changed.err, /^refused ferry-north: strict source — stardust\/prototypes\/ferry-north-proposed\.html exists and differs from the fork \(a sibling file is never overwritten\) — /m);
+  assert.match(read(FN), /Edited by hand/);
+  const forced = run(FORK('ferry-north', '--force')); assert.equal(forced.status, 0, forced.err); assert.equal(read(FN), html);
+  const own = run(['render', 'ferry-north']); assert.equal(own.status, 0, own.err);
+  assert.match(own.out, /^A' ferry-north → ferries\/north\/index\.html {2}\(ferry; \d+ assets/m, 'render then places the sibling from its own file');
+});
+check('a minor variance (differs without a missing or extra probe or a SECTIONS delta) forks too (--from-archetype=<file> form); both forked siblings counted slot-rendered by encode-attempt summary', () => {
+  const r = run(['render', `--from-archetype=${P}/ferries-proposed.html`, '--capture', 'stardust/current/pages/ferry-south.json']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, `forked ferry-south → ${P}/ferry-south-proposed.html (archetype ferries; minor; 4 slot(s), slots derived)\n`);
+  assert.deepEqual(json(ENC('ferries')).forked, ['ferry-north', 'ferry-south']);
+  const sum = spawnSync(process.execPath, [join(dirname(SCRIPT), 'encode-attempt.mjs'), 'summary'], { cwd: tmp, encoding: 'utf8' });
+  assert.match(sum.stdout, /^encode-attempt ferries: 2 sibling\(s\) · 0 encoded · 2 slot-rendered · 0 hand-authored · 0 not-attempted \(not-attempted\)$/m);
+});
+check('a sibling with a new block (variance differs: an extra probe and a SECTIONS delta) is refused: strict variance names them and the hand-authored record; nothing written', () => {
+  const s = json(STATE); s.pages.push(page('ferry-east', '/ferries/east/', 'directed', 'ferry'), page('ferry-west', '/ferries/west/', 'directed', 'ferry')); write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  ferryCap('ferry-east', 'East ferries'); ferryCap('ferry-west', 'West ferries');
+  const before = read(ENC('ferries'));
+  const r = run(FORK('ferry-east')); assert.equal(r.status, 2); assert.equal(r.out, '');
+  assert.equal(r.err, 'refused ferry-east: strict variance — the variance probe (stardust/rollout/variance/ferries.json) found ferry-east differs from archetype ferries beyond a fork: missing [], extra [promo], SECTIONS 2 vs 3 top-level sections (archetype: hero, article; sibling: hero, promo, article) — a different template family or an extra/missing section — a new block is hand-authored only for major variance: build ferry-east\'s HTML by hand, then record it: node stardust/scripts/migrate/encode-attempt.mjs record --template ferries --hand-authored --reason "<why>" --pages ferry-east\n');
+  assert.ok(!has(`${P}/ferry-east-proposed.html`)); assert.equal(read(ENC('ferries')), before);
+  const norow = run(FORK('ferry-west')); assert.equal(norow.status, 2);
+  assert.equal(norow.err, 'refused ferry-west: strict variance — stardust/rollout/variance/ferries.json has no row for ferry-west, so its variance against archetype ferries is unknown — run: node stardust/scripts/replica/sibling-variance.mjs https://example.test/ferries/ https://example.test/ferries/west/\n');
+  mkdirSync(join(tmp, 'stardust/no-variance'), { recursive: true });
+  const nofile = run(FORK('ferry-west', '--variance-dir', 'stardust/no-variance')); assert.equal(nofile.status, 2);
+  assert.match(nofile.err, /^refused ferry-west: strict variance — no variance probe file stardust\/no-variance\/ferries\.json, so its variance against archetype ferries is unknown — run: node stardust\/scripts\/replica\/sibling-variance\.mjs https:\/\/example\.test\/ferries\/ https:\/\/example\.test\/ferries\/west\/ --variance-dir stardust\/no-variance$/m);
+  assert.ok(!has(`${P}/ferry-west-proposed.html`));
+  const noRecord = run(['render', '--from-archetype', `${P}/docks-proposed.html`, '--capture', 'stardust/current/pages/dock-one.json']); assert.equal(noRecord.status, 2);
+  assert.equal(noRecord.err, 'refused dock-one: strict encode-attempt — template docks has no encode attempt record (stardust/migrate/encode/docks.json) — run: node stardust/scripts/migrate/migrate.mjs plan dock-one\n');
+});
+check('--from-archetype stays a switch unless it is given a value (=<file>, or a next token ending in .html / .htm); --capture needs the valued one and no slugs → usage errors', () => {
+  write('stardust/current/pages/nobody.json', '{}'); write(`${P}/nobody-proposed.html`, minimal('Nobody'));
+  const cases = [
+    [['render', '--capture', 'stardust/current/pages/ferry-west.json'], /--capture <page\.json> needs --from-archetype <proto\.html>/],
+    [['render', '--from-archetype', '--capture', 'stardust/current/pages/ferry-west.json'], /--capture <page\.json> needs --from-archetype <proto\.html>/],
+    [['render', 'ferry-west', ...FORK('ferry-west').slice(1)], /takes no slugs/],
+    [['render', '--from-archetype', `${P}/ferries-proposed.html`], /--from-archetype <proto\.html> needs --capture <page\.json>/],
+    [FORK('nobody'), /nobody is not a page in stardust\/state\.json/],
+    [['render', '--from-archetype', `${P}/nobody-proposed.html`, '--capture', 'stardust/current/pages/ferry-west.json'], /is the source HTML of no state page/],
+    [['plan', 'ferry-west', '--from-archetype', `${P}/ferries-proposed.html`], /plan takes --from-archetype as a switch only/],
+    [['render', '--from-archetype=', '--capture', 'stardust/current/pages/ferry-west.json'], /--from-archetype= needs a file/],
+  ];
+  for (const [args, re] of cases) { const r = run(args); assert.equal(r.status, 1, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re, args.join(' ')); }
+  assert.ok(!has(`${P}/ferry-west-proposed.html`));
+});
 
 // ---- --help ---------------------------------------------------------------------------------
 console.log('--help');
