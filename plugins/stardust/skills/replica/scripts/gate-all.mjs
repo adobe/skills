@@ -131,8 +131,11 @@
  * INCONCLUSIVE row); --skip-existing re-shoots a stitched capture of either side without that record (logged `not
  * reused (--skip-existing: no overlay-left record)`) and --compare-only reads one as `unchecked` (an INCONCLUSIVE row).
  *
- * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
- * page dir are reused as before — never a stitched one whose record predates the overlay-left check (re-shot); an EDS
+ * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). A killed roster run is resumed
+ * with the same command plus --skip-existing, never restarted from scratch: the captures and probe sets it finished are
+ * reused by the rules below (each EDS capture's gate-key.json is written as the capture lands), and PASS rows of earlier
+ * tables while their key holds; a killed run writes no table, so its pages are compared and tabled again. Origin
+ * captures in the page dir are reused as before — never a stitched one whose record predates the overlay-left check (re-shot); an EDS
  * capture only while its <slug>/gate-key.json proves it current (below), with the same overlay-left record rule.
  * Probes are replayed from <slug>/probes.json while the capture pair they were taken against is the one on disk —
  * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes, a
@@ -332,7 +335,10 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             while the gate key is unchanged (rows say reused). Published eds.png:
                             only while <slug>/gate-key.json proves it current (same key, or unknown
                             key with the same tree, reason, upstream, ledger rows); no local
-                            content/<page>.html → nothing to compare → re-shot every run (slower)
+                            content/<page>.html → nothing to compare → re-shot every run (slower).
+                            A killed roster run: re-run the same command plus --skip-existing — the
+                            captures and probe sets it finished are reused (PASS rows of earlier tables
+                            too), never restarted from scratch
   --reuse-across-hosts      EXPERIMENT, off by default; with --skip-existing: a key that differs only by
                             the build host, both known, keeps the other host's capture (the final roster
                             gate on the live host keeps the preview-host unit gate's capture of the same
@@ -1562,7 +1568,6 @@ async function selfTriage(out, log) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const startedAt = new Date().toISOString(); // this process's start (gate-key.json); runStart below is the run anchor
   const { cov, st } = rosterSource(opts);
   if (cov && !cov.doc) { console.error(cov.missing ? `gate-all: ${cov.path} not found — run from the project root or pass --coverage` : `gate-all: ${cov.path} unreadable: ${cov.error}`); process.exit(1); }
   if (!cov && st.missing) { console.error(opts.stage === 'prototype' ? `gate-all: ${opts.state} not found — run from the project root or pass --state` : `gate-all: neither ${DEFAULT_COVERAGE} nor ${opts.state} found — run from the project root or pass --coverage / --state`); process.exit(1); }
@@ -1814,6 +1819,10 @@ async function main() {
     const s = await stitch(p, 'eds', edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }, OL ? ['--headed'] : []);
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotRecord(p, 'eds'), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...capFields(p), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
+    // gate-key.json = the key of this EDS capture (null while unknown or when it failed), written as the capture lands: a
+    // killed run's finished captures are proven current when it is resumed with --skip-existing
+    const k = KEYS[p.slug];
+    if (k) writeFileSync(join(d, 'gate-key.json'), JSON.stringify({ gateKey: r.error ? null : k.gateKey, why: r.error ? `EDS capture failed: ${r.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: r.at }, null, 1));
     log(`eds ${p.slug} → ${r.instrument}${r.overlayLeft ? ` WARN overlay left — ${r.overlayLeft}` : ''}${r.dialogLeft && r.dialogLeft.length ? ` WARN dialog left open (${r.dialogLeft.join(', ')})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
   if (opts.stage === 'published') {
@@ -1977,11 +1986,6 @@ async function main() {
     // one browser per machine slot: the two capture pools run one after the other, never side by side
     if (opts.pools.sequential) { await pool(todo, opts.oc, captureOrigin); await pool(todo, opts.ec, captureEds); }
     else await Promise.all([pool(todo, opts.oc, captureOrigin), pool(todo, opts.ec, captureEds)]);
-    // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
-    for (const p of todo) {
-      const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
-      if (k && m && m.at >= startedAt) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
-    }
   } else {
     // --compare-only takes no capture: a stitched record from before the overlay-left check is read as unchecked (an
     // INCONCLUSIVE row), never clean; the record on disk and its fontsFailed stay as they are

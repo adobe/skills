@@ -79,7 +79,8 @@
 // an unchanged PASS left out, every other case gated with its why; --changed-only --stage prototype → exit 2, nothing
 // written. The reuse sandbox: live-host PASS rows → both pages gated on the preview host as an --only run; nothing changed →
 // the one line, nothing written (with --only too); a pushed block CSS byte → that page alone; a newer FAIL over a matching
-// PASS → gated, and refused at the fix-round cap like --only.
+// PASS → gated, and refused at the fix-round cap like --only. A killed roster run (the reuse sandbox's stitch stub kills
+// gate-all in the last EDS capture): the landed capture's gate-key.json is on disk, --skip-existing re-shoots only the other.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -892,7 +893,8 @@ writeFileSync(join(replica, 'stitch-shot.mjs'), `import { appendFileSync, writeF
 const [url, out] = process.argv.slice(2);
 appendFileSync(process.env.STUB_COUNT, 'STITCH ' + (url.startsWith('https://origin.test') ? 'origin' : 'eds') + '\\n');
 writeFileSync(out, 'png');
-${SHOT_RECORD("(url.startsWith('https://origin.test') ? 'ORIGIN' : 'EDS')")}`);
+${SHOT_RECORD("(url.startsWith('https://origin.test') ? 'ORIGIN' : 'EDS')")}
+if (process.env.STUB_KILL_URL === url) process.kill(process.ppid, 'SIGKILL');`);
 writeFileSync(join(replica, 'pixel-compare.mjs'), `import { appendFileSync } from 'node:fs';
 import { basename, dirname } from 'node:path';
 appendFileSync(process.env.STUB_COUNT, 'COMPARE\\n');
@@ -1146,6 +1148,20 @@ check('--changed-only, 4: a FAIL after a matching PASS is gated (the newest row 
   const x = gateAll(['--changed-only']);
   assert.equal(x.status, 0, x.stderr + x.stdout); assert.deepEqual([x.n.eds, x.n.compares], [1, 1]); assert.equal(row(runOf(x), 'about').pass, true);
   assert.match(readFileSync(join(REUSE_OUT, '_run.log'), 'utf8'), /changed-only: gating about \(latest row FAIL\); unchanged since their PASS: home /);
+});
+check('a killed roster run resumes with --skip-existing: each EDS capture\'s gate-key.json is written as the capture lands, so the resumed run re-shoots only the capture the kill interrupted — origins and the finished EDS capture are kept', () => {
+  // no table and no gate-key.json from before: nothing earlier is reused whole
+  rmSync(join(REUSE_OUT, 'summary.json'), { force: true }); rmSync(join(REUSE_OUT, 'runs'), { recursive: true, force: true });
+  for (const slug of ['home', 'about']) rmSync(pageFile(slug, 'gate-key.json'), { force: true });
+  // one browser per slot: every origin capture, then the EDS captures in roster order (home, about) — the kill lands in about's
+  const slot = { STARDUST_BROWSER_SLOT: 'test', STARDUST_BROWSERS_PER_SLOT: '1' };
+  const killed = gateAll([], { ...slot, STUB_KILL_URL: 'https://main--site--org.aem.page/about' });
+  assert.equal(killed.signal, 'SIGKILL', killed.stderr + killed.stdout); assert.deepEqual([killed.n.origin, killed.n.eds], [2, 2]);
+  assert.match(storedKey('home'), HEX, 'home\'s EDS capture landed before the kill: its key is on disk'); assert.equal(existsSync(pageFile('about', 'gate-key.json')), false);
+  assert.equal(existsSync(join(REUSE_OUT, 'summary.json')), false, 'a killed run writes no table');
+  const resumed = gateAll(['--skip-existing'], slot);
+  assert.equal(resumed.status, 0, resumed.stderr + resumed.stdout); assert.deepEqual(resumed.n, { origin: 0, eds: 1, probes: 2, compares: 2 });
+  for (const slug of ['home', 'about']) { const x = row(summary(), slug); assert.equal(x.pass, true); assert.equal(x.gateKey, storedKey(slug)); assert.equal(x.fingerprint, fpOf(slug)); }
 });
 rmSync(base, { recursive: true, force: true });
 
