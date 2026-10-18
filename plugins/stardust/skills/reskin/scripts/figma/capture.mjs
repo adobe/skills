@@ -2,11 +2,12 @@
 // one file version over REST (files depth=2 → nodes → variables/local → images, every call after the
 // first pinned with version=<v>), caches raw responses and image bytes, then writes the capture
 // outputs under <dir>/canon-source/. With a complete cache and no --refresh it rebuilds every output
-// from the cache: no request, no token. A run stopped part-way (a long 429) keeps what it fetched; the
-// next run for the same selection reuses the cached nodes response and image bytes.
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+// from the cache: no request, no token. A capture is built in a staging dir and swapped in whole when
+// it is complete, so a run stopped part-way (a long 429) or failing keeps what it fetched for the next
+// run of the same selection and never touches the last complete capture, even of the same version.
+import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
-import { cacheFor, writeCurrent } from './cache.mjs';
+import { cacheFor, cacheProblem, writeCurrent } from './cache.mjs';
 import { FigmaError, UsageError } from './errors.mjs';
 import { buildFoundation, FOUNDATION_FILES } from './foundation.mjs';
 import { readJsonIf, provenance, writeFileAtomic, writeJson } from './io.mjs';
@@ -37,6 +38,7 @@ function selectFrames(file, nodeId, frames) {
 export async function runCapture({ url, frames = null, maxFrames = 25, refresh = false, confidential = false, dir = 'stardust', client, now = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'), warn = (m) => process.stderr.write(`${m}\n`) }) {
   const { fileKey, mainFileKey, nodeId } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
+  cache.recover();
   const request = { nodeId, frames, maxFrames };
   const latest = cache.latest();
 
@@ -47,8 +49,12 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     if (JSON.stringify(manifest.request) !== JSON.stringify(request)) {
       throw new UsageError(`the cache at ${cache.root} holds a different selection (node ${manifest.request.nodeId ?? 'none'}, frames ${manifest.request.frames?.join(',') ?? 'default'}, max ${manifest.request.maxFrames}); re-run with --refresh to fetch this one`);
     }
-    const stalled = readdirSync(cache.root).filter((d) => d !== latest.version && existsSync(join(cache.root, d, 'selection.json')) && !existsSync(join(cache.root, d, 'manifest.json')));
-    if (stalled.length) warn(`figma-donor: a newer capture (version ${stalled.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
+    const problem = cacheProblem(v, manifest);
+    if (problem) throw new UsageError(`the cache at ${v.dir} is inconsistent: ${problem}. Re-run with --refresh to rebuild it.`);
+    const stalled = cache.stalled();
+    const newer = stalled.filter((s) => s !== latest.version);
+    if (newer.length) warn(`figma-donor: a newer capture (version ${newer.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
+    if (stalled.includes(latest.version)) warn(`figma-donor: a refresh of version ${latest.version} stopped part-way; the complete cached capture is unchanged and is used. Re-run with --refresh to finish it.`);
     const written = writeOutputs({ dir, manifest, v, confidential });
     return { manifest, written, fromCache: true };
   }
@@ -58,8 +64,6 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const version = String(file.version ?? '');
   if (!version) throw new FigmaError(`Figma returned no version for file ${fileKey}`, { exitCode: 3 });
   endpoints.push({ name: 'files', status: 'ok' });
-  const v = cache.version(version);
-  v.write('file.json', file);
 
   const { all, discovered } = selectFrames(file, nodeId, frames);
   if (!all.length) throw new UsageError('no top-level frames to capture: pass --frames <id,id> or a URL with a node-id');
@@ -72,6 +76,10 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const selected = all.slice(0, maxFrames);
   const cut = all.slice(maxFrames);
   if (cut.length) warn(`figma-donor: ${discovered} top-level frames; capturing the first ${selected.length} (--max-frames ${maxFrames}). Cut: ${cut.join(', ')}`);
+  // Everything below lands in staging; the version's complete capture, if any, stays as it was until
+  // the manifest is written and the staging dir is promoted.
+  const v = cache.staging(version, selected);
+  v.write('file.json', file);
   const resume = JSON.stringify(v.read('selection.json')) === JSON.stringify({ frames: selected });
   v.write('selection.json', { frames: selected });
 
@@ -139,23 +147,21 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     endpoints, planTier: client.planTier ?? null,
   };
   v.write('manifest.json', manifest);
-  cache.setLatest(version);
-  const written = writeOutputs({ dir, manifest, v, confidential });
+  cache.promote(version, v);
+  const written = writeOutputs({ dir, manifest, v: cache.version(version), confidential });
   return { manifest, written, fromCache: false };
 }
 
 // capture --list: every page and its visible top-level nodes, from the cached file when there is one
-// (no request, no token), else one files depth=2 call cached like a capture's. Writes no output.
+// (no request, no token), else one files depth=2 call. Writes nothing.
 export async function listInventory({ url, refresh = false, dir = 'stardust', client }) {
   const { fileKey } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
+  cache.recover();
   const latest = cache.latest();
   let file = latest && !refresh ? cache.version(latest.version).read('file.json') : null;
   const fromCache = Boolean(file);
-  if (!file) {
-    file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
-    if (file.version) cache.version(String(file.version)).write('file.json', file);
-  }
+  if (!file) file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
   const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const lines = [];
   let count = 0;
