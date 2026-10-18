@@ -311,6 +311,38 @@ check('waiverImpacts: a mobile waiver names the mobile variant of the module fra
   assert.equal(none.detail, '"phone layout is built later": drops the mobile root, which the module frame does not hold: 0 text styles (0 text nodes)');
 });
 
+check('waiverImpacts: a desktop waiver names the module frame\'s desktop variant, its styles, nodes and width; a page section is its own desktop', () => {
+  const desktop = group('D', 'Hero / Desktop', 'INSTANCE', 1440, [text('d1', 16), text('d2', 40), text('d3', 16)]);
+  const mobile = group('V', 'Hero / Mobile', 'INSTANCE', 360, [text('m1', 14)]);
+  const kit = group('M', 'Hero', 'FRAME', 2000, [group('W', 'Wrapper', 'FRAME', 1500, [desktop]), mobile]);
+  const synth = { roots: { M: { box: kit }, V: { box: mobile } } };
+  const section = { root: 'V', roots: { 360: 'V' }, waive: [{ width: 'desktop', why: 'the hero is only shown at phone width' }] };
+  const [w] = waiverImpacts(section, { node: 'M' }, synth);
+  assert.deepEqual([w.check, w.node], ['waive width desktop', 'D']);
+  assert.equal(w.detail, '"the hero is only shown at phone width": drops the desktop root "Hero / Desktop" (D): 2 text styles (3 text nodes) at 1440px');
+  const page = group('P', 'Home section', 'FRAME', 1440, [text('p1', 16)]);
+  const [own] = waiverImpacts({ root: 'P', roots: { 360: 'P' }, waive: section.waive }, { node: 'P' }, { roots: { P: { box: page } } });
+  assert.equal(own.detail, '"the hero is only shown at phone width": drops the desktop root "Home section" (P): 1 text style (1 text node) at 1440px');
+  assert.equal(own.node, 'P');
+  const [none] = waiverImpacts(section, { node: 'V' }, { roots: { V: { box: mobile } } });
+  assert.equal(none.detail, '"the hero is only shown at phone width": drops the desktop root, which the module frame does not hold: 0 text styles (0 text nodes)');
+  assert.equal(none.node, 'V', 'the section root when no desktop root is held');
+  const [mixed] = waiverImpacts(section, { node: 'M' }, { roots: { M: { box: group('M', 'Hero', 'FRAME', 2000, [mobile]) } } });
+  assert.match(mixed.detail, /which the module frame does not hold/, 'a frame holding a mobile variant and no desktop variant is not itself the desktop');
+});
+
+check('buildRegister: a desktop waiver is a waived row naming desktop, its why and what it drops; the section is not mandated', () => {
+  const reg = buildRegister(waiving('s01', { waive: [{ width: 'desktop', why: 'the hero is only shown at phone width' }] }, { waived: 1 }));
+  assert.deepEqual(reg.counts, { ...COUNTS, mandated: 1, unmandated: 0, waived: 1 });
+  assert.deepEqual(reg.rows.filter((r) => r.class === 'mandated').map((r) => r.slot), ['s02']);
+  const w = reg.rows.find((r) => r.class === 'waived');
+  assert.deepEqual([w.slot, w.module, w.node, w.check], ['s01', 'M1', '1:3', 'waive width desktop']);
+  assert.equal(w.detail, '"the hero is only shown at phone width": drops the desktop root "Hero" (1:3): 4 text styles (4 text nodes) at 1440px · 1 geometry and 1 type entries pass');
+  const md = registerMd({ page: 'home', ...reg });
+  assert.match(md, /## waived \(1\)/);
+  assert.match(md, /\| s01 \| M1 \| 1:3 \| waive width desktop \| "the hero is only shown at phone width": drops the desktop root "Hero" \(1:3\)/);
+});
+
 check('coverageLine: text styles, the widths of every section, waivers; empty is none', () => {
   assert.equal(coverageLine({ s01: { styles: { covered: 4, total: 4 }, widths: [360, 1440], waived: 0 }, s02: { styles: { covered: 3, total: 4 }, widths: [1440], waived: 1 } }), 'text styles 7/8 · widths 360,1440 · waived 1');
   assert.equal(coverageLine({}), 'text styles 0/0 · widths none · waived 0');

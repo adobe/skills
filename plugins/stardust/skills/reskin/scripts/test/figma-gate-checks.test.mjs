@@ -96,18 +96,18 @@ check('per-width roots: a root is found, a node must sit under it', () => {
   const kitCtx = { ...ctx, boxes: buildBoxes({ nodes, roots: ['1:3', '1:7', '1:20'] }) };
   const file = (s01) => ({ version: 1, page: 'home', sections: { s01, s02: { geometry: [{ id: 'g', selector: '.card', node: 'I1:7;5:7', measure: 'width' }], type: typeS02 } } });
   const hero = (over = {}) => ({
-    roots: { 360: '1:20' }, // the hero's Button instance: an outermost instance of the module
-    geometry: [{ id: 'x', selector: '.btn', node: '1:20', measure: 'width', width: 360 }],
-    type: [...fixtureChecks.sections.s01.type, { id: 't5', selector: '.btn.primary', node: 'I1:20;3:5', width: 360 }],
+    roots: { 280: '1:20' }, // the hero's Button instance (140 wide): an outermost instance of the module, half of 280
+    geometry: [{ id: 'x', selector: '.btn', node: '1:20', measure: 'width', width: 280 }],
+    type: [...fixtureChecks.sections.s01.type, { id: 't5', selector: '.btn.primary', node: 'I1:20;3:5', width: 280 }],
     ...over,
   });
   const ok = validateChecks(file(hero()), kitCtx);
   assert.deepEqual(ok.problems, []);
-  assert.deepEqual(ok.sections.s01.roots, { 360: '1:20', 1440: '1:3' });
-  assert.equal(ok.sections.s01.geometry[0].width, 360);
-  const bad = validateChecks(file(hero({ geometry: [{ id: 'x', selector: '.btn', node: '1:4', measure: 'width', width: 360 }], type: fixtureChecks.sections.s01.type })), kitCtx).problems.join('\n');
+  assert.deepEqual(ok.sections.s01.roots, { 280: '1:20', 1440: '1:3' });
+  assert.equal(ok.sections.s01.geometry[0].width, 280);
+  const bad = validateChecks(file(hero({ geometry: [{ id: 'x', selector: '.btn', node: '1:4', measure: 'width', width: 280 }], type: fixtureChecks.sections.s01.type })), kitCtx).problems.join('\n');
   assert.match(bad, /x: 1:4 is not inside s01's root 1:20/);
-  assert.match(bad, /s01 @360: text style 16\/600\/24 #ffffff \("Get started", node I1:20;3:5\) has no type entry or waiver/, 'a second width is held to the same floor');
+  assert.match(bad, /s01 @280: text style 16\/600\/24 #ffffff \("Get started", node I1:20;3:5\) has no type entry or waiver/, 'a second width is held to the same floor');
 });
 
 check('type entries: the node must be TEXT and inside the root', () => {
@@ -169,14 +169,20 @@ const floorNodes = { nodes: { 'F:0': { document: shape('F:0', 'Page', 'FRAME', 1
     ]),
     shape('F:20', 'Card, Device=Tablet', 'INSTANCE', 768, 600, [words('F:21', 'Tablet title', 'Inter Display', 20, 700, 24, WHITE)]),
     shape('F:30', 'Card, Device=Mobile', 'INSTANCE', 382, 900, [words('F:31', 'Mobile title', 'Inter Display', 20, 700, 24, WHITE), words('F:32', 'Body copy', 'Inter', 16, 400, 24, INK)]),
+    shape('F:40', 'Backdrop', 'COMPONENT', 1440, 700),
+    shape('F:50', 'Legend chip', 'INSTANCE', 120, 32, [words('F:51', 'Legend', 'Inter', 16, 400, 24, INK)]),
+    shape('F:60', 'Card, content width', 'INSTANCE', 1184, 700, [words('F:61', 'Content copy', 'Inter', 16, 400, 24, INK)]),
+    shape('F:62', 'Card, half width', 'INSTANCE', 720, 700, [words('F:63', 'Half copy', 'Inter', 16, 400, 24, INK)]),
+    shape('F:64', 'Card, just under half', 'INSTANCE', 719, 700, [words('F:65', 'Under copy', 'Inter', 16, 400, 24, INK)]),
   ]),
   shape('G:1', 'Plain module', 'FRAME', 1440, 900, [
     words('G:2', 'Plain heading', 'Inter Display', 24, 700, 28.8, WHITE),
     shape('G:3', 'Plain, Device=Tablet', 'INSTANCE', 768, 500, [words('G:4', 'Tablet body', 'Inter', 16, 400, 24, INK)]),
     shape('G:5', 'mobile', 'INSTANCE', 24, 24),
   ]),
+  shape('H:1', 'Image module', 'FRAME', 1440, 600, [shape('H:2', 'Hero image', 'INSTANCE', 1440, 500)]),
 ]) } } };
-const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:2', 'F:10', 'F:11', 'F:14', 'F:18', 'F:20', 'F:30', 'F:31', 'G:1'] });
+const floorBoxes = buildBoxes({ nodes: floorNodes, roots: ['F:1', 'F:2', 'F:10', 'F:11', 'F:14', 'F:18', 'F:20', 'F:30', 'F:31', 'F:40', 'F:50', 'F:60', 'F:62', 'F:64', 'G:1', 'H:1'] });
 const floorJoin = { sections: [{ slot: 's03', module: 'M3', node: 'F:1' }, { slot: 's04', module: 'M4', node: 'G:1' }] };
 const floorCtx = { join: floorJoin, boxes: floorBoxes, tokens: {} };
 const s04 = { geometry: [{ id: 'g1', selector: 'h2', node: 'G:2', measure: 'width' }], type: [{ id: 't1', selector: 'h2', node: 'G:2' }, { id: 't2', selector: 'p', node: 'G:4' }] };
@@ -192,6 +198,7 @@ const floor = (section, extra = {}) => validateChecks({ version: 1, page: 'home'
 const floorProblems = (section) => floor(section).problems;
 const withoutType = (...ids) => s03().type.filter((e) => !ids.includes(e.id));
 const MOBILE_LINE = 's03: module has a mobile variant (Card, Device=Mobile, 382 wide) but no roots[<w>] ≤ 480 and no { width: "mobile" } waiver';
+const TAIL = ' — name the module\'s outermost instance or variant';
 
 check('styleKey: the tuple of family, size, weight, line height and letter spacing rounded to 0.1, and colour', () => {
   const t = { fontFamily: 'Inter', fontSize: 24, fontWeight: 700, lineHeightPx: 28.8, letterSpacing: 0, color: 'rgb(255, 255, 255)' };
@@ -275,17 +282,19 @@ check('coverage floor: a TEXT-node waiver and a container waiver each clear thei
   assert.deepEqual(floorProblems(s03({ type: withoutType('t3', 't2'), waive: [{ node: 'F:15', why: 'legal' }] })), ['s03 @1440: text style 16/400/24 #333333 ("Body copy", node F:13) has no type entry or waiver'], 'a waiver clears what it names');
 });
 
-check('coverage floor: a waiver names a node inside one of the section\'s roots, one of node or width "mobile", and a why', () => {
+check('coverage floor: a waiver names a node inside one of the section\'s roots, one of node or width "mobile" | "desktop", and a why', () => {
   const w = (waive) => floorProblems(s03({ waive }));
   assert.deepEqual(w([{ node: 'F:15', why: '' }]), ['s03: waive[0] needs why']);
   assert.deepEqual(w([{ node: 'F:15' }]), ['s03: waive[0] needs why']);
   assert.deepEqual(w([{ node: 'F:15', width: 'mobile', why: 'both' }]), ['s03: waive[0] needs exactly one of node and width']);
   assert.deepEqual(w([{ why: 'neither' }]), ['s03: waive[0] needs exactly one of node and width']);
-  assert.deepEqual(w([{ width: 390, why: 'a number' }]), ['s03: waive[0]: width must be "mobile"']);
+  assert.deepEqual(w([{ width: 390, why: 'a number' }]), ['s03: waive[0]: width must be "mobile" or "desktop"']);
+  assert.deepEqual(w([{ width: 'tablet', why: 'not a class' }]), ['s03: waive[0]: width must be "mobile" or "desktop"']);
+  assert.deepEqual(w([{ width: 'desktop', why: 'the page is shown at phone width only' }]), []);
   assert.deepEqual(w([{ node: 'F:99', why: 'typo' }]), ['s03: waive[0]: F:99 is not inside any of the section\'s roots']);
   assert.deepEqual(w([{ node: 'F:3', why: 'in the module frame, not in a root' }]), ['s03: waive[0]: F:3 is not inside any of the section\'s roots']);
-  assert.deepEqual(w(['F:15']), ['s03: waive[0] must be { node | width: "mobile", why }']);
-  assert.deepEqual(w({ node: 'F:15' }), ['s03: waive must be a list of { node | width: "mobile", why }']);
+  assert.deepEqual(w(['F:15']), ['s03: waive[0] must be { node | width: "mobile" | "desktop", why }']);
+  assert.deepEqual(w({ node: 'F:15' }), ['s03: waive must be a list of { node | width: "mobile" | "desktop", why }']);
   assert.deepEqual(w([{ node: 'F:15', why: 'ok' }, { node: 'F:15', why: '  ' }]), ['s03: waive[1] needs why']);
 });
 
@@ -295,7 +304,6 @@ check('coverage floor: a module with a mobile variant needs a mobile root or a {
   assert.deepEqual(floorProblems(s03({ ...noMobile, waive: [{ width: 'mobile', why: 'the card is not responsive: the page shows the desktop card scaled' }] })), []);
   assert.deepEqual(floor(s03({ ...noMobile, waive: [{ width: 'mobile', why: 'desktop-only card' }] })).coverage.s03, { styles: { covered: 3, total: 3 }, widths: [1440], waived: 1 });
   assert.deepEqual(floorProblems(s03({ ...noMobile, waive: [{ width: 'mobile', why: '' }] })), ['s03: waive[0] needs why']);
-  assert.deepEqual(floorProblems(s03({ node: 'F:30', roots: undefined, type: at382, geometry: [{ id: 'g1', selector: '.card', node: 'F:31', measure: 'width' }] })), [], 'a base root that is itself the mobile instance (382 wide) is a mobile root');
   assert.deepEqual(floorProblems(s03({ roots: { 360: 'F:30' }, type: [...withoutType('t4', 't5'), ...at382.map((e) => ({ ...e, width: 360 }))] })), [], 'any root up to 480 wide');
   assert.match(floorProblems(s03({ roots: { 768: 'F:20' }, type: [...withoutType('t4', 't5'), { id: 't6', selector: 'h3', node: 'F:21', width: 768 }] })).join('\n'), /module has a mobile variant/, 'a tablet-width root is not a mobile root');
 });
@@ -326,10 +334,9 @@ check('coverage floor: a joined module frame as the root floods the floor, a con
 });
 
 check('roots: the base node and every roots[w] are the module frame or an outermost instance/variant: never a TEXT node, a frame, a nested instance or a node of another module', () => {
-  const TAIL = ' — name the module\'s outermost instance or variant';
   const asNode = (node, over = {}) => floor({ node, width: 1440, geometry: [{ id: 'g1', selector: '.card', node: 'F:19', measure: 'width' }], type: [{ id: 't1', selector: 'p', node: 'F:19' }, ...at382], roots: { 382: 'F:30' }, ...over }).problems;
-  assert.deepEqual(asNode('F:18'), [`s03 @1440: root F:18 (Card) is nested inside Card, Device=Desktop${TAIL}`], 'a card instance inside the desktop variant');
-  assert.deepEqual(floorProblems(s03({ node: 'F:11', width: 1440 })).filter((p) => /^s03 @1440: root/.test(p)), [`s03 @1440: root F:11 (Card title for the third quarter) is a TEXT, not a component or instance${TAIL}`], 'a TEXT leaf as the base node');
+  assert.ok(asNode('F:18').includes(`s03 @1440: root F:18 (Card) is nested inside Card, Device=Desktop${TAIL}`), 'a card instance inside the desktop variant');
+  assert.ok(floorProblems(s03({ node: 'F:11', width: 1440 })).includes(`s03 @1440: root F:11 (Card title for the third quarter) is a TEXT, not a component or instance${TAIL}`), 'a TEXT leaf as the base node');
   assert.ok(floorProblems(s03({ node: 'F:14', width: 1440 })).includes(`s03 @1440: root F:14 (Notes) is a FRAME, not a component or instance${TAIL}`), 'a frame inside the instance');
   assert.ok(floorProblems(s03({ node: 'F:2', width: 1440 })).includes(`s03 @1440: root F:2 (Documentation) is a FRAME, not a component or instance${TAIL}`), 'a documentation frame');
   assert.ok(floorProblems(s03({ node: 'G:1', width: 1440 })).includes(`s03 @1440: root G:1 (Plain module) is not inside the module frame F:1${TAIL}`), 'a frame of another module');
@@ -352,7 +359,6 @@ check('roots: with a mobile variant in the module, a mobile root must be one of 
   assert.deepEqual(floorProblems(tablet({ waive: [{ width: 'mobile', why: 'the tablet layout serves phones as well' }] })), []);
   assert.deepEqual(floorProblems(tablet({ roots: { 400: 'F:20', 382: 'F:30' }, type: [...tablet().type, ...at382] })), [], 'one of the mobile roots is the variant');
   assert.deepEqual(floorProblems(s03()), [], 'the Device=Desktop instance as node and the Device=Mobile variant as roots[382]');
-  assert.deepEqual(floorProblems(s03({ node: 'F:30', roots: undefined, type: at382, geometry: [{ id: 'g1', selector: '.card', node: 'F:31', measure: 'width' }] })), [], 'the variant as the base root, 382 wide');
 });
 
 check('roots: the module frame as the root is legitimate; with a variant as the mobile root and its documentation waived it validates', () => {
@@ -364,6 +370,64 @@ check('roots: the module frame as the root is legitimate; with a variant as the 
   };
   assert.deepEqual(floorProblems(asModule), []);
   assert.deepEqual(floor(asModule).sections.s03.roots, { 382: 'F:30', 1440: 'F:1' });
+});
+
+
+check('roots (a): a root is at least half as wide as the width it is checked at; a legend chip is no 1440 root, a content-width instance is', () => {
+  const asBase = (node, own) => floor({ node, width: 1440, roots: { 382: 'F:30' }, geometry: [{ id: 'g1', selector: '.x', node: own, measure: 'width' }], type: [{ id: 't1', selector: 'p', node: own }, ...at382] }).problems;
+  assert.deepEqual(asBase('F:50', 'F:51'), [`s03 @1440: root F:50 (Legend chip) is 120 wide, under half of 1440${TAIL}`], 'a chip as the base node: one text style, covered, and nothing else checked');
+  assert.deepEqual(asBase('F:60', 'F:61'), [], 'an instance 1184 wide under 1440');
+  assert.deepEqual(asBase('F:62', 'F:63'), [], 'exactly half');
+  assert.deepEqual(asBase('F:64', 'F:65'), [`s03 @1440: root F:64 (Card, just under half) is 719 wide, under half of 1440${TAIL}`], 'a pixel under half');
+  const mobile = floorProblems(s03({ roots: { 382: 'F:30', 1000: 'F:30' }, type: [...s03().type, ...at382.map((e) => ({ ...e, id: `${e.id}b`, width: 1000 }))] }));
+  assert.deepEqual(mobile, [`s03 @1000: root F:30 (Card, Device=Mobile) is 382 wide, under half of 1000${TAIL}`], 'every roots[w]');
+});
+
+check('roots (b): at least one root is checked wider than 480, the base root counts, unless { width: "desktop", why } waives it', () => {
+  const mobileOnly = (over = {}) => s03({ node: 'F:30', roots: undefined, type: at382, geometry: [{ id: 'g1', selector: '.card', node: 'F:31', measure: 'width' }], ...over });
+  const LINE = 's03: no root is checked wider than 480 (382) and no { width: "desktop" } waiver';
+  assert.deepEqual(floorProblems(mobileOnly()), [LINE], 'node = the mobile variant only, a reviewed bypass');
+  assert.deepEqual(floorProblems(mobileOnly({ roots: { 400: 'F:30' }, type: [...at382, ...at382.map((e) => ({ ...e, id: `${e.id}b`, width: 400 }))] })), [`s03: no root is checked wider than 480 (382, 400) and no { width: "desktop" } waiver`]);
+  const waived = floor(mobileOnly({ waive: [{ width: 'desktop', why: 'the card is only ever shown at phone width' }] }));
+  assert.deepEqual(waived.problems, []);
+  assert.deepEqual(waived.coverage.s03, { styles: { covered: 2, total: 2 }, widths: [382], waived: 1 });
+  assert.deepEqual(floorProblems(mobileOnly({ waive: [{ width: 'desktop', why: '' }] })), ['s03: waive[0] needs why']);
+  assert.deepEqual(floorProblems(s03()), [], 'the desktop instance as node: its width, 1440, is a non-mobile root');
+  const wide = floorProblems(mobileOnly({ roots: { 1200: 'F:62' }, type: [...at382, { id: 't6', selector: 'p', node: 'F:63', width: 1200 }] }));
+  assert.deepEqual(wide, [], 'a roots[w] above 480 counts as well as the base root');
+  assert.deepEqual(validateChecks({ version: 1, page: 'home', sections: { s03: { ...mobileOnly(), skip: 'static', waive: undefined }, s04 } }, floorCtx).problems, [], 'a skipped section has no floor');
+});
+
+check('roots (c): a root with no visible text style after waivers is a problem unless the module frame has none', () => {
+  const LINE = (id, name) => `s03 @1440: root ${id} (${name}) holds no text style to check (after waivers) and the module frame has some${TAIL}`;
+  const backdrop = floorProblems({ node: 'F:40', width: 1440, roots: { 382: 'F:30' }, geometry: [{ id: 'g1', selector: '.bg', node: 'F:40', measure: 'width' }], type: at382 });
+  assert.deepEqual(backdrop, [LINE('F:40', 'Backdrop')], 'a text-less 1440 component plus the mobile variant, a reviewed bypass: nothing at 1440 was asked for');
+  const allWaived = floorProblems(s03({ waive: [{ node: 'F:11', why: 'title' }, { node: 'F:13', why: 'body' }, { node: 'F:15', why: 'legal' }] }));
+  assert.deepEqual(allWaived, [LINE('F:10', 'Card, Device=Desktop')], 'every style waived leaves nothing to check: skip says it');
+  assert.deepEqual(floorProblems(s03({ waive: [{ node: 'F:15', why: 'legal' }] })), [], 'some left');
+  const imageOnly = { join: { sections: [{ slot: 's05', module: 'M5', node: 'H:1' }] }, boxes: floorBoxes, tokens: {} };
+  const check5 = (section) => validateChecks({ version: 1, page: 'home', sections: { s05: section } }, imageOnly);
+  assert.deepEqual(check5({ geometry: [{ id: 'g1', selector: 'img', node: 'H:2', measure: 'width' }], type: [] }).problems, ['s05 has no type checks: add one or "skip": "<why>"'], 'no text style anywhere: nothing to find at the root');
+  assert.deepEqual(check5({ skip: 'an image-only module', geometry: [], type: [] }).problems, []);
+  const skipped = validateChecks({ version: 1, page: 'home', sections: { s03: { skip: 'static banner', node: 'F:40', width: 1440, geometry: [], type: [] }, s04 } }, floorCtx);
+  assert.deepEqual(skipped.problems, [], 'a skipped section has no floor');
+});
+
+check('roots (d): the base node is checked even when roots[<its width>] replaces it, and the section\'s root is the one checked at the base width', () => {
+  const hidden = (node, over = {}) => floor({
+    node, width: 1440, roots: { 1440: 'F:10', 382: 'F:30' },
+    geometry: [{ id: 'g1', selector: '.card', node: 'F:11', measure: 'width' }],
+    type: [{ id: 't1', selector: 'h3', node: 'F:11' }, { id: 't2', selector: 'p', node: 'F:13' }, { id: 't3', selector: '.legal', node: 'F:15' }, ...at382],
+    ...over,
+  });
+  const chip = hidden('F:50');
+  assert.deepEqual(chip.problems, [`s03 @1440: root F:50 (Legend chip) is 120 wide, under half of 1440${TAIL}`], 'a chip as node, hidden by roots[1440]');
+  assert.equal(chip.sections.s03.root, 'F:10', 'the root actually checked at 1440');
+  assert.ok(hidden('F:11').problems.includes(`s03 @1440: root F:11 (Card title for the third quarter) is a TEXT, not a component or instance${TAIL}`), 'a TEXT node hidden the same way');
+  assert.ok(hidden('F:18').problems.includes(`s03 @1440: root F:18 (Card) is nested inside Card, Device=Desktop${TAIL}`), 'a nested instance hidden the same way');
+  assert.equal(floor(s03()).sections.s03.root, 'F:10');
+  assert.equal(floor(s03({ node: undefined, roots: { 1440: 'F:10', 382: 'F:30' }, width: 1440 })).sections.s03.root, 'F:10', 'the module frame as the unnamed node, replaced by roots[1440]');
+  assert.deepEqual(hidden('F:10').problems, [], 'the same node twice is fine');
 });
 
 check('coverage floor: skip waives the floor and is counted as a waiver; coverage still reports what the root holds', () => {

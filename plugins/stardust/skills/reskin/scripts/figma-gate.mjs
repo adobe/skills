@@ -124,7 +124,7 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          file is "not run": the register lists it, and no section is mandated unless both geometry.json and ramp.json exist.
          Six classes: mandated (a joined module section whose geometry and type entries all pass, whose text styles
          all have a type entry and that has no waiver; UNASSERTED ignored), waived (one row per waiver of a section, a
-         skip included: the node's name and id, or the mobile root, its why in quotes, and how many text styles and text
+         skip included: the node's name and id, or the mobile or desktop root, its why in quotes, and how many text styles and text
          nodes it drops at which width; a section with a waiver is never mandated), unmandated (each failing entry, a
          failing :root token included),
          out-of-kit (each new-module mapping row), conflict (a Figma text color below WCAG contrast
@@ -132,7 +132,8 @@ register B4, the divergence register. Reads join.json and whichever of geometry.
          and pre-existing (each flag in ledger.json pages.<slug>.flags, the ledger being optional).
          Rows carry the Figma node and a file link; under --confidential the links are left out. A row's node is the
          checks root its results were measured against (their root), the join's module frame for a mandated section
-         whose results carry none, the waived node (the section's root for a mobile-root waiver or a skip), and the
+         whose results carry none, the waived node (a mobile or desktop waiver's root; the section's root for a skip or
+         when the module frame holds none), and the
          entry's own node for a failing entry with none. The register's regime is the
          join's.
          Writes register.json and register.md (counts, rows, a "Not run" line, then the pixel results as
@@ -187,7 +188,7 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
       "width"?: 1440                     default the root's width
       "roots"?: { "<width>": "<id>" }    another outermost instance or variant of the module, for entries with that width
       "skip"?: "<why>"                   replaces the required geometry and type entries (and the floor)
-      "waive"?: [ { "node": "<id>" | "width": "mobile", "why": "<why>" } ]   lowers the coverage floor below
+      "waive"?: [ { "node": "<id>" | "width": "mobile" | "desktop", "why": "<why>" } ]   lowers the coverage floor below
       "geometry": [ { id, selector, previewSelector?, measure, node | nodes: [a, b] | token, index?: 0, width?, tolerancePx?: 1, why? } ],
       "type": [ { id, selector, previewSelector?, node, width? } ],
       "pixel"?: { "mode": "auto" | "fixture" | "off", "fixtureUrl"?, "why"? } } } }
@@ -204,13 +205,15 @@ Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the
   of its width. fixture needs fixtureUrl, off needs why. Every problem is listed at once (exit 2).
   Coverage floor, computed from Figma (not from this file): at every width a section is checked at (its root and each
   roots entry), every text style of that root (first font family, size, weight, line height and letter spacing to
-  0.1px, colour) needs a type entry at that width whose node has the style; a module frame that holds a mobile variant
-  (a component or instance named "mobile", 320 to 480 wide) needs a roots entry up to 480 wide that is one of those
-  variants. Every root (node, each roots entry) is the module frame itself or an outermost component or instance
-  inside it: no instance between it and the frame, never a TEXT node, a plain frame or a node of another module. waive
-  is the only way below the floor, and needs a why: { node } on a frame drops that subtree (a documentation panel,
-  notation text), on a TEXT node waives that style; { width: "mobile" } waives the mobile root. A module frame that is
-  itself the root holds its documentation frames and every variant: name the desktop instance in "node".
+  0.1px, colour) needs a type entry at that width whose node has the style. Every root (node, each roots entry) is the
+  module frame itself or an outermost component or instance inside it (no instance between it and the frame; never a
+  TEXT node, a plain frame or a node of another module), at least half as wide as the width it is checked at, and holds
+  a text style unless the module frame has none. A module frame that holds a mobile variant (a component or instance
+  named "mobile", 320 to 480 wide) needs a roots entry up to 480 wide that is one of those variants, and some root is
+  checked wider than 480. waive is the only way below the floor, and needs a why: { node } on a frame drops that subtree
+  (a documentation panel, notation text), on a TEXT node waives that style; { width: "mobile" } waives the mobile root,
+  { width: "desktop" } the root above 480. A module frame that is itself the root holds its documentation frames and
+  every variant: name the desktop instance in "node".
 Writes go only under <dir>/.work/reskin/gates/. After a capture --confidential, every subcommand first
 asserts that <dir>/.work/ and <dir>/reskin/figma-checks/ are git-ignored (exit 2 with the lines to add).
 Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing input or capture)

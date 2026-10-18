@@ -156,19 +156,19 @@ export function mobileVariants(moduleBox) {
 // A section's waive list, as { node, why } or { width: 'mobile', why } entries; every malformed entry is a problem.
 function readWaivers(slot, list, inRoots, problems) {
   if (list === undefined) return [];
-  if (!Array.isArray(list)) { problems.push(`${slot}: waive must be a list of { node | width: "mobile", why }`); return []; }
+  if (!Array.isArray(list)) { problems.push(`${slot}: waive must be a list of { node | width: "mobile" | "desktop", why }`); return []; }
   const out = [];
   list.forEach((w, i) => {
     const at = `${slot}: waive[${i}]`;
-    if (!isObject(w)) { problems.push(`${at} must be { node | width: "mobile", why }`); return; }
+    if (!isObject(w)) { problems.push(`${at} must be { node | width: "mobile" | "desktop", why }`); return; }
     if ((w.node === undefined) === (w.width === undefined)) { problems.push(`${at} needs exactly one of node and width`); return; }
     if (!text(w.why)) problems.push(`${at} needs why`);
     if (w.node !== undefined) {
       if (!text(w.node)) problems.push(`${at}: node must be a node id`);
       else if (!inRoots(w.node)) problems.push(`${at}: ${w.node} is not inside any of the section's roots`);
       else out.push({ node: w.node, why: w.why });
-    } else if (w.width !== 'mobile') problems.push(`${at}: width must be "mobile"`);
-    else out.push({ width: 'mobile', why: w.why });
+    } else if (w.width !== 'mobile' && w.width !== 'desktop') problems.push(`${at}: width must be "mobile" or "desktop"`);
+    else out.push({ width: w.width, why: w.why });
   });
   return out;
 }
@@ -344,17 +344,27 @@ export function validateChecks(checks, { join, boxes, tokens }) {
     const waive = readWaivers(slot, section.waive, inRoots, problems);
     const frame = !j.node || j.node === root ? base : rootBox(j.node);
     const hint = j.node && roots[width] === j.node ? '; name the desktop instance in "node"' : '';
-    const styles = floorOf({ slot, roots, rootBox, type, waivedIds: waive.flatMap((w) => (w.node ? [w.node] : [])), enforce: !skipped, problems, baseWidth: String(width), hint });
+    const waivedIds = waive.flatMap((w) => (w.node ? [w.node] : []));
+    const styles = floorOf({ slot, roots, rootBox, type, waivedIds, enforce: !skipped, problems, baseWidth: String(width), hint });
     if (j.node && !frame && !skipped) problems.push(`${slot}: module frame ${j.node} is not in the loaded boxes`);
-    if (j.node && frame) {
-      for (const [w, node] of Object.entries(roots)) {
-        const fault = rootFault(frame, rootBox(node));
-        if (fault) problems.push(`${slot} @${w}: root ${node} (${rootBox(node).name}) ${fault} — name the module's outermost instance or variant`);
-      }
+    // The base node is checked too when roots[<its width>] replaces it: it must not hide behind the replacement.
+    const checked = Object.entries(roots);
+    if (roots[width] !== root) checked.unshift([String(width), root]);
+    const moduleHasText = frame ? textStyles(frame).size > 0 : false;
+    for (const [w, node] of checked) {
+      const box = rootBox(node);
+      const refuse = (why) => problems.push(`${slot} @${w}: root ${node} (${box.name}) ${why} — name the module's outermost instance or variant`);
+      const fault = j.node && frame ? rootFault(frame, box) : null;
+      if (fault) refuse(fault);
+      if (Number(w) > 0 && box.w < Number(w) / 2) refuse(`is ${box.w} wide, under half of ${w}`);
+      if (!skipped && moduleHasText && textStyles(box, waivedIds).size === 0) refuse('holds no text style to check (after waivers) and the module frame has some');
     }
     if (!skipped) {
       const variants = frame ? mobileVariants(frame) : [];
       const mobile = Object.entries(roots).filter(([w]) => Number(w) <= 480);
+      if (!waive.some((w) => w.width === 'desktop') && mobile.length === Object.keys(roots).length) {
+        problems.push(`${slot}: no root is checked wider than 480 (${Object.keys(roots).join(', ')}) and no { width: "desktop" } waiver`);
+      }
       if (variants.length && !waive.some((w) => w.width === 'mobile') && !mobile.some(([, node]) => variants.some((v) => v.id === node))) {
         if (!mobile.length) {
           const [first] = variants;
@@ -368,7 +378,7 @@ export function validateChecks(checks, { join, boxes, tokens }) {
       }
     }
     coverage[slot] = { styles, widths: Object.keys(roots).map(Number).filter(Number.isFinite).sort((a, b) => a - b), waived: waive.length + (skipped ? 1 : 0) };
-    sections[slot] = { root, width, roots, geometry, type, waive, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
+    sections[slot] = { root: roots[width], width, roots, geometry, type, waive, pixel: validatePixel(slot, section.pixel, problems), ...(skipped ? { skip: section.skip } : {}) };
   }
   return { sections, problems, coverage };
 }

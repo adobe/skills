@@ -230,17 +230,19 @@ or `top`.
 
 **Coverage floor.** Computed from Figma, so a file cannot cover only
 what the page got right. Every root (`node`, each `roots` entry) is the
-module frame or an outermost component or instance in it: no instance
-between, never a TEXT node, a plain frame or another module's node. At
-every width a section is checked at, every text style of that width's
-root (family, size, weight, line height and letter spacing to 0.1px,
-colour) needs a `type` entry whose node has it, and a module frame
-holding a mobile variant (a component or instance named mobile, 320 to
-480 wide) needs a `roots` entry up to 480 wide that is one of them. Only
-`waive: [{ node | "width": "mobile", why }]` lowers it: `node` on a frame
-drops that subtree (a documentation panel), on a TEXT node waives its
-style; `"width": "mobile"` waives the mobile root. A miss is exit 2,
-every one listed.
+module frame or an outermost component or instance in it (no instance
+between, never a TEXT node, a plain frame or another module's node), at
+least half as wide as the width it is checked at, and holds a text
+style unless the module has none. At every width a section is checked
+at, every text style of that width's root (family, size, weight, line
+height and letter spacing to 0.1px, colour) needs a `type` entry whose
+node has it; a module frame holding a mobile variant (a component or
+instance named mobile, 320 to 480 wide) needs a `roots` entry up to 480
+wide that is one of them, and some root is checked wider than 480. Only
+`waive: [{ node | "width": "mobile" | "desktop", why }]` lowers it:
+`node` on a frame drops that subtree (a documentation panel), on a TEXT
+node waives its style; the widths waive the mobile or the desktop root.
+A miss is exit 2, every one listed.
 
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
@@ -251,7 +253,7 @@ every one listed.
 | B4 register | informational | `mandated` (passes, every text style covered, no waiver), `waived` (one row per waiver), `unmandated`, `out-of-kit`, `conflict` and `pre-existing`, with Figma node links | none |
 
 - **Waivers show.** A `waived` row names the waived node (name and id) or
-  `mobile`, quotes its `why` and says how many text styles and nodes it
+  `mobile`/`desktop`, quotes its `why` and says how many text styles and nodes it
   drops at which width, so a container waiver cannot hide a page area. The
   ledger fragment keeps the totals: `coverage` is `text styles 8/8 ·
   widths 1440 · waived 1`.
@@ -367,22 +369,18 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   silently passes the wrong thing). Defense: both capture and gate
   use `innerText`; casing is reproduced via CSS
   (`reference/mapping-brief.md` § Casing policy).
-- **Icon-font ligature text.** Same family as the casing fork:
+- **Icon-font ligature text.** Like the casing fork:
   Material-Symbols-class icon fonts put the ligature *name*
-  ("chevron_right") in the DOM as text, so it is part of the
-  source's `innerText` and therefore of the byte-gate reference. The
-  reskin must carry it as text — where it renders as the literal
-  word unless the icon font is adopted — or declare a normalization
-  for it in the shared ledger. Never edit it out of the string.
-  Guidance on the carry-vs-normalize call:
-  `reference/mapping-brief.md` § Icon-ligature text.
-- **Source drift.** The gate re-crawls the live source; on newsy
-  pages that update daily, a byte-perfect render fails tomorrow
-  through no fault of its own (new teaser text, rotated images). A
-  gate failure whose divergence is *new source content* means the
-  capture is stale: **a stale capture is a re-capture** (then
-  re-render from the fresh model) — **not a fix iteration**, and
-  never a residual.
+  ("chevron_right") in the DOM, so it is in the source's `innerText`
+  and the byte-gate reference. Carry it as text (it renders as the
+  literal word unless the icon font is adopted) or declare a
+  normalization in the shared ledger; never edit it out. Carry vs
+  normalize: `reference/mapping-brief.md` § Icon-ligature text.
+- **Source drift.** The gate re-crawls the live source, so on pages
+  that update daily a byte-perfect render fails tomorrow through no
+  fault of its own. A divergence that is *new source content* means a
+  stale capture: **re-capture** (then re-render from the fresh model),
+  **not a fix iteration**, never a residual.
 - **Faithful ≠ clean.** Source defects (broken JSON-LD, wrong-locale
   labels) are carried verbatim and the gate is *right* to enforce
   that. Defense: the flags list — surface to the human, never
