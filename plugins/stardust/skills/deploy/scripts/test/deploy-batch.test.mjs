@@ -482,11 +482,15 @@ await check('a value already starting with `bearer ` is sent as is; with the var
       const sent = await send({}, 'SITE_ENV_TOKEN');
       assert.deepEqual(sent, [line.includes('bearer ') ? `bearer ${SITE_TOKEN}` : `token ${SITE_TOKEN}`], line);
     }
-    for (const line of [`export SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN = ${SITE_TOKEN}`]) {
+    for (const line of [`export SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN = ${SITE_TOKEN}`, ` SITE_ENV_TOKEN=${SITE_TOKEN}`]) {
       writeFileSync(dotenv, `OTHER=1\n${line}\n`);
       const off = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m);
+      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env SITE_ENV_TOKEN: found a SITE_ENV_TOKEN line in \.\/\.env but it must be exactly SITE_ENV_TOKEN=value \(no export, no spaces round the =, no indent\)$/m);
+      assert.ok(!off.err.includes(SITE_TOKEN) && !off.out.includes(SITE_TOKEN), 'the value was printed');
     }
+    writeFileSync(dotenv, `# SITE_ENV_TOKEN=${SITE_TOKEN}\nSITE_ENV_TOKEN_2=${SITE_TOKEN}\n`);
+    const other = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
+    assert.equal(other.code, 2, other.out + other.err); assert.match(other.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m, 'a comment or another variable is not a NAME line');
     writeFileSync(dotenv, `SITE_ENV_TOKEN=\nSITE_ENV_TOKEN_2="${SITE_TOKEN}"\n`);
     const empty = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
     assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m);
@@ -528,6 +532,7 @@ await check('--help documents --site-token-env: the variable, the .env fallback,
   assert.match(help.out, /\[--site-token-env <NAME>\]/);
   assert.match(help.out, /--site-token-env\s+<NAME>\s+reads\s+it\s+from\s+the\s+environment\s+variable\s+NAME,\s+else\s+from\s+a\s+NAME=\s+line\s+of\s+\.\/\.env/);
   assert.match(help.out, /`token `\s+in\s+front/); assert.match(help.out, /never\s+to\s+DA\s+or\s+the\s+admin\s+API/);
+  assert.match(help.out, /never printed, logged, written to the ledger or put in the re-run command/, 'the Site token paragraph has no orphan line');
   assert.equal((help.out.match(/^Token: /gm) || []).length, 1, 'the Token: paragraph is printed once');
 });
 elsewhere.close(); protectedOrigin.close();

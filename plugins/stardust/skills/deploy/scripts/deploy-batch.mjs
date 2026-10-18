@@ -53,9 +53,8 @@
  * quoted: not `export NAME=`, not spaces round the `=`, not a trailing comment — the one grammar of every stardust
  * instrument, site-auth.mjs); a value starting with neither `token ` nor `bearer ` (any case) gets `token ` in front.
  * It is sent as Authorization on that check only, to the verify origin only — never to DA or the admin API — and
- * never printed, logged,
- * written to the ledger or put in the re-run command (only the variable's name is). A variable that is not set
- * is a usage error (exit 2) naming it.
+ * never printed, logged, written to the ledger or put in the re-run command (only the variable's name is). A
+ * variable that is not set is a usage error (exit 2) naming it; so is a `.env` line for it in a form that is not read.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
@@ -96,7 +95,7 @@ import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
 // The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
 import { jwtExpiry } from './da-media-upload.mjs';
-import { readSiteAuth } from './site-auth.mjs';
+import { readSiteAuth, strayEnvLine, strayMessage } from './site-auth.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -116,8 +115,8 @@ const TOKEN_EXIT = 3;
 // pasted where a name belongs is refused without being echoed.
 function siteAuthOf(name) {
   const siteAuth = readSiteAuth(name, { flag: '--site-token-env' });
-  if (!siteAuth) throw new Error(`--site-token-env ${name}: not set in the environment or in ./.env`);
-  return siteAuth;
+  if (siteAuth) return siteAuth;
+  throw new Error(strayEnvLine(name) ? strayMessage('--site-token-env', name) : `--site-token-env ${name}: not set in the environment or in ./.env`);
 }
 
 // The text with the site token (and the bare token under its `token ` / `bearer ` prefix) replaced.

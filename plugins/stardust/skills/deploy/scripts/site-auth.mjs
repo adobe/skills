@@ -17,9 +17,13 @@
 //        added and hands the answer to the browser, and lets every other request through untouched, so a webfont, an
 //        image host, a vendor — or the target of a redirect off the origin — never sees it. (A header set by
 //        `route.continue` stays on the request across a redirect to another origin; the browser follows a redirect
-//        answered here as a new request, which the route sees again.) A request that cannot be made here is continued
-//        without the header. Attach it before the first navigation; `context.request` (APIRequestContext) bypasses
-//        routes and keeps a header across a redirect too — send the header there yourself, to the origin only.
+//        answered here as a new request, which the route sees again.) A request of the origin that fails (a drop, a
+//        stall past the page's own timeout) is aborted, never continued without the header — that would measure the
+//        401 — and one stderr line names the origin. Attach it before the first navigation; `context.request`
+//        (APIRequestContext) bypasses routes and keeps a header across a redirect too — send the header there
+//        yourself, to the origin only.
+//   strayEnvLine(name, { cwd }) / strayMessage(flag, name)  whether the `.env` has a line for `name` the grammar does
+//        not read (`export NAME=`, `NAME = v`), and the usage-error text for it, so it is not reported as "not set".
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -38,6 +42,16 @@ export function readSiteAuth(name, { env = process.env, cwd = process.cwd(), fla
 
 const originOf = (url) => { try { const p = new URL(url); return p.protocol === 'http:' || p.protocol === 'https:' ? p.origin : null; } catch { return null; } };
 
+// True when the `.env` in `cwd` has a line for `name` in a form the grammar does not read (`export NAME=`, `NAME = v`,
+// an indented one): the author set it and would otherwise be told it is not set. The value is never looked at.
+export function strayEnvLine(name, { cwd = process.cwd() } = {}) {
+  const file = join(cwd, '.env');
+  if (typeof name !== 'string' || !ENV_NAME.test(name) || !existsSync(file)) return false;
+  const loose = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=`);
+  return readFileSync(file, 'utf8').split(/\r?\n/).some((line) => loose.test(line) && !line.startsWith(`${name}=`));
+}
+export const strayMessage = (flag, name) => `${flag} ${name}: found a ${name} line in ./.env but it must be exactly ${name}=value (no export, no spaces round the =, no indent)`;
+
 export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = [], env = process.env, cwd = process.cwd() } = {}) {
   const wantsHeader = authHeader !== undefined && authHeader !== null;
   const wantsEnv = tokenEnv !== undefined && tokenEnv !== null;
@@ -50,7 +64,7 @@ export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = []
     header = withTokenPrefix(value);
   } else {
     header = readSiteAuth(tokenEnv, { env, cwd });
-    if (!header) throw usageError(`no site token: --token-env ${tokenEnv} is not set (or is empty) in the environment or in a ${tokenEnv}= line of .env`);
+    if (!header) throw usageError(strayEnvLine(tokenEnv, { cwd }) ? strayMessage('--token-env', tokenEnv) : `no site token: --token-env ${tokenEnv} is not set (or is empty) in the environment or in a ${tokenEnv}= line of .env`);
   }
 
   let origin;
@@ -69,14 +83,20 @@ export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = []
 export async function attachSiteAuth(context, origin, header) {
   if (!origin || !header) return;
   const only = new URL(origin).origin;
+  let said = false;
   await context.route('**/*', async (route) => {
     const request = route.request();
     if (originOf(request.url()) !== only) { await route.continue(); return; }
     // A header set on a continued request survives a redirect off the origin, so the request is made here with
     // redirects unfollowed and its answer handed to the browser, which follows a redirect as a new request the
-    // route sees again — a fetch without the header to the other origin.
+    // route sees again — a fetch without the header to the other origin. No timeout here: the navigation's own
+    // applies. A request that fails is aborted, never continued without the header: that would measure the 401.
     let response;
-    try { response = await route.fetch({ headers: { ...request.headers(), authorization: header }, maxRedirects: 0 }); } catch { await route.continue(); return; }
+    try { response = await route.fetch({ headers: { ...request.headers(), authorization: header }, maxRedirects: 0, timeout: 0 }); } catch {
+      if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
+      await route.abort('failed').catch(() => {});
+      return;
+    }
     await route.fulfill({ response });
   });
 }

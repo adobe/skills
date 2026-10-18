@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 import { gzipSync } from 'node:zlib';
-import { attachSiteAuth, instrumentSiteAuth, readSiteAuth } from '../site-auth.mjs';
+import { attachSiteAuth, instrumentSiteAuth, readSiteAuth, strayEnvLine } from '../site-auth.mjs';
 
 const BASE = mkdtempSync(join(tmpdir(), 'site-auth-test-'));
 after(() => rmSync(BASE, { recursive: true, force: true }));
@@ -67,6 +67,19 @@ test('readSiteAuth: a value starting with token or bearer (any case) is kept; an
   assert.equal(read(T), `token ${T}`);
   assert.equal(read(`tokens ${T}`), `token tokens ${T}`);
   assert.equal(read(`bearer${T}`), `token bearer${T}`);
+});
+
+test('strayEnvLine / instrumentSiteAuth: a NAME line in a form the grammar does not read is named as that, not as "not set"; the value is never printed', () => {
+  const stray = (dotenv) => strayEnvLine('SITE_X', { cwd: withEnvFile(dotenv) });
+  for (const line of [`export SITE_X=${T}`, `SITE_X = ${T}`, `SITE_X =${T}`, ` SITE_X=${T}`, `export  SITE_X = ${T}\r`]) assert.equal(stray(`OTHER=1\n${line}\n`), true, line);
+  for (const line of [`SITE_X=${T}`, 'SITE_X=', `# SITE_X=${T}`, `SITE_X_2=${T}`, `PRE_SITE_X=${T}`, 'OTHER=1']) assert.equal(stray(`${line}\n`), false, line);
+  assert.equal(stray(null), false, 'no .env');
+  assert.equal(strayEnvLine('not a name', { cwd: withEnvFile(`not a name=${T}\n`) }), false);
+  const cwd = withEnvFile(`export SITE_X=${T}\n`);
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_X', urls: ['https://a.test/'], env: {}, cwd }), (e) => e.code === 2
+    && e.message === '--token-env SITE_X: found a SITE_X line in ./.env but it must be exactly SITE_X=value (no export, no spaces round the =, no indent)');
+  assert.throws(() => instrumentSiteAuth({ tokenEnv: 'SITE_Y', urls: ['https://a.test/'], env: {}, cwd }), (e) => /^no site token: --token-env SITE_Y is not set/.test(e.message), 'another variable is plainly not set');
+  assert.equal(instrumentSiteAuth({ tokenEnv: 'SITE_X', urls: ['https://a.test/'], env: { SITE_X: T }, cwd }).header, `token ${T}`, 'the environment still wins');
 });
 
 test('readSiteAuth: a name that is not an identifier is a usage error (code 2) naming the flag and never echoing the value', () => {
@@ -128,7 +141,8 @@ function fakeContext() {
       await ctx.handler({
         request: () => ({ url: () => url, headers: () => headers }),
         continue: async (o) => { done.continued = o || {}; },
-        fetch: async (o) => { if (fetchFails) throw new Error('network'); done.fetched = o; return { answer: url }; },
+        abort: async (code) => { done.aborted = code; },
+        fetch: async (o) => { if (fetchFails) throw new Error(`network ${headers.authorization || ''}`); done.fetched = o; return { answer: url }; },
         fulfill: async (o) => { done.fulfilled = o; },
       });
       return done;
@@ -137,29 +151,39 @@ function fakeContext() {
   return ctx;
 }
 
-test('attachSiteAuth: the header rides the requests of the one origin and no other; the request\'s own headers are kept; the answer is handed to the browser unfollowed', async () => {
+test('attachSiteAuth: the header rides the requests of the one origin and no other; the request\'s own headers are kept; the answer is handed to the browser unfollowed, with no timeout of its own', async () => {
   const ctx = fakeContext();
   await attachSiteAuth(ctx, 'https://a.test/some/path', `token ${T}`);
   assert.equal(ctx.pattern, '**/*');
   const sent = (done) => ({ fetched: done.fetched, answered: done.fulfilled && done.fulfilled.response.answer, continued: done.continued });
-  assert.deepEqual(sent(await ctx.request('https://a.test/page', { accept: 'text/html' })), { fetched: { headers: { accept: 'text/html', authorization: `token ${T}` }, maxRedirects: 0 }, answered: 'https://a.test/page', continued: undefined });
-  assert.deepEqual((await ctx.request('https://a.test', {})).fetched, { headers: { authorization: `token ${T}` }, maxRedirects: 0 });
+  assert.deepEqual(sent(await ctx.request('https://a.test/page', { accept: 'text/html' })), { fetched: { headers: { accept: 'text/html', authorization: `token ${T}` }, maxRedirects: 0, timeout: 0 }, answered: 'https://a.test/page', continued: undefined });
+  assert.deepEqual((await ctx.request('https://a.test', {})).fetched, { headers: { authorization: `token ${T}` }, maxRedirects: 0, timeout: 0 });
   assert.deepEqual((await ctx.request('https://a.test/x?y=1#z', { authorization: 'token other' })).fetched.headers, { authorization: `token ${T}` });
   for (const other of ['https://cdn.test/font.woff2', 'https://a.test.evil.test/x', 'https://evil.test/https://a.test/', 'https://sub.a.test/x', 'http://a.test/x', 'https://a.test:8443/x', 'https://a.test@evil.test/x', 'data:text/plain,hi', 'blob:https://a.test/1', 'not a url']) {
     assert.deepEqual(await ctx.request(other), { continued: {} }, `${other}: continued untouched, nothing fetched`);
   }
 });
 
-test('attachSiteAuth: a request of the origin that cannot be made here is continued without the header, never with it', async () => {
-  const ctx = fakeContext();
-  await attachSiteAuth(ctx, 'https://a.test', `token ${T}`);
-  assert.deepEqual(await ctx.request('https://a.test/page', { accept: '*/*' }, { fetchFails: true }), { continued: {} });
+test('attachSiteAuth: a request of the origin that fails is aborted, never continued without the header; one stderr line names the origin and no token', async () => {
+  const lines = [];
+  const real = console.error;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  try {
+    const ctx = fakeContext();
+    await attachSiteAuth(ctx, 'https://a.test', `token ${T}`);
+    const first = await ctx.request('https://a.test/page', { accept: '*/*', authorization: `token ${T}` }, { fetchFails: true });
+    const second = await ctx.request('https://a.test/style.css', { accept: '*/*' }, { fetchFails: true });
+    assert.deepEqual(first, { aborted: 'failed' });
+    assert.deepEqual(second, { aborted: 'failed' });
+    assert.deepEqual(lines, ['site-auth: a request to https://a.test failed and was not retried without the site token'], 'one line, not one per request');
+    assert.ok(!lines.join('').includes(T));
+  } finally { console.error = real; }
 });
 
 test('attachSiteAuth: a local origin with a port is matched exactly; nothing is registered without an origin or a header', async () => {
   const ctx = fakeContext();
   await attachSiteAuth(ctx, 'http://127.0.0.1:4000', `token ${T}`);
-  assert.deepEqual((await ctx.request('http://127.0.0.1:4000/page')).fetched, { headers: { accept: '*/*', authorization: `token ${T}` }, maxRedirects: 0 });
+  assert.deepEqual((await ctx.request('http://127.0.0.1:4000/page')).fetched, { headers: { accept: '*/*', authorization: `token ${T}` }, maxRedirects: 0, timeout: 0 });
   for (const other of ['http://127.0.0.1:40001/page', 'http://127.0.0.1:400/page', 'http://localhost:4000/page']) assert.deepEqual(await ctx.request(other), { continued: {} }, other);
   const idle = fakeContext();
   await attachSiteAuth(idle, '', `token ${T}`);
@@ -216,3 +240,40 @@ test('attachSiteAuth in Chromium: the origin\'s page (gzip), stylesheet and imag
     for (const s of [A, B]) { s.closeAllConnections(); s.close(); }
   }
 });
+
+// An origin that never answers well: `how` is 'drop' (the socket is destroyed) or 'stall' (the request is never answered).
+async function failingOrigin(how) {
+  const seen = [];
+  const server = await listen((req, res) => {
+    seen.push({ path: req.url, authorization: req.headers.authorization || null });
+    if (how === 'drop') req.socket.destroy();
+    else if (req.headers.authorization !== `token ${T}`) { res.writeHead(401); res.end('401'); }
+  });
+  return { seen, origin: `http://127.0.0.1:${server.address().port}`, stop: () => { server.closeAllConnections(); server.close(); } };
+}
+
+for (const how of ['drop', 'stall']) {
+  test(`attachSiteAuth in Chromium: an origin that ${how === 'drop' ? 'drops the connection' : 'never answers'} fails the page loudly and is never retried without the token${how === 'drop' ? ' (one stderr line names it)' : ''}`, { skip: !hasBrowser && 'playwright / Chromium not available' }, async () => {
+    const { chromium } = await import('playwright');
+    const site = await failingOrigin(how);
+    const lines = [];
+    const real = console.error;
+    console.error = (...a) => { lines.push(a.join(' ')); };
+    const browser = await chromium.launch();
+    try {
+      const context = await browser.newContext();
+      await attachSiteAuth(context, site.origin, `token ${T}`);
+      const page = await context.newPage();
+      // a stall is bounded by the navigation's own timeout, not by one inside the route
+      await assert.rejects(page.goto(`${site.origin}/page`, { timeout: how === 'stall' ? 2500 : 15000 }), (e) => (how === 'drop' ? /ERR_FAILED/.test(e.message) : /Timeout/.test(e.message)) && !e.message.includes(T));
+      if (how === 'drop') assert.deepEqual(lines, [`site-auth: a request to ${site.origin} failed and was not retried without the site token`]);
+      assert.ok(site.seen.length >= 1);
+      assert.ok(site.seen.every((q) => q.authorization === `token ${T}`), `an unauthenticated request reached the origin: ${JSON.stringify(site.seen)}`);
+    } finally {
+      console.error = real;
+      await browser.close();
+      site.stop();
+    }
+  });
+}
+

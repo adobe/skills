@@ -165,3 +165,16 @@ browserTest('fragments the served page links to are fetched with the token, and 
     assert.ok(seen.every((q) => q.authorization === AUTHORIZATION), JSON.stringify(seen));
   } finally { site.closeAllConnections(); site.close(); }
 });
+
+browserTest('an origin that drops the connection is an ERROR row, exit 1, and gets no request without the token', async () => {
+  const seen = [];
+  const server = createServer((req, res) => { seen.push(req.headers.authorization || null); req.socket.destroy(); });
+  await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+  try {
+    const r = await run(['--origin', `http://127.0.0.1:${server.address().port}`, '/page', '--auth-header', AUTHORIZATION]);
+    assert.equal(r.code, 1, `${r.out}${r.err}`);
+    assert.match(r.out, /^\/page\n {2}ERROR /m);
+    noSecret(r);
+    assert.ok(seen.length >= 1 && seen.every((a) => a === AUTHORIZATION), JSON.stringify(seen));
+  } finally { server.closeAllConnections(); server.close(); }
+});

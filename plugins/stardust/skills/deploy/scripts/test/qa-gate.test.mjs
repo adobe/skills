@@ -8,6 +8,7 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { after, test } from 'node:test';
@@ -194,4 +195,19 @@ browserTest('--auth-origin names the one origin: with origin B named, the page o
   finished(r);
   assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[null, 401]]);
   assert.deepEqual(fx.authorizations('A'), []);
+});
+
+browserTest('an origin that drops the connection fails the run loudly: no QA GATE verdict, a stderr line naming the origin, and the origin never gets a request without the token', async () => {
+  const seen = [];
+  const server = createServer((req, res) => { seen.push(req.headers.authorization || null); req.socket.destroy(); });
+  await new Promise((resolve) => { server.listen(0, '127.0.0.1', resolve); });
+  const origin = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const r = await run([`${origin}/page`, '--auth-header', SECRET]);
+    assert.notEqual(r.code, 0, `${r.out}${r.err}`);
+    assert.doesNotMatch(r.out, /QA GATE:/);
+    assert.ok(r.err.includes(`site-auth: a request to ${origin} failed and was not retried without the site token`), r.err);
+    noSecret(r);
+    assert.ok(seen.length >= 1 && seen.every((a) => a === fx.authorization), JSON.stringify(seen));
+  } finally { server.closeAllConnections(); server.close(); }
 });
