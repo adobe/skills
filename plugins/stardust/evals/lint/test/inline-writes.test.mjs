@@ -3,7 +3,8 @@
 // paragraph; list items and headings start a new one) is a finding when it holds both an inline
 // interpreter marker and a file-write call, reported at the write call's line; read-only probes,
 // `python3 -m`, prohibitions and a marker and a write in different units stay clean; the CLI scans
-// SKILL.md and reference/**/*.md only, sorts its findings, and answers --help and usage errors.
+// every .md below the skills dir except under fixtures/, assets/ and scripts/, sorts its findings,
+// and answers --help and usage errors.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -116,12 +117,17 @@ check('CLI: the plugin tree is clean (exit 0, one summary line)', () => {
   assert.match(r.out, /^inline-writes lint: \d+ files clean\n$/);
 });
 const skills = join(root, 'skills');
+const tail = ' — show the edit tool, replace.mjs or json-edit.mjs instead';
 put(join(skills, 'a', 'SKILL.md'), md('# a', '', 'Run `node scripts/a.mjs`.', ''));
 put(join(skills, 'a', 'notes.md'), HEREDOC_WRITE);
-check('CLI --root: a violating notes.md outside reference/ is not scanned', () => {
+for (const dir of [['scripts', 'test', 'fixtures'], ['fixtures'], ['assets']]) put(join(skills, 'a', ...dir, 'bad.md'), HEREDOC_WRITE);
+check('CLI --root: a violating notes.md at a skill root is scanned; .md below fixtures/, assets/, scripts/ is not', () => {
   const r = run(root, '--root', skills);
-  assert.equal(r.code, 0, r.err);
-  assert.equal(r.out, 'inline-writes lint: 1 files clean\n');
+  assert.equal(r.code, 1, r.out);
+  assert.deepEqual(r.err.trimEnd().split('\n'), [
+    'inline-writes lint: 1 finding(s)',
+    `skills/a/notes.md:7: inline interpreter writes a file (python3 - … open(p, 'w'))${tail}`,
+  ]);
 });
 check('CLI --root: violations in reference/ and SKILL.md fail with exit 1, files sorted, path:line', () => {
   put(join(skills, 'b', 'SKILL.md'), md('# b', '', '`node -e "fs.writeFileSync(p, s)"`', ''));
@@ -129,9 +135,9 @@ check('CLI --root: violations in reference/ and SKILL.md fail with exit 1, files
   const r = run(root, '--root', skills);
   assert.equal(r.code, 1, r.out);
   assert.equal(r.out, '');
-  const tail = ' — show the edit tool, replace.mjs or json-edit.mjs instead';
   assert.deepEqual(r.err.trimEnd().split('\n'), [
-    'inline-writes lint: 2 finding(s)',
+    'inline-writes lint: 3 finding(s)',
+    `skills/a/notes.md:7: inline interpreter writes a file (python3 - … open(p, 'w'))${tail}`,
     `skills/a/reference/deep/x.md:7: inline interpreter writes a file (python3 - … open(p, 'w'))${tail}`,
     `skills/b/SKILL.md:3: inline interpreter writes a file (node -e … writeFileSync)${tail}`,
   ]);

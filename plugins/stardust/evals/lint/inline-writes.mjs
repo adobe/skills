@@ -6,10 +6,11 @@
 // change. A doc that shows the habit teaches it; the edit tool, replace.mjs and json-edit.mjs
 // are the reviewable ways.
 //
-// What it checks: every SKILL.md and every .md below a reference/ directory under
-// plugins/stardust/skills/. Each fenced code block (``` or ~~~, fence to fence) is one unit;
-// outside fences each paragraph is one — a run of non-blank lines, where a list item (`- `, `* `,
-// `+ `, `<n>. `) or a heading (`#`) starts a new unit. A unit is a finding when it holds both
+// What it checks: every .md under plugins/stardust/skills/ (SKILL.md, reference/ and the docs at a
+// skill's root alike), except files below a fixtures/, assets/ or scripts/ directory. Each fenced
+// code block (``` or ~~~, fence to fence) is one unit; outside fences each paragraph is one — a
+// run of non-blank lines, where a list item (`- `, `* `, `+ `, `<n>. `) or a heading (`#`) starts
+// a new unit. A unit is a finding when it holds both
 //   - an inline interpreter: python / python3 / python3.x with -c, a lone - (stdin program) or a
 //     heredoc <<; node (optionally after --input-type=<x>) with -e, --eval, -p, --print, a lone -
 //     or a heredoc << — not `python3 -m …`, not `node <file>.mjs`; and
@@ -19,7 +20,8 @@
 // A read-only probe or a prohibition that names `node -e` without a write call stays clean.
 //
 // Usage: node plugins/stardust/evals/lint/inline-writes.mjs [--root <skills-dir>]
-//   --root <dir>  scan this skills directory instead of plugins/stardust/skills (for tests)
+//   --root <dir>  scan this skills directory instead of plugins/stardust/skills (for tests);
+//                 every .md below it, skipping fixtures/, assets/ and scripts/ directories
 //   -h, --help    print this text
 // Output: clean → `inline-writes lint: <n> files clean` on stdout. Findings → stderr, a count
 //   line, then per unit `<file>:<line>: inline interpreter writes a file (<marker> … <write>) — …`
@@ -100,15 +102,17 @@ export function scanText(text) {
   return findings;
 }
 
+// Test fixtures, vendored assets and script trees are not skill docs.
+const SKIP_DIRS = new Set(['fixtures', 'assets', 'scripts']);
+
 function collect(root) {
   const files = [];
-  (function walk(d, inReference) {
+  (function walk(d) {
     for (const e of readdirSync(d).sort()) {
       const p = join(d, e);
-      if (statSync(p).isDirectory()) walk(p, inReference || e === 'reference');
-      else if (e === 'SKILL.md' || (inReference && e.endsWith('.md'))) files.push(p);
+      if (statSync(p).isDirectory()) { if (!SKIP_DIRS.has(e)) walk(p); } else if (e.endsWith('.md')) files.push(p);
     }
-  })(root, false);
+  })(root);
   return files.sort();
 }
 
