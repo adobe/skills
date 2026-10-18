@@ -13,15 +13,18 @@
 // RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout) — × 1
 // with the lock off, × 4 at the default one browser per slot; whose jobs a bare wait/status covers — the caller's own
 // (ownerPid: RUN_BG_OWNER, else callerOwner's ancestry walk), --all every owner's, a state without ownerPid only by name
-// or --all — the report's first line naming the selection, and --timeout refused on wait/status (exit 125).
-// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 45 s)
+// or --all — the report's first line naming the selection, and --timeout refused on wait/status (exit 125); servers
+// (--kind server, implied by --no-lock unless --kind job): no slot (mayLaunch), out of a bare and an --all wait/status
+// (pickNames), listed by status under servers:, a 3600 s deadline, and stop (<job>…, --servers [--all]: SIGTERM, SIGKILL
+// after the grace, stopped + exit 143 recorded).
+// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 55 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, STOPPED_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, mayLaunch, pickNames, procInfo, startKind, status, stop as stopJobs, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -67,7 +70,7 @@ await check('start rejects a bad name and a missing command (exit 125)', () => {
   assert.equal(bg('start', '--name', 'ok').code, 125);
 });
 await check('a value flag followed by nothing or by another flag is a usage error naming the flag (exit 125), never swallowed', () => {
-  for (const [args, flag] of [[['start', '--name'], '--name'], [['start', '--name', '--slots', '1', '--', 'true'], '--name'], [['wait', '--max', '--tail', '3'], '--max'], [['status', '--grep'], '--grep'], [['status', '--tail', '--all'], '--tail'], [['start', '--name', 'x', '--timeout', '--', 'true'], '--timeout'], [['status', '--dir'], '--dir'], [['wait', '--until', '--all'], '--until'], [['wait', '--until'], '--until']]) {
+  for (const [args, flag] of [[['start', '--name'], '--name'], [['start', '--name', '--slots', '1', '--', 'true'], '--name'], [['wait', '--max', '--tail', '3'], '--max'], [['status', '--grep'], '--grep'], [['status', '--tail', '--all'], '--tail'], [['start', '--name', 'x', '--timeout', '--', 'true'], '--timeout'], [['status', '--dir'], '--dir'], [['wait', '--until', '--all'], '--until'], [['wait', '--until'], '--until'], [['start', '--name', 'x', '--kind', '--no-lock', '--', 'true'], '--kind']]) {
     const r = bg(...args); assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.match(r.err, new RegExp(`run-bg: ${flag} needs a value`), `${args.join(' ')}: ${r.err.split('\n')[0]}`);
   }
   assert.equal(readdirSync(dir).some((f) => f.startsWith('x.')), false, 'no job was created by the rejected start');
@@ -370,18 +373,22 @@ await check('no machine-wide slot within a set STARDUST_BROWSER_WAIT: queued whi
     assert.equal(existsSync(marker), false, 'the command never ran');
   } finally { holder.kill('SIGKILL'); lockCli({}, 'release', '--all'); }
 });
-await check('--no-lock, an unclassified command and STARDUST_BROWSER_SLOTS=0 take no slot; a browser instrument asks for one without --lock', async () => {
+await check('--no-lock (a job: --kind job; alone it makes a server), an unclassified command and STARDUST_BROWSER_SLOTS=0 take no slot; a browser instrument asks for one without --lock', async () => {
   const holder = spawn('sleep', ['60']);
   try {
     assert.equal(lockCli({ STARDUST_BROWSER_SLOTS: '1' }, 'acquire', '--pid', String(holder.pid)).status, 0); // the only slot is held: asking for one ends 124
     const x = { STARDUST_BROWSER_SLOTS: '1', STARDUST_BROWSER_WAIT: '1' };
     const never = join(lockRoot, 'never');
-    assert.equal(run(x, 'start', '--name', 'nl', '--no-lock', '--', process.execPath, '-e', SLOT_JOB(0), 'stitch-shot.mjs').code, 0);
+    assert.equal(run(x, 'start', '--name', 'nl', '--no-lock', '--kind', 'job', '--', process.execPath, '-e', SLOT_JOB(0), 'stitch-shot.mjs').code, 0);
+    const nls = run(x, 'start', '--name', 'nls', '--no-lock', '--', process.execPath, '-e', SLOT_JOB(0), 'stitch-shot.mjs'); // a server: never asks for the slot
+    assert.equal(nls.code, 0, nls.err);
+    assert.deepEqual(nls.out.split('\n').filter((l) => /^run-bg: nls: /.test(l)), ['run-bg: nls: --no-lock implies --kind server — no slot, out of a bare wait; --kind job keeps an instrument run a job', 'run-bg: nls: a server whose command names a browser instrument takes no browser slot and no bare wait waits for it — --kind job if it is an instrument run'], nls.out);
     assert.equal(run(x, 'start', '--name', 'plain', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
     assert.equal(run(x, 'start', '--name', 'auto', '--', process.execPath, '-e', SLOT_JOB(0), 'stitch-shot.mjs').code, 0);
     assert.equal(run({ STARDUST_BROWSER_SLOTS: '0', STARDUST_BROWSER_LOCK_DIR: never }, 'start', '--name', 'off', '--lock', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
-    assert.equal(bg('wait', '--max', '20', 'nl', 'plain', 'auto', 'off').code, 0);
-    for (const n of ['nl', 'plain', 'off']) {
+    assert.equal(bg('wait', '--max', '20', 'nl', 'nls', 'plain', 'auto', 'off').code, 0);
+    assert.deepEqual([state('nl').kind, state('nls').kind], ['job', 'server']);
+    for (const n of ['nl', 'nls', 'plain', 'off']) {
       const st = state(n); const log = readFileSync(join(dir, `${n}.log`), 'utf8');
       assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, / perSlot= slots=\S* slot=$/m, n);
     }
@@ -459,7 +466,7 @@ await check('start without --timeout on a gate-all.mjs job: deadline = the estim
   const fake = join(lockRoot, 'fake'); mkdirSync(fake); // stand-ins that print the deadline they see
   for (const f of ['gate-all.mjs', 'stitch-shot.mjs']) writeFileSync(join(fake, f), "console.log('deadline='+process.env.RUN_BG_DEADLINE_SEC)");
   const d = join(proj, 'bg');
-  const startIn = (extra, name, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, 'start', '--dir', d, '--name', name, '--no-lock', ...args], { cwd: proj, encoding: 'utf8', env: { ...env, ...extra } }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
+  const startIn = (extra, name, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, 'start', '--dir', d, '--name', name, '--no-lock', '--kind', 'job', ...args], { cwd: proj, encoding: 'utf8', env: { ...env, ...extra } }); assert.equal(r.status, 0, r.stderr); return r.stdout; };
   const OFF = { STARDUST_BROWSER_SLOTS: '0' }; // the lock off: no slot, the default pools, × 1
   const ga = startIn(OFF, 'ga', '--', process.execPath, join(fake, 'gate-all.mjs'));
   assert.match(ga, /^run-bg: ga gates 40 page\(s\) × 1 width ≈ 1000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 1000 s instead of the 900 s default$/m, ga);
@@ -635,6 +642,131 @@ await check('--help: wait\'s default --max 300 or --until, the five-minute rule,
 });
 await check('the paused-on job ends on its own, unsignalled (exit 0)', () => {
   const w = bgIn(pd, {}, 'wait', '--max', '30', 'p1'); assert.equal(w.code, 0, w.out); assert.match(w.out, /^p1 {2}done exit=0/m);
+});
+
+// ---- servers (--kind server; --no-lock implies it) and stop ------------------------------------------------------
+// In recorded hands-off runs a 26-second measure queued 615 s behind a static file server, and a bare wait blocked 600 s
+// on the unit's own servers: a server holds no slot, a bare or --all wait leaves it out, status lists it under servers:.
+await check('startKind: --kind as given wins; without it --no-lock (lock off) makes a server, anything else a job', () => {
+  assert.deepEqual([startKind(undefined, 'auto'), startKind(undefined, 'on'), startKind(undefined, 'off'), startKind('job', 'off'), startKind('server', 'auto')], ['job', 'job', 'server', 'job', 'server']);
+});
+await check('mayLaunch: a running server holds no slot and a queued one is never ahead; a server never waits; jobs keep FIFO on their slots', () => {
+  const t = (s) => new Date(Date.UTC(2026, 9, 18, 10, 0, s)).toISOString();
+  const ph = (j) => j.ph;
+  const me = { name: 'm', slots: 1, queuedAt: t(10) }; // no kind: an older state, a job
+  const web = { name: 'web', kind: 'server', queuedAt: t(0), ph: 'running' }; const web2 = { name: 'web2', kind: 'server', queuedAt: t(1), ph: 'queued' };
+  const running = { name: 'j1', kind: 'job', queuedAt: t(2), ph: 'running' }; const earlier = { name: 'j0', kind: 'job', queuedAt: t(5), ph: 'queued' };
+  assert.equal(mayLaunch(me, [me, web, web2], ph), true, 'one slot, a running and an earlier queued server: the job launches');
+  assert.equal(mayLaunch(me, [me, web, running], ph), false, 'a running job holds the one slot');
+  assert.equal(mayLaunch({ ...me, slots: 2 }, [me, web, running], ph), true, 'two slots: the server is not the second job');
+  assert.equal(mayLaunch(me, [me, earlier], ph), false, 'FIFO: a job queued earlier goes first');
+  assert.equal(mayLaunch({ name: 'web3', kind: 'server', slots: 1, queuedAt: t(20) }, [running, earlier], ph), true, 'a server never waits for a slot');
+});
+await check('pickNames: bare and --all leave servers out (their queued or running count is skipped), a named server is selected; status lists the scope\'s servers by name after the jobs under servers:', async () => {
+  const d = join(lockRoot, 'pick', 'bg'); mkdirSync(d, { recursive: true });
+  // "Running" without a process: this test process's own identity stands in for a wrapper. Never stop or clean this dir.
+  const me = { wrapperPid: process.pid, wrapperStart: procInfo(process.pid, { fresh: true }).start };
+  const ago = (s) => new Date(Date.now() - s * 1000).toISOString();
+  const put = (name, fields) => { writeFileSync(join(d, `${name}.json`), JSON.stringify({ name, kind: 'job', ownerPid: 'agent-a', cmd: 'node', args: ['serve.mjs'], cwd: d, timeoutSec: 3600, slots: 3, lock: 'off', queuedAt: ago(120), wrapperPid: null, wrapperStart: null, launchedAt: ago(110), childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false, ...fields })); writeFileSync(join(d, `${name}.log`), ''); };
+  put('gate', { ...me, timeoutSec: 900 });
+  put('web', { ...me, kind: 'server', childPid: 4242 });
+  put('proto', { kind: 'server', endedAt: ago(60), exit: STOPPED_EXIT, stopped: true, stoppedAt: ago(60) });
+  put('older', { kind: 'server', queuedAt: ago(7300), launchedAt: ago(7300), endedAt: ago(7200), exit: 0 }); // ended long ago: listed by name only
+  put('theirs', { ...me, kind: 'server', ownerPid: 'agent-b' });
+  const bare = pickNames(d, [], { owner: 'agent-a' });
+  assert.deepEqual([bare.names, bare.servers, bare.skipped], [['gate'], ['proto', 'web'], 1]);
+  const all = pickNames(d, [], { all: true, owner: 'agent-a' });
+  assert.deepEqual([all.names, all.servers, all.skipped], [['gate'], ['proto', 'theirs', 'web'], 2]);
+  assert.deepEqual(pickNames(d, ['web'], { owner: 'agent-a' }).names, ['web'], 'named: a server is selected');
+  const s = status(d, [], { owner: 'agent-a', pauseFile: '' }).text.split('\n');
+  assert.equal(s[0], 'run-bg: status — yours (owner agent-a), unfinished: 1 job(s)');
+  assert.deepEqual(s.slice(-3).map((l) => l.replace(/\d+s/g, 'Ns')), ['servers: 2 of yours — not waited for; `stop <name>` or `stop --servers` ends them', '  proto  stopped exit=143  ran Ns  deadline Ns  — node serve.mjs', '  web  running pid 4242  age Ns  deadline Ns  — node serve.mjs']);
+  assert.ok(s.indexOf('servers: 2 of yours — not waited for; `stop <name>` or `stop --servers` ends them') > s.findIndex((l) => /^run-bg: 0\/1 ended/.test(l)), 'after the jobs');
+  assert.match(status(d, [], { all: true, owner: 'agent-a', pauseFile: '' }).text, /^servers: 3 of all owners — not waited for; `stop <name>` or `stop --servers --all` ends them$/m);
+  const w = await wait(d, [], { maxSec: 0, owner: 'agent-a', pauseFile: '' });
+  assert.equal(w.text.split('\n')[0], 'run-bg: wait — yours (owner agent-a), unfinished: 1 job(s); 1 server(s) not waited for — status lists them'); assert.doesNotMatch(w.text, /^servers:/m);
+  const named = status(d, ['web'], { owner: 'agent-a', pauseFile: '' }).text;
+  assert.match(named, /^web {2}server running \d+s \(ends at `stop web` or its 3600s deadline\)$/m); assert.doesNotMatch(named, /^servers:/m);
+  rmSync(join(lockRoot, 'pick'), { recursive: true, force: true });
+});
+await check('start --kind: --no-lock alone makes a server (one line says so; deadline 3600 s, lock off), --no-lock --kind job a job (900 s), an explicit --timeout wins; --kind server --lock, a bad --kind, --kind off start and --servers off stop are usage errors (exit 125)', () => {
+  const d = join(lockRoot, 'kinds', 'bg');
+  const nl = bgIn(d, {}, 'start', '--name', 'nl', '--no-lock', '--', 'true');
+  assert.equal(nl.code, 0, nl.err); assert.match(nl.out, /^run-bg: nl: --no-lock implies --kind server/m); assert.match(nl.out, /^run-bg: started server nl → .*nl\.log {3}\(not waited for: `status` lists it under servers:, `stop nl` ends it, else its 3600 s deadline\)$/m);
+  const nj = bgIn(d, {}, 'start', '--name', 'nj', '--no-lock', '--kind', 'job', '--', 'true');
+  assert.equal(nj.code, 0, nj.err); assert.doesNotMatch(nj.out, /server/); assert.match(nj.out, /^run-bg: queued nj → /m);
+  const ks = bgIn(d, {}, 'start', '--name', 'ks', '--kind', 'server', '--timeout', '60', '--', 'true');
+  assert.equal(ks.code, 0, ks.err); assert.doesNotMatch(ks.out, /implies/, 'an explicit --kind: no implication line');
+  assert.deepEqual(['nl', 'nj', 'ks'].map((n) => { const st = stateIn(d, n); return [st.kind, st.lock, st.timeoutSec]; }), [['server', 'off', 3600], ['job', 'off', 900], ['server', 'off', 60]]);
+  for (const [args, msg] of [[['start', '--name', 'kl', '--kind', 'server', '--lock', '--', 'true'], 'run-bg: a server takes no browser slot — --lock is for a job (--kind job)'], [['start', '--name', 'kb', '--kind', 'daemon', '--', 'true'], 'run-bg: --kind must be job or server (got daemon)'],
+    [['wait', '--kind', 'server'], 'run-bg: --kind is a start flag — status lists servers under servers:, stop --servers ends them'], [['status', '--servers'], 'run-bg: --servers is a stop flag — status lists servers under servers:'],
+    [['stop'], 'run-bg: stop needs <job>… or --servers'], [['stop', '--all'], 'run-bg: stop --all needs --servers (every owner\'s servers) — jobs are stopped by name'], [['stop', 'nl', '--servers'], 'run-bg: stop takes <job>… or --servers, not both']]) {
+    const r = bgIn(d, {}, ...args); assert.equal(r.code, 125, args.join(' ')); assert.equal(r.out, '', args.join(' ')); assert.equal(firstLine(r.err), msg, args.join(' '));
+  }
+  assert.equal(existsSync(join(d, 'kl.json')) || existsSync(join(d, 'kb.json')), false, 'no job was created by a rejected start');
+  assert.equal(bgIn(d, {}, 'wait', '--max', '10', 'nl', 'nj', 'ks').code, 0);
+});
+const sd = join(lockRoot, 'srv', 'bg');
+const SERVE = 'setInterval(()=>{},1000)';
+const launched = async (d, name) => { for (let i = 0; i < 50 && !stateIn(d, name).childPid; i += 1) await sleep(100); return stateIn(d, name); }; // eslint-disable-line no-await-in-loop
+await check('a running server holds no slot: a --slots 1 job launches beside it and a bare wait returns without it (its first line counts it); status lists it under servers:; wait <server> waits for it; clean keeps it', async () => {
+  assert.equal(bgIn(sd, {}, 'start', '--name', 'web', '--kind', 'server', '--', process.execPath, '-e', SERVE).code, 0);
+  const { childPid } = await launched(sd, 'web'); assert.ok(childPid, 'the server runs');
+  assert.equal(bgIn(sd, {}, 'start', '--name', 'j1', '--slots', '1', '--', process.execPath, '-e', PASS_JOB).code, 0);
+  const w = bgIn(sd, {}, 'wait', '--max', '15');
+  assert.equal(w.code, 0, w.out);
+  assert.equal(firstLine(w.out), `run-bg: wait — yours (owner ${process.pid}), unfinished: 1 job(s); 1 server(s) not waited for — status lists them`);
+  assert.match(w.out, /^j1 {2}done exit=0/m); assert.doesNotMatch(w.out, /^ *web /m);
+  const s = bgIn(sd, {}, 'status').out.split('\n');
+  assert.equal(s[0], `run-bg: status — yours (owner ${process.pid}), latest batch: 1 job(s)`);
+  const head = s.indexOf('servers: 1 of yours — not waited for; `stop <name>` or `stop --servers` ends them');
+  assert.ok(head > s.findIndex((l) => /^run-bg: all 1 ended/.test(l)), s.join('\n'));
+  assert.match(s[head + 1], new RegExp(`^ {2}web {2}running pid ${childPid} {2}age \\d+s {2}deadline 3600s {2}— .+ -e setInterval\\(\\(\\)=>\\{\\},1000\\)$`), s[head + 1]);
+  const named = bgIn(sd, {}, 'wait', '--max', '1', 'web');
+  assert.equal(named.code, STILL_RUNNING_EXIT, named.out); assert.match(named.out, /^web {2}server running \d+s \(ends at `stop web` or its 3600s deadline\)$/m);
+  const c = bgIn(sd, {}, 'clean');
+  assert.match(c.out, /^run-bg: keeping web \(server, running\) — `stop web` or `clean --all` stops it$/m, c.out); assert.ok(existsSync(join(sd, 'web.json')) && pidAlive(childPid));
+});
+await check('stop <server>: its process group ends, the state records stopped (exit 143), status shows it stopped; again = not running (exit 0); an unknown name = exit 2', async () => {
+  const { wrapperPid, childPid } = stateIn(sd, 'web');
+  const t0 = Date.now(); const r = bgIn(sd, {}, 'stop', 'web');
+  assert.equal(r.code, 0, r.out + r.err); assert.match(r.out, /^run-bg: stopped web \(server, ran \d+s; exit 143 recorded\)\n$/); assert.ok(Date.now() - t0 < 4000, `took ${Date.now() - t0} ms`);
+  assert.equal(pidAlive(childPid), false, 'the server is gone'); assert.equal(pidAlive(wrapperPid), false, 'its wrapper is gone');
+  const st = stateIn(sd, 'web'); assert.deepEqual([st.stopped, st.exit, Boolean(st.endedAt), Boolean(st.stoppedAt)], [true, STOPPED_EXIT, true, true]);
+  assert.match(bgIn(sd, {}, 'status').out, /^ {2}web {2}stopped exit=143 {2}ran \d+s {2}deadline 3600s {2}— /m);
+  assert.match(bgIn(sd, {}, 'status', 'web').out, /^web {2}stopped after \d+s \(exit 143: no verdict\)$/m);
+  assert.match(logIn(sd, 'web'), /^run-bg: web stopped \S+ \(exit 143\)$/m);
+  const again = bgIn(sd, {}, 'stop', 'web');
+  assert.equal(again.code, 0); assert.match(again.out, /^run-bg: web is not running — stopped after \d+s \(exit 143: no verdict\); nothing to stop$/m);
+  const unknown = bgIn(sd, {}, 'stop', 'nope'); assert.equal(unknown.code, 2); assert.match(unknown.err, /^run-bg: no such job in .*: nope — nothing stopped$/m);
+});
+await check('stop --servers stops the caller\'s own running servers, --servers --all every owner\'s; a name list with an unknown name signals nothing; stop <job> works on a job (exit 143, no verdict)', async () => {
+  const OTHER = { RUN_BG_OWNER: 'agent-b' };
+  assert.equal(bgIn(sd, {}, 'start', '--name', 'a1', '--no-lock', '--', process.execPath, '-e', SERVE).code, 0);
+  assert.equal(bgIn(sd, OTHER, 'start', '--name', 'b1', '--kind', 'server', '--', process.execPath, '-e', SERVE).code, 0);
+  assert.equal(bgIn(sd, {}, 'start', '--name', 'long', '--timeout', '0', '--', process.execPath, '-e', SERVE).code, 0);
+  const [a1, b1, long] = [await launched(sd, 'a1'), await launched(sd, 'b1'), await launched(sd, 'long')];
+  assert.equal(bgIn(sd, {}, 'stop', 'a1', 'nope').code, 2); assert.ok(pidAlive(a1.childPid), 'nothing signalled');
+  const mine = bgIn(sd, {}, 'stop', '--servers');
+  assert.equal(mine.code, 0, mine.out); assert.match(mine.out, /^run-bg: stopped a1 \(server, ran \d+s; exit 143 recorded\)\n$/);
+  assert.equal(pidAlive(a1.childPid), false); assert.ok(pidAlive(b1.childPid), 'another owner\'s server keeps running'); assert.ok(pidAlive(long.childPid), 'a job is not a server');
+  const every = bgIn(sd, {}, 'stop', '--servers', '--all');
+  assert.equal(every.code, 0, every.out); assert.match(every.out, /^run-bg: stopped b1 \(server, ran \d+s; exit 143 recorded\)\n$/); assert.equal(pidAlive(b1.childPid), false);
+  assert.equal(bgIn(sd, {}, 'stop', '--servers').out, `run-bg: stop — no running servers of yours in ${sd}\n`);
+  const j = bgIn(sd, {}, 'stop', 'long');
+  assert.equal(j.code, 0); assert.match(j.out, /^run-bg: stopped long \(job, ran \d+s; exit 143 recorded\)$/m); assert.equal(pidAlive(long.childPid), false);
+  assert.match(bgIn(sd, {}, 'status', 'long').out, /^long {2}stopped after \d+s \(exit 143: no verdict\)$/m);
+});
+await check('stop escalates: a server that ignores SIGTERM gets SIGKILL after the grace (stop(…, { graceMs })), and the end is recorded though its wrapper wrote none', async () => {
+  assert.equal(bgIn(sd, {}, 'start', '--name', 'stubborn', '--kind', 'server', '--', process.execPath, '-e', "process.on('SIGTERM',()=>{});console.log('ready');setInterval(()=>{},1000)").code, 0);
+  for (let i = 0; i < 50 && !/^ready$/m.test(logIn(sd, 'stubborn')); i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
+  const { wrapperPid, childPid } = stateIn(sd, 'stubborn');
+  const t0 = Date.now(); const r = await stopJobs(sd, ['stubborn'], { graceMs: 300 });
+  assert.equal(r.code, 0, r.text); assert.match(r.text, /^run-bg: stopped stubborn \(server, ran \d+s; exit 143 recorded\)$/); assert.ok(Date.now() - t0 < 3000, `took ${Date.now() - t0} ms`);
+  assert.equal(pidAlive(childPid), false); assert.equal(pidAlive(wrapperPid), false);
+  assert.doesNotMatch(logIn(sd, 'stubborn'), /ended exit=/, 'the wrapper was killed before it could record an end');
+  const st = stateIn(sd, 'stubborn'); assert.deepEqual([st.stopped, st.exit, Boolean(st.endedAt)], [true, STOPPED_EXIT, true]);
+  assert.equal(bgIn(sd, {}, 'clean').code, 0); assert.deepEqual(readdirSync(sd), [], 'every stopped job is ended: clean removes it');
 });
 
 rmSync(dir, { recursive: true, force: true });
