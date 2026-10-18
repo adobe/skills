@@ -89,9 +89,15 @@
  *   `A' <template>: <n> sibling(s): <slug> (fork), <slug>, …`, `B  <n> page(s): …`, `passthrough <n> page(s): …`.
  *   Then the encode attempt (encode-attempt.mjs) of every template with A' siblings in the set — the attempt
  *   decides how a template's siblings are built, so an A page without siblings and a B page get none: an existing
- *   record (any verdict) is kept, --force re-records; else recordAttempt runs the encoder (encode.mjs beside
- *   encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error) and writes
- *   stardust/migrate/encode/<template>.json under the project root (the cwd). One line per template
+ *   record (any verdict) is kept, --force re-records — except an automatic not-attempted (no map / no encoder, no
+ *   reason given), which is always recorded again, so a map drafted since is picked up; else recordAttempt runs the
+ *   encoder (encode.mjs beside encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error)
+ *   and writes stardust/migrate/encode/<template>.json under the project root (the cwd). Encoder first: a template
+ *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record — its stderr line
+ *   is encode-attempt.mjs's refusal, nothing is written (an earlier automatic record goes), and after the per-template
+ *   lines one stdout line names them all: `maps due: <k> template(s) — <t> (<n> siblings), … — draft each map in
+ *   the C-archetype unit (…), or record why not: … --reason "<why>"`; with --force, a decision on record (a reason,
+ *   hand-authored) is kept when the re-record would be refused. One line per template
  *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, with ` (kept from <at>; --force re-records)`
  *   when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
  *   `encode-attempt <t>: not recorded — <why>`. The LAST stdout line is the count for the plan unit's ledger
@@ -213,7 +219,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
-import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
+import { isAutoNotAttempted, readAttempt, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -1031,21 +1037,28 @@ export function planRun(o) {
   for (const t of templates) console.log(`A' ${t}: ${siblings.get(t).length} sibling(s): ${siblings.get(t).join(', ')}`);
   if (groups.B.length) console.log(`B  ${groups.B.length} page(s): ${groups.B.join(', ')}`);
   if (groups.passthrough.length) console.log(`passthrough ${groups.passthrough.length} page(s): ${groups.passthrough.join(', ')}`);
-  const records = [];
+  const records = []; const due = [];
   for (const t of templates) {
-    const kept = o.force ? null : readAttempt(PROJECT_ROOT, t);
+    const prior = readAttempt(PROJECT_ROOT, t);
+    // An automatic not-attempted (no map / no encoder) is recorded again: a map drafted since then is picked up.
+    let kept = !o.force && prior && !isAutoNotAttempted(prior) ? prior : null;
     let rec = kept;
     if (!rec) {
-      try { rec = recordAttempt(PROJECT_ROOT, t, o.encoder ? { encoder: o.encoder } : {}); } catch (e) {
-        if (e instanceof AttemptUsageError) console.error(`encode-attempt ${t}: not recorded — ${e.message}`);
+      const sibs = [...new Set([...siblingsOf(state, t), ...siblings.get(t).map((s) => s.replace(/ \(fork\)$/, ''))])];
+      try { rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs }); } catch (e) {
+        // --force on a template whose record is a decision (a reason, hand-authored) keeps that decision when nothing new can run
+        if (e instanceof AttemptRefusal && prior && (prior.verdict === 'hand-authored' || (prior.verdict === 'not-attempted' && !isAutoNotAttempted(prior)))) rec = kept = prior;
+        else if (e instanceof AttemptRefusal) { console.error(e.message); due.push(`${t} (${sibs.length} siblings)`); }
+        else if (e instanceof AttemptUsageError) console.error(`encode-attempt ${t}: not recorded — ${e.message}`);
         else if (e.code) console.error(`encode-attempt ${t}: not recorded — could not write stardust/migrate/encode/${t}.json (${e.code})`);
         else throw e;
-        records.push(null); continue;
+        if (!rec) { records.push(null); continue; }
       }
     }
     console.log(`encode-attempt ${t}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; --force re-records)` : ''}`);
     records.push(rec);
   }
+  if (due.length) console.log(`maps due: ${due.length} template(s) — ${due.join(', ')} — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"`);
   console.log(summaryLine(records));
   return groups.refused.length || records.includes(null) ? 2 : 0;
 }

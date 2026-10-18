@@ -934,6 +934,27 @@ check('plan is flow-guarded like render', () => {
   const s = json(STATE); const keep = read(STATE); delete s.flow; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
   try { const r = run(['plan', 'event-one']); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/); assert.equal(r.out, ''); } finally { write(STATE, keep); }
 });
+check('encoder first: a template with ≥ 2 siblings and no map is a map due — plan names it, records nothing, exit 2; render keeps its A′ path closed', () => {
+  const s = json(STATE); s.pages.push(page('halls', '/halls/', 'approved', 'hall'), page('hall-one', '/halls/one/', 'directed', 'hall'), page('hall-two', '/halls/two/', 'directed', 'hall'));
+  write(STATE, `${JSON.stringify(s, null, 2)}\n`); write(`${P}/halls-proposed.html`, minimal('Halls')); for (const h of ['halls', 'hall-one', 'hall-two']) capture(h, h, `${h} description.`);
+  // an automatic not-attempted record written before the rule is not kept: plan records again, and the refusal removes it
+  recordAttempt(tmp, 'halls', { siblings: [] }); assert.equal(json(ENC('halls')).verdict, 'not-attempted');
+  const r = run(['plan', 'hall-one', 'hall-two']); assert.equal(r.status, 2);
+  assert.match(r.err, /^encode-attempt halls: refused not-attempted — 2 sibling\(s\) \(hall-one, hall-two\) and (no map at stardust\/import\/halls\/vocabulary\.json|encode\.mjs not found beside this script): /m);
+  assert.deepEqual(r.out.trim().split('\n').slice(-2), [
+    'maps due: 1 template(s) — halls (2 siblings) — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"',
+    'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record',
+  ]);
+  assert.ok(!has(ENC('halls')), 'the earlier automatic record is gone');
+  const rr = run(['render', 'hall-one']); assert.equal(rr.status, 2); assert.match(rr.err, /^refused hall-one: strict encode-attempt — /m);
+});
+check('encoder first: a reason recorded for the template (or a drafted map) clears the due; plan keeps the reasoned record', () => {
+  const rec = recordAttempt(tmp, 'halls', { reason: 'every hall page is a one-off floor plan' });
+  assert.match(rec.reason, /^every hall page is a one-off floor plan \(/);
+  const r = run(['plan', 'hall-one', 'hall-two']); assert.equal(r.status, 0, r.err);
+  assert.doesNotMatch(r.out, /^maps due/m); assert.match(r.out, /^encode-attempt halls: not-attempted — every hall page is a one-off floor plan \(.*\(kept from /m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+});
 
 // ---- --help ---------------------------------------------------------------------------------
 console.log('--help');
