@@ -17,7 +17,8 @@
 // A refused add --verify suggests (missSuggestLines, pure: per missed selector the top three of its kind with the add
 // command carrying the call's flags, shell-quoted; an allowance has none); e2e the hide miss prints the block after
 // hideMissLine, and a --dismiss miss on a fixed consent-style banner the default dismissal leaves lists its controls
-// ranked, the first printed command run verbatim verifies and writes.
+// ranked, the first printed command run verbatim verifies and writes; suggest --kind dismiss lists the same three,
+// --kind pin the rotator controls; a --kind other than hide / dismiss / pin, or on add, is a usage error.
 // Capture settings: add --dismiss / --pin --state / --allow <kind>=<sel> --reason store dismiss / pin / allow per key
 // (idempotent; a new state or reason replaces), a per-visitor-dialog allow needs its container hidden for the page, the
 // usage refusals, a malformed field refused; captureSettings ("*" then the slug, lenient) and clipAllowed (whole path
@@ -30,7 +31,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, captureSettings, clipAllowed, missSuggestLines, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
+import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, captureSettings, candidateLines, clipAllowed, missSuggestLines, parseArgs, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'presence.mjs');
@@ -64,7 +65,7 @@ check('--help: usage, inputs, outputs and exit codes on stdout; no import, no fi
     const r = run(cwd, ['add', flag], { script: join(lone, 'presence.mjs') });
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /Usage:/);
-    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', 'suggest <url> [--width 1440]', '--verify <url>', '--wait-ms', '--headed', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', UNVERIFIED, 'hide matched nothing on live — candidates:', 'top candidates for --<kind> <sel>:', 'no <kind> candidate found', 'none found above the header', 'Exit codes', '3 bot challenge']) assert.ok(r.out.includes(s), `--help names ${s}`);
+    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', 'suggest <url> [--width 1440]', '--kind hide|dismiss|pin', '--verify <url>', '--wait-ms', '--headed', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', UNVERIFIED, 'hide matched nothing on live — candidates:', 'top candidates for --<kind> <sel>:', 'no <kind> candidate found', 'none found above the header', 'Exit codes', '3 bot challenge']) assert.ok(r.out.includes(s), `--help names ${s}`);
     assert.equal(r.err, '');
   }
   assert.deepEqual(listing(cwd), []);
@@ -402,6 +403,32 @@ check('missSuggestLines: per missed selector in call order, the top three of its
   assert.deepEqual(missSuggestLines([], { dismiss }, { url }), []);
 });
 
+check('candidateLines (suggest --kind dismiss / pin): no missed selector named; a pin without --state takes the control\'s text, else "pinned"', () => {
+  const url = 'https://www.example.com/';
+  assert.deepEqual(candidateLines('pin', [{ selector: '.dot', text: '', role: 'button' }, { selector: '.pause', text: 'Pause', role: 'button' }], { url, waitMs: 0 }), [
+    `suggest on ${url} @ 1440px — top candidates for --pin:`,
+    '  .dot  ""  button', `    presence.mjs add --pin .dot --state pinned --verify ${url} --wait-ms 0`,
+    '  .pause  "Pause"  button', `    presence.mjs add --pin .pause --state Pause --verify ${url} --wait-ms 0`,
+  ]);
+  assert.deepEqual(candidateLines('dismiss', [], { url, width: 390 }), [`suggest on ${url} @ 390px — no dismiss candidate found`]);
+});
+
+check('parseArgs: suggest --kind hide | dismiss | pin (default hide); another kind or --kind on add is a usage error', () => {
+  const url = 'https://www.example.com/';
+  assert.equal(parseArgs(['suggest', url]).kind, 'hide');
+  for (const kind of ['hide', 'dismiss', 'pin']) assert.equal(parseArgs(['suggest', url, '--kind', kind]).kind, kind);
+  const root = project();
+  for (const [args, re] of [
+    [['suggest', url, '--kind', 'allow'], /--kind must be one of hide, dismiss, pin \(got "allow"\)/],
+    [['suggest', url, '--kind'], /--kind needs a value/],
+    [['add', '--dismiss', '.x', '--kind', 'dismiss'], /unknown argument --kind for add/],
+  ]) {
+    const r = run(root, args);
+    assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); assert.equal(r.err.trim().split('\n').length, 1); assert.equal(r.out, '');
+  }
+  assert.deepEqual(listing(root), []);
+});
+
 await checkAsync('pollSelectors: polls until every selector matched once (a block rendered late is found), the highest count kept; never-matched ones are the misses', async () => {
   const stub = (frames) => { let i = 0; return { looks: () => i, evaluate: async (fn, sels) => { const f = frames[Math.min(i, frames.length - 1)]; i += 1; return sels.map((_, k) => f[k]); }, waitForTimeout: (ms) => new Promise((r) => { setTimeout(r, ms); }) }; };
   // .geo-bar arrives on the third look; .strip matched once and went away — still verified
@@ -543,9 +570,11 @@ else {
     + '<section class="bar__wrapper"></section><header>Header</header><main><p>Content</p></main></body></html>';
   // a fixed consent-style banner the default dismissal leaves alone: no label of the consent tables, no dialog role, no
   // modal / popup marker — its controls are the dismiss candidates; the header link and the in-content button are not
-  // in an overlay, and the off-page link sorts after the controls that stay on the page
-  const CONSENT = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} header{height:60px} .cookie-banner{position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;border-top:1px solid #ccc}</style></head><body>'
-    + '<header><a href="/home">Home</a></header><main><p>Content</p><button class="cta">Read more</button></main>'
+  // in an overlay, and the off-page link sorts after the controls that stay on the page; the hero's dots and pause button
+  // are the pin candidates
+  const CONSENT = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} header{height:60px} .cookie-banner{position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;border-top:1px solid #ccc} .hero__dot{width:12px;height:12px}</style></head><body>'
+    + '<header><a href="/home">Home</a></header><main><p>Content</p><div class="hero"><button class="hero__dot" aria-label="Go to slide 1"></button>'
+    + '<button class="hero__dot" aria-label="Go to slide 2"></button><button class="hero__pause">Pause</button></div><button class="cta">Read more</button></main>'
     + '<div id="site-notice" class="cookie-banner"><p>We use cookies.</p><a href="/privacy">Privacy policy</a>'
     + '<button class="banner-btn primary">Continue to site</button><button class="banner-btn">Preferences</button>'
     + '<button class="banner-x" aria-label="Close notice">×</button></div></body></html>';
@@ -573,11 +602,13 @@ else {
     const right = seeded(); const wrong = seeded(); const blocked = seeded(); const missing = seeded(); const plain2 = project();
     const stale = project();
     write(stale, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
-    const settled = project(); const unsettled = project(); const consentMiss = seeded();
-    const [okSettings, refusedSettings, dismissMiss] = await Promise.all([
+    const settled = project(); const unsettled = project(); const consentMiss = seeded(); const plain3 = project();
+    const [okSettings, refusedSettings, dismissMiss, dismissListed, pinListed] = await Promise.all([
       runAsync(settled, ['add', '--dismiss', '.geo-bar', '--pin', 'header', '--state', 'at rest', '--verify', url, '--reason', 'R-02']),
       runAsync(unsettled, ['add', '--dismiss', '.geo-bar,.nl-close', '--verify', url, '--wait-ms', '0']),
       runAsync(consentMiss, ['add', '--dismiss', 'button.not-there', '--verify', consentUrl, '--wait-ms', '0']),
+      runAsync(plain3, ['suggest', consentUrl, '--kind', 'dismiss', '--wait-ms', '0']),
+      runAsync(plain3, ['suggest', consentUrl, '--kind', 'pin']),
     ]);
     await checkAsync('e2e add --verify with capture settings: every selector of the call polled like a hide (the delayed bar found), written; one that never matches refuses the call — exit 2, named, nothing written', async () => {
       assert.equal(okSettings.code, 0, okSettings.err);
@@ -616,6 +647,22 @@ else {
       assert.equal(r.code, 0, `${first}\n${r.err}`);
       assert.deepEqual(lines(r.out), [`verified on ${consentUrl} @ 1440px: button[aria-label="Close notice"] ×1`, '*.dismiss: button[aria-label="Close notice"]', `wrote ${DEFAULT_FILE}: +1 setting, 0 reasons`]);
       assert.deepEqual(json(consentMiss)['*'], { hide: ['.promo'], dismiss: ['button[aria-label="Close notice"]'] });
+    });
+    await checkAsync('e2e suggest --kind dismiss lists the same top three as the miss; --kind pin the rotator controls (a pin\'s --state is the control\'s text) — exit 0, nothing written', async () => {
+      assert.equal(dismissListed.code, 0, dismissListed.err);
+      assert.deepEqual(lines(dismissListed.out), [`suggest on ${consentUrl} @ 1440px — top candidates for --dismiss:`, ...DISMISS_TOP.map((l) => l.replace(/^presence: /, ''))]);
+      assert.equal(pinListed.code, 0, pinListed.err);
+      assert.deepEqual(lines(pinListed.out), [
+        `suggest on ${consentUrl} @ 1440px — top candidates for --pin:`,
+        '  button[aria-label="Go to slide 1"]  "Go to slide 1"  button',
+        `    presence.mjs add --pin 'button[aria-label="Go to slide 1"]' --state 'Go to slide 1' --verify ${consentUrl}`,
+        '  button[aria-label="Go to slide 2"]  "Go to slide 2"  button',
+        `    presence.mjs add --pin 'button[aria-label="Go to slide 2"]' --state 'Go to slide 2' --verify ${consentUrl}`,
+        '  button.hero__pause  "Pause"  button',
+        `    presence.mjs add --pin button.hero__pause --state Pause --verify ${consentUrl}`,
+      ]);
+      for (const r of [dismissListed, pinListed]) assert.equal(r.err, '');
+      assert.deepEqual(listing(plain3), []);
     });
     const [ok, refused, listed, challengedAdd, challengedSuggest, notFound] = await Promise.all([
       runAsync(right, ['add', '--hide', '.geo-bar', '--verify', url]),

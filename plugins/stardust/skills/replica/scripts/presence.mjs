@@ -32,13 +32,15 @@
  *   suggest  lists the candidates read off the live page's DOM — the in-flow blocks above the header
  *            (live-session's inFlowRegionsAboveHeader), where a per-visitor location bar sits — and checks the
  *            presence file's `"*".hide` on the same page: a selector there that matches nothing is warned on
- *            (never a refusal, exit 0). Writes nothing.
+ *            (never a refusal, exit 0). Writes nothing. --kind dismiss / pin lists the overlay / rotator CONTROL
+ *            candidates instead, the top three as a refused add --verify prints them (--kind hide, the default: the
+ *            output above, unchanged).
  *
  * Usage:
  *   node stardust/scripts/replica/presence.mjs add [--hide <sel[,sel…]>] [--dismiss <sel[,sel…]>] [--pin <sel> --state <label>]
  *        [--allow <kind>=<selector>] [--slug <s>] [--reason <R-nn>] [--file <f>] [--verify <url> [--wait-ms 5000] [--width 1440] [--headed]]
  *   node stardust/scripts/replica/presence.mjs seed [--run stardust/.labs/run.json] [--file <f>]
- *   node stardust/scripts/replica/presence.mjs suggest <url> [--width 1440] [--wait-ms 5000] [--headed] [--file <f>]
+ *   node stardust/scripts/replica/presence.mjs suggest <url> [--width 1440] [--wait-ms 5000] [--headed] [--file <f>] [--kind hide|dismiss|pin]
  *
  *   --hide <sel,…>   selectors to append (repeatable; each value a comma list)
  *   --dismiss <sel,…> extra overlay closers for the key's `dismiss` (repeatable; comma lists), clicked by both stitches
@@ -58,6 +60,7 @@
  *   --run <f>        the runner's run file (default stardust/.labs/run.json); a missing file seeds nothing
  *   --file <f>       the presence file (default stardust/replica/presence.json, relative to the cwd = the
  *                    project root); created with its directory when missing (suggest only reads it)
+ *   --kind <k>       suggest: whose candidates — hide (default), dismiss or pin (SUGGEST_KINDS)
  *
  * The live page is opened the way the gate's live instruments open it (live-session.mjs): newLiveContext
  * (real-Chrome UA + document-only headers), gotoLive (the default waitUntil, settle 2500 ms on a live site,
@@ -109,7 +112,11 @@
  * order, `<selector>  <tag>  <h>px` (`(no unique selector)` when the page has none for it), then
  * `presence.mjs add --hide <first candidate> --verify <url>` (+ `--width <w>` off the default; shell-quoted
  * where needed); no candidate → `none found above the header`; a `"*".hide` selector that matched nothing →
- * one more line on stderr, `presence: WARNING hide matched nothing on live — candidates: <…> (<sel>, …)`.
+ * one more line on stderr, `presence: WARNING hide matched nothing on live — candidates: <…> (<sel>, …)`. suggest
+ * --kind dismiss / pin prints instead, on stdout, the refused add's block without the `presence: ` prefix and with no
+ * missed selector — `suggest on <url> @ <w>px — top candidates for --<kind>:` and up to three candidate / add-command
+ * pairs (--file, --width, --wait-ms, --headed carried as on a miss; a pin's --state is the control's text, else `pinned`
+ * — rename it to the state its click pins), or `suggest on <url> @ <w>px — no <kind> candidate found`.
  *
  * Exit codes: 0 written, unchanged, nothing to seed, or suggest listed; 1 a malformed input file — the presence
  * file not JSON, not an object, the touched entry not an object, its `hide` / `dismiss` not a selector string or list,
@@ -120,7 +127,7 @@
  * without a value, add without a setting, --reason not `R-<digits>`, a URL that is not http(s), --wait-ms /
  * --width not a whole number, --wait-ms / --width / --headed on add without --verify, --pin without --state or twice,
  * --allow not <kind>=<selector>, of another kind or without --reason, a per-visitor-dialog container the page does
- * not hide) — or add --verify refused:
+ * not hide, a suggest --kind other than hide / dismiss / pin) — or add --verify refused:
  * a selector matched nothing on the live page, nothing written; 3 a bot challenge on the page (suggest,
  * add --verify; nothing written — retry with --headed).
  *
@@ -156,7 +163,7 @@ Usage:
   node stardust/scripts/replica/presence.mjs add [--hide <sel[,sel…]>] [--dismiss <sel[,sel…]>] [--pin <sel> --state <label>]
        [--allow <kind>=<selector>] [--slug <s>] [--reason <R-nn>] [--file <f>] [--verify <url> [--wait-ms ${DEFAULT_WAIT_MS}] [--width ${DEFAULT_WIDTH}] [--headed]]
   node stardust/scripts/replica/presence.mjs seed [--run ${DEFAULT_RUN}] [--file <f>]
-  node stardust/scripts/replica/presence.mjs suggest <url> [--width ${DEFAULT_WIDTH}] [--wait-ms ${DEFAULT_WAIT_MS}] [--headed] [--file <f>]
+  node stardust/scripts/replica/presence.mjs suggest <url> [--width ${DEFAULT_WIDTH}] [--wait-ms ${DEFAULT_WAIT_MS}] [--headed] [--file <f>] [--kind hide|dismiss|pin]
 
   add      append in-flow per-visitor region selectors (a location bar above the header) to "*".hide, or to
            <slug>.hide with --slug — the preserve-direction step records a region it identified — and the page's
@@ -165,7 +172,7 @@ Usage:
            the env ${ENV_OVERLAYS} (comma list) — run at Setup; no browser
   suggest  list the hide candidates read off the live page's DOM — the in-flow blocks above the header (where a
            per-visitor location bar sits) — and warn on a "*".hide selector of the file that matches nothing
-           there; writes nothing
+           there; writes nothing. --kind dismiss / pin: the overlay / rotator controls instead
   --hide <sel,…>   selectors to append (repeatable; comma lists)
   --dismiss <sel,…> extra overlay closers both stitches click ("dismiss"; repeatable; comma lists)
   --pin <sel>      one rotator control per call, clicked after the freeze on both sides; --state <label> (required)
@@ -185,6 +192,8 @@ Usage:
   --headed         add --verify, suggest: stealth real-Chrome tier (a bot-managed site that challenged the default)
   --run <f>        the run file (default ${DEFAULT_RUN}); missing = nothing from it
   --file <f>       the presence file (default ${DEFAULT_FILE}, relative to the project root = cwd; suggest reads it)
+  --kind <k>       suggest: hide (default — the output below, unchanged), dismiss or pin (the overlay / rotator controls,
+                   the top three as a refused add --verify lists them)
   --help           this text (reads and writes nothing)
 
 The page (suggest, add --verify) opens the way the gate's live instruments open it (live-session: newLiveContext,
@@ -222,6 +231,10 @@ suggest: one line per candidate in document order, "<selector>  <tag>  <h>px", t
 "presence.mjs add --hide <first candidate> --verify <url>"; no candidate: "none found above the header"; a "*".hide
 selector of the file that matched nothing (polled like --verify) adds on stderr, exit still 0:
   presence: WARNING hide matched nothing on live — candidates: <selector> (<tag>, <h>px); … (<sel>, …)
+suggest --kind dismiss / pin: on stdout the refused add's suggest block without "presence: " and without a missed
+selector — "suggest on <url> @ <w>px — top candidates for --<kind>:", ≤ 3 "  <selector>  "<text>"  <role>" /
+"    presence.mjs add --<kind> <selector> … --verify <url> …" pairs (a pin's --state is the control's text, else
+"pinned" — rename it to the state its click pins); none: "suggest on <url> @ <w>px — no <kind> candidate found".
 
 Exit codes: 0 written / unchanged / nothing to seed / suggest listed; 1 malformed input file (presence file or run
 file — named, nothing written), a file that cannot be read or written, live-session.mjs not found, playwright not
@@ -244,8 +257,10 @@ async function loadLiveSession() {
 const FLAGS = {
   add: ['--hide', '--dismiss', '--pin', '--state', '--allow', '--slug', '--reason', '--file', '--verify', '--wait-ms', '--width', '--headed'],
   seed: ['--run', '--file'],
-  suggest: ['--width', '--headed', '--wait-ms', '--file'],
+  suggest: ['--width', '--headed', '--wait-ms', '--file', '--kind'],
 };
+/** suggest --kind: whose candidates it lists (hide, the default, as before; dismiss / pin as a refused add --verify does). */
+export const SUGGEST_KINDS = Object.freeze(['hide', 'dismiss', 'pin']);
 const COMMANDS = 'add, seed or suggest';
 const isHttpUrl = (v) => { try { return ['http:', 'https:'].includes(new URL(v).protocol); } catch { return false; } };
 const wholeNumber = (flag, v, min) => {
@@ -254,13 +269,13 @@ const wholeNumber = (flag, v, min) => {
 };
 
 /** argv after the script path → { cmd, hide: [values], dismiss: [values], pin: { sel, state } | null, allow: [{ kind,
- * selector }], slug, reason, file, run, url, verify, waitMs, waitGiven (--wait-ms was on the line), width, headed }; throws
- * UsageError. --help is answered before this. */
+ * selector }], slug, reason, file, run, url, verify, waitMs, waitGiven (--wait-ms was on the line), width, headed, kind
+ * (suggest) }; throws UsageError. --help is answered before this. */
 export function parseArgs(argv) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError(`presence: a command is required — ${COMMANDS} (see --help)`);
   if (!Object.hasOwn(FLAGS, cmd)) throw new UsageError(`presence: unknown command "${cmd}" — ${COMMANDS} (see --help)`);
-  const o = { cmd, hide: [], dismiss: [], pin: null, state: null, allow: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN, url: null, verify: null, waitMs: null, width: null, headed: false };
+  const o = { cmd, hide: [], dismiss: [], pin: null, state: null, allow: [], slug: null, reason: null, file: DEFAULT_FILE, run: DEFAULT_RUN, url: null, verify: null, waitMs: null, width: null, headed: false, kind: 'hide' };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (cmd === 'suggest' && !a.startsWith('-')) {
@@ -291,6 +306,7 @@ export function parseArgs(argv) {
     else if (a === '--file') o.file = v;
     else if (a === '--run') o.run = v;
     else if (a === '--verify') o.verify = v.trim();
+    else if (a === '--kind') o.kind = v.trim();
     else if (a === '--wait-ms') o.waitMs = wholeNumber(a, v, 0);
     else if (a === '--width') o.width = wholeNumber(a, v, 1);
   }
@@ -301,6 +317,7 @@ export function parseArgs(argv) {
   if (o.allow.length && o.reason === null) throw new UsageError('presence: --allow needs --reason R-<nn> (an allowance names its register entry)');
   if (cmd === 'suggest' && o.url === null) throw new UsageError('presence: suggest needs a page URL (see --help)');
   if (cmd === 'suggest' && !isHttpUrl(o.url)) throw new UsageError(`presence: suggest needs an http(s) page URL (got "${o.url}")`);
+  if (!SUGGEST_KINDS.includes(o.kind)) throw new UsageError(`presence: --kind must be one of ${SUGGEST_KINDS.join(', ')} (got "${o.kind}")`);
   if (o.verify !== null && !isHttpUrl(o.verify)) throw new UsageError(`presence: --verify needs an http(s) page URL (got "${o.verify}")`);
   if (cmd === 'add' && o.verify === null && (o.waitMs !== null || o.width !== null || o.headed)) throw new UsageError('presence: --wait-ms, --width and --headed need --verify <url> (see --help)');
   if (o.slug === '') throw new UsageError('presence: --slug needs a page slug (see --help)');
@@ -540,11 +557,10 @@ async function scrollThroughInPage() {
  * Within a rank a control that leaves the page (a form submit, a link off this document) comes after the others (a click
  * on it would navigate the capture away), then document order. selector: the first of `#id` (a clean id: a letter, then
  * [A-Za-z0-9_-], no run of 4 digits), `tag[data-testid|aria-label|name|title="…"]` (a value ≤ 80 chars on one line),
- * `#anchor tag`, `#anchor tag.class`
- * (the nearest ancestor with a clean unique id), `tag.class`, then the `body > …:nth-of-type(i)` path that matches only
- * this element (querySelectorAll length 1); none → the control is skipped. text: whitespace-collapsed (an input's value),
- * else aria-label / title, cut to 40 chars; role: the role attribute, else button (button, summary, input button /
- * submit), link (a[href]), else the tag.
+ * `#anchor tag`, `#anchor tag.class` (the nearest ancestor with a clean unique id), `tag.class` (clean classes), then
+ * the `body > …:nth-of-type(i)` path, that matches only this element (querySelectorAll length 1); none → the control is
+ * skipped. text: whitespace-collapsed (an input's value), else aria-label / title, cut to 40 chars; role: the role
+ * attribute, else button (button, summary, input button / submit), link (a[href]), else the tag.
  */
 export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
   const CONTROLS = 'button, [role="button"], a[href], input[type="button"], input[type="submit"], [role="tab"], summary';
@@ -744,10 +760,10 @@ function addCommand(kind, selector, { url, width = DEFAULT_WIDTH, state = null, 
  * Pure: one kind's candidates ([{ selector, text, role }], best first) → the suggest block: `suggest on <url> @ <w>px — top
  * candidates for <missed | --<kind>>:`, then per candidate (≤ TOP_CANDIDATES; one without a selector skipped) `  <selector>
  * "<text>"  <role>` and `    <addCommand>` (`opts` carries the call's flags; a pin without `state` takes the control's text,
- * else its role). None → `suggest on <url> @ <w>px — no <kind> candidate found[ for <missed>]`; kind allow → `… — no allow
+ * else `pinned`). None → `suggest on <url> @ <w>px — no <kind> candidate found[ for <missed>]`; kind allow → `… — no allow
  * candidate[ for <missed>]: an allowance names a recorded finding's selector, so there is nothing to suggest`.
  */
-function candidateLines(kind, list, { missed = null, ...opts }) {
+export function candidateLines(kind, list, { missed = null, ...opts }) {
   const where = `suggest on ${opts.url} @ ${opts.width ?? DEFAULT_WIDTH}px`;
   const forMissed = missed === null ? '' : ` for ${missed}`;
   if (kind === 'allow') return [`${where} — no allow candidate${forMissed}: an allowance names a recorded finding's selector, so there is nothing to suggest`];
@@ -755,7 +771,7 @@ function candidateLines(kind, list, { missed = null, ...opts }) {
   if (!rows.length) return [`${where} — no ${kind} candidate found${forMissed}`];
   return [`${where} — top candidates for ${missed ?? `--${kind}`}:`, ...rows.flatMap((c) => [
     `  ${c.selector}  ${JSON.stringify(c.text || '')}  ${c.role}`,
-    `    ${addCommand(kind, c.selector, { ...opts, state: kind === 'pin' ? (opts.state ?? (c.text || c.role)) : null })}`,
+    `    ${addCommand(kind, c.selector, { ...opts, state: kind === 'pin' ? (opts.state ?? (c.text || 'pinned')) : null })}`,
   ])];
 }
 
@@ -797,9 +813,12 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const listed = parseHideList(entry && entry.hide);
     const seen = await withLivePage(session, o.url, o, async (page) => {
       const { misses } = listed.length ? await pollSelectors(page, listed, { waitMs: o.waitMs }) : { misses: [] };
-      return { misses, list: await session.inFlowRegionsAboveHeader(page) };
+      const list = await session.inFlowRegionsAboveHeader(page);
+      return { misses, list, controls: o.kind === 'hide' ? null : (await readCandidates(page, [o.kind], { labels: consentLabels(session) }))[o.kind] };
     });
-    const lines = suggestLines(seen.list, o);
+    const lines = o.kind === 'hide'
+      ? suggestLines(seen.list, o)
+      : candidateLines(o.kind, seen.controls, { url: o.url, width: o.width, file: o.file, waitMs: o.waitGiven ? o.waitMs : null, headed: o.headed });
     for (const line of lines.length ? lines : [session.formatCandidates([])]) log(line);
     if (seen.misses.length) warn(`presence: WARNING ${session.hideMissLine(seen.misses, seen.list)}`);
     return 0;
