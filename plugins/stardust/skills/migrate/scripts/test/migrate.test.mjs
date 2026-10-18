@@ -658,7 +658,8 @@ check('verdict same → recorded (the changed variance record re-renders the pag
 check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted; a plain re-run holds it (unchanged)', () => {
   const before = read(`${OUT}/guides/beta/_meta.json`);
   const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
-  assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — 1 of 3 current clone\(s\) differ: a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, re-run with --accept-variance "<the delta and its variant class>", then node stardust\/scripts\/migrate\/migrate\.mjs variant guide-beta <variant-class>$/m);
+  assert.doesNotMatch(r.err, /re-type|--representative/, 'a single differing sibling is never re-typed');
   assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
   const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
   assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card'], deltas: 2, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent'], accepted: 'the hero is a page-level promo' });
@@ -673,6 +674,11 @@ check('more than half of the current clones differ → strict variance refusal e
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
 });
+check('20 % to half of the current clones differ → the refusal keeps both ways out: --accept-variance with a variant class, or a re-type', () => {
+  write('stardust/alt-variance-2/guides.json', varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['hero']), sib('guide-gamma', 'differs', [], ['map']), sib('guide-short', 'same'), sib('howto-one', 'same')]));
+  const r = run(['render', 'guide-beta', '--variance-dir', 'stardust/alt-variance-2']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused guide-beta: strict variance — .* — 2 of 5 current clone\(s\) differ: check the clone against the archetype and re-run with --accept-variance "<reason>" \(a variant class on the template\), or re-type it: sub-archetypes by locale family or composition/m);
+});
 check('an earlier acceptance holds while the probe row is unchanged on archetype, verdict, missing, extra, deltas and their fingerprint (sidecar, else the coverage row; lists in any order); a changed row is refused quoting it; --accept-variance sets a new reason', () => {
   const BETA = `${OUT}/guides/beta/_meta.json`; const COVERAGE = 'stardust/rollout/coverage/pages.json';
   const reprobe = (at, missing, extra, deltas = null, file = VAR, template = 'guides') => write(file, `${JSON.stringify({ template, at, siblings: [sib('guide-alpha', 'same'), { ...sib('guide-beta', 'differs', missing, extra), ...(deltas ? { deltas } : {}) }, sib('guide-gamma', 'same')] }, null, 2)}\n`);
@@ -685,7 +691,7 @@ check('an earlier acceptance holds while the probe row is unchanged on archetype
   // only the deltas' kinds change (same count, missing and extra) → refused, quoting the earlier reason
   reprobe('2026-10-05T00:00:00Z', ['hero'], ['card'], [{ kind: 'SECTIONS', msg: '5 vs 7 top-level sections — a different template family' }, { kind: 'SECTION HEIGHTS', msg: 'hero 410 → 380px' }]);
   const kindsOnly = run(['render', 'guide-beta']); assert.equal(kindsOnly.status, 2);
-  assert.match(kindsOnly.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent\] → \[SECTION HEIGHTS, SECTIONS: 5 vs 7 top-level sections — a different template family\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(kindsOnly.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent\] → \[SECTION HEIGHTS, SECTIONS: 5 vs 7 top-level sections — a different template family\] — 1 of 3 current clone\(s\) differ: a variant class on the template, /m);
   assert.equal(read(BETA), heldMeta, 'nothing written');
   // re-typed to another archetype: the same row probed against guides-b does not carry the acceptance made against guides
   reprobe('2026-10-05T00:00:00Z', ['hero'], ['card']);
@@ -716,7 +722,7 @@ check('an earlier acceptance holds while the probe row is unchanged on archetype
   reprobe('2026-10-07T00:00:00Z', ['hero'], ['card', 'quote']); const before = read(BETA);
   coverage({ verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['quote', 'card'], deltas: 3, deltaKinds: ['missing(hero): hero absent', 'extra(quote): quote extra', 'extra(card): card extra'], accepted: 'a stale coverage acceptance' });
   const changed = run(['render', 'guide-beta']); assert.equal(changed.status, 2);
-  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\]; deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] → \[extra\(card\): card extra, extra\(quote\): quote extra, missing\(hero\): hero absent\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\]; deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] → \[extra\(card\): card extra, extra\(quote\): quote extra, missing\(hero\): hero absent\] — 1 of 3 current clone\(s\) differ: a variant class on the template, /m);
   assert.equal(read(BETA), before, 'nothing written');
   const fresh = run(['render', 'guide-beta', '--accept-variance', 'the quote is a page-level promo']); assert.equal(fresh.status, 0, fresh.err);
   assert.doesNotMatch(fresh.out, /earlier acceptance/);

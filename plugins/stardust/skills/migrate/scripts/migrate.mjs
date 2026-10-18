@@ -199,7 +199,11 @@
  *   locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then
  *   probe the new template); the re-typing is recorded as a deviation (migrate.mjs decision <slug>
  *   --kind re-type …, or deviation), never a mechanical clone. A malformed variance file refuses
- *   the page.
+ *   the page. The refusal of a differing page names the share (`<d> of <t> current clone(s) differ`): a single one,
+ *   or fewer than 20 % → `a variant class on the template, not a new archetype — …, re-run with --accept-variance
+ *   "<the delta and its variant class>", then node stardust/scripts/migrate/migrate.mjs variant <slug>
+ *   <variant-class>` (never a re-type for a few pages); 20 % up to half → --accept-variance with a variant class, or
+ *   the re-type above.
  *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
@@ -1021,7 +1025,12 @@ export function varianceGate(run, page, archetype, old = null) {
   if (reason && !changed.length) return { ...rec, accepted: reason, ...(prior.acceptedAt != null ? { acceptedAt: prior.acceptedAt } : {}) };
   const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : v == null ? '(not recorded)' : String(v));
   const since = reason ? `; changed since an earlier render accepted it ("${reason}"): ${changed.map((k) => `${k} ${shown(prior[k])} → ${shown(rec[k])}`).join('; ')}` : '';
-  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
+  // A single differing clone, or fewer than 20 % of them: a variant class on the template — never a new archetype for a few pages.
+  const share = `${differ} of ${clones.length} current clone(s) differ`;
+  const fix = differ <= 1 || differ * 5 < clones.length
+    ? `${share}: a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, re-run with --accept-variance "<the delta and its variant class>", then node stardust/scripts/migrate/migrate.mjs variant ${page.slug} <variant-class>`
+    : `${share}: check the clone against the archetype and re-run with --accept-variance "<reason>" (a variant class on the template), or re-type it: ${retype}`;
+  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, fix);
 }
 // An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order): the
 // archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds, and

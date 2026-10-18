@@ -16,7 +16,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
-  compare, crawlSlug, mergeSidecar, readRoster, recordVariance, retypeAdvice, sidecarOf, slugFor, varianceLines, verdictOf,
+  compare, crawlSlug, mergeSidecar, readRoster, recordVariance, retypeAdvice, sidecarOf, slugFor, varianceAdvice, varianceLines, verdictOf,
 } from '../sibling-variance.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -26,6 +26,8 @@ let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const freshDir = (name) => { const d = join(root, name); mkdirSync(d, { recursive: true }); return d; };
 const run = (args, cwd) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const MIGRATE = 'node stardust/scripts/migrate/migrate.mjs';
+const VARIANT = (t, d, n, slugs) => `${d} of ${n} sibling(s) of ${t} differ (${slugs.join(', ')}): a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, then: ${MIGRATE} render ${slugs.join(' ')} --accept-variance "<the delta and its variant class>" && ${slugs.map((x) => `${MIGRATE} variant ${x} <variant-class>`).join(' && ')}`;
 const ADVICE = (t, d, n) => `more than half of ${t}'s siblings differ (${d} of ${n}): re-type the template — sub-archetypes by locale family or composition (state.mjs set --representative, then probe the new template), the re-typing recorded as a deviation; never a mechanical clone`;
 
 // ---- (a) no browser ------------------------------------------------------------------------------------
@@ -154,6 +156,17 @@ await check('retypeAdvice: more than half of the siblings differ → the re-type
   assert.equal(retypeAdvice([], 'tours-bali'), null);
 });
 
+await check('varianceAdvice: a single differing sibling, or fewer than 20 % of them → the variant class with the exact render and variant commands, never a new archetype; 20 % to half → none; a majority → the re-type advice', () => {
+  const rows = (d, s) => [...Array.from({ length: d }, (_, i) => ({ slug: `d${i + 1}`, verdict: 'differs' })), ...Array.from({ length: s }, (_, i) => ({ slug: `s${i + 1}`, verdict: 'same' }))];
+  assert.equal(varianceAdvice(rows(1, 20), 'tours-bali'), VARIANT('tours-bali', 1, 21, ['d1']));
+  assert.equal(varianceAdvice(rows(1, 1), 'tours-bali'), VARIANT('tours-bali', 1, 2, ['d1']), 'one of two is a single sibling, not a majority');
+  assert.equal(varianceAdvice(rows(2, 9), 'tours-bali'), VARIANT('tours-bali', 2, 11, ['d1', 'd2']));
+  for (const [d, n] of [[1, 21], [2, 11]]) assert.doesNotMatch(varianceAdvice(rows(d, n - d), 'tours-bali'), /re-type|--representative|sub-archetype/);
+  assert.equal(varianceAdvice(rows(3, 7), 'tours-bali'), null); assert.equal(varianceAdvice(rows(2, 2), 'tours-bali'), null);
+  assert.equal(varianceAdvice(rows(3, 2), 'tours-bali'), ADVICE('tours-bali', 3, 5)); assert.equal(varianceAdvice(rows(1, 0), 'tours-bali'), ADVICE('tours-bali', 1, 1));
+  assert.equal(varianceAdvice(rows(0, 4), 'tours-bali'), null); assert.equal(varianceAdvice([], 'tours-bali'), null);
+});
+
 await check('recordVariance: atomic 2-space JSON + newline, no temp left; same archetype → merged, another → replaced with a note; the printed lines', () => {
   const dir = join(freshDir('record'), 'stardust', 'rollout', 'variance');
   const file = join(dir, 'tours-bali.json');
@@ -165,7 +178,7 @@ await check('recordVariance: atomic 2-space JSON + newline, no temp left; same a
   const r2 = recordVariance({ dir, template: 'tours-bali', archetype: 'https://example.test/tours/bali', at: '2026-02-02T00:00:00Z', rows: rowsOf([['alps', []], ['zion', []]]) });
   const onDisk = JSON.parse(readFileSync(file, 'utf8'));
   assert.deepEqual(onDisk.siblings.map((r) => `${r.slug}:${r.verdict}`), ['alps:same', 'crete:differs', 'utah:same', 'zion:same']); assert.equal(onDisk.at, '2026-02-02T00:00:00Z');
-  assert.deepEqual(varianceLines(r2), [`variance → ${file} (3 same, 1 differ)`]);
+  assert.deepEqual(varianceLines(r2), [`variance → ${file} (3 same, 1 differ)`, VARIANT('tours-bali', 1, 4, ['crete'])]);
   const r3 = recordVariance({ dir, template: 'tours-bali', archetype: 'https://example.test/tours/java/', at: '2026-03-03T00:00:00Z', rows: rowsOf([['zion', differs]]) });
   assert.match(r3.note, /held archetype https:\/\/example\.test\/tours\/bali — replaced$/);
   assert.deepEqual(JSON.parse(readFileSync(file, 'utf8')).siblings.map((r) => r.slug), ['zion']);
@@ -204,7 +217,7 @@ if (pwProbe.status !== 0) {
     assert.equal(s.template, 'tours-bali'); assert.equal(s.archetype, `${base}/tours/bali/`);
     assert.deepEqual(s.siblings.map((x) => `${x.slug}:${x.verdict}`), ['tours-alps:differs', 'tours-utah:same']);
     assert.ok(s.siblings[0].deltas.some((d) => d.kind === 'PROBE' && d.probe === 'hero'), JSON.stringify(s.siblings[0].deltas));
-    assert.match(r.out, /✗ 1 of 2 sibling\(s\) vary[^\n]*\nvariance → stardust\/rollout\/variance\/tours-bali\.json \(1 same, 1 differ\)\n$/);
+    assert.ok(r.out.endsWith(`variance → stardust/rollout/variance/tours-bali.json (1 same, 1 differ)\n${VARIANT('tours-bali', 1, 2, ['tours-alps'])}\n`), r.out); assert.match(r.out, /✗ 1 of 2 sibling\(s\) vary/);
   });
   await check('e2e: no variance with --json → exit 0, stdout stays JSON, the sidecar is merged by slug and the variance line goes to stderr', async () => {
     const r = await runAsync([`${base}/tours/bali/`, `${base}/tours/utah/`, ...probes, '--json'], cwd);
