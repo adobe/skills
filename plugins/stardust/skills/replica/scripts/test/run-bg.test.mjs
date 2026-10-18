@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
-// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default and ceiling 1500, or
+// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default 300, a notice over 600, ceiling 1500, or
 // --until <ISO> clamped to the same ceiling; exit 76 at once on the pause file $STARDUST_PAUSE_FILE, which status
-// shows too), instrument
+// shows too; exit 77 when the runner's wake file stardust/.labs/wake grows), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
-// slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
+// slot, is never signalled; a just-exited wrapper's state is read again first — settled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
 // holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
 // STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
-// (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT); the job's deadline exported as
+// (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT) and the slots derived from STARDUST_BROWSER_BUDGET when unset
+// (derivedBrowserSlots); the job's deadline exported as
 // RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout) — × 1
 // with the lock off, × 4 at the default one browser per slot; whose jobs a bare wait/status covers — the caller's own
 // (ownerPid: RUN_BG_OWNER, else callerOwner's ancestry walk), --all every owner's, a state without ownerPid only by name
@@ -16,11 +17,11 @@
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 45 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, describe, gateAllTimeout, isBrowserJob, lockWaitS, report, settled, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -29,12 +30,13 @@ const dir = mkdtempSync(join(tmpdir(), 'run-bg-test-'));
 const lockRoot = mkdtempSync(join(tmpdir(), 'run-bg-lock-test-'));
 const LOCKS = join(lockRoot, 'locks');
 const env = { ...process.env, RUN_BG_POLL_MS: '100', STARDUST_BROWSER_LOCK_DIR: LOCKS, STARDUST_BROWSER_POLL_MS: '100' };
-delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT;
+delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT; delete env.RUN_BG_SLOTS_DERIVED;
 // No RUN_BG_OWNER: every job started here is owned by this process — run-bg's parent, the nearest non-shell ancestor.
 delete env.RUN_BG_OWNER;
 // No inherited pause file: a supervised session running these tests must not end their waits with exit 76.
 delete env.STARDUST_PAUSE_FILE; delete process.env.STARDUST_PAUSE_FILE;
-const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+// wait reads the runner's wake file (stardust/.labs/wake) from the cwd: CLI calls run in a temp dir, never a project root.
+const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { cwd: lockRoot, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const bg = (sub, ...args) => run({}, sub, ...args);
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 // A state file as the wrapper would leave it (owned by this process, like the jobs bg() starts), with the identity fields the caller sets.
@@ -130,18 +132,24 @@ await check('--timeout is a start flag: on wait or status it is a usage error na
   for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
     const r = bg(...args);
     assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
-    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 1500, at most 1500) or --until <ISO>; status reports at once', args.join(' '));
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 300, at most 1500) or --until <ISO>; status reports at once', args.join(' '));
   }
 });
 const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
-await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why; at or under it is not`, () => {
+const NOTICE = (n) => `run-bg: --max ${n} — a wait over 600 s buys nothing; a one-hour cache does not need it (a 300 s step costs about three cents and sees an ended job up to 20 minutes sooner)`;
+await check(`--max above ${WAIT_NOTICE_SEC} s prints one notice line; above ${MAX_CEILING_SEC} s the clamp line (says why) follows it; at or under ${WAIT_NOTICE_SEC} stderr stays empty`, () => {
+  assert.equal(WAIT_NOTICE_SEC, 600);
   assert.equal(MAX_CEILING_SEC, 1500, 'a recorded single wait of 57 minutes is why a ceiling stays; 25 minutes is the runner\'s check-in interval');
   assert.equal(bg('start', '--name', 'z', '--', 'true').code, 0);
   const r = bg('wait', '--max', '9999', 'z');
-  assert.equal(r.code, 0); assert.equal(r.err.trim(), `run-bg: --max 9999 clamped to 1500s — ${CLAMP_WHY}.`);
-  const r1501 = bg('wait', '--max', '1501', 'z');
-  assert.equal(r1501.code, 0); assert.match(r1501.err, /^run-bg: --max 1501 clamped to 1500s — /);
-  for (const max of ['1500', '200', '111']) { const k = bg('wait', '--max', max, 'z'); assert.equal(k.code, 0); assert.equal(k.err, '', `--max ${max}: at or under the ceiling is not clamped`); }
+  assert.equal(r.code, 0); assert.deepEqual(r.err.trim().split('\n'), [NOTICE(9999), `run-bg: --max 9999 clamped to 1500s — ${CLAMP_WHY}.`]);
+  const r1501 = bg('wait', '--max', '1501', 'z'); const [n1501, c1501] = r1501.err.trim().split('\n');
+  assert.equal(r1501.code, 0); assert.equal(n1501, NOTICE(1501)); assert.match(c1501, /^run-bg: --max 1501 clamped to 1500s — /);
+  const r1500 = bg('wait', '--max', '1500', 'z');
+  assert.equal(r1500.code, 0); assert.deepEqual(r1500.err.trim().split('\n'), [NOTICE(1500)], 'at the ceiling: the notice, no clamp');
+  const r601 = bg('wait', '--max', '601', 'z');
+  assert.equal(r601.code, 0); assert.deepEqual(r601.err.trim().split('\n'), [NOTICE(601)], 'just over 600: exactly one notice line');
+  for (const max of ['600', '200', '111']) { const k = bg('wait', '--max', max, 'z'); assert.equal(k.code, 0); assert.equal(k.err, '', `--max ${max}: at or under 600 no line`); }
 });
 await check(`slots default to ${DEFAULT_SLOTS} — RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else ${DEFAULT_SLOTS}`, () => {
   assert.equal(DEFAULT_SLOTS, 3, 'each capture is a Chromium and a gate.sh --full round holds up to six, yet at 3 slots a recorded fan-out still queued 84 of 272 jobs for more than 10 s: 3 is the default, the env moves it');
@@ -182,6 +190,19 @@ await check('a stored pid that now names another process (recycled) is lost, not
   fakeState('spawning', { wrapperPid: null, launchedAt: null, queuedAt: new Date().toISOString() });
   assert.match(bg('status', 'spawning').out, /^spawning {2}queued/m, 'a pid-less state younger than the spawn grace is still spawning');
   rmSync(join(dir, 'spawning.json')); rmSync(join(dir, 'spawning.log'));
+});
+await check('settled: a state read just before its wrapper wrote the exit, its wrapper gone by the liveness check, is read again — done exit=…, not lost; a file without endedAt stays lost', () => {
+  const sd = join(lockRoot, 'settled'); mkdirSync(sd, { recursive: true });
+  const q = new Date(Date.now() - 60000).toISOString();
+  // Our own pid with another start time stands in for the wrapper that has just exited.
+  const stale = { name: 'just', ownerPid: process.pid, cmd: 'true', args: [], cwd: sd, timeoutSec: 0, slots: 1, queuedAt: q, wrapperPid: process.pid, wrapperStart: 'Mon Jan  1 00:00:00 2001', launchedAt: q, childPid: null, childStart: null, endedAt: null, exit: null, timedOut: false };
+  const ended = { ...stale, endedAt: new Date().toISOString(), exit: 2 };
+  for (const st of [ended, { ...stale, name: 'gone' }]) { writeFileSync(join(sd, `${st.name}.json`), JSON.stringify(st)); writeFileSync(join(sd, `${st.name}.log`), ''); }
+  assert.match(describe(stale), /^just {2}lost/, 'the stale read alone looks lost');
+  assert.deepEqual(settled(sd, stale), ended); assert.match(describe(settled(sd, stale)), /^just {2}done exit=2/);
+  assert.match(report(sd, ['just']).text, /^just {2}done exit=2/m);
+  const gone = { ...stale, name: 'gone' };
+  assert.equal(settled(sd, gone), gone, 'no endedAt on disk: the given state'); assert.match(report(sd, ['gone']).text, /^gone {2}lost — wrapper gone/m);
 });
 await check('with no names and nothing going, wait/status report the caller\'s latest batch — the earlier job folds into the first line; --all shows every job on disk', () => {
   const old = new Date(Date.now() - 3 * 3600 * 1000).toISOString(); // an earlier session's finished job, this caller's
@@ -237,11 +258,12 @@ await check('VERDICT_RE covers the gate instruments and skips prose', () => {
 // ---- the machine-wide browser slot (browser-lock.mjs) ------------------------------------------
 const LOCK_CLI = join(HERE, '..', '..', '..', 'stardust', 'scripts', 'browser-lock.mjs');
 const lockCli = (extra, ...args) => spawnSync(process.execPath, [LOCK_CLI, ...args, '--lock-dir', LOCKS], { encoding: 'utf8', env: { ...env, ...extra } });
-const bgIn = (d, extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const bgIn = (d, extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { cwd: lockRoot, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const stateIn = (d, name) => JSON.parse(readFileSync(join(d, `${name}.json`), 'utf8'));
 const logIn = (d, name) => readFileSync(join(d, `${name}.log`), 'utf8');
 const locks = () => (existsSync(LOCKS) ? readdirSync(LOCKS) : []);
-// A job that prints the slot it runs in (holder files in the lock dir, the env its children see), then holds it.
+// A job that prints the slot it runs in (holder files in the lock dir, the env its children see), then holds it. Match its
+// line from `^holders `: the wrapper's `run-bg: <job> launched …` line echoes this source text, slots= and slot= included.
 const SLOT_JOB = (ms) => `const fs=require('fs'),d=process.env.STARDUST_BROWSER_LOCK_DIR;console.log('holders '+(fs.existsSync(d)?fs.readdirSync(d).length:0)+' perSlot='+(process.env.STARDUST_BROWSERS_PER_SLOT||'')+' slots='+process.env.STARDUST_BROWSER_SLOTS+' slot='+(process.env.STARDUST_BROWSER_SLOT||''));setTimeout(()=>{},${ms})`;
 // The most [launchedAt, endedAt] intervals open at one instant (an end before a start at the same ms).
 const peak = (sts) => { let n = 0; let m = 0; for (const [, d] of sts.flatMap((s) => [[Date.parse(s.launchedAt), 1], [Date.parse(s.endedAt), -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1])) { n += d; m = Math.max(m, n); } return m; };
@@ -288,7 +310,7 @@ await check('three --lock jobs from three run-bg dirs under STARDUST_BROWSER_SLO
 });
 await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children take no second slot) and STARDUST_BROWSER_SLOT = its slot file in the lock dir', () => {
   for (const [i, d] of dirs3.entries()) {
-    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/ slots=(\S*) slot=(\S*)$/m);
+    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/^holders \d+ perSlot=\S* slots=(\S*) slot=(\S*)$/m);
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
 });
@@ -303,9 +325,16 @@ await check('browsersPerSlot: max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BR
   for (const s of [undefined, '0', '', ' ', 'x', '-2']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: s }), 3, `slots ${JSON.stringify(s)}: 9 / 3`);
   for (const b of [undefined, '0', '', 'x', '-6']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: b, STARDUST_BROWSER_SLOTS: '1' }), 3, `budget ${JSON.stringify(b)}: 3 / 1`);
 });
-await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot count before it is zeroed; a budget below the slots says so in one run-bg: line', () => {
+await check('derivedBrowserSlots: STARDUST_BROWSER_SLOTS unset → from a positive budget: 3 for 3 or 6, below 2 max(1, floor), else 2; set (0 included) it wins, a budget unset or junk derives nothing', () => {
+  for (const [b, s] of [['3', 3], ['4', 2], ['5', 2], ['6', 3], ['1', 1], ['1.5', 1], ['0.5', 1], ['2', 2], ['8', 2]]) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: b }), s, `budget ${b}`);
+  for (const blank of ['', ' ']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: blank }), 2, `slots ${JSON.stringify(blank)} counts as unset`);
+  for (const b of [undefined, '', 'x', '0', '-4']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: b }), null, `budget ${JSON.stringify(b)}`);
+  for (const s of ['4', '0', '3']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: s }), null, `explicit slots ${s} win`);
+});
+await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot count before it is zeroed (derived from the budget when unset, one run-bg: line naming it; set, it wins); a budget below the slots says so in one run-bg: line', () => {
   const d = join(lockRoot, 'per-slot', 'bg');
-  const jobs = [['ps62', { STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }, '3'], ['ps23', { STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }, '1'], ['psdef', {}, '1']];
+  const jobs = [['ps62', { STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }, '3'], ['ps23', { STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }, '1'], ['psdef', {}, '1'],
+    ['ps4', { STARDUST_BROWSER_BUDGET: '4' }, '2'], ['ps44', { STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: '4' }, '1']];
   for (const [name, x] of jobs) assert.equal(bgIn(d, x, 'start', '--name', name, '--lock', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
   const w = bgIn(d, {}, 'wait', '--max', '30', ...jobs.map(([n]) => n)); assert.equal(w.code, 0, w.out);
   for (const [name, , per] of jobs) {
@@ -314,7 +343,9 @@ await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot co
     assert.match(log, new RegExp(`^holders \\d+ perSlot=${per} slots=0 slot=\\S+$`, 'm'), `${name}: ${log}`);
   }
   assert.deepEqual(logIn(d, 'ps23').match(/^run-bg: STARDUST_BROWSER_BUDGET.*$/gm), ['run-bg: STARDUST_BROWSER_BUDGET 2 is below STARDUST_BROWSER_SLOTS 3 — one browser per slot, 3 at most; set STARDUST_BROWSER_SLOTS=2 to hold the budget']);
-  for (const name of ['ps62', 'psdef']) assert.doesNotMatch(logIn(d, name), /STARDUST_BROWSER_BUDGET/, name);
+  assert.deepEqual(logIn(d, 'ps4').match(/^run-bg: STARDUST_BROWSER_.*$/gm), ['run-bg: STARDUST_BROWSER_SLOTS=2 derived from STARDUST_BROWSER_BUDGET 4 — 2 browsers per slot']);
+  assert.equal(stateIn(d, 'ps4').slots, 2, 'the dir\'s --slots default follows the derived count');
+  for (const name of ['ps62', 'psdef', 'ps44']) assert.doesNotMatch(logIn(d, name), /STARDUST_BROWSER_BUDGET/, name);
   assert.deepEqual(locks(), []);
 });
 await check('lockWaitS: a job waits for its machine-wide slot without a limit unless STARDUST_BROWSER_WAIT is set to seconds ≥ 0', () => {
@@ -367,7 +398,7 @@ await check('--no-lock, an unclassified command and STARDUST_BROWSER_SLOTS=0 tak
     assert.equal(bg('wait', '--max', '20', 'nl', 'plain', 'auto', 'off').code, 0);
     for (const n of ['nl', 'plain', 'off']) {
       const st = state(n); const log = readFileSync(join(dir, `${n}.log`), 'utf8');
-      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, / perSlot= slots=\S* slot=$/m, n);
+      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, /^holders \d+ perSlot= slots=\S* slot=$/m, n);
     }
     assert.equal(state('auto').exit, 124, 'stitch-shot.mjs in the argv asks for a slot by default');
     assert.equal(state('auto').lockTimeout, true);
@@ -439,7 +470,7 @@ await check('gateAllTimeout: a gate-all job without --timeout gets max(900, 25 s
     assert.deepEqual(await gateAllTimeout(process.execPath, ['/abs/gate-all.mjs', '--state', 'small.json'], { cwd: proj }), { timeoutSec: 900, note: 'gates 8 page(s) × 1 width ≈ 800 s (gate-all estimate, 25 s per page per width) — within the 900 s default — kept' }, 'raised only, never lowered');
   });
 });
-await check('start without --timeout on a gate-all.mjs job: deadline = the estimate (× 1 with the lock off, × 4 under the default slot env), named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
+await check('start without --timeout on a gate-all.mjs job: deadline = the estimate (× 1 with the lock off, × 4 under the default slot env, × 2 with budget 4 and the slots derived), named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
   const fake = join(lockRoot, 'fake'); mkdirSync(fake); // stand-ins that print the deadline they see
   for (const f of ['gate-all.mjs', 'stitch-shot.mjs']) writeFileSync(join(fake, f), "console.log('deadline='+process.env.RUN_BG_DEADLINE_SEC)");
   const d = join(proj, 'bg');
@@ -449,12 +480,14 @@ await check('start without --timeout on a gate-all.mjs job: deadline = the estim
   assert.match(ga, /^run-bg: ga gates 40 page\(s\) × 1 width ≈ 1000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 1000 s instead of the 900 s default$/m, ga);
   const ga4 = startIn({}, 'ga4', '--', process.execPath, join(fake, 'gate-all.mjs')); // the default slot env: 1 browser per slot, × 4
   assert.match(ga4, /^run-bg: ga4 gates 40 page\(s\) × 1 width ≈ 4000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 4000 s instead of the 900 s default$/m, ga4);
+  const ga2 = startIn({ STARDUST_BROWSER_BUDGET: '4' }, 'ga2', '--', process.execPath, join(fake, 'gate-all.mjs')); // slots derived: 2, 2 browsers per slot, × 2
+  assert.match(ga2, /^run-bg: ga2 gates 40 page\(s\) × 1 width ≈ 2000 s /m, ga2);
   const given = startIn(OFF, 'given', '--timeout', '30', '--', process.execPath, join(fake, 'gate-all.mjs'));
   const shot = startIn(OFF, 'shot', '--', process.execPath, join(fake, 'stitch-shot.mjs'));
   const zero = startIn({ ...OFF, RUN_BG_DEADLINE_SEC: '77' }, 'zero', '--timeout', '0', '--', process.execPath, join(fake, 'gate-all.mjs'));
   for (const out of [given, shot, zero]) assert.doesNotMatch(out, /gates|estimate/, out);
-  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'ga4', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
-  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['ga4', 4000, '4000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
+  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'ga4', 'ga2', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
+  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['ga4', 4000, '4000'], ['ga2', 2000, '2000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
     assert.equal(stateIn(d, name).timeoutSec, timeoutSec, name); assert.equal(stateIn(d, name).exit, 0, name);
     assert.match(logIn(d, name), new RegExp(`^deadline=${seen}$`, 'm'), `${name}: ${logIn(d, name)}`);
   }
@@ -530,7 +563,8 @@ await check('two owners in one dir: a bare wait/status covers the caller\'s own 
 const pd = join(lockRoot, 'pz', 'bg'); mkdirSync(pd, { recursive: true });
 const PAUSE = join(lockRoot, 'pz', 'pause.json');
 const pauseLine = (path, reason, at) => `run-bg: paused — ${path} present (reason: ${reason}, at ${at}) — jobs keep running; finish the iteration, record it and return`;
-const bgAsync = (d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
+const bgAt = (cwd, d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { cwd, env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
+const bgAsync = (d, extra, sub, ...args) => bgAt(lockRoot, d, extra, sub, ...args);
 
 await check(`wait exits ${PAUSED_EXIT} at once when the pause file is present — the pause line, then the one-pass report without "wait again"; the job is not signalled`, async () => {
   assert.equal(PAUSED_EXIT, 76);
@@ -607,14 +641,56 @@ await check('--until that is not an ISO-8601 instant with an offset or Z, --unti
   }
   assert.equal(existsSync(join(pd, 'ux.json')), false, 'no job was created by the rejected start');
 });
-await check('--help: wait\'s default --max 1500 or --until, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+await check('--help: wait\'s default --max 300 or --until, the five-minute rule, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+  assert.equal(DEFAULT_MAX_SEC, 300, 'recorded leads polled with 9–23 minute waits while ended units sat unseen: five minutes, lead and subagents alike');
   const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', env });
-  assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=1500 \| --until <ISO>\]/);
+  assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=300 \| --until <ISO>\]/);
+  assert.ok(h.stdout.includes('wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait'), 'the rule, verbatim');
   assert.match(h.stdout, /timeout longer than the wait/);
   assert.match(h.stdout, /76 \(wait\) the pause file is present — stop waiting, finish the iteration and return/);
+  assert.ok(h.stdout.includes("77 (wait) the runner's wake file grew — a background agent finished: act on it, then wait again"), 'exit 77');
 });
 await check('the paused-on job ends on its own, unsignalled (exit 0)', () => {
   const w = bgIn(pd, {}, 'wait', '--max', '30', 'p1'); assert.equal(w.code, 0, w.out); assert.match(w.out, /^p1 {2}done exit=0/m);
+});
+
+// ---- the wake file (stardust/.labs/wake, from the cwd) --------------------------------------------------------------
+// The runner appends a line whenever a background agent finishes: a wait that sees the file grow ends with exit 77.
+const wp = join(lockRoot, 'wake-proj'); const wd = join(wp, 'bg'); const WAKE = join(wp, WAKE_FILE);
+mkdirSync(dirname(WAKE), { recursive: true });
+const startRunning = async (name, ms) => {
+  assert.equal((await bgAt(wp, wd, {}, 'start', '--name', name, '--slots', '9', '--', process.execPath, '-e', `setTimeout(()=>{},${ms})`)).code, 0);
+  for (let i = 0; i < 50 && !stateIn(wd, name).launchedAt; i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
+};
+await check(`wait exits ${WAKE_EXIT} within a poll when the wake file in the cwd grows mid-wait — the wake: line (its last non-empty line, folded), then the report, the job still running; a file that does not grow wakes nothing, a shrunk one lowers the size to beat`, async () => {
+  assert.equal(WAKE_EXIT, 77); await startRunning('wk', 10000);
+  writeFileSync(WAKE, 'agent a finished\n');
+  const still = await bgAt(wp, wd, {}, 'wait', '--max', '1', 'wk');
+  assert.equal(still.code, STILL_RUNNING_EXIT, still.out); assert.doesNotMatch(still.out, /^wake:/m, 'present from the start, not growing');
+  const waiting = bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk');
+  await sleep(800);
+  appendFileSync(WAKE, '  unit  hero\tfinished  \n\n'); const wrote = Date.now();
+  const r = await waiting; const lines = r.out.trim().split('\n');
+  assert.equal(r.code, WAKE_EXIT, r.out + r.err); assert.ok(r.at - wrote < 1500, `ended ${r.at - wrote} ms after the append`); assert.equal(r.err, '');
+  assert.equal(lines[0], 'wake: unit hero finished'); assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)'); assert.match(lines[2], /^wk {2}running \d+s$/);
+  assert.match(lines.at(-1), /^run-bg: 0\/1 ended, 1 still going — woken \(a background agent finished\): run `wait` again as your next step; logs: /);
+  const shrink = bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk'); // a shrunk file lowers the size to beat: a shorter line then wakes
+  await sleep(800); writeFileSync(WAKE, ''); await sleep(400); appendFileSync(WAKE, 'short\n');
+  const s = await shrink; assert.equal(s.code, WAKE_EXIT, s.out); assert.equal(firstLine(s.out), 'wake: short');
+});
+await check('every job ended in the poll that sees the wake file grown: exit 0, yet the wake: line first and woken set — a coincident wake is not swallowed', async () => {
+  await startRunning('we', 1000);
+  // Both waits poll at once, then only after the job has ended and the line is appended: in-process every 2 s, the CLI every 3 s.
+  const inproc = wait(wd, ['we'], { maxSec: 20, wakeFile: WAKE });
+  const cli = bgAt(wp, wd, { RUN_BG_POLL_MS: '3000' }, 'wait', '--max', '20', 'we');
+  for (let i = 0; i < 100 && !stateIn(wd, 'we').endedAt; i += 1) await sleep(20); // eslint-disable-line no-await-in-loop
+  appendFileSync(WAKE, 'agent c finished\n');
+  const r = await inproc;
+  assert.equal(r.woken, 'agent c finished', r.text); assert.equal(r.pending, 0); assert.equal(r.text.split('\n')[0], 'wake: agent c finished'); assert.match(r.text, /all 1 ended/);
+  const c = await cli; const lines = c.out.trim().split('\n');
+  assert.equal(c.code, 0, c.out + c.err); assert.equal(lines[0], 'wake: agent c finished'); assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)');
+  assert.match(lines[2], /^we {2}done exit=0/); assert.match(lines.at(-1), /^run-bg: all 1 ended/);
+  assert.equal((await bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk')).code, 0, 'wk ends on its own');
 });
 
 rmSync(dir, { recursive: true, force: true });

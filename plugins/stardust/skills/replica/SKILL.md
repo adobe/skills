@@ -79,13 +79,14 @@ none" (198/198 nodes).
    `scripts/` — that is the EDS boilerplate's directory (master skill
    § Artifacts, the write boundary). `run-bg.mjs` takes one machine-wide
    browser slot per browser job (`browser-lock.mjs`, slot files in
-   `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (default 3, `0` =
-   off) concurrent browser jobs across projects, `RUN_BG_SLOTS` paces one
+   `~/.stardust/locks/browser/`): `STARDUST_BROWSER_SLOTS` (`0` = off)
+   concurrent browser jobs across projects, `RUN_BG_SLOTS` paces one
    project's jobs inside them. A job holding a slot gets
-   `STARDUST_BROWSERS_PER_SLOT` = max(1, floor(`STARDUST_BROWSER_BUDGET`
-   (default 3) / `STARDUST_BROWSER_SLOTS`)): the contract's 3 browsers =
-   budget 3 across all jobs; a larger machine raises `STARDUST_BROWSER_BUDGET`
-   (and the slots with it, up to the budget). gate-all clamps its pools to it
+   `STARDUST_BROWSERS_PER_SLOT` = max(1, floor(`STARDUST_BROWSER_BUDGET` B
+   (default 3, the contract's, across all jobs) /
+   `STARDUST_BROWSER_SLOTS`)); a larger machine raises only B; unset
+   slots follow it: 3 when B is 3 or 6, else 2 (B < 2: max(1, floor(B))).
+   gate-all clamps its pools to it
    (captures sequential at 1) and sizes its roster estimate accordingly;
    gate.sh runs its `--full` probes that many at a time — their times add up,
    hence `--timeout 1800` on a `--full` round (examples below). A job
@@ -323,10 +324,12 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # gate.sh: live.png cached (a --full round's live probes too, within the run), every step under a
 # deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
 # (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
-# exit 75 = still going → `wait` again as your NEXT step, never in a shell loop, never after a `sleep`;
-# exit 76 = the pause file appeared, stop waiting; --max 240 under a five-minute cache (default 1500)
+# exit 75 = still going → `wait` again as your NEXT step, never in a shell loop;
+# exit 76 = the pause file appeared, stop waiting; exit 77 = the runner's wake line (`stardust/.labs/wake`
+# grew: a background agent finished) → `wait` again; --max 240 under a five-minute cache (default 300)
 # (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
 # '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
+# wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2
 node stardust/scripts/replica/run-bg.mjs wait      # your agent process's jobs (--all: every agent's; agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg call); full output: run-bg.mjs log <job> --grep <re>

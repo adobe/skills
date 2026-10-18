@@ -123,6 +123,14 @@ so the gates run uniformly:
   the environment by every driver, and a persistent 401 halts that cluster's batch
   (exit 3) instead of failing pages — a recorded 36-page run delivered 36/36 this
   way. Outside that contract, author-only + central deploy stays the rule.
+- **Schedule (the fan-out variant).** Once C0 is committed and frozen, every
+  archetype unit starts in one turn, each cluster the moment its archetype is
+  `done`, the lead looping `progress.mjs wait` → `progress.mjs show --waves`
+  (each unit's subagent flips its own end) → start what its `can start now:` names;
+  never serialize disjoint units to spare browsers — the browser slot queue paces
+  captures, not the number of units. The one exception, a unit editing a shared
+  file, waits for its lock inside the writer, never by starting later
+  (`../SKILL.md` § Phase C).
 - **Validate structure BEFORE deploy.** Cheap deterministic check on every authored
   file — exactly one `<h1>`, the body/`<main>`/`<footer>` wrapper, balanced
   `<div>`s — catches a truncated/garbled file before it reaches DA.

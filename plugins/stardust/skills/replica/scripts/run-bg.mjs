@@ -15,10 +15,8 @@
  * than the gate rounds it waited for. The rule that falls out: an instrument
  * may run as long as it needs, but the STEP that waits for it must be bounded
  * and must return a verdict summary — the full output belongs in a log file
- * the agent reads by `log --grep`. The bound is 25 minutes (wait, below): the
- * runner that supervises a hands-off run keeps the lead's prompt cache for an
- * hour and is asked at least every 25 minutes; where the cache lives five
- * minutes, pass a shorter --max.
+ * the agent reads by `log --grep`. The bound is five minutes by default and
+ * 25 at most (wait, below); where the cache lives five minutes, pass --max 240.
  *
  * Usage:
  *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] [--lock|--no-lock] -- <cmd> [args…]
@@ -57,8 +55,8 @@
  *        fan-out (several subagents and the main agent on one pool) still queued
  *        84 of its 272 jobs for more than 10 s (90th percentile 78 s, longest
  *        210 s) with no memory pressure. So 3 is the default; RUN_BG_SLOTS lowers
- *        it on a small machine. On a large one raise STARDUST_BROWSER_BUDGET and
- *        STARDUST_BROWSER_SLOTS with it (below). STARDUST_BROWSER_SLOTS is the
+ *        it on a small machine. On a large one raise STARDUST_BROWSER_BUDGET —
+ *        STARDUST_BROWSER_SLOTS follows it (below). STARDUST_BROWSER_SLOTS is the
  *        machine's concurrent browser jobs, and this default while RUN_BG_SLOTS
  *        is unset: browser jobs are bounded by it too, so RUN_BG_SLOTS above it
  *        adds no browser jobs. Start the jobs all at once and let the slots pace
@@ -83,36 +81,49 @@
  *        STARDUST_BROWSER_SLOT=<slot file>) and STARDUST_BROWSERS_PER_SLOT =
  *        max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
  *        STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across
- *        all jobs; a larger machine raises STARDUST_BROWSER_BUDGET, and
- *        STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent
- *        browser jobs. A budget below the slots cannot be held (one browser per
- *        slot is the floor): the job logs one `run-bg:` line saying so — set
- *        STARDUST_BROWSER_SLOTS to the budget to hold it. Without
+ *        all jobs; a larger machine raises STARDUST_BROWSER_BUDGET. Unset or
+ *        blank, STARDUST_BROWSER_SLOTS is derived from a positive budget B
+ *        (derivedBrowserSlots, once per run-bg call; the job logs one `run-bg:`
+ *        line naming it when it takes its slot): 3 when B is 3 or 6, below 2
+ *        max(1, floor(B)), else 2 — 3 → 3 × 1, 4 → 2 × 2, 5 → 2 × 2, 6 → 3 × 2
+ *        (a fixed 3 slots left one browser of a budget of 4 idle); set, it
+ *        wins (0 = off included). A budget below the slots cannot be held (one
+ *        browser per slot is the floor): the job logs one `run-bg:` line saying
+ *        so — set STARDUST_BROWSER_SLOTS to the budget to hold it. Without
  *        browser-lock.mjs the job runs unlocked after one log line saying so.
  * wait   polls until the selected jobs have ended — the named ones; bare, the
  *        caller's own (Owner, below): those unfinished when the wait began, if
  *        none its latest batch (jobs ended within 10 min of its newest); --all:
  *        every owner's (every job unfinished when the wait began; if none, every
- *        job on disk) — or the bound passes: --max seconds (default 1500) or
+ *        job on disk) — or the bound passes: --max seconds (default 300) or
  *        --until an ISO-8601 instant with an offset or Z (a past one = one
- *        pass), both clamped to MAX_CEILING_SEC (1500 s = 25 minutes) from now.
- *        Why both are 25 minutes: under the former 110 s ceiling a lead agent
- *        in a recorded hands-off run polled `wait` twenty times over 35 minutes,
- *        each poll a new tool call — so the default is long; in another a single
- *        tool call waited 57 minutes without a word to its runner — so a ceiling
- *        stays, at the 25 minutes within which a supervised session asks its
- *        runner (`wait --max 1500`). The agent's shell tool kills a call at its
- *        timeout (about two minutes where the call declares none): declare one
- *        longer than the wait (--max 1500 → e.g. 1560 s). Then it prints a first
- *        line naming the selection and its count
+ *        pass), both clamped to MAX_CEILING_SEC (1500 s = 25 minutes) from now;
+ *        a --max over WAIT_NOTICE_SEC (600) adds one notice line on stderr. Rule:
+ *        wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
+ *        Why: in recorded hands-off runs the lead polled delegated units with
+ *        foreground waits of 9–23 minutes (one 93-minute session held 15, 99
+ *        minutes in all), and an ended job or unit waited for the current wait
+ *        to end; with a one-hour cache a five-minute poll costs about three
+ *        cents, so a longer wait buys nothing and costs up to twenty minutes per
+ *        unit. A ceiling stays because in another run a single tool call waited
+ *        57 minutes without a word to its runner. The agent's shell tool kills a
+ *        call at its timeout (about two minutes where the call declares none):
+ *        declare one longer than the wait (--max 300 → e.g. 360 s). Then it
+ *        prints a first line naming the selection and its count
  *        (`run-bg: wait — yours (owner 4242), unfinished: 2 job(s); 3 other
  *        job(s) not shown — --all`: the jobs --all would add), then
  *        one line per job and, for ended jobs, its verdict lines: log lines
  *        matching --grep (default: the gate instruments' verdict vocabulary),
  *        else the last --tail (8) lines.
  *        Exit 0 = every selected job ended; 75 = some still queued/running —
- *        run `wait` again as your NEXT step. Never loop on it inside one
- *        command; that recreates the blocked step this tool removes.
+ *        run `wait` again as your NEXT step; 77 = the runner's wake file grew —
+ *        a background agent finished: act on it, then wait again. Never loop on
+ *        it inside one command; that recreates the blocked step this tool removes.
+ *        Wake: the runner appends a line to WAKE_FILE (stardust/.labs/wake, from
+ *        the cwd; absent = nothing) whenever a background agent finishes; every
+ *        poll compares its size with the size at the start (after the pause and
+ *        the jobs' end, before the bound), and growth ends the wait with
+ *        `wake: <its last line>` before the report (also before an exit 0's).
  *        Pause: the runner writes $STARDUST_PAUSE_FILE (JSON {at, reason}; a
  *        relative path from the cwd, the project root) when it wants the
  *        session to stop — it alone writes, edits or deletes it. Unset or empty
@@ -169,12 +180,12 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), settled(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
@@ -184,16 +195,18 @@ export const DEFAULT_TIMEOUT_SEC = 900;
 // Each capture is a Chromium and a `gate.sh --full` round holds up to six at its peak, so the cap bounds the Chromiums at
 // six per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
 // percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine. On a
-// large one raise STARDUST_BROWSER_BUDGET and STARDUST_BROWSER_SLOTS with it (up to the budget) — the machine's slots
-// bound browser jobs too, so RUN_BG_SLOTS above them adds none.
+// large one raise STARDUST_BROWSER_BUDGET — STARDUST_BROWSER_SLOTS, unset, follows it (derivedBrowserSlots) — the
+// machine's slots bound browser jobs too, so RUN_BG_SLOTS above them adds none.
 export const DEFAULT_SLOTS = 3;
-// One wait's default and ceiling, both 25 minutes. Default: under the former 110 s ceiling a lead agent in a recorded
-// hands-off run polled `wait` twenty times over 35 minutes, each poll a new tool call. Ceiling: in another a single tool
-// call waited 57 minutes; a supervised session asks its runner at least every 25 minutes (`wait --max 1500`), the pause
-// file ends a wait at once, and the runner keeps the lead's prompt cache for an hour. The shell tool call must declare a
-// timeout longer than the wait — its default (about two minutes) would kill it first.
-export const DEFAULT_MAX_SEC = 1500;
+// One wait's default 5 minutes, ceiling 25. Default: in recorded hands-off runs the lead polled delegated units with
+// foreground waits of 9–23 minutes and an ended job or unit waited for the current wait to end; with a one-hour cache a
+// five-minute poll costs about three cents, so a longer wait buys nothing — a --max over WAIT_NOTICE_SEC says so in one
+// stderr line. Ceiling: in another run a single tool call waited 57 minutes; a supervised session asks its runner at least
+// every 25 minutes and the pause file ends a wait at once. The shell tool call must declare a timeout longer than the
+// wait — its default (about two minutes) would kill it first.
+export const DEFAULT_MAX_SEC = 300;
 export const MAX_CEILING_SEC = 1500;
+export const WAIT_NOTICE_SEC = 600;
 const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
 // --until: an instant, never a local wall-clock time — the offset (or Z) is required.
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
@@ -201,6 +214,10 @@ const UNTIL_USAGE = 'run-bg: --until needs an ISO-8601 instant with an offset or
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
 export const PAUSED_EXIT = 76;
+// The runner appends one line here (from the cwd, the project root) whenever a background agent finishes; a wait that
+// sees it grow returns WAKE_EXIT so the lead acts at once. Read only — run-bg never writes it.
+export const WAKE_FILE = 'stardust/.labs/wake';
+export const WAKE_EXIT = 77;
 // With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
 // within this window of the newest ending. Earlier sessions' jobs stay on disk (their logs are
 // evidence) but out of the report — one session's wait had dumped every prior session's summary.
@@ -288,15 +305,19 @@ const HELP = `Usage:
   call); a job state without one is reached by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
   --timeout is a start flag: on wait or status a usage error (exit 125), no longer silently ignored — wait takes --max
   or --until.
-  Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 25 min) or --until an ISO-8601 instant with an offset or Z (past = one
-  pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the shell tool call a
-  timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it first.
-  The default suits a session whose prompt cache lives an hour (a supervised lead); with a five-minute cache pass --max 240.
-  Why: under a 110 s ceiling a recorded hands-off run polled twenty times in 35 minutes; in another one call waited 57
-  minutes — a supervised session asks its runner at least every 25 minutes.
+  Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 5 min; over ${WAIT_NOTICE_SEC}, one notice line) or --until an ISO-8601 instant with an
+  offset or Z (past = one pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the
+  shell tool call a timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it
+  first. --max 240 where the prompt cache lives five minutes.
+  Rule: wait in steps of at most five minutes, lead and subagents alike — \`run-bg.mjs wait\` for jobs, \`progress.mjs wait\` for units; a \`sleep\` is never a wait.
+  Why: recorded hands-off leads waited 9–23 minutes per poll while ended units sat unseen; with a one-hour cache a
+  five-minute poll costs about three cents. A ceiling stays: in another run one call waited 57 minutes.
   Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)
   names a file that exists, wait ends at once — checked on every poll — with exit ${PAUSED_EXIT} and the one-pass report after a
   \`run-bg: paused — <path> present …\` line; status shows that line first. Jobs keep running; nothing is signalled.
+  Wake: the runner appends a line to ${WAKE_FILE} (from the cwd; absent = nothing) when a background agent finishes; a
+  wait that sees it grow ends with exit ${WAKE_EXIT} and the one-pass report after a \`wake: <its last line>\` line (an exit 0
+  whose poll saw it grow prints that line too).
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
   --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
   logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
@@ -306,13 +327,14 @@ const HELP = `Usage:
   (STARDUST_BROWSER_LOCK_DIR); the job waits for it queued, without a limit unless STARDUST_BROWSER_WAIT <s> is set (no
   slot within it = exit 124, no verdict). The job runs inside its slot (STARDUST_BROWSER_SLOTS=0, STARDUST_BROWSER_SLOT=<slot
   file>) and STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) / STARDUST_BROWSER_SLOTS)): the
-  contract's 3 browsers = budget 3 across all jobs; a larger machine raises STARDUST_BROWSER_BUDGET, and
-  STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent browser jobs — RUN_BG_SLOTS above the slots adds
-  none. A budget below the slots cannot be held (one browser per slot is the floor): one run-bg: line says so — set
-  STARDUST_BROWSER_SLOTS to the budget to hold it.
+  contract's 3 browsers = budget 3 across all jobs; a larger machine raises STARDUST_BROWSER_BUDGET B and, unset,
+  STARDUST_BROWSER_SLOTS follows it: 3 when B is 3 or 6, below 2 max(1, floor(B)), else 2 (4 → 2 × 2, 6 → 3 × 2; one run-bg:
+  line in the job's log names it); set, it wins — RUN_BG_SLOTS above the slots adds none. A budget below the slots cannot
+  be held (one browser per slot is the floor): one run-bg: line says so — set STARDUST_BROWSER_SLOTS to the budget to hold it.
   Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
-  · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return · 2 (start) the name is still
-  queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
+  · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return
+  · ${WAKE_EXIT} (wait) the runner's wake file grew — a background agent finished: act on it, then wait again · 2 (start) the
+  name is still queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -414,6 +436,14 @@ export function phase(st) {
 const isPending = (st) => ['queued', 'running'].includes(phase(st));
 // lost, but the instrument the wrapper launched is still running.
 const isOrphan = (st) => phase(st) === 'lost' && childAlive(st);
+// A state read just before its wrapper wrote the exit, checked after the wrapper quit, looks lost: the wrapper writes
+// endedAt before it exits, so a lost-looking state without endedAt is read once more → the fresh state when it now carries
+// endedAt, else `st` (a truly lost job stays lost). Every report and selection classifies through it.
+export function settled(dir, st) {
+  if (!st || st.endedAt || phase(st) !== 'lost') return st;
+  const fresh = readState(dir, st.name);
+  return fresh?.endedAt ? fresh : st;
+}
 
 // ---- start -------------------------------------------------------------------------------------
 export function start(dir, name, cmd, args, { timeoutSec = DEFAULT_TIMEOUT_SEC, slots = DEFAULT_SLOTS, lock = 'auto', owner = callerOwner() } = {}) {
@@ -461,6 +491,18 @@ function browserBudget(env) {
   return { budget, slots, perSlot: Math.max(1, Math.floor(budget / slots)) };
 }
 export function browsersPerSlot(env = process.env) { return browserBudget(env).perSlot; }
+// STARDUST_BROWSER_SLOTS unset (undefined, empty, blank) → derived from a positive STARDUST_BROWSER_BUDGET B so the
+// budget's browsers are at work: 3 when B is 3 or 6, below 2 max(1, floor(B)) (two slots would overshoot a budget of 1),
+// else 2 — 3 → 3 × 1, 4 → 2 × 2, 5 → 2 × 2, 6 → 3 × 2; a fixed 3 slots left one browser of a budget of 4 idle. null: the
+// slots set (any value, 0 = lock off included — it wins), or B unset or not a positive number (the defaults stay).
+// cli() applies it once to process.env, so parse(), gateAllTimeout, browser-lock's acquire() and the wrapper agree.
+export function derivedBrowserSlots(env = process.env) {
+  if (String(env.STARDUST_BROWSER_SLOTS ?? '').trim() !== '') return null;
+  const b = envNum(env.STARDUST_BROWSER_BUDGET);
+  if (!Number.isFinite(b) || b <= 0) return null;
+  if (b < 2) return Math.max(1, Math.floor(b));
+  return b === 3 || b === 6 ? 3 : 2;
+}
 
 // The machine-wide browser slot for a browser job (lock on, or auto and the argv names a browser instrument).
 // Resolves { st, slot } (slot null = unlocked: not a browser job, STARDUST_BROWSER_SLOTS=0, browser-lock.mjs absent or
@@ -506,9 +548,11 @@ async function runWrapper(dir, name) {
   // STARDUST_BROWSERS_PER_SLOT browsers — computed from the machine's slot count before it is zeroed here.
   if (held.slot) {
     const { budget, slots, perSlot } = browserBudget(process.env);
-    if (budget < slots) console.log(`run-bg: STARDUST_BROWSER_BUDGET ${budget} is below STARDUST_BROWSER_SLOTS ${slots} — one browser per slot, ${slots} at most; set STARDUST_BROWSER_SLOTS=${Math.max(1, Math.floor(budget))} to hold the budget`);
+    // RUN_BG_SLOTS_DERIVED: the slot count cli() derived from the budget (in this process or the starter's).
+    if (process.env.RUN_BG_SLOTS_DERIVED && process.env.RUN_BG_SLOTS_DERIVED === process.env.STARDUST_BROWSER_SLOTS) console.log(`run-bg: STARDUST_BROWSER_SLOTS=${slots} derived from STARDUST_BROWSER_BUDGET ${budget} — ${perSlot} browser${perSlot === 1 ? '' : 's'} per slot`);
+    else if (budget < slots) console.log(`run-bg: STARDUST_BROWSER_BUDGET ${budget} is below STARDUST_BROWSER_SLOTS ${slots} — one browser per slot, ${slots} at most; set STARDUST_BROWSER_SLOTS=${Math.max(1, Math.floor(budget))} to hold the budget`);
     process.env.STARDUST_BROWSERS_PER_SLOT = String(perSlot);
-    process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file;
+    process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file; delete process.env.RUN_BG_SLOTS_DERIVED;
   }
   // The deadline (it starts at launch) is the time the command has; gate-all refuses a roster it cannot finish in it.
   // 0 = no deadline: an inherited value stays.
@@ -538,6 +582,14 @@ export function pauseState(file = process.env.STARDUST_PAUSE_FILE, { cwd = proce
   return { path: String(file), reason: ok ? field(j.reason, 'unspecified') : 'unreadable', at: ok ? field(j.at, 'unknown') : 'unknown' };
 }
 export const pauseLine = (p) => `run-bg: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — jobs keep running; finish the iteration, record it and return`;
+// The wake file (WAKE_FILE): its size in bytes — absent or unreadable = 0 — and, on a wake, its last non-empty line,
+// whitespace folded, at most 200 chars.
+const wakeSize = (p) => { try { return statSync(p).size; } catch { return 0; } };
+function wakeText(p) {
+  let text = ''; try { text = readFileSync(p, 'utf8'); } catch { /* gone again */ }
+  const last = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).at(-1);
+  return last ? last.slice(0, 200) : '(no text)';
+}
 
 export function verdictLines(p, { tail = DEFAULT_TAIL, grep = null } = {}) {
   let text; try { text = readFileSync(p, 'utf8'); } catch { return ['(no log)']; }
@@ -564,12 +616,13 @@ export function describe(st) {
 
 // The first line names the selection and its count — `sub`: wait | status, `scope`: pickNames' — plus `hidden`, the jobs
 // --all would add (it folds in the former trailing "earlier job(s) not shown" line). `pause` (pauseState): its line comes
-// first, and a pending job gets no "wait again".
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
+// first, and a pending job gets no "wait again". `wake` (the wake file's last line): its `wake:` line comes first.
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0, pause = null, wake = null } = {}) {
   const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}`]; let pending = 0;
   if (pause) lines.unshift(pauseLine(pause));
+  else if (wake != null) lines.unshift(`wake: ${wake}`);
   for (const name of names) {
-    const st = readState(dir, name);
+    const st = settled(dir, readState(dir, name));
     if (!st) { lines.push(`${name}  no such job in ${dir}`); continue; }
     if (isPending(st)) pending += 1;
     lines.push(describe(st));
@@ -577,9 +630,10 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
   }
   if (!names.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`);
   else if (pending && pause) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — paused: no further wait; they keep running, \`status\` reads them later; logs: ${dir}/<job>.log`);
+  else if (pending && wake != null) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — woken (a background agent finished): run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
-  return { text: lines.join('\n'), pending, paused: Boolean(pause) };
+  return { text: lines.join('\n'), pending, paused: Boolean(pause), woken: wake ?? null };
 }
 
 // Among `jobs` (queue order): the unfinished ones, else every job (`onDisk`), else the latest batch — the jobs that ended
@@ -598,7 +652,7 @@ function current(jobs, pending, { onDisk = false } = {}) {
 // or --all only. hidden = the jobs --all would add.
 function pickNames(dir, requested, { all = false, owner = null } = {}) {
   if (requested.length) return { names: requested, scope: 'named', hidden: 0 };
-  const jobs = listJobs(dir).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
+  const jobs = listJobs(dir).map((j) => settled(dir, j)).sort((a, b) => (a.queuedAt < b.queuedAt ? -1 : 1));
   const pending = new Set(jobs.filter(isPending).map((j) => j.name)); // one phase per job: both selections see the same
   const everyone = current(jobs, pending, { onDisk: true });
   if (all) return { names: everyone.picked.map((j) => j.name), scope: `all owners, ${everyone.what}`, hidden: 0 };
@@ -608,9 +662,11 @@ function pickNames(dir, requested, { all = false, owner = null } = {}) {
   return { names: [...shown], scope: `yours (owner ${owner})${mine.length ? `, ${own.what}` : ''}`, hidden: everyone.picked.filter((j) => !shown.has(j.name)).length };
 }
 
-// The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. The
-// pause file (pauseState) is checked before the first poll and on every poll: present → return at once, `paused`.
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
+// The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. Each
+// poll, the first included, in order: the pause file present (pauseState) → `paused`; every job ended (`woken` too when
+// the wake file grew in that poll); the wake file (relative: from the cwd) grown past its size at the start → `woken` (a
+// shrunk file lowers that size); the bound.
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, wakeFile = WAKE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
   let ceilingSec;
   if (untilMs != null) {
     if (!Number.isFinite(untilMs)) throw new UsageError(`${UNTIL_USAGE} (got ${untilMs})\n${HELP}`);
@@ -619,18 +675,24 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
   } else {
     if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
     ceilingSec = maxSec;
+    if (maxSec > WAIT_NOTICE_SEC) console.error(`run-bg: --max ${maxSec} — a wait over ${WAIT_NOTICE_SEC} s buys nothing; a one-hour cache does not need it (a ${DEFAULT_MAX_SEC} s step costs about three cents and sees an ended job up to 20 minutes sooner)`);
     if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — ${CLAMP_WHY}.`); }
   }
   const { names, scope, hidden } = pickNames(dir, requested, { all, owner });
+  const wakePath = resolve(String(wakeFile)); let wakeBase = wakeSize(wakePath); let woken = null;
   const t0 = Date.now(); let pause = null;
   for (;;) {
     pause = pauseState(pauseFile);
     if (pause) break;
-    const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
-    if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
+    const pending = names.map((n) => settled(dir, readState(dir, n))).filter((st) => st && isPending(st));
+    const size = wakeSize(wakePath);
+    if (size > wakeBase) woken = wakeText(wakePath); // also with every job ended: a coincident wake is reported, not swallowed
+    if (!pending.length || woken != null) break;
+    wakeBase = Math.min(wakeBase, size);
+    if ((Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause });
+  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause, wake: woken });
 }
 
 export function status(dir, requested, { tail, grep, all = false, owner = callerOwner(), pauseFile = process.env.STARDUST_PAUSE_FILE } = {}) { const { names, scope, hidden } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden, pause: pauseState(pauseFile) }); }
@@ -722,6 +784,8 @@ function parse(argv) {
 
 async function cli(argv) {
   if (!argv.length || argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
+  const derived = derivedBrowserSlots(process.env);
+  if (derived != null) { process.env.STARDUST_BROWSER_SLOTS = String(derived); process.env.RUN_BG_SLOTS_DERIVED = String(derived); }
   const { sub, o } = parse(argv);
   switch (sub) {
     case 'start': {
@@ -732,7 +796,7 @@ async function cli(argv) {
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; if (!r.pending) return 0; return r.woken != null ? WAKE_EXIT : STILL_RUNNING_EXIT; }
     case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
     case 'clean': console.log(await clean(o.dir, { all: o.all })); return 0;

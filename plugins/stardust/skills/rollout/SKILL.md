@@ -289,20 +289,57 @@ edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
 per page; then background batches with a per-page OK/FAIL ledger, re-driving
 FAILs only. For clusters of 6–20+ siblings, the full flow is
-`reference/delivery-gates.md` § Batched delivery (it also names the one
-variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
-per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
+`reference/delivery-gates.md` § Batched delivery (and its one self-deploying
+variant, replica's Phase 5 fan-out). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>`. The driver and every batch run in the background; its log and ledger are the
 progress file. After a transient blip, re-run the same command — it re-drives
 only the FAILs. Then reconcile the ledger into coverage with `update-coverage.mjs`
-(step 4's order). **Foundation first** (C0's sub-units, committed and
-frozen before the first cluster spawns), **disjoint clusters spawn
-concurrently**, and **every tool call stays within the prompt cache's life, the
-main agent's included** — long instruments through `run-bg.mjs start`, `wait` the
-NEXT call (`--max 240` under a five-minute cache; the master skill's wait
-discipline; handoff contract § Fan-out discipline).
+(step 4's order). **Schedule (replica's Phase 5 fan-out):** once C0's sub-units
+are committed and frozen, start EVERY archetype unit in the same turn (one
+background subagent each; disjoint by construction) and each cluster (its first
+sub-unit) the moment its archetype is `done`; never serialize disjoint units to
+spare browsers — the browser slot queue paces captures, not the number of units
+(recorded: a run that started four units in one turn finished ten in the time a
+serial run finished five). The lead's loop:
+`progress.mjs wait` → `progress.mjs show --waves` → for each unit that ended,
+handoff contract § 5's other steps (block records, freeze check, `unit-commit.mjs
+<unit>` — it commits the end flip — boundary ask) → start everything its `can start now:` line
+names, each launch line naming the unit's `deadline: <UTC HH:MM>` (the brief
+carries the clock, contract § Unit briefs) → wait again;
+C-final only once that line names `gate-all` (a wait's exit 2 is no signal).
+Each unit's subagent flips its own end as its last act, after its commit; the
+lead marks `failed` only a unit whose agent returned without it (at a 77, or a
+75 past its `deadline:`; handoff contract § Fan-out
+discipline). The one exception: a unit that edits a shared
+file waits for that file's lock as the contract's shared-ledgers bullet
+describes — inside its writer, never by starting later. Waits: the master
+skill's wait discipline.
+
+```bash
+P="node skills/stardust/scripts/progress.mjs"   # project copy: stardust/scripts/stardust/progress.mjs
+# C0 (with archetype-page, the shell template's) committed and frozen → ONE turn: record and
+# spawn (background) page's cluster and every other archetype; each launch line's deadline —
+# "deadline: 22:25": 21:10 UTC + 90 min = 22:40; session end 22:30 − 5 min = 22:25; the earlier wins
+$P unit start cluster-page      --kind cluster   --templates page
+$P unit start archetype-article --kind archetype --templates article
+$P unit start archetype-product --kind archetype --templates product
+$P wait          # --max 300 (240 under a five-minute cache); by exit code:
+#  0   a unit flipped its own end ("progress rollout archetype-product: done …") → its § 5 steps
+#      (unit-commit.mjs <unit> commits the flip), then the two lines below
+#  75  nothing ended within --max → a unit `running` past its deadline whose agent returned
+#      (its line in `stardust/.labs/wake`, or the harness's agent status):
+#      $P unit failed <unit> --verdict "no end by its deadline: <reason>"; wait again
+#  76  the pause file → start nothing new, let running units return, ask the boundary
+#  77  a background agent finished (the wake line) → show --waves: its unit flipped → as 0; already
+#      handled → wait again; still `running`, no paused: report → it died:
+#      $P unit failed <unit> --verdict "<reason>"; then wait again
+$P show --waves  # before every wait (ends between waits go unprinted, a wake can be lost; the 75
+                 # deadline check too); can start now: cluster-product
+$P unit start cluster-product --kind cluster --templates product
+$P wait          # … until show --waves says "can start now: gate-all" → C-final
+```
 
 ### Phase D — Site assembly (whole-site artifacts)
 

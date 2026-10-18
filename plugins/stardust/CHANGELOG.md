@@ -4,6 +4,54 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — the lead waits five minutes, not twenty-five, and starts every disjoint unit at once (#NNN)
+
+The recorded hands-off runs: the lead handed each delivery unit to a subagent and then polled with foreground `sleep`
+calls of 9–23 minutes — one 93-minute session held 15 such sleeps totalling 99 minutes, another 83 of 97, a third 76
+of 93 — and a finished unit waited until the current sleep ended before the lead saw it. The previous rule let a lead
+whose cache holds an hour wait with `run-bg.mjs wait --max 1500`; with a one-hour cache a five-minute poll costs about
+three cents, so the long wait bought nothing and cost up to twenty minutes per unit. One run delivered its archetype
+units one after another (the first alone for 70 minutes, then its cluster, then the next archetype alone) while another
+started four units in one turn and finished ten units in the time the first finished five; code propagation after a
+push (median 5–6 minutes, p90 10) is paid serially by serial units and overlapped by parallel ones.
+
+- **`progress.mjs wait` (stardust).** Watches the progress ledger — every unit `running` when the wait starts, `--unit`
+  narrows — and returns 0 the moment one is `done` or `failed`, printing its line; 75 at `--max` (default 300) with the
+  units still running; 76 at once while `$STARDUST_PAUSE_FILE` exists; 2 when nothing is running. Polls every 5 s,
+  reads without the lock, `--json`.
+- **`run-bg.mjs wait` defaults to 300 s for everyone (replica).** The 1500 s ceiling and `--until <ISO>` stay; a `--max`
+  above 600 prints one notice line that a one-hour cache does not need it.
+- **One wait rule, three places.** The master skill's wait discipline, the handoff contract's § Fan-out discipline and
+  replica's gate-round example say the same sentence: wait in steps of at most five minutes, lead and subagents
+  alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
+- **Each unit flips its own end.** A unit's subagent runs `progress.mjs unit done|failed <unit> …` as its last act,
+  after its commit, so the lead's wait sees the end within five seconds; the lead records an end only for a unit that
+  died without flipping it (`failed`, with the reason — at a wake, or at a 75 past its launch deadline), and still
+  commits each ended unit (`unit-commit.mjs`) before its boundary ask.
+- **Wake (exit 77, both waits).** `progress.mjs wait` and `run-bg.mjs wait` also return 77, first line
+  `wake: <last line>`, when `stardust/.labs/wake` has grown since the wait started — the runner appends a line there
+  when a background agent finishes; an absent file means nothing. An exit 0 that arrives with a wake prints it too.
+- **Every disjoint unit starts at once (rollout Phase C, delivery-gates).** After C0 is committed and frozen, every
+  archetype unit starts in the same turn, each cluster the moment its archetype is `done`; disjoint units are never
+  serialized to spare browsers — the browser slot queue paces captures. The lead's loop is `progress.mjs wait` →
+  record what ended (the wait's lines and any end `show --waves` lists that the last wait did not print) → start what
+  is now unblocked → wait again; the one exception is a unit that edits a shared file, which waits for that file's
+  lock. The worked example shows no `sleep`, each exit code (0 / 75 / 76 / 77) with what the lead does, and one
+  launch line's `deadline: <UTC HH:MM>` — the earlier of the unit budget and the session end minus five minutes (the
+  brief carries the clock, contract § Unit briefs).
+- **A re-recorded end keeps its time (`progress.mjs unit done|failed`).** On an entry that already has that status the
+  fields still apply and `endedAt` stays the first recorded end, so a re-record never moves it.
+- **`progress.mjs show --waves`.** The dependency view foundation → archetypes → clusters → final, each unit with its
+  state (recorded, or `planned` from `coverage/templates.json`), and a last line `can start now: <names>`.
+- **The slots follow the browser budget (`run-bg.mjs`).** With `STARDUST_BROWSER_SLOTS` unset, run-bg derives it from
+  `STARDUST_BROWSER_BUDGET` — 3 slots when the budget is 3 or 6, otherwise 2 (a budget under 2: one slot per browser) —
+  so budget 4 runs 2 slots × 2 browsers instead of 3 × 1 with one idle (budgets 3, 4 and 6 are used whole, 5 runs 4);
+  an explicit `STARDUST_BROWSER_SLOTS` still wins, and the job log names a derived count.
+- **A job that just ended is never called lost (`run-bg.mjs`).** `status` and `wait` read a job's state again before
+  calling it `lost`: a state read just before the wrapper wrote its exit, with the wrapper gone by the liveness check,
+  printed `lost — re-run` for a job that had ended (seen under load). The run-bg tests match a job's own output line,
+  never the command the wrapper echoes.
+
 ## 0.36.x — the file edits the agents make, as instruments (#NNN)
 
 Four recorded hands-off runs made 4177 shell calls: 598 heredocs and 345 inline interpreter calls. 238 heredocs were

@@ -278,36 +278,38 @@ otherwise):
   window.** Anything expected to run longer than about 2 minutes — a gate
   round over several pages, a crawl, a batch push, a capture set, a
   delegated agent — runs in the background and writes a progress or
-  summary file; the coordinator never runs it in the foreground and never
-  covers it with one long `sleep`. While it runs, do independent work;
-  when there is none, check back with one short read of the progress
-  file **at most every 4 minutes** — never a fixed `sleep` of 5 minutes or
-  more, and never a blocking "wait for the agent's output" call with a
-  long timeout. The number is not taste: the prompt cache expires after
-  5 idle minutes, and at the 500–900k-token contexts a migration reaches,
-  every expiry re-writes the whole prefix at write price (12× a cached
-  read). Field data, 48 sessions: a foreground wait of ≤ 4 minutes missed
-  the cache in ~10 % of cases, ≥ 5 minutes in 85–87 %; 572 such
-  agent-side waits re-wrote 325 M tokens — 46 % of everything those
-  sessions wrote to the cache. Ending the turn to wait for a completion
-  notification helps the user, not the cache: a notification that arrives
-  after 5 minutes misses too (137 recorded), so prefer short checks for
-  waits under ~45 minutes and end the turn only when the wait is longer
+  summary file, never in the foreground and never under one long `sleep`
+  (one long instrument in the foreground, or two as parallel tool calls in
+  one turn, blocks the main agent as it blocks a subagent — recorded: a
+  338 s main-agent turn cost one full cache re-write). While it runs, do
+  independent work; when there is none,
+  wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
+  Both return within `--max` (default 300 s, ceiling 1500 s; `--max 240`
+  where the cache lives five minutes; the shell call's timeout above it)
+  and print only what ended: replica's `run-bg.mjs` (`start` detaches an
+  instrument, `wait` prints its verdict lines; also `--until <ISO>`) and
+  `skills/stardust/scripts/progress.mjs wait`, which returns the moment a
+  watched unit of the progress ledger (every `running` one, or `--unit
+  <name>`) is `done` or `failed`. Exit 75 = still going: wait again as the
+  NEXT call, never in a shell loop; exit 76 = the pause file below exists;
+  exit 77 = the runner's wake line (`stardust/.labs/wake` grew: a
+  background agent finished). The numbers are not taste: the prompt cache
+  expires after 5 idle minutes, and at the 500–900k-token contexts a
+  migration reaches every expiry re-writes the whole prefix at write price
+  (12× a cached read). Field data, 48 sessions: a foreground wait of ≤ 4
+  minutes missed the cache in ~10 % of cases, ≥ 5 minutes in 85–87 % —
+  572 such waits re-wrote 325 M tokens, 46 % of their cache writes;
+  recorded hands-off leads that polled their units with 9–23-minute
+  `sleep`s left each finished unit idle until the sleep ended, where a
+  five-minute poll under a one-hour cache costs about three cents. A
+  completion notification after 5 minutes misses the cache too (137
+  recorded): under ~45 minutes keep waiting in steps, and end the turn
+  only when the wait is longer
   or the user should decide. (Claude Code: `run_in_background: true` on
   the shell call, the harness posts a task notification when it exits;
   `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
   at 1.6× write price — an owner setting, worth it for any multi-hour
   session.)
-  The harness-neutral form of the same rule is replica's `run-bg.mjs`:
-  `start` detaches the instrument, `wait` returns within `--max` (default
-  and ceiling 1500 s — for a session whose cache lives an hour, a supervised
-  lead; with the five-minute cache above pass `--max 240`; or `--until <ISO>`;
-  declare the shell call's timeout above it) with verdict lines
-  only, exit 75 = still going, `wait` again as the NEXT call — never in a
-  shell loop, never after a `sleep`; exit 76 = the pause file below exists. The rule binds the main agent as it
-  binds subagents: one long instrument in the foreground, or two long
-  instruments as parallel tool calls in one turn, is the same blocked step
-  (recorded: a 338 s main-agent turn cost one full cache re-write).
 - **Pause on request.** A supervising process may request a pause by
   creating the file named by the environment variable `STARDUST_PAUSE_FILE`
   (JSON `{at, reason}`); when the variable is set, every fan-out subagent
