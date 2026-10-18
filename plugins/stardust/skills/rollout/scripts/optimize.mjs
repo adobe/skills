@@ -11,6 +11,11 @@
  *   design-pass        → upstream (fix in migrate/prototype); rollout surfaces only
  *   out-of-scope       → informational
  *
+ * Status: open | in-progress | fixed | accepted | wontfix | informational. A source-parity or
+ * out-of-scope finding is `informational` (new, carried over or regressed; an older ledger's open
+ * ones migrate, firstSeenRun kept), never open/in-progress — not scored, not gated; one that stops
+ * being informational becomes `open` again; any no longer detected becomes `fixed`.
+ *
  * Source parity: when the page's capture exists (`<current>/pages/<slug>.json`, with its
  * rendered-DOM sidecar `pages/<slug>.html`), a finding whose condition the SOURCE shares — the
  * same <title> (title-length / title-missing), no meta description on the source either, no
@@ -33,7 +38,9 @@
  *
  * Reads <out>/coverage/pages.json (required — run inventory.mjs first) and rollout.json.
  * Writes (under <out>/optimize/): findings.json (the ledger, with this run appended) and
- * scorecard.json (current snapshot + history). The report and the GATE line go to stdout.
+ * scorecard.json (current snapshot + history; the snapshot's `informational` {total,P1,P2,P3}
+ * counts the ledger's informational rows, its `severity` the open ones). The report (its Health
+ * line names the informational count) and the GATE line go to stdout.
  * Exit 1 on an open P1 finding or a missing pages.json, 2 when neither --base nor --root resolves.
  */
 import { createHash } from 'node:crypto';
@@ -41,7 +48,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   readJSON, writeJSON, loadPageHTML, computeScorecard, autofixFor, ASSESSED_BY_BASELINE,
-  markSourceParity, isSourceParity, sourceParityCounts,
+  markSourceParity, isSourceParity, sourceParityCounts, liveStatus, withLiveStatus,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -62,6 +69,7 @@ const ALL = process.argv.includes('--all');
 const SOURCE = 'rollout:baseline';
 const ASSESSED = ASSESSED_BY_BASELINE;
 const PHASE_FOR = { 'platform-migration': 'deploy', 'design-pass': 'migrate', 'out-of-scope': 'rollout' };
+const LIVE = ['open', 'in-progress', 'informational'];
 
 const config = readJSON(join(OUT, 'rollout.json'), {});
 const BASE = arg('base', (config.site && config.site.liveHost) ? `https://${config.site.liveHost}` : null);
@@ -203,25 +211,26 @@ for (const d of detected) {
   seen.add(d.id);
   const p = priorById.get(d.id);
   if (p && (p.status === 'accepted' || p.status === 'wontfix')) { out.push(p); continue; }
-  if (p && (p.status === 'open' || p.status === 'in-progress')) {
+  if (p && LIVE.includes(p.status)) {
     // the parity tag follows this run's detection; autofix state is re-derived only when the tag flips
     const autofix = isSourceParity(d) !== isSourceParity(p) ? d.autofix : p.autofix;
-    out.push({ ...p, severity: d.severity, fixability: d.fixability, evidence: d.evidence, recommendedMove: d.recommendedMove, autofix });
+    out.push(withLiveStatus({ ...p, severity: d.severity, fixability: d.fixability, evidence: d.evidence, recommendedMove: d.recommendedMove, autofix }));
   } else if (p && p.status === 'fixed') {
-    out.push({ ...d, status: 'open', firstSeenRun: p.firstSeenRun, resolvedBy: null }); // regression
+    out.push({ ...d, status: liveStatus(d, 'open'), firstSeenRun: p.firstSeenRun, resolvedBy: null }); // regression
   } else {
-    out.push({ ...d, status: 'open', firstSeenRun: runId, resolvedBy: null });
+    out.push({ ...d, status: liveStatus(d, 'open'), firstSeenRun: runId, resolvedBy: null });
   }
 }
 for (const p of prior.findings || []) {
   if (seen.has(p.id)) continue;
   // Only a run of THIS source may auto-resolve its own findings. Findings from
-  // other sources (impeccable, marketing skills, stardust tensions) are preserved
-  // untouched — they are resolved by re-recording from their own audit.
-  if (p.source === SOURCE && (p.status === 'open' || p.status === 'in-progress') && inScope(p)) {
+  // other sources (impeccable, marketing skills, stardust tensions) are preserved —
+  // only their live status follows the disposition — and are resolved by re-recording
+  // from their own audit.
+  if (p.source === SOURCE && LIVE.includes(p.status) && inScope(p)) {
     out.push({ ...p, status: 'fixed', resolvedBy: { phase: PHASE_FOR[p.fixability] || 'rollout', at: now, note: 'no longer detected on delivered page' } });
   } else {
-    out.push(p); // other source, out-of-scope, or already-terminal — preserve
+    out.push(withLiveStatus(p)); // other source, out-of-scope, or already-terminal — preserve
   }
 }
 const sevRank = { P1: 0, P2: 1, P3: 2 };
@@ -231,9 +240,11 @@ const runs = [...(prior.runs || []), { id: runId, at: now, scopePages: [...inspe
 writeJSON(findingsPath, { _provenance: { writtenBy: 'stardust:rollout/optimize', writtenAt: now, stardustVersion: (config._provenance || {}).stardustVersion || '0.0.0' }, runs, findings: out });
 
 // --- Scorecard (over ALL sources in the ledger, not just baseline) -------------
-const open = out.filter((x) => x.status === 'open' || x.status === 'in-progress');
-const parity = open.filter(isSourceParity);
-const scored = open.filter((x) => !isSourceParity(x));
+// After the disposition every open/in-progress row is scored and every informational row is not,
+// so the snapshot's counts and the ledger's statuses agree.
+const scored = out.filter((x) => x.status === 'open' || x.status === 'in-progress');
+const informational = out.filter((x) => x.status === 'informational');
+const parity = informational.filter(isSourceParity);
 const snapshot = computeScorecard(out, runId, now);
 const parityCounts = sourceParityCounts(out);
 const dimensions = snapshot.dimensions;
@@ -247,11 +258,11 @@ const line = (x) => `  ${x.severity} ${x.layer}/${x.check} [${x.scope.ids.join('
 console.log(`rollout optimize (${ROOT ? `root:${ROOT}` : BASE})  run ${runId}`);
 console.log('='.repeat(64));
 console.log(`Inspected   ${inspectedSlugs.size} pages${ranSite ? ' + site checks' : ''}`);
-console.log(`Health      ${overall}/100   (a11y ${dimensions.accessibility} · seo ${dimensions.seo} · ai ${dimensions['ai-search']} · xpage ${dimensions['cross-page']})`);
+console.log(`Health      ${overall}/100 · informational ${snapshot.informational.total}   (a11y ${dimensions.accessibility} · seo ${dimensions.seo} · ai ${dimensions['ai-search']} · xpage ${dimensions['cross-page']})`);
 console.log(`Open        P1 ${snapshot.severity.P1} · P2 ${snapshot.severity.P2} · P3 ${snapshot.severity.P3}   ·   Fixed this history: P1 ${snapshot.fixed.P1} · P2 ${snapshot.fixed.P2} · P3 ${snapshot.fixed.P3}`);
 if (captures.size) console.log(`Source parity  ${parityCounts.total} (P1 ${parityCounts.P1} · P2 ${parityCounts.P2} · P3 ${parityCounts.P3}) — mirror the source capture (${captures.size}/${inspectedSlugs.size} pages captured under ${join(CURRENT, 'pages')}); informational, not scored`);
 else console.log(`Source parity  not assessed — no capture under ${join(CURRENT, 'pages')} (pass --current <dir> to point at the extract capture)`);
-const route = (fx) => scored.filter((x) => x.fixability === fx);
+const route = (fx) => (fx === 'out-of-scope' ? informational.filter((x) => !isSourceParity(x)) : scored.filter((x) => x.fixability === fx));
 for (const fx of ['platform-migration', 'design-pass', 'out-of-scope']) {
   const items = route(fx);
   if (!items.length) continue;

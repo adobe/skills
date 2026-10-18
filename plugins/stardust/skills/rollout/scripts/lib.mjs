@@ -243,21 +243,36 @@ export function markSourceParity(finding, why) {
   };
 }
 
-/** Open source-parity findings by severity (the report's own section; never in the score). */
+/** Source-parity findings still live (open, in-progress or informational) by severity — the report's own section; never in the score. */
 export function sourceParityCounts(findings) {
-  const rows = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && isSourceParity(x));
+  const rows = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress' || x.status === 'informational') && isSourceParity(x));
   const sev = (s) => rows.filter((x) => x.severity === s).length;
   return { total: rows.length, P1: sev('P1'), P2: sev('P2'), P3: sev('P3') };
 }
 
 /**
+ * The informational disposition: a live finding's status follows its fixability — out-of-scope
+ * (source parity included) is `informational`, anything else open/in-progress (an informational
+ * one that is no longer out-of-scope becomes `open`); fixed, accepted and wontfix are kept.
+ */
+const LIVE_STATUSES = ['open', 'in-progress', 'informational'];
+export function liveStatus(f, status) {
+  if (!LIVE_STATUSES.includes(status)) return status;
+  if (isSourceParity(f) || f.fixability === 'out-of-scope') return 'informational';
+  return status === 'informational' ? 'open' : status;
+}
+export const withLiveStatus = (f) => (liveStatus(f, f.status) === f.status ? f : { ...f, status: liveStatus(f, f.status) });
+
+/**
  * Compute a scorecard snapshot from the full findings list. Open source-parity findings are
  * excluded from every dimension score and from the open P1/P2/P3 counts (they still mark their
- * layer as assessed); `fixed` counts are untouched.
+ * layer as assessed); `fixed` counts are untouched; `informational` counts the rows with that
+ * status (never scored).
  */
 export function computeScorecard(findings, runId, now) {
   const open = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && !isSourceParity(x));
   const fixed = findings.filter((x) => x.status === 'fixed');
+  const informational = findings.filter((x) => x.status === 'informational');
   const assessed = new Set();
   for (const f of findings) assessed.add(f.layer);
   const dimensions = {};
@@ -273,6 +288,7 @@ export function computeScorecard(findings, runId, now) {
     runId, at: now, overall, dimensions,
     severity: { P1: sev(open, 'P1'), P2: sev(open, 'P2'), P3: sev(open, 'P3') },
     fixed: { P1: sev(fixed, 'P1'), P2: sev(fixed, 'P2'), P3: sev(fixed, 'P3') },
+    informational: { total: informational.length, P1: sev(informational, 'P1'), P2: sev(informational, 'P2'), P3: sev(informational, 'P3') },
   };
 }
 

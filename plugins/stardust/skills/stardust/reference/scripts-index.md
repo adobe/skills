@@ -95,11 +95,11 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--coverage <json>] [--content <dir>] [--json]`
 - `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units (every width), sidecars, ledger pairs proven; names inconclusive gates, header-parity errors — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
-- `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
+- `rollout/findings.mjs` — record/resolve findings; out-of-scope → `informational` — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`; exit 2 = `--state` refused
 - `rollout/lib.mjs` — library, no CLI
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
-- `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
+- `rollout/optimize.mjs` — quality findings + gate; source-parity/out-of-scope → `informational` (unscored, never open) — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`

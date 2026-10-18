@@ -71,7 +71,7 @@ delivery defect:
 The findings schema has no parity property, so the tag is `fixability:
 out-of-scope` (the schema's own "informational" value) plus the evidence prefix
 `source parity: <evidence> — <shared condition>`; `autofix` is set unavailable (a
-faithful migration is never rewritten). Tagged findings stay `open` under their
+faithful migration is never rewritten). Tagged findings get `status: informational` under their
 stable id, are listed in the report's own "source parity" section, and are
 excluded from every dimension score, from the open P1/P2/P3 counts and from the
 gate. The tag follows each run: a finding the source stops sharing (a later

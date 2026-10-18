@@ -6,7 +6,11 @@
 // out-of-scope` with the `source parity: ` evidence prefix and autofix unavailable; such findings are
 // listed in their own report section, excluded from the health score and the open P1/P2/P3 counts and
 // never gate; a finding the source does NOT share keeps its routing; without a capture nothing is tagged
-// and the same P1 gates. Offline (--root + --current fixtures). --help writes nothing.
+// and the same P1 gates. The informational disposition: every parity or out-of-scope finding is recorded
+// `status: informational` (never open) — new, carried over, migrated from an older `open` ledger and on
+// regression — and becomes `open` again when it stops being informational; findings.json and the
+// scorecard agree (its `informational` count, its open counts = the ledger's open rows); health is what
+// it was for the same input. Offline (--root + --current fixtures). --help writes nothing.
 // Run: node plugins/stardust/skills/rollout/scripts/test/optimize.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -15,9 +19,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { computeScorecard, isSourceParity, markSourceParity, sourceParityCounts, SOURCE_PARITY_PREFIX } from '../lib.mjs';
+import { loadSchema, validate } from './schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'optimize.mjs');
+const FINDINGS = join(HERE, '..', 'findings.mjs');
+const AUTOFIX = join(HERE, '..', 'autofix-aem.mjs');
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
@@ -69,6 +76,7 @@ check('--help prints the header (naming --current and source parity) and writes 
   const proj = mkdtempSync(join(tmpdir(), 'optimize-help-'));
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: proj });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /--current <captureDir>/); assert.match(r.stdout, /Source parity/);
+  assert.match(r.stdout, /open \| in-progress \| fixed \| accepted \| wontfix \| informational/);
   assert.deepEqual(readdirSync(proj), []);
   rmSync(proj, { recursive: true, force: true });
 });
@@ -98,14 +106,24 @@ check('lib: computeScorecard excludes open parity findings from every score and 
   assert.deepEqual(sourceParityCounts(list), { total: 3, P1: 1, P2: 1, P3: 1 });
 });
 
+check('lib: computeScorecard counts informational rows by severity and never scores them; sourceParityCounts reads informational parity rows too', () => {
+  const row = (id, severity, status, fixability = 'out-of-scope') => ({ id, layer: 'seo', check: 'x', severity, fixability, evidence: 'e', status });
+  const parity = markSourceParity(row('p', 'P1', 'informational', 'platform-migration'), 'why');
+  const s = computeScorecard([parity, row('i', 'P2', 'informational'), row('o', 'P3', 'open', 'platform-migration')], 'run-1', 'now');
+  assert.deepEqual(s.informational, { total: 2, P1: 1, P2: 1, P3: 0 });
+  assert.deepEqual(s.severity, { P1: 0, P2: 0, P3: 1 });
+  assert.equal(s.dimensions.seo, 96);
+  assert.deepEqual(sourceParityCounts([parity]), { total: 1, P1: 1, P2: 0, P3: 0 });
+});
+
 const { proj, out, root, cur } = fixture();
 const first = run(proj, root, cur);
 const F1 = findings(out).findings;
 
 check('findings that mirror the capture are tagged; findings the source does not share keep their routing', () => {
   assert.equal(first.status, 0, `${first.stdout}\n${first.stderr}`);
-  const parity = (f) => { assert.ok(f, 'finding exists'); assert.equal(f.fixability, 'out-of-scope', f.evidence); assert.ok(f.evidence.startsWith(SOURCE_PARITY_PREFIX), f.evidence); assert.equal(f.autofix.available, false); assert.equal(f.status, 'open'); };
-  const kept = (f, fixability) => { assert.ok(f, 'finding exists'); assert.equal(f.fixability, fixability, f.evidence); assert.ok(!f.evidence.startsWith(SOURCE_PARITY_PREFIX), f.evidence); };
+  const parity = (f) => { assert.ok(f, 'finding exists'); assert.equal(f.fixability, 'out-of-scope', f.evidence); assert.ok(f.evidence.startsWith(SOURCE_PARITY_PREFIX), f.evidence); assert.equal(f.autofix.available, false); assert.equal(f.status, 'informational'); };
+  const kept = (f, fixability) => { assert.ok(f, 'finding exists'); assert.equal(f.fixability, fixability, f.evidence); assert.ok(!f.evidence.startsWith(SOURCE_PARITY_PREFIX), f.evidence); assert.equal(f.status, 'open'); };
   parity(byCheck(F1, 'title-length', ['home']));
   assert.match(byCheck(F1, 'title-length', ['home']).evidence, /the source page carries the same <title>$/);
   parity(byCheck(F1, 'meta-description', ['home']));
@@ -124,12 +142,12 @@ check('findings that mirror the capture are tagged; findings the source does not
 
 check('the scorecard counts and health exclude the parity findings; the only P1 is parity and the gate passes', () => {
   const sc = scorecard(out).current;
-  const open = F1.filter((f) => f.status === 'open');
-  const scored = open.filter((f) => !isSourceParity(f));
+  const live = F1.filter((f) => f.status === 'open' || f.status === 'informational');
+  const scored = live.filter((f) => !isSourceParity(f));
   const sev = (list, s) => list.filter((f) => f.severity === s).length;
-  assert.equal(sev(open, 'P1'), 1, 'one open P1 exists in the ledger (legal/title-missing)');
+  assert.equal(sev(live, 'P1'), 1, 'one live P1 exists in the ledger (legal/title-missing, informational)');
   assert.deepEqual(sc.severity, { P1: 0, P2: sev(scored, 'P2'), P3: sev(scored, 'P3') });
-  assert.ok(sev(open, 'P2') > sev(scored, 'P2'), 'parity P2s were excluded from the count');
+  assert.ok(sev(live, 'P2') > sev(scored, 'P2'), 'parity P2s were excluded from the count');
   const seoPenalty = scored.filter((f) => f.layer === 'seo').reduce((n, f) => n + ({ P1: 25, P2: 10, P3: 4 }[f.severity]), 0);
   assert.equal(sc.dimensions.seo, Math.max(0, 100 - seoPenalty));
   assert.match(first.stdout, /^Open {8}P1 0 · /m);
@@ -141,13 +159,13 @@ check('the scorecard counts and health exclude the parity findings; the only P1 
   assert.equal(oosSection.length, 0, 'parity findings are not listed under the generic out-of-scope route');
 });
 
-check('a re-run keeps the parity findings open with stable ids (never flipped to fixed) and appends the run', () => {
+check('a re-run keeps the parity findings informational with stable ids (never flipped to fixed) and appends the run', () => {
   const second = run(proj, root, cur);
   assert.equal(second.status, 0, second.stdout);
   const doc = findings(out);
   assert.equal(doc.runs.length, 2);
   const f = byCheck(doc.findings, 'title-length', ['home']);
-  assert.equal(f.id, byCheck(F1, 'title-length', ['home']).id); assert.equal(f.status, 'open'); assert.equal(f.firstSeenRun, 'run-1');
+  assert.equal(f.id, byCheck(F1, 'title-length', ['home']).id); assert.equal(f.status, 'informational'); assert.equal(f.firstSeenRun, 'run-1');
   assert.equal(doc.findings.filter((x) => x.status === 'fixed').length, 0);
 });
 
@@ -163,7 +181,9 @@ check('a prior open finding becomes parity-tagged on the run that finds the capt
   const r1 = run(alt.proj, alt.root, withCap);
   assert.equal(r1.status, 0, r1.stdout);
   const after = byCheck(findings(alt.out).findings, 'title-length', ['home']);
+  assert.equal(before.status, 'open');
   assert.equal(after.id, before.id); assert.equal(after.fixability, 'out-of-scope'); assert.equal(after.autofix.available, false); assert.equal(after.firstSeenRun, 'run-1');
+  assert.equal(after.status, 'informational');
   const allowed = ['id', 'source', 'layer', 'check', 'severity', 'scope', 'evidence', 'fixability', 'recommendedMove', 'status', 'autofix', 'resolvedBy', 'firstSeenRun'];
   for (const f of findings(alt.out).findings) for (const k of Object.keys(f)) assert.ok(allowed.includes(k), `unexpected finding property ${k}`);
   rmSync(alt.proj, { recursive: true, force: true });
@@ -198,6 +218,103 @@ check('single-h1: 0 delivered <h1> with a capture whose headings carry no h1 is 
   assert.equal(scorecard(o).current.severity.P1, 2, 'only the two plain single-h1 findings count as open P1');
   assert.match(r.stdout, /✗ GATE: 2 open P1 finding\(s\)/);
   rmSync(p, { recursive: true, force: true });
+});
+
+const record = (o, extra) => spawnSync(process.execPath, [FINDINGS, 'record', '--out', o, ...extra], { encoding: 'utf8' });
+const sevOf = (list, s) => list.filter((f) => f.severity === s).length;
+
+check('findings.json and the scorecard agree: no informational finding is open, the scorecard counts them, its open counts are the ledger\'s, health as before', () => {
+  const t = fixture();
+  const r1 = run(t.proj, t.root, t.cur);
+  assert.equal(r1.status, 0, r1.stdout);
+  const health = scorecard(t.out).current.overall;
+  // a plain out-of-scope P1 from another audit source (not parity) joins the same ledger
+  const rec = record(t.out, ['--source', 'audit:external', '--layer', 'seo', '--check', 'hreflang', '--severity', 'P1', '--fixability', 'out-of-scope', '--scope-ids', 'home', '--evidence', 'no hreflang alternates']);
+  assert.equal(rec.status, 0, rec.stderr);
+  assert.equal(scorecard(t.out).current.overall, health, 'recording an informational finding leaves health unchanged');
+  const r2 = run(t.proj, t.root, t.cur);
+  assert.equal(r2.status, 0, `an informational P1 never gates\n${r2.stdout}`);
+  const F = findings(t.out).findings; const sc = scorecard(t.out).current;
+  const info = F.filter((f) => isSourceParity(f) || f.fixability === 'out-of-scope');
+  assert.ok(info.some((f) => isSourceParity(f)) && info.some((f) => !isSourceParity(f)), 'both parity and plain out-of-scope findings are present');
+  assert.deepEqual(info.filter((f) => f.status !== 'informational').map((f) => `${f.check} ${f.status}`), [], 'every informational finding carries status informational');
+  assert.equal(F.filter((f) => f.status === 'informational').length, info.length, 'only informational findings carry it');
+  assert.deepEqual(sc.informational, { total: info.length, P1: sevOf(info, 'P1'), P2: sevOf(info, 'P2'), P3: sevOf(info, 'P3') });
+  const open = F.filter((f) => f.status === 'open');
+  assert.ok(open.length > 0, 'scored findings exist');
+  assert.deepEqual(sc.severity, { P1: sevOf(open, 'P1'), P2: sevOf(open, 'P2'), P3: sevOf(open, 'P3') });
+  assert.equal(sc.overall, health);
+  // the same input as before this status existed: the informational rows were `open`, and the score skipped the parity ones
+  const before = F.filter((f) => f.source !== 'audit:external').map((f) => (f.status === 'informational' ? { ...f, status: 'open' } : f));
+  assert.equal(computeScorecard(before, 'run-x', 'now').overall, sc.overall, 'health unchanged for the same input');
+  assert.match(r2.stdout, new RegExp(`^Health {6}${sc.overall}/100 · informational ${info.length} {3}\\(a11y `, 'm'));
+  assert.match(r2.stdout, /^out-of-scope — informational:$/m);
+  assert.match(r2.stdout, /^ {2}P1 seo\/hreflang \[home\] — no hreflang alternates$/m);
+  assert.match(r2.stdout, /^source parity — informational /m);
+  assert.match(r2.stdout, /✓ GATE: no open P1 findings\./);
+  const schemaErrors = [
+    ...validate(loadSchema('rollout-findings.schema.json'), findings(t.out)),
+    ...validate(loadSchema('rollout-scorecard.schema.json'), scorecard(t.out)),
+  ];
+  assert.deepEqual(schemaErrors, [], 'an informational ledger and its scorecard validate against the schemas');
+  // autofix-aem rewrites the scorecard from the same ledger (here with no candidate) and keeps the count
+  const fx = spawnSync(process.execPath, [AUTOFIX, '--project', join(t.proj, 'eds'), '--out', t.out, '--check', 'none'], { encoding: 'utf8' });
+  assert.equal(fx.status, 0, fx.stderr);
+  const after = JSON.parse(readFileSync(join(t.out, 'optimize', 'scorecard.json'), 'utf8'));
+  assert.equal(after.history.length, 3);
+  assert.deepEqual(after.current.informational, sc.informational);
+  assert.deepEqual(after.current.severity, sc.severity);
+  rmSync(t.proj, { recursive: true, force: true });
+});
+
+check('a ledger written before the informational status migrates on the next run: open parity and out-of-scope rows become informational, firstSeenRun kept', () => {
+  const t = fixture();
+  run(t.proj, t.root, t.cur);
+  const doc = findings(t.out);
+  doc.findings = doc.findings.map((f) => (isSourceParity(f) ? { ...f, status: 'open', firstSeenRun: 'run-legacy' } : f));
+  doc.findings.push({ id: 'f-external01', source: 'audit:external', layer: 'design-ux', check: 'contrast-note', severity: 'P2', scope: { level: 'page', ids: ['about'] }, evidence: 'e', fixability: 'out-of-scope', recommendedMove: '', status: 'in-progress', autofix: null, resolvedBy: null, firstSeenRun: 'recorded' });
+  writeFileSync(join(t.out, 'optimize', 'findings.json'), JSON.stringify(doc));
+  const r = run(t.proj, t.root, t.cur);
+  assert.equal(r.status, 0, r.stdout);
+  const F = findings(t.out).findings;
+  const parity = F.filter(isSourceParity);
+  assert.ok(parity.length >= 8);
+  for (const f of parity) { assert.equal(f.status, 'informational', f.check); assert.equal(f.firstSeenRun, 'run-legacy', f.check); }
+  const ext = F.find((f) => f.id === 'f-external01');
+  assert.equal(ext.status, 'informational'); assert.equal(ext.firstSeenRun, 'recorded');
+  assert.equal(F.filter((f) => f.status === 'fixed').length, 0);
+  assert.equal(scorecard(t.out).current.informational.total, parity.length + 1);
+  rmSync(t.proj, { recursive: true, force: true });
+});
+
+check('an informational finding the source stops sharing becomes open again — scored and gated as before', () => {
+  const t = fixture();
+  run(t.proj, t.root, t.cur);
+  const before = byCheck(findings(t.out).findings, 'title-missing', ['legal']);
+  assert.equal(before.status, 'informational');
+  writeFileSync(join(t.cur, 'pages', 'legal.json'), JSON.stringify({ slug: 'legal', title: 'Legal notice and terms', description: '' }));
+  const r = run(t.proj, t.root, t.cur);
+  assert.equal(r.status, 1, r.stdout);
+  const after = byCheck(findings(t.out).findings, 'title-missing', ['legal']);
+  assert.equal(after.id, before.id); assert.equal(after.status, 'open'); assert.equal(after.fixability, 'platform-migration');
+  assert.equal(after.autofix.available, true); assert.equal(after.firstSeenRun, 'run-1');
+  assert.equal(scorecard(t.out).current.severity.P1, 1);
+  assert.match(r.stdout, /✗ GATE: 1 open P1 finding\(s\)/);
+  rmSync(t.proj, { recursive: true, force: true });
+});
+
+check('an informational finding no longer detected is fixed; on regression it comes back informational, never open', () => {
+  const t = fixture();
+  run(t.proj, t.root, t.cur);
+  writeFileSync(join(t.root, 'index.html'), page('Acme', { desc: 'The home page description' }));
+  run(t.proj, t.root, t.cur);
+  const fixed = byCheck(findings(t.out).findings, 'meta-description', ['home']);
+  assert.equal(fixed.status, 'fixed'); assert.equal(fixed.resolvedBy.note, 'no longer detected on delivered page');
+  writeFileSync(join(t.root, 'index.html'), page('Acme'));
+  run(t.proj, t.root, t.cur);
+  const back = byCheck(findings(t.out).findings, 'meta-description', ['home']);
+  assert.equal(back.status, 'informational'); assert.equal(back.firstSeenRun, 'run-1'); assert.equal(back.resolvedBy, null);
+  rmSync(t.proj, { recursive: true, force: true });
 });
 
 console.log(failed ? `\noptimize: ${failed} check(s) failed` : '\noptimize: all checks passed');
