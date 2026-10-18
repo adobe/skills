@@ -481,6 +481,10 @@ check('clipAllowed (pure): a counted finding whose clipper is the selector, or w
   assert.deepEqual(clipAllowed(findings, []), { n: 0, by: [] });
   assert.deepEqual(clipAllowed([{ kind: 'TEXT CLIPPED', clipper: 'div.card__bodyx', path: 'main > div.card__bodyx > p' }], allow), { n: 0, by: [] }, 'a whole segment, never a prefix');
   assert.deepEqual(clipAllowed([{ kind: 'TEXT CLIPPED', n: 3, clipper: 'div.card__body', path: 'main > p' }], allow), { n: 3, by: [{ selector: 'div.card__body', reason: 'R-2', n: 3 }] }, 'a group counts its n');
+  // groups (no findings): a group's path is its first finding's only — matched by clipper alone, never by a path segment
+  const group = { kind: 'TEXT CLIPPED', n: 3, clipper: 'div.inner', path: 'main > div.rail > div.card > p' };
+  assert.deepEqual(clipAllowed([group], allow, { byClipper: true }), { n: 0, by: [] }, 'the path segment is not trusted for a group');
+  assert.deepEqual(clipAllowed([{ ...group, clipper: 'div.card__body' }], allow, { byClipper: true }).n, 3);
 });
 
 check('the default file is the site-wide presence path live-session reads (when it exports SITE_PRESENCE)', () => {

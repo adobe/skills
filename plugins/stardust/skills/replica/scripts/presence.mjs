@@ -431,15 +431,16 @@ export function captureSettings(json, slug = null) {
  * Pure: the counted clip findings (clip-probe / content-presence `findings`, or `groups` with their `n`) the page's `clip`
  * allowances cover → { n, by: [{ selector, reason, n }] } (allowance order, only those that covered one). A finding is
  * covered when an allowance's selector is its `clipper`, or occurs in its `path` (`a > b > c`) as whole segments; the
- * first covering allowance takes it. Advisory findings are never counted, so never allowed either.
+ * first covering allowance takes it. `byClipper` (groups: a group's `path` is its first finding's only) matches the
+ * clipper alone. Advisory findings are never counted, so never allowed either.
  */
-export function clipAllowed(findings, allow) {
+export function clipAllowed(findings, allow, { byClipper = false } = {}) {
   const clips = (Array.isArray(allow) ? allow : []).filter((x) => x && x.kind === 'clip' && nonEmpty(x.selector));
   const by = clips.map((x) => ({ selector: x.selector.trim(), reason: x.reason, n: 0 }));
   for (const f of Array.isArray(findings) ? findings : []) {
     if (!f || f.advisory) continue;
     const path = ` > ${String(f.path || '')} > `;
-    const hit = by.find((x) => x.selector === f.clipper || path.includes(` > ${x.selector} > `));
+    const hit = by.find((x) => x.selector === f.clipper || (!byClipper && path.includes(` > ${x.selector} > `)));
     if (hit) hit.n += Number.isInteger(f.n) && f.n > 0 ? f.n : 1;
   }
   const used = by.filter((x) => x.n > 0);
