@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
-// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max clamped to 110), instrument
+// concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default and ceiling 1500, or
+// --until <ISO> clamped to the same ceiling; exit 76 at once on the pause file $STARDUST_PAUSE_FILE, which status
+// shows too), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
@@ -11,14 +13,14 @@
 // with the lock off, × 4 at the default one browser per slot; whose jobs a bare wait/status covers — the caller's own
 // (ownerPid: RUN_BG_OWNER, else callerOwner's ancestry walk), --all every owner's, a state without ownerPid only by name
 // or --all — the report's first line naming the selection, and --timeout refused on wait/status (exit 125).
-// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 35 s)
+// Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 45 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -30,6 +32,8 @@ const env = { ...process.env, RUN_BG_POLL_MS: '100', STARDUST_BROWSER_LOCK_DIR: 
 delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT;
 // No RUN_BG_OWNER: every job started here is owned by this process — run-bg's parent, the nearest non-shell ancestor.
 delete env.RUN_BG_OWNER;
+// No inherited pause file: a supervised session running these tests must not end their waits with exit 76.
+delete env.STARDUST_PAUSE_FILE; delete process.env.STARDUST_PAUSE_FILE;
 const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const bg = (sub, ...args) => run({}, sub, ...args);
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
@@ -62,7 +66,7 @@ await check('start rejects a bad name and a missing command (exit 125)', () => {
   assert.equal(bg('start', '--name', 'ok').code, 125);
 });
 await check('a value flag followed by nothing or by another flag is a usage error naming the flag (exit 125), never swallowed', () => {
-  for (const [args, flag] of [[['start', '--name'], '--name'], [['start', '--name', '--slots', '1', '--', 'true'], '--name'], [['wait', '--max', '--tail', '3'], '--max'], [['status', '--grep'], '--grep'], [['status', '--tail', '--all'], '--tail'], [['start', '--name', 'x', '--timeout', '--', 'true'], '--timeout'], [['status', '--dir'], '--dir']]) {
+  for (const [args, flag] of [[['start', '--name'], '--name'], [['start', '--name', '--slots', '1', '--', 'true'], '--name'], [['wait', '--max', '--tail', '3'], '--max'], [['status', '--grep'], '--grep'], [['status', '--tail', '--all'], '--tail'], [['start', '--name', 'x', '--timeout', '--', 'true'], '--timeout'], [['status', '--dir'], '--dir'], [['wait', '--until', '--all'], '--until'], [['wait', '--until'], '--until']]) {
     const r = bg(...args); assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.match(r.err, new RegExp(`run-bg: ${flag} needs a value`), `${args.join(' ')}: ${r.err.split('\n')[0]}`);
   }
   assert.equal(readdirSync(dir).some((f) => f.startsWith('x.')), false, 'no job was created by the rejected start');
@@ -126,20 +130,18 @@ await check('--timeout is a start flag: on wait or status it is a usage error na
   for (const args of [['wait', '--timeout', '30'], ['wait', 'a', '--timeout', '5'], ['status', '--timeout', '30'], ['wait', '--timeout']]) {
     const r = bg(...args);
     assert.equal(r.code, 125, `${args.join(' ')}: exit ${r.code}`); assert.equal(r.out, '', `${args.join(' ')}: no report`);
-    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 100, at most 110); status reports at once', args.join(' '));
+    assert.equal(firstLine(r.err), 'run-bg: --timeout is a start flag — wait takes --max <s> (default 1500, at most 1500) or --until <ISO>; status reports at once', args.join(' '));
   }
 });
-await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why`, () => {
-  assert.equal(MAX_CEILING_SEC, 110, 'the agent\'s shell tool\'s default timeout is about two minutes and applies only to a call that declares none; 110 s returns inside it even when none is declared');
+const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
+await check(`--max above ${MAX_CEILING_SEC} s is clamped and says why; at or under it is not`, () => {
+  assert.equal(MAX_CEILING_SEC, 1500, 'a recorded single wait of 57 minutes is why a ceiling stays; 25 minutes is the runner\'s check-in interval');
   assert.equal(bg('start', '--name', 'z', '--', 'true').code, 0);
   const r = bg('wait', '--max', '9999', 'z');
-  assert.equal(r.code, 0); assert.match(r.err, /--max 9999 clamped to 110s — the agent's shell tool's default timeout is about two minutes and applies to a call that declares none; 110 s returns inside it and leaves startup and the report their room/);
-  const r200 = bg('wait', '--max', '200', 'z');
-  assert.equal(r200.code, 0); assert.match(r200.err, /--max 200 clamped to 110s/);
-  const r111 = bg('wait', '--max', '111', 'z');
-  assert.equal(r111.code, 0); assert.match(r111.err, /--max 111 clamped to 110s/, 'the former 180 s ceiling outlived the shell tool\'s default timeout whenever the call declared none');
-  const r110 = bg('wait', '--max', '110', 'z');
-  assert.equal(r110.code, 0); assert.equal(r110.err, '', 'a --max at or under the ceiling is not clamped');
+  assert.equal(r.code, 0); assert.equal(r.err.trim(), `run-bg: --max 9999 clamped to 1500s — ${CLAMP_WHY}.`);
+  const r1501 = bg('wait', '--max', '1501', 'z');
+  assert.equal(r1501.code, 0); assert.match(r1501.err, /^run-bg: --max 1501 clamped to 1500s — /);
+  for (const max of ['1500', '200', '111']) { const k = bg('wait', '--max', max, 'z'); assert.equal(k.code, 0); assert.equal(k.err, '', `--max ${max}: at or under the ceiling is not clamped`); }
 });
 await check(`slots default to ${DEFAULT_SLOTS} — RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, else ${DEFAULT_SLOTS}`, () => {
   assert.equal(DEFAULT_SLOTS, 3, 'each capture is a Chromium and a gate.sh --full round holds up to six, yet at 3 slots a recorded fan-out still queued 84 of 272 jobs for more than 10 s: 3 is the default, the env moves it');
@@ -520,6 +522,99 @@ await check('two owners in one dir: a bare wait/status covers the caller\'s own 
   assert.match(wc.out, /^run-bg: no jobs of yours in /m); assert.doesNotMatch(wc.out, /^legacy {2}/m);
   const named = bgIn(d, C, 'status', 'legacy');
   assert.equal(firstLine(named.out), 'run-bg: status — named: 1 job(s)'); assert.match(named.out, /^legacy {2}done exit=0/m);
+});
+
+// ---- the pause file ($STARDUST_PAUSE_FILE) and --until ------------------------------------------------------------
+// The runner that supervises a hands-off run writes the pause file when it wants the session to stop: a wait ends on it
+// at once (exit 76), status shows it, and no job is signalled. p1 runs through the whole section and ends on its own.
+const pd = join(lockRoot, 'pz', 'bg'); mkdirSync(pd, { recursive: true });
+const PAUSE = join(lockRoot, 'pz', 'pause.json');
+const pauseLine = (path, reason, at) => `run-bg: paused — ${path} present (reason: ${reason}, at ${at}) — jobs keep running; finish the iteration, record it and return`;
+const bgAsync = (d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
+
+await check(`wait exits ${PAUSED_EXIT} at once when the pause file is present — the pause line, then the one-pass report without "wait again"; the job is not signalled`, async () => {
+  assert.equal(PAUSED_EXIT, 76);
+  assert.equal(bgIn(pd, {}, 'start', '--name', 'p1', '--slots', '9', '--', process.execPath, '-e', 'setTimeout(()=>{},12000)').code, 0);
+  for (let i = 0; i < 50 && !stateIn(pd, 'p1').wrapperPid; i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
+  writeFileSync(PAUSE, JSON.stringify({ at: '2026-10-18T09:00:00Z', reason: 'push-stop' }));
+  const t0 = Date.now(); const r = bgIn(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'wait', '--max', '30', 'p1');
+  assert.equal(r.code, PAUSED_EXIT, r.out); assert.ok(Date.now() - t0 < 3000, `returned at once (${Date.now() - t0} ms)`);
+  const lines = r.out.trim().split('\n');
+  assert.equal(lines[0], pauseLine(PAUSE, 'push-stop', '2026-10-18T09:00:00Z'));
+  assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)'); assert.match(lines[2], /^p1 {2}(?:queued|running)/);
+  assert.match(lines.at(-1), /^run-bg: 0\/1 ended, 1 still going — paused: /); assert.doesNotMatch(r.out, /run `wait` again/);
+  const st = stateIn(pd, 'p1'); assert.equal(st.endedAt, null, 'the job keeps running'); assert.ok(pidAlive(st.wrapperPid), 'its wrapper was not signalled');
+  const inproc = await wait(pd, ['p1'], { maxSec: 30, pauseFile: PAUSE }); // the export takes the pause file as an option
+  assert.equal(inproc.paused, true); assert.equal(inproc.text.split('\n')[0], pauseLine(PAUSE, 'push-stop', '2026-10-18T09:00:00Z'));
+  rmSync(PAUSE);
+});
+await check('a pause file that appears mid-wait ends the wait within one poll interval; a file that is not JSON still counts (reason unreadable)', async () => {
+  rmSync(PAUSE, { force: true });
+  const waiting = bgAsync(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'wait', '--max', '30', 'p1');
+  await sleep(1000);
+  writeFileSync(PAUSE, 'stop'); const wrote = Date.now();
+  const r = await waiting;
+  assert.equal(r.code, PAUSED_EXIT, r.out + r.err); assert.ok(r.at - wrote < 1500, `ended ${r.at - wrote} ms after the pause file appeared`);
+  assert.equal(firstLine(r.out), pauseLine(PAUSE, 'unreadable', 'unknown'));
+  assert.equal(stateIn(pd, 'p1').endedAt, null, 'the job keeps running');
+  rmSync(PAUSE);
+});
+await check('STARDUST_PAUSE_FILE: a relative path is read from the cwd (the project root); unset, empty or a missing file = no pause', () => {
+  writeFileSync(join(lockRoot, 'pz', 'rel-pause.json'), JSON.stringify({ at: '2026-10-18T09:05:00Z', reason: 'push-stop' }));
+  const inCwd = (cwd, extra, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+  const rel = { STARDUST_PAUSE_FILE: 'rel-pause.json' };
+  const w = inCwd(join(lockRoot, 'pz'), rel, 'wait', '--dir', pd, '--max', '30', 'p1');
+  assert.equal(w.code, PAUSED_EXIT, w.out); assert.equal(firstLine(w.out), pauseLine('rel-pause.json', 'push-stop', '2026-10-18T09:05:00Z'));
+  const elsewhere = inCwd(lockRoot, rel, 'wait', '--dir', pd, '--max', '0', 'p1');
+  assert.equal(elsewhere.code, STILL_RUNNING_EXIT, elsewhere.out); assert.doesNotMatch(elsewhere.out, /paused/, 'not in this cwd: no pause');
+  for (const extra of [{}, { STARDUST_PAUSE_FILE: '' }, { STARDUST_PAUSE_FILE: join(lockRoot, 'pz', 'absent.json') }]) {
+    const k = bgIn(pd, extra, 'wait', '--max', '0', 'p1'); assert.equal(k.code, STILL_RUNNING_EXIT, JSON.stringify(extra)); assert.doesNotMatch(k.out, /paused/, JSON.stringify(extra));
+  }
+  rmSync(join(lockRoot, 'pz', 'rel-pause.json'));
+});
+await check('status shows the pause line first when the pause file is present (exit 0, the report below it unchanged); set but missing adds nothing', () => {
+  writeFileSync(PAUSE, JSON.stringify({ at: '2026-10-18T09:10:00Z', reason: 'push-stop' }));
+  const s = bgIn(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'status', 'p1');
+  assert.equal(s.code, 0, s.out); const lines = s.out.trim().split('\n');
+  assert.equal(lines[0], pauseLine(PAUSE, 'push-stop', '2026-10-18T09:10:00Z')); assert.equal(lines[1], 'run-bg: status — named: 1 job(s)'); assert.match(lines[2], /^p1 {2}running/);
+  rmSync(PAUSE);
+  const a = bgIn(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'status', 'p1');
+  assert.equal(a.code, 0); assert.equal(firstLine(a.out), 'run-bg: status — named: 1 job(s)'); assert.doesNotMatch(a.out, /paused/);
+});
+await check('--until <ISO> (offset or Z) bounds a wait like --max: a past instant = one pass, a near one returns then, a far one is clamped and says why', () => {
+  const past = bgIn(pd, {}, 'wait', '--until', '2020-01-01T00:00:00+02:00', 'p1');
+  assert.equal(past.code, STILL_RUNNING_EXIT, past.out); assert.match(past.out, /still going after 0s \(ceiling 0s\)/); assert.equal(past.err, '');
+  const t0 = Date.now(); const near = bgIn(pd, {}, 'wait', '--until', new Date(t0 + 1500).toISOString(), 'p1'); const took = Date.now() - t0;
+  assert.equal(near.code, STILL_RUNNING_EXIT, near.out); assert.ok(took >= 1400 && took < 4000, `returned after ${took} ms`); assert.equal(near.err, '');
+  assert.equal(bgIn(pd, {}, 'start', '--name', 'p2', '--', 'true').code, 0); assert.equal(bgIn(pd, {}, 'wait', '--max', '10', 'p2').code, 0);
+  const far = new Date(Date.now() + 2 * 3600 * 1000).toISOString();
+  const r = bgIn(pd, {}, 'wait', '--until', far, 'p2');
+  assert.equal(r.code, 0, r.out); assert.equal(r.err.trim(), `run-bg: --until ${far} clamped to 1500s from now — ${CLAMP_WHY}.`);
+});
+await check('--until that is not an ISO-8601 instant with an offset or Z, --until with --max, and --until on status/start are usage errors (exit 125, no report, no job)', () => {
+  for (const v of ['tomorrow', '2026-10-18T12:00:00', '2026-13-40T12:00:00Z', '1792324800']) {
+    const r = bgIn(pd, {}, 'wait', '--until', v, 'p1');
+    assert.equal(r.code, 125, v); assert.equal(r.out, '', v); assert.equal(firstLine(r.err), `run-bg: --until needs an ISO-8601 instant with an offset or Z, e.g. 2026-10-18T12:25:00Z (got ${v})`);
+  }
+  const iso = new Date(Date.now() + 60000).toISOString();
+  for (const args of [['--max', '5', '--until', iso], ['--until', iso, '--max', '5']]) {
+    const r = bgIn(pd, {}, 'wait', ...args, 'p1');
+    assert.equal(r.code, 125, args.join(' ')); assert.equal(r.out, ''); assert.equal(firstLine(r.err), 'run-bg: --max and --until are alternatives — give one');
+  }
+  for (const args of [['status', '--until', iso], ['start', '--name', 'ux', '--until', iso, '--', 'true']]) {
+    const r = bgIn(pd, {}, ...args);
+    assert.equal(r.code, 125, args.join(' ')); assert.equal(r.out, ''); assert.equal(firstLine(r.err), 'run-bg: --until is a wait flag — status reports at once; start takes --timeout <s>');
+  }
+  assert.equal(existsSync(join(pd, 'ux.json')), false, 'no job was created by the rejected start');
+});
+await check('--help: wait\'s default --max 1500 or --until, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+  const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', env });
+  assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=1500 \| --until <ISO>\]/);
+  assert.match(h.stdout, /timeout longer than the wait/);
+  assert.match(h.stdout, /76 \(wait\) the pause file is present — stop waiting, finish the iteration and return/);
+});
+await check('the paused-on job ends on its own, unsignalled (exit 0)', () => {
+  const w = bgIn(pd, {}, 'wait', '--max', '30', 'p1'); assert.equal(w.code, 0, w.out); assert.match(w.out, /^p1 {2}done exit=0/m);
 });
 
 rmSync(dir, { recursive: true, force: true });

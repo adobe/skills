@@ -78,7 +78,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
 - `replica/presence.mjs` — site-wide hide list `stardust/replica/presence.json` — `add --hide <sel,…> [--slug <s>] [--reason <R-nn>] [--verify <url>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS); `suggest <url>` (candidates)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
-- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110] [--all]` (bare: your own jobs); `log <j>`
+- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤1500 | --until <ISO>] [--all]` (bare: your own jobs; 76 = pause file; tool timeout > wait); `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline; a miss retries by words — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`; exit 2 = no match, outline on stdout
 - `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`
