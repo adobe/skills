@@ -4,6 +4,30 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — from prototype to document, and from archetype to sibling, without a hand-written generator (#NNN)
+
+The recorded hands-off runs wrote the same generators again and again: a gated prototype's `<main>` into the
+delivered document, a prototype grouped into `<section>`s because the schema reader found none, and each sibling's
+proposed HTML from the archetype prototype plus the sibling's capture. The encoder path never engaged — every
+`encode-attempt` record read `not-attempted` ("no map", "single sibling", "bodies identical"), `slot-map.mjs` was
+never invoked, and the strict fork refused for want of a `-proposed.html`, so every cluster rendered from a
+hand-built `--source` file. Those generators also carried the bugs behind two extra fix rounds.
+
+- **A gated prototype's `<main>` → the delivered document (`deploy/proto-to-doc.mjs`).** New, offline: the
+  prototype's top-level groups become sections, its block markers become block tables, the page record becomes the
+  metadata block, in the migrate encoder's document form. Refuses a prototype with no `<main>`; deterministic.
+- **A markerless prototype auto-sections (`deploy/section-schema.mjs --split`).** When the content root holds no
+  `section, [data-section]`, the groups of `main > *` (or a given selector) are the inferred sections, reported as
+  such; the old behaviour stays the default when real `<section>`s exist.
+- **The encoder engages without a hand-written map (`migrate/migrate.mjs`, `slot-map.mjs`, `encode-attempt.mjs`).**
+  `plan` derives the slot map from the archetype prototype when the capture has no `#slots` (`source: derived`) and
+  refuses only when nothing derives, naming the one command that makes it derivable; `render --from-archetype
+  <proto> --capture <page.json>` forks an identical or minor sibling's own `-proposed.html` from the archetype; the
+  attempt record distinguishes `derived` / `forked` / `not-attempted` with the reason.
+- **Docs.** The migrate encode section and the handoff contract § Encoded siblings name the order — `plan`
+  (derived) → `render --from-archetype` for identical/minor siblings → hand-authored only for `major` variance,
+  with the one-line commands — and the rule that a generator script the agent writes for these steps is a defect.
+
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
 The recorded hands-off runs: an independent roster re-gate of one run reproduced 8/10 instead of its 10/10 — the run
