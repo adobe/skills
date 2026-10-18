@@ -458,6 +458,27 @@ else {
     assert.deepEqual([s.panel.headings, 'unstable' in s], [['Loading'], false]);
     assert.match(byOff.out, /^chrome-explore stability skipped: --no-repeat — first samples were not repeated on a fresh page$/m);
   });
+  // Warmup retry: the server serves an empty header on a cold (cookie-less) visit and the one-menu header once a visit
+  // has set `warm=1`; a fresh retry context warms up with the page's own URL first, so its second request carries the
+  // cookie. --probe skips the one pre-visit, so the first explore is genuinely cold (0 controls → the retry).
+  const COLD = '<!doctype html><html><head><title>t</title></head><body><header><nav></nav></header><main style="height:600px">Body</main></body></html>';
+  const WARM = '<!doctype html><html><head><title>t</title></head><body><header><nav><button aria-expanded="false" aria-controls="m">Products</button><div id="m" hidden><a href="/p/1">One</a></div></nav></header><main style="height:600px">Body</main></body></html>';
+  const warmSrv = createServer((req, res) => {
+    const warm = /(?:^|;\s*)warm=1/.test(req.headers.cookie || '');
+    res.writeHead(200, { 'content-type': 'text/html', 'set-cookie': 'warm=1; Path=/' });
+    res.end(warm ? WARM : COLD);
+  });
+  await new Promise((r) => { warmSrv.listen(0, '127.0.0.1', r); });
+  const wo = `http://127.0.0.1:${warmSrv.address().port}`;
+  const warmOut = join(dir, 'warm.json');
+  const byWarm = await cli([`${wo}/h`, warmOut, '--width', '1440', '--probe', 'products', '--plain', '--no-repeat', '--shots', join(dir, 'warm')]);
+  await check('CLI: a source explore that finds 0 controls retries once with a warmup visit, recovers the header control, and says so', () => {
+    assert.equal(byWarm.code, 0, byWarm.err);
+    assert.match(byWarm.out, /^chrome-explore 1440: 0 controls — retried once with a warmup visit$/m, byWarm.out);
+    const d = JSON.parse(readFileSync(warmOut, 'utf8'));
+    assert.deepEqual(d.widths[1440].controls.map((c) => c.name), ['Products'], 'the warmed-up explore recovered the control');
+  });
+  warmSrv.close();
   // the paired form on a one-menu header served under two paths, every request counted per path: a source width
   // taken from the cache opens no source page
   const MINI = `<!doctype html><html><head><style>body{margin:0;font:16px/1.4 sans-serif} header{height:64px;background:#123;color:#fff} header button,header a{color:inherit;font:inherit;background:none;border:0;padding:8px} main{height:600px}</style></head>

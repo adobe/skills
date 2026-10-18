@@ -70,9 +70,12 @@
  * whatever finishes first; a repeated width is explored once. A probe read from the page is read once, before (one
  * visit, the first width's viewport, on that explore's page, as before). One failure closes every browser (exit 3 on
  * a bot challenge, naming the URL).
+ * Warmup retry: a source (or single) explore that finds 0 controls — an empty header, the mark of a bot wall or a cold
+ * edge on the first visit — retries once in a fresh context, warming up with the page's own URL first (unless --warmup is
+ * already given, and never on the build side), inside the run's own deadline, and says so on one line.
  * Why: a recorded hands-off run explored its header eight times (57 browser-minutes, 431 s each on average), four of
  * them the unchanged source once the caller's own one-hour cache had lapsed — each run one width after the other.
- * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `hideArgs`,
+ * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlCount`, `controlKind`, `normName`, `hideArgs`,
  * `effectiveHide`, `sampleDelta`, `cropDeps`, `cropRatio`, `unstableAsWarn`, `stabilityLine`, `exploreArgs`,
  * `sourceInputs`, `sourceKey`, `sourceCachePath`, `cropsOf`, `cacheMiss`, `readSourceCache`, `composeDoc`,
  * `browsersPerSlot`, `exploreAll` are exported.
@@ -103,6 +106,9 @@ export function controlKind({ name = '', role = '', type = '', hint = '' }) {
   for (const [k, re] of KINDS) if (re.test(k === 'drawer' ? name : `${name} ${hint}`)) return k;
   return role === 'link' ? 'link' : role === 'input' ? 'input' : 'menu';
 }
+
+/** A width explore's header-control count (an empty header → 0, the signal to retry with a warmup). Pure. */
+export const controlCount = (result) => (result && Array.isArray(result.controls) ? result.controls.length : 0);
 
 /** One line per width: controls, states, distinct links, depth, kinds, truncation. Pure. */
 export function summarize(doc) {
@@ -788,10 +794,22 @@ async function main() {
         return ready;
       },
       explore: async (task, browser, i, ready) => {
+        const prepShots = () => { if (task.side === 'source') { rmSync(task.shots, { recursive: true, force: true }); mkdirSync(task.shots, { recursive: true }); } };
+        const run = (page, goto) => exploreWidth(page, { url: task.url, width: task.width, rootSel: opts.root, maxStates: opts.maxStates, maxDepth: opts.maxDepth, probe, shotsDir: task.shots, gotoFn: goto, hide: hide.entries, repeat, bar });
         try {
-          if (task.side === 'source') { rmSync(task.shots, { recursive: true, force: true }); mkdirSync(task.shots, { recursive: true }); }
-          const { ctx, page } = i === 0 && ready ? ready : await openFor(task, browser);
-          const result = await exploreWidth(page, { url: task.url, width: task.width, rootSel: opts.root, maxStates: opts.maxStates, maxDepth: opts.maxDepth, probe, shotsDir: task.shots, gotoFn, hide: hide.entries, repeat, bar });
+          prepShots();
+          let { ctx, page } = i === 0 && ready ? ready : await openFor(task, browser);
+          let result = await run(page, gotoFn);
+          // A source (or single) explore that finds no controls retries once in a fresh context, warming up with the
+          // page's own URL first — a bot wall or a cold edge can serve an empty header on the first visit. In-process, so
+          // the run's own deadline bounds it; skipped when --warmup is already given or on the build side. It says so.
+          if (!opts.warmup && task.side !== 'build' && controlCount(result) === 0) {
+            console.log(`chrome-explore ${task.side === 'source' ? 'source ' : ''}${task.width}: 0 controls — retried once with a warmup visit`);
+            await ctx.close();
+            prepShots();
+            ({ ctx, page } = await openFor(task, browser));
+            result = await run(page, (p, u) => visit(p, u, { warmup: task.url, settle: { passes: 1, quietMs: 800 } }));
+          }
           await ctx.close();
           // stored as soon as it is explored: a failure elsewhere in the run does not lose it
           if (task.side === 'source') task.src.entry = storeSource({ key: task.src.key, inputs: task.src.inputs, at, probe, result, tmp: task.shots });
