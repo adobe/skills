@@ -8,12 +8,17 @@
  * favicon aside). Agents in recorded hands-off runs hand-wrote their own media
  * harvesters because nothing shipped did the job — each one a different subset
  * of the srcset / lazy-load / CSS-background cases, none of them safe to re-run.
- * This reads the crawl's settled rendered DOM offline; it never opens a browser.
+ * The media path reads the crawl's settled rendered DOM offline; it never opens a browser.
+ * Stylesheets, fonts and SVG take the browser path (--assets, below): in a recorded hands-off run a
+ * CDN wall answered every direct fetch of a stylesheet with a denial page while the browser was never
+ * blocked, and the agent hand-wrote a browser-side CSS/font harvester.
  *
  * Usage:
  *   node media-harvest.mjs [--pages stardust/current/pages] [--out stardust/current/assets/media]
  *                          [--map stardust/current/assets/media-map.json] [--concurrency 4]
  *                          [--max-bytes <n>] [--timeout <s>]
+ *                          [--assets media|sheets,fonts,svg] [--assets-dir stardust/current/assets]
+ *                          [--harvest-map stardust/current/assets/harvest-map.json] [--max-total-bytes <n>]
  *     --pages <dir>       the crawl's page folder: every <slug>.html there is read; the sibling
  *                         <slug>.json record supplies the page URL     (default stardust/current/pages)
  *     --out <dir>         where the media files go, created when the first one is written
@@ -23,8 +28,15 @@
  *     --max-bytes <n>     per-file cap, video included: a declared content-length over it, or a body
  *                         that streams past it, is recorded `too-large` and nothing is written
  *                         (default: no cap, except video — 52428800 bytes = 50 MiB; video is a video/*
- *                         answer or a .mp4/.webm/.mov/.m4v/.ogv URL)
+ *                         answer or a .mp4/.webm/.mov/.m4v/.ogv URL; on the browser path the default is
+ *                         5242880 bytes = 5 MiB per file)
  *     --timeout <s>       per-request timeout in seconds, body included; decimals allowed (default 30)
+ *     --assets <kinds>    comma-separated, any of media, sheets, fonts, svg (default media). media = the
+ *                         Node path below (images, video, audio); sheets, fonts, svg = the browser path
+ *     --assets-dir <dir>  the browser path writes <dir>/<kind>/ (default stardust/current/assets)
+ *     --harvest-map <file> the browser path's map (default stardust/current/assets/harvest-map.json)
+ *     --max-total-bytes <n> the browser path's run total: an answer that would pass it is recorded
+ *                         `too-large` and nothing is written (default 104857600 bytes = 100 MiB)
  *     --help, -h          this header
  *
  * Collected per page — base URL: the page's <base href> when present, else the record's
@@ -75,21 +87,48 @@
  * Re-runs: a URL whose map entry is `ok` and whose `local` file exists at the recorded `bytes`
  * is reused with no request; every failed entry (not-media included) is retried.
  *
+ * Browser path (--assets sheets,fonts,svg): every page of --pages (its <slug>.json finalUrl, else url; a
+ * page without one is named on stderr and skipped) is opened in ONE real-browser context through the diff
+ * skill's live-session.mjs — launchStealthHeaded, newLiveContext, gotoLive (a bot challenge or a denial
+ * page fails that page loud), dismissOverlays — and the asset responses the browser receives are kept:
+ * a stylesheet request (an @import included) → sheets; a font request, or a .woff2/.woff/.ttf/.otf/.eot/
+ * .ttc URL, or a font content-type → fonts; an .svg URL or an image/svg+xml answer → svg. What the page
+ * never asked for is asked for in the page: every @font-face of the loaded sheets is loaded
+ * (document.fonts), and every .svg url() of a loaded sheet is loaded as an image — so a font no text
+ * uses and an icon no element shows are harvested too. Each asset URL (the first URL of a redirect chain,
+ * fragment removed) is recorded once per run. A non-2xx answer is `http-<code>`; an answer whose
+ * content-type is not the kind's (text/css; font/*, application/(x-)font-*, the embedded-type font or
+ * octet-stream; image/svg+xml or octet-stream — none declared passes) is `not-media` (a denial page served
+ * to the browser itself); a body the browser cannot hand over is `error`; past the per-file cap or the run
+ * total, `too-large`. Files: <assets-dir>/<kind>/<base>-<hash8>.<ext>, named like the media path (ext: the
+ * URL's own of the kind, else the content-type's, else css / bin / svg). Map: <harvest-map>, the media
+ * map's format plus `kind` ("sheets" | "fonts" | "svg") after `status`, written after every page under the
+ * same rules (sorted, tmp + rename, only on change; a map that is not a JSON object is refused, exit 2).
+ * The network is the browser's, so a re-run asks again; an unchanged answer leaves the entry as it was
+ * (reused), and a failure never replaces an `ok` entry whose file is on disk (a wall that later denies
+ * the browser too keeps the harvest). Needs playwright importable from the script's location (the
+ * project copy) and live-session.mjs beside it (../../diff/scripts/, ../diff/, ./diff/ or ./).
+ *
  * Output (stdout):
  *   media-harvest: <u> url(s) from <p> page(s) · downloaded <d> · reused <r> · failed <f> (<status> ×<n>, …) → <map>
  *   then up to 10 `fail <status> <url>` lines, sorted. When a page had no base URL the summary
  *   gains `· unresolved <k> relative ref(s) on <n> page(s) without a base URL` before the arrow.
+ *   The browser path prints its own line (after the media path's when both run):
+ *   media-harvest (browser): <a> asset(s) from <p> page(s) — sheets <n> · fonts <n> · svg <n> · downloaded <d>
+ *     · reused <r> · failed <f> (…) [· <k> page(s) not opened] → <harvest-map>, then up to 10 fail lines.
  * Exit codes: 0 done (failures are recorded in the map) · 1 an unexpected I/O failure (the map
- *   could not be written) · 2 usage error (unknown argument, a bad number, a value flag followed
- *   by nothing or by another --flag — named), --pages not a directory, or a --map that is not a
- *   JSON object.
+ *   could not be written), or the browser path opened none of its pages · 2 usage error (unknown
+ *   argument, a bad number, a value flag followed by nothing or by another --flag — named, an unknown
+ *   --assets kind), --pages not a directory, a map that is not a JSON object, or the browser path
+ *   without playwright or live-session.mjs · 3 the browser path opened none of its pages, each
+ *   refused by a bot challenge or a denial page.
  *
- * Needs Node 18+ (global fetch); no packages. --help needs nothing and writes nothing.
+ * The media path needs Node 18+ (global fetch) and no packages. --help needs nothing and writes nothing.
  */
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, join, posix, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { dirname, join, posix, resolve, sep } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
 // a test that imports the pure helpers below must not start a harvest.
@@ -110,12 +149,17 @@ export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Apple
 export const DEFAULTS = Object.freeze({
   pages: 'stardust/current/pages', out: 'stardust/current/assets/media', map: 'stardust/current/assets/media-map.json',
   concurrency: 4, maxBytes: null, timeout: 30,
+  assets: ['media'], assetsDir: 'stardust/current/assets', harvestMap: 'stardust/current/assets/harvest-map.json', maxTotalBytes: 100 * 1024 * 1024,
 });
+export const ASSET_TOTAL_MAX_BYTES = DEFAULTS.maxTotalBytes;
+// The browser path's per-file cap without --max-bytes: a stylesheet or a font runs to a few hundred KB.
+export const ASSET_MAX_BYTES = 5 * 1024 * 1024;
+export const ASSET_KINDS = Object.freeze(['media', 'sheets', 'fonts', 'svg']);
 export const MAX_FAIL_LINES = 10;
 // The cap a video is held to when --max-bytes is absent. The body is held in memory to hash it, and a
 // page's hero loop or teaser runs a few MB — past 50 MiB it is a long-form film to link, not to re-host.
 export const VIDEO_MAX_BYTES = 50 * 1024 * 1024;
-const SYNOPSIS = 'usage: node media-harvest.mjs [--pages <dir>] [--out <dir>] [--map <file>] [--concurrency 4] [--max-bytes <n>] [--timeout 30]  (--help for the full header)';
+const SYNOPSIS = 'usage: node media-harvest.mjs [--pages <dir>] [--out <dir>] [--map <file>] [--concurrency 4] [--max-bytes <n>] [--timeout 30] [--assets media|sheets,fonts,svg] [--assets-dir <dir>] [--harvest-map <file>] [--max-total-bytes <n>]  (--help for the full header)';
 
 // A URL extension in this set names the file as is (lowercased); anything else falls back to the content-type.
 export const KNOWN_EXT = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'avif', 'svg', 'ico', 'bmp', 'tif', 'tiff', 'heic', 'jxl',
@@ -134,7 +178,7 @@ export class UsageError extends Error { constructor(msg) { super(msg); this.code
 // ---- arguments ---------------------------------------------------------------------------------
 
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS };
+  const o = { ...DEFAULTS, assets: [...DEFAULTS.assets] };
   // A value flag followed by nothing or by another --flag is a usage error naming the flag.
   const need = (i, k) => { if (i + 1 >= argv.length || argv[i + 1].startsWith('--')) throw new UsageError(`${k} needs a value`); return argv[i + 1]; };
   const int = (v, k) => { const n = Number(v); if (!Number.isInteger(n) || n < 1) throw new UsageError(`${k} needs an integer ≥ 1, got "${v}"`); return n; };
@@ -145,6 +189,10 @@ export function parseArgs(argv) {
     else if (k === '--map') { o.map = need(i, k); i += 1; }
     else if (k === '--concurrency') { o.concurrency = int(need(i, k), k); i += 1; }
     else if (k === '--max-bytes') { o.maxBytes = int(need(i, k), k); i += 1; }
+    else if (k === '--assets') { o.assets = parseAssets(need(i, k)); i += 1; }
+    else if (k === '--assets-dir') { o.assetsDir = need(i, k); i += 1; }
+    else if (k === '--harvest-map') { o.harvestMap = need(i, k); i += 1; }
+    else if (k === '--max-total-bytes') { o.maxTotalBytes = int(need(i, k), k); i += 1; }
     else if (k === '--timeout') {
       const v = need(i, k); const n = Number(v);
       if (!Number.isFinite(n) || n <= 0) throw new UsageError(`${k} needs a number of seconds > 0, got "${v}"`);
@@ -152,6 +200,14 @@ export function parseArgs(argv) {
     } else throw new UsageError(`unknown argument ${k}`);
   }
   return o;
+}
+
+// --assets: the kinds in canonical order (media, sheets, fonts, svg), each once.
+export function parseAssets(value) {
+  const asked = String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  if (!asked.length) throw new UsageError('--assets names no kind (media, sheets, fonts, svg)');
+  for (const k of asked) if (!ASSET_KINDS.includes(k)) throw new UsageError(`--assets: unknown kind "${k}" (${ASSET_KINDS.join(', ')})`);
+  return ASSET_KINDS.filter((k) => asked.includes(k));
 }
 
 // ---- extraction (pure) -------------------------------------------------------------------------
@@ -329,6 +385,123 @@ export function summarize({ urls, pages, downloaded, reused, failures, map, unre
   return [line, ...failures.map((f) => `fail ${f.status} ${f.url}`).sort().slice(0, MAX_FAIL_LINES)];
 }
 
+// ---- the browser path (pure) -------------------------------------------------------------------
+
+const KIND_EXT = Object.freeze({ sheets: new Set(['css']), fonts: new Set(['woff2', 'woff', 'ttf', 'otf', 'eot', 'ttc']), svg: new Set(['svg']) });
+const KIND_DEFAULT_EXT = Object.freeze({ sheets: 'css', fonts: 'bin', svg: 'svg' });
+export const ASSET_TYPE_EXT = Object.freeze({
+  'text/css': 'css', 'image/svg+xml': 'svg',
+  'font/woff2': 'woff2', 'font/woff': 'woff', 'font/ttf': 'ttf', 'font/otf': 'otf', 'font/sfnt': 'ttf', 'font/collection': 'ttc',
+  'application/font-woff2': 'woff2', 'application/font-woff': 'woff', 'application/x-font-woff': 'woff', 'application/font-sfnt': 'ttf',
+  'application/x-font-ttf': 'ttf', 'application/x-font-truetype': 'ttf', 'application/x-font-otf': 'otf', 'application/x-font-opentype': 'otf',
+  'application/vnd.ms-fontobject': 'eot',
+});
+const rawExt = (url) => posix.extname(pathBasename(url)).slice(1).toLowerCase();
+const isFontType = (t) => /^font\//.test(t ?? '') || /^application\/(x-)?font-/.test(t ?? '') || t === 'application/vnd.ms-fontobject';
+const isOctet = (t) => t === 'application/octet-stream' || t === 'binary/octet-stream';
+
+// The kind of one browser response, or null: the request's resource type first, then the URL's extension, then the
+// content-type. A stylesheet request answered by an HTML denial page is still a sheet — assetTypeOk then refuses it.
+export function assetKind({ resourceType, url, contentType }) {
+  if (resourceType === 'document') return null;
+  if (resourceType === 'stylesheet') return 'sheets';
+  if (resourceType === 'font') return 'fonts';
+  const ext = rawExt(url);
+  for (const k of ['sheets', 'fonts', 'svg']) if (KIND_EXT[k].has(ext)) return k;
+  const t = mediaType(contentType);
+  if (t === 'text/css') return 'sheets';
+  if (isFontType(t)) return 'fonts';
+  if (t === 'image/svg+xml') return 'svg';
+  return null;
+}
+
+// Whether a declared content-type is one the kind can be (none declared passes, as on the media path).
+export function assetTypeOk(kind, contentType) {
+  const t = mediaType(contentType);
+  if (t === null) return true;
+  if (kind === 'sheets') return t === 'text/css';
+  if (kind === 'fonts') return isFontType(t) || isOctet(t);
+  if (kind === 'svg') return t === 'image/svg+xml' || isOctet(t);
+  return false;
+}
+
+export function assetExt(kind, url, contentType) {
+  const ext = rawExt(url);
+  if (KIND_EXT[kind]?.has(ext)) return ext;
+  return ASSET_TYPE_EXT[mediaType(contentType)] || KIND_DEFAULT_EXT[kind] || 'bin';
+}
+export const assetLocal = (dir, kind, url, bytes, contentType) => localPath(posix.join(String(dir).split(sep).join('/'), kind), `${baseName(url)}-${hash8(bytes)}.${assetExt(kind, url, contentType)}`);
+
+const CSS_IMPORT = /@import\s+(?:url\(\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|((?:[^)\s"'\\]|\\.)*))\s*\)|"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)')/gi;
+// The assets one stylesheet names, absolute against the sheet's URL: @import targets (sheets), the url()s inside
+// @font-face blocks (fonts) and every other url() that ends .svg (svg). Each list sorted and unique.
+export function cssAssetRefs(css, sheetUrl) {
+  const out = { sheets: new Set(), fonts: new Set(), svg: new Set() };
+  const add = (set, raw, onlySvg = false) => {
+    const x = resolveRef(unescapeCss(raw ?? '').trim(), sheetUrl);
+    if (x.url && (!onlySvg || rawExt(x.url) === 'svg')) set.add(x.url);
+  };
+  const clean = String(css ?? '').replace(/\/\*[\s\S]*?\*\//g, '');
+  for (const m of clean.matchAll(CSS_IMPORT)) add(out.sheets, m[1] ?? m[2] ?? m[3] ?? m[4] ?? m[5]);
+  const rest = clean.replace(/@import\b[^;]*;?/gi, '').replace(/@font-face\s*\{[^}]*\}/gi, (block) => {
+    for (const m of block.matchAll(CSS_URL)) add(out.fonts, m[1] ?? m[2] ?? m[3]);
+    return '';
+  });
+  for (const m of rest.matchAll(CSS_URL)) add(out.svg, m[1] ?? m[2] ?? m[3], true);
+  return { sheets: [...out.sheets].sort(), fonts: [...out.fonts].sort(), svg: [...out.svg].sort() };
+}
+
+// The URL the page or the sheet referenced: the first request of a redirect chain, fragment removed.
+export function originalUrl(request) {
+  let r = request;
+  while (r.redirectedFrom()) r = r.redirectedFrom();
+  const u = new URL(r.url());
+  u.hash = '';
+  return u.href;
+}
+
+// One harvest-map entry: the media map's shape plus `kind`; contentType on ok and not-media answers only.
+export function assetEntry(kind, r) {
+  const ok = r.status === 'ok';
+  return {
+    local: ok ? r.local : null, bytes: ok ? r.bytes : null,
+    contentType: ok || r.status === 'not-media' ? (r.contentType ?? null) : null,
+    status: r.status, kind, ...(r.error ? { error: r.error } : {}),
+  };
+}
+// A failed answer never replaces an ok entry whose file is still on disk at its recorded size.
+export const keepPrior = (prior, result) => result.status !== 'ok' && isReusable(prior);
+
+export function summarizeAssets({ pages, kinds, byKind, downloaded, reused, failures, pageErrors = 0, map }) {
+  const byStatus = new Map();
+  for (const f of failures) byStatus.set(f.status, (byStatus.get(f.status) || 0) + 1);
+  const total = kinds.reduce((s, k) => s + (byKind[k] || 0), 0);
+  let line = `media-harvest (browser): ${total} asset(s) from ${pages} page(s) — ${kinds.map((k) => `${k} ${byKind[k] || 0}`).join(' · ')} · downloaded ${downloaded} · reused ${reused} · failed ${failures.length}`;
+  if (failures.length) line += ` (${[...byStatus.keys()].sort().map((s) => `${s} ×${byStatus.get(s)}`).join(', ')})`;
+  if (pageErrors) line += ` · ${pageErrors} page(s) not opened`;
+  line += ` → ${map}`;
+  return [line, ...failures.map((f) => `fail ${f.status} ${f.url}`).sort().slice(0, MAX_FAIL_LINES)];
+}
+
+// Runs in the page (serialised by playwright — no outer-scope references): loads every declared @font-face and
+// each given URL as an image, so the browser fetches what no element asked for; each image load waits at most
+// timeoutMs. Returns how many loads it started.
+export async function forceLoadInPage({ fonts, urls, timeoutMs }) {
+  const jobs = [];
+  if (fonts && document.fonts) document.fonts.forEach((f) => { if (f.status === 'unloaded') jobs.push(f.load().catch(() => null)); });
+  for (const u of urls) {
+    jobs.push(new Promise((done) => {
+      const img = new Image();
+      const t = setTimeout(done, timeoutMs);
+      img.onload = () => { clearTimeout(t); done(); };
+      img.onerror = img.onload;
+      img.src = u;
+    }));
+  }
+  await Promise.all(jobs);
+  return jobs.length;
+}
+
 // ---- I/O ---------------------------------------------------------------------------------------
 
 export function isReusable(entry) {
@@ -417,21 +590,19 @@ function recordUrl(dir, slug) {
   try { const r = JSON.parse(readFileSync(join(dir, `${slug}.json`), 'utf8')); return r.finalUrl || r.url || null; } catch { return null; }
 }
 
-async function main(argv) {
-  const o = parseArgs(argv);
-  let st = null;
-  try { st = statSync(o.pages); } catch { /* missing */ }
-  if (!st || !st.isDirectory()) throw new UsageError(`--pages ${o.pages} is not a directory (run the crawl first)`);
+// An existing map is read and must be a JSON object; it is never overwritten blind.
+function readMapFile(file, flag) {
+  if (!existsSync(file)) return { text: null, map: {} };
+  const text = readFileSync(file, 'utf8');
+  let map;
+  try { map = JSON.parse(text); } catch (e) { throw new UsageError(`${flag} ${file} is not valid JSON (${e.message}) — fix or move it; it is never overwritten blind`); }
+  if (!map || typeof map !== 'object' || Array.isArray(map)) throw new UsageError(`${flag} ${file} is not a JSON object — fix or move it; it is never overwritten blind`);
+  return { text, map };
+}
+const htmlPages = (dir) => readdirSync(dir, { withFileTypes: true }).filter((d) => d.isFile() && d.name.endsWith('.html')).map((d) => d.name).sort();
 
-  let prevText = null;
-  let prev = {};
-  if (existsSync(o.map)) {
-    prevText = readFileSync(o.map, 'utf8');
-    try { prev = JSON.parse(prevText); } catch (e) { throw new UsageError(`--map ${o.map} is not valid JSON (${e.message}) — fix or move it; it is never overwritten blind`); }
-    if (!prev || typeof prev !== 'object' || Array.isArray(prev)) throw new UsageError(`--map ${o.map} is not a JSON object — fix or move it; it is never overwritten blind`);
-  }
-
-  const files = readdirSync(o.pages, { withFileTypes: true }).filter((d) => d.isFile() && d.name.endsWith('.html')).map((d) => d.name).sort();
+async function harvestMedia(o, prevText, prev) {
+  const files = htmlPages(o.pages);
   const all = new Set();
   let pages = 0;
   let unresolved = 0;
@@ -468,9 +639,165 @@ async function main(argv) {
   saveMap();
 
   const failures = todo.filter((u) => results[u].status !== 'ok').map((u) => ({ url: u, status: results[u].status }));
-  const lines = summarize({ urls: urls.length, pages, downloaded: todo.length - failures.length, reused, failures, map: o.map, unresolved, unresolvedPages });
-  console.log(lines.join('\n'));
-  return 0;
+  return summarize({ urls: urls.length, pages, downloaded: todo.length - failures.length, reused, failures, map: o.map, unresolved, unresolvedPages });
+}
+
+// live-session.mjs (the diff skill) in the plugin tree, the project copy (scripts/extract ↔ scripts/diff), an extract
+// script in scripts/ beside a scripts/diff copy, or a flat sibling copy — crawl.mjs looks in the same places.
+const LIVE_SESSION_CANDIDATES = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './diff/live-session.mjs', './live-session.mjs'];
+async function browserTools() {
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) {
+    throw new UsageError(`playwright is not importable from ${dirname(SELF)} (${e.code || e.message}) — the browser path (--assets sheets,fonts,svg) runs from the project copy (extract/SKILL.md § Setup)`);
+  }
+  const looked = LIVE_SESSION_CANDIDATES.map((p) => resolve(dirname(SELF), p));
+  const found = looked.find((p) => existsSync(p));
+  if (!found) throw new UsageError(`live-session.mjs not found (looked in ${looked.join(', ')}) — copy the diff skill's live-session.mjs beside the extract scripts (extract/SKILL.md § Setup)`);
+  return { chromium, session: await import(pathToFileURL(found).href) };
+}
+
+const FORCE_LOAD_MS = 10000;
+const firstLine = (e) => String(e?.message ?? e).split('\n')[0];
+
+async function harvestBrowser(o, prevText, prev, { chromium, session }) {
+  const kinds = o.assets.filter((k) => k !== 'media');
+  const want = new Set(kinds);
+  const pages = [];
+  for (const name of htmlPages(o.pages)) {
+    const slug = name.slice(0, -'.html'.length);
+    const url = recordUrl(o.pages, slug);
+    if (url) pages.push({ slug, url }); else console.error(`media-harvest: ${slug}: no finalUrl/url in ${slug}.json — page skipped by the browser path`);
+  }
+  const cap = o.maxBytes ? { bytes: o.maxBytes, label: `--max-bytes ${o.maxBytes}` } : { bytes: ASSET_MAX_BYTES, label: `asset cap ${ASSET_MAX_BYTES} (the default without --max-bytes)` };
+  const results = {};
+  const seen = new Set();
+  const sheetSvg = new Set();
+  const byKind = {};
+  const failures = [];
+  let downloaded = 0;
+  let reused = 0;
+  let total = 0;
+
+  const record = (src, kind, r) => {
+    byKind[kind] = (byKind[kind] || 0) + 1;
+    const prior = Object.hasOwn(prev, src) ? prev[src] : undefined;
+    if (keepPrior(prior, r)) { results[src] = prior; reused += 1; return; }
+    const entry = assetEntry(kind, r);
+    if (r.status !== 'ok') failures.push({ url: src, status: r.status });
+    else if (JSON.stringify(prior) === JSON.stringify(entry)) reused += 1;
+    else downloaded += 1;
+    results[src] = entry;
+  };
+  const answer = async (resp, kind, type, src) => {
+    if (!resp.ok()) return { status: `http-${resp.status()}` };
+    if (!assetTypeOk(kind, type)) return { status: 'not-media', contentType: type };
+    const declared = resp.headers()['content-length'];
+    if (declared !== undefined && Number(declared) > cap.bytes) return { status: 'too-large', error: `content-length ${Number(declared)} > ${cap.label}` };
+    let body;
+    try { body = await resp.body(); } catch (e) { return { status: 'error', error: `body unavailable: ${firstLine(e)}` }; }
+    if (!body.length) return { status: 'error', error: 'empty response body' };
+    if (body.length > cap.bytes) return { status: 'too-large', error: `body ${body.length} > ${cap.label}` };
+    if (total + body.length > o.maxTotalBytes) return { status: 'too-large', error: `the run total would pass --max-total-bytes ${o.maxTotalBytes}` };
+    total += body.length;
+    const local = assetLocal(o.assetsDir, kind, src, body, type);
+    try { writeMedia(local, body); } catch (e) { return { status: 'error', error: `write failed: ${e.code || e.message}` }; }
+    return { status: 'ok', local, bytes: body.length, contentType: type };
+  };
+  const onResponse = async (resp) => {
+    const status = resp.status();
+    if (status >= 300 && status < 400) return; // the redirected request answers for it
+    const req = resp.request();
+    let src;
+    try { src = originalUrl(req); } catch { return; }
+    const type = mediaType(resp.headers()['content-type']);
+    const kind = assetKind({ resourceType: req.resourceType(), url: src, contentType: type });
+    if (!kind) return;
+    if (kind === 'sheets' && want.has('svg') && resp.ok() && assetTypeOk('sheets', type)) {
+      const css = await resp.body().catch(() => null);
+      if (css) for (const u of cssAssetRefs(css.toString('utf8'), resp.url()).svg) sheetSvg.add(u);
+    }
+    if (!want.has(kind) || seen.has(src)) return;
+    seen.add(src);
+    record(src, kind, await answer(resp, kind, type, src));
+  };
+  const onFailed = (req) => {
+    let src;
+    try { src = originalUrl(req); } catch { return; }
+    const kind = assetKind({ resourceType: req.resourceType(), url: src, contentType: null });
+    if (!kind || !want.has(kind) || seen.has(src)) return;
+    seen.add(src);
+    record(src, kind, { status: 'error', error: req.failure()?.errorText || 'request failed' });
+  };
+
+  let saved = prevText;
+  const saveMap = () => {
+    const text = serializeMap(mergeMap(prev, results));
+    if (text !== saved) { writeAtomic(o.harvestMap, text); saved = text; }
+  };
+  let opened = 0;
+  let challenged = 0;
+  const browser = await session.launchStealthHeaded(chromium);
+  try {
+    const ctx = await session.newLiveContext(browser, { viewport: { width: 1440, height: 900 } });
+    for (const { slug, url } of pages) {
+      const page = await ctx.newPage();
+      // One queue per page: responses are handled in arrival order, so the run total is deterministic.
+      let queue = Promise.resolve();
+      const onResp = (resp) => { queue = queue.then(() => onResponse(resp)).catch((e) => console.error(`media-harvest: ${slug}: ${firstLine(e)}`)); };
+      const onFail = (req) => { queue = queue.then(() => onFailed(req)); };
+      page.on('response', onResp);
+      page.on('requestfailed', onFail);
+      try {
+        await session.gotoLive(page, url, { waitUntil: session.defaultWaitUntil(url), settleMs: session.isLiveHttpUrl(url) ? 2500 : 1200 });
+        await session.dismissOverlays(page, { lateWindowMs: session.lateWindowFor(url) });
+        await queue;
+        const svgUrls = [...sheetSvg].filter((u) => !seen.has(u)).sort();
+        if (want.has('fonts') || svgUrls.length) {
+          await session.withDeadline(page.evaluate(forceLoadInPage, { fonts: want.has('fonts'), urls: svgUrls, timeoutMs: FORCE_LOAD_MS }), FORCE_LOAD_MS + 5000, 'force-load');
+          await page.waitForTimeout(300);
+        }
+        await queue;
+        opened += 1;
+      } catch (e) {
+        if (e?.name === 'BotChallengeError') challenged += 1;
+        console.error(`media-harvest: ${slug}: ${e?.name || 'Error'}: ${firstLine(e)} — page not opened`);
+      } finally {
+        page.off('response', onResp);
+        page.off('requestfailed', onFail);
+        await queue;
+        await page.close().catch(() => {});
+      }
+      saveMap();
+    }
+  } finally { await browser.close().catch(() => {}); }
+  saveMap();
+  const pageErrors = pages.length - opened;
+  const lines = summarizeAssets({ pages: pages.length, kinds, byKind, downloaded, reused, failures, pageErrors, map: o.harvestMap });
+  let code = 0;
+  if (pages.length && !opened) code = challenged === pages.length ? 3 : 1;
+  return { lines, code };
+}
+
+async function main(argv) {
+  const o = parseArgs(argv);
+  let st = null;
+  try { st = statSync(o.pages); } catch { /* missing */ }
+  if (!st || !st.isDirectory()) throw new UsageError(`--pages ${o.pages} is not a directory (run the crawl first)`);
+  const media = o.assets.includes('media');
+  const browserKinds = o.assets.some((k) => k !== 'media');
+  // Every refusal (a bad map, no playwright, no live-session) comes before anything is written.
+  const m = media ? readMapFile(o.map, '--map') : null;
+  const h = browserKinds ? readMapFile(o.harvestMap, '--harvest-map') : null;
+  const tools = browserKinds ? await browserTools() : null;
+
+  let code = 0;
+  if (media) console.log((await harvestMedia(o, m.text, m.map)).join('\n'));
+  if (browserKinds) {
+    const r = await harvestBrowser(o, h.text, h.map, tools);
+    console.log(r.lines.join('\n'));
+    code = r.code;
+  }
+  return code;
 }
 
 if (IS_MAIN) {

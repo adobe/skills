@@ -26,8 +26,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DEFAULTS, MAX_FAIL_LINES, VIDEO_MAX_BYTES, baseName, cssUrls, download, extFor, extractRefs, hash8, mediaFileName, mergeMap,
-  pageMedia, parseArgs, parseSrcset, resolveRef, serializeMap, summarize, urlExt,
+  ASSET_MAX_BYTES, ASSET_TOTAL_MAX_BYTES, DEFAULTS, MAX_FAIL_LINES, VIDEO_MAX_BYTES, assetEntry, assetExt, assetKind, assetLocal, assetTypeOk,
+  baseName, cssAssetRefs, cssUrls, download, extFor, extractRefs, hash8, keepPrior, mediaFileName, mergeMap, originalUrl,
+  pageMedia, parseArgs, parseAssets, parseSrcset, resolveRef, serializeMap, summarize, summarizeAssets, urlExt,
 } from '../media-harvest.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -169,14 +170,103 @@ await check('summarize: the summary line (status breakdown sorted, no parenthesi
 });
 
 await check('parseArgs: defaults; every flag; a value flag followed by nothing or by another --flag names the flag; bad numbers, unknown and positional arguments are usage errors', () => {
-  assert.deepEqual(parseArgs([]), { ...DEFAULTS });
-  assert.deepEqual(DEFAULTS, { pages: 'stardust/current/pages', out: 'stardust/current/assets/media', map: 'stardust/current/assets/media-map.json', concurrency: 4, maxBytes: null, timeout: 30 });
+  assert.deepEqual(parseArgs([]), { ...DEFAULTS, assets: ['media'] });
+  assert.deepEqual(DEFAULTS, {
+    pages: 'stardust/current/pages', out: 'stardust/current/assets/media', map: 'stardust/current/assets/media-map.json', concurrency: 4, maxBytes: null, timeout: 30,
+    assets: ['media'], assetsDir: 'stardust/current/assets', harvestMap: 'stardust/current/assets/harvest-map.json', maxTotalBytes: ASSET_TOTAL_MAX_BYTES,
+  });
   assert.deepEqual(parseArgs(['--pages', 'p', '--out', 'o', '--map', 'm.json', '--concurrency', '2', '--max-bytes', '1000', '--timeout', '0.5']),
-    { pages: 'p', out: 'o', map: 'm.json', concurrency: 2, maxBytes: 1000, timeout: 0.5 });
+    { ...DEFAULTS, assets: ['media'], pages: 'p', out: 'o', map: 'm.json', concurrency: 2, maxBytes: 1000, timeout: 0.5 });
+  assert.deepEqual(parseArgs(['--assets', 'svg,sheets,fonts,sheets', '--assets-dir', 'a', '--harvest-map', 'h.json', '--max-total-bytes', '9000']),
+    { ...DEFAULTS, assets: ['sheets', 'fonts', 'svg'], assetsDir: 'a', harvestMap: 'h.json', maxTotalBytes: 9000 });
   const usage = (argv, re) => assert.throws(() => parseArgs(argv), (e) => e.code === 2 && re.test(e.message), argv.join(' '));
   usage(['--max-bytes'], /^--max-bytes needs a value/); usage(['--timeout', '--concurrency', '2'], /^--timeout needs a value/); usage(['--pages'], /^--pages needs a value/);
   usage(['--concurrency', '0'], /--concurrency needs an integer ≥ 1/); usage(['--max-bytes', '1.5'], /--max-bytes needs an integer/); usage(['--timeout', '0'], /--timeout needs a number/); usage(['--timeout', 'x'], /--timeout needs a number/);
   usage(['--bogus'], /unknown argument --bogus/); usage(['pages'], /unknown argument pages/);
+  usage(['--assets'], /^--assets needs a value/); usage(['--assets', 'css'], /--assets: unknown kind "css" \(media, sheets, fonts, svg\)/);
+  usage(['--assets', ','], /--assets names no kind/); usage(['--max-total-bytes', '0'], /--max-total-bytes needs an integer ≥ 1/);
+});
+
+// ---- part (a2): the browser path's pure parts ----------------------------------------------------
+await check('parseAssets: canonical order media, sheets, fonts, svg; duplicates and spaces dropped; an unknown kind or an empty list is a usage error', () => {
+  assert.deepEqual(parseAssets('fonts, svg ,sheets'), ['sheets', 'fonts', 'svg']);
+  assert.deepEqual(parseAssets('svg,media'), ['media', 'svg']);
+  assert.throws(() => parseAssets('images'), (e) => e.code === 2 && /unknown kind "images"/.test(e.message));
+  assert.throws(() => parseAssets(' , '), (e) => e.code === 2 && /names no kind/.test(e.message));
+});
+
+await check('assetKind: the browser\'s resource type first (stylesheet → sheets, font → fonts), then the URL extension, then the content-type; svg only as svg; other images, scripts and documents are no asset', () => {
+  assert.equal(assetKind({ resourceType: 'stylesheet', url: 'https://a.test/x', contentType: 'text/html' }), 'sheets', 'a denial page answering a stylesheet request is still a sheet (then not-media)');
+  assert.equal(assetKind({ resourceType: 'font', url: 'https://a.test/f', contentType: null }), 'fonts');
+  assert.equal(assetKind({ resourceType: 'image', url: 'https://a.test/i/icon.SVG?v=1', contentType: 'text/html' }), 'svg');
+  assert.equal(assetKind({ resourceType: 'image', url: 'https://a.test/i/sprite', contentType: 'image/svg+xml' }), 'svg');
+  assert.equal(assetKind({ resourceType: 'other', url: 'https://a.test/f/a.woff2', contentType: null }), 'fonts');
+  assert.equal(assetKind({ resourceType: 'other', url: 'https://a.test/s/a.css', contentType: null }), 'sheets');
+  assert.equal(assetKind({ resourceType: 'fetch', url: 'https://a.test/x', contentType: 'font/woff2' }), 'fonts');
+  for (const [resourceType, url, contentType] of [['image', 'https://a.test/a.png', 'image/png'], ['script', 'https://a.test/a.js', 'text/javascript'], ['document', 'https://a.test/', 'text/html'], ['xhr', 'https://a.test/api', 'application/json']]) {
+    assert.equal(assetKind({ resourceType, url, contentType }), null, url);
+  }
+});
+
+await check('assetTypeOk: a sheet is text/css; a font is font/*, application/(x-)font-*, the embedded-type font or octet-stream; an svg is image/svg+xml or octet-stream; no content-type passes; an HTML answer never does', () => {
+  for (const t of ['text/css', null]) assert.equal(assetTypeOk('sheets', t), true, String(t));
+  for (const t of ['font/woff2', 'font/ttf', 'application/font-woff', 'application/x-font-ttf', 'application/vnd.ms-fontobject', 'application/octet-stream', 'binary/octet-stream', null]) assert.equal(assetTypeOk('fonts', t), true, String(t));
+  for (const t of ['image/svg+xml', 'application/octet-stream', null]) assert.equal(assetTypeOk('svg', t), true, String(t));
+  for (const k of ['sheets', 'fonts', 'svg']) assert.equal(assetTypeOk(k, 'text/html'), false, k);
+  assert.equal(assetTypeOk('sheets', 'text/plain'), false);
+});
+
+await check('assetExt + assetLocal: the URL\'s own extension of the kind, else the content-type\'s, else css / bin / svg; <dir>/<kind>/<base>-<hash8>.<ext> with posix separators', () => {
+  assert.equal(assetExt('sheets', 'https://a.test/s/site.CSS?v=3', 'text/css'), 'css');
+  assert.equal(assetExt('sheets', 'https://a.test/s/bundle', null), 'css');
+  assert.equal(assetExt('fonts', 'https://a.test/f/brand.woff2', 'application/octet-stream'), 'woff2');
+  assert.equal(assetExt('fonts', 'https://a.test/f/brand', 'font/woff'), 'woff');
+  assert.equal(assetExt('fonts', 'https://a.test/f/brand', 'application/octet-stream'), 'bin');
+  assert.equal(assetExt('svg', 'https://a.test/i/sprite', 'image/svg+xml'), 'svg');
+  const bytes = Buffer.from('body{}');
+  assert.equal(assetLocal('stardust/current/assets', 'sheets', 'https://a.test/s/Site%20Main.css', bytes, 'text/css'), `stardust/current/assets/sheets/site-main-${hash8(bytes)}.css`);
+});
+
+await check('cssAssetRefs: @import (url() or string) → sheets, url() inside @font-face → fonts, any other url() ending .svg → svg; resolved against the sheet URL, fragments dropped, data: ignored, comments not read; sorted and unique', () => {
+  const css = `/* url(/no.svg) @import "/no.css"; */
+@import "theme.css" screen; @import url('/print.css') print;
+@font-face { font-family: A; src: url(../fonts/a.woff2) format("woff2"), url("../fonts/a.woff") format("woff"); }
+.i { background: url(icons/arrow.svg#x) } .j { mask: url("data:image/svg+xml;utf8,<svg/>") } .k { background: url(/img/photo.png) } .l { background: url(icons/arrow.svg) }`;
+  assert.deepEqual(cssAssetRefs(css, 'https://a.test/css/site.css'), {
+    sheets: ['https://a.test/css/theme.css', 'https://a.test/print.css'],
+    fonts: ['https://a.test/fonts/a.woff', 'https://a.test/fonts/a.woff2'],
+    svg: ['https://a.test/css/icons/arrow.svg'],
+  });
+  assert.deepEqual(cssAssetRefs('', 'https://a.test/'), { sheets: [], fonts: [], svg: [] });
+});
+
+await check('originalUrl: the first request of a redirect chain (the URL the page or sheet referenced), fragment removed', () => {
+  const req = (url, from = null) => ({ url: () => url, redirectedFrom: () => from });
+  assert.equal(originalUrl(req('https://cdn.test/b.css', req('https://a.test/m.css', req('https://a.test/a.css#x')))), 'https://a.test/a.css');
+  assert.equal(originalUrl(req('https://a.test/a.woff2')), 'https://a.test/a.woff2');
+});
+
+await check('assetEntry + keepPrior: the map entry shape (local, bytes, contentType, status, kind, error?) in that key order; a failure never replaces an ok entry whose file is on disk', () => {
+  assert.deepEqual(Object.keys(assetEntry('fonts', { status: 'ok', local: 'x/fonts/a-1.woff2', bytes: 4, contentType: 'font/woff2' })), ['local', 'bytes', 'contentType', 'status', 'kind']);
+  assert.deepEqual(assetEntry('sheets', { status: 'not-media', contentType: 'text/html' }), { local: null, bytes: null, contentType: 'text/html', status: 'not-media', kind: 'sheets' });
+  assert.deepEqual(assetEntry('svg', { status: 'too-large', error: 'e' }), { local: null, bytes: null, contentType: null, status: 'too-large', kind: 'svg', error: 'e' });
+  const dir = join(root, 'keep'); mkdirSync(dir); writeFileSync(join(dir, 'a.css'), 'abcd');
+  const prior = { local: join(dir, 'a.css'), bytes: 4, contentType: 'text/css', status: 'ok', kind: 'sheets' };
+  assert.equal(keepPrior(prior, { status: 'not-media' }), true);
+  assert.equal(keepPrior(prior, { status: 'ok' }), false, 'a fresh ok answer replaces it');
+  assert.equal(keepPrior({ ...prior, local: join(dir, 'gone.css') }, { status: 'not-media' }), false, 'a prior whose file is gone does not');
+  assert.equal(keepPrior(undefined, { status: 'error' }), false);
+});
+
+await check('summarizeAssets: one line — assets, pages, per-kind counts, downloaded / reused / failed (+ breakdown), pages not opened when any — then ≤ 10 sorted fail lines', () => {
+  const lines = summarizeAssets({ pages: 3, kinds: ['sheets', 'fonts', 'svg'], byKind: { sheets: 2, fonts: 3, svg: 1 }, downloaded: 4, reused: 0, failures: [{ url: 'https://a.test/b.woff2', status: 'too-large' }, { url: 'https://a.test/a.svg', status: 'http-404' }], pageErrors: 1, map: 'h.json' });
+  assert.deepEqual(lines, [
+    'media-harvest (browser): 6 asset(s) from 3 page(s) — sheets 2 · fonts 3 · svg 1 · downloaded 4 · reused 0 · failed 2 (http-404 ×1, too-large ×1) · 1 page(s) not opened → h.json',
+    'fail http-404 https://a.test/a.svg', 'fail too-large https://a.test/b.woff2',
+  ]);
+  assert.equal(summarizeAssets({ pages: 1, kinds: ['fonts'], byKind: { fonts: 0 }, downloaded: 0, reused: 0, failures: [], pageErrors: 0, map: 'h.json' })[0],
+    'media-harvest (browser): 0 asset(s) from 1 page(s) — fonts 0 · downloaded 0 · reused 0 · failed 0 → h.json');
+  assert.equal(ASSET_MAX_BYTES, 5 * 1024 * 1024);
 });
 
 // ---- part (b): end-to-end against 127.0.0.1 ---------------------------------------------------------
@@ -434,7 +524,7 @@ await check('--help (and -h, and alongside a bad flag) in an empty cwd: exit 0, 
   for (const args of [['--help'], ['-h'], ['--bogus', '--help']]) {
     const r = await run(args, cwd);
     assert.equal(r.code, 0, r.err); assert.match(r.out, /Usage:/); assert.doesNotMatch(r.out, /\/\*\*/);
-    for (const f of ['--pages <dir>', '--out <dir>', '--map <file>', '--concurrency <n>', '--max-bytes <n>', '--timeout <s>', 'Exit codes:']) assert.ok(r.out.includes(f), `header names ${f}`);
+    for (const f of ['--pages <dir>', '--out <dir>', '--map <file>', '--concurrency <n>', '--max-bytes <n>', '--timeout <s>', '--assets <kinds>', '--assets-dir <dir>', '--harvest-map <file>', '--max-total-bytes <n>', 'harvest-map.json', 'Exit codes:']) assert.ok(r.out.includes(f), `header names ${f}`);
     assert.ok(r.out.includes(`${VIDEO_MAX_BYTES} bytes`), 'header states the video default cap');
   }
   assert.deepEqual(readdirSync(cwd), []);
@@ -449,6 +539,120 @@ await check('invoked through a symlink the script still acts (real-path main-mod
 for (const res of hanging) res.destroy();
 server.closeAllConnections();
 await new Promise((resolve) => { server.close(resolve); });
+
+// ---- part (c): the browser path behind a wall that refuses every non-browser client -------------------
+// The fixture wall answers any request without a Sec-Fetch-Dest header — every Node fetch, the media path's
+// included — with a 200 HTML denial page, the way a CDN wall answered a recorded hands-off run's direct fetches
+// while its browser captures were never blocked. Runs only where playwright is importable (a project copy).
+let chromium = null;
+try { ({ chromium } = await import('playwright')); } catch { chromium = null; }
+if (!chromium) {
+  console.log('skip  e2e browser path (playwright not importable here)');
+  await check('--assets sheets without playwright importable: exit 2 naming the project-copy setup, nothing written', async () => {
+    const cwd = join(root, 'nopw'); mkdirSync(join(cwd, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(cwd, 'stardust/current/pages/home.html'), '<html></html>');
+    writeFileSync(join(cwd, 'stardust/current/pages/home.json'), '{"url":"http://127.0.0.1:9/"}');
+    const r = await run(['--assets', 'sheets'], cwd);
+    assert.equal(r.code, 2, r.err); assert.match(r.err, /playwright is not importable/);
+    assert.equal(existsSync(join(cwd, 'stardust/current/assets')), false);
+  });
+} else {
+  const SHEET = Buffer.from('@import url("/css/theme.css");\n@font-face { font-family: Used; src: url(/fonts/used.woff2) format("woff2"); }\n@font-face { font-family: Unused; src: url("../fonts/unused.woff2") format("woff2"); }\n@font-face { font-family: Huge; src: url(/fonts/huge.woff2) format("woff2"); }\n.used { font-family: Used } .icon { background: url(/img/icon.svg) } .gone { background: url(/img/missing.svg) }\n');
+  const THEME = Buffer.from('body { margin: 0 }\n');
+  const FONT_A = fill(20, 600); const FONT_B = fill(21, 700); const FONT_HUGE = fill(22, 9000);
+  const LOGO_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"><rect width="10" height="10"/></svg>');
+  const ICON_SVG = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg" width="4" height="4"><circle r="2" cx="2" cy="2"/></svg>');
+  const PAGE = '<!doctype html><html><head><link rel="stylesheet" href="/css/site.css"></head><body><p class="used">text</p><img src="/img/logo.svg" alt=""><img src="/img/photo.png" alt=""></body></html>';
+  const WALL = { '/page': ['text/html', Buffer.from(PAGE)], '/css/site.css': ['text/css', SHEET], '/css/theme.css': ['text/css; charset=utf-8', THEME],
+    '/fonts/used.woff2': ['font/woff2', FONT_A], '/fonts/unused.woff2': ['font/woff2', FONT_B], '/fonts/huge.woff2': ['font/woff2', FONT_HUGE],
+    '/img/logo.svg': ['image/svg+xml', LOGO_SVG], '/img/icon.svg': ['image/svg+xml', ICON_SVG], '/img/photo.png': ['image/png', fill(23, 50)] };
+  const DENIAL = Buffer.from('<!doctype html><title>System Down</title><h1>System Down</h1>');
+  const wallHits = []; let denyAll = false;
+  const wall = createServer((req, res) => {
+    const browser = Boolean(req.headers['sec-fetch-dest']);
+    wallHits.push([req.url, browser]);
+    // the CSS wants the fonts cross-origin-safe; the fixture serves them like a font CDN does
+    res.setHeader('access-control-allow-origin', '*');
+    if (!browser || (denyAll && req.url !== '/page')) { res.writeHead(200, { 'content-type': 'text/html' }); res.end(DENIAL); return; }
+    const r = WALL[req.url];
+    if (!r) { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<h1>not found</h1>'); return; }
+    res.writeHead(200, { 'content-type': r[0], 'content-length': r[1].length }); res.end(r[1]);
+  });
+  await new Promise((resolve) => { wall.listen(0, '127.0.0.1', resolve); });
+  const W = `http://127.0.0.1:${wall.address().port}`;
+  const wsite = join(root, 'wall');
+  mkdirSync(join(wsite, 'stardust/current/pages'), { recursive: true });
+  writeFileSync(join(wsite, 'stardust/current/pages/home.json'), `${JSON.stringify({ slug: 'home', url: `${W}/page` })}\n`);
+  writeFileSync(join(wsite, 'stardust/current/pages/home.html'), PAGE);
+  const HMAP = join(wsite, 'stardust/current/assets/harvest-map.json');
+  const at = (kind, name, bytes, contentType) => ({ local: `stardust/current/assets/${kind}/${name}-${sha8(bytes)}.${kind === 'sheets' ? 'css' : kind === 'fonts' ? 'woff2' : 'svg'}`, bytes: bytes.length, contentType, status: 'ok', kind });
+  const ARGS = ['--assets', 'sheets,fonts,svg', '--max-bytes', '5000'];
+  let firstHarvest = null;
+
+  await check('the wall: a Node fetch (the media path\'s client) of a stylesheet gets the 200 denial page', async () => {
+    const r = await download(`${W}/css/site.css`);
+    assert.equal(r.status, 'not-media'); assert.equal(r.contentType, 'text/html');
+  });
+
+  await check('e2e browser run 1: sheets (+ the @import), the used font AND the unused one (forced), the used svg AND the CSS-only one (forced) harvested through the browser; the over-cap font too-large, the missing svg http-404; no media, no media map; exit 0', async () => {
+    wallHits.length = 0;
+    const r = await run(ARGS, wsite);
+    assert.equal(r.code, 0, r.err);
+    const m = JSON.parse(readFileSync(HMAP, 'utf8'));
+    assert.deepEqual(m, {
+      [`${W}/css/site.css`]: at('sheets', 'site', SHEET, 'text/css'),
+      [`${W}/css/theme.css`]: at('sheets', 'theme', THEME, 'text/css'),
+      [`${W}/fonts/huge.woff2`]: { local: null, bytes: null, contentType: null, status: 'too-large', kind: 'fonts', error: `content-length 9000 > --max-bytes 5000` },
+      [`${W}/fonts/unused.woff2`]: at('fonts', 'unused', FONT_B, 'font/woff2'),
+      [`${W}/fonts/used.woff2`]: at('fonts', 'used', FONT_A, 'font/woff2'),
+      [`${W}/img/icon.svg`]: at('svg', 'icon', ICON_SVG, 'image/svg+xml'),
+      [`${W}/img/logo.svg`]: at('svg', 'logo', LOGO_SVG, 'image/svg+xml'),
+      [`${W}/img/missing.svg`]: { local: null, bytes: null, contentType: null, status: 'http-404', kind: 'svg' },
+    });
+    assert.deepEqual(Object.keys(m), Object.keys(m).sort(), 'keys sorted');
+    assert.equal(r.out.split('\n')[0], `media-harvest (browser): 8 asset(s) from 1 page(s) — sheets 2 · fonts 3 · svg 3 · downloaded 6 · reused 0 · failed 2 (http-404 ×1, too-large ×1) → stardust/current/assets/harvest-map.json`);
+    for (const [k, e] of Object.entries(m)) if (e.status === 'ok') assert.ok(readFileSync(join(wsite, e.local)).equals(WALL[new URL(k).pathname][1]), `${e.local} holds the served bytes`);
+    assert.equal(existsSync(join(wsite, 'stardust/current/assets/media-map.json')), false, 'the media path did not run');
+    assert.equal(existsSync(join(wsite, 'stardust/current/assets/media')), false);
+    assert.ok(wallHits.length > 0 && wallHits.every(([, browser]) => browser), 'every request of the run came from the browser');
+    firstHarvest = readFileSync(HMAP);
+  });
+
+  await check('e2e browser run 2: the harvest map byte-identical (every ok entry reused), exit 0', async () => {
+    const r = await run(ARGS, wsite);
+    assert.equal(r.code, 0, r.err);
+    assert.match(r.out, /^media-harvest \(browser\): 8 asset\(s\) from 1 page\(s\) — sheets 2 · fonts 3 · svg 3 · downloaded 0 · reused 6 · failed 2 /);
+    assert.ok(readFileSync(HMAP).equals(firstHarvest), 'byte-identical');
+  });
+
+  await check('e2e browser run 3: when the wall later denies the browser too, a denial answer never replaces an ok entry whose file is on disk (kept, counted reused)', async () => {
+    denyAll = true;
+    try {
+      const r = await run(ARGS, wsite);
+      assert.equal(r.code, 0, r.err);
+      assert.ok(readFileSync(HMAP).equals(firstHarvest), 'the map is unchanged');
+    } finally { denyAll = false; }
+  });
+
+  await check('--assets media,sheets runs both paths: the media path (Node) is refused by the wall (photo.png not-media in media-map.json), the browser path harvests the sheets into harvest-map.json; --max-total-bytes stops the run total', async () => {
+    const both = join(root, 'wall-both'); mkdirSync(join(both, 'stardust/current/pages'), { recursive: true });
+    writeFileSync(join(both, 'stardust/current/pages/home.json'), `${JSON.stringify({ slug: 'home', url: `${W}/page` })}\n`);
+    writeFileSync(join(both, 'stardust/current/pages/home.html'), PAGE);
+    const r = await run(['--assets', 'media,sheets', '--max-total-bytes', String(SHEET.length + 1)], both);
+    assert.equal(r.code, 0, r.err);
+    const media = JSON.parse(readFileSync(join(both, 'stardust/current/assets/media-map.json'), 'utf8'));
+    assert.equal(media[`${W}/img/photo.png`].status, 'not-media');
+    const h = JSON.parse(readFileSync(join(both, 'stardust/current/assets/harvest-map.json'), 'utf8'));
+    assert.deepEqual(Object.keys(h).sort(), [`${W}/css/site.css`, `${W}/css/theme.css`]);
+    const statuses = Object.values(h).map((e) => e.status).sort();
+    assert.deepEqual(statuses, ['ok', 'too-large'], 'the second sheet passes the run total');
+    assert.match(Object.values(h).find((e) => e.status === 'too-large').error, /--max-total-bytes/);
+  });
+
+  wall.closeAllConnections();
+  await new Promise((resolve) => { wall.close(resolve); });
+}
+
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} failing` : '\nmedia-harvest: all checks passed');
 process.exit(failed ? 1 : 0);

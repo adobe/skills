@@ -47,7 +47,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`; a 2xx denial page = bot challenge (escalates headed at the entry; never captured)
-- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]` (default: video only, 50 MiB)
+- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline; sheets/fonts/svg via the browser → `harvest-map.json` — `[--assets media,sheets,fonts,svg] [--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/encode-attempt.mjs` — per-template encoder try → `stardust/migrate/encode/<t>.json` — `record --template <t,…> [--encoder <f>] [--not-attempted "<r>"]`; `check --template <t,…>`; `summary [--json]`; exit 1 = I/O, 2 = usage or no record

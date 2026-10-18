@@ -754,8 +754,8 @@ this in the user report; do not engineer around it.
   Note for asset harvest: a page-level bot wall usually
   does NOT gate assets — media, CSS and font URLs commonly answer
   200 to a plain browser-UA fetch (what `media-harvest.mjs` sends)
-  while every page navigation is challenged; in-page fetch is the
-  fallback for what that fails, not the default.
+  while every page navigation is challenged; for what that fails
+  (a CDN wall's denial page), `--assets sheets,fonts,svg` harvests through the browser.
 - **JavaScript-only content.** Playwright already handles this. If
   the configured wait condition never fires within the mode's hard
   cap (`reference/playwright-recipe.md` § Wait modes), fall back to
