@@ -62,18 +62,26 @@
  *   ledger_unpaired:N: <ends>      ledger `end` lines without an open start that no later start and end of the
  *                                  same phase re-records (stardust ledger.mjs unpairedEnds); `unchecked` when
  *                                  ledger.mjs is not found beside the rollout scripts
+ *   export_stale:<why> — <remedy>  rollout.json `exports` lists migration-workspace and the export is not fresh:
+ *                                  no workspace/manifest.json; its input or output hashes differ from the tree
+ *                                  (content/**.html, blocks/<n>/<n>.{js,css}, judgement.json; the coverage files,
+ *                                  mapping.json — the cwd is the project root); mapping.json missing while
+ *                                  stardust/current/pages holds a capture, unreadable, or its generatedAt is not
+ *                                  pages.json's. Remedy, in order: inventory.mjs + blocks.mjs, block-origin.mjs
+ *                                  --verify, workspace-manifest.mjs. Not judged once handed over (skipped line)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
  * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
  * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table; the per-width
- * verdicts of done units' rows gated before passByWidth (proven on the last width's pass).
+ * verdicts of done units' rows gated before passByWidth (proven on the last width's pass); the export once a client
+ * took it over (workspace/handover.json, or a manifest recording a handover).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
-import { readFileSync, existsSync, realpathSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readJSON, isSourceParity, publicUrl } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, sha256 } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
@@ -290,16 +298,48 @@ export function ledgerGap(unpaired) {
   return open.length ? `ledger_unpaired:${open.length}: ${listed(open.map((u) => [u.skill, u.phase, u.ts].map((v) => v ?? '-').join(' ')))}` : null;
 }
 
+export const EXPORT_REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
+
+/**
+ * export_stale, as `{ gap, skipped[] }`; judged only when `listed` (rollout.json `exports` lists migration-workspace).
+ * `manifest` = workspace/manifest.json (null: absent or unreadable); `tree` = { inputs, outputs } on disk now, keyed as
+ * the manifest keys them (workspace-manifest.mjs inputHashes; the coverage files and mapping.json), null when that
+ * could not be computed (unchecked is a gap); `mapping` = mapping.json (null: absent; not an object: unreadable);
+ * `pagesGeneratedAt` = pages.json generatedAt; `captures` = a capture exists; `handedOver` = why a client owns the
+ * export now (handover.json, or a manifest recording one), else null — then nothing is judged and a skipped line
+ * says so. Causes, joined by `; `: no manifest; manifest hashes that differ from the tree (content by files and
+ * sha256 — git tracking is not a hash); mapping.json missing while captures exist, unreadable, or with a generatedAt
+ * other than pages.json's. Pure.
+ */
+export function exportGap({ listed: judged = false, manifest = null, tree = null, mapping = null, pagesGeneratedAt = null, captures = false, handedOver = null, dir = 'stardust/rollout/workspace' } = {}) {
+  if (!judged) return { gap: null, skipped: [] };
+  if (handedOver) return { gap: null, skipped: [`export_stale: handed over (${handedOver}) — stardust no longer writes the export`] };
+  const why = [];
+  if (!isMap(manifest)) why.push(`no ${dir}/manifest.json`);
+  if (!tree) why.push('unchecked (workspace-manifest.mjs not found beside done-check.mjs)');
+  else if (isMap(manifest)) {
+    const norm = (k, v) => JSON.stringify(k === 'content' && isMap(v) ? [v.files, v.sha256] : v ?? null);
+    const differ = (was = {}, now = {}) => [...new Set([...Object.keys(isMap(was) ? was : {}), ...Object.keys(now)])]
+      .filter((k) => norm(k, (isMap(was) ? was : {})[k]) !== norm(k, now[k]));
+    const off = [...differ(manifest.inputs, tree.inputs), ...differ(manifest.outputs, tree.outputs)].sort();
+    if (off.length) why.push(`manifest hashes differ from the tree: ${listed(off)}`);
+  }
+  if (mapping == null) { if (captures) why.push(`no ${dir}/mapping.json while captures exist`); }
+  else if (!isMap(mapping)) why.push(`${dir}/mapping.json unreadable`);
+  else if (mapping.generatedAt !== pagesGeneratedAt) why.push(`${dir}/mapping.json generatedAt ${mapping.generatedAt ?? 'none'} ≠ pages.json ${pagesGeneratedAt ?? 'none'}`);
+  return { gap: why.length ? `export_stale:${why.join('; ')} — ${EXPORT_REMEDY}` : null, skipped: [] };
+}
+
 /**
  * The verdict. `notLive` is the list of delivered paths the live probe found missing, or null when the probe did
- * not run (offline). `header`, `headerErrors`, `overridden`, `sidecars`, `ledger` are gap lines (or null), `units`
+ * not run (offline). `header`, `headerErrors`, `overridden`, `sidecars`, `ledger`, `exported` are gap lines (or null), `units`
  * gap lines, from the functions above; `skipped` names the checks that did not run. A row whose gate is
  * inconclusive (delivery.gate.inconclusive: reasons, or true) has no verdict: gates_inconclusive, and in
  * pages_failed only when it failed for another reason (status failed with an error not from the gate) or at a
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -319,6 +359,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // one finding set, one gap: header_parity already names the undecided errors (`header_parity:<n>: <keys>`)
   if (headerErrors && !(header && /^header_parity:\d+:/.test(header))) gaps.push(headerErrors);
   if (ledger) gaps.push(ledger);
+  if (exported) gaps.push(exported);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped] };
 }
@@ -343,6 +384,42 @@ export async function probeLive(host, paths, { fetchImpl = fetch, concurrency = 
 export function readLedger(path) {
   if (!existsSync(path)) return [];
   return readFileSync(path, 'utf8').split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } });
+}
+
+/**
+ * The migration export as on disk, judged by exportGap: the cwd is the project root (content/, blocks/,
+ * stardust/current/pages/ — the captures), keys project-relative as workspace-manifest.mjs writes them.
+ * workspace-manifest.mjs is imported here, never at load, so its own --help never answers for this script.
+ */
+async function exportState({ out, config, pagesDoc }) {
+  const listed = Array.isArray(config && config.exports) && config.exports.includes('migration-workspace');
+  if (!listed) return exportGap();
+  const ws = join(out, 'workspace');
+  const isFile = (f) => { try { return statSync(f).isFile(); } catch { return false; } };
+  const manifest = readJSON(join(ws, 'manifest.json'));
+  const handedOver = isFile(join(ws, 'handover.json')) ? join(ws, 'handover.json')
+    : isMap(manifest) && manifest.handover ? `${join(ws, 'manifest.json')} records one` : null;
+  let wm = null;
+  try { wm = await import(pathToFileURL(join(HERE, 'workspace-manifest.mjs')).href); } catch { wm = null; }
+  const project = resolve('.');
+  const rel = (abs) => relative(project, abs).split(sep).join('/');
+  let tree = null;
+  if (wm && typeof wm.inputHashes === 'function') {
+    const { inputs } = wm.inputHashes({ project, contentDir: resolve('content'), blocksDir: resolve('blocks'), judgementFile: resolve(ws, 'judgement.json') });
+    const files = [...['pages', 'templates', 'blocks'].map((n) => resolve(out, 'coverage', `${n}.json`)), resolve(ws, 'mapping.json')];
+    tree = { inputs, outputs: Object.fromEntries(files.filter(isFile).map((f) => [rel(f), sha256(readFileSync(f))])) };
+  }
+  const mappingFile = join(ws, 'mapping.json');
+  return exportGap({
+    listed,
+    manifest,
+    tree,
+    mapping: isFile(mappingFile) ? readJSON(mappingFile, 'unreadable') : null,
+    pagesGeneratedAt: (pagesDoc && pagesDoc.generatedAt) ?? null,
+    captures: !!(wm && typeof wm.hasCaptures === 'function' && wm.hasCaptures(resolve('stardust', 'current', 'pages'))),
+    handedOver,
+    dir: ws,
+  });
 }
 
 async function main() {
@@ -406,6 +483,7 @@ async function main() {
   const chrome = arg('chrome', 'stardust/chrome');
   const parity = readJSON(join(chrome, 'header-parity.json'));
   const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity, liveHost: OFFLINE ? null : host });
+  const exported = await exportState({ out: OUT, config, pagesDoc });
   const verdict = doneGaps({
     pages, findings, ledgerLines, notLive, header,
     headerErrors: headerParityErrors(parity),
@@ -413,7 +491,8 @@ async function main() {
     sidecars: sidecars.gap,
     units: units.gaps,
     ledger: ledgerGap(typeof unpairedEnds === 'function' ? unpairedEnds(ledgerLines) : null),
-    skipped: [...sidecars.skipped, ...units.skipped],
+    exported: exported.gap,
+    skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped],
   });
 
   if (JSON_OUT) console.log(JSON.stringify(verdict));

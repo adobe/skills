@@ -16,16 +16,22 @@
 // a gate with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
 // override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
 // header-parity.json in any project (its findings decide; counts.error − counts.decided without them), and is left
-// out when header_parity already names those errors (one finding set, one gap).
+// out when header_parity already names those errors (one finding set, one gap). export_stale (judged only when
+// rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
+// that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
+// than pages.json, with inventory → block-origin → manifest as the remedy.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as doneCheck from '../done-check.mjs';
 import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
+import { inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
 
@@ -405,6 +411,7 @@ check('CLI: --help prints the usage header and writes nothing', () => {
   const r = run(proj, ['--help']);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /pages_not_live/);
+  assert.match(r.stdout, /^rollout\/done-check\.mjs/, 'its own header, never the lazily imported workspace-manifest.mjs\'s');
   assert.equal(readdirSync(join(proj, 'stardust')).join(), before);
   rmSync(proj, { recursive: true, force: true });
 });
@@ -606,6 +613,90 @@ check('CLI: a redesign flow with no gate on any row skips the sidecar gate width
   const replica = verdict('replica');
   assert.deepEqual(replica.sidecars, ['sidecars_missing:2: schema 0, gate widths 2, redirects 0: /, /about']);
   assert.ok(!replica.skipped.includes(WIDTHS_SKIP));
+});
+
+// --- export_stale -------------------------------------------------------------------------------
+const WS = 'stardust/rollout/workspace';
+const REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
+const H = (c) => `sha256:${c.repeat(64)}`;
+const TREE = {
+  inputs: { 'blocks/hero/hero.css': H('a'), 'blocks/hero/hero.js': H('b'), content: { files: 3, sha256: H('c') } },
+  outputs: { 'stardust/rollout/coverage/blocks.json': H('d'), 'stardust/rollout/coverage/pages.json': H('e'), 'stardust/rollout/coverage/templates.json': H('f'), [`${WS}/mapping.json`]: H('1') },
+};
+const MANIFEST = { inputs: { ...TREE.inputs, content: { ...TREE.inputs.content, tracked: true } }, outputs: { ...TREE.outputs }, handover: null };
+const FRESH = { listed: true, manifest: MANIFEST, tree: TREE, mapping: { generatedAt: 'T1' }, pagesGeneratedAt: 'T1', captures: true };
+const withoutMapping = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.endsWith('/mapping.json')));
+
+check('export_stale: judged only when rollout.json exports lists migration-workspace; a fresh export (same hashes, mapping present with pages.json\'s generatedAt) is no gap', () => {
+  const { exportGap } = doneCheck;
+  assert.deepEqual(exportGap({ ...FRESH, listed: false, manifest: null }), { gap: null, skipped: [] });
+  assert.deepEqual(exportGap(FRESH), { gap: null, skipped: [] });
+  const noMap = { ...TREE, outputs: withoutMapping(TREE.outputs) };
+  assert.deepEqual(exportGap({ ...FRESH, captures: false, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }), { gap: null, skipped: [] }, 'no captures: no mapping needed');
+});
+
+check('export_stale: names each cause — no manifest, hashes that differ from the tree (content, block code, coverage, mapping), mapping.json missing while captures exist, unreadable, or with another generatedAt — with the three commands as the remedy', () => {
+  const { exportGap } = doneCheck;
+  assert.equal(exportGap({ ...FRESH, manifest: null }).gap, `export_stale:no ${WS}/manifest.json — ${REMEDY}`);
+  const tree = { inputs: { ...TREE.inputs, 'blocks/hero/hero.css': H('9'), 'blocks/new/new.js': H('8'), content: { files: 4, sha256: H('7') } }, outputs: { ...TREE.outputs, 'stardust/rollout/coverage/pages.json': H('6') } };
+  assert.equal(exportGap({ ...FRESH, tree }).gap, `export_stale:manifest hashes differ from the tree: blocks/hero/hero.css, blocks/new/new.js, content, stardust/rollout/coverage/pages.json — ${REMEDY}`);
+  const tracked = { ...TREE, inputs: { ...TREE.inputs, content: { ...TREE.inputs.content, tracked: false } } };
+  assert.equal(exportGap({ ...FRESH, tree: tracked }).gap, null, 'git tracking is not a hash');
+  const noMap = { ...TREE, outputs: withoutMapping(TREE.outputs) };
+  assert.equal(exportGap({ ...FRESH, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }).gap, `export_stale:no ${WS}/mapping.json while captures exist — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, mapping: 'not json' }).gap, `export_stale:${WS}/mapping.json unreadable — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, mapping: { generatedAt: 'T0' } }).gap, `export_stale:${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, tree: null }).gap, `export_stale:unchecked (workspace-manifest.mjs not found beside done-check.mjs) — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, manifest: null, mapping: { generatedAt: 'T0' } }).gap, `export_stale:no ${WS}/manifest.json; ${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`, 'causes joined in one line');
+});
+
+check('export_stale: a handed-over export is not judged — stardust no longer writes it — and the skipped line says so', () => {
+  const { exportGap } = doneCheck;
+  assert.deepEqual(exportGap({ ...FRESH, manifest: null, handedOver: `${WS}/handover.json` }), { gap: null, skipped: [`export_stale: handed over (${WS}/handover.json) — stardust no longer writes the export`] });
+});
+
+check('export_stale takes its place after ledger_unpaired, before rollout_incomplete', () => {
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [], ledger: 'ledger_unpaired:1: x', exported: 'export_stale:x' });
+  assert.deepEqual(v.gaps, ['ledger_unpaired:1: x', 'export_stale:x', 'rollout_incomplete']);
+});
+
+check('CLI: export_stale reads the project — fresh after the three commands, stale once a block file changes after the manifest, or the mapping goes; not judged without the export listed or after handover', () => {
+  const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
+  const files = {
+    'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
+    'stardust/rollout/coverage/pages.json': pagesDoc,
+    'stardust/rollout/coverage/templates.json': { templates: [] },
+    'stardust/rollout/coverage/blocks.json': { blocks: [] },
+    'stardust/current/pages/home.html': '<main><h1>Home</h1></main>',
+    'content/index.html': '<main><div><h1>Home</h1></div></main>',
+    'blocks/hero/hero.css': '.hero { margin: 0; }',
+    'blocks/hero/hero.js': 'export default function decorate() {}',
+    [`${WS}/mapping.json`]: { formatVersion: '0.1.0', generatedAt: pagesDoc.generatedAt, skipped: [], templates: [] },
+  };
+  const proj = project({ files });
+  const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
+  const writeManifest = () => {
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json') });
+    const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].filter((f) => existsSync(join(proj, f))).map((f) => [f, sha(f)]));
+    writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
+  };
+  const stale = () => JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((g) => g.startsWith('export_stale'));
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  writeFileSync(join(proj, 'blocks/hero/hero.css'), '.hero { margin: 1px; }');
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — ${REMEDY}`]);
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  rmSync(join(proj, WS, 'mapping.json'));
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: ${WS}/mapping.json; no ${WS}/mapping.json while captures exist — ${REMEDY}`]);
+  writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
+  const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual(handed.gaps.filter((g) => g.startsWith('export_stale')), []);
+  assert.ok(handed.skipped.includes(`export_stale: handed over (${WS}/handover.json) — stardust no longer writes the export`), JSON.stringify(handed.skipped));
+  rmSync(join(proj, WS, 'handover.json'));
+  writeFileSync(join(proj, 'stardust/rollout/rollout.json'), JSON.stringify({ exports: [] }));
+  assert.deepEqual(stale(), [], 'not listed: not judged');
+  rmSync(proj, { recursive: true, force: true });
 });
 
 for (const [name, fn] of tests) {
