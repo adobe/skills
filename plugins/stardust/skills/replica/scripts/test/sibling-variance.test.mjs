@@ -163,7 +163,8 @@ await check('varianceAdvice: a single differing sibling, or fewer than 20 % of t
   assert.equal(varianceAdvice(rows(2, 9), 'tours-bali'), VARIANT('tours-bali', 2, 11, ['d1', 'd2']));
   for (const [d, n] of [[1, 21], [2, 11]]) assert.doesNotMatch(varianceAdvice(rows(d, n - d), 'tours-bali'), /re-type|--representative|sub-archetype/);
   assert.equal(varianceAdvice(rows(3, 7), 'tours-bali'), null); assert.equal(varianceAdvice(rows(2, 2), 'tours-bali'), null);
-  assert.equal(varianceAdvice(rows(3, 2), 'tours-bali'), ADVICE('tours-bali', 3, 5)); assert.equal(varianceAdvice(rows(1, 0), 'tours-bali'), ADVICE('tours-bali', 1, 1));
+  assert.equal(varianceAdvice(rows(3, 2), 'tours-bali'), ADVICE('tours-bali', 3, 5)); assert.equal(varianceAdvice(rows(2, 1), 'tours-bali'), ADVICE('tours-bali', 2, 3));
+  assert.equal(varianceAdvice(rows(1, 0), 'tours-bali'), VARIANT('tours-bali', 1, 1, ['d1']), 'the only sibling differing is a single sibling: a variant, never a re-type');
   assert.equal(varianceAdvice(rows(0, 4), 'tours-bali'), null); assert.equal(varianceAdvice([], 'tours-bali'), null);
 });
 
@@ -228,7 +229,7 @@ if (pwProbe.status !== 0) {
   });
   await check('e2e: more than half differ → the re-type advice; a page that fails to load → exit 1 and nothing written', async () => {
     const r = await runAsync([`${base}/tours/bali/`, `${base}/tours/alps/`, ...probes, '--template', 'bali', '--variance-dir', 'v'], cwd);
-    assert.equal(r.code, 2, r.err); assert.ok(r.out.endsWith(`variance → v/bali.json (0 same, 1 differ)\n${ADVICE('bali', 1, 1)}\n`), r.out);
+    assert.equal(r.code, 2, r.err); assert.ok(r.out.endsWith(`variance → v/bali.json (0 same, 1 differ)\n${VARIANT('bali', 1, 1, ['tours-alps'])}\n`), r.out);
     const failCwd = freshDir('e2e-fail');
     const f = await runAsync([`${base}/tours/bali/`, `${base}/tours/utah/`, `${base}/tours/gone/`, ...probes], failCwd);
     assert.equal(f.code, 1, f.err); assert.match(f.err, /HTTP 404/);

@@ -620,8 +620,11 @@ check('deriveSlots (pure): one name per section (first class, else tag; a repeat
   assert.match(m, /<p data-slot="cards-2-p">Second band<\/p>/); assert.match(m, /<div class="note"><p data-slot="cards-2-p-2">Aside text<\/p><\/div>/);
   assert.match(m, /var archetypeOnly = '<p>not content<\/p>';/); assert.match(m, /<div class="spacer"><\/div>/);
   assert.equal(d.html.replace(/ data-slot="[^"]*"/g, ''), PARKS, 'only data-slot attributes are added');
+  const twins = deriveSlots('<main><section class="band"><p>A</p></section><section class="band"><p>B</p></section><section class="band-2"><p>C</p></section></main>');
+  assert.deepEqual(twins.slots, ['band-2-2-p', 'band-2-p', 'band-p'], 'a section name already taken is never issued twice');
   const marked = PARKS.replace('<h1>', '<h1 data-slot="headline">');
-  assert.deepEqual(deriveSlots(marked), { html: marked, slots: [], derived: false });
+  assert.deepEqual(deriveSlots(marked), { html: marked, slots: [], derived: false, repeats: {} });
+  assert.deepEqual(d.repeats, { 'cards-h3': { count: 2, where: 'ul > li' }, 'cards-p': { count: 2, where: 'ul > li' } }, 'names whose elements sit in different containers');
   assert.deepEqual(deriveSlots('<html><body><main><div class="x"><span></span></div></main></body></html>').slots, []);
 });
 check('render forks a markerless archetype on its derived slots instead of refusing: the run line says so, the sidecar records slots-derived, the page JSON names the values', () => {
@@ -641,6 +644,23 @@ check('render forks a markerless archetype on its derived slots instead of refus
   assert.deepEqual(meta.migrationDecisions.find((d) => d.kind === 'slots-derived'), { kind: 'slots-derived', archetype: 'parks', slots: PARK_SLOTS, _driver: true });
   assert.equal(read(`${P}/parks-proposed.html`), PARKS, 'the prototype file is never written');
   const again = run(['render', 'park-one']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged park-one → /m);
+});
+check('a derived slot repeated across containers (a card list) takes exactly one value per container, else strict slots names it and the repeated container — never a card spliced into its neighbour', () => {
+  const before = read(`${OUT}/parks/one/index.html`);
+  for (const [h3, p] of [[['Lake', 'Forest', 'Dunes'], ['a', 'b', 'c']], [['Lake'], ['a']]]) {
+    cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: { 'hero-h1': 'Park one', 'hero-p': 'Intro', 'hero-picture': { src: '/m/p.jpg' }, 'hero-a': { href: '/' }, 'cards-h2': 'H', 'cards-h3': h3, 'cards-p': p, 'cards-2-p': 'Band', 'cards-2-p-2': null } });
+    const r = run(['render', 'park-one']); assert.equal(r.status, 2);
+    assert.match(r.err, new RegExp(`^refused park-one: strict slots — derived slot\\(s\\) of archetype parks repeat across containers: cards-h3 \\(2 under ul > li, ${h3.length} value\\(s\\)\\); cards-p \\(2 under ul > li, ${p.length} value\\(s\\)\\) — mark the repeated container in the prototype \\(replica recreation-procedure\\.md § Slot markers\\), or give one value per container$`, 'm'));
+  }
+  assert.equal(read(`${OUT}/parks/one/index.html`), before, 'nothing written');
+});
+check('the template\'s only clone differs → a single differing sibling: the variant way out, and --accept-variance renders it (never a majority re-type)', () => {
+  cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: { 'hero-h1': 'Park one', 'hero-p': 'Intro', 'hero-picture': { src: '/m/p.jpg' }, 'hero-a': { href: '/' }, 'cards-h2': 'H', 'cards-h3': ['A', 'B'], 'cards-p': ['a', 'b'], 'cards-2-p': 'Band', 'cards-2-p-2': null } });
+  write('stardust/alt-variance-parks/parks.json', `${JSON.stringify({ template: 'parks', at: '2026-10-01T00:00:00Z', siblings: [{ slug: 'park-one', url: 'https://example.test/parks/one/', verdict: 'differs', missing: [], extra: ['badge'], deltas: [{ kind: 'EXTRA', probe: 'badge', msg: 'badge extra' }] }] }, null, 2)}\n`);
+  const r = run(['render', 'park-one', '--variance-dir', 'stardust/alt-variance-parks']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused park-one: strict variance — .* — 1 of 1 current clone\(s\) differ: a variant class on the template, not a new archetype — /m);
+  const ok = run(['render', 'park-one', '--variance-dir', 'stardust/alt-variance-parks', '--accept-variance', 'the badge is a variant class']); assert.equal(ok.status, 0, ok.err);
+  assert.equal(json(`${OUT}/parks/one/_meta.json`).variance.accepted, 'the badge is a variant class');
 });
 
 // ---- variance gate: the sibling-variance record gates every A′ page ------------------------------------
@@ -1052,6 +1072,12 @@ check('a hand-authored record (encode-attempt.mjs record --hand-authored --reaso
   assert.match(r.out, /^encode-attempt halls: hand-authored — the floor plans are drawn per hall \(1 page\(s\): hall-two\) \(kept from /m);
   assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
   const rr = run(['render', 'hall-two', '--from-archetype']); assert.equal(rr.status, 2); assert.doesNotMatch(rr.err, /strict encode-attempt/);
+});
+check('plan --force keeps a recorded decision (hand-authored, a reason) when nothing new can run — a one-sibling template without a map too', () => {
+  recordAttempt(tmp, 'shows', { handAuthored: true, reason: 'the show pages are written by hand' });
+  const r = run(['plan', 'show-one', '--force']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt shows: hand-authored — the show pages are written by hand \(1 page\(s\): show-one\) \(kept from /m);
+  assert.equal(json(ENC('shows')).verdict, 'hand-authored'); assert.deepEqual(json(ENC('shows')).pages, ['show-one']);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

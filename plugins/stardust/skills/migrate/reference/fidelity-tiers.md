@@ -80,7 +80,7 @@ lists in any order) — read from the page's previous sidecar `variance`,
 else its coverage row, and the run names those pages on one `variance:`
 line; a changed row (a grown COUNT too), or an older record, is refused,
 naming each changed field and quoting the earlier reason.
-More than half of the archetype's current clones differing → refused
+More than half of the archetype's current clones (two or more) differing → refused
 even then, an earlier acceptance included. The current clones are the
 rows whose page clones this archetype now
 (`--archetype`, else its representative, else its type); a row left by a

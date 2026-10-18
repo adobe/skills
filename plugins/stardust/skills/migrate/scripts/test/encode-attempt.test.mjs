@@ -204,6 +204,20 @@ check('summary per template (the roster report\'s line): siblings · encoded · 
   assert.deepEqual(j.perTemplate.find((t) => t.template === 'tours'), { template: 'tours', verdict: 'hand-authored', siblings: 5, encoded: 1, slotRendered: 1, handAuthored: 2, notAttempted: 1, unrecorded: ['e'] });
 });
 
+check('after delivery (every page migrated) the siblings still count: a migrate sidecar naming the template is a sibling — in summary and in the record threshold', () => {
+  const proj = join(tmp, 'delivered'); const put = (rel, data) => { const f = join(proj, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`); };
+  put('stardust/state.json', { pages: ['tours', 'a', 'b'].map((x) => ({ slug: x, url: `https://example.test/${x}/`, status: 'migrated', type: 'tour' })) });
+  put('stardust/migrated/tours/_meta.json', { slug: 'tours', template: null, renderBranch: 'A' });
+  put('stardust/migrated/tours/a/_meta.json', { slug: 'a', template: 'tours', renderBranch: "A'", slotSource: 'page-json' });
+  put('stardust/migrated/tours/b/_meta.json', { slug: 'b', template: 'tours', fidelityTier: 'sibling', encode: { output: { path: 'x' } }, audit: { encode: { status: 'clean' } } });
+  const state = JSON.parse(readFileSync(join(proj, 'stardust/state.json'), 'utf8'));
+  assert.deepEqual(siblingsOf(state, 'tours'), [], 'the state alone no longer tells them apart');
+  const r = run(['record', '--template', 'tours', '--root', proj, '--encoder', FAKE]); assert.equal(r.status, 2);
+  assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(a, b\) and no map at /);
+  recordAttempt(proj, 'tours', { reason: 'delivered before the map rule' });
+  assert.match(run(['summary', '--root', proj]).out, /^encode-attempt tours: 2 sibling\(s\) · 1 encoded · 1 slot-rendered · 0 hand-authored · 0 not-attempted \(not-attempted\)$/m);
+});
+
 // ---- determinism ----------------------------------------------------------------------------------
 console.log('determinism');
 check('two records of the same attempt → the same bytes but at / writtenAt; fixed key order; no tmp file left', () => {

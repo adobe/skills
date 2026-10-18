@@ -45,9 +45,10 @@
  *   not-attempted — <n> sibling(s) (<slug, …>) and <cause>: <fix> — or pass --reason "<why the encoder cannot serve
  *   this template>"`. With --reason the record's reason is `<why> (<cause>)`; --reason is used only on these two
  *   outcomes and never with --not-attempted. Siblings (siblingsOf): the --state pages (default
- *   <root>/stardust/state.json; none when it is absent) whose representative is <t>, and — when <t> is the single
- *   approved / migrated page of its type — every other page of that type that is not approved / migrated and names
- *   no representative.
+ *   <root>/stardust/state.json; none when it is absent) whose representative is <t>, whose migrate sidecar names <t>
+ *   as its template (read under state.migrate.outputDir, else stardust/migrated — delivered siblings count), and —
+ *   when <t> is the single approved / migrated page of its type, those aside — every other page of that type that is
+ *   not approved / migrated and names no representative.
  *   One stdout line per template: `encode-attempt <t>: <verdict> — <reason or roundtrip line>` (hand-authored adds
  *   ` (<n> page(s): <slug, …>)`). A record is
  *   rewritten on every `record`; the verdict is information, not a failure (exit 0 whatever it is; 2 when a template
@@ -82,8 +83,8 @@
  *   null or the check refusal line · recordAttempt(root, t, { encoder, notAttempted, reason, handAuthored, pages,
  *   state, siblings, timeoutMs }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
  *   Refusal, the encoder-first line, when it refuses; siblings: slugs that replace the state's) · siblingsOf(state,
- *   t) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
- *   attemptLine(record) → the record's stdout line · siblingTally(state, record, sidecars, t) → the summary's counts ·
+ *   t[, sidecars]) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
+ *   attemptLine(record) → the record's stdout line · sidecarsBySlug(root, state) → slug → migrate sidecar · siblingTally(state, record, sidecars, t) → the summary's counts ·
  *   summaryLine(records) → the summary line (a null entry is counted as ` · <k> without a record`).
  * Exit: 0 ok · 1 I/O (a record could not be written) · 2 usage error (an --encoder or --state that does not exist
  *   included), an encoder-first refusal or a check refusal (message on stderr).
@@ -146,16 +147,19 @@ const AUTO_CAUSES = [/^encode\.mjs not found beside this script$/, /^no map at s
 export const isAutoNotAttempted = (rec) => rec?.verdict === 'not-attempted' && AUTO_CAUSES.some((re) => re.test(String(rec.reason ?? '')));
 
 /**
- * The state pages that clone `template` (sorted slugs): a page whose representative is the template, and — when the
- * template is the single approved / migrated page of its type — every other page of that type that is not approved /
- * migrated and names no representative (migrate.mjs render's branch fallback).
+ * The state pages that clone `template` (sorted slugs): a page whose representative is the template, a page whose
+ * migrate sidecar (`sidecars`: slug → sidecar, sidecarsBySlug) names the template — so delivered (migrated) siblings
+ * still count — and, when the template is the single approved / migrated page of its type (those siblings aside),
+ * every other page of that type that is not approved / migrated and names no representative (migrate.mjs render's
+ * branch fallback).
  */
-export function siblingsOf(state, template) {
+export function siblingsOf(state, template, sidecars = null) {
   const pages = Array.isArray(state?.pages) ? state.pages.filter((p) => p && typeof p.slug === 'string') : [];
   const self = pages.find((p) => p.slug === template);
   const named = (p) => typeof p.representative === 'string' && p.representative && p.representative !== p.slug;
-  const sole = typeof self?.type === 'string' && self.type && pages.filter((p) => p.type === self.type && ARCHETYPE_STATUS.has(p.status)).every((p) => p.slug === template);
-  const out = pages.filter((p) => p.slug !== template && (named(p) ? p.representative === template : sole && p.type === self.type && !ARCHETYPE_STATUS.has(p.status)));
+  const rendered = (p) => sidecars?.get(p.slug)?.template === template;
+  const sole = typeof self?.type === 'string' && self.type && pages.filter((p) => p.type === self.type && ARCHETYPE_STATUS.has(p.status) && !rendered(p)).every((p) => p.slug === template);
+  const out = pages.filter((p) => p.slug !== template && (named(p) ? p.representative === template : rendered(p) || (sole && p.type === self.type && !ARCHETYPE_STATUS.has(p.status))));
   return out.map((p) => p.slug).sort();
 }
 
@@ -187,12 +191,13 @@ function writeRecord(root, rec) {
  * Records one template's encode attempt under `root` and returns the record. opts: encoder (default encode.mjs beside
  * this script), notAttempted (an owner's reason: nothing is run), reason (why a not-attempted outcome is right for a
  * template with ≥ 2 siblings), state (the state file, default <root>/stardust/state.json), siblings (slugs; overrides
- * the state's), timeoutMs (per encoder run, default 120 s). Throws Refusal, writing nothing, for a not-attempted outcome
- * on a template with ≥ 2 siblings and no reason.
+ * the state's), keepDecision (an automatic not-attempted outcome returns an existing decision record — hand-authored or
+ * a reasoned not-attempted — unwritten), timeoutMs (per encoder run, default 120 s). Throws Refusal, writing nothing,
+ * for a not-attempted outcome on a template with ≥ 2 siblings and no reason.
  */
 export function recordAttempt(root, template, opts = {}) {
   assertTemplate(template);
-  const { encoder = null, notAttempted = null, reason: given = null, handAuthored = false, pages: named = null, state = null, siblings = null, timeoutMs = TIMEOUT_MS } = opts;
+  const { encoder = null, notAttempted = null, reason: given = null, handAuthored = false, pages: named = null, state = null, siblings = null, keepDecision = false, timeoutMs = TIMEOUT_MS } = opts;
   if (notAttempted !== null && notAttempted !== undefined && (typeof notAttempted !== 'string' || !notAttempted.trim())) throw new UsageError('--not-attempted needs a non-empty reason');
   if (given !== null && given !== undefined && (typeof given !== 'string' || !given.trim())) throw new UsageError('--reason needs a non-empty reason');
   if (typeof given === 'string' && typeof notAttempted === 'string') throw new UsageError('--not-attempted carries its own reason — drop --reason');
@@ -204,7 +209,11 @@ export function recordAttempt(root, template, opts = {}) {
   if (state && !isFile(state)) throw new UsageError(`--state ${state} does not exist`);
   const at = new Date().toISOString();
   let verdict; let roundtrip = null; let lint = null; let reason = null; let cause = null; let fix = null; let pages = null;
-  const siblingList = () => (Array.isArray(siblings) ? [...new Set(siblings)].sort() : siblingsOf(readState(state || join(rootAbs, 'stardust', 'state.json')), template));
+  const siblingList = () => {
+    if (Array.isArray(siblings)) return [...new Set(siblings)].sort();
+    const st = readState(state || join(rootAbs, 'stardust', 'state.json'));
+    return siblingsOf(st, template, sidecarsBySlug(rootAbs, st));
+  };
   const encoderFile = encoder ? resolve(encoder) : join(HERE, 'encode.mjs');
   // A named encoder that is not there is a typo, never "not attempted": that record would open render's A′ path.
   if (encoder && !isFile(encoderFile)) throw new UsageError(`--encoder ${encoder} does not exist`);
@@ -223,6 +232,11 @@ export function recordAttempt(root, template, opts = {}) {
     if (rt.failure) { verdict = 'no-roundtrip'; reason = rt.failure; }
     else if (roundtrip.exit === 0) verdict = 'encoded';
     else { verdict = 'no-roundtrip'; reason = roundtrip.line || 'roundtrip exit 2'; }
+  }
+  if (cause && keepDecision) {
+    // migrate.mjs plan --force: a recorded decision (hand-authored, a reason) stands when nothing new can run.
+    const prev = readAttempt(rootAbs, template);
+    if (prev && (prev.verdict === 'hand-authored' || (prev.verdict === 'not-attempted' && !isAutoNotAttempted(prev)))) return prev;
   }
   if (cause) {
     // Encoder first: a template with ≥ 2 siblings gets its map in the C-archetype unit — not-attempted only with a reason.
@@ -264,7 +278,7 @@ function countVerdicts(records) {
 }
 
 // The migrate sidecars under the render output (state.migrate.outputDir, else stardust/migrated): slug → sidecar.
-function sidecarsBySlug(root, state) {
+export function sidecarsBySlug(root, state) {
   const out = typeof state?.migrate?.outputDir === 'string' && state.migrate.outputDir.trim() ? state.migrate.outputDir : 'stardust/migrated';
   const bySlug = new Map();
   const walk = (dir) => {
@@ -290,7 +304,7 @@ function sidecarsBySlug(root, state) {
 export function siblingTally(state, record, sidecars, template) {
   const t = { template, verdict: record?.verdict ?? null, siblings: 0, encoded: 0, slotRendered: 0, handAuthored: 0, notAttempted: 0, unrecorded: [] };
   const named = new Set(record?.verdict === 'hand-authored' && Array.isArray(record.pages) ? record.pages : []);
-  for (const slug of siblingsOf(state, template)) {
+  for (const slug of siblingsOf(state, template, sidecars)) {
     const m = sidecars.get(slug); t.siblings++;
     if (m?.encode && typeof m.encode === 'object' && m.audit?.encode?.status === 'clean') t.encoded++;
     else if (m?.renderBranch === "A'" && (m.slotSource === 'mapping' || m.slotSource === 'page-json')) t.slotRendered++;
