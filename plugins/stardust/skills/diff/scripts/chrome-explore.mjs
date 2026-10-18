@@ -18,9 +18,10 @@
  * back. Navigations are answered 204 so the page never leaves.
  *
  * Pollution guard (a first click right after load can catch the page hydrating, not the panel): every top-level state
- * that opened is sampled again on a FRESH page (reload, the same hide/settle steps, the same control and action) — its
- * links, headings, images, inputs and, with pngjs + pixelmatch, its crop. A repeat that differs from the first sample by
- * more than --bar (sampleDelta: the larger of the structural and the crop pixel ratio) marks the state
+ * that opened is sampled again on a FRESH page visited exactly as the first one was (the same visit: wait, overlay
+ * dismissal, settle; then hide and baseline — a quick reload would click earlier after load), the same control and
+ * action: its links, headings, images, inputs and, with pngjs + pixelmatch, its crop. A repeat that differs from the
+ * first sample by more than --bar (sampleDelta: the larger of the structural and the crop pixel ratio) marks the state
  * `unstable: { delta, resample: 'agrees'|'differs', resampleDelta }` and is sampled once more: `agrees` (≤ bar) → the
  * state holds the re-sample (the settled sample, crop `…-settled.png`), `differs` → the repeat. The header records
  * `stability: { bar, checked, unstable: ['<w> <path> [<action>]'], crops? }` (`crops: 'skipped: <why>'` when crops were
@@ -379,7 +380,7 @@ const call = async (page, fn, arg = {}) => { try { return await page.evaluate(as
 
 /** Explore one width. Returns { root, controls[], scroll[], truncated, states, probe } (+ `hidden`, the first load's
  * hide records, when `hide` is set: applied after every load, before the baseline; + `stability: { checked, unstable,
- * crops? }` when `repeat`: the pollution guard, top-level open states repeated on a fresh page against `bar`). */
+ * crops? }` when `repeat`: the pollution guard, top-level open states repeated on a fresh `gotoFn` visit against `bar`). */
 export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDepth, probe, shotsDir, settleMs = 250, visitOpts = {}, gotoFn, hide = [], repeat = true, bar = 0.02 }) {
   const touch = width < TOUCH_BELOW;
   const vh = page.viewportSize().height;
@@ -392,11 +393,12 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
     return route.fallback();
   });
   let at = url; let loads = 0;
-  // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered)
+  // the first visit settles the page; later ones only restore the closed header (same URL, overlays already answered);
+  // `full` repeats the first visit (the guard's fresh page: sampled no earlier after load than the first sample was)
   // navigations are answered 204 throughout (the page never leaves), except our own reloads
-  const load = async () => {
+  const load = async ({ full = false } = {}) => {
     armed = false;
-    if (loads++ === 0) { await gotoFn(page, url, visitOpts); at = page.url(); } else { await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
+    if (loads++ === 0 || full) { await gotoFn(page, url, visitOpts); at = page.url(); } else { await page.goto(at, { waitUntil: 'load', timeout: 60000 }); await page.waitForTimeout(400); }
     // an in-flow bar above the header is gone before the root, its controls and the closed baseline are read
     const recs = await hideRegions(page, hideList, { settleMs });
     if (!hidden) hidden = recs;
@@ -511,7 +513,7 @@ export async function exploreWidth(page, { url, width, rootSel, maxStates, maxDe
   // the pollution guard: a first click right after load can catch the page hydrating, not the panel — every top-level
   // open state is sampled again on a fresh page, the same control found the same way; over the bar it is sampled once more
   const fresh = async (node, action) => {
-    await load(); await reset();
+    await load({ full: true }); await reset();
     const cs = (await C('controls', { scope: 'root' })) || [];
     const c = cs.find((x) => x.sel === node.sel) || cs.find((x) => normName(x.name) === node.key && x.role === node.role);
     return c ? take(c, action) : [null, null];

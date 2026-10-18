@@ -13,7 +13,9 @@
 // untouched), the `, <n> unstable` summary and the stability line, --bar / --no-repeat parsing (pure); cropRatio as
 // chrome-compare counts it, the rich fixture's top-level states repeated on a fresh page and all stable, a header whose
 // panel holds hydration placeholder content on its first load only: unstable, re-sampled, settled on the real links,
-// named in the header and on stdout — and with --no-repeat the skip recorded instead (browser).
+// named in the header and on stdout; one hydrating 1.8 s after every load: the repeat is visited as the first sample was
+// (a quick reload would click before hydration), nothing unstable — and with --no-repeat the skip recorded (browser).
+// The --presence and site-file CLI runs pass --no-repeat: they check hide sourcing, the --hide run covers the guard.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -268,7 +270,7 @@ else {
   const pf = join(dir, 'presence.json');
   writeFileSync(pf, JSON.stringify({ '*': { hide: ['.geo-bar'] } }));
   const viaPresence = join(dir, 'geo-presence.json');
-  const byPresence = await cli([geoUrl, viaPresence, '--presence', pf, '--slug', 'home', '--width', '360', '--probe', 'shoes', '--plain', '--shots', join(dir, 'geo-presence')]);
+  const byPresence = await cli([geoUrl, viaPresence, '--presence', pf, '--slug', 'home', '--width', '360', '--probe', 'shoes', '--plain', '--no-repeat', '--shots', join(dir, 'geo-presence')]);
   await check('CLI --presence {"*": {"hide": [".geo-bar"]}} --slug home: the same at 360, source presence.json; its list matches the --hide record', () => {
     assert.equal(byPresence.code, 0, byPresence.err);
     const d = JSON.parse(readFileSync(viaPresence, 'utf8'));
@@ -281,7 +283,7 @@ else {
   mkdirSync(join(dir, 'stardust', 'replica'), { recursive: true });
   writeFileSync(join(dir, 'stardust', 'replica', 'presence.json'), JSON.stringify({ '*': { hide: ['.geo-bar'] } }));
   const viaSite = join(dir, 'geo-site.json');
-  const bySite = await cli([geoUrl, viaSite, '--width', '360', '--probe', 'shoes', '--plain', '--shots', join(dir, 'geo-site')]);
+  const bySite = await cli([geoUrl, viaSite, '--width', '360', '--probe', 'shoes', '--plain', '--no-repeat', '--shots', join(dir, 'geo-site')]);
   await check('CLI, no hide flag, stardust/replica/presence.json {"*": {"hide": [".geo-bar"]}}: hidden at 360, source site presence.json, the site file recorded', () => {
     assert.equal(bySite.code, 0, bySite.err);
     const d = JSON.parse(readFileSync(viaSite, 'utf8'));
@@ -306,6 +308,19 @@ else {
     assert.deepEqual(d.stability, { bar: 0.02, checked: 2, unstable: ['1440 Products [click]', '1440 Products [key]'] });
     assert.match(byGuard.out, /^chrome-explore 1440: 1 controls \(1 menu\), 2 states, 4 links, depth 1, 2 unstable$/m);
     assert.match(byGuard.out, /^chrome-explore UNSTABLE: 2 state\(s\) sampled differently on a fresh page \(1440 Products \[click\], 1440 Products \[key\]\) — contract findings on them are warnings$/m);
+  });
+  const lateOut = join(dir, 'late.json');
+  const byLate = await cli([`${srv.origin}/late`, lateOut, '--width', '1440', '--probe', 'shoes', '--plain', '--shots', join(dir, 'late')]);
+  await check('CLI on a header hydrating 1.8 s after every load: the repeat\'s fresh page is visited as the first sample\'s was, sees the hydrated panel too — nothing unstable', () => {
+    assert.equal(byLate.code, 0, byLate.err);
+    const d = JSON.parse(readFileSync(lateOut, 'utf8'));
+    const products = d.widths[1440].controls.find((c) => c.name === 'Products');
+    for (const a of ['click', 'key']) {
+      assert.deepEqual(products.actions[a].panel.headings, ['Products'], `${a}: the hydrated panel`);
+      assert.equal('unstable' in products.actions[a], false, `${a}: ${JSON.stringify(products.actions[a].unstable)}`);
+    }
+    assert.deepEqual(d.stability, { bar: 0.02, checked: 2, unstable: [] });
+    assert.match(byLate.out, /^chrome-explore stability: 2 top-level state\(s\) repeated on a fresh page, all within the bar 0\.02$/m);
   });
   const offOut = join(dir, 'hydrate-off.json');
   const byOff = await cli([`${srv.origin}/hydrate?run=off`, offOut, '--no-repeat', '--width', '1440', '--probe', 'shoes', '--plain', '--shots', join(dir, 'hydrate-off')]);
