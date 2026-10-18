@@ -32,7 +32,11 @@
 //      <name>._meta.json, same dir); row.source.migratedHtml and row.source.encodedHtml;
 //      stardust/patches/<slug>.json; gate-all's JSON for the page,
 //      stardust/replica/gates/all-<w>/<slug>/**/*.json and all-<w>/runs/<ts>-<slug>.json (an --only
-//      run is named for its first slug; the images and <slug>/rounds.lock are never staged);
+//      run is named for its first slug; the images and <slug>/rounds.lock are never staged), and in
+//      each all-<w> the unit's pages were gated in, a fix round's triage.json and triage.md. A source
+//      path stays inside its root (metaJson, migratedHtml: stardust/migrated/; encodedHtml:
+//      stardust/encoded/; an absolute one is taken from the project root) and the slug names one file
+//      — a row naming content/, styles/ or blocks/header/ there is left out with one stderr note;
 //   4. shared bookkeeping (SHARED, SHARED_JSON_DIRS): stardust/rollout/coverage/*.json,
 //      stardust/migrate/encode/*.json, stardust/rollout/variance/*.json, stardust/rollout/progress.json,
 //      stardust/rollout/rollout.json, stardust/rollout/foundation-requests.md, stardust/state.json,
@@ -42,11 +46,15 @@
 //      block code goes through the same lock (a commit outside it collides with the units' commits);
 //      blocks/header and blocks/footer are the frozen foundation and refused. The Code-stage push
 //      before the first preview is `unit-commit.mjs <unit> --code blocks/<name> --push`;
-//   6. per --also <path> (repeatable): a file, or a directory's files recursively, for anything else
-//      the unit wrote. Refused before the lock (exit 2, nothing staged, the rule named): an absolute
-//      path, a `..` segment, a path whose real location is outside the work tree, `.git`, the project
-//      root, content/ (pages go through the .paths file), blocks/ (--code), the frozen foundation
-//      (styles/, fonts/, head.html, scripts/, blocks/header/, blocks/footer/); a missing path.
+//   6. per --also <path> (repeatable): a file — or, outside stardust/, a directory's files recursively
+//      — for anything else the unit wrote. Refused (exit 2, nothing staged, the rule named): an
+//      absolute path, a `..` segment, a path whose real location is outside the work tree, `.git`,
+//      the project root, content/ (pages go through the .paths file), blocks/ (--code), the frozen
+//      foundation (styles/, fonts/, head.html, scripts/, blocks/header/, blocks/footer/), a missing
+//      path, a directory under stardust/ (it would sweep other units' reports, ledgers, maps) — all
+//      before the lock — and, under it before staging, any file but the unit's own in a namespace the
+//      set manages per unit or per page (perUnitArea: units/, ledger-*.json, import/, encoded/,
+//      migrated/, patches/, eds-schema/, a gate dir's page dirs and runs/).
 // The lock is a file, stardust/.work/git.lock, created with open(…, 'wx') and holding one JSON line
 // {pid, host, at, unit}. A waiter polls every 200 ms up to --wait-s. A lock whose pid is not running
 // on this host (kill -0 → ESRCH), or untouched for 300 s (the holder touches it every 30 s and before
@@ -130,6 +138,9 @@ export const SHARED = [
 ];
 export const SHARED_JSON_DIRS = [COVERAGE_DIR, 'stardust/migrate/encode', 'stardust/rollout/variance'];
 const GATES_DIR = 'stardust/replica/gates';
+// the roots a coverage row's source paths must stay in
+export const MIGRATED_DIR = 'stardust/migrated';
+export const ENCODED_DIR = 'stardust/encoded';
 export const GATE_DIR_RE = /^all-\d+$/; // gate-all's published-stage out dirs, all-<w>
 export const RUN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/; // an --only run: runs/<ts>-<first slug>.json
 export const CODE_RE = /^blocks\/[a-z0-9][a-z0-9-]*\/?$/;
@@ -173,7 +184,11 @@ the next unit-commit run, and nothing outside the set is swept).
     row.source.metaJson, else the _meta.json beside row.source.migratedHtml
     (index.html → _meta.json, <name>.html → <name>._meta.json); row.source.migratedHtml and
     row.source.encodedHtml; stardust/patches/<slug>.json; the published gate's JSON,
-    ${GATES_DIR}/all-<w>/<slug>/**/*.json and all-<w>/runs/<ts>-<slug>.json
+    ${GATES_DIR}/all-<w>/<slug>/**/*.json and all-<w>/runs/<ts>-<slug>.json, and in each
+    all-<w> the unit's pages were gated in, a fix round's all-<w>/triage.json and triage.md
+    (images and lock files never). A source path stays inside its root — metaJson and
+    migratedHtml ${MIGRATED_DIR}/, encodedHtml ${ENCODED_DIR}/ (an absolute one taken from the
+    project root) — and the slug names one file; anything else is left out, one stderr note per row.
   shared: ${SHARED_HELP.slice(0, 2).join(', ')},
     ${SHARED_HELP.slice(2, 5).join(', ')},
     ${SHARED_HELP.slice(5, 8).join(', ')},
@@ -183,12 +198,16 @@ the next unit-commit run, and nothing outside the set is swept).
     blocks/footer (the frozen foundation) and anything that is not blocks/<kebab-name> → exit 2,
     nothing staged; a directory that does not exist → exit 2. The Code-stage push before the
     first preview: unit-commit.mjs <unit> --code blocks/<name> --push
-  --also <path> (repeatable): anything else the unit wrote — a file, or a directory's files
-    recursively, relative to the project root (a git-ignored file is named on stderr, not
-    staged). Refused → exit 2, nothing staged, the rule named: an absolute path, a .. segment, a
-    path that resolves outside the work tree, .git, the project root, content/ (pages go through
+  --also <path> (repeatable): anything else the unit wrote, relative to the project root — a file,
+    or outside stardust/ a directory's files recursively (a git-ignored file is named on stderr,
+    not staged). Refused → exit 2, nothing staged, the rule named: an absolute path, a .. segment,
+    a path that resolves outside the work tree, .git, the project root, content/ (pages go through
     units/<unit>.paths), blocks/ (--code), the frozen foundation (styles/, fonts/, head.html,
-    scripts/, blocks/header/, blocks/footer/); a path that does not exist → exit 2.
+    scripts/, blocks/header/, blocks/footer/), a directory under stardust/ (it would sweep other
+    units' files — name the file), and in a namespace the set manages per unit or per page
+    (stardust/rollout/units/, stardust/deploy/ledger-*.json, stardust/import/, ${ENCODED_DIR}/,
+    ${MIGRATED_DIR}/, stardust/patches/, stardust/eds-schema/, all-<w>/<page>/ and runs/) any file
+    but the unit's own; a path that does not exist → exit 2.
 Lock: ${LOCK_REL} (one JSON line: pid, host, ISO time, unit), created atomically and waited
   for up to --wait-s seconds (default ${DEFAULT_WAIT_S}, polled every ${POLL_MS} ms). A lock whose pid is not
   running on this host, or untouched for ${STALE_MS / 1000} s (the holder touches it every ${HEARTBEAT_MS / 1000} s), is reaped
@@ -335,45 +354,88 @@ const oneName = (s) => typeof s === 'string' && s !== '' && s !== '.' && s !== '
 const htmlPath = (p) => typeof p === 'string' && p.trim().endsWith('.html') && p.includes('/');
 
 /**
- * Every candidate file of a unit's stage set, before the exists / ignored filter. Pure.
+ * A coverage source path as a clean project-relative path when it lies under `dir`, else null. An absolute path
+ * (inventory writes encodedHtml from the project path) is taken relative to `root`; without a root it is null.
+ */
+export function sourceUnder(p, dir, root = null) {
+  if (typeof p !== 'string' || !p.trim()) return null;
+  if (isAbsolute(p.trim()) && !root) return null;
+  const rel = safeRel(p, root || '.');
+  return rel && rel.startsWith(`${dir}/`) ? rel : null;
+}
+
+/**
+ * Every candidate file of a unit's stage set, before the exists / ignored filter — deduped, sorted by code
+ * point. Pure but for safeRel's realpath of an absolute source path.
  * rows = coverage pages rows; sharedJson = the *.json files present directly in SHARED_JSON_DIRS;
  * templates = the unit's templates (progress.json units.<unit>.templates; an archetype-<t> unit adds <t>);
  * gateDirs = the stardust/replica/gates/all-<w> dirs present; walk(dir) = the files under dir, recursively,
- * sorted ([] when absent); pathKey = deploy's eds-path key.
- * Returns { files, notes } — notes name path lines skipped as unusable keys.
+ * sorted ([] when absent); root = the project root an absolute source path is taken against;
+ * pathKey = deploy's eds-path key.
+ * A row's source paths stay inside their roots (metaJson and migratedHtml stardust/migrated/, encodedHtml
+ * stardust/encoded/) and its slug names one file; what does not is left out, one note per row.
+ * Returns { files, notes } — notes name path lines skipped as unusable keys and rows with paths left out.
  */
-export function stageCandidates({ unit, lines, rows = [], sharedJson = [], templates = [], gateDirs = [], walk = () => [], pathKey }) {
+export function stageCandidates({ unit, lines, rows = [], sharedJson = [], templates = [], gateDirs = [], walk = () => [], root = null, pathKey }) {
   const files = []; const notes = []; const slugs = new Set();
   for (const key of [...new Set(lines.map((l) => pathKey(l)))]) {
     if (key.split('/').some((s) => s === '..' || s === '.')) { notes.push(`path ${key} has a . or .. segment — skipped`); continue; }
     files.push(...contentDocs(key), ...encodedDocs(key));
     for (const row of rows) {
       if (!row || typeof row !== 'object' || typeof row.path !== 'string' || pathKey(row.path) !== key) continue;
-      if (typeof row.slug === 'string' && row.slug) files.push(`stardust/eds-schema/${row.slug}.json`);
-      if (oneName(row.slug)) slugs.add(row.slug);
+      const left = [];
+      if (oneName(row.slug)) { files.push(`stardust/eds-schema/${row.slug}.json`); slugs.add(row.slug); } else if (typeof row.slug === 'string' && row.slug) left.push(`slug ${row.slug} (not one name)`);
       const src = row.source && typeof row.source === 'object' ? row.source : {};
-      const side = typeof src.metaJson === 'string' && src.metaJson.trim() ? src.metaJson.trim() : sidecarFor(src.migratedHtml);
-      if (side) files.push(side);
-      for (const doc of [src.migratedHtml, src.encodedHtml]) if (htmlPath(doc)) files.push(doc.trim());
+      const meta = typeof src.metaJson === 'string' && src.metaJson.trim() ? src.metaJson.trim() : null;
+      const sources = [
+        [meta ? 'source.metaJson' : 'the sidecar', meta ?? sidecarFor(src.migratedHtml), MIGRATED_DIR],
+        ['source.migratedHtml', htmlPath(src.migratedHtml) ? src.migratedHtml.trim() : null, MIGRATED_DIR],
+        ['source.encodedHtml', htmlPath(src.encodedHtml) ? src.encodedHtml.trim() : null, ENCODED_DIR],
+      ];
+      for (const [field, p, dir] of sources) {
+        if (!p) continue;
+        const rel = sourceUnder(p, dir, root);
+        if (rel) files.push(rel); else left.push(`${field} ${p} (not under ${dir}/)`);
+      }
+      if (left.length) notes.push(`coverage row ${typeof row.slug === 'string' && row.slug ? row.slug : '?'} (${row.path}): left out ${left.join(', ')}`);
     }
   }
-  const own = [...slugs].sort(byCodePoint);
-  for (const slug of own) {
-    files.push(`stardust/patches/${slug}.json`);
-    // gate-all's per-page JSON (images stay untracked; <slug>/rounds.lock is a live lock, never committed)
-    if (slug !== 'runs') for (const d of gateDirs) files.push(...walk(`${d}/${slug}`).filter((f) => f.endsWith('.json')));
-  }
+  for (const slug of slugs) files.push(`stardust/patches/${slug}.json`);
   for (const d of gateDirs) {
-    files.push(...walk(`${d}/runs`).filter((f) => {
+    // gate-all's per-page files (JSON only: images stay untracked, <slug>/rounds.lock is a live lock) and the
+    // unit's own --only runs
+    const pages = [...slugs].filter((s) => s !== 'runs').flatMap((s) => walk(`${d}/${s}`));
+    const runs = walk(`${d}/runs`).filter((f) => {
       const m = posix.dirname(f) === `${d}/runs` && RUN_RE.exec(posix.basename(f));
       return m && slugs.has(m[1]);
-    }));
+    });
+    files.push(...pages.filter((f) => f.endsWith('.json')), ...runs);
+    // a fix round's triage, <out>/triage.{json,md}: shared per gate dir, taken where the unit's pages were gated
+    if (pages.length || runs.length) files.push(`${d}/triage.json`, `${d}/triage.md`);
   }
   files.push(`stardust/rollout/units/${unit}.paths`, `stardust/rollout/units/${unit}.md`, `stardust/deploy/ledger-${unit}.json`);
-  const arch = /^archetype-(.+)$/.exec(unit);
-  for (const t of [...new Set([...templates, ...(arch ? [arch[1]] : [])])].filter(oneName).sort(byCodePoint)) files.push(...walk(`stardust/import/${t}`));
+  for (const t of unitTemplates(unit, templates)) files.push(...walk(`stardust/import/${t}`));
   files.push(...sharedJson, ...SHARED);
-  return { files, notes };
+  return { files: [...new Set(files)].sort(byCodePoint), notes };
+}
+
+/** The unit's templates: the recorded ones plus <t> of an archetype-<t> unit, each naming one directory; sorted. */
+export function unitTemplates(unit, templates = []) {
+  const arch = /^archetype-(.+)$/.exec(unit);
+  return [...new Set([...templates, ...(arch ? [arch[1]] : [])])].filter(oneName).sort(byCodePoint);
+}
+
+// the namespaces the default set manages per unit or per page: an --also file there must be the unit's own
+const PER_UNIT_DIRS = ['stardust/rollout/units', 'stardust/import', ENCODED_DIR, MIGRATED_DIR, 'stardust/patches', 'stardust/eds-schema'];
+
+/** The per-unit namespace a clean project-relative path falls in (named for an error line), or null. Pure. */
+export function perUnitArea(rel) {
+  const l = String(rel).toLowerCase();
+  const dir = PER_UNIT_DIRS.find((d) => l.startsWith(`${d}/`));
+  if (dir) return `${dir}/`;
+  if (/^stardust\/deploy\/ledger-[^/]*\.json$/.test(l)) return 'stardust/deploy/ledger-<unit>.json';
+  const g = /^(stardust\/replica\/gates\/all-\d+)\/[^/]+\//.exec(l);
+  return g ? `${g[1]}/<page>/ and runs/` : null;
 }
 
 /** A candidate as a clean work-tree-relative posix path, or null when it is empty or leaves the tree. */
@@ -606,7 +668,7 @@ async function pushOutcome(res, okLine) {
 
 // ---- argv --------------------------------------------------------------------------------------
 export function parseArgs(argv) {
-  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S, code: [], also: [] };
+  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S, code: [], also: [], alsoReal: new Map() };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -671,11 +733,20 @@ async function underLock(opts, lines, stop, pathKey) {
   }
   const gateDirs = isDir(GATES_DIR) ? readdirSync(GATES_DIR).filter((n) => GATE_DIR_RE.test(n)).sort(byCodePoint).map((n) => `${GATES_DIR}/${n}`) : [];
   const sharedJson = SHARED_JSON_DIRS.flatMap(jsonIn);
-  const { files, notes } = stageCandidates({ unit, lines, rows, sharedJson, templates, gateDirs, walk, pathKey });
+  const { files, notes } = stageCandidates({ unit, lines, rows, sharedJson, templates, gateDirs, walk, root: cwd, pathKey });
+  for (const n of notes) console.error(`unit-commit ${unit}: note: ${n}`);
+  // an --also path inside a namespace the default set manages per unit or per page must be this unit's own
+  // file (already in its set): another unit's report, ledger, map or page files are never swept in
+  const own = new Set(files.map((f) => safeRel(f, cwd)).filter(Boolean));
+  for (const p of opts.also) {
+    for (const rel of new Set([p, (opts.alsoReal && opts.alsoReal.get(p)) || p])) {
+      const area = perUnitArea(rel);
+      if (area && !own.has(rel)) return [2, `--also ${p}: not this unit's own file — ${area} is managed per unit (the unit's own files there are in its set already); nothing staged`];
+    }
+  }
   for (const d of opts.code) files.push(...filesUnder(d));
   const alsoFiles = new Set(opts.also.flatMap((p) => (isDir(p) ? walk(p) : [p])));
   files.push(...alsoFiles);
-  for (const n of notes) console.error(`unit-commit ${unit}: note: ${n}`);
   const present = [...new Set(files.map((f) => safeRel(f, cwd)).filter(Boolean))]
     .filter((f) => { try { return statSync(f).isFile(); } catch { return false; } });
   const docless = [...new Set(lines.map((l) => pathKey(l)))].filter((k) => !contentDocs(k).some((f) => present.includes(f)));
@@ -779,6 +850,14 @@ export async function main(argv) {
       if (real === '..' || real.startsWith('../') || isAbsolute(real)) { emit(unit, `--also ${p}: resolves outside the work tree — nothing staged`); return 2; }
       const why = alsoRefusal(real);
       if (why) { emit(unit, `--also ${p}: resolves to ${real || '.'} — ${why}; nothing staged`); return 2; }
+      // under stardust/ a directory holds other units' files (reports, ledgers, maps, gate rows): files only
+      let dir = false;
+      try { dir = statSync(p).isDirectory(); } catch { /* checked above */ }
+      if (dir && [p, real].some((r) => r.toLowerCase() === 'stardust' || r.toLowerCase().startsWith('stardust/'))) {
+        emit(unit, `--also ${p}: a directory under stardust/ would sweep other units' files — name the file; nothing staged`);
+        return 2;
+      }
+      opts.alsoReal.set(p, real);
     }
 
     const lockAbs = resolve(LOCK_REL);
