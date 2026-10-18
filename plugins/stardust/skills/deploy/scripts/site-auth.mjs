@@ -14,14 +14,14 @@
 //        rather than a guess. An absent flag is undefined; an empty one is a usage error. Failures are Errors with
 //        `code = 2` whose text names a flag or a variable, never a value.
 //   attachSiteAuth(context, origin, header)  a `context.route` that makes the requests of `origin` with `authorization`
-//        added and hands the answer to the browser, and lets every other request through untouched, so a webfont, an
-//        image host, a vendor — or the target of a redirect off the origin — never sees it. (A header set by
-//        `route.continue` stays on the request across a redirect to another origin; the browser follows a redirect
-//        answered here as a new request, which the route sees again.) A request of the origin that fails (a drop, a
-//        stall past the page's own timeout) is aborted, never continued without the header — that would measure the
-//        401 — and one stderr line names the origin. Attach it before the first navigation; `context.request`
-//        (APIRequestContext) bypasses routes and keeps a header across a redirect too — send the header there
-//        yourself, to the origin only.
+//        added and lets every other request through untouched, so a webfont, an image host, a vendor — or the target
+//        of a redirect off the origin — never sees it. A redirect is settled inside the route (see the comment above
+//        it): off the origin, the browser gets the redirect and follows it without the token; within the origin, it
+//        keeps it. A request of the origin that fails (a drop, a stall past the page's own timeout) is aborted, never
+//        continued without the header — that would measure the 401 — and one stderr line names the origin. Attach it
+//        before the first navigation; `context.request` (APIRequestContext) bypasses routes and keeps a header across
+//        a redirect too — send the header there yourself, to the origin only. Same semantics as diff/scripts/
+//        live-session.mjs `attachOriginAuth`, kept here because deploy does not import diff.
 //   strayEnvLine(name, { cwd }) / strayMessage(flag, name)  whether the `.env` has a line for `name` the grammar does
 //        not read (`export NAME=`, `NAME = v`), and the usage-error text for it, so it is not reported as "not set".
 import { existsSync, readFileSync } from 'node:fs';
@@ -80,23 +80,57 @@ export function instrumentSiteAuth({ tokenEnv, authHeader, authOrigin, urls = []
   return { origin, header };
 }
 
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
+const MAX_HOPS = 10;
+
+// The route of attachSiteAuth. A header set with route.continue() stays on the request when the server redirects to
+// ANOTHER origin, and a redirect answered with route.fulfill() is followed by the browser without going through any
+// route again, so the follow-up carries nothing. So a redirect is settled here, on the origin's side of it:
+//   - no redirect → the origin's answer is handed to the browser (route.fetch, redirects unfollowed + route.fulfill);
+//   - a redirect that leaves the origin (directly, or after hops inside it) → the browser gets that redirect, and
+//     follows it without the token;
+//   - a redirect chain that stays inside the origin → route.continue() with the header: the browser follows it
+//     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
+//     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
+//     answer as it came, a redirect included.
+// A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: continued, it
+// would go out without the token and the instrument would measure a 401 page as the site. One stderr line (per
+// attachSiteAuth) names the origin. The requests here set no timeout of their own (0): the caller's navigation
+// timeout ends a stall.
 export async function attachSiteAuth(context, origin, header) {
   if (!origin || !header) return;
   const only = new URL(origin).origin;
+  const onOrigin = (u) => originOf(u) === only;
+  const target = (response, from) => {
+    const location = REDIRECT_STATUS.has(response.status()) && response.headers().location;
+    try { return location ? new URL(location, from).href : null; } catch { return null; }
+  };
   let said = false;
   await context.route('**/*', async (route) => {
     const request = route.request();
-    if (originOf(request.url()) !== only) { await route.continue(); return; }
-    // A header set on a continued request survives a redirect off the origin, so the request is made here with
-    // redirects unfollowed and its answer handed to the browser, which follows a redirect as a new request the
-    // route sees again — a fetch without the header to the other origin. No timeout here: the navigation's own
-    // applies. A request that fails is aborted, never continued without the header: that would measure the 401.
-    let response;
-    try { response = await route.fetch({ headers: { ...request.headers(), authorization: header }, maxRedirects: 0, timeout: 0 }); } catch {
+    if (!onOrigin(request.url())) { await route.fallback(); return; }
+    const headers = { ...request.headers(), authorization: header };
+    let last;
+    let replay = false;
+    try {
+      last = await route.fetch({ headers, maxRedirects: 0, timeout: 0 });
+      let next = target(last, request.url());
+      if (next && ['GET', 'HEAD'].includes(request.method())) {
+        for (let hop = 0; next && onOrigin(next) && hop < MAX_HOPS; hop += 1) {
+          const answer = await context.request.fetch(next, { method: request.method(), headers, maxRedirects: 0, timeout: 0 });
+          const after = target(answer, next);
+          if (!after) { replay = true; break; }
+          last = answer;
+          next = after;
+        }
+      }
+    } catch {
       if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
       await route.abort('failed').catch(() => {});
       return;
     }
-    await route.fulfill({ response });
+    // (a page that closed meanwhile leaves nothing to answer)
+    if (replay) await route.continue({ headers }).catch(() => {});
+    else await route.fulfill({ response: last }).catch(() => {});
   });
 }
