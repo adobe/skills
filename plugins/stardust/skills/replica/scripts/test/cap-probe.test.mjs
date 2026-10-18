@@ -197,7 +197,13 @@ await check('--help lists the three site-auth flags, in the header and in the sh
   const h = run(['--help']); assert.equal(h.code, 0);
   for (const flag of ['--token-env <NAME>', '--auth-header <value>', '--auth-origin <url>']) assert.ok(h.out.includes(flag), flag);
   assert.match(h.out, /Site auth \(opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds\)/);
-  assert.match(h.out, /2 compare FAIL \(also a site-auth usage error/);
+  assert.match(h.out, /125 usage \(a site-auth usage error included\)/);
+});
+await check('a site-auth usage error is the usage error (exit 125, UsageError path) and needs no browser: it is raised before playwright is imported or any page loaded', () => {
+  for (const [flags, re] of [[['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/], [['--token-env'], /--token-env takes the name of an environment variable/], [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/]]) {
+    const r = run(['http://127.0.0.1:9/page', ...flags]);
+    assert.equal(r.code, 125, `${flags.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); assert.match(r.err, /^cap-probe: /); assert.equal(r.out, '');
+  }
 });
 await check('parseArgs: an absent site-auth flag stays undefined (never ""), a given one is read, a missing value is ""', () => {
   const none = parseArgs(['https://s/']);
@@ -292,10 +298,10 @@ if (pwProbe.status !== 0) {
       noLeak(fx, r);
     }, { hostA: 'protected.localhost' }));
 
-    await check('a token and two origins without --auth-origin: exit 2 before any request, in compare and in capture', () => fixture(async (fx) => {
+    await check('a token and two origins without --auth-origin: usage error (exit 125, not the FAIL code) before any request, in compare and in capture', () => fixture(async (fx) => {
       for (const args of [[`${fx.originA}/page`, '--against', `${fx.originB}/page`], [`${fx.originA}/page`, `${fx.originB}/page`]]) {
         const r = await withToken(fx, [...args, '--token-env', 'FIXTURE_SITE_TOKEN']);
-        assert.equal(r.code, 2, r.out + r.err);
+        assert.equal(r.code, 125, r.out + r.err);
         assert.match(r.err, /^cap-probe: .*one origin only and these URLs have 2.*--auth-origin/);
         assert.equal(r.out, '');
         noLeak(fx, r);
@@ -329,7 +335,7 @@ if (pwProbe.status !== 0) {
       assert.equal(fx.a.log.length, 0, 'origin A was never asked');
       noLeak(fx, r);
     }));
-    await check('auth usage errors exit 2 before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
+    await check('auth usage errors exit 125 (not the FAIL code) before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
       const cases = [
         [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
         [['--token-env'], /--token-env takes the name of an environment variable/],
@@ -338,7 +344,7 @@ if (pwProbe.status !== 0) {
       ];
       for (const [flags, re] of cases) {
         const r = await runAsync([`${fx.originA}/page`, ...flags], root, cleanEnv());
-        assert.equal(r.code, 2, `${flags.join(' ')}: ${r.out}${r.err}`);
+        assert.equal(r.code, 125, `${flags.join(' ')}: ${r.out}${r.err}`);
         assert.match(r.err, re); assert.match(r.err, /^cap-probe: /);
       }
       assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');

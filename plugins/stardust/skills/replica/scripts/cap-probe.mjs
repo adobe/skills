@@ -64,8 +64,8 @@
  * `cap-probe: PASS|FAIL at <probeWidth> — <n> of <m> rows…`. A ✗ names the sizing rule to fix
  * (deploy Step 3 scaffold); never iterate pixels on it.
  *
- * Exit codes: 0 pass / measured, 2 compare FAIL (also a site-auth usage error — stderr names it), 1 a page failed
- * to load or playwright missing, 3 bot challenge on the live side (escalate --headed), 125 usage. probePage and the pure
+ * Exit codes: 0 pass / measured, 2 compare FAIL, 1 a page failed to load or playwright missing,
+ * 3 bot challenge on the live side (escalate --headed), 125 usage (a site-auth usage error included). probePage and the pure
  * functions (classifyCaps, deriveProbeWidth, aggregateCaps, compareCaps, formatCapture,
  * formatCompare, parseArgs) are exported — the contract test runs them without a browser.
  * Requires playwright importable from this file's location and the diff skill's live-session.mjs
@@ -504,11 +504,12 @@ export function mergeDesign(text, aggregate, provenance) {
 
 async function main(argv) {
   const o = parseArgs(argv);
-  let chromium;
-  try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
+  // Usage first: a site-auth usage error must not be hidden by a missing playwright.
   const session = await loadLiveSession();
-  const auth = session.instrumentAuth({ tokenEnv: o.tokenEnv, authHeader: o.authHeader, authOrigin: o.authOrigin, urls: o.against ? [o.urls[0], o.against] : o.urls }); // a usage error carries code 2
-  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
+  let auth;
+  try { auth = session.instrumentAuth({ tokenEnv: o.tokenEnv, authHeader: o.authHeader, authOrigin: o.authOrigin, urls: o.against ? [o.urls[0], o.against] : o.urls }); } catch (e) { throw e.code === 2 ? new UsageError(e.message) : e; }
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }  const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let result; let code = 0;
   try {

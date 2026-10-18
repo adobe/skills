@@ -79,7 +79,7 @@
  *     --token-env <NAME> | --auth-header "<value>"  [--auth-origin <url>]
  *                         opt-in site auth for a protected origin: the token rides requests to ONE
  *                         origin (default: the URL's), never to another origin the page loads, and
- *                         is never picked up from SITE_TOKEN unasked. A usage error exits 2.
+ *                         is never picked up from SITE_TOKEN unasked. A usage error exits 1, as the others do.
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -134,7 +134,7 @@ Site auth, for a protected origin (opt-in: without a flag nothing is sent, whate
 ${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
 
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 2 site-auth usage error, 3 bot challenge (live side blocked — fail loud).`;
+Exit codes: 0 written, 1 error (a usage error, a site-auth one included), 3 bot challenge (live side blocked — fail loud).`;
 
 // A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
 // undefined only when absent, and a missing value is its usage error.
@@ -192,7 +192,7 @@ async function main() {
   try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [url] }); } catch (e) {
     if (e.code !== 2) throw e;
     console.error(`stitch-shot error: ${e.message}\n\n${HELP}`);
-    process.exit(2);
+    process.exit(1);
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {

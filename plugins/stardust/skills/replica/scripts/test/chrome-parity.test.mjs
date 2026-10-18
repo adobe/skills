@@ -2,7 +2,7 @@
 // skills/replica/scripts/test/chrome-parity.test.mjs — chrome-parity's site auth (--token-env / --auth-header /
 // --auth-origin) against a two-origin fixture: a protected origin A whose page loads its stylesheet and image from an
 // open origin B, which also serves the same page (the stand-in for the local build). The token reaches A and never B;
-// two URLs on one origin need no --auth-origin, two origins need it (exit 2 before any request otherwise); nothing is
+// two URLs on one origin need no --auth-origin, two origins need it (a usage error, exit 1, before any request otherwise); nothing is
 // sent without a flag — a SITE_TOKEN in the environment and in .env included — and that run is the run of today (exit 1
 // naming the 401); a run with no auth flag on open pages is unchanged; the token is never printed. The script imports
 // playwright at load, so every case needs it (a skip line without it). Run: node <this file>.
@@ -34,11 +34,11 @@ let playwrightOk = false;
 try { await import('playwright'); playwrightOk = true; } catch { console.log('skip  chrome-parity checks (playwright not importable here; run this test in an environment that has it)'); }
 
 if (playwrightOk) {
-  await check('--help lists the three site-auth flags and what exit 2 means', async () => {
+  await check('--help lists the three site-auth flags and keeps exit 2 for deltas, a usage error being exit 1', async () => {
     const r = await run(['--help']);
     assert.equal(r.status, 0, r.stderr);
     for (const flag of ['--token-env <NAME>', '--auth-header <value>', '--auth-origin <url>']) assert.ok(r.stdout.includes(flag), flag);
-    assert.match(r.stdout, /2 deltas printed \(also: a site-auth usage error/);
+    assert.match(r.stdout, /2 deltas printed, 1 error \(a usage error, a site-auth one included\)/);
   });
 
   await check('--token-env, two URLs on one origin: no --auth-origin needed; the token reaches A and not the origin of its stylesheet and image', () => fixture(async (fx) => {
@@ -60,9 +60,9 @@ if (playwrightOk) {
     leaksNothing(fx, r);
   }));
 
-  await check('a token and two origins without --auth-origin: exit 2 before any request, naming the flag', () => fixture(async (fx) => {
+  await check('a token and two origins without --auth-origin: a usage error (exit 1, not the deltas code) before any request, naming the flag', () => fixture(async (fx) => {
     const r = await run([`${fx.originA}/page`, `${fx.originB}/page`, '--token-env', 'FIXTURE_SITE_TOKEN'], { env: cleanEnv({ FIXTURE_SITE_TOKEN: fx.token }) });
-    assert.equal(r.status, 2, `${r.stdout}${r.stderr}`);
+    assert.equal(r.status, 1, `${r.stdout}${r.stderr}`);
     assert.match(r.stderr, /^chrome-parity error: .*one origin only and these URLs have 2.*--auth-origin/);
     assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
     leaksNothing(fx, r);
@@ -88,7 +88,7 @@ if (playwrightOk) {
     leaksNothing(fx, r);
   }));
 
-  await check('auth usage errors exit 2 before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
+  await check('auth usage errors exit 1 (not the deltas code) before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
     const urls = [`${fx.originA}/page`, `${fx.originA}/copy`];
     const cases = [
       [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
@@ -98,7 +98,7 @@ if (playwrightOk) {
     ];
     for (const [flags, re] of cases) {
       const r = await run([...urls, ...flags], { env: cleanEnv() });
-      assert.equal(r.status, 2, `${flags.join(' ')}: ${r.stdout}${r.stderr}`);
+      assert.equal(r.status, 1, `${flags.join(' ')}: ${r.stdout}${r.stderr}`);
       assert.match(r.stderr, re);
       assert.match(r.stderr, /^chrome-parity error: /);
     }

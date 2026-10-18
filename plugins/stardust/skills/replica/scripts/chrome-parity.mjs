@@ -35,7 +35,7 @@
  *                        opt-in site auth for a protected origin: the token rides requests to ONE origin
  *                        only, never to any other origin a page loads and never unasked (a SITE_TOKEN in the
  *                        environment or .env is ignored); with two URLs of different origins --auth-origin
- *                        names it, else exit 2 (the same code as deltas — the message says which)
+ *                        names it, else a usage error (exit 1; exit 2 stays "deltas printed")
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
  *                        exists for the same URL, width and region selectors; probe
@@ -95,7 +95,7 @@ ${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
   The two URLs usually have two origins (the live page and a local build): with a token, name the one that
   gets it with --auth-origin; the other side's origin never receives it.
 
-Exit codes: 0 parity within tolerance, 2 deltas printed (also: a site-auth usage error, stderr names it), 1 error, 3 bot challenge (live side).`;
+Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (a usage error, a site-auth one included), 3 bot challenge (live side).`;
 
 // A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
 // undefined only when absent, and a missing value is its usage error.
@@ -293,7 +293,7 @@ async function main() {
   try { opts.auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [live, build] }); } catch (e) {
     if (e.code !== 2) throw e;
     console.error(`chrome-parity error: ${e.message}\n\n${HELP}`);
-    process.exit(2);
+    process.exit(1);
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;

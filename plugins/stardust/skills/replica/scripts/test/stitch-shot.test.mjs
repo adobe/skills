@@ -7,7 +7,7 @@
 // leaves the chrome in the capture. Site auth (--token-env / --auth-header / --auth-origin) against a two-origin
 // fixture whose protected origin loads its stylesheet and image from a second one: the token reaches the protected
 // origin and never the other, nothing is sent without a flag (a SITE_TOKEN in the environment and .env included) and
-// that run is the run of today (exit 1 naming the 401), an auth usage error exits 2 before any request, and a run
+// that run is the run of today (exit 1 naming the 401), an auth usage error exits 1 like the other usage errors, before any request, and a run
 // with no auth flag on an open page is unchanged. Needs playwright and pngjs (it prints a skip line without them).
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -142,7 +142,7 @@ if (playwrightOk) {
     leaksNothing(fx, r);
   }));
 
-  await check('auth usage errors exit 2 before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
+  await check('auth usage errors exit 1, as the other usage errors do, before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
     const url = `${fx.originA}/page`;
     const out = join(scratch, 'usage.png');
     const cases = [
@@ -153,7 +153,7 @@ if (playwrightOk) {
     ];
     for (const [flags, re] of cases) {
       const r = await node(STITCH, [url, out, ...flags], { env: cleanEnv() });
-      assert.equal(r.status, 2, `${flags.join(' ')}: ${r.stdout}${r.stderr}`);
+      assert.equal(r.status, 1, `${flags.join(' ')}: ${r.stdout}${r.stderr}`);
       assert.match(r.stderr, re);
       assert.match(r.stderr, /^stitch-shot error: /);
     }
