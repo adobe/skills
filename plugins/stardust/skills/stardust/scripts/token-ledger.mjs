@@ -11,6 +11,21 @@
  * harness-agnostic: no field is added there) and the two unit ledgers below; the
  * ledger is the artefact.
  *
+ * Run it LAST in a hands-off run: at the handoff end, after the final session's last cost line — and
+ * again whenever another session ran after it. Re-running is safe (idempotent) and `sessionsCovered`
+ * shows what it covered, so a ledger written before later sessions is visibly stale.
+ *
+ * Coverage: usage.json carries top-level `writtenAt` (ISO) and `sessionsCovered: { count, first, last }`
+ * — `count` = main session transcripts that contributed at least one request (subagent transcripts are
+ * not sessions), `first` / `last` = the oldest / newest counted request timestamp (main or subagent).
+ * usage.md shows it under the heading: `Written <writtenAt> · sessions covered <count> (last request
+ * <last>)`. Unreachable transcripts: count 0, first / last `null` (`last request unknown`).
+ *
+ * Idempotent: when the rendered usage.md and usage.json equal the files on disk with their
+ * writtenAt / generatedAt masked, nothing is written (writtenAt stays), the printed `usage:` line ends
+ * `(unchanged)` and `--json` prints the record on disk; any other change rewrites both with a new
+ * writtenAt. `--dry-run` never compares.
+ *
  * Unreachable transcripts (no directory, a missing or unlistable one, no `*.jsonl` in it) still write the table: the
  * phase windows and unit rows with from / to, wall min and pages (they come from the ledgers), every
  * token / request cell `unknown` (JSON `null`, plus top-level `"usage": "unknown"` and `"unknownReason"`);
@@ -43,6 +58,10 @@
  * not per phase), an `unwindowed` row so the table reconciles, and the retention hint when the
  * transcripts start after the project's first status line.
  *
+ * Harness-reported cost (`harnessCost`): a session's cost-state lines are cumulative, so per transcript
+ * file (a session) only its LAST cost line counts; `totalCostUSD` sums those across sessions, `sessions`
+ * = the transcript files with a cost line, `models` = each model's `costUSD` summed across sessions.
+ *
  * Ported from the `stardust/next` branch (commits fb704109, 40a07747, ea00c4f4) as a file copy, not a
  * merge; the recorded-unit rows are this port's addition.
  *
@@ -59,7 +78,8 @@
  * Exit codes: 0 always (advisory) — `usage: unknown (…)` is a printed row, not a failure · 2 only for a
  * value flag followed by another flag (`--transcripts --dry-run`), decided before anything is read, and
  * for a root inside the plugin tree (the plugin is not a project), refused before anything is written.
- * Writes only stardust/usage.md and stardust/usage.json (tracked, provenance first). No network.
+ * Writes only stardust/usage.md and stardust/usage.json (tracked, provenance first), and neither when
+ * unchanged. No network.
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve, basename } from 'node:path';
@@ -139,20 +159,21 @@ function userText(m) {
   if (!Array.isArray(c) || c.some((b) => b?.type === 'tool_result')) return null;
   return c.filter((b) => b?.type === 'text').map((b) => b.text ?? '').join('\n');
 }
-/** Read one transcript group: deduped requests (max per field), prompts, acks, cost-state lines. */
+/** Read one transcript group: deduped requests (max per field; `file` = the transcript it was first seen in), prompts,
+ *  acks, cost-state lines (with their `file`). */
 export function readTranscripts(files) {
   const req = new Map(); const prompts = []; const costs = []; let oldest = null;
   for (const f of files) {
     for (const m of readJsonl(f)) {
       const ts = m.timestamp ?? m.ts ?? null;
       if (ts && (!oldest || ts < oldest)) oldest = ts;
-      if (m.type === 'cost-state' || (m.totalCostUSD !== undefined && m.modelUsage)) { costs.push({ totalCostUSD: num(m.totalCostUSD), modelUsage: m.modelUsage ?? {}, startTime: m.startTime ?? null }); continue; }
+      if (m.type === 'cost-state' || (m.totalCostUSD !== undefined && m.modelUsage)) { costs.push({ file: f, totalCostUSD: num(m.totalCostUSD), modelUsage: m.modelUsage ?? {}, startTime: m.startTime ?? null }); continue; }
       const u = usageOf(m);
       if (u && (m.type === 'assistant' || m.message?.role === 'assistant')) {
         const key = m.requestId ?? (m.message?.id ? `mid:${m.message.id}` : `line:${f}:${req.size}`);
         const prev = req.get(key);
         const merged = prev ? Object.fromEntries(Object.keys(u).map((k) => [k, Math.max(prev[k], u[k])])) : u;
-        req.set(key, { ...merged, ts: ts ?? prev?.ts ?? null, model: m.message?.model ?? prev?.model ?? null });
+        req.set(key, { ...merged, ts: ts ?? prev?.ts ?? null, model: m.message?.model ?? prev?.model ?? null, file: prev?.file ?? f });
         continue;
       }
       if (m.type === 'user' || m.message?.role === 'user') {
@@ -195,6 +216,7 @@ if (!unknownWhy && !main.length && !sub.length) unknownWhy = `no *.jsonl under $
 const unknown = unknownWhy !== null;
 const M = readTranscripts(main); const S = readTranscripts(sub);
 const allTs = [...M.requests, ...S.requests].map((r) => r.ts).filter(Boolean).sort();
+const sessionsCovered = { count: new Set(M.requests.map((r) => r.file)).size, first: allTs[0] ?? null, last: allTs.at(-1) ?? null };
 for (const w of windows) if (!w.to) w.to = unknown ? null : (allTs.at(-1) ?? w.from); // unknown: the last request is unknown too
 const endMs = (w) => (w.to ? Date.parse(w.to) : Infinity);
 const inWin = (ts, w) => ts && ts >= w.from && ts <= w.to;
@@ -272,7 +294,12 @@ const units = unitList.map((x) => x.row);
 const sum = table.reduce((a, w) => { for (const x of Object.keys(zero())) a[x] += w[x]; return a; }, zero());
 sum.estCost = cost(sum);
 const total = blank(sum);
-const harnessCost = [...M.costs, ...S.costs].length ? { totalCostUSD: [...M.costs, ...S.costs].reduce((a, c) => a + c.totalCostUSD, 0), sessions: [...M.costs, ...S.costs].length, models: Object.fromEntries([...M.costs, ...S.costs].flatMap((c) => Object.entries(c.modelUsage)).map(([k, v]) => [k, num(v?.costUSD)])) } : null;
+// Cost-state lines are cumulative within a session: each transcript file's LAST line is its session's figure.
+const lastCostOf = new Map(); for (const c of [...M.costs, ...S.costs]) lastCostOf.set(c.file, c);
+const lastCosts = [...lastCostOf.values()];
+const usd = (n) => Math.round(n * 1e6) / 1e6; // float sums of cents stay 4.46, not 4.460000000000001
+const modelCost = {}; for (const c of lastCosts) for (const [m, v] of Object.entries(c.modelUsage)) modelCost[m] = (modelCost[m] ?? 0) + num(v?.costUSD);
+const harnessCost = lastCosts.length ? { totalCostUSD: usd(lastCosts.reduce((a, c) => a + c.totalCostUSD, 0)), sessions: lastCosts.length, models: Object.fromEntries(Object.keys(modelCost).sort().map((m) => [m, usd(modelCost[m])])) } : null;
 const firstStatus = statusLines[0]?.ts ?? null;
 const oldest = [M.oldest, S.oldest].filter(Boolean).sort()[0] ?? null;
 const retention = firstStatus && oldest && Date.parse(oldest) - Date.parse(firstStatus) > 3_600_000 ? `transcripts start ${oldest}, over an hour after the project's first status line ${firstStatus} — earlier windows are unrecoverable; keep the harness's transcript retention above the run's span (an owner setting)` : null;
@@ -283,6 +310,7 @@ const fmt = (n) => (n === null || n === undefined ? '—' : typeof n === 'number
 const k = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(2)} M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)} k` : String(n));
 const md = [];
 md.push('<!-- stardust:provenance', '  writtenBy: stardust:stardust token-ledger.mjs', `  writtenAt: ${now}`, `  readArtifacts:`, `    - stardust/status.jsonl`, ...unitFiles.map((f) => `    - ${f}`), ...(tRead ? [`    - ${tDir}`] : []), '  synthesizedInputs: []', '-->', '', `# Usage — ${basename(root)}`, '');
+md.push(`Written ${now} · sessions covered ${sessionsCovered.count} (last request ${sessionsCovered.last ?? (unknown ? 'unknown' : '—')})`, '');
 md.push(unknown
   ? `Usage unknown (${unknownWhy}): the harness transcripts were not read, so every token and request cell reads \`unknown\`; windows, wall minutes and pages come from \`status.jsonl\` and the unit ledgers. Tokens are counts, not verdicts.`
   : `Advisory ledger from the harness transcripts (${main.length} main, ${sub.length} subagent); requests de-duplicated by requestId; windows from \`status.jsonl\`. Tokens are counts, not verdicts.`, '');
@@ -298,19 +326,30 @@ table.forEach((w, i) => {
 });
 if (!single) md.push(line({ ...total, label: '**total**', from: table[0]?.from ?? null, to: table.at(-2)?.to ?? null, wallMin: null, pages: null, tokensPerPage: null }));
 md.push('');
-if (harnessCost) md.push(`Harness-reported session cost (not per phase): USD ${harnessCost.totalCostUSD.toFixed(2)} over ${harnessCost.sessions} session line(s)${Object.keys(harnessCost.models).length ? ` — ${Object.entries(harnessCost.models).map(([m, c]) => `${m} ${c.toFixed(2)}`).join(', ')}` : ''}.`, '');
+if (harnessCost) md.push(`Harness-reported session cost (not per phase): USD ${harnessCost.totalCostUSD.toFixed(2)} over ${harnessCost.sessions} session(s), each session's last cost line${Object.keys(harnessCost.models).length ? ` — ${Object.entries(harnessCost.models).map(([m, c]) => `${m} ${c.toFixed(2)}`).join(', ')}` : ''}.`, '');
 if (retention) md.push(`Retention: ${retention}`, '');
-const json = { _provenance: { writtenBy: 'stardust:stardust token-ledger.mjs', writtenAt: now }, generatedAt: now, ...(unknown ? { usage: 'unknown', unknownReason: unknownWhy } : {}), source: { harness: tSource, dir: tDir, main: main.length, sub: sub.length }, windows: table, units, total, harnessCost, retention, prices };
+const json = { _provenance: { writtenBy: 'stardust:stardust token-ledger.mjs', writtenAt: now }, writtenAt: now, generatedAt: now, sessionsCovered, ...(unknown ? { usage: 'unknown', unknownReason: unknownWhy } : {}), source: { harness: tSource, dir: tDir, main: main.length, sub: sub.length }, windows: table, units, total, harnessCost, retention, prices };
+const mdText = `${md.join('\n')}\n`; let jsonText = `${JSON.stringify(json, null, 2)}\n`;
 
+// Idempotent: the timestamps are the only lines a re-run over unchanged inputs changes; masked, the rest must match.
+const mask = (s) => s.replace(/^(\s*"?(?:writtenAt|generatedAt)"?: "?)[^"\n]*/gm, '$1').replace(/^Written \S+ ·/m, 'Written ·');
+let unchanged = false;
 if (!flag('dry-run')) {
-  mkdirSync(sd, { recursive: true });
-  writeFileSync(join(sd, 'usage.md'), `${md.join('\n')}\n`);
-  writeFileSync(join(sd, 'usage.json'), `${JSON.stringify(json, null, 2)}\n`);
+  const [mdP, jsonP] = [join(sd, 'usage.md'), join(sd, 'usage.json')];
+  const [mdOld, jsonOld] = [mdP, jsonP].map((p) => { try { return readFileSync(p, 'utf8'); } catch { return null; } });
+  unchanged = mdOld !== null && jsonOld !== null && mask(mdOld) === mask(mdText) && mask(jsonOld) === mask(jsonText);
+  if (unchanged) jsonText = jsonOld;
+  else {
+    mkdirSync(sd, { recursive: true });
+    writeFileSync(mdP, mdText);
+    writeFileSync(jsonP, jsonText);
+  }
 }
-if (unknown) note(`usage: unknown (${unknownWhy})${flag('dry-run') ? '' : ' → stardust/usage.md (windows without tokens)'}`);
-if (flag('json')) console.log(JSON.stringify(json, null, 2));
+const kept = unchanged ? ' (unchanged)' : '';
+if (unknown) note(`usage: unknown (${unknownWhy})${flag('dry-run') ? '' : ` → stardust/usage.md (windows without tokens)${kept}`}`);
+if (flag('json')) process.stdout.write(jsonText);
 else if (!unknown) {
-  console.log(`usage: ${table.length - 1} window(s) + unwindowed${units.length ? ` + ${units.length} unit row(s)` : ''} · ${total.turns} requests (${total.subRequests} subagent) · fresh ${k(total.fresh)} · cache write ${k(total.cacheWrite)} · cache read ${k(total.cacheRead)} · output ${k(total.output)}${prices ? ` · est. USD ${total.estCost.toFixed(2)}` : ''}${harnessCost ? ` · harness-reported USD ${harnessCost.totalCostUSD.toFixed(2)} (session, not per phase)` : ''} → ${flag('dry-run') ? '(dry run)' : join(sd, 'usage.md')}`);
+  console.log(`usage: ${table.length - 1} window(s) + unwindowed${units.length ? ` + ${units.length} unit row(s)` : ''} · ${total.turns} requests (${total.subRequests} subagent) · fresh ${k(total.fresh)} · cache write ${k(total.cacheWrite)} · cache read ${k(total.cacheRead)} · output ${k(total.output)}${prices ? ` · est. USD ${total.estCost.toFixed(2)}` : ''}${harnessCost ? ` · harness-reported USD ${harnessCost.totalCostUSD.toFixed(2)} (session, not per phase)` : ''} → ${flag('dry-run') ? '(dry run)' : `${join(sd, 'usage.md')}${kept}`}`);
   if (retention) console.log(`usage: ${retention}`);
 }
 process.exit(0);

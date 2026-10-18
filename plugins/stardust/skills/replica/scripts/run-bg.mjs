@@ -3,32 +3,36 @@
  * skills/replica/scripts/run-bg.mjs
  *
  * Run an instrument in the background and wait for it in bounded slices, so
- * that no single agent step blocks for longer than a few minutes and no
- * step returns an instrument's whole output into the agent's context.
+ * that no single agent step blocks without a bound and no step returns an
+ * instrument's whole output into the agent's context.
  *
  * Why: in a hands-off replica session (2026-09-18, 26-page site, 1440+360)
  * one gate batch was launched as three parallel shell steps — each
  * `sleep 5|10|15;` then two gate rounds and a content-diff — and the next
- * model call came 15 minutes later. The agent's prompt cache lives five
+ * model call came 15 minutes later. That agent's prompt cache lived five
  * minutes from the start of the last call, so that call re-wrote the whole
  * 513k-token context at the cache-write price: $6.30 for one silent gap, more
- * than the gate rounds it waited for. Every other gap in that session stayed
- * under 184 s and the session ran a 96% cache-hit ratio. The rule that falls out:
- * an instrument may run as long as it needs, but the STEP that waits for it
- * must return inside the cache lifetime, and must return a verdict summary —
- * the full output belongs in a log file the agent reads by `log --grep`.
+ * than the gate rounds it waited for. The rule that falls out: an instrument
+ * may run as long as it needs, but the STEP that waits for it must be bounded
+ * and must return a verdict summary — the full output belongs in a log file
+ * the agent reads by `log --grep`. The bound is 25 minutes (wait, below): the
+ * runner that supervises a hands-off run keeps the lead's prompt cache for an
+ * hour and is asked at least every 25 minutes; where the cache lives five
+ * minutes, pass a shorter --max.
  *
  * Usage:
  *   node run-bg.mjs start --name <job> [--timeout <s>] [--slots <n>] [--lock|--no-lock] -- <cmd> [args…]
- *   node run-bg.mjs wait   [--max <s>] [--all] [--tail <n>] [--grep <re>] [<job>…]
+ *   node run-bg.mjs wait   [--max <s> | --until <ISO>] [--all] [--tail <n>] [--grep <re>] [<job>…]
  *   node run-bg.mjs status [--all] [--tail <n>] [--grep <re>] [<job>…]
  *   node run-bg.mjs log    <job> [--tail <n>] [--grep <re>]
  *   node run-bg.mjs clean  [--all]
  *   (every form: [--dir <d>], default stardust/.work/replica/bg, env RUN_BG_DIR)
- *   A value flag (--name --dir --timeout --slots --max --tail --grep) followed by
+ *   A value flag (--name --dir --timeout --slots --max --until --tail --grep) followed by
  *   nothing or by another --flag is a usage error (exit 125) naming the flag —
  *   never a silently swallowed value. --timeout is a start flag: on wait or
  *   status it is a usage error (exit 125) naming --max, never silently ignored.
+ *   --until is a wait flag: elsewhere, with --max, or not an ISO-8601 instant
+ *   with an offset or Z, a usage error (exit 125).
  *
  * start  returns at once. The job runs detached under run-capped.mjs
  *        (default --timeout 900 s — a background job without a deadline is the
@@ -89,15 +93,18 @@
  *        caller's own (Owner, below): those unfinished when the wait began, if
  *        none its latest batch (jobs ended within 10 min of its newest); --all:
  *        every owner's (every job unfinished when the wait began; if none, every
- *        job on disk) — or --max seconds pass
- *        (default 100; clamped to 110 — the agent's shell tool's default timeout
- *        is about two minutes and applies only to a call that declares none, so
- *        110 s returns inside that default even when the agent forgets to declare
- *        one; a declared longer timeout is honoured — a recorded run completed
- *        waits of 179–181 s under a declared 200 s. 110 s also leaves node
- *        startup and the report their room, and still returns well inside the
- *        context cache's five minutes from the start of the previous model
- *        request), then prints a first line naming the selection and its count
+ *        job on disk) — or the bound passes: --max seconds (default 1500) or
+ *        --until an ISO-8601 instant with an offset or Z (a past one = one
+ *        pass), both clamped to MAX_CEILING_SEC (1500 s = 25 minutes) from now.
+ *        Why both are 25 minutes: under the former 110 s ceiling a lead agent
+ *        in a recorded hands-off run polled `wait` twenty times over 35 minutes,
+ *        each poll a new tool call — so the default is long; in another a single
+ *        tool call waited 57 minutes without a word to its runner — so a ceiling
+ *        stays, at the 25 minutes within which a supervised session asks its
+ *        runner (`wait --max 1500`). The agent's shell tool kills a call at its
+ *        timeout (about two minutes where the call declares none): declare one
+ *        longer than the wait (--max 1500 → e.g. 1560 s). Then it prints a first
+ *        line naming the selection and its count
  *        (`run-bg: wait — yours (owner 4242), unfinished: 2 job(s); 3 other
  *        job(s) not shown — --all`: the jobs --all would add), then
  *        one line per job and, for ended jobs, its verdict lines: log lines
@@ -106,7 +113,17 @@
  *        Exit 0 = every selected job ended; 75 = some still queued/running —
  *        run `wait` again as your NEXT step. Never loop on it inside one
  *        command; that recreates the blocked step this tool removes.
- * status one pass of the same report (the same selection), without waiting.
+ *        Pause: the runner writes $STARDUST_PAUSE_FILE (JSON {at, reason}; a
+ *        relative path from the cwd, the project root) when it wants the
+ *        session to stop — it alone writes, edits or deletes it. Unset or empty
+ *        = no check. While the file exists wait ends at once — checked before
+ *        the first poll and on every poll — with exit 76 and the one-pass
+ *        report, preceded by `run-bg: paused — <path> present (reason: <r>, at
+ *        <at>) — jobs keep running; finish the iteration, record it and return`
+ *        (a file that is not such JSON still counts: reason `unreadable`). No
+ *        job is signalled.
+ * status one pass of the same report (the same selection), without waiting;
+ *        the pause line first while the pause file exists (exit unchanged).
  * log    a bounded view of one job's log: the last --tail lines (default
  *        40) or the --grep matches (at most 200).
  * clean  deletes ended and lost jobs' files; --all also stops queued/running
@@ -152,7 +169,7 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -170,14 +187,20 @@ export const DEFAULT_TIMEOUT_SEC = 900;
 // large one raise STARDUST_BROWSER_BUDGET and STARDUST_BROWSER_SLOTS with it (up to the budget) — the machine's slots
 // bound browser jobs too, so RUN_BG_SLOTS above them adds none.
 export const DEFAULT_SLOTS = 3;
-export const DEFAULT_MAX_SEC = 100;
-// The agent's shell tool's default timeout is about two minutes and applies only to a call that declares none: 110 s
-// returns inside that default even when the agent forgets to declare one, and a declared longer timeout is honoured
-// (a recorded run completed waits of 179–181 s under a declared 200 s). 110 s also leaves node startup and the report
-// their room, and still returns inside the context cache's five minutes from the start of the previous model request.
-export const MAX_CEILING_SEC = 110;
+// One wait's default and ceiling, both 25 minutes. Default: under the former 110 s ceiling a lead agent in a recorded
+// hands-off run polled `wait` twenty times over 35 minutes, each poll a new tool call. Ceiling: in another a single tool
+// call waited 57 minutes; a supervised session asks its runner at least every 25 minutes (`wait --max 1500`), the pause
+// file ends a wait at once, and the runner keeps the lead's prompt cache for an hour. The shell tool call must declare a
+// timeout longer than the wait — its default (about two minutes) would kill it first.
+export const DEFAULT_MAX_SEC = 1500;
+export const MAX_CEILING_SEC = 1500;
+const CLAMP_WHY = 'a supervised session asks its runner at least every 25 minutes, the pause file (STARDUST_PAUSE_FILE) ends a wait early, and the tool call must declare a timeout longer than the wait';
+// --until: an instant, never a local wall-clock time — the offset (or Z) is required.
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})$/i;
+const UNTIL_USAGE = 'run-bg: --until needs an ISO-8601 instant with an offset or Z, e.g. 2026-10-18T12:25:00Z';
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
+export const PAUSED_EXIT = 76;
 // With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
 // within this window of the newest ending. Earlier sessions' jobs stay on disk (their logs are
 // evidence) but out of the report — one session's wait had dumped every prior session's summary.
@@ -205,9 +228,9 @@ const LOCK_CANDIDATES = [resolve(dirname(SELF), '../stardust/browser-lock.mjs'),
 // them. A job whose argv names one takes a machine-wide slot unless --no-lock.
 export const BROWSER_SCRIPTS = new Set([
   'ai-readability.mjs', 'block-roundtrip.mjs', 'ew-editability-probe.mjs', 'qa-gate.mjs', 'render-harness.mjs', 'section-schema.mjs', 'style-fingerprint.mjs', // deploy
-  'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'page-probe.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
+  'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'dom-probe.mjs', 'page-probe.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
   'dynamics-check.mjs', 'dynamics-detect.mjs', 'snapshot-api.mjs', 'snapshot-forms.mjs', // dynamics
-  'crawl.mjs', 'style-census.mjs', // extract
+  'crawl.mjs', 'media-harvest.mjs', 'style-census.mjs', // extract
   'qa.mjs', // qa
   'anchor.mjs', 'cap-probe.mjs', 'chrome-parity.mjs', 'gate-all.mjs', 'gate.sh', 'measure.mjs', 'motion-observe.mjs', 'presence.mjs', 'sibling-variance.mjs', 'stitch-shot.mjs', // replica
   'capture-content.mjs', 'dom-equality.mjs', 'donor-probe.mjs', 'slot-coverage.mjs', // reskin
@@ -253,7 +276,7 @@ export async function gateAllTimeout(cmd, args = [], { cwd = process.cwd(), give
 
 const HELP = `Usage:
   node run-bg.mjs start --name <job> [--timeout <s>=${DEFAULT_TIMEOUT_SEC}] [--slots <n>=${DEFAULT_SLOTS}] [--lock|--no-lock] -- <cmd> [args…]
-  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC}] [--all] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
+  node run-bg.mjs wait   [--max <s>=${DEFAULT_MAX_SEC} | --until <ISO>] [--all] [--tail <n>=${DEFAULT_TAIL}] [--grep <re>] [<job>…]
   node run-bg.mjs status [--all] [--tail <n>] [--grep <re>] [<job>…]
   node run-bg.mjs log    <job> [--tail <n>=40] [--grep <re>]
   node run-bg.mjs clean  [--all]
@@ -264,7 +287,16 @@ const HELP = `Usage:
   behind the tool call's shell (agents sharing one process: wait <job>…, or RUN_BG_OWNER=<unit> before each run-bg
   call); a job state without one is reached by name or --all only. Why: in a recorded hands-off run a bare wait in one agent blocked on every other agent's jobs.
   --timeout is a start flag: on wait or status a usage error (exit 125), no longer silently ignored — wait takes --max
-  (at most ${MAX_CEILING_SEC} s).
+  or --until.
+  Wait bound: --max seconds (default ${DEFAULT_MAX_SEC} = 25 min) or --until an ISO-8601 instant with an offset or Z (past = one
+  pass; with --max, or on start/status, a usage error), both clamped to ${MAX_CEILING_SEC} s from now. Give the shell tool call a
+  timeout longer than the wait (--max ${DEFAULT_MAX_SEC} → e.g. ${DEFAULT_MAX_SEC + 60} s): its default, about two minutes, would kill it first.
+  The default suits a session whose prompt cache lives an hour (a supervised lead); with a five-minute cache pass --max 240.
+  Why: under a 110 s ceiling a recorded hands-off run polled twenty times in 35 minutes; in another one call waited 57
+  minutes — a supervised session asks its runner at least every 25 minutes.
+  Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)
+  names a file that exists, wait ends at once — checked on every poll — with exit ${PAUSED_EXIT} and the one-pass report after a
+  \`run-bg: paused — <path> present …\` line; status shows that line first. Jobs keep running; nothing is signalled.
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
   --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
   logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
@@ -278,8 +310,9 @@ const HELP = `Usage:
   STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent browser jobs — RUN_BG_SLOTS above the slots adds
   none. A budget below the slots cannot be held (one browser per slot is the floor): one run-bg: line says so — set
   STARDUST_BROWSER_SLOTS to the budget to hold it.
-  Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step · 2 (start) the name
-  is still queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
+  Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
+  · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return · 2 (start) the name is still
+  queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -492,6 +525,20 @@ async function runWrapper(dir, name) {
 }
 
 // ---- report ------------------------------------------------------------------------------------
+// The pause file: the runner that supervises a hands-off run writes it (JSON {at, reason}) when it wants the session to
+// stop, and alone writes, edits or deletes it. → { path, reason, at } while `file` (relative: from `cwd`, the project
+// root) exists, else null; unset or empty = no check. A file that is not JSON {at, reason} still counts: reason unreadable.
+export function pauseState(file = process.env.STARDUST_PAUSE_FILE, { cwd = process.cwd() } = {}) {
+  if (file == null || String(file).trim() === '') return null;
+  const p = resolve(cwd, String(file));
+  if (!existsSync(p)) return null;
+  let j = null; try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { /* present, unreadable */ }
+  const ok = j !== null && typeof j === 'object' && !Array.isArray(j);
+  const field = (v, none) => { const s = v == null ? '' : String(v).replace(/\s+/g, ' ').trim().slice(0, 200); return s || none; };
+  return { path: String(file), reason: ok ? field(j.reason, 'unspecified') : 'unreadable', at: ok ? field(j.at, 'unknown') : 'unknown' };
+}
+export const pauseLine = (p) => `run-bg: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — jobs keep running; finish the iteration, record it and return`;
+
 export function verdictLines(p, { tail = DEFAULT_TAIL, grep = null } = {}) {
   let text; try { text = readFileSync(p, 'utf8'); } catch { return ['(no log)']; }
   const own = /^run-bg: /;
@@ -516,9 +563,11 @@ export function describe(st) {
 }
 
 // The first line names the selection and its count — `sub`: wait | status, `scope`: pickNames' — plus `hidden`, the jobs
-// --all would add (it folds in the former trailing "earlier job(s) not shown" line).
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0 } = {}) {
+// --all would add (it folds in the former trailing "earlier job(s) not shown" line). `pause` (pauseState): its line comes
+// first, and a pending job gets no "wait again".
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
   const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}`]; let pending = 0;
+  if (pause) lines.unshift(pauseLine(pause));
   for (const name of names) {
     const st = readState(dir, name);
     if (!st) { lines.push(`${name}  no such job in ${dir}`); continue; }
@@ -527,9 +576,10 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
     if (!isPending(st)) for (const l of verdictLines(logPath(dir, name), { tail, grep })) lines.push(`  ${l}`);
   }
   if (!names.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`);
+  else if (pending && pause) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — paused: no further wait; they keep running, \`status\` reads them later; logs: ${dir}/<job>.log`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
-  return { text: lines.join('\n'), pending };
+  return { text: lines.join('\n'), pending, paused: Boolean(pause) };
 }
 
 // Among `jobs` (queue order): the unfinished ones, else every job (`onDisk`), else the latest batch — the jobs that ended
@@ -558,21 +608,32 @@ function pickNames(dir, requested, { all = false, owner = null } = {}) {
   return { names: [...shown], scope: `yours (owner ${owner})${mine.length ? `, ${own.what}` : ''}`, hidden: everyone.picked.filter((j) => !shown.has(j.name)).length };
 }
 
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, tail, grep, all = false, owner = callerOwner() } = {}) {
-  if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
-  let ceilingSec = maxSec;
-  if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — the agent's shell tool's default timeout is about two minutes and applies to a call that declares none; ${MAX_CEILING_SEC} s returns inside it and leaves startup and the report their room (a declared longer timeout is honoured, but a step must still return before the context cache expires)`); }
+// The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. The
+// pause file (pauseState) is checked before the first poll and on every poll: present → return at once, `paused`.
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
+  let ceilingSec;
+  if (untilMs != null) {
+    if (!Number.isFinite(untilMs)) throw new UsageError(`${UNTIL_USAGE} (got ${untilMs})\n${HELP}`);
+    ceilingSec = Math.max(0, (untilMs - Date.now()) / 1000);
+    if (ceilingSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --until ${new Date(untilMs).toISOString()} clamped to ${MAX_CEILING_SEC}s from now — ${CLAMP_WHY}.`); }
+  } else {
+    if (!Number.isFinite(maxSec) || maxSec < 0) throw new UsageError(`run-bg: --max must be a number of seconds\n${HELP}`);
+    ceilingSec = maxSec;
+    if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — ${CLAMP_WHY}.`); }
+  }
   const { names, scope, hidden } = pickNames(dir, requested, { all, owner });
-  const t0 = Date.now();
+  const t0 = Date.now(); let pause = null;
   for (;;) {
+    pause = pauseState(pauseFile);
+    if (pause) break;
     const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
     if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec });
+  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause });
 }
 
-export function status(dir, requested, { tail, grep, all = false, owner = callerOwner() } = {}) { const { names, scope, hidden } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden }); }
+export function status(dir, requested, { tail, grep, all = false, owner = callerOwner(), pauseFile = process.env.STARDUST_PAUSE_FILE } = {}) { const { names, scope, hidden } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden, pause: pauseState(pauseFile) }); }
 
 export function showLog(dir, name, { tail = 40, grep = null } = {}) {
   if (!name) throw new UsageError(`run-bg: log needs a <job>\n${HELP}`);
@@ -624,7 +685,7 @@ export async function clean(dir, { all = false } = {}) {
 // ---- cli ---------------------------------------------------------------------------------------
 function parse(argv) {
   const [sub, ...rest] = argv;
-  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, timeoutGiven: false, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, lock: 'auto', maxSec: DEFAULT_MAX_SEC, tail: undefined, grep: null, all: false, cmd: [] };
+  const o = { dir: process.env.RUN_BG_DIR || DEFAULT_DIR, names: [], name: null, timeoutSec: DEFAULT_TIMEOUT_SEC, timeoutGiven: false, slots: Number(process.env.RUN_BG_SLOTS) || Number(process.env.STARDUST_BROWSER_SLOTS) || DEFAULT_SLOTS, lock: 'auto', maxSec: DEFAULT_MAX_SEC, maxGiven: false, untilMs: null, tail: undefined, grep: null, all: false, cmd: [] };
   const num = (flag, v) => { const n = Number(v); if (!Number.isFinite(n)) throw new UsageError(`run-bg: ${flag} needs a number (got ${v})\n${HELP}`); return n; };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
@@ -635,11 +696,16 @@ function parse(argv) {
     else if (a === '--name') o.name = value();
     else if (a === '--timeout') {
       // wait/status once ignored it silently; wait's bound is --max, status never waits.
-      if (sub === 'wait' || sub === 'status') throw new UsageError(`run-bg: --timeout is a start flag — wait takes --max <s> (default ${DEFAULT_MAX_SEC}, at most ${MAX_CEILING_SEC}); status reports at once\n${HELP}`);
+      if (sub === 'wait' || sub === 'status') throw new UsageError(`run-bg: --timeout is a start flag — wait takes --max <s> (default ${DEFAULT_MAX_SEC}, at most ${MAX_CEILING_SEC}) or --until <ISO>; status reports at once\n${HELP}`);
       o.timeoutSec = num(a, value()); o.timeoutGiven = true;
     }
     else if (a === '--slots') o.slots = num(a, value());
-    else if (a === '--max') o.maxSec = num(a, value());
+    else if (a === '--max') { o.maxSec = num(a, value()); o.maxGiven = true; }
+    else if (a === '--until') {
+      if (sub !== 'wait') throw new UsageError(`run-bg: --until is a wait flag — status reports at once; start takes --timeout <s>\n${HELP}`);
+      const v = value(); o.untilMs = ISO_INSTANT.test(v) ? Date.parse(v) : NaN;
+      if (!Number.isFinite(o.untilMs)) throw new UsageError(`${UNTIL_USAGE} (got ${v})\n${HELP}`);
+    }
     else if (a === '--tail') o.tail = num(a, value());
     else if (a === '--grep') { const v = value(); try { o.grep = new RegExp(v); } catch (e) { throw new UsageError(`run-bg: bad --grep ${v}: ${e.message}`); } }
     else if (a === '--all') o.all = true;
@@ -649,6 +715,7 @@ function parse(argv) {
     else o.names.push(a);
   }
   if (!o.dir) throw new UsageError(`run-bg: --dir needs a path\n${HELP}`);
+  if (o.maxGiven && o.untilMs != null) throw new UsageError(`run-bg: --max and --until are alternatives — give one\n${HELP}`);
   o.dir = resolve(o.dir);
   return { sub, o };
 }
@@ -665,7 +732,7 @@ async function cli(argv) {
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
     case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
     case 'clean': console.log(await clean(o.dir, { all: o.all })); return 0;

@@ -12,18 +12,28 @@
  *            --severity P1|P2|P3 --fixability platform-migration|design-pass|out-of-scope
  *            [--scope-level page|site|template|block] --scope-ids <a,b>
  *            --evidence "…" [--recommend "…"] [--out <rolloutDir>]
- * Resolve: node findings.mjs resolve <id> --status fixed|accepted|wontfix|open|in-progress
+ * Resolve: node findings.mjs resolve <id> --status fixed|accepted|wontfix|open|in-progress|informational
  *            [--note "…"] [--out <rolloutDir>]
  *   --out defaults to stardust/rollout.
  *
+ * Status: open | in-progress | fixed | accepted | wontfix | informational. Source-parity →
+ * informational: a finding tagged by optimize's source parity (`--fixability out-of-scope` + the
+ * `source parity: ` evidence prefix) is `informational`, never open/in-progress — listed, not
+ * scored, never gated; re-recorded without the tag it is `open` again. Any other finding, a plain
+ * out-of-scope one included, is open, scored and gated. Every write applies this to the whole
+ * ledger (an older ledger's open parity rows migrate); resolve refuses `informational` for a
+ * non-parity finding and `open`/`in-progress` for a parity one.
+ *
  * Writes (under <out>/optimize/): findings.json (the ledger; created when absent) and
- * scorecard.json (current snapshot; history preserved). One result line on stdout.
- * Exit 0 ok, 2 usage, 1 when resolve names an unknown id.
+ * scorecard.json (current snapshot, with its `informational` {total,P1,P2,P3} count; history
+ * preserved). One result line on stdout: the status, health and the informational count.
+ * Exit 0 ok, 2 usage, 1 when resolve names an unknown id or a status the finding's source-parity
+ * tag rules out (nothing is written).
  */
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, computeScorecard, autofixFor, ALL_LAYERS } from './lib.mjs';
+import { readJSON, writeJSON, computeScorecard, autofixFor, liveStatus, withLiveStatus, ALL_LAYERS } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -46,6 +56,7 @@ function loadDoc() {
 }
 function persist(doc) {
   doc._provenance = { writtenBy: 'stardust:rollout/findings', writtenAt: now, stardustVersion: version };
+  doc.findings = doc.findings.map(withLiveStatus);
   writeJSON(findingsPath, doc);
   const sc = readJSON(scorecardPath, { history: [] });
   const snap = computeScorecard(doc.findings, (doc.runs.at(-1) || {}).id || 'record', now);
@@ -81,12 +92,12 @@ if (cmd === 'record') {
   }
   const finding = {
     id, source, layer, check, severity, scope: { level, ids: scopeIds }, evidence, fixability, recommendedMove,
-    status: 'open', autofix: (existing && existing.autofix) || autofixFor(check),
+    status: liveStatus({ fixability, evidence }, 'open'), autofix: (existing && existing.autofix) || autofixFor(check),
     resolvedBy: null, firstSeenRun: (existing && existing.firstSeenRun) || 'recorded',
   };
   doc.findings = [...doc.findings.filter((f) => f.id !== id), finding].sort((a, b) => a.id.localeCompare(b.id));
   const snap = persist(doc);
-  console.log(`recorded ${id}  ${source} ${layer}/${check} ${severity}  → open   (health ${snap.overall}/100)`);
+  console.log(`recorded ${id}  ${source} ${layer}/${check} ${severity}  → ${finding.status}   (health ${snap.overall}/100 · informational ${snap.informational.total})`);
   process.exit(0);
 }
 
@@ -94,16 +105,22 @@ if (cmd === 'resolve') {
   const id = process.argv[3];
   const status = arg('status', null);
   const note = arg('note', null);
-  if (!id || !['fixed', 'accepted', 'wontfix', 'open', 'in-progress'].includes(status)) {
-    console.error('resolve <id> --status fixed|accepted|wontfix|open|in-progress [--note "…"]'); process.exit(2);
+  if (!id || !['fixed', 'accepted', 'wontfix', 'open', 'in-progress', 'informational'].includes(status)) {
+    console.error('resolve <id> --status fixed|accepted|wontfix|open|in-progress|informational [--note "…"]'); process.exit(2);
   }
   const doc = loadDoc();
   const f = doc.findings.find((x) => x.id === id);
   if (!f) { console.error(`resolve: no finding ${id}`); process.exit(1); }
+  if (liveStatus(f, status) !== status) {
+    console.error(status === 'informational'
+      ? `resolve: ${id} is not source parity — informational is for source-parity findings; use accepted|wontfix to set it aside`
+      : `resolve: ${id} is source parity — its live status is informational, never ${status}; re-record it without the parity tag to score it`);
+    process.exit(1);
+  }
   f.status = status;
   f.resolvedBy = (status === 'fixed') ? { phase: 'rollout', at: now, note: note || 'manually resolved' } : f.resolvedBy;
   const snap = persist(doc);
-  console.log(`${id} → ${status}   (health ${snap.overall}/100, open P1 ${snap.severity.P1})`);
+  console.log(`${id} → ${status}   (health ${snap.overall}/100 · informational ${snap.informational.total}, open P1 ${snap.severity.P1})`);
   process.exit(0);
 }
 

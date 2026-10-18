@@ -61,6 +61,17 @@
             "P2": { "type": "integer", "minimum": 0 },
             "P3": { "type": "integer", "minimum": 0 }
           }
+        },
+        "informational": {
+          "type": "object",
+          "description": "Findings with status informational (source parity): counted here, never in severity or the scores.",
+          "additionalProperties": false,
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "P1": { "type": "integer", "minimum": 0 },
+            "P2": { "type": "integer", "minimum": 0 },
+            "P3": { "type": "integer", "minimum": 0 }
+          }
         }
       }
     }

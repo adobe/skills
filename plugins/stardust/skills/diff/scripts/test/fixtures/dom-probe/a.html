@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>dom-probe fixture A</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; }
+  body { font: 16px/20px Arial, Helvetica, sans-serif; }
+  main.layout { display: block; width: 1000px; margin: 0 auto; }
+  header.top { height: 200px; }
+  header.top h1 { margin: 0; font-size: 32px; line-height: 40px; }
+  .cards { display: flex; gap: 50px; }
+  .card { flex: none; width: 300px; height: 200px; }
+  .card h2 { margin: 0; font-size: 20px; line-height: 28px; }
+  x-note.note { display: block; height: 40px; }
+</style>
+</head>
+<body>
+<main class="layout" aria-label="Fixture main">
+  <header class="top"><h1>Fixture page</h1></header>
+  <div class="cards">
+    <div class="card"><h2>Card one</h2></div>
+    <div class="card"><h2>Card two</h2></div>
+    <div class="card"><h2>Card three</h2></div>
+  </div>
+  <x-note class="note"></x-note>
+</main>
+<script>
+  document.querySelector('x-note').attachShadow({ mode: 'open' }).innerHTML = '<span class="inner">note</span>';
+</script>
+</body>
+</html>

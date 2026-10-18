@@ -33,6 +33,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `diff/content-presence.mjs` — visible content per band + control state — `<origin> <served> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
+- `diff/dom-probe.mjs` — boxes, DOM skeleton, heading/landmark outline under CSS roots; two documents compared; never gate evidence — `<url|file> [--selector <css>] [--depth 4] [--compare <url|file>] [--json [f.json]]`
 - `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome; a 2xx denial page = bot challenge; `dismissOverlays` closes open dialogs — the scroll lock a closed dialog leaves is released (overflow-y visible, a hidden overflow-x clipped), only when the pass closed one and none survives; client hints from the browser's UA metadata (CDP, set from the UA string) on every live page, `STARDUST_LIVE_HINTS=native` opts out; `launchChromium` prefers the full Chromium build; the nav-timeout floor above), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
 - `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`; images are capped JPEGs, `--full-res` keeps the PNG
@@ -47,7 +48,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `dynamics/snapshot-forms.mjs` — record live forms — `--urls a,b [--out data/forms]`
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — crawler → pages (+ `navMs`), screenshots, `_crawl-log.json#captureGaps` + `crawl.navMs` (+ entry-locale `scope`, codes from `locale-codes.json` beside it), `#discovery.total` (pre-cap) — `--url <u> [--pages a,b] [--max 25] [--out <dir>] [--dynamics]`; a 2xx denial page = bot challenge (escalates headed at the entry; never captured)
-- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]` (default: video only, 50 MiB)
+- `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline; sheets/fonts/svg via the browser → `harvest-map.json` — `[--assets media,sheets,fonts,svg] [--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/encode-attempt.mjs` — per-template encoder try → `stardust/migrate/encode/<t>.json` — `record --template <t,…> [--encoder <f>] [--not-attempted "<r>" | --reason "<why>"] [--hand-authored --reason "<why>"]` (not-attempted refused for ≥ 2 siblings without a reason); `check --template <t,…>`; `summary [--json]` (per template: siblings · encoded · slot-rendered · hand-authored · not-attempted); exit 1 = I/O, 2 = usage, refusal or no record
@@ -78,7 +79,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `replica/pixel-compare.mjs` — full-page pixel diff, bands — `<a.png> <b.png> [--out diff.png] [--threshold 10] [--mask yA:h] [--text-boxes <json>]`
 - `replica/presence.mjs` — site-wide hide list `stardust/replica/presence.json` — `add --hide <sel,…> [--slug <s>] [--reason <R-nn>] [--verify <url>]`; `seed [--run <run.json>]` (+ env STARDUST_SITE_OVERLAYS); `suggest <url>` (candidates)
 - `replica/row-profile.mjs` — row luminance profile — `<a.png> [<b.png>] [--color #rrggbb]`
-- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110] [--all]` (bare: your own jobs); `log <j>`
+- `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤1500 | --until <ISO>] [--all]` (bare: your own jobs; 76 = pause file; tool timeout > wait); `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline; a miss retries by words — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`; exit 2 = no match, outline on stdout
 - `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`; advice: variant class (few differ) or re-type (most)
@@ -98,8 +99,9 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`; exit 2 = `--state` refused
 - `rollout/lib.mjs` — library, no CLI
+- `rollout/media-manifest.mjs` — delivered media per page: source URL(s) → `media/<scope>/<file>` (media ledger); unmapped/external/code/broken listed — `[--content content] [--ledger <f>] [--json [f.json]]`
 - `rollout/media-reconcile.mjs` — per-image decision — `--file <html> --deploy-host <h> [--media-ledger <file>] [--apply]`
-- `rollout/optimize.mjs` — quality findings + gate; source-parity tagged — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
+- `rollout/optimize.mjs` — quality findings + gate; source parity → `informational` (unscored, never open) — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
@@ -126,5 +128,5 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
 - `stardust/progress.mjs` — unit recorder for the rollout/migrate/replica progress ledger, locked, one line per write — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>]`
 - `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `exclude <slug…> --reason "<r>" [--url <u>]`; `summary [--slugs]`
-- `stardust/token-ledger.mjs` — usage per phase/unit, advisory; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
+- `stardust/token-ledger.mjs` — usage per phase/unit, advisory; run it LAST (handoff end), idempotent, stamps `writtenAt` + `sessionsCovered`; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping by path, under a lock — `<unit> [--code blocks/<name>]… [--push] [--wait-s 120]`; exit 2 = refused or failed, nothing half-done; `--push` returns under 240 s

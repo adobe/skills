@@ -1,0 +1,5 @@
+{"type":"user","timestamp":"2026-09-10T16:20:00.000Z","cwd":"/work/example-project","message":{"role":"user","content":"resume the run"}}
+{"type":"assistant","timestamp":"2026-09-10T16:21:00.000Z","cwd":"/work/example-project","requestId":"req_E","message":{"id":"msg_E","role":"assistant","model":"model-y","usage":{"input_tokens":100,"cache_creation_input_tokens":0,"cache_read_input_tokens":2000,"output_tokens":50}}}
+{"type":"cost-state","timestamp":"2026-09-10T16:21:30.000Z","totalCostUSD":0.5,"modelUsage":{"model-x":{"costUSD":0.3},"model-y":{"costUSD":0.2}},"startTime":"2026-09-10T16:20:00.000Z"}
+{"type":"assistant","timestamp":"2026-09-10T16:40:00.000Z","cwd":"/work/example-project","requestId":"req_F","message":{"id":"msg_F","role":"assistant","model":"model-x","usage":{"input_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":3000,"output_tokens":80}}}
+{"type":"cost-state","timestamp":"2026-09-10T16:40:30.000Z","totalCostUSD":1.25,"modelUsage":{"model-x":{"costUSD":0.75},"model-y":{"costUSD":0.5}},"startTime":"2026-09-10T16:20:00.000Z"}
