@@ -403,7 +403,7 @@ probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
 (copied into the project like `crawl.mjs`, § Setup) measures every
 captured page at 1440 and writes
 `stardust/current/_computed-styles.json`; add `--width 360` when the
-breakpoints include it. One more live pass over every page — run it
+breakpoints include it; a stuck page is dropped at `--page-timeout` (default 120 s) and `--resume` continues a killed pass. One more live pass over every page — run it
 ONCE, after the crawl, in the background; it opens the live side
 through `live-session.mjs` like every other live instrument. The crawl
 records each page's goto time (`navMs`, in its page record) and
