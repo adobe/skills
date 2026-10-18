@@ -1,6 +1,6 @@
 /**
- * migrate/slot-map.mjs — the A′ fork's slot values located through the rollout block mapping. A pure library (no CLI):
- * migrate.mjs render --slots mapping imports it.
+ * migrate/slot-map.mjs — the A′ fork's slot values located through the rollout block mapping (or, derived, through the
+ * archetype's own capture). A pure library (no CLI): migrate.mjs render --slots mapping|derived imports it.
  *
  * The rollout's workspace/mapping.json (skills/rollout/reference/coverage-contract.md § mapping) gives every delivered
  * block of a mapped page the CSS selector of its origin element in that page's capture (stardust/current/pages/<slug>.html).
@@ -10,10 +10,11 @@
  * records that selector and the child path (tag + nth-of-type steps) from the anchor's element to it. The same selector
  * and path on the sibling's capture give the sibling's value, so no per-sibling slot data is written by hand. A text found
  * in separate places of the mapped capture (not one inside the other), or a file name on more than one image, is
- * ambiguous: that slot gets no recipe, never the first place's.
+ * ambiguous: that slot gets no recipe, never the first place's. Without a mapping, deriveRecipes anchors the same search
+ * at the archetype capture's <main> (exactly one, else <body>) — migrate.mjs's `derived` slot source.
  *
  * Exports: UnsupportedSelector, parseSelector, querySelectorAll, indexHtml, readMapping, anchorsFor, slotRecipes,
- * slotValues. The element model is migrate.mjs elementsOf: comments and raw-text contents skipped, a close tag pops to
+ * deriveRecipes, slotValues. The element model is migrate.mjs elementsOf: comments and raw-text contents skipped, a close tag pops to
  * its open match (a stray one is ignored), an unclosed element ends with its parent — the tree the rollout's parseHtml
  * builds, except that the contents of <template>, <textarea> and <title> are raw text here. migrate.mjs imports this
  * module, so nothing here calls a migrate.mjs export at module top level.
@@ -391,6 +392,17 @@ export function slotRecipes(archetypeProtoHtml, archetypeCaptureHtml, anchors) {
     lists.get(name).push(locate(proto, cap, e, kind, ctx));
   }
   return Object.fromEntries([...lists].map(([name, l]) => [name, l.length === 1 ? l[0] : l]));
+}
+/**
+ * deriveRecipes(archetypeProtoHtml, archetypeCaptureHtml) → { anchor, recipes }: the recipes without a rollout mapping —
+ * the archetype's own capture is the map. anchor = 'main' when the capture has exactly one <main>, else 'body'; recipes =
+ * slotRecipes(proto, capture, [anchor]). The prototype must already carry its data-slot marks (migrate.mjs deriveSlots
+ * marks a markerless one first).
+ */
+export function deriveRecipes(archetypeProtoHtml, archetypeCaptureHtml) {
+  const cap = indexHtml(archetypeCaptureHtml);
+  const anchor = cap.els.filter((e) => e.tag === 'main').length === 1 ? 'main' : 'body';
+  return { anchor, recipes: slotRecipes(archetypeProtoHtml, cap.html, [anchor]) };
 }
 function valueOf(idx, el, kind, where) {
   const a = attrsOf(idx, el);
