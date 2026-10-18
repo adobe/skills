@@ -125,8 +125,18 @@
  *   last element after it, fewer remove the rest; a single value is a list of one) | null (the
  *   page has none: the element is removed, decision slot-empty). Outermost slots first: slots
  *   nested in replaced content go with it; inside a kept container (an image / link value) they
- *   are filled next. Refused (strict slots): no data-slot inside the archetype's <main> (the fork
- *   would carry the archetype's own content — mark the typed slots, or pass --source); a slot
+ *   are filled next. Slots derived: an archetype with no data-slot inside its <main> (the strict-slots
+ *   check's own test) is not refused — deriveSlots marks its content units in-process from its section
+ *   structure (the prototype file is never written): per section (a top-level element of <main> as
+ *   data-section counts them — first class, else tag; a repeated name numbered -2 …) each heading,
+ *   phrasing-only p li dt dd figcaption blockquote td th caption or link with text, and each image (a
+ *   <picture> for its <img>), the outermost such element, named `<section>-<tag>` — units of one tag at the
+ *   same structure (the tag.class chain from the section) share the name, the next structure takes -2 …;
+ *   the values come by those names from either slot source below; one run line per archetype `slots
+ *   derived (no data-slot markers): archetype <a> — <n> slot(s): <names> — mark them in the prototype …`
+ *   and the driver decision slots-derived { archetype, slots }. Refused (strict slots): no data-slot
+ *   inside the archetype's <main> and none derived (the fork would carry the archetype's own content —
+ *   mark the typed slots, or pass --source); a slot
  *   name with no key in slots (every missing name listed); a value its element cannot take.
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
@@ -140,7 +150,7 @@
  *   relative to --proto-dir (bundled to <out>/assets/ like any asset); else a --media-ledger
  *   record (default <dirname(state)>/deploy/media-ledger.json; keyed by DA path, or { entries })
  *   with status uploaded and that source → its contentUrl; else the source URL is kept and a
- *   media-unmapped decision recorded. Driver decisions: archetype-fork, slot-empty, slot-unused
+ *   media-unmapped decision recorded. Driver decisions: slots-derived, archetype-fork, slot-empty, slot-unused
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
@@ -650,6 +660,61 @@ export function forkHead(html, capture) {
   if (lang) html = html.replace(/<html\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, (m) => setAttr(m, 'lang', String(lang)));
   return html;
 }
+// ---- derived slots: an archetype prototype without data-slot marks (replica recreation-procedure.md § Slot markers) ----
+const SLOT_PHRASING = new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'del', 'dfn', 'em', 'i', 'img', 'ins', 'kbd', 'mark', 'picture', 'q', 's', 'samp', 'small', 'source', 'span', 'strong', 'sub', 'sup', 'svg', 'time', 'u', 'var', 'wbr']);
+const TEXT_UNITS = new Set(['p', 'li', 'dt', 'dd', 'figcaption', 'blockquote', 'td', 'th', 'caption']);
+const slotToken = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+// When no element inside <main> carries data-slot (the strict-slots check's own test, on the same element model), every
+// content unit gets one: per section (a top-level element of <main> as tagSections counts them — first class, else tag; a
+// repeated name numbered -2, -3 …) each heading, paragraph-like element (p li dt dd figcaption blockquote td th caption)
+// or link holding only phrasing content and some text, each image (a <picture> for the <img> in it) — the outermost such
+// element; any other element is walked into (never script, style, template or svg). Name `<section>-<tag>`; units of one
+// tag share it while they sit at the same structure (the tag.class chain from the section down), the next structure gets
+// -2, -3 … — so cards repeat as one slot. A section that is itself a unit is named by the section. Only data-slot
+// attributes are added. → { html, slots: [names sorted], derived } — derived false (html as given) when a mark exists.
+export function deriveSlots(html) {
+  const mi = html.search(/<main\b/i); const mj = html.toLowerCase().lastIndexOf('</main>');
+  const open = mi >= 0 && mj > mi ? html.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
+  if (!open) return { html, slots: [], derived: false };
+  const start = mi + open[0].length; const inner = html.slice(start, mj); const els = elementsOf(inner);
+  if (els.some((e) => slotNameOf(e.attrs))) return { html, slots: [], derived: false };
+  const kids = new Map(); for (const e of els) { if (!kids.has(e.parent)) kids.set(e.parent, []); kids.get(e.parent).push(e); }
+  const below = (e) => { const out = []; const walk = (x) => { for (const k of kids.get(x) || []) { out.push(k); if (k.tag !== 'svg') walk(k); } }; walk(e); return out; };
+  const hasText = (e) => !!inner.slice(e.openEnd, e.closeStart).replace(/<[^>]*>/g, '').replace(/&nbsp;|\s+/g, '');
+  const hasImg = (e) => below(e).some((d) => d.tag === 'img');
+  const isUnit = (e) => {
+    if (/^h[1-6]$/.test(e.tag)) return hasText(e) || hasImg(e);
+    if (e.tag === 'picture') return hasImg(e);
+    if (e.tag === 'img') return e.parent?.tag !== 'picture';
+    if (e.tag === 'a') return below(e).every((d) => SLOT_PHRASING.has(d.tag) && d.tag !== 'img') && hasText(e);
+    return TEXT_UNITS.has(e.tag) && below(e).every((d) => SLOT_PHRASING.has(d.tag)) && (hasText(e) || hasImg(e));
+  };
+  const step = (e) => { const c = (attrValue(e.attrs, 'class') || '').split(/\s+/).filter(Boolean)[0]; return c ? `${e.tag}.${c}` : e.tag; };
+  const edits = []; const names = new Set(); const seen = new Map();
+  for (const sec of (kids.get(null) || []).filter((e) => !RAW.has(e.tag))) {
+    const base = slotToken((attrValue(sec.attrs, 'class') || '').split(/\s+/).filter(Boolean)[0] || sec.tag);
+    const n = (seen.get(base) || 0) + 1; seen.set(base, n);
+    const secName = n > 1 ? `${base}-${n}` : base; const shapes = new Map();
+    const visit = (e, chain) => {
+      if (RAW.has(e.tag) || e.tag === 'svg') return;
+      if (isUnit(e)) {
+        let name = secName;
+        if (e !== sec) {
+          const list = shapes.get(e.tag) || []; shapes.set(e.tag, list);
+          let k = list.indexOf(chain.join('>')); if (k < 0) k = list.push(chain.join('>')) - 1;
+          name = `${secName}-${e.tag}${k ? `-${k + 1}` : ''}`;
+        }
+        edits.push([e.start, e.openEnd, setAttr(inner.slice(e.start, e.openEnd), 'data-slot', name)]); names.add(name);
+        return;
+      }
+      for (const c of kids.get(e) || []) visit(c, e === sec ? chain : [...chain, step(e)]);
+    };
+    visit(sec, []);
+  }
+  if (!edits.length) return { html, slots: [], derived: true };
+  return { html: html.slice(0, start) + splice(inner, edits) + html.slice(mj), slots: [...names].sort(), derived: true };
+}
+
 // The A' fork (exported, pure but for resolveMedia): every data-slot inside the archetype's <main> takes this page's value.
 // → { html, slots: [names placed], decisions: [_driver records] }; throws Refusal (strict slots) when it cannot.
 export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', archetype = 'archetype', capturePath = 'the capture', resolveMedia = null } = {}) {
@@ -659,7 +724,7 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
   const mi = headed.search(/<main\b/i); const mj = headed.toLowerCase().lastIndexOf('</main>');
   const open = mi >= 0 && mj > mi ? headed.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
   let work = open ? headed.slice(mi + open[0].length, mj) : '';
-  if (!elementsOf(work).some((e) => slotNameOf(e.attrs))) throw new Refusal(slug, 'slots', `archetype ${archetype} has no data-slot inside <main>, so a fork would carry the archetype's own content`, `mark its typed slots (stardust/reference/data-attributes.md § Slot identity), or pass --source ${slug}=<file>`);
+  if (!elementsOf(work).some((e) => slotNameOf(e.attrs))) throw new Refusal(slug, 'slots', `archetype ${archetype} has no data-slot inside <main> and none derive from its sections (no heading, paragraph, list item, link or image with content), so a fork would carry the archetype's own content`, `mark its typed slots (stardust/reference/data-attributes.md § Slot identity), or pass --source ${slug}=<file>`);
   const { map: values, bad: badEntries } = slotValues(capture?.slots);
   const placed = new Set(); const missing = new Set(); const problems = [...badEntries]; const empty = new Set(); const unmapped = new Set();
   const media = (ref) => { const r = resolveRef(ref); if (r.unmapped) unmapped.add(r.unmapped); return r.ref; };
@@ -807,9 +872,12 @@ export function renderPage(run, page, entry) {
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
   const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
-  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null;
+  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null; let derivedSlots = null;
   if (fork) {
-    const archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    let archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    // A prototype without data-slot marks: its slots derive from its section structure (deriveSlots) instead of a refusal.
+    const derived = deriveSlots(archetypeHtml);
+    if (derived.slots.length) { archetypeHtml = derived.html; derivedSlots = derived.slots; run.slotsDerived.set(archetype.slug, derived.slots); }
     slotPlan = slotSourceFor(run, page, archetype);
     if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
     forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
@@ -852,7 +920,8 @@ export function renderPage(run, page, entry) {
   // sidecar: spec keys first, then the tier/judgment fields; recorded judgments are carried over
   const carried = (old?.migrationDecisions || []).filter((d) => !(d && d._driver));
   const driverDecisions = [...report.missing.map((m) => ({ kind: 'asset-missing', ref: m.ref, subpath: m.subpath, _driver: true })), ...report.traversal.map((ref) => ({ kind: 'asset-path-traversal', ref, _driver: true }))];
-  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...(forked ? forked.decisions : []), ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
+  const derivedRec = derivedSlots ? [{ kind: 'slots-derived', archetype: archetype.slug, slots: derivedSlots, _driver: true }] : [];
+  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...derivedRec, ...(forked ? forked.decisions : []), ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
     fidelityTier: tier, archetypeSource: archetype ? archetype.slug : null, assetsBundled: report.refs.size, missingAssets: report.missing, brokenInternalLinks: linked.broken, outputPath, outputPathDefault, sidecar: sideRel };
   const defaults = { gatesPassed: [], gateEvidence: {}, variants: [], contentDeviations: [], deviations: [] };
   for (const k of CARRIED) meta[k] = old?.[k] ?? defaults[k];
@@ -1090,7 +1159,7 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
-    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(),
+    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(), slotsDerived: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = []; const varianceHeld = [];
   for (const slug of set) {
@@ -1118,6 +1187,7 @@ export function renderRun(o) {
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
   if (varianceHeld.length) console.log(`variance: ${varianceHeld.length} A′ page(s) rendered on an earlier acceptance of an unchanged variance (${varianceHeld.slice(0, 6).join(', ')}${varianceHeld.length > 6 ? ', …' : ''})`);
   for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
+  for (const [a, names] of [...run.slotsDerived].sort(([x], [y]) => byStr(x, y))) console.log(`slots derived (no data-slot markers): archetype ${a} — ${names.length} slot(s): ${names.slice(0, 24).join(', ')}${names.length > 24 ? ', …' : ''} — mark them in the prototype to name them (replica recreation-procedure.md § Slot markers)`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }

@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { composeHead, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
+import { composeHead, deriveSlots, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
 import { recordAttempt } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
@@ -532,9 +532,10 @@ check("the state representative names the archetype (a type with no candidate of
   const r = run(['render', 'howto-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^A' howto-one → howto\/one\/index\.html {2}\(howto; fork of guides; /m); assert.equal(json(`${OUT}/howto/one/_meta.json`).template, 'guides');
 });
-check('fork refusals: archetype without data-slot, missing slot values (every name listed), archetype without source HTML; nothing written', () => {
+check('fork refusals: missing slot values (every name listed; a markerless archetype names its derived slots), archetype without source HTML; nothing written', () => {
   const r = run(['render', 'note-one', 'guide-short', 'guide-orphan']); assert.equal(r.status, 2);
-  assert.match(r.err, /^refused note-one: strict slots — archetype notes has no data-slot inside <main>, so a fork would carry the archetype's own content — mark its typed slots \(stardust\/reference\/data-attributes\.md § Slot identity\), or pass --source note-one=<file>$/m);
+  assert.match(r.err, /^refused note-one: strict slots — stardust\/current\/pages\/note-one\.json#slots has no value for slot\(s\) intro-a, intro-h1 of archetype notes — /m);
+  assert.match(r.out, /^slots derived \(no data-slot markers\): archetype notes — 2 slot\(s\): intro-a, intro-h1 — /m);
   assert.match(r.err, /^refused guide-short: strict slots — stardust\/current\/pages\/guide-short\.json#slots has no value for slot\(s\) sidebar, tip of archetype guides — /m);
   assert.match(r.err, /^refused guide-orphan: strict source — archetype guide-draft has no proposed HTML at stardust\/prototypes\/guide-draft-proposed\.html — /m);
   assert.match(r.out, /^rendered 0, unchanged 0, refused 3, passthrough 0 /m);
@@ -570,6 +571,76 @@ check('forkFromArchetype (pure): inserted HTML maps src / srcset on img, source,
   const r = forkFromArchetype('<html><head><title>t</title></head><body><main><div data-slot="body"></div></main></body></html>', { slots: { body: { html } } }, { slug: 's', archetype: 'a', resolveMedia });
   assert.match(r.html, /<div data-slot="body"><iframe src="https:\/\/video\.example\.test\/embed\/1"><\/iframe><img src="mapped\/a\.jpg"><video src="mapped\/v\.mp4" poster="mapped\/p\.jpg"><source src="mapped\/s\.webm"><\/video><audio src="mapped\/au\.mp3"><\/audio><div poster="\/x\.jpg"><embed src="\/e\.swf"><\/div><\/div>/);
   assert.deepEqual(seen.sort(), ['/a.jpg', '/au.mp3', '/p.jpg', '/s.webm', '/v.mp4']);
+});
+
+// ---- a markerless prototype: render derives the slots from its section structure ----------------------
+console.log('A\' fork, slots derived from a markerless prototype');
+const sParks = json(STATE); sParks.pages.push(page('parks', '/parks/', 'approved', 'park'), page('park-one', '/parks/one/', 'directed', 'park'));
+write(STATE, `${JSON.stringify(sParks, null, 2)}\n`);
+recordAttempt(tmp, 'parks', { notAttempted: 'fixture: siblings rendered from the archetype' });
+const PARKS = `<!doctype html>
+<html lang="en">
+<head><title>Parks</title></head>
+<body>
+<main>
+  <section class="hero">
+    <h1>Archetype park</h1>
+    <p>Archetype <em>intro</em></p>
+    <picture><source srcset="assets/img/hero@2x.jpg"><img src="assets/img/hero.jpg" alt="Archetype"></picture>
+    <a class="button" href="/tours/">See tours</a>
+    <a class="icon" href="/"><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></a>
+  </section>
+  <section class="cards">
+    <h2>Highlights</h2>
+    <ul>
+      <li><h3>Card one</h3><p>Card one text</p></li>
+      <li><h3>Card two</h3><p>Card two text</p></li>
+    </ul>
+  </section>
+  <section class="cards">
+    <p>Second band</p>
+    <div class="note"><p>Aside text</p></div>
+  </section>
+  <script>var archetypeOnly = '<p>not content</p>';</script>
+  <div class="spacer"></div>
+</main>
+</body>
+</html>
+`;
+write(`${P}/parks-proposed.html`, PARKS);
+const PARK_SLOTS = ['cards-2-p', 'cards-2-p-2', 'cards-h2', 'cards-h3', 'cards-p', 'hero-a', 'hero-h1', 'hero-p', 'hero-picture'];
+check('deriveSlots (pure): one name per section (first class, else tag; a repeated name numbered) and content unit (heading, phrasing-only paragraph / list item / link, image or picture) — repeats of one structure share a name; scripts, empty units and a marked prototype untouched', () => {
+  const d = deriveSlots(PARKS);
+  assert.equal(d.derived, true); assert.deepEqual(d.slots, PARK_SLOTS);
+  const m = mainOf(d.html);
+  assert.match(m, /<h1 data-slot="hero-h1">Archetype park<\/h1>/); assert.match(m, /<p data-slot="hero-p">Archetype <em>intro<\/em><\/p>/);
+  assert.match(m, /<picture data-slot="hero-picture"><source srcset="assets\/img\/hero@2x\.jpg"><img src="assets\/img\/hero\.jpg" alt="Archetype"><\/picture>/);
+  assert.match(m, /<a class="button" href="\/tours\/" data-slot="hero-a">See tours<\/a>/); assert.match(m, /<a class="icon" href="\/"><svg/, 'a link without text is not content');
+  assert.equal([...m.matchAll(/<h3 data-slot="cards-h3">/g)].length, 2); assert.equal([...m.matchAll(/<p data-slot="cards-p">/g)].length, 2); assert.match(m, /<li><h3/, 'a list item holding blocks is walked into');
+  assert.match(m, /<p data-slot="cards-2-p">Second band<\/p>/); assert.match(m, /<div class="note"><p data-slot="cards-2-p-2">Aside text<\/p><\/div>/);
+  assert.match(m, /var archetypeOnly = '<p>not content<\/p>';/); assert.match(m, /<div class="spacer"><\/div>/);
+  assert.equal(d.html.replace(/ data-slot="[^"]*"/g, ''), PARKS, 'only data-slot attributes are added');
+  const marked = PARKS.replace('<h1>', '<h1 data-slot="headline">');
+  assert.deepEqual(deriveSlots(marked), { html: marked, slots: [], derived: false });
+  assert.deepEqual(deriveSlots('<html><body><main><div class="x"><span></span></div></main></body></html>').slots, []);
+});
+check('render forks a markerless archetype on its derived slots instead of refusing: the run line says so, the sidecar records slots-derived, the page JSON names the values', () => {
+  cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: {
+    'hero-h1': 'Park one', 'hero-p': { html: 'Park <em>one</em> intro' }, 'hero-picture': { src: 'https://media.example.test/park.jpg', alt: 'Park' }, 'hero-a': { href: '/tours/north/' },
+    'cards-h2': 'Park highlights', 'cards-h3': ['Lake', 'Forest'], 'cards-p': ['Lake text', 'Forest text'], 'cards-2-p': 'Band text', 'cards-2-p-2': null } });
+  const r = run(['render', 'park-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' park-one → parks\/one\/index\.html {2}\(park; fork of parks; /m);
+  assert.match(r.out, new RegExp(`^slots derived \\(no data-slot markers\\): archetype parks — 9 slot\\(s\\): ${PARK_SLOTS.join(', ')} — mark them in the prototype to name them \\(replica recreation-procedure\\.md § Slot markers\\)$`, 'm'));
+  const m = mainOf(read(`${OUT}/parks/one/index.html`));
+  assert.ok(!/Archetype|Card one|Second band|Aside text/.test(m), 'no archetype content left');
+  assert.match(m, /<h1 data-slot="hero-h1">Park one<\/h1>/); assert.match(m, /<picture data-slot="hero-picture"><img src="https:\/\/media\.example\.test\/park\.jpg" alt="Park"><\/picture>/);
+  assert.match(m, /<a class="button" href="\.\.\/\.\.\/tours\/north\/index\.html" data-slot="hero-a">See tours<\/a>/);
+  assert.deepEqual([...m.matchAll(/<h3 data-slot="cards-h3">(.*?)<\/h3>/g)].map((x) => x[1]), ['Lake', 'Forest']);
+  assert.ok(!/cards-2-p-2/.test(m), 'a null slot is removed');
+  const meta = json(`${OUT}/parks/one/_meta.json`);
+  assert.deepEqual(meta.migrationDecisions.find((d) => d.kind === 'slots-derived'), { kind: 'slots-derived', archetype: 'parks', slots: PARK_SLOTS, _driver: true });
+  assert.equal(read(`${P}/parks-proposed.html`), PARKS, 'the prototype file is never written');
+  const again = run(['render', 'park-one']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged park-one → /m);
 });
 
 // ---- variance gate: the sibling-variance record gates every A′ page ------------------------------------
@@ -753,6 +824,18 @@ check('a hash-listed, fresh mapping is the default: each sibling takes its own t
   assert.match(two, /<div data-slot="body" class="prose"><p>Coast body\.<\/p><\/div>/);
   assert.ok(!/Archetype/.test(one) && !/Archetype/.test(two), 'no archetype content left in <main>');
   assert.deepEqual(['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`)), pageJsonBefore, 'the page JSON is never written');
+});
+check('a markerless archetype in mapping mode: the derived slots are found through the block mapping like marked ones', () => {
+  write(`${P}/trips-bare-proposed.html`, fixture('trips-proposed.html').replace(/ data-slot="[^"]*"/g, ''));
+  const r = run(['render', 'trip-one', '--source', 'trips=stardust/prototypes/trips-bare-proposed.html', '--out', 'stardust/migrated-bare']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' trip-one → trips\/one\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  assert.match(r.out, /^slots derived \(no data-slot markers\): archetype trips — 4 slot\(s\): body-p, hero-a, hero-h1, hero-img — /m);
+  const one = mainOf(read('stardust/migrated-bare/trips/one/index.html'));
+  assert.match(one, /<h1 data-slot="hero-h1">Northern lights<\/h1>/); assert.match(one, /<a class="button" href="https:\/\/booking\.example\.org\/north" data-slot="hero-a">Book the north<\/a>/);
+  assert.match(one, /<img src="https:\/\/example\.test\/content\/media\/north\.jpg" alt="Aurora over the fjord" data-slot="hero-img" srcset=/);
+  assert.deepEqual([...one.matchAll(/<p data-slot="body-p">(.*?)<\/p>/g)].map((x) => x[1]), ['North body one.', 'North body two.']);
+  assert.ok(!/Archetype/.test(one));
+  rmSync(join(tmp, 'stardust/migrated-bare'), { recursive: true, force: true }); rmSync(join(tmp, P, 'trips-bare-proposed.html'));
 });
 check('mapped fork sidecar: slotSource mapping, slotMap { mapping, generatedAt, anchors, slots: {name: anchor} }; provenance names the mapping; a re-run is unchanged', () => {
   const m = json(`${OUT}/trips/one/_meta.json`);
