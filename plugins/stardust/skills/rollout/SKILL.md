@@ -264,9 +264,12 @@ An encoded template's C-archetype also drafts and round-trips its map — and ev
 siblings is one: its C-archetype drafts the map (`stardust/import/<template>/`) once the archetype gates and
 records the attempt (`encode-attempt.mjs record --template <t>`; `not-attempted` is refused for it without a
 `--reason`, and `migrate.mjs plan` lists the maps still due — `skills/migrate/SKILL.md` § Encoder first). A
-sibling the variance probe finds differing, one or under 20 % of them, takes a variant class on the template,
-never its own archetype; a hand-authored sibling is recorded `--hand-authored --reason` first (the same SKILL.md,
-§ When the encoder cannot). Its cluster unit is then the map plus the exceptions, and the main agent alone re-runs
+sibling the variance probe finds differing is the SAME template with variant CSS/JS: it takes the variant class the
+probe records (`variant: <name>` in `stardust/rollout/variance/<template>.json`), never its own archetype. Re-typing
+a sibling into a new template is the EXCEPTION, not the response to "differs" — `state.mjs set --type` refuses it
+when the current template would be left with ≤ 2 pages or the new one would have ≤ 2 pages, unless
+`--owner-decision "<why it is a real new template, not a variant>"` is given (recorded on the page). A
+hand-authored sibling is recorded `--hand-authored --reason` first (the same SKILL.md, § When the encoder cannot). Its cluster unit is then the map plus the exceptions, and the main agent alone re-runs
 `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
 `skills/migrate/reference/importer-recipe.md` § Encoder contract).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16

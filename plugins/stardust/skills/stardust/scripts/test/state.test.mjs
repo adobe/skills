@@ -447,6 +447,32 @@ check('set --representative / --type: all named pages, keys placed after type, p
   const t = runIn(p.d, ['set', 'about-us', '--type', 'article', '--skill', 'prototype']); assert.equal(t.code, 0, t.err);
   assert.equal(t.out, 'state: 1 page(s) set type=article: about-us · written by stardust:prototype\n'); assert.equal(readIn(p.d)._provenance.writtenBy, 'stardust:prototype');
 });
+check('set --type re-type guard: refuses leaving a template with ≤ 2 pages or making a new one with ≤ 2, unless --owner-decision (recorded on each re-typed page)', () => {
+  const slugs = ['a1', 'a2', 'a3', 'a4', 'a5', 'a6', 'h1', 'h2'];
+  const p = project(slugs.map((x) => record(x, `https://www.example.com/${x}`)));
+  const urls = slugs.map((x) => `https://www.example.com/${x}`).join('\n');
+  const types = [...['a1', 'a2', 'a3', 'a4', 'a5', 'a6'].map((x) => `${x}=article`), 'h1=landing', 'h2=landing'].join(',');
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', urls), '--types', types]).code, 0);
+  // a brand-new template with one page is refused — every 2-page article becoming its own template was the defect
+  const solo = runIn(p.d, ['set', 'a1', '--type', 'article-2']);
+  assert.equal(solo.code, 2); assert.equal(solo.out, ''); assert.match(solo.err, /re-type refused:.*new template article-2 would have 1 page/);
+  // pulling 4 of 6 articles out leaves article with 2 — refused (guide itself, with 4, is fine)
+  const split = runIn(p.d, ['set', 'a1', 'a2', 'a3', 'a4', '--type', 'guide']);
+  assert.equal(split.code, 2); assert.match(split.err, /current template article would be left with 2 page/);
+  assert.doesNotMatch(split.err, /new template guide/, 'the destination side with 4 pages does not trip');
+  // re-typing the whole landing type away (left with 0) is a rename, not a split — allowed
+  assert.equal(runIn(p.d, ['set', 'h1', 'h2', '--type', 'article']).code, 0);
+  // --owner-decision overrides and is recorded on the re-typed page
+  const ok = runIn(p.d, ['set', 'a1', '--type', 'article-2', '--owner-decision', 'a1 is a genuinely distinct composition']);
+  assert.equal(ok.code, 0, ok.err);
+  const a1 = readIn(p.d).pages.find((x) => x.slug === 'a1');
+  assert.equal(a1.type, 'article-2');
+  assert.deepEqual({ from: a1.retype.from, to: a1.retype.to, ownerDecision: a1.retype.ownerDecision }, { from: 'article', to: 'article-2', ownerDecision: 'a1 is a genuinely distinct composition' });
+  assert.match(a1.retype.at, /^\d{4}-\d\d-\d\dT/);
+  // --owner-decision without --type, and an empty one, are usage errors
+  assert.match(runIn(p.d, ['set', 'a2', '--representative', 'a1', '--owner-decision', 'x']).err, /--owner-decision records a re-type reason — pass it with --type/);
+  assert.match(runIn(p.d, ['set', 'a2', '--type', 'guide', '--owner-decision', '  ']).err, /--owner-decision needs a non-empty sentence/);
+});
 check('set refuses an unknown slug, an unknown representative, a self-representative, a bad type and a missing value — nothing written', () => {
   const p = project();
   assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\nhttps://www.example.com/about-us\n')]).code, 0);

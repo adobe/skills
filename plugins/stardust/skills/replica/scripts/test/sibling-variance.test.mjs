@@ -82,9 +82,11 @@ await check('verdictOf: no finding → same; MISSING → missing, EXTRA → extr
     { kind: 'EXTRA', probe: 'badge', msg: 'e' }, { kind: 'MISSING', probe: 'aside', msg: 'm2' }, { kind: 'PROBE', probe: 'hero', msg: 'p' }, { kind: 'SECTION HEIGHTS', msg: 'h' },
   ]);
   assert.deepEqual(all, {
-    verdict: 'differs', missing: ['aside', 'li'], extra: ['badge'],
+    verdict: 'differs', variant: 'aside-badge-card-hero-li', missing: ['aside', 'li'], extra: ['badge'],
     deltas: [{ kind: 'SECTIONS', msg: 's' }, { kind: 'COUNT', probe: 'card', msg: 'c' }, { kind: 'CLUSTERS', probe: 'li', msg: 'k' }, { kind: 'PROBE', probe: 'hero', msg: 'p' }, { kind: 'SECTION HEIGHTS', msg: 'h' }],
   });
+  // a structural-only delta (no probe) is the `layout` variant
+  assert.equal(verdictOf([{ kind: 'SECTIONS', msg: 's' }]).variant, 'layout');
 });
 
 await check('slugFor: the roster slug by origin + pathname without trailing slash + search (www. folded, fragment ignored), else the crawl slug rule', () => {
@@ -121,12 +123,14 @@ const ARCH = 'https://www.example.test/tours/bali/';
 const differs = [{ kind: 'PROBE', probe: 'hero', msg: 'rect{h 528 → 441}' }];
 const rowsOf = (spec) => spec.map(([slug, findings]) => ({ slug, url: `https://example.test/tours/${slug}/`, findings }));
 
-await check('sidecarOf: key order template, archetype, at, siblings; sibling keys slug, url, verdict, missing, extra, deltas; siblings by slug', () => {
+await check('sidecarOf: key order template, archetype, at, siblings; a differs row keys slug, url, verdict, variant, missing, extra, deltas; a same row has no variant; siblings by slug', () => {
   const s = sidecarOf({ template: 'tours-bali', archetype: ARCH, at: '2026-01-01T00:00:00Z', rows: rowsOf([['utah', []], ['alps', differs], ['crete', [{ kind: 'MISSING', probe: 'card', msg: 'm' }]]]) });
   assert.deepEqual(Object.keys(s), ['template', 'archetype', 'at', 'siblings']);
   assert.deepEqual(s.siblings.map((r) => r.slug), ['alps', 'crete', 'utah']);
-  for (const r of s.siblings) assert.deepEqual(Object.keys(r), ['slug', 'url', 'verdict', 'missing', 'extra', 'deltas']);
-  assert.deepEqual(s.siblings[1], { slug: 'crete', url: 'https://example.test/tours/crete/', verdict: 'differs', missing: ['card'], extra: [], deltas: [] });
+  assert.deepEqual(Object.keys(s.siblings[0]), ['slug', 'url', 'verdict', 'variant', 'missing', 'extra', 'deltas'], 'a differs row carries variant right after verdict');
+  assert.deepEqual(Object.keys(s.siblings[2]), ['slug', 'url', 'verdict', 'missing', 'extra', 'deltas'], 'a same row has no variant');
+  assert.deepEqual(s.siblings[1], { slug: 'crete', url: 'https://example.test/tours/crete/', verdict: 'differs', variant: 'card', missing: ['card'], extra: [], deltas: [] });
+  assert.equal(s.siblings[0].variant, 'hero', 'alps differs on the hero probe');
   assert.equal(s.siblings[2].verdict, 'same');
 });
 

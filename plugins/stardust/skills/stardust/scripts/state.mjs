@@ -32,7 +32,11 @@
 // it), crawled, captureGaps? }.
 // set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing; a
 // representative whose chain of representative links leads back to a named page (a cycle) is
-// refused; --clear-representative writes representative: null.
+// refused; --clear-representative writes representative: null. Re-typing a sibling into a new template
+// (--type to a different type) is refused when the current template would be left with ≤ 2 pages or the
+// new one would have ≤ 2 pages — re-type is the exception, not the response to "differs" (a differing
+// sibling is a variant class on its template; sibling-variance.mjs records `variant: <name>`) — unless
+// --owner-decision "<sentence>" is given, which is recorded on each re-typed page (`retype`).
 // exclude: why the source no longer serves a planned page — excluded { reason, at } on a page in
 // pages[], or { slug, url, reason, at } in the top-level excluded[] for one init never had (--url).
 //
@@ -78,10 +82,10 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set / exclude read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--reason', '--url'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
-  set: ['--representative', '--clear-representative', '--type', '--skill', '--dir'],
+  set: ['--representative', '--clear-representative', '--type', '--owner-decision', '--skill', '--dir'],
   exclude: ['--reason', '--url', '--skill', '--dir'],
 };
 
@@ -94,7 +98,7 @@ const HELP = `Usage:
   node state.mjs advance <slug…> --to <${ORDER.join('|')}> [--by <who>] [--prototype <path>]
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
-                 [--skill <name>] [--dir <d>]
+                 [--owner-decision "<why this re-type is a real new template>"] [--skill <name>] [--dir <d>]
   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
   (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set,
@@ -147,7 +151,11 @@ set      sets page.representative (the archetype slug the named pages clone) and
          page (a cycle: itself, a → b → a, …; the line names the chain) exits 2, nothing written;
          a page set as its own representative is refused with the variant path (a differing
          sibling becomes a variant class on its template: migrate.mjs render --accept-variance,
-         then migrate.mjs variant).
+         then migrate.mjs variant). Re-typing a sibling into a new template (--type to a different
+         type) is refused when the current template would be left with ≤ 2 pages or the new one
+         would have ≤ 2 pages, unless --owner-decision "<sentence>" is given — it is recorded on
+         each re-typed page (retype: from, to, ownerDecision, at). Re-type is the exception,
+         not the response to "differs".
 exclude  records that the source no longer serves a planned page (a 404 at crawl or gate time), so
          it leaves every denominator with a record instead of silently: a page in pages[] gets
          excluded { reason, at } after its status (the status is untouched); --url <url> (one slug,
@@ -326,11 +334,13 @@ export function representativeCycle(bySlug, slugs, archetype) {
 // Sets page.type and/or page.representative (or clears it to null) on every slug in memory;
 // throws before touching anything when a slug or the representative is unknown, or the
 // representative would close a cycle. Returns the (de-duplicated) slugs set.
-export function setPages(state, slugs, { representative = null, type = null, clearRepresentative = false } = {}) {
+export function setPages(state, slugs, { representative = null, type = null, clearRepresentative = false, ownerDecision = null } = {}) {
   if (clearRepresentative && representative !== null) throw new UsageError('--clear-representative and --representative contradict — pass one (clear writes representative: null)');
   if (!slugs.length) throw new UsageError('set needs at least one <slug>');
   if (representative === null && type === null && !clearRepresentative) throw new UsageError('set needs --representative <archetype-slug> and/or --type <type>, or --clear-representative');
   if (type !== null && !TYPE_RE.test(type)) throw new UsageError(`--type "${type}" is not a page type (${TYPE_RE.source})`);
+  if (ownerDecision !== null && (typeof ownerDecision !== 'string' || !ownerDecision.trim())) throw new UsageError('--owner-decision needs a non-empty sentence');
+  if (ownerDecision !== null && type === null) throw new UsageError('--owner-decision records a re-type reason — pass it with --type <new-type>');
   const unique = [...new Set(slugs)];
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
   const missing = unique.filter((s) => !bySlug.has(s));
@@ -341,10 +351,30 @@ export function setPages(state, slugs, { representative = null, type = null, cle
     if (cycle && cycle.length === 2) throw new UsageError(`${representative} cannot be its own representative (${cycle.join(' → ')}) — name the archetype's siblings, not the archetype; a differing sibling becomes a variant class on its template: node stardust/scripts/migrate/migrate.mjs render ${representative} --accept-variance "<the delta and its variant class>" then node stardust/scripts/migrate/migrate.mjs variant ${representative} <variant-class>`);
     if (cycle) throw new UsageError(`--representative ${representative} closes a cycle (${cycle.join(' → ')}): its representative links lead back to ${cycle[0]} — a chain must end at an archetype without one; clear a link first (set <slug> --clear-representative)`);
   }
+  // Re-type guard: re-typing a sibling into a new template must not strand a template with ≤ 2 pages on either side.
+  // Re-type is the exception, not the response to "differs" — a differing sibling is a variant class on its template
+  // (sibling-variance.mjs records `variant: <name>`), never its own archetype. --owner-decision overrides (recorded).
+  const retyped = type === null ? [] : state.pages.filter((p) => unique.includes(p.slug) && typeof p.type === 'string' && p.type && p.type !== type);
+  const oldTypeOf = new Map(retyped.map((p) => [p.slug, p.type]));
+  if (retyped.length && !ownerDecision) {
+    const byType = new Map();
+    for (const p of state.pages) if (typeof p.type === 'string' && p.type) byType.set(p.type, (byType.get(p.type) || 0) + 1);
+    const movedFrom = new Map();
+    for (const p of retyped) movedFrom.set(p.type, (movedFrom.get(p.type) || 0) + 1);
+    const tooSmall = [];
+    for (const [t, n] of movedFrom) { const left = (byType.get(t) || 0) - n; if (left >= 1 && left <= 2) tooSmall.push(`the current template ${t} would be left with ${left} page(s)`); }
+    const destAfter = (byType.get(type) || 0) + retyped.length;
+    if (destAfter <= 2) tooSmall.push(`the new template ${type} would have ${destAfter} page(s)`);
+    if (tooSmall.length) throw new UsageError(`re-type refused: ${tooSmall.join('; ')} — a template needs more than 2 pages; a differing sibling is a variant class on its template, not a new one (sibling-variance.mjs records \`variant: <name>\`). Re-type anyway with --owner-decision "<why this is a real new template, not a variant>"`);
+  }
+  const at = nowIso();
   state.pages = state.pages.map((p) => {
     if (!unique.includes(p.slug)) return p;
     let next = p;
-    if (type !== null) next = withKey(next, 'type', type, 'title');
+    if (type !== null) {
+      next = withKey(next, 'type', type, 'title');
+      if (ownerDecision && oldTypeOf.has(p.slug)) next = withKey(next, 'retype', { from: oldTypeOf.get(p.slug), to: type, ownerDecision: ownerDecision.trim(), at }, 'type');
+    }
     if (representative !== null || clearRepresentative) next = withKey(next, 'representative', representative, 'type');
     return next;
   });
@@ -612,7 +642,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, reason: null, url: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -641,6 +671,7 @@ function parseArgs(argv) {
     else if (a === '--representative') opts.representative = need();
     else if (a === '--clear-representative') opts.clearRepresentative = true;
     else if (a === '--type') opts.type = need();
+    else if (a === '--owner-decision') opts.ownerDecision = need();
     else if (a === '--reason') opts.reason = need();
     else if (a === '--url') opts.url = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
@@ -708,7 +739,7 @@ function runInit(opts, rest) {
 
 function runSet(opts, rest) {
   const { state, file } = readState(opts.dir);
-  const done = setPages(state, rest, { representative: opts.representative, type: opts.type, clearRepresentative: opts.clearRepresentative });
+  const done = setPages(state, rest, { representative: opts.representative, type: opts.type, clearRepresentative: opts.clearRepresentative, ownerDecision: opts.ownerDecision });
   const writtenBy = normaliseSkill(opts.skill || 'direct');
   state._provenance = stampProvenance(state._provenance, writtenBy, nowIso());
   writeState(file, state);

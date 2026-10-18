@@ -23,8 +23,10 @@
  * page (exit 0 or 2 — never 1 or 3) writes the variance sidecar
  * <variance-dir>/<template>.json (atomic):
  *   { template, archetype, at, siblings: [{ slug, url, verdict same|differs,
+ *     variant: <name> (on differs — the variant class it takes on its template),
  *     missing: [<probe>…], extra: [<probe>…], deltas: [{ kind, probe?, msg }] }] }
- * siblings sorted by slug. MISSING findings name `missing`, EXTRA `extra`;
+ * siblings sorted by slug. A differing sibling is a variant class on its template, not a new
+ * archetype (re-type is the exception). MISSING findings name `missing`, EXTRA `extra`;
  * every other finding (SECTIONS, SECTION HEIGHTS, COUNT, CLUSTERS, PROBE) is a
  * delta. An existing file for the same archetype URL is merged: an earlier row
  * is dropped when this run probed its slug or its URL (roster key — a row left
@@ -125,8 +127,9 @@ Usage: node sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [
   A value flag followed by nothing or by another --flag is a usage error.
 
 Writes: <variance-dir>/<template>.json (atomic) once every page was probed (exit 0 or 2, never
-  1 or 3): { template, archetype, at, siblings: [{ slug, url, verdict same|differs, missing[],
-  extra[], deltas[{ kind, probe?, msg }] }] }, siblings sorted by slug. MISSING → missing, EXTRA →
+  1 or 3): { template, archetype, at, siblings: [{ slug, url, verdict same|differs, variant (on
+  differs — the variant class on the template), missing[], extra[], deltas[{ kind, probe?, msg }] }] },
+  siblings sorted by slug. MISSING → missing, EXTRA →
   extra, every other finding → deltas. Same archetype URL as the existing file → merged (an earlier
   row whose slug or URL this run probed is dropped, others kept, at = now); a different archetype
   URL → replaced.
@@ -329,11 +332,22 @@ export function readRoster(file, given = false) {
   return { pages: state.pages, note: null };
 }
 
-// MISSING → missing[], EXTRA → extra[] (probe names), every other finding → deltas[].
+// The variant class a differing sibling takes on its template (re-type is the exception, not the response to
+// "differs"): the differing probe names, sorted and joined with `-`, else `layout` for a structural-only delta
+// (SECTIONS / SECTION HEIGHTS with no probe). The cluster brief reads it as "same template, variant CSS/JS".
+export function variantName(findings = []) {
+  const probes = [...new Set(findings.map((f) => f.probe).filter(Boolean))].sort();
+  return probes.length ? probes.join('-') : 'layout';
+}
+
+// MISSING → missing[], EXTRA → extra[] (probe names), every other finding → deltas[]; a `differs` verdict also
+// carries `variant: <name>` — the variant class the sibling takes on its template, not a new archetype.
 export function verdictOf(findings = []) {
   const names = (kind) => [...new Set(findings.filter((f) => f.kind === kind).map((f) => f.probe).filter(Boolean))].sort();
+  const differs = findings.length > 0;
   return {
-    verdict: findings.length ? 'differs' : 'same',
+    verdict: differs ? 'differs' : 'same',
+    ...(differs ? { variant: variantName(findings) } : {}),
     missing: names('MISSING'),
     extra: names('EXTRA'),
     deltas: findings.filter((f) => f.kind !== 'MISSING' && f.kind !== 'EXTRA')
