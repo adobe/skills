@@ -22,6 +22,8 @@
 // refuses in one line, writing nothing; it refuses a tree that holds siblings. Stale only when the same
 // document's bytes change: identical bytes never; a roster row's hash (another basis) is never compared —
 // the row keeps its status and the report names it as not compared.
+// Exclusions (state.mjs exclude): a page's excluded record or the state's top-level excluded[] moves it out of
+// pages[] and the templates into pages.json excluded[] (the key only when there is one), --state roster included.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -698,6 +700,68 @@ check('changed bytes of the same delivered document → stale; the unchanged one
 });
 
 rmSync(box, { recursive: true, force: true });
+}
+
+// --- Exclusions: a planned page the source no longer serves (state.mjs exclude) ---------------------------------------
+{
+const ex = mkdtempSync(join(tmpdir(), 'rollout-inventory-exclude-'));
+const exPut = (rel, body) => { mkdirSync(dirname(join(ex, rel)), { recursive: true }); writeFileSync(join(ex, rel), typeof body === 'string' ? body : JSON.stringify(body)); };
+const exPage = (rel, meta) => { exPut(`stardust/migrated/${rel}`, `<html><body><main>${rel}</main></body></html>`); exPut(join('stardust/migrated', dirname(rel), sidecarName(rel.split('/').pop())), meta); };
+// cwd = the scratch project: the default stardust/state.json is the one written here
+const runEx = (...args) => spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd: ex });
+const exDoc = () => JSON.parse(readFileSync(join(ex, 'stardust/rollout/coverage/pages.json'), 'utf8'));
+exPage('index.html', { slug: 'home', type: 'home', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: [] });
+exPage('about.html', { slug: 'about', type: 'unique', renderBranch: 'B', template: null, modules: [] });
+exPage('news.html', { slug: 'news', type: 'unique', renderBranch: 'B', template: null, modules: [] });
+const AT = '2026-10-09T10:00:00Z';
+const exState = (news) => ({ pages: [
+  { slug: 'home', url: 'https://example.com/', type: 'home', status: 'migrated' },
+  { slug: 'about', url: 'https://example.com/about', type: 'unique', status: 'migrated' },
+  { slug: 'news', url: 'https://example.com/news', type: 'unique', status: 'migrated', ...(news ? { excluded: { reason: 'the source answers 404', at: AT } } : {}) },
+] });
+
+check('exclusions: without any, pages.json has no excluded key; every migrated page is a row', () => {
+  exPut('stardust/state.json', exState(false));
+  const r = runEx();
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!('excluded' in exDoc())); assert.deepEqual(exDoc().pages.map((p) => p.slug), ['about', 'home', 'news']);
+  assert.doesNotMatch(r.stdout, /^Excluded/m);
+});
+
+check('exclusions: a page state.json records as excluded and one in its top-level excluded[] leave pages[] and the templates for excluded[] rows ({slug, path, sourceUrl, status excluded, reason, at}); schema-valid; a re-run is byte-identical', () => {
+  exPut('stardust/state.json', { ...exState(true), excluded: [{ slug: 'old-offer', url: 'https://example.com/old-offer/', reason: 'the source answered 404 at crawl time', at: AT }] });
+  const r = runEx();
+  assert.equal(r.status, 0, r.stderr);
+  const doc = exDoc();
+  assert.deepEqual(doc.pages.map((p) => p.slug), ['about', 'home']);
+  assert.deepEqual(doc.excluded, [
+    { slug: 'news', path: '/news', sourceUrl: 'https://example.com/news', status: 'excluded', reason: 'the source answers 404', at: AT },
+    { slug: 'old-offer', path: '/old-offer', sourceUrl: 'https://example.com/old-offer/', status: 'excluded', reason: 'the source answered 404 at crawl time', at: AT },
+  ]);
+  const templates = JSON.parse(readFileSync(join(ex, 'stardust/rollout/coverage/templates.json'), 'utf8')).templates;
+  assert.ok(templates.every((t) => !t.pages.includes('news')), JSON.stringify(templates.map((t) => t.pages)));
+  assert.match(r.stdout, /^Excluded {4}2 \(the source no longer serves them; state\.mjs exclude\), never counted: news, old-offer$/m, r.stdout);
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), doc), []);
+  const bytes = readFileSync(join(ex, 'stardust/rollout/coverage/pages.json'), 'utf8');
+  assert.equal(runEx().status, 0);
+  assert.equal(readFileSync(join(ex, 'stardust/rollout/coverage/pages.json'), 'utf8'), bytes);
+});
+
+check('exclusions: --state (archetypes-only) never seeds an excluded roster page content-pending; it is an excluded[] row', () => {
+  const roster = { pages: [
+    { slug: 'home', url: 'https://example.com/', type: 'home' },
+    { slug: 'promo', url: 'https://example.com/promo', type: 'home', excluded: { reason: 'the source answers 404', at: AT } },
+    { slug: 'promo-2', url: 'https://example.com/promo-2', type: 'home' },
+  ] };
+  exPut('roster.json', roster);
+  rmSync(join(ex, 'stardust/migrated/about.html')); rmSync(join(ex, 'stardust/migrated/about._meta.json'));
+  rmSync(join(ex, 'stardust/migrated/news.html')); rmSync(join(ex, 'stardust/migrated/news._meta.json'));
+  const r = runEx('--state', 'roster.json');
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(exDoc().pages.map((p) => [p.slug, p.delivery.status]), [['home', 'pending'], ['promo-2', 'content-pending']]);
+  assert.deepEqual(exDoc().excluded.map((e) => [e.slug, e.path, e.status]), [['promo', '/promo', 'excluded']]);
+});
+rmSync(ex, { recursive: true, force: true });
 }
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

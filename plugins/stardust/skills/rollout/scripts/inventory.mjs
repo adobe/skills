@@ -73,6 +73,13 @@
  * sibling, or why it was skipped) is copied verbatim to the row's `source.variance`;
  * the key is absent when the sidecar carries no such object.
  *
+ * Exclusions: a planned page the source no longer serves (`state.mjs exclude` — a page's
+ * `excluded` record, or the state file's top-level `excluded[]`, of --state or else
+ * stardust/state.json) is no row of pages[] — matched by slug or delivered path, a
+ * migrated or roster page included — but a pages.json `excluded[]` row
+ * `{slug, path, sourceUrl, status: "excluded", reason, at}` (the key only when there is
+ * one), never in a denominator, a pass or a fail; the report names them.
+ *
  * Delivered structure: every row's `delivered` holds what the page's content file (<content>/index.html
  * for /, else <path>.html or <path>/index.html) is made of — blocks and default content in document
  * order with sections, lang, source snapshot and contentHash — or null while it has no content file.
@@ -283,6 +290,18 @@ const defaultState = !STATE && existsSync('stardust/state.json') ? readJSON('sta
 const stateRows = STATE ? stateDoc.pages : (defaultState && Array.isArray(defaultState.pages) ? defaultState.pages : []);
 const statePages = stateRows.filter((p) => p && p.slug);
 const stateUrls = new Map(statePages.filter((p) => p.url).map((p) => [p.slug, p.url]));
+// Exclusions (state.mjs exclude): a page's `excluded` record or the top-level excluded[] of the same state file — a planned
+// page the source no longer serves leaves pages[] for coverage excluded[], matched by slug or by delivered path.
+const exclusionDoc = STATE ? stateDoc : defaultState;
+const exclusions = new Map();
+for (const p of (exclusionDoc && Array.isArray(exclusionDoc.pages) ? exclusionDoc.pages : [])) {
+  if (p && p.slug && p.excluded && typeof p.excluded === 'object') exclusions.set(p.slug, { url: p.url || null, reason: p.excluded.reason ?? null, at: p.excluded.at ?? null });
+}
+for (const e of (exclusionDoc && Array.isArray(exclusionDoc.excluded) ? exclusionDoc.excluded : [])) {
+  if (e && e.slug && !exclusions.has(e.slug)) exclusions.set(e.slug, { url: e.url || null, reason: e.reason ?? null, at: e.at ?? null });
+}
+const excludedPaths = new Map([...exclusions].filter(([, e]) => e.url).map(([slug, e]) => [urlToDeliveredPath(e.url), slug]));
+const exclusionOf = (row) => (exclusions.has(row.slug) ? row.slug : excludedPaths.get(row.path)) || null;
 // identity (DA org/site, project hosts) a free-text field must not carry; the source origin is not identity
 const tokens = identityTokens({
   rollout: { site: { ...((priorConfig && priorConfig.site) || {}), ...(SITE_URL ? { sourceUrl: SITE_URL } : {}) } },
@@ -410,6 +429,7 @@ if (STATE) {
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
   for (const sp of stateDoc.pages) {
+    if (exclusions.has(sp.slug)) continue; // the source no longer serves it: an excluded[] row, never content-pending
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
     if (encodedSlugs.has(sp.slug)) continue; // an encoded page, listed from its sidecar at its delivered (sanitised) path
@@ -455,6 +475,13 @@ for (const prior of (priorPages.pages || [])) {
   migratedSlugs.add(prior.slug);
   migratedPaths.add(prior.path);
 }
+
+// --- Excluded pages leave pages[] (never in a denominator, a pass or a fail) for excluded[] rows ---
+const excludedRows = [...exclusions].map(([slug, e]) => {
+  const row = pages.find((p) => exclusionOf(p) === slug);
+  return { slug, path: e.url ? urlToDeliveredPath(e.url) : (row ? row.path : null), sourceUrl: e.url || (row && row.source && row.source.sourceUrl) || null, status: 'excluded', reason: e.reason, at: e.at };
+}).sort((a, b) => byStr(a.slug, b.slug));
+for (let i = pages.length - 1; i >= 0; i -= 1) if (exclusionOf(pages[i])) pages.splice(i, 1);
 
 // --- Delivered structure: what each page's content file is made of (null while it has none) ---
 // A block record's variantId is minted from its identity (block + classes), unless the prior pages.json
@@ -556,7 +583,7 @@ const prov = (writtenBy) => ({ writtenBy, writtenAt: now, readArtifacts, stardus
 applyTemplateJudgement(templates, readJSON(join(OUT, 'workspace', 'judgement.json'), null), tokens);
 // unchanged coverage is not rewritten, so a re-run with unchanged inputs leaves both files byte-identical
 const wrote = [
-  writeCoverage(pagesPath, { _provenance: prov('stardust:rollout/inventory'), formatVersion: COVERAGE_FORMAT_VERSION, generatedAt: now, pages }),
+  writeCoverage(pagesPath, { _provenance: prov('stardust:rollout/inventory'), formatVersion: COVERAGE_FORMAT_VERSION, generatedAt: now, pages, ...(excludedRows.length ? { excluded: excludedRows } : {}) }),
   writeCoverage(templatesPath, { _provenance: prov('stardust:rollout/inventory'), formatVersion: COVERAGE_FORMAT_VERSION, generatedAt: now, templates }),
 ];
 
@@ -581,6 +608,7 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+if (excludedRows.length) console.log(`Excluded    ${excludedRows.length} (the source no longer serves them; state.mjs exclude), never counted: ${excludedRows.map((e) => e.slug).join(', ')}`);
 if (notCompared.length) {
   const names = notCompared.sort();
   console.log(`Kept        ${names.length} delivered row(s) whose hash basis changed (roster → document), not compared: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ' …' : ''}`);

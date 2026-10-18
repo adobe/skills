@@ -15,16 +15,24 @@
 // whose gate failed at any recorded width (passByWidth[w] === false) is pages_failed though its last width passed;
 // a gate with no verdict is gates_inconclusive (and pages_failed only when the row failed for another reason); an object
 // override counts only with gate-all's `valid: true`; header_parity_errors counts the undecided errors of
-// header-parity.json in any project (its findings decide; counts.error − counts.decided without them).
+// header-parity.json in any project (its findings decide; counts.error alone without them), and is left
+// out when header_parity already names those errors (one finding set, one gap). export_stale (judged only when
+// rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
+// that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
+// than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows and module
+// blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as doneCheck from '../done-check.mjs';
 import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
+import { inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
 
@@ -72,7 +80,29 @@ check('deliveredPaths probes each row where it was deployed — a folder index a
 });
 check('a clean run is complete, with the live probe recorded as run', () => {
   const v = doneGaps({ pages: CLEAN_PAGES, findings: [], ledgerLines: ENDED, notLive: [] });
-  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [] });
+  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [], info: [] });
+});
+check('pages_excluded: excluded[] rows of pages.json are info, never a gap — the run stays complete', () => {
+  const excluded = [{ slug: 'news', path: '/news', status: 'excluded', reason: 'r' }, { slug: 'old', path: null, status: 'excluded', reason: 'r' }];
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded });
+  assert.deepEqual(v, { complete: true, gaps: [], liveChecked: true, skipped: [], info: ['pages_excluded:2: /news, /old'] });
+});
+check('blocks_pending: blocks delivered without a conversion record are info naming the remedy, never a gap — after pages_excluded', () => {
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], pendingBlocks: ['hero', 'teaser'] });
+  assert.equal(v.complete, true);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name|id> --status converted']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [] }).info, []);
+});
+check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
+  const blocks = { blocks: [
+    { id: 'hero-banner', kind: 'module', delivery: { status: 'pending', edsBlockName: 'hero' }, variants: [{ id: 'v_1', classes: [], pages: 1, instances: 2 }] },
+    { id: 'three-up', kind: 'module', delivery: { status: 'converted', edsBlockName: 'columns' }, variants: [{ id: 'v_2', classes: [], pages: 1, instances: 1 }] },
+  ] };
+  const proj = project({ files: { 'stardust/rollout/coverage/blocks.json': blocks } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name|id> --status converted'), r.stdout);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 check('unfinished counts every not-yet-verified status, and only those', () => {
@@ -250,6 +280,17 @@ check('unit_unproven: one page short of the 360 gate, failing, or without a cove
   assert.deepEqual(units({ pages: short, widths: ['1440'] }).gaps, []);
 });
 
+check('unit_unproven: a unit page excluded since (coverage excluded[] by path, no row in pages[]) leaves the unit\'s count; a unit of excluded pages only is no gap', () => {
+  const excluded = [{ slug: 'news-a', path: '/news/a', status: 'excluded' }];
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded }).gaps, []);
+  const short = UNIT_PAGES.slice(1).map(withGate('news-b', { atByWidth: { 1440: AT[1440] } }));
+  assert.deepEqual(units({ pages: short, excluded }).gaps, ['unit_unproven:cluster-news: 1/1 pages without a passing gate at 1440 and 360: /news/b/']);
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(0, 2), excluded: [{ slug: 'story', path: '/story', status: 'excluded' }] }).gaps, []);
+  const story = UNIT_PAGES.map(withGate('story', { pass: false }));
+  assert.deepEqual(units({ pages: story, excluded: [{ slug: 'old-story', path: '/Story', status: 'excluded' }] }).gaps,
+    ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], 'an excluded path never hides a row still in pages[]');
+});
+
 const LEGACY_SKIP = (n) => `unit_unproven: ${n} row(s) without per-width verdicts — proven on the last width's pass`;
 const withGate = (slug, gate) => (p) => (p.slug === slug ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, ...gate } } } : p);
 const legacy = (p) => { const gate = { ...p.delivery.gate }; delete gate.passByWidth; return { ...p, delivery: { ...p.delivery, gate } }; };
@@ -404,6 +445,7 @@ check('CLI: --help prints the usage header and writes nothing', () => {
   const r = run(proj, ['--help']);
   assert.equal(r.status, 0);
   assert.match(r.stdout, /pages_not_live/);
+  assert.match(r.stdout, /^rollout\/done-check\.mjs/, 'its own header, never the lazily imported workspace-manifest.mjs\'s');
   assert.equal(readdirSync(join(proj, 'stardust')).join(), before);
   rmSync(proj, { recursive: true, force: true });
 });
@@ -412,7 +454,7 @@ check('CLI: a clean offline run exits 0 and the JSON says the probe was skipped'
   const proj = project();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 0, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false, skipped: [OFFLINE_SKIP, 'unit_unproven: no stardust/rollout/progress.json'] });
+  assert.deepEqual(JSON.parse(r.stdout), { complete: true, gaps: [], liveChecked: false, skipped: [OFFLINE_SKIP, 'unit_unproven: no stardust/rollout/progress.json'], info: [] });
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -421,6 +463,15 @@ check('CLI: gaps exit 1, one line each, then the summary line', () => {
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1);
   assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', `skipped: ${OFFLINE_SKIP}`, 'skipped: unit_unproven: no stardust/rollout/progress.json', '✗ 2 gap(s) (live probe skipped: --offline)']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: pages.json excluded[] rows print as an info line after the skipped ones and keep a clean run complete (exit 0)', () => {
+  const proj = project({ files: { 'stardust/rollout/coverage/pages.json': { pages: CLEAN_PAGES, excluded: [{ slug: 'news', path: '/news', sourceUrl: 'https://example.com/news', status: 'excluded', reason: 'the source answers 404', at: AT[1440] }] } } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(r.stdout.trim().split('\n').slice(-2), ['info: pages_excluded:1: /news', '✓ complete (live probe skipped: --offline)']);
+  assert.deepEqual(JSON.parse(run(proj, ['--offline', '--json']).stdout).info, ['pages_excluded:1: /news']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -449,15 +500,32 @@ check('CLI: a replica project without a header contract is not complete', () => 
 });
 
 const herr = (key, decided) => ({ key, severity: 'error', ...(decided ? { decided: { decision: 'accepted', by: 'Site owner', at: '2026-10-09T12:00:00Z', reason: 'r' } } : {}) });
-check('headerParityErrors: the undecided error findings of header-parity.json; counts.error − counts.decided (floored at 0) only when it has no findings[]', () => {
+check('headerParityErrors: the undecided error findings of header-parity.json; without findings[], counts.error alone (chrome-compare already leaves the decided out of it)', () => {
   assert.equal(headerParityErrors({ findings: ['a', 'b', 'c', 'd'].map((k) => herr(k)) }), 'header_parity_errors:4');
   assert.equal(headerParityErrors({ findings: [herr('a', true), herr('b', true), herr('c'), { key: 'w', severity: 'warn' }] }), 'header_parity_errors:1');
   // chrome-compare writes counts.error without the decided findings: the findings decide whenever they are there
   assert.equal(headerParityErrors({ counts: { error: 3, warn: 0, decided: 2 }, findings: [herr('a'), herr('b'), herr('c'), herr('d', true), herr('e', true)] }), 'header_parity_errors:3');
-  assert.equal(headerParityErrors({ counts: { error: 5, warn: 1, decided: 2 } }), 'header_parity_errors:3');
-  assert.equal(headerParityErrors({ counts: { error: 1, decided: 3 } }), null);
+  assert.equal(headerParityErrors({ counts: { error: 5, warn: 1, decided: 2 } }), 'header_parity_errors:5', 'the same reading as with findings[]: decided ones are not in counts.error');
+  assert.equal(headerParityErrors({ counts: { error: 1, decided: 3 } }), 'header_parity_errors:1');
+  assert.equal(headerParityErrors({ counts: { error: 0, decided: 3 } }), null);
   assert.equal(headerParityErrors({ counts: { error: 2, decided: 0 }, findings: [] }), null);
   for (const parity of [null, undefined, 'x', [], {}, { counts: null }, { counts: { error: 'many' } }]) assert.equal(headerParityErrors(parity), null, JSON.stringify(parity));
+});
+
+check('header decisions the agent took (decided.agent, else counts.decidedByAgent) are an info line for the owner\'s review, never a gap; none → no line', () => {
+  const { headerDecidedByAgent } = doneCheck;
+  const agent = (key) => ({ key, severity: 'error', decided: { decision: 'accept', by: 'agent', agent: true, reason: 'r'.repeat(40), at: '2026-10-09T12:00:00Z' } });
+  assert.equal(headerDecidedByAgent({ findings: [agent('motion@390 Menu [click]'), herr('focus@1440 Search', true), agent('state-missing@1440 Shop [hover]'), herr('x')] }),
+    'header_decided_by_agent:2: motion@390 Menu [click], state-missing@1440 Shop [hover] — for the owner\'s review');
+  assert.equal(headerDecidedByAgent({ counts: { error: 0, decided: 3, decidedByAgent: 2 } }), 'header_decided_by_agent:2 — for the owner\'s review');
+  for (const parity of [null, {}, { findings: [herr('a', true)] }, { counts: { decidedByAgent: 0 } }]) assert.equal(headerDecidedByAgent(parity), null, JSON.stringify(parity));
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], headerAgent: 'header_decided_by_agent:1 — for the owner\'s review' });
+  assert.deepEqual([v.complete, v.info], [true, ['header_decided_by_agent:1 — for the owner\'s review']]);
+  const proj = project({ files: { 'stardust/chrome/header-parity.json': { counts: { error: 0, decided: 1, decidedByAgent: 1 }, findings: [agent('motion@390 Menu [click]')] } } });
+  const r = run(proj, ['--offline', '--json']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(JSON.parse(r.stdout).info, ['header_decided_by_agent:1: motion@390 Menu [click] — for the owner\'s review']);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 check('CLI: header_parity_errors fires whenever chrome/header-parity.json has undecided errors — any project, right after header_parity; absent or unreadable → no gap', () => {
@@ -468,7 +536,16 @@ check('CLI: header_parity_errors fires whenever chrome/header-parity.json has un
   assert.deepEqual(gaps({ 'stardust/chrome/header-parity.json': '{"counts": ' }), { status: 0, gaps: [] });
   const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 390: {} } };
   assert.deepEqual(gaps({ 'stardust/state.json': { flow: 'replica' }, 'stardust/chrome/header-contract.json': contract, 'stardust/chrome/header-parity.json': parity }).gaps,
-    ['header_parity:2: state-missing@1440 Shop [hover], motion@390 Open menu [click]', 'header_parity_errors:2']);
+    ['header_parity:2: state-missing@1440 Shop [hover], motion@390 Open menu [click]'], 'one finding set, one gap: header_parity already lists the undecided errors');
+  assert.deepEqual(gaps({ 'stardust/state.json': { flow: 'replica' }, 'stardust/chrome/header-contract.json': { ...contract, at: '2026-10-10T00:00:00Z' }, 'stardust/chrome/header-parity.json': parity }).gaps,
+    ['header_parity:stale: the contract is newer than the comparison', 'header_parity_errors:2'], 'another cause: both lines');
+});
+
+check('header gaps counted once: header_parity_errors is dropped when header_parity lists the same undecided errors, kept for another header_parity cause or none', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, header: 'header_parity:2: a, b', headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity:2: a, b']);
+  assert.deepEqual(doneGaps({ ...base, header: 'header_parity:unchecked: x', headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity:unchecked: x', 'header_parity_errors:2']);
+  assert.deepEqual(doneGaps({ ...base, headerErrors: 'header_parity_errors:2' }).gaps, ['header_parity_errors:2']);
 });
 
 check('CLI: usage errors exit 2 — no pages.json; no live host without --offline', () => {
@@ -506,7 +583,7 @@ check('CLI: --json lists every new gap in order and every check that did not run
   const proj = proofProject();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 1, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
+  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'], info: [] });
   const text = run(proj, ['--offline']).stdout.trim().split('\n');
   assert.deepEqual(text.slice(-3), [`skipped: ${OFFLINE_SKIP}`, 'skipped: sidecars_missing redirects: 1 delivered rows without source.sourceUrl', '✗ 5 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
@@ -596,6 +673,91 @@ check('CLI: a redesign flow with no gate on any row skips the sidecar gate width
   const replica = verdict('replica');
   assert.deepEqual(replica.sidecars, ['sidecars_missing:2: schema 0, gate widths 2, redirects 0: /, /about']);
   assert.ok(!replica.skipped.includes(WIDTHS_SKIP));
+});
+
+// --- export_stale -------------------------------------------------------------------------------
+const WS = 'stardust/rollout/workspace';
+const REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
+const H = (c) => `sha256:${c.repeat(64)}`;
+const TREE = {
+  inputs: { 'blocks/hero/hero.css': H('a'), 'blocks/hero/hero.js': H('b'), content: { files: 3, sha256: H('c') } },
+  outputs: { 'stardust/rollout/coverage/blocks.json': H('d'), 'stardust/rollout/coverage/pages.json': H('e'), 'stardust/rollout/coverage/templates.json': H('f'), [`${WS}/mapping.json`]: H('1') },
+};
+const MANIFEST = { inputs: { ...TREE.inputs, content: { ...TREE.inputs.content, tracked: true } }, outputs: { ...TREE.outputs }, handover: null };
+const FRESH = { listed: true, manifest: MANIFEST, tree: TREE, mapping: { generatedAt: 'T1' }, pagesGeneratedAt: 'T1', captures: true };
+const withoutMapping = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => !k.endsWith('/mapping.json')));
+
+check('export_stale: judged only when rollout.json exports lists migration-workspace; a fresh export (same hashes, mapping present with pages.json\'s generatedAt) is no gap', () => {
+  const { exportGap } = doneCheck;
+  assert.deepEqual(exportGap({ ...FRESH, listed: false, manifest: null }), { gap: null, skipped: [] });
+  assert.deepEqual(exportGap(FRESH), { gap: null, skipped: [] });
+  const noMap = { ...TREE, outputs: withoutMapping(TREE.outputs) };
+  assert.deepEqual(exportGap({ ...FRESH, captures: false, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }), { gap: null, skipped: [] }, 'no captures: no mapping needed');
+});
+
+check('export_stale: names each cause — no manifest, hashes that differ from the tree (content, block code, coverage, mapping), mapping.json missing while captures exist, unreadable, or with another generatedAt — with the three commands as the remedy', () => {
+  const { exportGap } = doneCheck;
+  assert.equal(exportGap({ ...FRESH, manifest: null }).gap, `export_stale:no ${WS}/manifest.json — ${REMEDY}`);
+  const tree = { inputs: { ...TREE.inputs, 'blocks/hero/hero.css': H('9'), 'blocks/new/new.js': H('8'), content: { files: 4, sha256: H('7') } }, outputs: { ...TREE.outputs, 'stardust/rollout/coverage/pages.json': H('6') } };
+  assert.equal(exportGap({ ...FRESH, tree }).gap, `export_stale:manifest hashes differ from the tree: blocks/hero/hero.css, blocks/new/new.js, content, stardust/rollout/coverage/pages.json — ${REMEDY}`);
+  const tracked = { ...TREE, inputs: { ...TREE.inputs, content: { ...TREE.inputs.content, tracked: false } } };
+  assert.equal(exportGap({ ...FRESH, tree: tracked }).gap, null, 'git tracking is not a hash');
+  const noMap = { ...TREE, outputs: withoutMapping(TREE.outputs) };
+  assert.equal(exportGap({ ...FRESH, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }).gap, `export_stale:no ${WS}/mapping.json while captures exist — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, mapping: 'not json' }).gap, `export_stale:${WS}/mapping.json unreadable — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, mapping: { generatedAt: 'T0' } }).gap, `export_stale:${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, tree: null }).gap, `export_stale:unchecked (workspace-manifest.mjs not found beside done-check.mjs) — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, tree: null, treeError: 'EACCES: permission denied, open \'content/index.html\'' }).gap, `export_stale:unchecked (EACCES: permission denied, open 'content/index.html') — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, manifest: null, mapping: { generatedAt: 'T0' } }).gap, `export_stale:no ${WS}/manifest.json; ${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`, 'causes joined in one line');
+});
+
+check('export_stale: a handed-over export is not judged — stardust no longer writes it — and the skipped line says so', () => {
+  const { exportGap } = doneCheck;
+  assert.deepEqual(exportGap({ ...FRESH, manifest: null, handedOver: `${WS}/handover.json` }), { gap: null, skipped: [`export_stale: handed over (${WS}/handover.json) — stardust no longer writes the export`] });
+});
+
+check('export_stale takes its place after ledger_unpaired, before rollout_incomplete', () => {
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: [], notLive: [], ledger: 'ledger_unpaired:1: x', exported: 'export_stale:x' });
+  assert.deepEqual(v.gaps, ['ledger_unpaired:1: x', 'export_stale:x', 'rollout_incomplete']);
+});
+
+check('CLI: export_stale reads the project — fresh after the three commands, stale once a block file changes after the manifest, or the mapping goes; not judged without the export listed or after handover', () => {
+  const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
+  const files = {
+    'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
+    'stardust/rollout/coverage/pages.json': pagesDoc,
+    'stardust/rollout/coverage/templates.json': { templates: [] },
+    'stardust/rollout/coverage/blocks.json': { blocks: [] },
+    'stardust/current/pages/home.html': '<main><h1>Home</h1></main>',
+    'content/index.html': '<main><div><h1>Home</h1></div></main>',
+    'blocks/hero/hero.css': '.hero { margin: 0; }',
+    'blocks/hero/hero.js': 'export default function decorate() {}',
+    [`${WS}/mapping.json`]: { formatVersion: '0.1.0', generatedAt: pagesDoc.generatedAt, skipped: [], templates: [] },
+  };
+  const proj = project({ files });
+  const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
+  const writeManifest = () => {
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json') });
+    const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].filter((f) => existsSync(join(proj, f))).map((f) => [f, sha(f)]));
+    writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
+  };
+  const stale = () => JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((g) => g.startsWith('export_stale'));
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  writeFileSync(join(proj, 'blocks/hero/hero.css'), '.hero { margin: 1px; }');
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — ${REMEDY}`]);
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  rmSync(join(proj, WS, 'mapping.json'));
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: ${WS}/mapping.json; no ${WS}/mapping.json while captures exist — ${REMEDY}`]);
+  writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
+  const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual(handed.gaps.filter((g) => g.startsWith('export_stale')), []);
+  assert.ok(handed.skipped.includes(`export_stale: handed over (${WS}/handover.json) — stardust no longer writes the export`), JSON.stringify(handed.skipped));
+  rmSync(join(proj, WS, 'handover.json'));
+  writeFileSync(join(proj, 'stardust/rollout/rollout.json'), JSON.stringify({ exports: [] }));
+  assert.deepEqual(stale(), [], 'not listed: not judged');
+  rmSync(proj, { recursive: true, force: true });
 });
 
 for (const [name, fn] of tests) {

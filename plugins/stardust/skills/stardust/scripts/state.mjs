@@ -13,6 +13,7 @@
 //                  [--skill <name>] [--force | --history-only] [--dir <stardust dir>]
 //   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
 //                  [--skill <name>] [--dir <stardust dir>]
+//   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
 // init (after the crawl): one page per listed URL, in input order, every one `extracted`. A URL is
@@ -32,6 +33,8 @@
 // set: page.type / page.representative (the archetype slug a sibling clones), all-or-nothing; a
 // representative whose chain of representative links leads back to a named page (a cycle) is
 // refused; --clear-representative writes representative: null.
+// exclude: why the source no longer serves a planned page — excluded { reason, at } on a page in
+// pages[], or { slug, url, reason, at } in the top-level excluded[] for one init never had (--url).
 //
 // Lifecycle (state-machine.md § Page lifecycle states): extracted → directed → prototyped →
 // approved → migrated. Forward moves are legal, including jumps (a `directed` page can be migrated
@@ -74,11 +77,12 @@ export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloaded)(\(fallback\))?$/;
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
-// Flags only init / set read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type'];
+// Flags only init / set / exclude read; advance and summary keep refusing them as unknown options.
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--reason', '--url'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
   set: ['--representative', '--clear-representative', '--type', '--skill', '--dir'],
+  exclude: ['--reason', '--url', '--skill', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -91,9 +95,10 @@ const HELP = `Usage:
                  [--migrated <path>] [--skill <name>] [--force | --history-only] [--dir <d>]
   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
                  [--skill <name>] [--dir <d>]
+  node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set and
-  summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set,
+  exclude and summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
 
 init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages, in input order.
          --pages: a file (or - for stdin) with one URL per line (blank lines and # lines ignored)
@@ -140,16 +145,27 @@ set      sets page.representative (the archetype slug the named pages clone) and
          stardust:direct unless --skill). All-or-nothing: an unknown slug, an unknown
          representative, or a representative whose representative links lead back to a named
          page (a cycle: itself, a → b → a, …; the line names the chain) exits 2, nothing written.
-summary  prints page counts by status, then one line per archetype when any page has a
-         representative ("  representative <archetype> <n>  <slug, …>", sorted by archetype),
-         then the slugs per status with --slugs.
+exclude  records that the source no longer serves a planned page (a 404 at crawl or gate time), so
+         it leaves every denominator with a record instead of silently: a page in pages[] gets
+         excluded { reason, at } after its status (the status is untouched); --url <url> (one slug,
+         not in pages[]) lists a planned page init never had in the top-level excluded[]
+         ({ slug, url, reason, at }, by slug). rollout's inventory.mjs carries both into
+         coverage/pages.json excluded[], done-check.mjs counts them (pages_excluded, info, not a
+         gap). The same reason again writes nothing ("unchanged"); another reason replaces it.
+         Re-stamps _provenance (writtenBy stardust:extract unless --skill). All-or-nothing: no
+         --reason, an unknown slug without --url, --url naming a page in pages[] (its slug or its URL)
+         or with more than one slug, or a --url that is not an absolute http(s) URL exits 2, nothing
+         written.
+summary  prints page counts by status (· excluded <n> when any), then one line per archetype when
+         any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
+         archetype), then the slugs per status with --slugs.
 A value flag followed by nothing or by another --flag is a usage error; so is a flag init or set
 does not read.
-Writes: init writes <dir>/${FILE_NAME}; advance and set rewrite it in place (atomic temp file +
+Writes: init writes <dir>/${FILE_NAME}; advance, set and exclude rewrite it in place (atomic temp file +
 rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
 parse, a page record is missing or lacks live-render evidence; set: unknown slug or
-representative, a representative cycle) — nothing written.`;
+representative, a representative cycle; exclude: as above) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -268,12 +284,15 @@ export function summarise(state) {
   const other = {};
   const stale = [];
   const representatives = {};
+  const excluded = [];
   for (const p of state.pages) {
     (counts[p.status] || (other[p.status] = other[p.status] || [])).push(p.slug);
     if (p.stale) stale.push(p.slug);
     if (p.representative) (representatives[p.representative] ||= []).push(p.slug);
+    if (p.excluded) excluded.push(p.slug);
   }
-  return { total: state.pages.length, counts, other, stale, representatives };
+  for (const e of Array.isArray(state.excluded) ? state.excluded : []) if (e && e.slug) excluded.push(e.slug);
+  return { total: state.pages.length, counts, other, stale, representatives, excluded };
 }
 
 // ---- set ---------------------------------------------------------------------------------------
@@ -327,6 +346,50 @@ export function setPages(state, slugs, { representative = null, type = null, cle
     return next;
   });
   return unique;
+}
+
+// ---- exclude -----------------------------------------------------------------------------------
+// Records why the source no longer serves a planned page: on a page in pages[] as excluded
+// { reason, at } right after its status; with `url` (one slug, not in pages[]) in the top-level
+// excluded[] as { slug, url, reason, at }, by slug. The same reason (and url) again changes nothing.
+// Throws before touching anything on a refusal. Returns { changed[], unchanged[], listed[] }.
+export function excludePages(state, slugs, { reason, url = null, at = nowIso() } = {}) {
+  const why = typeof reason === 'string' ? reason.trim() : '';
+  if (!why) throw new UsageError('exclude needs --reason "<why>" (what the source answered, e.g. "the source answers 404 since the crawl")');
+  if (!slugs.length) throw new UsageError('exclude needs at least one <slug>');
+  const unique = [...new Set(slugs)];
+  const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
+  if (url !== null) {
+    if (unique.length !== 1) throw new UsageError(`--url names one page: one <slug> with it (got ${unique.join(', ')})`);
+    let parsed = null;
+    try { parsed = new URL(url); } catch { parsed = null; }
+    if (!parsed || !/^https?:$/.test(parsed.protocol)) throw new UsageError(`--url "${url}" is not an absolute http(s) URL`);
+    if (bySlug.has(unique[0])) throw new UsageError(`${unique[0]} is in pages[]: exclude it without --url (the record goes on the page)`);
+    const owner = state.pages.find((p) => typeof p.url === 'string' && (() => { try { return urlKey(p.url) === urlKey(url); } catch { return false; } })());
+    if (owner) throw new UsageError(`${url} is the URL of ${owner.slug} in pages[]: exclude ${owner.slug} without --url (the record goes on the page)`);
+  } else {
+    const missing = unique.filter((s) => !bySlug.has(s));
+    if (missing.length) throw new UsageError(`unknown slug(s): ${missing.join(', ')} — ${state.pages.length} page(s) in state.json; a planned page init never had: exclude <slug> --url <url> --reason "<why>"`);
+  }
+  const changed = []; const unchanged = []; const listed = [];
+  if (url !== null) {
+    const slug = unique[0];
+    const list = Array.isArray(state.excluded) ? state.excluded.filter((e) => e && e.slug !== slug) : [];
+    const prior = Array.isArray(state.excluded) ? state.excluded.find((e) => e && e.slug === slug) : null;
+    if (prior && prior.reason === why && prior.url === url) unchanged.push(slug);
+    else {
+      state.excluded = [...list, { slug, url, reason: why, at }].sort((a, b) => (a.slug < b.slug ? -1 : a.slug > b.slug ? 1 : 0));
+      changed.push(slug); listed.push(slug);
+    }
+    return { changed, unchanged, listed };
+  }
+  state.pages = state.pages.map((p) => {
+    if (!unique.includes(p.slug)) return p;
+    if (p.excluded && p.excluded.reason === why) { unchanged.push(p.slug); return p; }
+    changed.push(p.slug);
+    return withKey(p, 'excluded', { reason: why, at }, 'status');
+  });
+  return { changed, unchanged, listed };
 }
 
 // ---- init --------------------------------------------------------------------------------------
@@ -546,7 +609,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, reason: null, url: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -575,6 +638,8 @@ function parseArgs(argv) {
     else if (a === '--representative') opts.representative = need();
     else if (a === '--clear-representative') opts.clearRepresentative = true;
     else if (a === '--type') opts.type = need();
+    else if (a === '--reason') opts.reason = need();
+    else if (a === '--url') opts.url = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -649,6 +714,19 @@ function runSet(opts, rest) {
   return 0;
 }
 
+function runExclude(opts, rest) {
+  const { state, file } = readState(opts.dir);
+  const at = nowIso();
+  const { changed, unchanged, listed } = excludePages(state, rest, { reason: opts.reason, url: opts.url, at });
+  if (!changed.length) { console.log(`state: exclude unchanged: ${unchanged.join(', ')}`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'extract');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  writeState(file, state);
+  const named = changed.map((s) => (listed.includes(s) ? `${s} (not in pages[])` : s));
+  console.log(`state: excluded ${changed.length} page(s): ${named.join(', ')}${unchanged.length ? ` · unchanged: ${unchanged.join(', ')}` : ''} · written by ${writtenBy}`);
+  return 0;
+}
+
 // ---- main --------------------------------------------------------------------------------------
 export function main(argv) {
   const { opts, pos } = parseArgs(argv);
@@ -659,7 +737,7 @@ export function main(argv) {
   if (Object.hasOwn(FLAGS_FOR, cmd)) {
     const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
     if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
-    return cmd === 'init' ? runInit(opts, rest) : runSet(opts, rest);
+    return { init: runInit, set: runSet, exclude: runExclude }[cmd](opts, rest);
   }
   const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
   if (stray) throw new UsageError(`unknown option ${stray}`);
@@ -670,12 +748,14 @@ export function main(argv) {
     const parts = ORDER.map((k) => `${k} ${s.counts[k].length}`);
     for (const [k, v] of Object.entries(s.other)) parts.push(`other(${k}) ${v.length}`);
     parts.push(`stale ${s.stale.length}`);
+    if (s.excluded.length) parts.push(`excluded ${s.excluded.length}`);
     console.log(`${s.total} page(s) · ${parts.join(' · ')}`);
     for (const a of Object.keys(s.representatives).sort()) console.log(`  representative ${a} ${s.representatives[a].length}  ${s.representatives[a].join(', ')}`);
     if (opts.slugs) {
       const rows = [...ORDER.map((k) => [k, s.counts[k]]), ...Object.entries(s.other).map(([k, v]) => [`other(${k})`, v])].filter(([, v]) => v.length);
       for (const [k, v] of rows) console.log(`  ${k.padEnd(11)} ${String(v.length).padStart(3)}  ${v.join(', ')}`);
       if (s.stale.length) console.log(`  ${'stale'.padEnd(11)} ${String(s.stale.length).padStart(3)}  ${s.stale.join(', ')}`);
+      if (s.excluded.length) console.log(`  ${'excluded'.padEnd(11)} ${String(s.excluded.length).padStart(3)}  ${s.excluded.join(', ')}`);
     }
     return 0;
   }

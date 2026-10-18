@@ -94,7 +94,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/blocks.mjs` — block dedup ledger; registers every `blocks/<name>/` — `[--out <dir>] [--blocks <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--coverage <json>] [--content <dir>] [--json]`
-- `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units (every width), sidecars, ledger pairs proven; names inconclusive gates, header-parity errors — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
+- `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units (every width), sidecars, ledger pairs, export freshness proven; names inconclusive gates, header-parity errors (once) — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`; exit 2 = `--state` refused
 - `rollout/lib.mjs` — library, no CLI
@@ -105,7 +105,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>` (`not-delivered --reason "<t>"`); `--gate <table>` (verdict per width); `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>` (records `host`)
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
-- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft — `[--out <dir>] [--draft-judgement] [--force] [--dry-run]`
+- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft; exit 2 = captures without mapping.json — `[--out <dir>] [--draft-judgement] [--allow-no-mapping] [--force] [--dry-run]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`
@@ -125,6 +125,6 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
 - `stardust/progress.mjs` — unit recorder for the rollout/migrate/replica progress ledger, locked, one line per write — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>]`
-- `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `summary [--slugs]`
+- `stardust/state.mjs` — page status writer — `init --pages <url-file|-> [--types <slug=type,…>] [--site-url <u>] [--page-cap <n>]`; `advance <slug…> --to <status> [--by]`; `set <slug…> --representative <a>|--clear-representative|--type <t>` (refuses a cycle); `exclude <slug…> --reason "<r>" [--url <u>]`; `summary [--slugs]`
 - `stardust/token-ledger.mjs` — usage per phase/unit, advisory; always a table (`unknown` cells without transcripts) — `[--transcripts <dir>] [--prices f,w,r,o] [--json]`
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping by path, under a lock — `<unit> [--code blocks/<name>]… [--push] [--wait-s 120]`; exit 2 = refused or failed, nothing half-done; `--push` returns under 240 s

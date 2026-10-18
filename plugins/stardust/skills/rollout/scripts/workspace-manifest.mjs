@@ -1,9 +1,17 @@
 #!/usr/bin/env node
 /**
- * rollout/workspace-manifest.mjs — hashes, placeholders and handover state for the coverage a client reads (opt-in).
+ * rollout/workspace-manifest.mjs — hashes, placeholders and handover state for the coverage a client reads (the
+ * migration export: required when rollout.json `exports` lists `migration-workspace`).
  *
- * Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--draft-judgement] [--force] [--dry-run] [--json]
+ * Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json]
  *   defaults: --out stardust/rollout  --project .  --content <project>/content  --blocks <project>/blocks
+ *             --captures <project>/stardust/current/pages
+ *
+ * The export, in order: inventory.mjs + blocks.mjs, block-origin.mjs --verify (→ <out>/workspace/mapping.json),
+ * then this script. When the captures dir holds a capture (<slug>.html or <slug>.json) and mapping.json is absent,
+ * the manifest is written WITHOUT `handover` (not ready to hand over), `missing: <out>/workspace/mapping.json — run
+ * block-origin.mjs --verify first` goes to stderr and the exit is 2; --allow-no-mapping writes it as before
+ * (handover null, exit 0). A project without captures needs no mapping.
  *
  * The coverage (<out>/coverage/{pages,templates,blocks}.json with formatVersion, written by
  * inventory.mjs and blocks.mjs) is what a client reads; reference/coverage-contract.md documents
@@ -11,7 +19,8 @@
  * and of <out>/workspace/mapping.json when present (outputs) and of what the coverage was built
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
- * (fields not judged, pages without a content file) and the handover state. It refuses (exit 1,
+ * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
+ * in the content files, no update-coverage.mjs --block record) and the handover state. It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
  * a file blocks.json records in _provenance.inputs that changed or is gone, a judgement.json it did
@@ -26,7 +35,7 @@
  * in coverage (clients fall back to the template's type), an empty base type keeps the coverage
  * default. colorScheme is optional: its empty field is there to fill, but it is neither in toFill
  * nor a placeholder. --dry-run computes and prints what would be written, writing nothing. --json
- * prints one JSON object.
+ * prints one JSON object (`missing` lists what the export lacks: [] or [<mapping.json>]).
  *
  * Handover: when <out>/workspace/handover.json exists (a client that adopted the project writes
  * it; this script never does), the last manifest records a handover, or the content the last
@@ -35,7 +44,9 @@
  * it degraded with the inputs that differ from the last manifest before it.
  *
  * Exit 0 written or unchanged, 1 coverage missing, without formatVersion, stale or unreadable,
- * 2 usage, 3 handed over.
+ * 2 usage, or mapping.json missing while captures exist (the manifest written or unchanged without handover —
+ * a handover a forced run recorded is kept; the `missing:` line on stderr tells it from a usage error),
+ * 3 handed over.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -59,9 +70,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WRITTEN_BY = 'stardust:rollout/workspace-manifest';
 const FILES = { manifest: 'manifest.json', judgement: 'judgement.json', handover: 'handover.json', mapping: 'mapping.json' };
 const COVERAGE = ['pages', 'templates', 'blocks'];
-const VALUE_FLAGS = ['out', 'project', 'content', 'blocks'];
-const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json'];
-const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
+const VALUE_FLAGS = ['out', 'project', 'content', 'blocks', 'captures'];
+const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json', 'allow-no-mapping'];
+const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
 
 const serialize = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
 const fail = (code, msg) => { console.error(`rollout workspace-manifest: ${msg}`); return code; };
@@ -126,6 +137,34 @@ function walkHtml(dir, acc = []) {
   return acc;
 }
 
+/** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
+export function hasCaptures(dir) {
+  try { return readdirSync(dir, { withFileTypes: true }).some((e) => e.isFile() && !e.name.startsWith('.') && /\.(html|json)$/.test(e.name)); } catch { return false; }
+}
+
+/**
+ * The manifest's inputs as on disk, keys sorted: `content` {files, sha256[, tracked when given]} (one hash over the
+ * sorted "<project-relative path> <sha>" lines of every <content>/**.html), each <blocks>/<n>/<n>.{js,css}, and the
+ * judgement when it is a file. Also returns the content hashes by content-relative path and the counts readArtifacts
+ * needs. done-check.mjs compares a manifest against it.
+ */
+export function inputHashes({ project, contentDir, blocksDir, judgementFile, tracked }) {
+  const relP = (abs) => relative(project, abs).split(sep).join('/');
+  const contentHashes = new Map(walkHtml(contentDir).map((abs) => [relative(contentDir, abs).split(sep).join('/'), sha256(readFileSync(abs))]));
+  const lines = [...contentHashes].map(([rel, sha]) => `${relP(join(contentDir, rel))} ${sha}\n`).sort(byStr);
+  const inputs = { content: { files: lines.length, sha256: sha256(lines.join('')), ...(tracked === undefined ? {} : { tracked }) } };
+  let blockFiles = 0;
+  for (const name of subdirs(blocksDir)) {
+    for (const ext of ['js', 'css']) {
+      const file = join(blocksDir, name, `${name}.${ext}`);
+      if (isFile(file)) { inputs[relP(file)] = sha256(readFileSync(file)); blockFiles += 1; }
+    }
+  }
+  const judged = isFile(judgementFile);
+  if (judged) inputs[relP(judgementFile)] = sha256(readFileSync(judgementFile));
+  return { inputs: Object.fromEntries(Object.keys(inputs).sort(byStr).map((k) => [k, inputs[k]])), contentHashes, contentFiles: lines.length, blockFiles, judged };
+}
+
 /** blocks.json module rows blocks.mjs enriches (kind module, EDS name not default-content), by EDS name, first row wins. */
 export function moduleBlocks(blocksDoc) {
   const byName = new Map();
@@ -137,7 +176,19 @@ export function moduleBlocks(blocksDoc) {
   return byName;
 }
 
-/** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file. Sorted. */
+// a conversion record: update-coverage.mjs --block … --status converted|deployed|verified, or not-delivered with its reason
+const RECORDED = new Set(['converted', 'deployed', 'verified', 'not-delivered']);
+/**
+ * The module blocks still pending, by EDS name, sorted: delivered instances (variants[].instances, from the pages'
+ * content files) and no conversion record. A row no page delivers is not pending — nothing of it shipped. Pure.
+ */
+export function pendingBlocks(blocksDoc) {
+  const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !RECORDED.has(b.delivery && b.delivery.status))
+    .map(([name]) => name).sort(byStr);
+}
+
+/** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file, blocks pending (pendingBlocks). Sorted. */
 export function placeholdersOf(coverage) {
   const templates = coverage.templates.templates;
   const blocks = [...moduleBlocks(coverage.blocks).values()];
@@ -149,6 +200,7 @@ export function placeholdersOf(coverage) {
     ['blocks[].purpose', count(blocks, (b) => !b.purpose), 'block(s) without purpose (not judged)'],
     ['blocks[].reuseGuidance', count(blocks, (b) => !b.reuseGuidance), 'block(s) without reuse guidance (not judged)'],
     ['pages[].delivered', count(coverage.pages.pages, (p) => p.delivered == null), 'page(s) without a content file (null)'],
+    ['blocks[].delivery', pendingBlocks(coverage.blocks).length, 'block(s) delivered without a conversion record (update-coverage.mjs --block)'],
   ].filter(([, n]) => n).map(([field, n, why]) => `${field}: ${n} ${why}`).sort(byStr);
 }
 
@@ -257,25 +309,14 @@ function main(argv) {
   }
   const mappingFile = join(W, FILES.mapping);
   if (isFile(mappingFile)) outputs[relP(mappingFile)] = sha256(readFileSync(mappingFile));
-
-  const contentHashes = new Map(walkHtml(contentDir).map((abs) => [relative(contentDir, abs).split(sep).join('/'), sha256(readFileSync(abs))]));
+  const capturesDir = resolve(opts.captures || join(project, 'stardust', 'current', 'pages'));
+  const missing = !flags.has('allow-no-mapping') && hasCaptures(capturesDir) && !isFile(mappingFile) ? [join(shown, FILES.mapping)] : [];
 
   // --- Inputs: what the coverage was built from ------------------------------------
-  const lines = [...contentHashes].map(([rel, sha]) => `${relP(join(contentDir, rel))} ${sha}\n`).sort(byStr);
-  const inputs = { content: { files: lines.length, sha256: sha256(lines.join('')), tracked } };
-  let blockFiles = 0;
-  for (const name of subdirs(blocksDir)) {
-    for (const ext of ['js', 'css']) {
-      const file = join(blocksDir, name, `${name}.${ext}`);
-      if (isFile(file)) { inputs[relP(file)] = sha256(readFileSync(file)); blockFiles += 1; }
-    }
-  }
   const judgementFile = join(W, FILES.judgement);
-  const judged = isFile(judgementFile);
-  if (judged) inputs[relP(judgementFile)] = sha256(readFileSync(judgementFile));
-  const sortedInputs = Object.fromEntries(Object.keys(inputs).sort(byStr).map((k) => [k, inputs[k]]));
+  const { inputs: sortedInputs, contentHashes, contentFiles, blockFiles, judged } = inputHashes({ project, contentDir, blocksDir, judgementFile, tracked });
 
-  const readArtifacts = [...Object.keys(outputs), ...(lines.length ? [relP(contentDir)] : []),
+  const readArtifacts = [...Object.keys(outputs), ...(contentFiles ? [relP(contentDir)] : []),
     ...(blockFiles ? [relP(blocksDir)] : []), ...(judged ? [relP(judgementFile)] : [])].sort(byStr);
   const provenance = {
     writtenBy: WRITTEN_BY,
@@ -296,18 +337,20 @@ function main(argv) {
 
   const report = (status, hashes, extra = {}) => {
     const degraded = !!extra.degraded;
+    const lacking = extra.missing || [];
     if (flags.has('json')) {
-      console.log(JSON.stringify({ status, dir: shown, hashes, counts, placeholders: placeholders.length, handover, degraded }));
-      return 0;
+      console.log(JSON.stringify({ status, dir: shown, hashes, counts, placeholders: placeholders.length, handover, degraded, missing: lacking }));
+    } else {
+      const withoutContent = coverage.pages.pages.filter((p) => p && p.delivered == null).length;
+      console.log(`rollout workspace-manifest → ${shown}`);
+      console.log('='.repeat(60));
+      console.log(`Coverage      ${counts.templates} templates · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
+      console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
+      if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
+      console.log(`Status        ${extra.line}`);
     }
-    const withoutContent = coverage.pages.pages.filter((p) => p && p.delivered == null).length;
-    console.log(`rollout workspace-manifest → ${shown}`);
-    console.log('='.repeat(60));
-    console.log(`Coverage      ${counts.templates} templates · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
-    console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
-    if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
-    console.log(`Status        ${extra.line}`);
-    return 0;
+    for (const m of lacking) console.error(`missing: ${m} — run block-origin.mjs --verify first`);
+    return lacking.length ? 2 : 0;
   };
 
   // --- --draft-judgement: only judgement.json, only when absent --------------------
@@ -359,18 +402,19 @@ function main(argv) {
     inputs: sortedInputs,
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
-    handover,
+    // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
+    ...(missing.length && !handover ? {} : { handover }),
     ...(degraded ? { degraded } : {}),
   };
   const text = serialize(manifest);
   const hashes = { [FILES.manifest]: sha256(text) };
   const file = join(W, FILES.manifest);
   if (isFile(file) && readFileSync(file).equals(Buffer.from(text))) {
-    return report('unchanged', hashes, { degraded, line: 'unchanged — the same bytes; nothing written' });
+    return report('unchanged', hashes, { degraded, missing, line: 'unchanged — the same bytes; nothing written' });
   }
-  if (dry) return report('dry-run', hashes, { degraded, line: `would write ${join(shown, FILES.manifest)} (dry run: nothing written)` });
+  if (dry) return report('dry-run', hashes, { degraded, missing, line: `would write ${join(shown, FILES.manifest)} (dry run: nothing written)` });
   try { writeAtomic(file, text); } catch (e) { return fail(1, `write failed: ${e.message}`); }
-  return report('written', hashes, { degraded, line: `written ${join(shown, FILES.manifest)}` });
+  return report('written', hashes, { degraded, missing, line: `written ${join(shown, FILES.manifest)}${missing.length ? ' without handover' : ''}` });
 }
 
 const isMain = (() => { try { return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url)); } catch { return false; } })();

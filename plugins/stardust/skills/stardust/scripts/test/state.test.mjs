@@ -7,7 +7,8 @@
 // the rejected --gate / --note flags; init (line list, JSON array, stdin, --types, --site-url, the
 // record index, provenance refusals, exists / --force, captureGaps), set (--representative /
 // --type, --clear-representative, refusals including representative cycles), the crawl's pre-cap
-// totalDiscovered and the summary representative lines. Run: node <this file>.
+// totalDiscovered and the summary representative lines; exclude (the on-page record, the top-level
+// excluded[] for a page init never had, idempotence, refusals, the summary count). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -520,7 +521,70 @@ check('--help lists init and set, from an empty cwd, exit 0', () => {
   const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', cwd: empty });
   assert.equal(h.status, 0); assert.match(h.stdout, /node state\.mjs init --pages <file\|->/); assert.match(h.stdout, /node state\.mjs set <slug…> \(--representative <archetype-slug> \| --clear-representative \| --type <type>\)/);
   assert.match(h.stdout, /representative <archetype> <n>/); assert.match(h.stdout, /Exit codes: 0 ok, 2 usage/);
+  assert.match(h.stdout, /node state\.mjs exclude <slug…> --reason "<why>" \[--url <url>\]/);
   assert.deepEqual(readdirSync(empty), [], 'nothing written'); rmSync(empty, { recursive: true, force: true });
+});
+
+const excludeProject = () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['init', '--pages', p.list('pages.txt', ['', 'about-us', 'blog'].map((x) => `https://www.example.com/${x}`).join('\n'))]).code, 0);
+  return p;
+};
+check('exclude records { excluded: { reason, at } } on a page in state.json (after status; status untouched), re-stamps provenance (stardust:extract, --skill overrides); the same reason again writes nothing', () => {
+  const p = excludeProject();
+  const r = runIn(p.d, ['exclude', 'blog', '--reason', 'the source answers 404 since the crawl']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: excluded 1 page(s): blog · written by stardust:extract\n');
+  const s = readIn(p.d); const blog = s.pages.find((x) => x.slug === 'blog');
+  assert.equal(blog.status, 'extracted');
+  assert.deepEqual(Object.keys(blog).slice(Object.keys(blog).indexOf('status'), Object.keys(blog).indexOf('status') + 2), ['status', 'excluded']);
+  assert.equal(blog.excluded.reason, 'the source answers 404 since the crawl'); assert.match(blog.excluded.at, ISO_UTC);
+  assert.equal(s._provenance.writtenBy, 'stardust:extract'); assert.ok(!('excluded' in s.pages.find((x) => x.slug === 'index')));
+  const before = readFileSync(p.stateFile, 'utf8');
+  const again = runIn(p.d, ['exclude', 'blog', '--reason', 'the source answers 404 since the crawl', '--skill', 'rollout']);
+  assert.equal(again.code, 0, again.err); assert.equal(again.out, 'state: exclude unchanged: blog\n'); assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+  const other = runIn(p.d, ['exclude', 'blog', '--reason', 'moved off the site by its owner', '--skill', 'rollout']);
+  assert.equal(other.code, 0, other.err); assert.equal(readIn(p.d).pages.find((x) => x.slug === 'blog').excluded.reason, 'moved off the site by its owner');
+  assert.equal(readIn(p.d)._provenance.writtenBy, 'stardust:rollout');
+});
+check('exclude --url records a planned page state.json never had in the top-level excluded[] ({ slug, url, reason, at }, by slug); pages[] untouched; idempotent', () => {
+  const p = excludeProject();
+  const pagesBefore = JSON.stringify(readIn(p.d).pages);
+  const r = runIn(p.d, ['exclude', 'gone', '--url', 'https://www.example.com/gone', '--reason', 'the source answered 404 at crawl time']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: excluded 1 page(s): gone (not in pages[]) · written by stardust:extract\n');
+  assert.equal(runIn(p.d, ['exclude', 'aaa', '--url', 'https://www.example.com/aaa', '--reason', 'the source answered 404 at crawl time']).code, 0);
+  const s = readIn(p.d);
+  assert.equal(JSON.stringify(s.pages), pagesBefore);
+  assert.deepEqual(s.excluded.map((e) => [e.slug, e.url, e.reason]), [['aaa', 'https://www.example.com/aaa', 'the source answered 404 at crawl time'], ['gone', 'https://www.example.com/gone', 'the source answered 404 at crawl time']]);
+  assert.deepEqual(Object.keys(s.excluded[0]), ['slug', 'url', 'reason', 'at']); assert.match(s.excluded[0].at, ISO_UTC);
+  assert.equal(Object.keys(s).at(-1), 'excluded', 'after pages');
+  const before = readFileSync(p.stateFile, 'utf8');
+  assert.equal(runIn(p.d, ['exclude', 'gone', '--url', 'https://www.example.com/gone', '--reason', 'the source answered 404 at crawl time']).out, 'state: exclude unchanged: gone\n');
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('exclude refuses, nothing written: no or empty --reason, no slug, an unknown slug without --url, --url for a page in pages[], --url with two slugs, a --url that is not http(s), a flag it does not read; advance refuses --reason', () => {
+  const p = excludeProject();
+  const before = readFileSync(p.stateFile, 'utf8');
+  for (const [args, re] of [
+    [['exclude', 'blog'], /exclude needs --reason "<why>"/],
+    [['exclude', 'blog', '--reason', '  '], /exclude needs --reason "<why>"/],
+    [['exclude', '--reason', 'x'], /exclude needs at least one <slug>/],
+    [['exclude', 'ghost', '--reason', 'x'], /unknown slug\(s\): ghost — .*--url <url>/],
+    [['exclude', 'blog', '--url', 'https://www.example.com/blog', '--reason', 'x'], /blog is in pages\[\]: exclude it without --url/],
+    [['exclude', 'old-blog', '--url', 'https://example.com/blog/', '--reason', 'x'], /https:\/\/example\.com\/blog\/ is the URL of blog in pages\[\]: exclude blog without --url/],
+    [['exclude', 'a', 'b', '--url', 'https://www.example.com/a', '--reason', 'x'], /--url names one page: one <slug>/],
+    [['exclude', 'gone', '--url', 'gone', '--reason', 'x'], /--url "gone" is not an absolute http\(s\) URL/],
+    [['exclude', 'blog', '--reason', 'x', '--to', 'directed'], /--to does not apply to exclude/],
+    [['advance', 'blog', '--to', 'directed', '--reason', 'x'], /unknown option --reason/],
+  ]) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+});
+check('summary adds the excluded count (pages[] records and the top-level list) only when there is one; --slugs lists them', () => {
+  const p = excludeProject();
+  assert.equal(runIn(p.d, ['summary']).out, '3 page(s) · extracted 3 · directed 0 · prototyped 0 · approved 0 · migrated 0 · stale 0\n');
+  assert.equal(runIn(p.d, ['exclude', 'blog', '--reason', 'r']).code, 0);
+  assert.equal(runIn(p.d, ['exclude', 'gone', '--url', 'https://www.example.com/gone', '--reason', 'r']).code, 0);
+  assert.equal(runIn(p.d, ['summary']).out, '3 page(s) · extracted 3 · directed 0 · prototyped 0 · approved 0 · migrated 0 · stale 0 · excluded 2\n');
+  assert.ok(runIn(p.d, ['summary', '--slugs']).out.includes('  excluded      2  blog, gone\n'));
 });
 
 rmSync(initRoot, { recursive: true, force: true });
