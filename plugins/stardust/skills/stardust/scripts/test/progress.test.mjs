@@ -293,6 +293,7 @@ check('wavesView: more than 16 siblings → sub-units cluster-<t>-1…n, each af
   assert.deepEqual(names(17), ['cluster-p']);
   assert.deepEqual(names(18), ['cluster-p-1', 'cluster-p-2']);
   assert.deepEqual(names(34), ['cluster-p-1', 'cluster-p-2', 'cluster-p-3']);
+  assert.deepEqual(names(162), Array.from({ length: 11 }, (_, i) => `cluster-p-${i + 1}`), 'sub-units in number order: -2 before -10');
   const map = { 'foundation-chrome': { status: 'done' }, 'foundation-styles': { status: 'done' }, 'archetype-p': { status: 'done' }, 'cluster-p-1': { status: 'done', kind: 'cluster' } };
   const v = wavesView(map, { templates: [{ id: 'p', pageCount: 40 }], frozen: true });
   assert.deepEqual(v.waves.clusters.map((u) => [u.name, u.state, u.after]), [['cluster-p-1', 'done', []], ['cluster-p-2', 'planned', []], ['cluster-p-3', 'planned', ['cluster-p-2']]]);
@@ -649,7 +650,7 @@ check('wait refusals (exit 2, one stderr line, nothing on stdout): no ledger, no
   no(['wait', '--ledger', 'migrate'], `no ${MIGRATE}`);
   assert.deepEqual(readdirSync(d), []);
   put(join(d, ROLLOUT), { units: { a: { status: 'done' }, b: { status: 'pending' } } });
-  no(['wait'], `no running unit in ${ROLLOUT} — nothing to wait for (progress.mjs unit start <name> records one)`);
+  no(['wait'], `no running unit in ${ROLLOUT} — nothing to wait for; progress.mjs show --waves lists what ended and what can start`);
   put(join(d, ROLLOUT), { units: { a: { status: 'done' }, c: { status: 'running' } } });
   no(['wait', '--unit', 'a', '--unit', 'b'], `no running unit among --unit a, b in ${ROLLOUT} (a: done, b: absent)`);
   put(join(d, REPLICA), { archetype: 'home', breakpoints: {} });
@@ -745,7 +746,7 @@ check('wait --json on the replica ledger: the ended record under its archetype n
 check('wait: every watched unit gone (pending again, removed) → a note each, then exit 2 "nothing left to wait for"', () => {
   const r = W.gone;
   assert.equal(r.code, 2); assert.equal(r.out, '');
-  assert.equal(r.err, `progress wait: a is now pending — no longer watched\nprogress wait: b is now absent — no longer watched\nprogress: nothing left to wait for in ${ROLLOUT}\n`);
+  assert.equal(r.err, `progress wait: a is now pending — no longer watched\nprogress wait: b is now absent — no longer watched\nprogress: nothing left to wait for in ${ROLLOUT}; progress.mjs show --waves lists what ended and what can start\n`);
 });
 check('wait: a ledger that stops parsing is read again at each poll; still unreadable at the bound → exit 2 naming the file', () => {
   const r = W.broken;

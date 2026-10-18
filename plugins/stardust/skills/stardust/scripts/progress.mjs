@@ -135,6 +135,7 @@ wait: returns as soon as a watched unit ends — the lead's wait for its unit su
   Watched: every unit running when the wait starts; --unit <name> (repeatable) narrows it, and a named unit
   that is not running gets one stderr note and is not watched. The ledger is read every ${WAIT_POLL_MS / 1000} s without the
   lock (writers rename atomically; a file that does not parse is read again at the next poll). Writes nothing.
+  An end that lands between two waits is not printed by the next one — show --waves lists every done unit and what can start.
   A watched unit done or failed → exit 0: its status line (one per ended unit, sorted by name), then
     progress wait: <k> of <n> ended — still running: <a, b>        (or "— none still running")
   --max <seconds> (default ${DEFAULT_WAIT_SEC}; 0 = one pass) passes with none ended → exit ${STILL_RUNNING_EXIT}:
@@ -432,6 +433,20 @@ function unitTemplate(name, entry, wave, ids) {
   return !ids.has(rest) && m ? { template: m[1], sub: Number(m[2]) } : { template: rest, sub: null };
 }
 const covers = (u, id) => u.template === id || (Array.isArray(u.entry.templates) && u.entry.templates.includes(id));
+// Unit names in order with digit runs compared as numbers (cluster-t-2 before cluster-t-10); no locale involved.
+export function byName(a, b) {
+  const x = a.match(/\d+|\D+/g) ?? []; const y = b.match(/\d+|\D+/g) ?? [];
+  for (let i = 0; i < Math.min(x.length, y.length); i += 1) {
+    if (x[i] === y[i]) continue;
+    if (/^\d/.test(x[i]) && /^\d/.test(y[i])) {
+      const p = x[i].replace(/^0+/, ''); const q = y[i].replace(/^0+/, '');
+      if (p.length !== q.length) return p.length - q.length;
+      if (p !== q) return p < q ? -1 : 1;
+    }
+    return x[i] < y[i] ? -1 : 1;
+  }
+  return x.length - y.length;
+}
 
 /**
  * The rollout's dependency view. `map` = the ledger's units; `templates` = inventory's templates[] ({ id, pageCount }) or
@@ -470,7 +485,7 @@ export function wavesView(map, { templates = null, frozen = false } = {}) {
     }
     if (!recordedIn('final').length) plan('gate-all', 'final');
   }
-  const all = [...units.values()].sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  const all = [...units.values()].sort((a, b) => byName(a.name, b.name));
   const inWave = (wave) => all.filter((u) => u.wave === wave);
   const names = (us) => us.map((u) => u.name);
   const anyArchetypeRecorded = recordedIn('archetypes').length > 0;
@@ -552,7 +567,7 @@ async function waitCmd(o, file) {
   const { watched: initial, skipped } = pickWatched(first.doc, o.ledger, o.units);
   if (!initial.length) {
     if (o.units.length) throw new UsageError(`no running unit among --unit ${o.units.join(', ')} in ${file} (${skipped.map((s) => `${s.name}: ${s.status}`).join(', ')})`);
-    throw new UsageError(`no running unit in ${file} — nothing to wait for (progress.mjs unit start <name> records one)`);
+    throw new UsageError(`no running unit in ${file} — nothing to wait for; progress.mjs show --waves lists what ended and what can start`);
   }
   for (const s of skipped) console.error(`progress wait: --unit ${s.name} is ${s.status} — not watched`);
   let watched = initial;
@@ -568,7 +583,7 @@ async function waitCmd(o, file) {
         print(state.ended, state.running, null, [...ended.map((n) => formatLine(o.ledger, n, state.ended[n])), waitEndedLine(ended.length, watched.length, state.running)]);
         return 0;
       }
-      if (!watched.length) throw new UsageError(`nothing left to wait for in ${file}`);
+      if (!watched.length) throw new UsageError(`nothing left to wait for in ${file}; progress.mjs show --waves lists what ended and what can start`);
     }
     if (Date.now() >= deadline) {
       if (unreadable) throw new UsageError(`${unreadable} — still unreadable at the end of the wait (${sec}s)`);
