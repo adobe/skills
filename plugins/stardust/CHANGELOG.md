@@ -4,6 +4,40 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — the instruments behind the inline scripts; asset harvest through the browser (#NNN)
+
+The recorded hands-off runs wrote 99–287 inline interpreter scripts each: 56–120 whole-file rewrites of CSS and JS,
+16–40 screenshot inspections (one run: 40 pixel measures in an image library), element-box probes and DOM-skeleton
+dumps. One run hand-wrote a browser-side CSS/font harvester because a CDN wall answered every direct fetch of a
+stylesheet with a denial page while the browser was never blocked. A lead polled `run-bg wait` twenty times over 35
+minutes; another waited 57 minutes in one tool call. token-ledger wrote `usage.md` before the run's last two sessions,
+and an optimize scorecard read 100 beside 22 `open` findings it did not score.
+
+- **Stylesheets, fonts and SVG through the browser (`extract/scripts/media-harvest.mjs --assets sheets,fonts,svg`).**
+  Each crawled page opens in one live-session context (launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays)
+  and the asset responses the browser receives are kept; every `@font-face` and every `.svg` `url()` of a loaded sheet
+  is loaded in the page, so unused fonts and icons come too. Files: `assets/<kind>/<base>-<hash8>.<ext>`;
+  `assets/harvest-map.json` in the media map's format plus `kind`; 5 MiB per file and 100 MiB per run unless
+  `--max-bytes` / `--max-total-bytes`; a failure never replaces an `ok` entry whose file is on disk. `--assets media`
+  (the default) is the Node path, unchanged; exit 3 when every page was refused by a bot challenge.
+- **`diff/scripts/dom-probe.mjs <url|file>`** — the one probe for geometry and structure: per `--selector` root the
+  page-absolute box with computed display/position, the DOM skeleton to `--depth` (×N sibling runs), the heading and
+  landmark outline; `--compare <url|file>` diffs two documents; `--json`. Never gate evidence.
+- **Reading discipline** (`replica/reference/reading-discipline.md`): a question → instrument table (dom-probe, measure,
+  inspect-image, the gate's pixel lines, page-probe) — measure with these, never with an image library or a
+  hand-written evaluate; an inline interpreter may read and print, never rewrite a tracked file (the edit/write tool's
+  job). `inspect-image.mjs --help` says the same.
+- **`run-bg.mjs wait`** returns exit 76 at once while `$STARDUST_PAUSE_FILE` exists (jobs keep running; `status`
+  prints the pause line first), so a runner's push-stop ends a long wait; `--max` defaults to 1500 s, also the ceiling;
+  `--until <ISO>` is the alternative bound; declare the shell call's timeout above the wait.
+- **`token-ledger.mjs`** runs LAST (handoff end) and idempotently: `usage.json` carries `writtenAt` and
+  `sessionsCovered { count, first, last }` (one line in `usage.md`); unchanged inputs write nothing; the harness cost
+  sums each session's last cost line and per-model costs across sessions.
+- **An `informational` finding status** (`rollout/scripts/optimize.mjs`, `findings.mjs`, `lib.mjs`): a source-parity or
+  out-of-scope finding is `informational`, never `open` (older ledgers migrate); the scorecard gains an
+  `informational` count and its open counts equal the ledger's; both schemas accept it. Out-of-scope findings recorded
+  from other audit sources no longer score or gate (maintainer ruling to confirm).
+
 ## 0.36.0 — local integration for the next recorded run (not a release)
 
 A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,
