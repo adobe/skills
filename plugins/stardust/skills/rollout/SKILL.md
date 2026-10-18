@@ -244,38 +244,33 @@ styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe). Its probes run against the preview URL, never a
 harness (step 1). The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
-(deploy Step 3 § Favicon) — recorded first passes served the boilerplate
-icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
-the foundation is three recorded units — `foundation-chrome` (header + footer
-blocks, the chrome documents) and `foundation-styles` (styles, fonts, favicon,
-scripts, `stardust/runtime-contract.json`) may run in parallel (disjoint files);
+(deploy Step 3 § Favicon). **Foundation sub-units (C0):** in C-deliver
+the foundation is three recorded units, each its own `progress.json` entry, a
+subagent that returns one verdict line, a checkpoint commit and a boundary ask:
+`foundation-chrome` (header + footer blocks, the chrome documents) and
+`foundation-styles` (styles, fonts, favicon, scripts,
+`stardust/runtime-contract.json`) may run in parallel (disjoint files);
 `archetype-<template>` of the shell template may convert its blocks and write its
-document meanwhile, but deploys only once `foundation-styles` is `done` and is
-gated only once header, footer, styles and fonts are deployed — each its own
-`progress.json` entry, a subagent that returns one verdict line, a checkpoint
-commit and a boundary ask. While another C0 subagent runs, a checkpoint stages
-and commits only its own paths (its frozen-set files, its chrome documents,
-`stardust/runtime-contract.json`, `stardust/rollout/progress.json`, any other
-file only it wrote — the favicon, `stardust/rollout/chrome-map.json`), never
-`git add -A`, which sweeps in the other's half-written files. The foundation
-sub-units close on their own lint and `.plain.html` checks, this gate runs once,
-on that archetype page (a failing check reopens the sub-unit owning its files:
-`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze`
-runs once it passes, before any sibling page is authored or any other unit
-starts (handoff contract § 3, row C). **Archetype first, per template (#126):** the
+document meanwhile, but its first `unit-commit.mjs` (the Code-stage push) and its
+deploy wait for both foundation checkpoint commits, which the main agent makes
+itself, one at a time and by path, never `git add -A`. The foundation sub-units
+close on their own lint and `.plain.html` checks, this gate runs once, on that
+archetype page (a failing check reopens the sub-unit owning its files:
+`progress.mjs unit start <sub-unit> --again`), and
+`foundation-freeze.mjs freeze` runs once it passes, before any sibling page is
+authored or any post-C0 unit starts (handoff contract § Fan-out discipline,
+Foundation first). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds, stop at PASS — `reference/delivery-gates.md`
 § Iteration discipline) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
-An encoded template's C-archetype also drafts and round-trips its map — and every template with two or more
-siblings is one: its C-archetype drafts the map (`stardust/import/<template>/`) once the archetype gates and
-records the attempt (`encode-attempt.mjs record --template <t>`; `not-attempted` is refused for it without a
-`--reason`, and `migrate.mjs plan` lists the maps still due — `skills/migrate/SKILL.md` § Encoder first). A
-sibling the variance probe finds differing, one or under 20 % of them, takes a variant class on the template,
-never its own archetype; a hand-authored sibling is recorded `--hand-authored --reason` first (the same SKILL.md,
-§ When the encoder cannot). Its cluster unit is then the map plus the exceptions, and the main agent alone re-runs
-`inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
-`skills/migrate/reference/importer-recipe.md` § Encoder contract).
+An encoded template's C-archetype — every template with two or more siblings is one — drafts the map
+(`stardust/import/<template>/`) once the archetype gates, round-trips it and records the attempt
+(`encode-attempt.mjs record --template <t>`, `skills/migrate/SKILL.md` § Encoder first; an exception follows the
+same SKILL.md, § When the encoder cannot: a differing sibling, one or under 20 %, takes a variant class, never its
+own archetype; hand-authored last, recorded first). Its cluster unit is then the map plus the exceptions, and the
+main agent alone re-runs `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged
+(handoff contract § 3, row C; `skills/migrate/reference/importer-recipe.md` § Encoder contract).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
