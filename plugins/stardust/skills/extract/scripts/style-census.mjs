@@ -16,7 +16,8 @@
  * The census is a FULL LIVE PASS: every captured page is fetched again from the
  * live origin, through the shared live-session hardening. Run it ONCE, in the
  * background, after the crawl (`node … style-census.mjs … &` and read <out>
- * when the summary line lands) — never per question, never in parallel with
+ * when the summary line lands — until then <out> is partial, `_provenance.complete`
+ * false) — never per question, never in parallel with
  * another live instrument: each pass spends the origin's bot-management
  * request budget, and a second concurrent pass is what turns a cleared site
  * into a blocked one.
@@ -24,7 +25,7 @@
  * Usage:
  *   node style-census.mjs [--pages <dir> | --urls a,b,c] [--out <file>] [--width <px>]…
  *                         [--concurrency <n>] [--max-pages <n>] [--timeout-ms <ms>] [--page-timeout <s>]
- *                         [--ua <string>] [--dismiss <sel,…>] [--headed] [--locale <tag>]
+ *                         [--resume] [--ua <string>] [--dismiss <sel,…>] [--headed] [--locale <tag>]
  *     --pages <dir>        page records (default stardust/current/pages): every *.json there,
  *                          each record's finalUrl (or url) is measured
  *     --urls a,b,c         measure exactly these URLs instead of a pages dir
@@ -40,6 +41,10 @@
  *                          (default 120, raised to the navigation timeout + 60 s when that is longer;
  *                          the flag always wins). Past it the measurement is recorded timed_out, its
  *                          page and contexts are dropped, and the census continues with the next one
+ *     --resume             continue an earlier pass on <out>: every measured record there is kept and
+ *                          not measured again; its timed-out / failed ones are re-attempted; records
+ *                          outside this roster stay. No <out> → a fresh run; an <out> that is not a
+ *                          census file → exit 2, the file untouched. Nothing left → no browser, exit 0
  *     --ua <string>        user agent (default: the real-Chrome desktop UA the recipe's browser
  *                          configuration calls for — the same value the live-session helper uses)
  *     --dismiss <sel,…>    extra overlay-dismiss selectors (live side; clicked once each)
@@ -62,19 +67,24 @@
  * Writes (nothing else):
  *   <out>   { _provenance: { writtenBy, writtenAt, readArtifacts[], widths[], synthesizedInputs: [],
  *                            failed[] ({ url, width, error }), timedOut[] ({ url, width, deadlineMs }),
- *                            pageTimeoutMs },
+ *                            pageTimeoutMs, complete },
  *             pages: { [url]: { [width]: { headings[], text[], buttons[], links[], surfaces[],
  *                                          radii[], shadows[], gradients[], bgColors[], textColors[],
  *                                          borderColors[], customProps, fonts[], logoCandidates[],
  *                                          iconFont, occluders[], consent } } },
  *             aggregate: { colors[], type, motifs, hover[], logo, iconFont, counts } }
- *           `aggregate` is null when no page could be measured.
+ *           `aggregate` is null when no page could be measured. <out> is rewritten after every
+ *           measurement (OK, FAIL or TIMEOUT; atomically) with complete: false, true on the last
+ *           write: a killed pass keeps what it measured and --resume continues it. pages follow the
+ *           roster order (records carried from outside it after, sorted), widths ascending; failed[]
+ *           and timedOut[] the roster order.
  *
  * Output: one progress line per measurement on stderr (OK / FAIL / TIMEOUT); the summary on stdout
  * (`style-census: N pages × W widths → <out>`, plus the failure count and the timed-out
  * `<url> @<w>` list when any).
- * Exit codes: 0 at least one measurement in <out> (partial evidence is evidence — failed and
- * timed-out ones are listed under _provenance.failed[] / timedOut[]); 2 usage error, playwright
+ * Exit codes: 0 at least one measurement in <out> (this run's or one carried by --resume; partial
+ * evidence is evidence — failed and timed-out ones are listed under _provenance.failed[] /
+ * timedOut[]); 2 usage error (an <out> --resume cannot read as a census file included), playwright
  * not importable or live-session.mjs not found (or a copy that predates the shared consent table
  * — re-copy it), or no measurement succeeded (every one failed or timed out — stderr says which);
  * 3 bot challenge (before 2) — the live origin served an edge interstitial or a 2xx denial page:
@@ -89,7 +99,7 @@
  * the project's stardust/scripts/ and run the copy. `aggregate` is exported and pure — the
  * contract test runs it without a browser.
  */
-import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -109,7 +119,7 @@ export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Apple
 // too.
 export const DEFAULT_TIMEOUT_MS = 20000;
 // pageTimeout null = not given: resolvePageTimeoutMs (seconds → ms) once the navigation timeout is known.
-export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: null, pageTimeout: null, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
+export const DEFAULTS = { pages: 'stardust/current/pages', out: 'stardust/current/_computed-styles.json', widths: [1440], concurrency: 1, maxPages: Infinity, timeoutMs: null, pageTimeout: null, resume: false, ua: DEFAULT_UA, dismiss: [], headed: false, locale: null };
 const DEFAULT_PAGE_TIMEOUT_S = 120;
 const PAGE_NAV_MARGIN_MS = 60000;
 const CLOSE_WAIT_MS = 5000;
@@ -160,6 +170,7 @@ export function parseArgs(argv) {
     else if (k === '--max-pages') { o.maxPages = int(need(i, k), k); i += 1; }
     else if (k === '--timeout-ms') { o.timeoutMs = int(need(i, k), k, 1000); i += 1; }
     else if (k === '--page-timeout') { o.pageTimeout = int(need(i, k), k); i += 1; }
+    else if (k === '--resume') { o.resume = true; }
     else if (k === '--ua') { o.ua = need(i, k); i += 1; }
     else if (k === '--dismiss') { o.dismiss.push(...need(i, k).split(',').map((s) => s.trim()).filter(Boolean)); i += 1; }
     else if (k === '--headed') { o.headed = true; }
@@ -178,6 +189,59 @@ export function parseArgs(argv) {
 export function resolvePageTimeoutMs(pageTimeoutS, navTimeoutMs) {
   if (pageTimeoutS != null) return pageTimeoutS * 1000;
   return Math.max(DEFAULT_PAGE_TIMEOUT_S * 1000, (navTimeoutMs || 0) + PAGE_NAV_MARGIN_MS);
+}
+
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+
+// What every write holds, in a fixed order (same inputs → same bytes): `roster` is this run's [{ url, width }] in
+// roster order, outcomes[i] its job's { rec } | { error } | { deadlineMs } (absent: not measured yet, or carried),
+// `carried` the measured records --resume kept ({ [url]: { [width]: rec } }). pages: roster URLs first, then
+// carried-only URLs sorted; widths ascending (integer keys always serialize ascending; any other key follows,
+// sorted). failed[] / timedOut[]: roster order.
+export function assembleCensus(roster, outcomes, carried = {}) {
+  const merged = new Map();
+  const put = (url, width, rec) => { if (!merged.has(url)) merged.set(url, {}); merged.get(url)[width] = rec; };
+  for (const url of Object.keys(carried)) for (const width of Object.keys(carried[url])) put(url, width, carried[url][width]);
+  const failed = [];
+  const timedOut = [];
+  roster.forEach(({ url, width }, i) => {
+    const r = outcomes[i];
+    if (!r) return;
+    if (r.rec) put(url, String(width), r.rec);
+    else if (r.deadlineMs) timedOut.push({ url, width, deadlineMs: r.deadlineMs });
+    else failed.push({ url, width, error: r.error });
+  });
+  const rosterUrls = [...new Set(roster.map((j) => j.url))];
+  const order = [...rosterUrls.filter((u) => merged.has(u)), ...[...merged.keys()].filter((u) => !rosterUrls.includes(u)).sort()];
+  const pages = {};
+  let measured = 0;
+  for (const url of order) {
+    const byWidth = merged.get(url);
+    pages[url] = {};
+    for (const width of Object.keys(byWidth).sort()) { pages[url][width] = byWidth[width]; measured += 1; }
+  }
+  return { pages, failed, timedOut, measured };
+}
+
+// --resume's input: the measured records of an earlier <out> ({ [url]: { [width]: rec } }); null when there is no
+// <out> (a fresh run, one stderr line). An <out> that is not a census file is a usage error — it is never
+// overwritten (evidence is not clobbered). Its failed[] / timedOut[] are not carried: those jobs run again.
+function readResume(out) {
+  if (!existsSync(out)) {
+    console.error(`[style-census] nothing to resume at ${out} — starting fresh`);
+    return null;
+  }
+  let doc;
+  try { doc = JSON.parse(readFileSync(out, 'utf8')); } catch (e) {
+    throw new UsageError(`--resume: ${out} is not a census file (not readable as JSON: ${String(e.message).split('\n')[0]}) — left untouched; pass another --out or drop --resume`);
+  }
+  if (!isObject(doc) || !isObject(doc.pages)) throw new UsageError(`--resume: ${out} is not a census file (no pages object) — left untouched; pass another --out or drop --resume`);
+  const carried = {};
+  for (const [url, byWidth] of Object.entries(doc.pages)) {
+    if (!isObject(byWidth)) continue;
+    for (const [width, rec] of Object.entries(byWidth)) if (isObject(rec)) (carried[url] ||= {})[width] = rec;
+  }
+  return carried;
 }
 
 // The page list: --urls verbatim, or every *.json record under --pages (finalUrl, else url),
@@ -485,6 +549,13 @@ async function measure(contexts, url, width, o, session, job) {
 async function main(argv) {
   const o = parseArgs(argv);
   const urls = listUrls(o);
+  const roster = [];
+  for (const url of urls) for (const width of o.widths) roster.push({ url, width });
+  // --resume reads <out> before any browser work: a file that is not a census file stops here, untouched.
+  const resumed = o.resume ? readResume(o.out) : null;
+  const carried = resumed || {};
+  const todo = roster.map((j, i) => ({ ...j, i })).filter(({ url, width }) => !(carried[url] && carried[url][width]));
+  if (resumed) console.error(`[style-census] resume: ${roster.length - todo.length} of ${roster.length} measurements already recorded in ${o.out} — measuring ${todo.length}`);
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) {
     throw new UsageError(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — extract/SKILL.md § Setup: copy this script into the project's stardust/scripts/ and run the copy`);
@@ -493,15 +564,29 @@ async function main(argv) {
   if (typeof session.consentLabelSweepInPage !== 'function' || !session.CONSENT_LABEL_SWEEP) throw new UsageError('live-session.mjs predates the shared consent table — re-copy it alongside this script (extract/SKILL.md § Setup)');
   if (o.timeoutMs == null) o.timeoutMs = sessionNavTimeout(session).ms;
   const pageMs = resolvePageTimeoutMs(o.pageTimeout, o.timeoutMs);
-  const jobs = [];
-  for (const url of urls) for (const width of o.widths) jobs.push({ url, width });
-  const pages = {};
-  const failed = [];
-  const timedOut = [];
-  // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless.
-  const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
-  let next = 0;
+  const outcomes = new Array(roster.length);
   let challenge = null;
+  // The whole file, rewritten after every measurement (atomic: a temp file renamed over <out>; synchronous, so two
+  // workers never interleave a write) — a killed pass keeps everything it measured.
+  let outDirMade = false;
+  const write = (complete) => {
+    const s = assembleCensus(roster, outcomes, carried);
+    const doc = {
+      _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed: s.failed, timedOut: s.timedOut, pageTimeoutMs: pageMs, complete },
+      pages: s.pages,
+      aggregate: s.measured ? aggregate(s.pages) : null,
+    };
+    if (!outDirMade) { mkdirSync(dirname(o.out) || '.', { recursive: true }); outDirMade = true; }
+    const tmp = `${o.out}.${process.pid}.tmp`;
+    writeFileSync(tmp, JSON.stringify(doc, null, 2));
+    renameSync(tmp, o.out);
+    return s;
+  };
+  // --headed: the stealth real-Chrome escalation tier from live-session; otherwise plain headless. Nothing left to
+  // measure (a --resume of a finished pass): no browser at all.
+  let browser = null;
+  if (todo.length) browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
+  let next = 0;
   const viewport = { width: o.widths[0], height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
   const openContexts = async () => ({
@@ -515,8 +600,8 @@ async function main(argv) {
     let ctx = Promise.resolve(await openContexts());
     const fresh = () => { const p = openContexts(); p.catch(() => { if (ctx === p) ctx = null; }); return p; };
     try {
-      while (!challenge && next < jobs.length) {
-        const { url, width } = jobs[next];
+      while (!challenge && next < todo.length) {
+        const { i, url, width } = todo[next];
         next += 1;
         const t0 = Date.now();
         const job = { page: null, abandoned: false };
@@ -525,45 +610,43 @@ async function main(argv) {
           const rec = await raceDeadline(contexts.then((c) => measure(c, url, width, o, session, job)), pageMs);
           if (rec === TIMED_OUT) {
             job.abandoned = true;
-            timedOut.push({ url, width, deadlineMs: pageMs });
+            outcomes[i] = { deadlineMs: pageMs };
             console.error(`[style-census] TIMEOUT ${url} @${width}  page deadline ${pageMs / 1000} s exceeded — recorded timed_out, continuing`);
+            write(false);
             if (job.page) await settledWithin(job.page.close(), CLOSE_WAIT_MS);
             const stale = ctx;
             ctx = null;
             if (stale) await settledWithin(stale.then(closeContexts), CLOSE_WAIT_MS);
             continue;
           }
-          pages[url] = pages[url] || {};
-          pages[url][width] = rec;
+          outcomes[i] = { rec };
           console.error(`[style-census] OK   ${url} @${width}  headings=${rec.headings.length} text=${rec.text.length} buttons=${rec.buttons.length} bg=${rec.bgColors.length} radii=${rec.radii.length}${rec.occluders.length ? ` occluders=${rec.occluders.length}` : ''}${rec.consent.dismissed ? ` consent="${rec.consent.dismissed}"` : ''}  ${Date.now() - t0}ms`);
         } catch (e) {
-          failed.push({ url, width, error: String(e.message || e).split('\n')[0].slice(0, 200) });
-          console.error(`[style-census] FAIL ${url} @${width}  ${failed.at(-1).error}`);
+          outcomes[i] = { error: String(e.message || e).split('\n')[0].slice(0, 200) };
+          console.error(`[style-census] FAIL ${url} @${width}  ${outcomes[i].error}`);
           // A bot challenge stops the pass: every further hit spends the origin's block budget, and
           // an interstitial must never be censused as the site. Partial evidence is still written.
           if (e.name === 'BotChallengeError' && !challenge) challenge = e;
         }
+        write(false);
       }
     } finally {
       if (ctx) await settledWithin(ctx.then(closeContexts), CLOSE_WAIT_MS);
     }
   }
-  try {
-    await Promise.all(Array.from({ length: Math.min(o.concurrency, jobs.length) }, worker));
-  } finally {
-    await closeBrowser(browser);
+  if (browser) {
+    try {
+      await Promise.all(Array.from({ length: Math.min(o.concurrency, todo.length) }, worker));
+    } catch (e) {
+      await closeBrowser(browser);
+      throw e;
+    }
   }
 
-  const measured = Object.values(pages).reduce((n, byWidth) => n + Object.keys(byWidth).length, 0);
-  const out = {
-    _provenance: { writtenBy: 'stardust:extract', writtenAt: new Date().toISOString(), script: 'style-census.mjs', readArtifacts: urls, widths: o.widths, userAgent: o.ua, synthesizedInputs: [], failed, timedOut, pageTimeoutMs: pageMs },
-    pages,
-    aggregate: measured ? aggregate(pages) : null,
-  };
-  mkdirSync(dirname(o.out) || '.', { recursive: true });
-  writeFileSync(o.out, JSON.stringify(out, null, 2));
+  const { pages, failed, timedOut, measured } = write(true);
   const timedOutList = timedOut.length ? ` — ${timedOut.length} timed out (page deadline ${pageMs / 1000} s): ${timedOut.map((t) => `${t.url} @${t.width}`).join(', ')}` : '';
-  console.log(`style-census: ${Object.keys(pages).length} pages × ${o.widths.length} widths → ${o.out}${failed.length ? ` (${failed.length} of ${jobs.length} measurements failed — see _provenance.failed)` : ''}${timedOutList}`);
+  console.log(`style-census: ${Object.keys(pages).length} pages × ${o.widths.length} widths → ${o.out}${failed.length ? ` (${failed.length} of ${roster.length} measurements failed — see _provenance.failed)` : ''}${timedOutList}`);
+  if (browser) await closeBrowser(browser);
   if (challenge) {
     console.error(`style-census: ${challenge.message}`);
     return 3;
