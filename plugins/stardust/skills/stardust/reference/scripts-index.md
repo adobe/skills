@@ -125,6 +125,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
 - `stardust/browser-lock.mjs` — machine-wide browser slots — `acquire|status|release|reap`; 124 = no slot
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
+- `stardust/json-edit.mjs` — JSON edit, locked — `<f> set|append <path> <v>`; `merge <path> <json>`; `delete <path>`; `a."b.c"` = one key; `[--create]`; exit 2 = refused
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`; `check [--json]` (exit 1 = an end never re-recorded)
 - `stardust/progress.mjs` — unit recorder for the rollout/migrate/replica progress ledger, locked, one line per write — `unit start|done|failed <name> [--ledger <l>] [--kind] [--pages] [--set k=v]… [--again]`; `show [<name>]`
 - `stardust/replace.mjs` — counted text replace, atomic — `<file…> --from <t> --to <t> [--regex] [--all|--count <n>] [--files-from <glob>] [--dry-run] [--json]`; exit 2 = refused, nothing written
