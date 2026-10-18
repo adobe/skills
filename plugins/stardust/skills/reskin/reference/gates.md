@@ -3,7 +3,7 @@
 Three gate families per page, plus (d) for a Figma donor and (e) for a
 deployed page, run in Phase 5 after the programmatic render. All scripts
 are run as project-local copies
-(`stardust/scripts/reskin/`, per SKILL.md § Setup) — never from the
+(`stardust/scripts/reskin/`, § Project copies) — never from the
 plugin tree (ESM playwright resolution). `--rendered` accepts a URL or
 a file path (auto-converted to `file://`).
 
@@ -11,6 +11,25 @@ Run order: content gate first (a design-adopted page with dropped
 content is worthless), then design adoption, then sanity, then (d),
 then (e) once the page is deployed. One fix iteration per gate family
 (§ below); (e) has its own budget (`deployed-leg.md` § The fix budget).
+
+## Project copies
+
+SKILL.md Setup step 3. ESM resolves `import('playwright')` from the *script's* directory and the plugin tree ships no
+`node_modules`: run byte-identical copies under `stardust/scripts/`, with `../diff/`, `../replica/` and `../deploy/`
+siblings of `../reskin/`.
+
+- `skills/reskin/scripts/` → `reskin/`, recursively except `test/` (`deployed/`, `figma/`, `figma-gate/` and `render/`
+  travel with it).
+- `skills/stardust/scripts/state.mjs` → `stardust/` (`figma-donor.mjs stamp` writes through it).
+- `skills/diff/scripts/` → `diff/`, all of it.
+- `skills/replica/scripts/` → `replica/`: `pixel-compare.mjs`, `run-capped.mjs`, `run-bg.mjs`, `stitch-shot.mjs`,
+  `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;
+  `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
+- `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
+  `ai-readability.mjs`, `site-auth.mjs` (`qa-gate` and `ai-readability` import it): what `deployed-gate.mjs` resolves.
+
+Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
+and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
 
 ## (a) Content gate
 
@@ -94,11 +113,10 @@ localizes any failure to a named slot. It asserts, from the model:
   source garbage — fidelity over repair; flag, don't fix
   (`reference/mapping-brief.md` § Flag, don't fix).
 
-Live `--rendered` targets (a staged deploy on a real host) navigate via
-the same shared `live-session.mjs` hardening as dom-equality (`--ua` /
-`--wait-until` / `--headed` / `--locale`): a bot challenge exits **3**,
-a non-challenge HTTP ≥ 400 exits 2, neither is ever measured, and local
-and file targets keep the legacy `networkidle` path.
+Live `--rendered` targets (a staged deploy on a real host) get the same
+`live-session.mjs` hardening and exits as dom-equality (`--ua` /
+`--wait-until` / `--headed` / `--locale`); local and file targets keep
+the legacy `networkidle` path.
 
 **Pass bar (content gate):** dom-equality exit 0 AND slot-coverage
 exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
@@ -106,11 +124,10 @@ exit 0. No partial credit — one dropped CTA is a fail. Exit codes:
 
 #### Image paint — a PASSing image check is not a rendering image
 
-Both image checks above compare **URL strings** (host+path). A
-string can match perfectly while the pixel never arrives: a botanical garden's
-image CDN returned HTTP 403 to any non-origin request, so the
-reskin's 19 hotlinked `currentSrc` images all "passed" the string
-gates while every one rendered as a broken-image icon. The gate was
+Both image checks compare **URL strings** (host+path), and a string can
+match while the pixel never arrives: an image CDN that answered HTTP 403
+to any non-origin request left all 19 of a reskin's hotlinked images as
+broken-image icons while every string check passed. The gate was
 provably right and the page was provably broken.
 
 Defenses, in order:
@@ -267,9 +284,18 @@ letter spacing a style is keyed by.
 - **Fonts are recorded, not failed.** B2 names each font a section
   uses that the page does not render; B3 compares only the first
   family of the computed `font-family`.
+- **Conflicts.** `conflict` is a Figma text colour below WCAG contrast (4.5, 3
+  for large text) in a root the section's checks name, its alpha composited over
+  the solid ground behind it; gradient and image grounds are skipped. A
+  translucent colour or ground with no opaque ground behind it is listed as
+  `Contrast not assessed: n texts` (`register.json` `unassessable[]`):
+  supplemental unknown-contrast evidence, not a seventh class and not a PASS;
+  counts and exits are unchanged.
 - **No verdict.** Exit 124 (a crashed step, a `pixel-compare`
   deadline): re-run once, never a fix iteration; the same 124 twice is
-  a residual (needs-owner). `all`'s exit order is in `--help`.
+  a residual (needs-owner). Exit 3 is a bot challenge on a live target,
+  never measured; exit 2 a setup problem: fix the input, re-run.
+  `all`'s exit order is in `--help`.
 
 ## (e) Deployed acceptance (aem.page preview)
 
@@ -289,12 +315,15 @@ fetches `.plain.html` without a browser.
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a token the preview refuses is exit 2, any other page answering HTTP 400 or more no verdict (exit 124), never a pass |
-| `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`):
   every step measures it with the site token, or stops with exit 2 without
   one; no row is `n/a` for want of one.
+- **Step 10 stays.** The verdict replaces only `deploy` Step 10's automated
+  reconcile; its eyeball, CLS and header-behavior checks stay mandatory before
+  handoff (`deployed-leg.md` § Recipe, step 7).
 - **Figma on a preview.** Sections are the preview's authored
   `.plain.html` sections, found again as `main > div:nth-child(k)` of the
   decorated page (decoration can prepend or drop sections; a moved slot
@@ -330,7 +359,8 @@ budget would push independent cheap fixes into residuals.
       "status": "gated",
       "gates": { "domEquality": "PASS", "slotCoverage": "PASS", "donorProbe": "PASS", "eyeball": "adopted", "sanity": "PASS",
                  "figma": "<summary.json ledgerFragment, Figma donor only>",
-                 "deployed": "<deployed-gate summary.json ledgerFragment: deployed-leg.md § The ledger>" },
+                 "deployed": "<deployed-gate summary.json ledgerFragment: deployed-leg.md § The ledger>",
+                 "step10": "<deployed-leg.md § The ledger>" },
       "fixIteration": "hid nav CTA + lang switch below 560px; stacked hero form",
       "residuals": [ { "gate": "donorProbe", "check": "section rhythm", "detail": "72px vs 96px on s05 — donor's own short sections do this too", "verdict": "accepted" } ],
       "flags": [ "source JSON-LD Organization URLs are broken upstream — carried verbatim, needs owner decision" ]
@@ -357,10 +387,9 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   identically at capture and gate; the donor-native replacement
   (static grid) is a *module transformation* recorded in the mapping
   brief, not a content delta.
-- **Multi-design-system donors.** Donor pages disagree on tokens
-  (radius 4px/1266px on the homepage vs pill/1080px on older pages).
-  Consolidating produces a chimera the probe asserts against nothing
-  real. Defense: pin ONE reference page per module family
+- **Multi-design-system donors.** Consolidating tokens across a donor's
+  coexisting systems yields a chimera the probe asserts against nothing real.
+  Defense: pin ONE reference page per module family
   (`reference/donor-sources.md` § Pin one reference page);
   `donor-tokens.json` names it.
 - **Casing fork.** `innerText` reflects `text-transform`;
@@ -388,10 +417,9 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
   licensing) cannot be rebundled. Defense: adopt the font-family
   **token string** with a local fallback stack; the probe asserts the
   string, which is the honest, probe-able contract.
-- **Hotlinked source images.** On an **origin-locked CDN** (§ Image
-  paint) the URL-string checks pass while nothing paints, a broken page
-  *now*. slot-coverage's paint assertion catches it; when it fires,
-  Phase 6 asset localization is **mandatory** (migrate's asset bundling,
+- **Hotlinked source images.** On an **origin-locked CDN** the URL-string
+  checks pass while nothing paints (§ Image paint); Phase 6 asset
+  localization is then **mandatory** (migrate's asset bundling,
   `../../migrate/reference/content-preservation.md` § Media
   references). The gate compares host+path, so localization after
   gating requires a re-run with the localized mapping or acceptance

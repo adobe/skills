@@ -28,7 +28,8 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 1. **Deploy, preview-only.** `deploy` Steps 1–9 with `stardust/reskin/pages/<slug>.html` as the prototype: the content
    page `content/<ns>/<slug>.html`, in a shared repo both chrome documents, and `eds-schema/<slug>.json` (Step 2b,
    `qa-gate`'s input). `deploy` authors the content page (Step 9); generating it from the model is not built, so
-   its differences are declared in the delta file. Step 10's reconcile is this leg, the reskin page its reference.
+   its differences are declared in the delta file. This leg replaces only Step 10's automated reconciliation, the
+   reskin page its reference (step 7 keeps the rest).
    `block-roundtrip`'s default `--map` (`section.<name>`, `[data-section]`, `.<name>`) cannot pair a reskin page:
    `.cards` matches the inner grids, `.tabs` the tab row. Give one `--map <block>=section[data-slot=sNN][,section[data-slot=sMM]…]`
    per block (Phase 4's `data-slot`, a class is not general), the instances in page order. It compares CTA text by
@@ -48,19 +49,26 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    the page's differences are measured.
 6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. On a protected preview
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
+7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
+   desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
+   pages) and the applicable header-behavior checks. Record each result, or `unresolved: <why>`, under `gates.step10`
+   (§ The ledger).
 
 A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
 `auth: true`). It takes `--auth-header "<value>"` or `--token-env <NAME>` on every step (a value starting with neither
 `token ` nor `bearer ` gets `token ` put in front). Without one `preview` stops with exit 2 rather than poll, and every
 later step does before it measures anything; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124.
-Every step then measures it as any other, `parity` and `sanity` included, never `n/a`. The token goes to the preview
+The token goes to the preview
 origin only (not a font or image host, not the local reskin page), to child processes by environment (`--token-env`,
 `--auth-origin` the preview) and never argv, output, records or the ledger; a public preview is sent none
-(`tokenUnused: true` when one was offered). A sandbox repo's preview is public by default.
+(`tokenUnused: true` when one was offered). The token never crosses a redirect: one inside the preview's origin fails
+(measure the final URL), one to another origin is followed without it. A sandbox repo's preview is public by
+default.
 
 ## The delta file
 
-`reskin/deltas/<slug>.json` (tracked): the page's declared source → preview differences, read by `dom-equality` and
+`reskin/deltas/<slug>.json` (tracked): the page's declared source → preview differences (`mapping.md`'s Deltas block
+declares source → local render changes: `mapping-brief.md` § Deltas block), read by `dom-equality` and
 `slot-coverage` through `--deltas`. An invalid file or an unknown key is exit 2, every problem listed.
 
 ```json
@@ -104,6 +112,10 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 
 The test hook `DEPLOY_VERIFY_ORIGIN` is recorded as `originOverride: { env, origin }` in `preview.json`, `summary.json` and
 the fragment.
+
+Step 7's results go beside the fragment, in `pages.<slug>.gates.step10`, e.g.
+`{ "eyeball": "adopted", "cls": "0.04", "header": "n/a: no header contract" }`; a check not run is
+`unresolved: <why>` and a `residuals[]` entry (`needs-owner`).
 
 A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; the reasons are in `summary.json`'s
 `steps.<step>.detail`), `FAIL k/n`, `FAIL stalled decoration: <what>` (a gate stalled on the preview's decoration and

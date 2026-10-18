@@ -175,10 +175,12 @@ environment only. Recipe:
    picking frames: changing the selection of an existing capture needs
    `--refresh`, a second full nodes fetch.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
-   input: reference pins (one frame, variable mode and breakpoint per
-   module family; § Pin one reference page), roles, normalizations,
-   curations with their proving rule, suspects, section-level modules
-   (an included module's `id` matches `^M\d+$`: a kit whose codes are not
+   input, from `role-candidates.json`, `module-candidates.json` and the
+   frame screenshots: reference pins (one frame, variable mode and breakpoint per
+   module family; § Pin one reference page), roles (each of the 13 probe paths
+   mapped, or marked absent with a why), normalizations,
+   curations with their proving rule, suspects, section-level modules, not
+   atoms (an included module's `id` matches `^M\d+$`: a kit whose codes are not
    M-numbers is renumbered, its own code kept in the `name`) and the DESIGN
    prose.
 4. `figma-donor.mjs curate` — deterministic: `donor-tokens.json`,

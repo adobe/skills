@@ -43,11 +43,11 @@ regression check instead of a debugging tool.
     path — recipe in `reference/donor-sources.md` § Local prototypes.
   - `--donor-figma <url>` — a Figma file (a design, file, proto or
     branch URL; a `node-id` scopes it to a page or frame), read
-    headlessly over the REST API. Needs `FIGMA_TOKEN`, a personal
-    access token with `file_content:read`. Optional `--frames <ids>`
-    and `--confidential` (refuses to write anything git would track;
-    sticky for `curate` and `stamp`).
-    Flags, file schemas and exit codes: `figma-donor.mjs --help`.
+    headlessly over the REST API. Needs `FIGMA_TOKEN` (a personal
+    access token, `file_content:read`). Optional `--frames <ids>` and
+    `--confidential` (refuses to write anything git would track;
+    sticky for `curate` and `stamp`). Flags, schemas, exit codes:
+    `figma-donor.mjs --help`.
 - `--pages <slug,slug,...>` — optional. Restrict the content capture
   to specific pages. Default: the archetype set (one page per page
   family; a spec's `archetypes.json` names them; scale to siblings happens in Phase 6 via `migrate`).
@@ -65,36 +65,18 @@ regression check instead of a debugging tool.
    flow is set, print it and the switch command
    (`$stardust reskin --switch-flow`) instead of running.
 2. **Import-resolvability probe** — same contract as
-   `../extract/SKILL.md` § Setup, covering every gate dependency:
+   `../extract/SKILL.md` § Setup:
    `node -e "Promise.all(['playwright','pixelmatch','pngjs'].map(m=>import(m))).then(()=>process.exit(0),()=>process.exit(1))"`
-   from the project root; on failure (any one missing)
+   from the project root; on failure
    `npm i -D playwright pixelmatch pngjs --legacy-peer-deps` (never
-   `--no-save`: a later real `npm i` prunes it; `pixelmatch` and `pngjs`
-   serve the Figma and deployed pixel checks). Re-run the probe at the start of every
-   phase that renders.
-3. **Copy the scripts into the project.** ESM resolves
-   `import('playwright')` from the *script's* directory and the plugin
-   tree ships no `node_modules`. Copy, byte-identical:
-   `skills/reskin/scripts/` recursively except `test/` (sibling imports,
-   `deployed/`, `figma/`, `figma-gate/` and `render/` travel with it) to
-   `stardust/scripts/reskin/`; `skills/stardust/scripts/state.mjs` to
-   `stardust/scripts/stardust/` (`figma-donor.mjs stamp` writes through
-   it); **all of** `skills/diff/scripts/` to
-   `stardust/scripts/diff/`; from `skills/replica/scripts/` to
-   `stardust/scripts/replica/`, `pixel-compare.mjs`, `run-capped.mjs`,
-   `run-bg.mjs`, `stitch-shot.mjs`, `crop-compare.mjs`,
-   `chrome-parity.mjs` and `cap-probe.mjs` (`pixel-compare` and `run-bg`
-   import `run-capped`; `stitch-shot`, `chrome-parity` and `cap-probe`
-   need `diff/live-session.mjs`); and
-   from `skills/deploy/scripts/` to `stardust/scripts/deploy/`,
-   `eds-path.mjs`, `qa-gate.mjs` (it finds `replica/cap-probe.mjs`),
-   `ai-readability.mjs` and `site-auth.mjs` (both import it) — what
-   `deployed-gate.mjs` resolves. Every gate script (capture-content,
-   dom-equality, donor-probe, slot-coverage) needs `diff/live-session.mjs`
-   (all the live-target hardening: real-Chrome UA and headers, challenge
-   detection, headed-stealth) and exits 2 without it, even for a local file;
-   only `capture-content` also fails `--help`. Keep the directories siblings
-   (`../diff/`, `../replica/`, `../deploy/` next to `../reskin/`) and run the copies.
+   `--no-save`: a later real `npm i` prunes it). Re-run the probe at
+   the start of every phase that renders.
+3. **Copy the scripts into the project and run the copies.** ESM
+   resolves `import('playwright')` from the *script's* directory and
+   the plugin tree ships no `node_modules`. Copy, byte-identical, into
+   `stardust/scripts/{reskin,stardust,diff,replica,deploy}/`, the
+   directories siblings: the exact script list and what each one
+   imports are in `reference/gates.md` § Project copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
    `../extract/SKILL.md` § Setup.
@@ -109,10 +91,9 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
 
 - **Live URL** (`--donor <url>`): invoke
   `$stardust extract <content-url> --design-source <donor-url>` — the
-  existing skill, unchanged. It lands in `stardust/canon-source/`: the
-  donor's `pages/`, `assets/` (screenshots included),
-  `_brand-extraction.json`, `_crawl-log.json`, and a descriptive
-  `DESIGN.md` + `DESIGN.json`, and stamps
+  existing skill, unchanged. It lands in `stardust/canon-source/`
+  (the donor's `pages/`, `assets/`, `_brand-extraction.json`,
+  `_crawl-log.json`, a descriptive `DESIGN.md` + `DESIGN.json`) and stamps
   `state.json.designSource = { url, capturedAt, path }` — see
   `../extract/SKILL.md` § Cross-site brand sources.
 - **Local prototype dir** (`--donor-dir <path>`): serve the directory
@@ -126,14 +107,11 @@ site, into `stardust/canon-source/`. Full recipes per donor type in
   `$stardust extract <content-url>` (it creates `state.json`), then
   `node stardust/scripts/reskin/figma-donor.mjs capture <figma-url>`
   (for a component kit, `--list` first, then `--frames` with the
-  foundation frames and one frame per module page);
-  author `stardust/reskin/curation-rules.json` from
-  `canon-source/role-candidates.json`, `module-candidates.json` and
-  the frame screenshots (pin one reference frame, mode and breakpoint
-  per module family; map the 13 probe paths or mark each absent with
-  a why; list section-level modules, not atoms); then `curate` and
-  `stamp`. Judge the result against the screenshots and fix the
-  rules, not the outputs. Recipe: `reference/donor-sources.md` § Figma.
+  foundation frames and one frame per module page); author
+  `stardust/reskin/curation-rules.json` from the candidates and the
+  frame screenshots; then `curate` and `stamp`. Judge the result
+  against the screenshots and fix the rules, not the outputs. Recipe:
+  `reference/donor-sources.md` § Figma.
 
 Then author two reskin-owned donor artifacts (contracts in
 `reference/donor-sources.md`; for a Figma donor `curate` writes both):
@@ -156,15 +134,12 @@ Then author two reskin-owned donor artifacts (contracts in
   screenshot evidence and an anatomy description. This is the closed
   set the Phase 3 mapping brief maps onto.
 
-**The pin-one-reference-page rule (hard).** Real donors run multiple
-design systems concurrently — the experiment's donor served radius-4px
-/ 1266px on its homepage and pill-radius / 1080px on older product
-pages. Consolidating across them produces a chimera no live page ever
-shipped, and the token probe then asserts against nothing. When donor
-pages disagree on a token, **pin ONE donor reference page per module
+**The pin-one-reference-page rule (hard).** When donor pages
+disagree on a token, **pin ONE donor reference page per module
 family**, record it in `donor-tokens.json` (`curatedFrom` + a note
-naming the reference page), and demote the other pages to
-corroboration.
+naming the reference page) and demote the other pages to
+corroboration — consolidating across them yields a chimera no live
+page shipped (`reference/donor-sources.md` § Pin one reference page).
 
 ### Phase 2 — CONTENT-MODEL CAPTURE
 
@@ -181,25 +156,21 @@ node stardust/scripts/reskin/capture-content.mjs \
 ```
 
 It writes `stardust/reskin/content-model/<slug>/content-model.json`
-(full contract in `reference/content-model.md`): per section-slot —
-headings with levels, eyebrows and other leftovers, body paragraphs,
-list items, CTAs with **absolute** hrefs, ordered **visible** images
-(`currentSrc` + alt), plus the **ordered stream** (`ordered`) — the
-same content as kind-tagged nodes in document order with nesting and
-separator flags, the render surface Phase 4 consumes; page-level —
-full SEO metadata (title,
-description, canonical, OG, Twitter, JSON-LD, lang, favicon), the
-whitespace-normalized visible text of the scope (the content-gate
-reference string), and a full-page screenshot.
+(full contract in `reference/content-model.md`): per section-slot, the
+headings, leftovers, body paragraphs, list items, CTAs with **absolute**
+hrefs, ordered **visible** images (`currentSrc` + alt) and the **ordered
+stream** (`ordered`: the same content as kind-tagged nodes in document
+order, the render surface Phase 4 consumes); page-level, full SEO
+metadata, the whitespace-normalized visible text of the scope (the
+content-gate reference string) and a full-page screenshot.
 
 Two declarations are mandatory per page, because they are the
 experiment's top two failure modes:
 
-1. **CONTENT-ROOT SCOPE declaration.** Naive scoping silently dropped
-   30% of the experiment page's content — the hero and a banner
-   carousel lived inside `<header>`, outside the obvious `#content`
-   root, and byte equality would have "passed" against the incomplete
-   reference. Never trust `main` or `#content` blind. Run the
+1. **CONTENT-ROOT SCOPE declaration.** Never trust `main` or `#content`
+   blind: the obvious root silently dropped 30% of the experiment
+   page's content, and byte equality passed against the incomplete
+   reference. Run the
    **scope-discovery procedure** (`reference/content-model.md`
    § Scope discovery): compare the captured scope text against the
    whole-body text and the page screenshot, verify the h1 is inside
@@ -246,12 +217,11 @@ Gates before any rendering:
 - **Chrome swaps documented** — nav/footer replaced by donor chrome
   carrying the source's links is a declared delta, excluded from the
   content-gate scope.
-- **Casing / text-transform policy declared.** The donor may render
-  eyebrows uppercase (or the source may — Chrome's `innerText`
-  reflects `text-transform`, so captured text is *rendered-case*).
-  The underlying text stays byte-faithful; casing is applied via CSS
-  `text-transform` only, never by editing the string. Policy details
-  in `reference/mapping-brief.md` § Casing policy.
+- **Casing / text-transform policy declared.** Captured text is
+  *rendered-case* (`innerText` reflects `text-transform`); it stays
+  byte-faithful and casing is applied via CSS `text-transform` only,
+  never by editing the string (`reference/mapping-brief.md` § Casing
+  policy).
 
 Composite source sections (one wrapper div holding two logical
 regions) are split into atomic slots in the brief — section ≠ slot.
@@ -269,28 +239,20 @@ modeled on the experiment's `render-reskin.mjs`) that:
   renderer is wrong;
 - takes each slot's structure from the **ordered stream**
   (`sections[].ordered`, `reference/content-model.md` § The ordered
-  stream): kind-tagged nodes in document order, nesting preserved
-  (a CTA wrapping its heading and vice versa), `sep` flags marking
-  zero-separator inline joins. The stream is **innerText-consistent
-  by construction** (its text nodes are sliced from the parent's
-  rendered `innerText` — the byte-gate basis), so emitting it
-  verbatim is safe. Emit nodes in stream order; emit
-  `sep: ""` neighbours with no whitespace between them (inline);
-  never reorder, and never reconstruct **order or separators** from
-  `visibleText` —
-  the first field run did exactly that (per-type arrays matched
-  greedily against `visibleText` as an oracle) and burned three
-  debug rounds on duplicate identical strings, both directions of
-  CTA/container nesting, and zero-separator inline `li` runs, all
-  of which the stream now captures structurally;
+  stream): kind-tagged nodes in document order, nesting preserved,
+  `sep` flags marking zero-separator inline joins. It is
+  innerText-consistent by construction, so emitting it verbatim is
+  safe: nodes in stream order, `sep: ""` neighbours with no whitespace
+  between them (inline), never reordered, and **order or separators
+  never reconstructed** from `visibleText` (that route failed on
+  duplicate strings, CTA/container nesting and tight inline joins);
 - renders `formControl` nodes as **equivalent controls**, not text:
   a `<select>` carrying the captured option texts **verbatim, in
   order**; inputs/textareas carrying value/placeholder — restyled
   with donor tokens (the new-module composition rules apply), never
-  flattened to prose and never dropped. A select's option text is
-  part of the source's `innerText`, so dropping the control fails
-  the byte gate with nothing structured to render from
-  (`reference/content-model.md` § Slot taxonomy, formControls);
+  flattened to prose and never dropped: a select's option text is
+  part of the byte reference (`reference/content-model.md` § Slot
+  taxonomy, formControls);
 - carries the metadata block verbatim into `<head>` (title,
   description, canonical, OG, Twitter, JSON-LD — including source
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**
@@ -316,12 +278,9 @@ Renderers may parse a single node's text apart (split a list-item row
 into kicker/date/title) but must **fail loudly** (throw) when a parse
 doesn't reproduce the node's text — a silent partial parse is a silent
 content drop. A slot whose `orderedVerified` is `false` is inspected
-before rendering, never trusted blind; when inspection shows stream
-text genuinely absent from the slot's `visibleText`, the
-**sanctioned fallback** is to drop that text before rendering and
-record the drop in the model's provenance — filtering ghosts against
-`visibleText` is the documented resolution, distinct from the
-forbidden order-reconstruction move
+before rendering, never trusted blind; stream text genuinely absent
+from its `visibleText` is dropped and the drop recorded in the model's
+provenance — the one sanctioned use of `visibleText` in a render
 (`reference/content-model.md` § When `orderedVerified` is false).
 
 ### Phase 5 — GATES
@@ -347,8 +306,8 @@ node stardust/scripts/reskin/slot-coverage.mjs \
 
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
 equality** and the **ordered, URL-normalized visible-image set**;
-`slot-coverage.mjs` additionally proves every slot, CTA (text and
-absolute href) and image present and asserts metadata carry-over
+`slot-coverage.mjs` also proves every slot, CTA (text and absolute
+href) and image present and asserts metadata carry-over
 (`reference/gates.md` § (a)).
 
 **(b) DESIGN-ADOPTION GATE:**
@@ -362,7 +321,8 @@ node stardust/scripts/reskin/donor-probe.mjs \
 
 Computed-style assertions of donor token values on the rendered page —
 bg/fg, font-family token string, display weight, button spec,
-container width, band palette, section rhythm. Tolerances: `reference/gates.md` § Tolerances.
+container width, band palette, section rhythm (tolerances:
+`reference/gates.md` § Tolerances).
 Then the **side-by-side judgment** (`reference/gates.md` § (b)): the
 rendered page next to the donor reference-page screenshots
 (`canon-source/assets/screenshots/`); the probe proves tokens, the
@@ -378,12 +338,10 @@ runs this automatically; `--widths` to override).
 frames it was built from, offline (no token, no network). Read each
 included module's outline with `figma-gate.mjs boxes --module Mn`,
 author `stardust/reskin/figma-checks/<slug>.json` (schema:
-`figma-gate.mjs --help`), then run the whole check under `run-bg` and
+`figma-gate.mjs --help`; coverage floor and waivers:
+`reference/gates.md` § (d)), then run the whole check under `run-bg` and
 read it with `wait` (repeat while it exits 75; no step blocks past
-~110 s). The file must cover every text style of each root and, if the
-module has a mobile variant, a mobile root keyed at the variant's own
-width (`w` of its box); only a `waive` or a section `skip`, with a `why`,
-lowers that (`reference/gates.md` § (d)):
+~110 s):
 
 ```bash
 node stardust/scripts/replica/run-bg.mjs start --name figma-<slug> \
@@ -395,11 +353,9 @@ node stardust/scripts/replica/run-bg.mjs wait figma-<slug> --dir stardust/.work/
 
 B0 (join), B1 (geometry) and B3 (`:root` tokens, type ramp)
 block; B2 (frame pixels) is advisory and B4 (the divergence register,
-`.work/reskin/gates/<slug>/figma/register.md`) informational: a section with a waiver is `waived` there, never `mandated`. Exit 124
-is no verdict (re-run once, never a fix iteration; the same 124 twice
-is a residual, needs-owner), exit 3 a bot challenge on a live target,
-exit 2 a setup problem (fix the input, re-run). Residuals carry
-`class` `figma.join` | `figma.geometry` | `figma.ramp`. Copy
+`.work/reskin/gates/<slug>/figma/register.md`) informational. Exit 124
+is no verdict: re-run once, never a fix iteration (the other exits and
+the residual classes: `reference/gates.md` § (d)). Copy
 `summary.json`'s `ledgerFragment` into `ledger.json`
 `pages.<slug>.gates.figma`.
 
@@ -420,13 +376,17 @@ node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
 node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
 
-On a protected preview add `--token-env <NAME>` to the `all` command, never
-`--auth-header` (`run-bg` saves and prints its command, so a header value would
-reach disk); without the token `all` stops with exit 2.
+On a protected preview give the `all` command `--token-env <NAME>`, never
+`--auth-header` (`run-bg` saves and prints its command); without the token
+`all` stops with exit 2.
 
-`all` prints one verdict line per step and writes `summary.json`; copy its
+`all` writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124
 and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
+`all` replaces only `deploy` Step 10's automated reconcile: its deployed
+desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and applicable
+header-behavior checks stay mandatory before handoff, their results or an
+explicit `unresolved` in the ledger (`reference/deployed-leg.md` § Recipe, step 7).
 
 **One fix iteration per gate family** (content; design-adoption/sanity;
 Figma fidelity): fix once, re-run all gates; (e) has its own budget
@@ -451,7 +411,9 @@ pipeline:
   inherited wholesale.
 - **Ship via the stardust `deploy` and `rollout` skills.** An archetype
   page's first deploy is Phase 5 (e), preview-only
-  (`reference/deployed-leg.md`); publishing and the rest of the site are
+  (`reference/deployed-leg.md`); it is handed off once `deploy` Step 10's
+  eyeball, CLS and header results (or `unresolved`) are in its ledger.
+  Publishing and the rest of the site are
   theirs. Blocks written for donor modules obey the Experience Workspace
   editability contract (deploy SKILL.md § 8, EW1–EW10) and pass the EW
   gate (`block-roundtrip --ew`) before they are done.
@@ -459,9 +421,9 @@ pipeline:
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
 holds per-page status (`captured → mapped → rendered → gated`), gate
 results, and residuals. It makes **no changes to the core state
-machine** (`../stardust/reference/state-machine.md`): Setup stamps
-`flow`, and Phase 1 stamps `designSource` (`extract --design-source`
-for URL and directory donors, `figma-donor.mjs stamp` for Figma).
+machine** (`../stardust/reference/state-machine.md`): the only
+`state.json` touches are Setup's `flow` and Phase 1's `designSource`
+stamp (`extract --design-source`, or `figma-donor.mjs stamp`).
 
 ## What reskin never does
 
@@ -496,8 +458,8 @@ for URL and directory donors, `figma-donor.mjs stamp` for Figma).
 | Path | Purpose |
 |---|---|
 | `stardust/canon-source/` | Donor capture + descriptive DESIGN.md/json (extract `--design-source`, unchanged; or `figma-donor.mjs` for Figma) |
-| `stardust/canon-source/foundation/`, `{role,module}-candidates.json`, `spec-tables.json` | Figma donor only: normalized Figma values with node ids, and the candidates the agent curates from |
-| `stardust/reskin/curation-rules.json` | Figma donor only: the authored rules, the one non-mechanical `curate` input |
+| `stardust/canon-source/foundation/`, `{role,module}-candidates.json`, `spec-tables.json` | Figma donor: normalized values with node ids, and the curation candidates |
+| `stardust/reskin/curation-rules.json` | Figma donor: the authored rules, `curate`'s one non-mechanical input |
 | `stardust/reskin/donor-tokens.json` | Curated probe-able token sheet, pinned to one reference page |
 | `stardust/reskin/donor-modules.md` | Enumerated donor module vocabulary (M1..Mn) with screenshot evidence |
 | `stardust/reskin/content-model/<slug>/content-model.json` | Byte-oriented per-page content model (+ source screenshot) |
@@ -506,13 +468,11 @@ for URL and directory donors, `figma-donor.mjs stamp` for Figma).
 | `stardust/reskin/renderers/<archetype>.mjs` | Programmatic renderers (model in, HTML out) |
 | `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
-| `stardust/reskin/figma-checks/<slug>.json` | Figma donor only: the authored geometry, type and pixel checks (git-ignored under `--confidential`) |
+| `stardust/reskin/figma-checks/<slug>.json` | Figma donor: the authored geometry, type and pixel checks (git-ignored under `--confidential`) |
 | `stardust/reskin/deltas/<slug>.json` | Deployed leg: the page's declared source → preview differences (`--deltas`) |
 | `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
 | `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
-| `stardust/.work/reskin/figma/` | Figma donor only: raw REST cache and frame PNGs (git-ignored) |
-| `stardust/.work/reskin/gates/<slug>/figma/` | Figma donor only: the checks' evidence, `summary.json` and the divergence register (git-ignored); `figma-preview/` holds the deployed leg's run |
-| `stardust/.work/reskin/gates/<slug>/deployed/` | Deployed leg: the preview record, each step's evidence and `summary.json` (git-ignored) |
+| `stardust/.work/reskin/{figma,gates/<slug>/{figma,figma-preview,deployed}}/` | Git-ignored evidence: the Figma REST cache and frame PNGs; each leg's checks, `summary.json`, divergence register and preview record |
 
 ## References
 

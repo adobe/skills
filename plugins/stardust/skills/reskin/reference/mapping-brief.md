@@ -144,7 +144,10 @@ page and the gated comparison:
   the ledger executes them.
 
 If a delta is not in this block, it does not exist: any other
-source↔render difference is a gate failure, not a delta.
+source↔render difference is a gate failure, not a delta. The block
+covers source → local render changes; a page's source → deployed preview
+differences are declared in `reskin/deltas/<slug>.json`
+(`reference/deployed-leg.md` § The delta file).
 
 ## Flag, don't fix
 
