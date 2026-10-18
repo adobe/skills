@@ -323,7 +323,7 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
 # exit 75 = still going → `wait` again as your NEXT step, never in a shell loop;
 # exit 76 = the pause file appeared, stop waiting; exit 77 = the runner's wake line (`stardust/.labs/wake`
-# grew: a background agent finished); --max 240 under a five-minute cache (default 300)
+# grew: a background agent finished) → `wait` again; --max 240 under a five-minute cache (default 300)
 # (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
 # '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
 # wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait
