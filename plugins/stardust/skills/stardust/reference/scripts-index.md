@@ -2,7 +2,7 @@
 
 Run the project copies under `stardust/scripts/<skill>/`. Read this before `--help`; ask it only for flags not named here. Full invocations: `../../replica/reference/handoff-contract.md` § 4.
 
-- `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98]`
+- `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98] [--token-env <N>]`
 - `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
@@ -15,10 +15,11 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `deploy/ew-editability-probe.mjs` — rendered editability gate — `--content <p>.html | <url…> [--simulate-editor]`
 - `deploy/localize-links.mjs` — source hrefs → root-relative — `--source-host <h> [--content content] [--check]`
 - `deploy/martech-scaffold.mjs` — contract → `scripts/martech.js` — `[--contract <json>] [--dry-run] [--force]`; exit 1 = invalid
-- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json]`
+- `deploy/qa-gate.mjs` — decoration asserts + width cap — `<harnessURL> --schema stardust/eds-schema/<p>.json [--design DESIGN.json] [--token-env <N>]`
 - `deploy/render-harness.mjs` — screenshot local decoration — `content/<p>.html <out.png> [<block>…] [--ew]`
 - `deploy/sanitise.js` — non-ASCII → entities, in place — `content/<p>.html` (one file per call)
 - `deploy/section-schema.mjs` — section role inventory — `<protoURL> [--out <f>] [--profile eds|generic]`
+- `deploy/site-auth.mjs` — library (site token: one .env grammar, origin-scoped route), no CLI
 - `deploy/style-fingerprint.mjs` — variation groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f]`; exit 2 = undecided error
 - `diff/chrome-explore.mjs` — header behaviour: states, close paths, motion — `<url> <out.json> [--width 1440,390]`

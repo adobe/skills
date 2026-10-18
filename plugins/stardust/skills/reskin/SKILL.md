@@ -87,8 +87,9 @@ regression check instead of a debugging tool.
    import `run-capped`; `stitch-shot`, `chrome-parity` and `cap-probe`
    need `diff/live-session.mjs`); and
    from `skills/deploy/scripts/` to `stardust/scripts/deploy/`,
-   `eds-path.mjs`, `qa-gate.mjs` (it finds `replica/cap-probe.mjs`) and
-   `ai-readability.mjs` — what `deployed-gate.mjs` resolves. Every reskin
+   `eds-path.mjs`, `qa-gate.mjs` (it finds `replica/cap-probe.mjs`),
+   `ai-readability.mjs` and `site-auth.mjs` (both import it) — what
+   `deployed-gate.mjs` resolves. Every reskin
    gate script (capture-content, dom-equality, donor-probe, slot-coverage)
    needs `diff/live-session.mjs` and exits 2 without the copy, even for a
    local-file `--rendered` target; only `capture-content` also fails

@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 // skills/deploy/scripts/test/qa-gate.test.mjs — the pure part of qa-gate.mjs (checkUnits: each schema repeat
 // group held to its own block instance, found by ORDER among the non-chrome sections, never by section name)
-// and --help. No browser, no network: the rendered block measurements are plain objects.
+// and --help, then the site-auth flags: their usage errors (no browser), and the page loads against the two-origin
+// fixture (the token reaches the page's origin only; Chromium, skipped without it). The rendered block
+// measurements of the pure part are plain objects.
 // Run: node --test <this file>   (or node <this file>).
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { startTwoOriginServer } from '../../../replica/scripts/test/fixtures/two-origin-server.mjs';
 import { checkUnits } from '../qa-gate.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'qa-gate.mjs');
@@ -88,5 +93,105 @@ test('--help: exit 0 and the usage header, before any browser or file work', () 
   assert.equal(r.status, 0, r.stderr);
   assert.match(r.stdout, /^skills\/deploy\/scripts\/qa-gate\.mjs — the stock Local-QA assertion gate/);
   assert.match(r.stdout, /matched by ORDER among\s+the non-chrome/);
+  assert.match(r.stdout, /--token-env <NAME> \| --auth-header "<value>"/);
+  assert.match(r.stdout, /ONE origin — --auth-origin <url>/);
   assert.equal(r.stderr, '');
+});
+
+// ---- site auth: the token goes to the page's origin only -------------------------------------------------------
+// qa-gate runs as a child process, asynchronously: the fixture servers live in this process, so a synchronous spawn
+// would deadlock. Auth usage errors answer before a browser starts; the page loads need Chromium and are skipped
+// without it.
+const SCRATCH = mkdtempSync(join(tmpdir(), 'qa-gate-test-'));
+after(() => rmSync(SCRATCH, { recursive: true, force: true }));
+const SECRET = 't0k3n';
+const run = (args, { env = {}, cwd = SCRATCH } = {}) => new Promise((resolve, reject) => {
+  const base = { ...process.env };
+  for (const k of Object.keys(base)) if (/token/i.test(k)) delete base[k];
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...base, ...env } });
+  let out = ''; let err = '';
+  child.stdout.on('data', (d) => { out += d; });
+  child.stderr.on('data', (d) => { err += d; });
+  const timer = setTimeout(() => child.kill('SIGKILL'), 120000);
+  child.on('error', reject);
+  child.on('close', (code) => { clearTimeout(timer); resolve({ code, out, err }); });
+});
+const noSecret = (r) => assert.ok(!r.out.includes(SECRET) && !r.err.includes(SECRET), `the token was printed:\n${r.out}${r.err}`);
+
+test('auth usage errors exit 2 before any request: an unset variable is named, an empty flag value is refused, a token pasted for a name is never echoed', async () => {
+  const url = 'http://127.0.0.1:9/page';
+  const cases = [
+    [['--token-env', 'QA_NOT_SET'], /^qa-gate: no site token: --token-env QA_NOT_SET is not set \(or is empty\) in the environment or in a QA_NOT_SET= line of \.env$/m],
+    [['--token-env'], /^qa-gate: --token-env takes the name of an environment variable/m],
+    [['--token-env', ''], /^qa-gate: --token-env takes the name of an environment variable/m],
+    [['--token-env', `token ${SECRET}`], /^qa-gate: --token-env takes the name of an environment variable/m],
+    [['--auth-header'], /^qa-gate: --auth-header needs a value$/m],
+    [['--auth-header', ''], /^qa-gate: --auth-header needs a value$/m],
+    [['--auth-header', SECRET, '--auth-origin'], /^qa-gate: --auth-origin needs an http\(s\) URL/m],
+    [['--auth-header', SECRET, '--auth-origin', 'ftp://x.test'], /^qa-gate: --auth-origin needs an http\(s\) URL/m],
+  ];
+  for (const [flags, expected] of cases) {
+    const r = await run([url, ...flags]);
+    assert.equal(r.code, 2, `${flags.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.err, expected, flags.join(' '));
+    assert.equal(r.out, '');
+    noSecret(r);
+  }
+  const noUrl = await run(['--auth-header', `token ${SECRET}`]);
+  assert.equal(noUrl.code, 2); assert.match(noUrl.err, /^usage: qa-gate\.mjs <harnessURL>/); noSecret(noUrl);
+});
+
+const hasBrowser = await import('playwright').then(async ({ chromium }) => { const b = await chromium.launch(); await b.close(); return true; }, () => false);
+const browserTest = (name, fn) => test(name, { skip: !hasBrowser && 'playwright / Chromium not available' }, fn);
+const fx = hasBrowser ? await startTwoOriginServer() : null;
+after(() => fx && fx.stop());
+
+// The page's content assertions fail on the fixture (no runtime booted): the run still ends in its QA GATE line.
+const finished = (r) => { assert.match(r.out, /^QA GATE: (PASS|FAIL) — /m, `qa-gate did not finish:\n${r.out}${r.err}`); noSecret(r); };
+const pageHits = (side) => side.log.filter((q) => q.path === '/page');
+
+browserTest('--token-env: the protected page is loaded with the token, the stylesheet and image of origin B arrive without it', async () => {
+  fx.reset();
+  const r = await run([`${fx.originA}/page`, '--token-env', 'QA_SITE_TOKEN'], { env: { QA_SITE_TOKEN: SECRET } });
+  finished(r);
+  assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[fx.authorization, 200]]);
+  assert.ok(fx.a.log.every((q) => q.authorization === fx.authorization), 'every request to origin A carries the token');
+  assert.deepEqual(fx.b.log.map((q) => q.path).sort(), ['/pic.png', '/style.css']);
+  assert.deepEqual(fx.authorizations('B'), [], 'origin B saw an Authorization');
+});
+
+browserTest('--auth-header before the URL: the value is not mistaken for the URL; a bare value gets `token `; origin B sees none', async () => {
+  fx.reset();
+  const r = await run(['--auth-header', SECRET, `${fx.originA}/page`]);
+  finished(r);
+  assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[fx.authorization, 200]]);
+  assert.deepEqual(fx.authorizations('B'), []);
+});
+
+browserTest('the token comes from the NAME= line of ./.env when the variable is unset', async () => {
+  fx.reset();
+  const dir = mkdtempSync(join(SCRATCH, 'dotenv-'));
+  writeFileSync(join(dir, '.env'), `QA_SITE_TOKEN=${SECRET}\n`);
+  const r = await run([`${fx.originA}/page`, '--token-env', 'QA_SITE_TOKEN'], { cwd: dir });
+  finished(r);
+  assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[fx.authorization, 200]]);
+  assert.deepEqual(fx.authorizations('B'), []);
+});
+
+browserTest('no flag: a SITE_TOKEN in the environment and in ./.env is not sent — the protected page answers 401 and nothing carries an Authorization', async () => {
+  fx.reset();
+  const dir = mkdtempSync(join(SCRATCH, 'dotenv-'));
+  writeFileSync(join(dir, '.env'), `SITE_TOKEN=${SECRET}\n`);
+  const r = await run([`${fx.originA}/page`], { env: { SITE_TOKEN: SECRET }, cwd: dir });
+  finished(r);
+  assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[null, 401]]);
+  assert.deepEqual([...fx.authorizations('A'), ...fx.authorizations('B')], []);
+});
+
+browserTest('--auth-origin names the one origin: with origin B named, the page on origin A is sent nothing', async () => {
+  fx.reset();
+  const r = await run([`${fx.originA}/page`, '--auth-header', SECRET, '--auth-origin', fx.originB]);
+  finished(r);
+  assert.deepEqual(pageHits(fx.a).map((q) => [q.authorization, q.status]), [[null, 401]]);
+  assert.deepEqual(fx.authorizations('A'), []);
 });

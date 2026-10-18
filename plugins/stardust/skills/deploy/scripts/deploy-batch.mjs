@@ -49,9 +49,11 @@
  * lines name the variable or the file, never the value.
  *
  * Site token (a protected preview): the delivered .plain.html check answers 401 without it. --site-token-env
- * <NAME> reads it from the environment variable NAME, else from a NAME= line of ./.env (bare or quoted); a value
- * starting with neither `token ` nor `bearer ` (any case) gets `token ` in front. It is sent as Authorization on
- * that check only, to the verify origin only — never to DA or the admin API — and never printed, logged,
+ * <NAME> reads it from the environment variable NAME, else from a NAME= line of ./.env (exactly NAME=value, bare or
+ * quoted: not `export NAME=`, not spaces round the `=`, not a trailing comment — the one grammar of every stardust
+ * instrument, site-auth.mjs); a value starting with neither `token ` nor `bearer ` (any case) gets `token ` in front.
+ * It is sent as Authorization on that check only, to the verify origin only — never to DA or the admin API — and
+ * never printed, logged,
  * written to the ledger or put in the re-run command (only the variable's name is). A variable that is not set
  * is a usage error (exit 2) naming it.
  *
@@ -94,6 +96,7 @@ import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
 // The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
 import { jwtExpiry } from './da-media-upload.mjs';
+import { readSiteAuth } from './site-auth.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -108,21 +111,13 @@ const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
 const VERIFY_ORIGIN = process.env.DEPLOY_VERIFY_ORIGIN || '';
 const TOKEN_EXIT = 3;
 
-// The site token for a protected preview's delivered check: the variable `name`, else a `NAME=` line of ./.env
-// (bare or quoted), with `token ` put in front unless it already starts with `token ` or `bearer `. The name is
-// checked first so that a token pasted where a name belongs is refused without being echoed.
-function readSiteAuth(name) {
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(String(name))) throw new Error('--site-token-env takes the name of an environment variable (letters, digits and underscores), not the token');
-  let v = process.env[name];
-  if (!v && existsSync('.env')) {
-    const line = readFileSync('.env', 'utf8').match(new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=(.*)$`, 'm'));
-    v = line ? line[1].trim() : '';
-    const quoted = v.match(/^(["'])(.*?)\1(?:\s|$)/);
-    v = quoted ? quoted[2] : v.replace(/\s+#.*$/, '');
-  }
-  v = (v || '').trim();
-  if (!v) throw new Error(`--site-token-env ${name}: not set in the environment or in ./.env`);
-  return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
+// The site token for a protected preview's delivered check, read by the one grammar every instrument shares
+// (site-auth.mjs): the variable `name`, else its `NAME=` line of ./.env. The name is checked first, so that a token
+// pasted where a name belongs is refused without being echoed.
+function siteAuthOf(name) {
+  const siteAuth = readSiteAuth(name, { flag: '--site-token-env' });
+  if (!siteAuth) throw new Error(`--site-token-env ${name}: not set in the environment or in ./.env`);
+  return siteAuth;
 }
 
 // The text with the site token (and the bare token under its `token ` / `bearer ` prefix) replaced.
@@ -166,7 +161,7 @@ function parseArgs(argv) {
     a.token = process.env[a.tokenEnv];
     if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
   }
-  if (a.siteTokenEnv !== undefined) a.siteAuth = readSiteAuth(a.siteTokenEnv);
+  if (a.siteTokenEnv !== undefined) a.siteAuth = siteAuthOf(a.siteTokenEnv);
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   return a;

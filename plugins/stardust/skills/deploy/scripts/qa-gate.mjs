@@ -9,13 +9,20 @@
  * decoration contract in one run.
  *
  *   node skills/deploy/scripts/qa-gate.mjs http://localhost:3000/stardust/.work/harness/page.html \
- *        --schema stardust/eds-schema/<page>.json [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]
+ *        --schema stardust/eds-schema/<page>.json [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band] \
+ *        [--token-env <NAME> | --auth-header "<value>"] [--auth-origin <url>]
  *
  *   --design <file>  DESIGN.json whose extensions.breakpoints carry the measured sizing model
  *                    (cap-probe.mjs --write-design): probeWidth sets the wide pass's viewport,
  *                    containerMaxWidth is the cap asserted there and the --maxw default.
  *                    Default: ./DESIGN.json when it exists. The URL may be the harness or the
  *                    published origin — the cap assert is the same on both.
+ *   --token-env <NAME> | --auth-header "<value>"   a protected preview: send the site token held in the environment
+ *                    variable NAME (else the NAME= line of ./.env), or this Authorization value (a bare value gets
+ *                    `token ` in front), on every request the page makes to ONE origin — --auth-origin <url>, default the
+ *                    URL's origin — and to no other (a font or image host, a CDN). Opt-in: without a flag nothing is
+ *                    sent, whatever SITE_TOKEN holds; the value is never printed. A flag with no value, or a variable
+ *                    that is not set, exits 2.
  *
  * Writes: nothing — PASS/WARN/FAIL lines go to stdout.
  *
@@ -54,6 +61,7 @@
 /* eslint-disable no-console, no-await-in-loop, no-restricted-syntax */
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { attachSiteAuth, instrumentSiteAuth } from './site-auth.mjs';
 
 const CHROME = ['header', 'footer'];
 
@@ -98,12 +106,12 @@ async function main() {
     process.exit(0);
   }
 
-  // playwright is imported only past the --help guard, so --help answers on a checkout without it.
-  const { chromium } = await import('playwright');
-
   const args = process.argv.slice(2);
-  const url = args.find((a) => !a.startsWith('--'));
+  // the URL is the first argument that is neither a flag nor a flag's value (a value such as an auth header is never a URL)
+  const url = args.find((a, i) => !a.startsWith('--') && !(i > 0 && args[i - 1].startsWith('--')));
   const opt = (name, dflt) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : dflt; };
+  // an auth flag: undefined when absent, '' when it has no value (instrumentSiteAuth's usage error)
+  const authOpt = (name) => { const i = args.indexOf(`--${name}`); if (i < 0) return undefined; const v = args[i + 1]; return v === undefined || v.startsWith('--') ? '' : v; };
   const schemaPath = opt('schema', null);
   // The sizing model lives in DESIGN.json (cap-probe.mjs --write-design); the probe itself is the
   // replica skill's cap-probe.mjs — plugin tree or the documented project copy (stardust/scripts/).
@@ -114,7 +122,9 @@ async function main() {
   const sizing = capProbe && designPath ? capProbe.readDesignSizing(designPath) : null;
   const maxw = Number(opt('maxw', sizing && sizing.containerMaxWidth ? sizing.containerMaxWidth : 1340));
   const fullBleed = (opt('full-bleed', '') || '').split(',').map((s) => s.trim()).filter(Boolean);
-  if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band]'); process.exit(2); }
+  if (!url) { console.error('usage: qa-gate.mjs <harnessURL> [--schema <eds-schema.json>] [--design DESIGN.json] [--maxw <px>] [--full-bleed hero,band] [--token-env <NAME> | --auth-header "<value>"] [--auth-origin <url>]'); process.exit(2); }
+  let auth = null;
+  try { auth = instrumentSiteAuth({ tokenEnv: authOpt('token-env'), authHeader: authOpt('auth-header'), authOrigin: authOpt('auth-origin'), urls: [url] }); } catch (e) { console.error(`qa-gate: ${e.message}`); process.exit(2); }
   const schema = schemaPath ? JSON.parse(fs.readFileSync(schemaPath, 'utf8')) : null;
 
   const fails = [];
@@ -122,8 +132,13 @@ async function main() {
   const ok = [];
   const check = (cond, label, detail = '') => (cond ? ok : fails).push(`${label}${detail ? ` — ${detail}` : ''}`);
 
+  // playwright is imported only past the --help guard and the usage checks, so they answer on a checkout without it.
+  const { chromium } = await import('playwright');
   const browser = await chromium.launch();
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  // The token rides requests to its one origin only (a route on the context), before the first navigation.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  if (auth) await attachSiteAuth(context, auth.origin, auth.header);
+  const page = await context.newPage();
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
   await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });

@@ -465,7 +465,7 @@ await check('--site-token-env <NAME>: the variable goes on the delivered check a
   assert.equal(requests.length, from2, 'a page already live is re-verified, not re-driven');
   assert.deepEqual(protectedSeen.slice(pfrom2).map((q) => q.authorization), [`token ${SITE_TOKEN}`]);
 });
-await check('a value already starting with `bearer ` is sent as is; with the variable unset the NAME= line of ./.env is read (bare, double- or single-quoted, `export`, a trailing comment)', async () => {
+await check('a value already starting with `bearer ` is sent as is; with the variable unset the NAME= line of ./.env is read (bare, double- or single-quoted, CRLF); `export NAME=` and `NAME = v` are not that line', async () => {
   const send = async (opts, name = 'SITE_TEST_TOKEN') => {
     const pfrom = protectedSeen.length;
     const r = await protectedRun(['--content', 'site-h', '--site-token-env', name], opts);
@@ -477,10 +477,15 @@ await check('a value already starting with `bearer ` is sent as is; with the var
   assert.deepEqual(await send(siteEnv(`TOKEN ${SITE_TOKEN}`)), [`TOKEN ${SITE_TOKEN}`]);
   const dotenv = join(proj, '.env');
   try {
-    for (const line of [`SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN="${SITE_TOKEN}"`, `SITE_ENV_TOKEN='${SITE_TOKEN}'  # the preview's`, `export SITE_ENV_TOKEN=${SITE_TOKEN}\r`, `SITE_ENV_TOKEN="bearer ${SITE_TOKEN}"`]) {
+    for (const line of [`SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN="${SITE_TOKEN}"`, `SITE_ENV_TOKEN='${SITE_TOKEN}'`, `SITE_ENV_TOKEN=${SITE_TOKEN}\r`, `SITE_ENV_TOKEN="bearer ${SITE_TOKEN}"`]) {
       writeFileSync(dotenv, `OTHER=1\nSITE_ENV_TOKEN_2=nope\n${line}\n`);
       const sent = await send({}, 'SITE_ENV_TOKEN');
       assert.deepEqual(sent, [line.includes('bearer ') ? `bearer ${SITE_TOKEN}` : `token ${SITE_TOKEN}`], line);
+    }
+    for (const line of [`export SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN = ${SITE_TOKEN}`]) {
+      writeFileSync(dotenv, `OTHER=1\n${line}\n`);
+      const off = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
+      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env SITE_ENV_TOKEN: not set in the environment or in \.\/\.env$/m);
     }
     writeFileSync(dotenv, `SITE_ENV_TOKEN=\nSITE_ENV_TOKEN_2="${SITE_TOKEN}"\n`);
     const empty = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
