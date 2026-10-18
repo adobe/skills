@@ -192,7 +192,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       log('next: capture <figma-url> --frames <id,id,…> with the foundation frames and one representative frame per module');
       return 0;
     }
-    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir }); }
+    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES }); }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');

@@ -534,6 +534,66 @@ await check('--confidential with an output already tracked → exit 2 naming git
   assert.match(r.stderr, /git rm --cached -- stardust\/canon-source\/_crawl-log\.json/);
   assert.equal(fake.requests.length, 0);
 });
+const IGNORE_ALL = ['canon-source/foundation/', 'canon-source/role-candidates.json', 'canon-source/module-candidates.json', 'canon-source/spec-tables.json', 'canon-source/assets/screenshots/', 'canon-source/_crawl-log.json', '.work/'];
+const withIgnore = (p, lines) => { mkdirSync(join(p, 'stardust'), { recursive: true }); writeFileSync(join(p, 'stardust', '.gitignore'), `${lines.join('\n')}\n`); return p; };
+const untouched = (p) => walk(p).filter((f) => !f.includes('/.git/')).map((f) => relative(p, f));
+await check('--confidential refuses an ignore negation of a non-representative output: exit 2 naming it, no request, nothing written', async () => {
+  reset();
+  const p = withIgnore(gitProject(), [...IGNORE_ALL.filter((l) => l !== 'canon-source/foundation/'), 'canon-source/foundation/*', '!canon-source/foundation/typography.json']);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /stardust\/canon-source\/foundation\/typography\.json/);
+  assert.ok(!r.stderr.includes('colors.json'));
+  assert.equal(fake.requests.length, 0);
+  assert.deepEqual(untouched(p), ['stardust/.gitignore']);
+});
+await check('--confidential refuses a tracked file under a capture output directory that the run would not write', async () => {
+  reset();
+  const p = gitProject();
+  mkdirSync(join(p, 'stardust', 'canon-source', 'assets', 'screenshots'), { recursive: true });
+  writeFileSync(join(p, 'stardust', 'canon-source', 'assets', 'screenshots', 'old-slug.png'), 'x');
+  spawnSync('git', ['add', '-A'], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  spawnSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@t', 'commit', '-q', '-m', 'x'], { cwd: p, env: { ...process.env, ...NOGLOBAL } });
+  withIgnore(p, IGNORE_ALL);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /git rm --cached -- stardust\/canon-source\/assets\/screenshots\/old-slug\.png/);
+  assert.equal(fake.requests.length, 0);
+});
+await check('--confidential checks the cache paths once the file version is known: refused before the first cache write', async () => {
+  reset();
+  const p = withIgnore(gitProject(), [...IGNORE_ALL.filter((l) => l !== '.work/'), '.work/reskin/figma/current.json', '.work/reskin/figma/*/latest.json']);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /stardust\/\.work\/reskin\/figma\/AbCdEf1234567890\/\.staging\/v1-[0-9a-f]{8}\/nodes\.json/);
+  assert.deepEqual(apiCalls().map((c) => c.path), [`/v1/files/${KEY}`]);
+  assert.deepEqual(untouched(p), ['stardust/.gitignore']);
+});
+await check('--confidential checks every screenshot destination before writing canon-source; the cache stays and the fixed .gitignore finishes it with no request', async () => {
+  reset();
+  const lines = [...IGNORE_ALL.filter((l) => l !== 'canon-source/assets/screenshots/'), 'canon-source/assets/screenshots/*', '!canon-source/assets/screenshots/home.png'];
+  const p = withIgnore(gitProject(), lines);
+  const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL });
+  assert.equal(r.code, 2, r.stderr);
+  assert.match(r.stderr, /1 output\(s\).*stardust\/canon-source\/assets\/screenshots\/home\.png/);
+  assert.ok(!existsSync(join(p, 'stardust', 'canon-source')), 'nothing written under canon-source');
+  assert.ok(existsSync(join(p, 'stardust', '.work', 'reskin', 'figma', KEY, 'v1', 'manifest.json')));
+  withIgnore(p, [...lines, 'canon-source/assets/screenshots/']);
+  reset();
+  const again = await run(['capture', URL_PAGE, '--confidential'], { cwd: p, env: NOGLOBAL, token: '' });
+  assert.equal(again.code, 0, again.stderr);
+  assert.equal(fake.requests.length, 0);
+  const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: p, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
+  assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+});
+await check('every file capture and curate write is covered by the --confidential guard lists', async () => {
+  const { CAPTURE_NAMESPACES, CAPTURE_OUTPUTS, CURATE_OUTPUTS } = await import('../figma/guard.mjs');
+  const root = join(P1, 'stardust');
+  const listed = new Set([...CAPTURE_OUTPUTS, ...CURATE_OUTPUTS].map(([rel]) => rel));
+  const files = walk(root).map((f) => relative(root, f));
+  assert.ok(files.length > 20, `${files.length} files`);
+  for (const f of files) assert.ok(listed.has(f) || CAPTURE_NAMESPACES.some(([ns]) => f.startsWith(ns)), `${f} escapes the guard`);
+});
 await check('--confidential outside a git repo → exit 2', async () => {
   reset();
   const r = await run(['capture', URL_PAGE, '--confidential'], { cwd: project(), env: { ...NOGLOBAL, GIT_CEILING_DIRECTORIES: scratch } });
