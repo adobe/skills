@@ -19,11 +19,12 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `deploy/fresh-check.mjs` — propagation wait on the decoded body — `<url> (--expect-file <f>|--expect-sha <hex>|--grep <marker>) [--max-s 180] [--json]`; exit 3 = stale
 - `deploy/localize-links.mjs` — hrefs → root-relative — `--source-host <h> [--content content] [--redirects <f>] [--unit <u> [--units-dir <d>]] [--check]`; a missing `--redirects` file = note; `--unit`: only its documents, the map spans the tree
 - `deploy/martech-scaffold.mjs` — martech code — `[--dry-run] [--force]`
+- `deploy/proto-to-doc.mjs` — gated `<main>` → delivered doc — `<proto>.html --path </da/p> [--out <f>] [--json]`
 - `deploy/qa-gate.mjs` — decoration + cap — `<harnessURL> --schema <p>.json [--design DESIGN.json] [--source-capture <json>]`
 - `deploy/rehost-docs.mjs` — re-host docs — `[--source-host <h>] [--dry-run]`
 - `deploy/render-harness.mjs` — harness shot — `<p>.html <out.png> [<block>…] [--ew]`
 - `deploy/sanitise.js` — non-ASCII → entities — `<p>.html` (1 per call)
-- `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
+- `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>] [--split <sel>]`
 - `deploy/stage-content.mjs` — encoded → content/ — `--template <a>|--paths <f> [--record]`
 - `deploy/style-fingerprint.mjs` — variant groups — `"file:///abs/<proto>.html"`
 - `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]] [--state f]` (+ site presence.json); exit 2 = undecided error; `decide <key> --decision d --reason r` (hands-off only)
