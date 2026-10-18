@@ -253,7 +253,10 @@ subagent that returns one verdict line, a checkpoint commit and a boundary ask:
 `archetype-<template>` of the shell template may convert its blocks and write its
 document meanwhile, but its first `unit-commit.mjs` (the Code-stage push) and its
 deploy wait for both foundation checkpoint commits, which the main agent makes
-itself, one at a time and by path, never `git add -A`. The foundation sub-units
+itself, one at a time, staging by path the sub-unit's frozen-set paths, chrome
+documents, `stardust/runtime-contract.json`, `stardust/rollout/progress.json` and
+any file only it wrote (the favicon, `stardust/rollout/chrome-map.json`), never
+`git add -A`. The foundation sub-units
 close on their own lint and `.plain.html` checks, this gate runs once, on that
 archetype page (a failing check reopens the sub-unit owning its files:
 `progress.mjs unit start <sub-unit> --again`), and
