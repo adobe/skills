@@ -179,6 +179,12 @@ check('hideOffset: panel tops 88 px apart = a hidden region\'s height (±2 px), 
   assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 72, 1440, 688], hidden: [], shared: 0, bar: 0.02 }), null, 'nothing hidden');
   assert.equal(hideOffset({ srcRect: null, buildRect: [0, 72, 1440, 688], hidden, shared: 0, bar: 0.02 }), null);
 });
+check('hideOffset: the shift explains at most |dy| px lost off the lower panel — a taller or much shorter panel is no offset', () => {
+  const hidden = [{ sel: '.geo-bar', h: 88 }];
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 120], buildRect: [0, 72, 1440, 600], hidden, shared: 0, bar: 0.02 }), null, 'the build 480 px taller');
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 72, 1440, 150], hidden, shared: 0.001, bar: 0.02 }), null, 'the lower panel is the taller one');
+  assert.equal(hideOffset({ srcRect: [0, 88, 1440, 812], buildRect: [0, 0, 1440, 854], hidden, shared: 0.001, bar: 0.02 }).within, true, 'clipped 42 px by the viewport after an 88 px shift');
+});
 const deps = await (async () => { try { const { createRequire } = await import('node:module'); const req = createRequire(join(process.cwd(), 'package.json')); const m = await import(req.resolve('pngjs')); req.resolve('pixelmatch'); return { PNG: m.PNG || m.default.PNG }; } catch { return null; } })();
 if (!deps) console.log('skip  hide-offset pixels: visualFindings and the CLI ⚪ line (pngjs + pixelmatch not installed where this runs)');
 else {

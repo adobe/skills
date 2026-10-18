@@ -40,8 +40,9 @@
  * Records explored with different hide lists (or not the expected one) are not the same page: one error
  * `hide-mismatch`; `hide: { source, build, expected, consistent, site? }` is printed and in the verdict when any is set.
  * A crop difference the hide list explains is `info`, never an error: the panels' top edges differ by the height of
- * a region hidden at that width (±2 px; the records' `hide.perWidth`), the panels are as wide, and the shared,
- * top-aligned area is within the bar — the finding carries `evidence: { kind: "hide-offset", region, h, dy, shared }`.
+ * a region hidden at that width (±2 px; the records' `hide.perWidth`), the panels are as wide, the lower one is at
+ * most that much shorter (the viewport clipped it), and the shared, top-aligned area is within the bar — the finding
+ * carries `evidence: { kind: "hide-offset", region, h, dy, shared }`.
  * Printed: a 🔴 / 🟡 / ⚪ (info) line per finding, a `🔵 decided by the agent: <key> — <decision>: <reason> (<at>)`
  * line per agent decision, the hide line, then the counts (hands-off: `N decided (n by the agent, hands-off — …)`).
  * Exit: 0 no undecided error · 2 errors · 1 usage, or a malformed presence.json named on stderr (--presence's file, or the
@@ -53,7 +54,8 @@
  * or reason replaces it, a site owner's entry for the key is kept and nothing is written.
  * Exit: 0 recorded or unchanged · 1 usage (no key, a prefix* key, another decision, a reason under 40 characters, an
  * unreadable decisions file) · 3 refused: an attended run (the owner sentence on stderr).
- * `compareDocs`, `compareHide`, `applyDecisions`, `decideEntry`, `findingKey`, `DECISION_RULE` are exported.
+ * `compareDocs`, `compareHide`, `applyDecisions`, `decideEntry`, `hideOffset`, `visualFindings`, `findingKey`,
+ * `DECISION_RULE` are exported.
  */
 import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -207,11 +209,15 @@ const hiddenAt = (docs, w) => {
 };
 
 /** A crop difference the hide list explains: the panels' top edges differ by a hidden region's height (±2 px), the
- * panels as wide → { region, h, dy, shared, within: shared ≤ bar } (the shared, top-aligned area judged), else null. Pure. */
+ * panels as wide, and the lower panel at most |dy| shorter (the shift only lets the viewport clip its bottom) →
+ * { region, h, dy, shared, within: shared ≤ bar } (the shared, top-aligned area judged), else null. Pure. */
 export function hideOffset({ srcRect, buildRect, hidden = [], shared, bar }) {
   if (!srcRect || !buildRect || Math.abs(srcRect[2] - buildRect[2]) > 2) return null;
   const dy = srcRect[1] - buildRect[1];
-  const r = dy ? hidden.find((x) => x.h > 0 && Math.abs(Math.abs(dy) - x.h) <= 2) : null;
+  const [lower, upper] = dy > 0 ? [srcRect, buildRect] : [buildRect, srcRect];
+  const lost = upper[3] - lower[3];
+  if (!dy || lost < -2 || lost > Math.abs(dy) + 2) return null;
+  const r = hidden.find((x) => x.h > 0 && Math.abs(Math.abs(dy) - x.h) <= 2);
   return r ? { region: r.sel, h: r.h, dy, shared, within: shared <= bar } : null;
 }
 
