@@ -144,7 +144,10 @@ set      sets page.representative (the archetype slug the named pages clone) and
          to null instead (not with --representative). Re-stamps _provenance (writtenBy
          stardust:direct unless --skill). All-or-nothing: an unknown slug, an unknown
          representative, or a representative whose representative links lead back to a named
-         page (a cycle: itself, a → b → a, …; the line names the chain) exits 2, nothing written.
+         page (a cycle: itself, a → b → a, …; the line names the chain) exits 2, nothing written;
+         a page set as its own representative is refused with the variant path (a differing
+         sibling becomes a variant class on its template: migrate.mjs render --accept-variance,
+         then migrate.mjs variant).
 exclude  records that the source no longer serves a planned page (a 404 at crawl or gate time), so
          it leaves every denominator with a record instead of silently: a page in pages[] gets
          excluded { reason, at } after its status (the status is untouched); --url <url> (one slug,
@@ -335,7 +338,7 @@ export function setPages(state, slugs, { representative = null, type = null, cle
   if (representative !== null) {
     if (!bySlug.has(representative)) throw new UsageError(`unknown representative "${representative}" — it must be a page in state.json (the archetype the named pages clone)`);
     const cycle = representativeCycle(bySlug, unique, representative);
-    if (cycle && cycle.length === 2) throw new UsageError(`${representative} cannot be its own representative (${cycle.join(' → ')}) — name the archetype's siblings, not the archetype`);
+    if (cycle && cycle.length === 2) throw new UsageError(`${representative} cannot be its own representative (${cycle.join(' → ')}) — name the archetype's siblings, not the archetype; a differing sibling becomes a variant class on its template: node stardust/scripts/migrate/migrate.mjs render ${representative} --accept-variance "<the delta and its variant class>" then node stardust/scripts/migrate/migrate.mjs variant ${representative} <variant-class>`);
     if (cycle) throw new UsageError(`--representative ${representative} closes a cycle (${cycle.join(' → ')}): its representative links lead back to ${cycle[0]} — a chain must end at an archetype without one; clear a link first (set <slug> --clear-representative)`);
   }
   state.pages = state.pages.map((p) => {

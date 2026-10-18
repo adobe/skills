@@ -462,6 +462,7 @@ check('set refuses an unknown slug, an unknown representative, a self-representa
     [['set', 'blog', '--type', 'x', '--to', 'directed'], /--to does not apply to set/],
   ];
   for (const [args, re] of cases) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
+  assert.match(runIn(p.d, ['set', 'about-us', '--representative', 'about-us']).err, /a differing sibling becomes a variant class on its template: node \S+migrate\.mjs render about-us --accept-variance "[^"]+" then node \S+migrate\.mjs variant about-us <variant-class>/, 'a self-representative names the variant path');
   assert.equal(readFileSync(p.stateFile, 'utf8'), before);
 });
 check('set refuses a representative cycle (self, two-step, three-step, one of several slugs) in one line naming the chain, nothing written; a chain without a cycle is accepted', () => {
