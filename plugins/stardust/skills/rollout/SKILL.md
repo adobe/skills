@@ -260,8 +260,13 @@ passes (handoff contract § 3, row C). **Archetype first, per template (#126):**
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
-An encoded template's C-archetype also drafts and round-trips its map; its cluster
-unit is then the map plus the exceptions, and the main agent alone re-runs
+An encoded template's C-archetype also drafts and round-trips its map — and every template with two or more
+siblings is one: its C-archetype drafts the map (`stardust/import/<template>/`) once the archetype gates and
+records the attempt (`encode-attempt.mjs record --template <t>`; `not-attempted` is refused for it without a
+`--reason`, and `migrate.mjs plan` lists the maps still due — `skills/migrate/SKILL.md` § Encoder first). A
+sibling the variance probe finds differing, one or under 20 % of them, takes a variant class on the template,
+never its own archetype; a hand-authored sibling is recorded `--hand-authored --reason` first (the same SKILL.md,
+§ When the encoder cannot). Its cluster unit is then the map plus the exceptions, and the main agent alone re-runs
 `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
 `skills/migrate/reference/importer-recipe.md` § Encoder contract).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16

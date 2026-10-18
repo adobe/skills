@@ -159,17 +159,31 @@ its page type: report the archetype slug and `$stardust replica
 `rollout` Setup; the published-origin re-gate is unchanged. Thresholds
 are the gate's.
 
+**Encoder first.** A template with two or more siblings is encoded, not
+cloned: its C-archetype unit (rollout's `C-archetype`;
+`../replica/reference/handoff-contract.md` § 3 row C) drafts the map
+`stardust/import/<template>/` (`reference/importer-recipe.md` § Encoder
+contract) once the archetype gates, then records the attempt —
+`node stardust/scripts/migrate/encode-attempt.mjs record --template <t>`
+runs the round-trip. `record` refuses `not-attempted` for such a template
+(no map, or no encoder beside it) unless `--reason "<why>"` names why the
+encoder cannot serve it. A recorded full-site run left every template
+`not-attempted` until strict variance refused all 21 siblings of one;
+the two maps drafted then encoded 30 of 30 siblings in seven minutes.
+
 **Encode attempt per template (the `plan` unit).** `node
 stardust/scripts/migrate/migrate.mjs plan <slug…|--all>` (render's page set
 and branch flags) lists the branch partition and records, for every
 template with A′ siblings in the set, the encode attempt in
 `stardust/migrate/encode/<template>.json` (`{verdict:
-encoded|no-roundtrip|not-attempted, lint, at}`; an existing record is
-kept, `--force` re-records). Its last line, `encode: <e> encoded · <a> A′
-(<n> no-roundtrip, <m> not-attempted)`, is the `plan` unit's ledger
-detail (`verdict`). It is not the full plan below; render still runs every
-strict check (a recorded hands-off run never invoked the encoder and
-hand-built every sibling).
+encoded|no-roundtrip|not-attempted|hand-authored, lint, reason, at}`; an
+existing record is kept, `--force` re-records; an automatic
+`not-attempted` is always recorded again). A template whose map is due is
+named on a `maps due:` line, gets no record and fails the unit (exit 2).
+Its last line, `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m>
+not-attempted, <h> hand-authored)`, is the `plan` unit's ledger detail
+(`verdict`). It is not the full plan below; render still runs every
+strict check.
 
 Print the plan and wait for confirmation when the scope is large:
 
@@ -240,15 +254,9 @@ For each other page in scope, follow
   always emits migrated-tree paths; missing slugs flagged
   broken.
 - **Content-count acceptance** per
-  `reference/fidelity-tiers.md` § Content-count acceptance:
-  compare role-classified node counts (headings, body/list
-  nodes, CTAs, images) between the captured source page JSON
-  and the rendered result. A count drop in any class not
-  covered by a logged `contentDeviations[]` entry fails the
-  page — dropped-content importer bugs must surface here,
-  while the importer is still cheap to fix, not at a
-  downstream fidelity gate. Record the pass in
-  `_meta.json#gatesPassed[]` as `"content-count"`.
+  `reference/fidelity-tiers.md` § Content-count acceptance (a drop
+  without a logged `contentDeviations[]` entry fails the page; the
+  pass is `"content-count"` in `gatesPassed[]`).
 - **Compose `<head>` metadata** per
   `reference/metadata-and-jsonld.md` (five categories;
   page-type-driven JSON-LD).
@@ -256,26 +264,13 @@ For each other page in scope, follow
   refuse the page; soft contracts log and continue.
 - **Compute output path** per migration-procedure.md
   § Output path mapping.
-- **Asset bundling.** Scan the final HTML for asset references
-  (six detection shapes per
-  `reference/asset-bundling.md` § Detection), copy each unique
-  referenced subpath from `stardust/current/assets/<subpath>` to
-  `stardust/migrated/assets/<subpath>` (preserving subdir
-  structure), then rewrite every reference to the root-relative
-  form `/assets/<subpath>`. Cross-page dedup uses a
-  module-level Set seeded from
-  `state.json.migrate.bundledAssets[]`. Missing source assets
-  warn-and-skip per § Edge cases; the bundle stays internally
-  consistent.
-- **Media reconciliation.** For every image **not** bundled to
-  same-origin (reused source-CDN URLs under Mode A image-reuse),
-  decide optimize/keep/rewrite/omit per
-  `reference/media-reconciliation.md`. Cross-origin `<img>` kept
-  as source URLs must **skip `createOptimizedPicture`** (it drops
-  the `?v=` key and corrupts the rendition); broken URLs are
-  repaired (missing `?`-delimiter, wrong host) or omitted, never
-  shipped as `about:error`. `rollout` re-runs the authoritative
-  network resolve at delivery (`media-reconcile.mjs`).
+- **Asset bundling** per `reference/asset-bundling.md` (detection,
+  copy into `stardust/migrated/assets/`, rewrite, cross-page dedup,
+  missing assets warn-and-skip).
+- **Media reconciliation.** Every image not bundled to same-origin
+  is optimized, kept, rewritten or omitted per
+  `reference/media-reconciliation.md` — never shipped as
+  `about:error`; `rollout` re-resolves at delivery.
 - **Cinematic sibling (when `<slug>-cinematic.html` exists).**
   Migrate consumes the STATIC prototype only — the cinematic layer
   is never merged. Copy the motion assets (`lenis.min.js`,
@@ -308,17 +303,36 @@ the archetype's proposed HTML (`--archetype`, else the page's
 `data-slot` in its `<main>` takes its value from the rollout block
 mapping when that covers the archetype, else from
 `stardust/current/pages/<slug>.json#slots` (a page-JSON value always
-wins; `--slots mapping|page-json` forces one — the rules, the fallback
-line and the refusals: `reference/template-and-module-rendering.md`
-§ Path A′ Step 2), slot media through
-`stardust/current/assets/media-map.json`, then the deploy media
-ledger. The one source refusal is an archetype with no proposed HTML;
-an archetype without `data-slot` marks, or a slot with no value, is
-`strict slots`. Every A′ page (own file or fork) also needs its
-template's encode-attempt record (Phase 1): without one, render refuses
-it (exit 2) naming `node stardust/scripts/migrate/encode-attempt.mjs
-record --template <t>`; any verdict passes — the gate is that the
-attempt was made.
+wins; `--slots mapping|page-json` forces one; media through the media
+map, then the deploy media ledger — the rules, the fallback line and the
+refusals: `reference/template-and-module-rendering.md` § Path A′ Step 2).
+An archetype without `data-slot` marks is not refused: render derives
+them from its sections (`<section>-<tag>` names; the run prints `slots
+derived (no data-slot markers)`). The one source refusal is an archetype
+with no proposed HTML; a slot with no value is `strict slots`. Every A′
+page also needs its template's encode-attempt record (any verdict;
+without one render refuses it, naming `encode-attempt.mjs record`).
+
+**When the encoder cannot** (no round-trip, a page the grammar cannot
+express, a reasoned `not-attempted`), in this order:
+
+1. **The A′ fork** above — the prototype's slots and the sibling's
+   values. Mark the prototype when the derived names do not fit
+   (`../replica/reference/recreation-procedure.md` § Slot markers).
+2. **A variant, never a re-type.** A sibling the variance probe reports
+   as differing — one of them, or fewer than 20 % — gets a variant class
+   on the template: `render <slug> --accept-variance "<the delta and its
+   variant class>"`, then `migrate.mjs variant <slug> <class>`; never its
+   own archetype (`state.mjs set --representative` to itself — a recorded
+   run did that and recorded the page again later). Re-typing is for a
+   template whose siblings mostly differ (`reference/fidelity-tiers.md`
+   § Sibling variance probe).
+3. **Hand-authoring, last.** A sibling written by hand (its own source
+   file, a generator script) needs the template's record first:
+   `encode-attempt.mjs record --template <t> --hand-authored --reason
+   "<why>" [--pages <slug,…>]`; `plan` and `summary` count them. Two
+   recorded runs generated siblings with per-template scripts because no
+   map existed — and nothing recorded it.
 
 **Recorded units.** A whole-site render is bookkept as units in
 `stardust/migrate/progress.json`, the shape of rollout's C-deliver unit

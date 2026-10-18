@@ -84,7 +84,9 @@ node skills/migrate/scripts/encode.mjs --template <archetype-slug> [--slug <s>[,
 node skills/migrate/scripts/encode.mjs --lint|--sweep|--roundtrip --template <archetype-slug> [--level text|strict]
 ```
 
-- **Opt-in per template, gated at plan time.** Siblings encode only once the archetype is gated (unit `C-archetype`
+- **The default for a template with two or more siblings, gated at plan time.** Its map is due at C-archetype
+  (`skills/migrate/SKILL.md` § Encoder first: `encode-attempt.mjs record` refuses `not-attempted` for it without a
+  `--reason`). Siblings encode only once the archetype is gated (unit `C-archetype`
   done, gate row passing) and round-trips: unless it encodes clean and equals its gated document at `text`
   (`--roundtrip` lists the differences), the encoder refuses every sibling (exit 2, none written). `--lint`/`--sweep`
   findings are fixed or recorded first. A template with no map, or one that does not round-trip, stays on the A′

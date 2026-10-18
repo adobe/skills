@@ -44,6 +44,24 @@ exception). Adopt the live page's content-root
 class on the prototype's main wrapper so one `--main` selector scopes both
 sides of the diff symmetrically.
 
+## Slot markers
+
+Every prototype region that carries sibling content — the text, images
+and links that change from page to page of the template — carries
+`data-slot="<name>"` on its content container
+(`../../stardust/reference/data-attributes.md` § Slot identity: the
+prose container, not each paragraph; a repeated unit's items share one
+name); template-level content (a fixed label, a decorative image)
+carries none. `migrate.mjs render` fills these per sibling and the
+rollout block mapping anchors them. A prototype without them still
+forks — render derives `<section>-<tag>` slots from its sections and
+prints `slots derived (no data-slot markers)`
+(`../../migrate/reference/template-and-module-rendering.md` § Path A′) —
+but derived names cut at every heading and paragraph, so a prose body
+whose paragraph count varies needs a marked container. A recorded run
+patched seven prototypes by `sed` after the refusals; mark them while
+authoring.
+
 ## Cumulative archetype prototypes
 
 Every archetype keeps its own standalone reference prototype — never skip

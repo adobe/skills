@@ -88,7 +88,10 @@ sibling moved to a sub-archetype counts on neither side. Re-type the
 template (sub-archetypes by locale family or composition via `state.mjs
 set --representative`, then probe the new template) — the re-typing is
 recorded as a deviation (`migrate.mjs decision <slug> --kind re-type …`
-or `deviation`), never a mechanical clone. The probe is read-only
+or `deviation`), never a mechanical clone. A single differing clone, or
+fewer than 20 %, is never re-typed: the probe's advice and the refusal
+name a variant class on the template with the exact `--accept-variance`
+and `migrate.mjs variant <slug> <class>` commands. The probe is read-only
 evidence — it never edits the clone — and
 it costs one live navigation per sibling, so run a template's siblings
 in one pass.

@@ -50,9 +50,9 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`, offline — `[--max-bytes <n>]` (default: video only, 50 MiB)
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
 - `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
-- `migrate/encode-attempt.mjs` — per-template encoder try → `stardust/migrate/encode/<t>.json` — `record --template <t,…> [--encoder <f>] [--not-attempted "<r>"]`; `check --template <t,…>`; `summary [--json]`; exit 1 = I/O, 2 = usage or no record
+- `migrate/encode-attempt.mjs` — per-template encoder try → `stardust/migrate/encode/<t>.json` — `record --template <t,…> [--encoder <f>] [--not-attempted "<r>" | --reason "<why>"] [--hand-authored --reason "<why>"]` (not-attempted refused for ≥ 2 siblings without a reason); `check --template <t,…>`; `summary [--json]`; exit 1 = I/O, 2 = usage, refusal or no record
 - `migrate/encode.mjs` — sibling encoder — `--template <a> [--slug a,b] [--roundtrip|--lint|--sweep]`
-- `migrate/migrate.mjs` — render + sidecar; forks A′ from the archetype, refused without its encode attempt — `plan <slug…|--all>` (records encode attempts; prints the count); `render <slug…|--all> [--slots mapping|page-json] [--accept-variance "<r>"]`; `gate|deviation|variant|modules|harness <slug>`
+- `migrate/migrate.mjs` — render + sidecar; forks A′ from the archetype, refused without its encode attempt — `plan <slug…|--all>` (records encode attempts; maps due; prints the count); `render <slug…|--all> [--slots mapping|page-json] [--accept-variance "<r>"]` (derives slots of a markerless prototype); `gate|deviation|variant|modules|harness <slug>`
 - `migrate/slot-map.mjs` — library (`--slots mapping` values), imported by migrate.mjs, no CLI
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
@@ -81,7 +81,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `replica/run-bg.mjs` — background jobs, bounded wait; exports STARDUST_BROWSERS_PER_SLOT — `start --name <j> [--slots 3] -- <cmd>`; `wait [--max ≤110] [--all]` (bare: your own jobs); `log <j>`
 - `replica/run-capped.mjs` — deadline wrapper, exit 124 — `--timeout <s> -- <cmd>`
 - `replica/section.mjs` — one Markdown section / outline; a miss retries by words — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`; exit 2 = no match, outline on stdout
-- `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`
+- `replica/sibling-variance.mjs` — template deltas across siblings → `rollout/variance/<template>.json` — `<archetypeURL> <siblingURL>… --probe name=<sel>`; advice: variant class (few differ) or re-type (most)
 - `replica/stitch-shot.mjs` — stitched full-page capture + `<stem>.capture.json` (`headerMorph`: a header shrinking on scroll, not a stall; `browserBuild`, `hints`, `denialCheck`, `dismissed`); prints `overlay-left:`; --json: `hideMiss` — `<url> <out.png> [--width] [--vh 900] [--settle] [--consent <sel>] [--dismiss <sel,…>] [--hide <sel,…>] [--json <f>] [--hints <ua-metadata|native>]`; exit 3 = bot challenge or 2xx denial page (no PNG, no sidecar; escalate `--headed`)
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
