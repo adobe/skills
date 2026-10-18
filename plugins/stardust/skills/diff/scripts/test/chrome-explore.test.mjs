@@ -16,15 +16,25 @@
 // named in the header and on stdout; one hydrating 1.8 s after every load: the repeat is visited as the first sample was
 // (a quick reload would click before hydration), nothing unstable — and with --no-repeat the skip recorded (browser).
 // The --presence and site-file CLI runs pass --no-repeat: they check hide sourcing, the --hide run covers the guard.
+// Source cache, paired form, parallel explores (pure): the cache key (16 hex, stable, changed by every shaping input),
+// the hit/miss decision (unreadable, other inputs, a crop or the crops dir gone), the record composed from per-width
+// records (the single form's fields and order, the earliest `at`, stability and hide records in --width order),
+// exploreArgs (--build's two values, --build-only needs --build and not --fresh), browsersPerSlot, exploreAll (every
+// explore started before any ends, min(tasks, perSlot) browsers, results in task order, a failure closes them all),
+// the paired form's usage errors before any browser or file. Browser: a one-menu header served under two counted paths
+// — a paired run explores both sides with one page-read probe, the single form writes the same shape and no cache, a
+// second paired run prints `cached` for both source widths and opens no source page (the contract byte-identical), a
+// lost crops dir re-explores that width only, --fresh re-explores the source, --build-only keeps the contract's bytes.
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { controlKind, cropDeps, cropRatio, effectiveHide, exploreWidth, hideArgs, normName, sampleDelta, stabilityLine, summarize, unstableAsWarn } from '../chrome-explore.mjs';
+import { browsersPerSlot, cacheMiss, composeDoc, controlKind, cropDeps, cropRatio, cropsOf, effectiveHide, exploreAll, exploreArgs, exploreWidth, hideArgs, normName, readSourceCache, sampleDelta, sourceCachePath, sourceInputs, sourceKey, stabilityLine, summarize, unstableAsWarn } from '../chrome-explore.mjs';
 import { compareDocs, visualFindings } from '../chrome-compare.mjs';
 import { serve } from './chrome-fixtures.mjs';
 
@@ -153,6 +163,122 @@ await check('CLI: a malformed site-wide presence.json exits 1 naming it, before 
   const r = spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', join(broken, 'x.json')], { cwd: broken, encoding: 'utf8' });
   assert.equal(r.status, 1); assert.match(r.stderr, /^chrome-explore: presence\.json stardust\/replica\/presence\.json unreadable \(/m);
   assert.ok(!existsSync(join(broken, 'x.json')) && !existsSync(join(broken, 'stardust', '.work')), 'nothing written');
+});
+const shaping = { url: 'https://x.test/', width: 1440, root: null, hide: [{ sel: '.geo-bar', source: '--hide' }], maxStates: 400, maxDepth: 4, probe: null, locale: 'en-US', tier: 'stealth', bar: 0.02, repeat: true, warmup: null };
+await check('sourceKey: 16 hex, the same for the same inputs in any key order, another for every shaping input changed', () => {
+  const k = sourceKey(sourceInputs(shaping));
+  assert.match(k, /^[0-9a-f]{16}$/);
+  assert.equal(sourceKey(sourceInputs({ ...shaping })), k);
+  assert.equal(sourceKey(Object.fromEntries(Object.entries(sourceInputs(shaping)).reverse())), k, 'canonical JSON: key order does not count');
+  const other = { url: 'https://x.test/b', width: 390, root: 'header', maxStates: 50, maxDepth: 2, probe: 'shoes', locale: 'de-DE', tier: 'plain', bar: 0.05, repeat: false, warmup: 'https://x.test/w' };
+  const seen = new Set([k]);
+  for (const [field, v] of [...Object.entries(other), ['hide', []], ['hide', [{ sel: '.geo-bar', source: 'presence.json' }]], ['hide', [{ sel: '.promo', source: '--hide' }]]]) {
+    const k2 = sourceKey(sourceInputs({ ...shaping, [field]: v }));
+    assert.ok(!seen.has(k2), `${field} ${JSON.stringify(v)} changes the key`); seen.add(k2);
+  }
+  assert.equal(sourceCachePath(k), join('stardust', '.work', 'chrome', `source-${k}.json`));
+});
+await check('cacheMiss / readSourceCache: a hit needs a parsable file, equal inputs, its crops dir and every crop it names', () => {
+  const crops = join(pure, 'source-crops'); mkdirSync(crops);
+  writeFileSync(join(crops, '1440-001-Shop-click.png'), 'png');
+  const inputs = sourceInputs(shaping);
+  const result = { root: 'header', controls: [{ name: 'Shop', actions: { click: { opened: true, shot: '1440-001-Shop-click.png' }, hover: null }, children: [{ name: 'Tab', actions: { hover: { opened: true, shot: null } } }] }], scroll: [], states: 2, truncated: null, loads: 2 };
+  const entry = { tool: 'chrome-explore source', key: sourceKey(inputs), at: '2026-10-18T10:00:00.000Z', inputs, crops, probe: 'shop', result };
+  assert.deepEqual(cropsOf(result), ['1440-001-Shop-click.png']);
+  assert.equal(cacheMiss(entry, inputs), null);
+  const file = join(pure, 'source.json'); writeFileSync(file, JSON.stringify(entry));
+  assert.deepEqual(readSourceCache(file, inputs), { entry, miss: null });
+  assert.equal(cacheMiss(entry, sourceInputs({ ...shaping, maxDepth: 3 })), 'other inputs');
+  assert.equal(cacheMiss({ ...entry, probe: null }, inputs), 'unreadable', 'a hit names the term it typed');
+  assert.deepEqual(readSourceCache(join(pure, 'none.json'), inputs), { entry: null, miss: 'none' });
+  writeFileSync(file, '{"tool": "chrome-explore source", ');
+  assert.deepEqual(readSourceCache(file, inputs), { entry: null, miss: 'unreadable' });
+  rmSync(join(crops, '1440-001-Shop-click.png'));
+  assert.equal(cacheMiss(entry, inputs), 'crop 1440-001-Shop-click.png gone');
+  rmSync(crops, { recursive: true });
+  assert.equal(cacheMiss(entry, inputs), `crops dir ${crops} gone`);
+});
+await check('composeDoc: the single form\'s fields in its order; `at` the earliest width\'s; hide records and stability folded in --width order', () => {
+  const rec = (states, extra = {}) => ({ root: 'header', controls: [], scroll: [], states, truncated: null, loads: 1, ...extra });
+  const hide = { entries: [{ sel: '.geo-bar', source: '--hide' }], presence: null, found: null, note: null };
+  const records = [
+    { at: '2026-10-18T12:00:00.000Z', result: rec(3, { hidden: [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }], stability: { checked: 2, unstable: ['1440 Shop [click]'], crops: 'skipped: no crops' } }) },
+    { at: '2026-10-18T09:00:00.000Z', result: rec(1, { hidden: [], stability: { checked: 1, unstable: ['390 Menu [key]'] } }) },
+  ];
+  const before = JSON.stringify(records);
+  const base = { url: 'https://x.test/', shots: 'stardust/.work/chrome/header-contract', hide, repeat: true, bar: 0.02, probe: 'shop', at: '2026-10-18T13:00:00.000Z' };
+  const doc = composeDoc({ ...base, widths: [1440, 390], records });
+  assert.equal(JSON.stringify(records), before, 'the records are not changed');
+  assert.deepEqual(Object.keys(doc), ['tool', 'url', 'at', 'shots', 'hide', 'stability', 'widths', 'probe']);
+  assert.deepEqual([doc.tool, doc.at, doc.probe], ['chrome-explore', '2026-10-18T09:00:00.000Z', 'shop']);
+  assert.deepEqual(doc.stability, { bar: 0.02, checked: 3, unstable: ['1440 Shop [click]', '390 Menu [key]'], crops: 'skipped: no crops' });
+  assert.deepEqual(doc.hide, { list: ['.geo-bar'], presence: null, perWidth: { 390: [], 1440: [{ sel: '.geo-bar', source: '--hide', n: 1, h: 88 }] } });
+  assert.deepEqual([doc.widths[1440], doc.widths[390]], [rec(3), rec(1)]);
+  assert.deepEqual(composeDoc({ ...base, widths: [390, 1440], records: [records[1], records[0]] }).stability.unstable, ['390 Menu [key]', '1440 Shop [click]'], '--width order, whatever the explores finished in');
+  assert.equal(JSON.stringify(composeDoc({ ...base, widths: [1440, 390], records })), JSON.stringify(doc), 'deterministic');
+  assert.deepEqual(composeDoc({ ...base, hide: { entries: [] }, repeat: false, widths: [], records: [] }), { tool: 'chrome-explore', url: base.url, at: base.at, shots: base.shots, stability: 'skipped: --no-repeat', widths: {} });
+});
+await check('exploreArgs: the positional pair, --build <url> <out> (two values), --fresh; --build-only needs --build and not --fresh', () => {
+  assert.deepEqual(exploreArgs(['https://s/', 'c.json', '--width', '1440', '--plain']), { url: 'https://s/', out: 'c.json', build: null, buildOnly: false, fresh: false });
+  assert.deepEqual(exploreArgs(['--fresh', 'https://s/', 'c.json', '--build', 'https://b/', 'b.json', '--no-repeat']), { url: 'https://s/', out: 'c.json', build: { url: 'https://b/', out: 'b.json' }, buildOnly: false, fresh: true });
+  assert.deepEqual(exploreArgs(['--build', 'https://b/', 'b.json', '--build-only', 'https://s/', 'c.json', '--probe', 'x']), { url: 'https://s/', out: 'c.json', build: { url: 'https://b/', out: 'b.json' }, buildOnly: true, fresh: false });
+  assert.deepEqual(exploreArgs(['https://s/', 'c.json', '--fresh']), { url: 'https://s/', out: 'c.json', build: null, buildOnly: false, fresh: true }, 'the single form takes --fresh (it never reads the cache)');
+  assert.throws(() => exploreArgs(['u', 'o', '--build-only']), /--build-only needs --build <build-url> <build\.json>/);
+  assert.throws(() => exploreArgs(['u', 'o', '--build', 'https://b/']), /--build needs two values/);
+  assert.throws(() => exploreArgs(['u', 'o', '--build', 'https://b/', '--plain']), /--build needs two values/);
+  assert.throws(() => exploreArgs(['u', 'o', '--build', 'b', 'b.json', '--build', 'c', 'c.json']), /--build is given once/);
+  assert.throws(() => exploreArgs(['u', 'o', '--build', 'b', 'b.json', '--build-only', '--fresh']), /pass one of them/);
+});
+await check('browsersPerSlot: STARDUST_BROWSERS_PER_SLOT, unset or not a positive integer → 1', () => {
+  assert.deepEqual(['3', '1', undefined, '', '0', '2.5', 'x', '-2'].map((v) => browsersPerSlot(v === undefined ? {} : { STARDUST_BROWSERS_PER_SLOT: v })), [3, 1, 1, 1, 1, 1, 1, 1]);
+});
+await check('exploreAll: every explore starts before any ends, over min(tasks, perSlot) browsers (task i in browser i mod n); results in task order; a failure closes every browser', async () => {
+  const run = async (tasks, perSlot, failAt = -1) => {
+    const log = []; const browsers = [];
+    const launch = async () => { const b = { id: browsers.length + 1, closed: false, close: async () => { b.closed = true; } }; browsers.push(b); return b; };
+    const gates = tasks.map(() => { let open; const p = new Promise((r) => { open = r; }); return { p, open }; });
+    const done = exploreAll(tasks, {
+      perSlot, launch,
+      before: async (bs) => { log.push(`before ${bs.length}`); return 'pre'; },
+      explore: async (t, b, i, pre) => { log.push(`start ${t}@${b.id}`); await gates[i].p; if (i === failAt) throw new Error(`${t} failed`); log.push(`end ${t}`); return `${t}@${b.id} ${pre}`; },
+    });
+    await new Promise((r) => { setImmediate(r); });
+    const started = log.filter((l) => l.startsWith('start')).length;
+    [...gates].reverse().forEach((g) => g.open());
+    let result = null; let error = null;
+    try { result = await done; } catch (e) { error = e; }
+    return { log, started, browsers, result, error };
+  };
+  const one = await run(['1440', '390'], 1);
+  assert.equal(one.started, 2, 'both widths started before either finished');
+  assert.deepEqual(one.log, ['before 1', 'start 1440@1', 'start 390@1', 'end 390', 'end 1440']);
+  assert.deepEqual(one.result, ['1440@1 pre', '390@1 pre'], 'task order, not completion order');
+  assert.deepEqual(one.browsers.map((b) => b.closed), [true]);
+  const four = await run(['s1440', 's390', 'b1440', 'b390'], 2);
+  assert.equal(four.started, 4);
+  assert.deepEqual(four.result, ['s1440@1 pre', 's390@2 pre', 'b1440@1 pre', 'b390@2 pre']);
+  assert.deepEqual(four.browsers.map((b) => b.closed), [true, true]);
+  assert.equal((await run(['1440', '390'], 3)).browsers.length, 2, 'never more browsers than explores');
+  const bad = await run(['1440', '390'], 2, 1);
+  assert.match(bad.error.message, /^390 failed$/);
+  assert.deepEqual(bad.browsers.map((b) => b.closed), [true, true]);
+  assert.deepEqual(await exploreAll([], { perSlot: 2, launch: async () => assert.fail('no browser without an explore'), explore: async () => null }), []);
+});
+await check('CLI paired form: --build-only without --build, --build with one value, --build-only without the contract (named) or with an unreadable one, one file for both sides, shared crops: exit 1 before any browser or file', () => {
+  const run = (args) => spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', 'c.json', ...args], { cwd: pure, encoding: 'utf8' });
+  const cases = [
+    [['--build-only'], /^chrome-explore: --build-only needs --build <build-url> <build\.json>/m],
+    [['--build', 'http://127.0.0.1:9/b'], /^chrome-explore: --build needs two values/m],
+    [['--build', 'http://127.0.0.1:9/b', 'b.json', '--build-only'], /^chrome-explore: --build-only keeps the source contract c\.json, which does not exist/m],
+    [['--build', 'http://127.0.0.1:9/b', './c.json'], /^chrome-explore: the source contract and the build record are one file \(c\.json\)/m],
+    [['--build', 'http://127.0.0.1:9/b', 'b.json', '--shots', 'stardust/.work/chrome/b'], /^chrome-explore: the source and build crops would share stardust\/\.work\/chrome\/b/m],
+  ];
+  for (const [args, re] of cases) { const r = run(args); assert.equal(r.status, 1, args.join(' ')); assert.match(r.stderr, re); }
+  writeFileSync(join(pure, 'c.json'), '{"tool": "chrome-explore", ');
+  const r = run(['--build', 'http://127.0.0.1:9/b', 'b.json', '--build-only']);
+  assert.equal(r.status, 1); assert.match(r.stderr, /^chrome-explore: --build-only: the source contract c\.json is unreadable \(/m);
+  assert.equal(readFileSync(join(pure, 'c.json'), 'utf8'), '{"tool": "chrome-explore", ', 'the contract is left as it was');
+  assert.ok(!existsSync(join(pure, 'stardust')) && !existsSync(join(pure, 'b.json')), 'nothing written');
 });
 rmSync(pure, { recursive: true });
 
@@ -332,6 +458,118 @@ else {
     assert.deepEqual([s.panel.headings, 'unstable' in s], [['Loading'], false]);
     assert.match(byOff.out, /^chrome-explore stability skipped: --no-repeat — first samples were not repeated on a fresh page$/m);
   });
+  // the paired form on a one-menu header served under two paths, every request counted per path: a source width
+  // taken from the cache opens no source page
+  const MINI = `<!doctype html><html><head><style>body{margin:0;font:16px/1.4 sans-serif} header{height:64px;background:#123;color:#fff} header button,header a{color:inherit;font:inherit;background:none;border:0;padding:8px} main{height:600px}</style></head>
+<body><header><nav><button aria-expanded="false" aria-controls="m">Products</button><div id="m" hidden><a href="/p/1">One</a> <a href="/p/2">Two</a></div></nav></header><main>Body</main>
+<script>const b = document.querySelector('header button'); const m = document.getElementById('m');
+const set = (o) => { m.hidden = !o; b.setAttribute('aria-expanded', String(o)); };
+b.addEventListener('click', () => set(m.hidden));
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !m.hidden) { set(false); b.focus(); } });</script></body></html>`;
+  const hits = new Map();
+  const mini = createServer((req, res) => {
+    const p = req.url.split('?')[0]; hits.set(p, (hits.get(p) || 0) + 1);
+    const ok = p === '/src' || p === '/build';
+    res.writeHead(ok ? 200 : 404, { 'content-type': 'text/html' }); res.end(ok ? MINI : 'not here');
+  });
+  await new Promise((r) => { mini.listen(0, '127.0.0.1', r); });
+  const mo = `http://127.0.0.1:${mini.address().port}`;
+  const proj = join(dir, 'paired'); mkdirSync(proj);
+  const C = join(proj, 'stardust', 'chrome', 'header-contract.json'); const B = join(proj, 'stardust', 'chrome', 'header-build.json');
+  const cacheDir = join(proj, 'stardust', '.work', 'chrome');
+  const cacheFiles = () => (existsSync(cacheDir) ? readdirSync(cacheDir).filter((f) => /^source-[0-9a-f]{16}\.json$/.test(f)).sort() : []);
+  const pairedRun = (extra = [], env = {}) => new Promise((resolve) => {
+    const before = { src: hits.get('/src') || 0, build: hits.get('/build') || 0 };
+    const e = { ...process.env, ...env }; if (!('STARDUST_BROWSERS_PER_SLOT' in env)) delete e.STARDUST_BROWSERS_PER_SLOT;
+    const p = spawn(process.execPath, [EXPLORE, `${mo}/src`, 'stardust/chrome/header-contract.json', '--build', `${mo}/build`, 'stardust/chrome/header-build.json', '--width', '1440,390', '--plain', '--no-repeat', ...extra], { cwd: proj, env: e });
+    let out = ''; let err = '';
+    p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => resolve({ code, out, err, src: (hits.get('/src') || 0) - before.src, build: (hits.get('/build') || 0) - before.build }));
+  });
+  const sourceLines = (out) => out.split('\n').filter((l) => l.startsWith('chrome-explore source ') && /: (cached|explored) /.test(l));
+  const shotsOf = (d) => { const out = []; const walk = (cs) => { for (const c of cs || []) { for (const s of Object.values(c.actions || {})) if (s && s.shot) out.push(s.shot); walk(c.children); } }; for (const w of Object.values(d.widths)) walk(w.controls); return out; };
+  // 2 browsers for 4 explores (a run-bg slot holding two)
+  const p1 = await pairedRun([], { STARDUST_BROWSERS_PER_SLOT: '2' });
+  const c1 = existsSync(C) ? readFileSync(C, 'utf8') : '';
+  await check('paired, cold: both sides explored at both widths, one page-read probe for both, the source widths stored per URL + width, lines in --width order', () => {
+    assert.equal(p1.code, 0, p1.err);
+    assert.ok(p1.src >= 2 && p1.build >= 2, `requests: source ${p1.src}, build ${p1.build}`);
+    const lines = sourceLines(p1.out);
+    assert.equal(lines.length, 2, p1.out);
+    assert.match(lines[0], /^chrome-explore source 1440: explored → stardust\/\.work\/chrome\/source-[0-9a-f]{16}\.json$/);
+    assert.match(lines[1], /^chrome-explore source 390: explored → stardust\/\.work\/chrome\/source-[0-9a-f]{16}\.json$/);
+    assert.equal(cacheFiles().length, 2);
+    const src = JSON.parse(c1); const bld = JSON.parse(readFileSync(B, 'utf8'));
+    assert.deepEqual([src.url, src.shots, bld.url, bld.shots], [`${mo}/src`, 'stardust/.work/chrome/header-contract', `${mo}/build`, 'stardust/.work/chrome/header-build']);
+    assert.deepEqual([src.probe, bld.probe], ['products', 'products'], 'the probe is read from the source once and typed on both sides');
+    assert.deepEqual(Object.keys(src.widths), ['390', '1440']);
+    const products = src.widths[1440].controls.find((c) => c.name === 'Products');
+    assert.ok(products && products.actions.click.opened && products.actions.click.panel.links.length === 2, JSON.stringify(src.widths[1440].controls.map((c) => c.name)));
+    assert.ok(shotsOf(src).length > 0 && shotsOf(src).every((f) => existsSync(join(proj, src.shots, f))), 'the source crops are in the contract\'s crops dir');
+    assert.ok(shotsOf(bld).every((f) => existsSync(join(proj, bld.shots, f))), 'the build crops are in its own');
+    assert.match(p1.out, /^chrome-explore source 1440: 1 controls \(1 menu\), 2 states, 2 links, depth 1$/m);
+    assert.match(p1.out, /^chrome-explore build 390: 1 controls \(1 menu\), 2 states, 2 links, depth 1$/m);
+    assert.match(p1.out, /^→ stardust\/chrome\/header-contract\.json \(crops in stardust\/\.work\/chrome\/header-contract\)$/m);
+    assert.match(p1.out, /^→ stardust\/chrome\/header-build\.json \(crops in stardust\/\.work\/chrome\/header-build\)$/m);
+  });
+  const single = await new Promise((resolve) => {
+    const p = spawn(process.execPath, [EXPLORE, `${mo}/src`, 'stardust/chrome/single.json', '--width', '1440,390', '--plain', '--no-repeat'], { cwd: proj });
+    let out = ''; let err = ''; p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
+    p.on('close', (code) => resolve({ code, out, err }));
+  });
+  await check('the single form on the same source writes the same record shape and the same widths, unprefixed lines, and no cache', () => {
+    assert.equal(single.code, 0, single.err);
+    const skeleton = (v) => (Array.isArray(v) ? v.map(skeleton) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).map(([k, x]) => [k, skeleton(x)])) : typeof v);
+    const a = JSON.parse(readFileSync(join(proj, 'stardust', 'chrome', 'single.json'), 'utf8')); const b = JSON.parse(c1);
+    assert.equal(JSON.stringify(skeleton(a)), JSON.stringify(skeleton(b)));
+    assert.deepEqual([a.probe, a.widths], [b.probe, b.widths]);
+    assert.match(single.out, /^chrome-explore 1440: 1 controls \(1 menu\), 2 states, 2 links, depth 1$/m);
+    assert.doesNotMatch(single.out, /chrome-explore (source|build) /);
+    assert.equal(cacheFiles().length, 2, 'no cache file of its own');
+  });
+  const p2 = await pairedRun();
+  await check('paired, warm: both source widths cached (no source page opened), the build explored again, the contract byte-identical', () => {
+    assert.equal(p2.code, 0, p2.err);
+    assert.deepEqual([p2.src, p2.build > 0], [0, true], `requests: source ${p2.src}, build ${p2.build}`);
+    const { at } = JSON.parse(c1);
+    const lines = sourceLines(p2.out);
+    assert.equal(lines.length, 2, p2.out);
+    lines.forEach((l, i) => assert.match(l, new RegExp(`^chrome-explore source ${[1440, 390][i]}: cached stardust/\\.work/chrome/source-[0-9a-f]{16}\\.json \\(explored ${at.replace(/\./g, '\\.')}\\) — --fresh re-explores$`)));
+    assert.equal(readFileSync(C, 'utf8'), c1);
+    assert.ok(JSON.parse(readFileSync(B, 'utf8')).at > at, 'a new build record');
+  });
+  // the 390 width's crops dir is lost: that width only is explored again
+  const k390 = cacheFiles().find((f) => JSON.parse(readFileSync(join(cacheDir, f), 'utf8')).inputs.width === 390);
+  rmSync(join(cacheDir, k390.replace(/\.json$/, '')), { recursive: true, force: true });
+  const p3 = await pairedRun();
+  await check('paired, one width\'s crops dir gone: that width re-explored, the other cached; `at` stays the earliest width\'s', () => {
+    assert.equal(p3.code, 0, p3.err);
+    const lines = sourceLines(p3.out);
+    assert.match(lines[0], /^chrome-explore source 1440: cached /); assert.match(lines[1], /^chrome-explore source 390: explored → /);
+    assert.ok(p3.src > 0, 'the source page was opened for 390');
+    assert.equal(JSON.parse(readFileSync(C, 'utf8')).at, JSON.parse(c1).at);
+  });
+  const p4 = await pairedRun(['--fresh']);
+  await check('paired --fresh: every source width explored again and its cache overwritten', () => {
+    assert.equal(p4.code, 0, p4.err);
+    assert.deepEqual(sourceLines(p4.out).map((l) => l.replace(/ → .*/, '')), ['chrome-explore source 1440: explored', 'chrome-explore source 390: explored']);
+    assert.ok(p4.src >= 2, `source requests ${p4.src}`);
+    assert.equal(cacheFiles().length, 2);
+    const at = JSON.parse(readFileSync(C, 'utf8')).at;
+    assert.ok(at > JSON.parse(c1).at, 'a new contract');
+    assert.ok(cacheFiles().every((f) => JSON.parse(readFileSync(join(cacheDir, f), 'utf8')).at === at), 'both cache entries rewritten');
+  });
+  const kept = readFileSync(C, 'utf8'); const keptMtime = statSync(C).mtimeMs;
+  const p5 = await pairedRun(['--build-only']);
+  await check('paired --build-only: the contract kept byte for byte, no source page, the build explored; the kept line names its `at`', () => {
+    assert.equal(p5.code, 0, p5.err);
+    assert.deepEqual([p5.src, p5.build > 0], [0, true]);
+    assert.equal(readFileSync(C, 'utf8'), kept); assert.equal(statSync(C).mtimeMs, keptMtime);
+    assert.match(p5.out, new RegExp(`^chrome-explore build-only: source contract stardust/chrome/header-contract\\.json kept \\(explored ${JSON.parse(kept).at.replace(/\./g, '\\.')}\\)$`, 'm'));
+    assert.deepEqual(sourceLines(p5.out), []);
+    assert.equal(JSON.parse(readFileSync(B, 'utf8')).probe, 'products', 'the contract\'s probe term');
+  });
+  mini.close();
   await browser.close(); srv.close(); rmSync(dir, { recursive: true });
 }
 process.exit(failed ? 1 : 0);

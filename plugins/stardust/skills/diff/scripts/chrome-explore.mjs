@@ -44,12 +44,43 @@
  * The site-wide stardust/replica/presence.json is read by default (its "*" `hide`, plus the --slug entry's), merged
  * under --presence's file (that file's field wins per key); its selectors are tagged `site presence.json`.
  * A hide list is recorded as `hide: { list, presence, site?, perWidth }` with one `<w>: hidden …` line per width.
+ *
+ * Paired: node skills/diff/scripts/chrome-explore.mjs <source-url> <contract.json> --build <build-url> <build.json> [options]
+ *   the source contract and the build record in one run, with the same options and the same probe term on both sides.
+ *   --build <url> <out>  the build side (two values); always explored, never cached; its crops in
+ *                        stardust/.work/chrome/<build name> (--shots names the source's; the two must differ)
+ *   --fresh              re-explore every source width (and overwrite its cache)
+ *   --build-only         explore only the build: <contract.json> must exist (else exit 1), is left untouched and its
+ *                        probe term is the build's (unless --probe); prints `chrome-explore build-only: source contract
+ *                        <contract.json> kept (explored <its at>)`
+ *   Each source width comes from the run cache when it holds one: stardust/.work/chrome/source-<hash>.json, its crops in
+ *   source-<hash>/ (copied into the contract's crops dir). <hash> = the first 16 hex of sha256 over the canonical JSON
+ *   (sorted keys) of what shapes the record: url, width, root, the effective hide list (selector + source), max-states,
+ *   max-depth, probe (--probe, else search-probes.json's term; null when read from the page), locale, tier (--plain),
+ *   bar, repeat, warmup. A hit needs the file to parse, its inputs to equal these and its crops dir (and every crop it
+ *   names) to exist: `chrome-explore source <w>: cached <path> (explored <at>) — --fresh re-explores`, no page opened.
+ *   A miss is explored and stored (tmp + rename): `chrome-explore source <w>: explored → <path>`. With the probe read
+ *   from the page, a hit's term is the run's and a cached width read with another term is a miss. <contract.json> is
+ *   composed from the width records as the single form writes it: the same fields in the same order, `at` the earliest
+ *   width's, each width's hide records and stability folded in --width order, the one probe. The single form never
+ *   reads or writes the cache (--fresh is a no-op there). Summary lines are prefixed `source ` / `build `.
+ * Parallel: every explore of a run (each width; paired: each side × width not cached) starts at once, each in its own
+ * browser context, over min(explores, STARDUST_BROWSERS_PER_SLOT) browsers (run-bg exports it; unset or invalid → 1:
+ * one browser, its contexts concurrent) — explore i in browser i mod n. Records, files and lines follow --width order
+ * whatever finishes first; a repeated width is explored once. A probe read from the page is read once, before (one
+ * visit, the first width's viewport, on that explore's page, as before). One failure closes every browser (exit 3 on
+ * a bot challenge, naming the URL).
+ * Why: a recorded hands-off run explored its header eight times (57 browser-minutes, 431 s each on average), four of
+ * them the unchanged source once the caller's own one-hour cache had lapsed — each run one width after the other.
  * Exit: 0 written · 1 error · 3 bot challenge. `summarize`, `controlKind`, `normName`, `hideArgs`,
- * `effectiveHide`, `sampleDelta`, `cropDeps`, `cropRatio`, `unstableAsWarn`, `stabilityLine` are exported.
+ * `effectiveHide`, `sampleDelta`, `cropDeps`, `cropRatio`, `unstableAsWarn`, `stabilityLine`, `exploreArgs`,
+ * `sourceInputs`, `sourceKey`, `sourceCachePath`, `cropsOf`, `cacheMiss`, `readSourceCache`, `composeDoc`,
+ * `browsersPerSlot`, `exploreAll` are exported.
  */
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { basename, dirname, join } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { formatHidden, hideEntries, hideRegions, parseHideList, readPresenceFile, SITE_PRESENCE } from './live-session.mjs';
 
@@ -193,6 +224,116 @@ export function effectiveHide({ hide = [], presence = null, slug = null, site = 
   const fromFile = p ? (p.hideSources || hideEntries(p.hide, 'presence.json')) : [];
   const entries = hideEntries([...hideEntries(hide, '--hide'), ...fromFile]);
   return { entries, presence: presence || null, found: p ? p.found : null, note: p ? p.note : null, ...(p && p.site ? { site: p.site } : {}) };
+}
+
+const BOOL_FLAGS = ['--plain', '--no-repeat', '--fresh', '--build-only'];
+/** argv → { url, out, build: { url, out } | null, buildOnly, fresh }: the positional pair (the source contract in the
+ * paired form) and the paired form's flags; `--build` takes two values. Pure; a usage error throws. */
+export function exploreArgs(argv) {
+  const at = argv.flatMap((a, i) => (a === '--build' ? [i] : []));
+  if (at.length > 1) throw new Error('--build is given once: --build <build-url> <build.json>');
+  let build = null;
+  if (at.length) {
+    const [u, o] = [argv[at[0] + 1], argv[at[0] + 2]];
+    if (!u || u.startsWith('--') || !o || o.startsWith('--')) throw new Error('--build needs two values: --build <build-url> <build.json>');
+    build = { url: u, out: o };
+  }
+  const taken = new Set(at.length ? [at[0] + 1, at[0] + 2] : []);
+  const [url = null, out = null] = argv.filter((a, i) => !taken.has(i) && !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && !BOOL_FLAGS.includes(argv[i - 1])));
+  const buildOnly = argv.includes('--build-only'); const fresh = argv.includes('--fresh');
+  if (buildOnly && !build) throw new Error('--build-only needs --build <build-url> <build.json> (it explores the build only)');
+  if (buildOnly && fresh) throw new Error('--fresh re-explores the source, --build-only does not explore it: pass one of them');
+  return { url, out, build, buildOnly, fresh };
+}
+
+// ---- the source cache: one file per URL + width, keyed by what shapes the record ----------------------------------
+const CACHE_DIR = join('stardust', '.work', 'chrome');
+/** One source width's cache file: stardust/.work/chrome/source-<key>.json (its crops in source-<key>/). */
+export const sourceCachePath = (key) => join(CACHE_DIR, `source-${key}.json`);
+const canonical = (v) => (Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canonical(v[k])])) : v);
+const same = (a, b) => JSON.stringify(canonical(a)) === JSON.stringify(canonical(b));
+
+/** What shapes one width's record: url, width, root, the effective hide list (selector + source, as hide.perWidth
+ * records them), max-states, max-depth, probe (the term known before any visit; null when read from the page),
+ * locale, tier, bar, repeat, warmup. Pure. */
+export function sourceInputs({ url, width, root = null, hide = [], maxStates, maxDepth, probe = null, locale, tier, bar, repeat, warmup = null }) {
+  return { url, width, root, hide: hide.map(({ sel, source }) => ({ sel, source })), maxStates, maxDepth, probe, locale, tier, bar, repeat, warmup };
+}
+/** sourceInputs → the cache key: the first 16 hex of sha256 over their canonical JSON (keys sorted). Pure. */
+export const sourceKey = (inputs) => createHash('sha256').update(JSON.stringify(canonical(inputs))).digest('hex').slice(0, 16);
+
+/** Every crop a width's record names (the `shot` of each state, nested controls too), sorted. Pure. */
+export function cropsOf(result) {
+  const out = new Set();
+  const walk = (cs) => { for (const c of cs || []) { for (const s of Object.values(c.actions || {})) if (s && s.shot) out.add(s.shot); walk(c.children); } };
+  walk(result && result.controls);
+  return [...out].sort();
+}
+
+/** A source cache entry (parsed; null when unreadable) against the current inputs → null on a hit, else why it misses:
+ * unreadable, other inputs, its crops dir gone, a crop it names gone. Pure but for `exists` (default existsSync). */
+export function cacheMiss(entry, inputs, { exists = existsSync } = {}) {
+  if (!entry || typeof entry !== 'object' || !entry.result || typeof entry.crops !== 'string' || typeof entry.at !== 'string' || typeof entry.probe !== 'string') return 'unreadable';
+  if (!same(entry.inputs, inputs)) return 'other inputs';
+  if (!exists(entry.crops)) return `crops dir ${entry.crops} gone`;
+  const lost = cropsOf(entry.result).find((f) => !exists(join(entry.crops, f)));
+  return lost ? `crop ${lost} gone` : null;
+}
+/** One source cache file → { entry, miss }: entry null and miss its reason (`none` without a file) unless it hits. */
+export function readSourceCache(file, inputs) {
+  if (!existsSync(file)) return { entry: null, miss: 'none' };
+  let entry = null;
+  try { entry = JSON.parse(readFileSync(file, 'utf8')); } catch { /* unreadable */ }
+  const miss = cacheMiss(entry, inputs);
+  return { entry: miss ? null : entry, miss };
+}
+// an explored source width: its crops (explored into `tmp`) become source-<key>/, the file is written tmp + rename; the
+// old file goes first, so no file ever names a crops dir being replaced
+function storeSource({ key, inputs, at, probe, result, tmp }) {
+  const file = sourceCachePath(key); const crops = join(CACHE_DIR, `source-${key}`);
+  rmSync(file, { force: true }); rmSync(crops, { recursive: true, force: true }); renameSync(tmp, crops);
+  const entry = { tool: 'chrome-explore source', key, at, inputs, crops, probe, result };
+  const part = `${file}.${process.pid}.tmp`;
+  writeFileSync(part, `${JSON.stringify(entry, null, 1)}\n`); renameSync(part, file);
+  return entry;
+}
+
+/** The record file from per-width records (`records[i]` = { at, result } for `widths[i]`, an exploreWidth result, fresh
+ * or cached): the fields and their order the single form always wrote — tool, url, at, shots, hide?, stability, widths,
+ * probe. `at` = the earliest record's (`at` with no widths); each width's `hidden` goes to hide.perWidth and its
+ * stability is folded into the header's (checked summed, unstable concatenated, the first crops note) in `widths`
+ * order. `hide` = effectiveHide's result. Pure; the records untouched. */
+export function composeDoc({ url, shots, hide, repeat, bar, probe, widths, records, at = null }) {
+  const first = records.map((r) => r.at).filter(Boolean).sort()[0] || at;
+  const doc = { tool: 'chrome-explore', url, at: first, shots, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, ...(hide.site ? { site: hide.site } : {}), perWidth: {} } } : {}), stability: repeat ? { bar, checked: 0, unstable: [] } : 'skipped: --no-repeat', widths: {} };
+  widths.forEach((width, i) => {
+    doc.probe = probe;
+    const { hidden, stability, ...record } = records[i].result;
+    doc.widths[width] = record;
+    if (doc.hide) doc.hide.perWidth[width] = hidden;
+    if (stability && typeof doc.stability === 'object') { doc.stability.checked += stability.checked; doc.stability.unstable.push(...stability.unstable); if (stability.crops) doc.stability.crops = doc.stability.crops || stability.crops; }
+  });
+  return doc;
+}
+
+/** STARDUST_BROWSERS_PER_SLOT (run-bg exports it) → the browsers one run may hold; unset or not a positive integer → 1. Pure. */
+export function browsersPerSlot(env = process.env) { const n = Number(env.STARDUST_BROWSERS_PER_SLOT); return Number.isInteger(n) && n >= 1 ? n : 1; }
+
+/** Every explore at once, each in its own context, over min(tasks, perSlot) browsers — task i in browser i mod n.
+ * `launch()` → a browser; `before(browsers)` runs once they are open (the probe's one visit) and its value reaches
+ * `explore(task, browser, i, value)`. → the results in task order, whatever order they finish in. The first failure is
+ * thrown; every browser is closed either way. */
+export async function exploreAll(tasks, { perSlot = 1, launch, before = null, explore }) {
+  const n = Math.min(tasks.length, Number.isInteger(perSlot) && perSlot >= 1 ? perSlot : 1);
+  if (!n) return [];
+  const opened = await Promise.allSettled(Array.from({ length: n }, () => launch()));
+  const browsers = opened.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+  try {
+    const failed = opened.find((r) => r.status === 'rejected');
+    if (failed) throw failed.reason;
+    const pre = before ? await before(browsers) : undefined;
+    return await Promise.all(tasks.map((t, i) => explore(t, browsers[i % n], i, pre)));
+  } finally { await Promise.all(browsers.map((b) => Promise.resolve().then(() => b.close()).catch(() => {}))); }
 }
 
 // ---- in-page library (installed once per document; ONE argument object per call) ------------------
@@ -564,52 +705,132 @@ async function main() {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').match(/\/\*\*([\s\S]*?)\*\//)[1].replace(/^ \* ?/gm, '').trim()); process.exit(0); }
   const arg = (k, d) => { const i = argv.indexOf(`--${k}`); return i >= 0 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : d; };
-  const [url, out] = argv.filter((a, i) => !a.startsWith('--') && !(i > 0 && argv[i - 1].startsWith('--') && !['--plain', '--no-repeat'].includes(argv[i - 1])));
-  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--bar 0.02] [--no-repeat]'); process.exit(1); }
+  const fail = (msg) => { console.error(`chrome-explore: ${msg}`); process.exit(1); };
+  let parsed;
+  try { parsed = exploreArgs(argv); } catch (e) { fail(e.message); }
+  const { url, out, build, buildOnly, fresh } = parsed;
+  if (!url || !out) { console.error('usage: chrome-explore.mjs <url> <out.json> [--build <build-url> <build.json> [--build-only | --fresh]] [--width 1440,390] [--root <sel>] [--max-states 400] [--max-depth 4] [--probe <term>] [--shots <dir>] [--plain] [--bar 0.02] [--no-repeat]'); process.exit(1); }
   const bar = Number(arg('bar', '0.02')); const repeat = !argv.includes('--no-repeat');
   if (!(bar >= 0 && bar <= 1)) { console.error(`chrome-explore: --bar needs a ratio in [0, 1] (default 0.02), not ${arg('bar', '')}`); process.exit(1); }
   let hide;
   try { hide = effectiveHide(hideArgs(argv)); } catch (e) { console.error(`chrome-explore: ${e.message}`); process.exit(1); }
   if (hide.found === false || (hide.presence && !existsSync(hide.presence))) console.error(`chrome-explore: ${hide.note}`);
-  const widths = arg('width', '1440,390').split(',').map(Number).filter(Boolean);
+  const widths = [...new Set(arg('width', '1440,390').split(',').map(Number).filter(Boolean))];
   const shotsDir = arg('shots', join('stardust', '.work', 'chrome', basename(out, '.json')));
-  mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true });
-  let probe = arg('probe', null);
+  const buildShots = build ? join('stardust', '.work', 'chrome', basename(build.out, '.json')) : null;
+  let kept = null;
+  if (build) {
+    if (resolve(build.out) === resolve(out)) fail(`the source contract and the build record are one file (${out}): name two`);
+    if (buildOnly) {
+      if (!existsSync(out)) fail(`--build-only keeps the source contract ${out}, which does not exist — explore it first (the paired form without --build-only)`);
+      try { kept = JSON.parse(readFileSync(out, 'utf8')); } catch (e) { fail(`--build-only: the source contract ${out} is unreadable (${e.message})`); }
+    }
+    const srcShots = buildOnly ? kept && typeof kept.shots === 'string' && kept.shots : shotsDir;
+    if (srcShots && resolve(srcShots) === resolve(buildShots)) fail(`the source and build crops would share ${buildShots} — pass --shots <dir> for the source's`);
+  }
+  const given = arg('probe', null);
   const sp = join('stardust', 'spec', 'knowledge', 'search-probes.json');
-  if (!probe && existsSync(sp)) { try { probe = (JSON.parse(readFileSync(sp, 'utf8'))[0] || {}).term || null; } catch { /* none */ } }
+  const specProbe = () => { if (!existsSync(sp)) return null; try { return (JSON.parse(readFileSync(sp, 'utf8'))[0] || {}).term || null; } catch { return null; } };
+  // the term known before any visit (the cache key's probe); null → read from the page once, before the explores
+  let probe = given || (kept && typeof kept.probe === 'string' && kept.probe) || specProbe();
+  if (given && kept && kept.probe && kept.probe !== given) console.error(`chrome-explore: --probe ${given} differs from the source contract's probe ${kept.probe} — the two sides type different terms`);
+  const known = probe || null;
+  const opts = { root: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), locale: arg('locale', 'en-US'), tier: argv.includes('--plain') ? 'plain' : 'stealth', bar, repeat, warmup: arg('warmup', null) };
+  // paired: each source width from the cache when it holds one (a page-read probe: the first hit's term is the run's)
+  const source = build && !buildOnly ? widths.map((width) => {
+    const inputs = sourceInputs({ url, width, hide: hide.entries, probe: known, ...opts });
+    const key = sourceKey(inputs);
+    return { width, inputs, key, file: sourceCachePath(key), entry: fresh ? null : readSourceCache(sourceCachePath(key), inputs).entry };
+  }) : [];
+  if (!probe) {
+    const hit = source.find((s) => s.entry);
+    if (hit) probe = hit.entry.probe;
+    for (const s of source) if (s.entry && s.entry.probe !== probe) s.entry = null;
+  }
+  for (const s of source) s.hit = !!s.entry;
+  if (buildOnly) console.log(`chrome-explore build-only: source contract ${out} kept (explored ${kept.at || 'at an unrecorded time'})`);
+  if (!buildOnly) { mkdirSync(shotsDir, { recursive: true }); mkdirSync(dirname(out), { recursive: true }); }
+  if (build) { mkdirSync(buildShots, { recursive: true }); mkdirSync(dirname(build.out), { recursive: true }); }
+  if (source.length) mkdirSync(CACHE_DIR, { recursive: true });
+  const tasks = [
+    ...(build ? source.filter((s) => !s.hit).map((s) => ({ side: 'source', url, width: s.width, src: s, shots: join(CACHE_DIR, `source-${s.key}.tmp-${process.pid}`) })) : widths.map((width) => ({ side: 'single', url, width, shots: shotsDir }))),
+    ...(build ? widths.map((width) => ({ side: 'build', url: build.url, width, shots: buildShots })) : []),
+  ];
   const here = dirname(fileURLToPath(import.meta.url));
   const { openBrowser, openPage, visit } = await import(pathToFileURL(join(here, 'measure-live.mjs')).href);
-  const { chromium } = await loadPlaywright();
-  const browser = await openBrowser(chromium, { tier: argv.includes('--plain') ? 'plain' : 'stealth' });
-  const doc = { tool: 'chrome-explore', url, at: new Date().toISOString(), shots: shotsDir, ...(hide.entries.length ? { hide: { list: hide.entries.map((x) => x.sel), presence: hide.presence, ...(hide.site ? { site: hide.site } : {}), perWidth: {} } } : {}), stability: repeat ? { bar, checked: 0, unstable: [] } : 'skipped: --no-repeat', widths: {} };
+  const { chromium } = tasks.length ? await loadPlaywright() : {};
+  const gotoFn = (p, u) => visit(p, u, { warmup: opts.warmup, settle: { passes: 1, quietMs: 800 } });
+  const openFor = async (task, browser) => {
+    const { ctx, page } = await openPage(browser, { width: task.width, height: task.width < TOUCH_BELOW ? 844 : 900, locale: opts.locale });
+    ctx.on('page', (p) => { if (p !== page) p.close().catch(() => {}); });
+    return { ctx, page };
+  };
+  let at = new Date().toISOString();
+  // after the first failure the other explores' browsers are closed under them: what they throw then is not the error
+  let failing = false;
+  process.on('unhandledRejection', (e) => { if (!failing) { console.error(`chrome-explore: ${e && e.message ? e.message : e}`); process.exit(1); } });
+  const named = (task, e) => { failing = true; if (e && typeof e === 'object' && !e.exploreUrl) e.exploreUrl = task.url; return e; };
+  let results;
   try {
-    for (const width of widths) {
-      const { ctx, page } = await openPage(browser, { width, height: width < TOUCH_BELOW ? 844 : 900, locale: arg('locale', 'en-US') });
-      ctx.on('page', (p) => { if (p !== page) p.close().catch(() => {}); });
-      const gotoFn = (p, u) => visit(p, u, { warmup: arg('warmup', null), settle: { passes: 1, quietMs: 800 } });
-      if (!probe) {
-        await gotoFn(page, url);
-        await hideRegions(page, hide.entries);
-        probe = await page.evaluate(() => ((document.querySelector('header nav,header') || document.body).innerText.match(/\p{L}{4,}/u) || ['news'])[0].toLowerCase());
-      }
-      doc.probe = probe;
-      const { hidden, stability, ...record } = await exploreWidth(page, { url, width, rootSel: arg('root', null), maxStates: Number(arg('max-states', 400)), maxDepth: Number(arg('max-depth', 4)), probe, shotsDir, gotoFn, hide: hide.entries, repeat, bar });
-      doc.widths[width] = record;
-      if (doc.hide) doc.hide.perWidth[width] = hidden;
-      if (stability) { doc.stability.checked += stability.checked; doc.stability.unstable.push(...stability.unstable); if (stability.crops) doc.stability.crops = doc.stability.crops || stability.crops; }
-      await ctx.close();
-    }
+    results = await exploreAll(tasks, {
+      perSlot: browsersPerSlot(),
+      launch: () => openBrowser(chromium, { tier: opts.tier }),
+      // no probe yet: read once on the first explore's page (the first width of the side that is read), as before
+      before: async (browsers) => {
+        at = new Date().toISOString();
+        if (probe) return null;
+        const ready = await openFor(tasks[0], browsers[0]);
+        try {
+          await gotoFn(ready.page, tasks[0].url);
+          await hideRegions(ready.page, hide.entries);
+          probe = await ready.page.evaluate(() => ((document.querySelector('header nav,header') || document.body).innerText.match(/\p{L}{4,}/u) || ['news'])[0].toLowerCase());
+        } catch (e) { throw named(tasks[0], e); }
+        return ready;
+      },
+      explore: async (task, browser, i, ready) => {
+        try {
+          if (task.side === 'source') { rmSync(task.shots, { recursive: true, force: true }); mkdirSync(task.shots, { recursive: true }); }
+          const { ctx, page } = i === 0 && ready ? ready : await openFor(task, browser);
+          const result = await exploreWidth(page, { url: task.url, width: task.width, rootSel: opts.root, maxStates: opts.maxStates, maxDepth: opts.maxDepth, probe, shotsDir: task.shots, gotoFn, hide: hide.entries, repeat, bar });
+          await ctx.close();
+          // stored as soon as it is explored: a failure elsewhere in the run does not lose it
+          if (task.side === 'source') task.src.entry = storeSource({ key: task.src.key, inputs: task.src.inputs, at, probe, result, tmp: task.shots });
+          return result;
+        } catch (e) {
+          if (task.side === 'source') rmSync(task.shots, { recursive: true, force: true });
+          throw named(task, e);
+        }
+      },
+    });
   } catch (e) {
-    await browser.close();
-    if (e.name === 'BotChallengeError') { console.error(`chrome-explore: bot challenge on ${url} — retry with --warmup or the headed tier`); process.exit(3); }
+    if (e && e.name === 'BotChallengeError') { console.error(`chrome-explore: bot challenge on ${e.exploreUrl || url} — retry with --warmup or the headed tier`); process.exit(3); }
     throw e;
   }
-  await browser.close();
-  writeFileSync(out, `${JSON.stringify(doc, null, 1)}\n`);
-  for (const line of summarize(doc)) console.log(`chrome-explore ${line}`);
-  if (stabilityLine(doc)) console.log(`chrome-explore ${stabilityLine(doc)}`);
-  for (const [w, recs] of Object.entries(doc.hide ? doc.hide.perWidth : {})) console.log(`chrome-explore ${w}: hidden ${formatHidden(recs)}`);
-  console.log(`→ ${out} (crops in ${shotsDir})`);
+  const write = (file, doc) => writeFileSync(file, `${JSON.stringify(doc, null, 1)}\n`);
+  const report = (doc, file, shots, side) => {
+    for (const line of summarize(doc)) console.log(`chrome-explore ${side}${line}`);
+    if (stabilityLine(doc)) console.log(`chrome-explore ${side}${stabilityLine(doc)}`);
+    for (const [w, recs] of Object.entries(doc.hide ? doc.hide.perWidth : {})) console.log(`chrome-explore ${side}${w}: hidden ${formatHidden(recs)}`);
+    console.log(`→ ${file} (crops in ${shots})`);
+  };
+  const compose = (u, shots, records) => composeDoc({ url: u, shots, hide, repeat, bar, probe, widths, records, at });
+  const explored = (side) => tasks.map((t, i) => (t.side === side ? { at, result: results[i] } : null)).filter(Boolean);
+  if (!build) {
+    const doc = compose(url, shotsDir, explored('single'));
+    write(out, doc); report(doc, out, shotsDir, '');
+    return;
+  }
+  let srcDoc = null;
+  if (!buildOnly) {
+    for (const s of source) for (const f of cropsOf(s.entry.result)) copyFileSync(join(s.entry.crops, f), join(shotsDir, f));
+    srcDoc = compose(url, shotsDir, source.map((s) => ({ at: s.entry.at, result: s.entry.result })));
+    write(out, srcDoc);
+  }
+  const buildDoc = compose(build.url, buildShots, explored('build'));
+  write(build.out, buildDoc);
+  for (const s of source) console.log(s.hit ? `chrome-explore source ${s.width}: cached ${s.file} (explored ${s.entry.at}) — --fresh re-explores` : `chrome-explore source ${s.width}: explored → ${s.file}`);
+  if (srcDoc) report(srcDoc, out, shotsDir, 'source ');
+  report(buildDoc, build.out, buildShots, 'build ');
 }
 
 const self = (() => { try { return realpathSync(fileURLToPath(import.meta.url)); } catch { return ''; } })();
