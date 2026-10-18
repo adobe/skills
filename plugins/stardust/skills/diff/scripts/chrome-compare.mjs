@@ -38,8 +38,11 @@
  * and the verdict's `hide.site` names it.
  * Records explored with different hide lists (or not the expected one) are not the same page: one error
  * `hide-mismatch`; `hide: { source, build, expected, consistent, site? }` is printed and in the verdict when any is set.
- * Printed: a 🔴 / 🟡 line per open finding, a `🔵 decided by the agent: <key> — <decision>: <reason> (<at>)` line per
- * agent decision, the hide line, then the counts (hands-off: `N decided (n by the agent, hands-off — …)`).
+ * A crop difference the hide list explains is `info`, never an error: the panels' top edges differ by the height of
+ * a region hidden at that width (±2 px; the records' `hide.perWidth`), the panels are as wide, and the shared,
+ * top-aligned area is within the bar — the finding carries `evidence: { kind: "hide-offset", region, h, dy, shared }`.
+ * Printed: a 🔴 / 🟡 / ⚪ (info) line per finding, a `🔵 decided by the agent: <key> — <decision>: <reason> (<at>)`
+ * line per agent decision, the hide line, then the counts (hands-off: `N decided (n by the agent, hands-off — …)`).
  * Exit: 0 no undecided error · 2 errors · 1 usage, or a malformed presence.json named on stderr (--presence's file, or the
  * cwd's stardust/replica/presence.json — refused with no flag too).
  *
@@ -142,7 +145,7 @@ function compareState(ss, bs, base, { profile, add, visual }, full) {
       if (off.length) add({ ...base, id: 'motion', severity: 'error', detail: `${p}: ${off.join('/')}ms on the source, ${[...new Set(b)].join('/')}ms on the build` });
     }
   }
-  if (ss.shot) visual.push({ ...base, src: ss.shot, build: bs.shot || null });
+  if (ss.shot) visual.push({ ...base, src: ss.shot, build: bs.shot || null, srcRect: ss.panel.rect || null, buildRect: bs.panel.rect || null });
 }
 
 function walk(src, bld, ctx, path) {
@@ -191,8 +194,24 @@ export function compareHide(src, bld, expected = null) {
   return { hide, finding: { width: 0, path: '(hide)', id: 'hide-mismatch', severity: 'error', detail } };
 }
 
-/** All findings except the crop pixels (returned as `visual` pairs for the image pass); `hide` when a hide list is
- * set on either record or expected (`expectedHide`). Pure. */
+/** The regions hidden at a width, from either record's `hide.perWidth` (h > 0, the larger per selector). Pure. */
+const hiddenAt = (docs, w) => {
+  const m = new Map();
+  for (const d of docs) for (const x of (d && d.hide && d.hide.perWidth && d.hide.perWidth[w]) || []) if (x && x.sel && x.h > 0) m.set(x.sel, Math.max(m.get(x.sel) || 0, x.h));
+  return [...m].map(([sel, h]) => ({ sel, h }));
+};
+
+/** A crop difference the hide list explains: the panels' top edges differ by a hidden region's height (±2 px), the
+ * panels as wide → { region, h, dy, shared, within: shared ≤ bar } (the shared, top-aligned area judged), else null. Pure. */
+export function hideOffset({ srcRect, buildRect, hidden = [], shared, bar }) {
+  if (!srcRect || !buildRect || Math.abs(srcRect[2] - buildRect[2]) > 2) return null;
+  const dy = srcRect[1] - buildRect[1];
+  const r = dy ? hidden.find((x) => x.h > 0 && Math.abs(Math.abs(dy) - x.h) <= 2) : null;
+  return r ? { region: r.sel, h: r.h, dy, shared, within: shared <= bar } : null;
+}
+
+/** All findings except the crop pixels (returned as `visual` pairs for the image pass, with both panel rects and the
+ * regions hidden at their width); `hide` when a hide list is set on either record or expected (`expectedHide`). Pure. */
 export function compareDocs(src, bld, { profile = 'replica', expectedHide = null } = {}) {
   const findings = []; const visual = [];
   const add = (f) => findings.push(f);
@@ -223,7 +242,7 @@ export function compareDocs(src, bld, { profile = 'replica', expectedHide = null
     if (sw.truncated) add({ width, path: '(source)', id: 'budget-truncated', severity: 'warn', detail: `the source record stopped at ${sw.truncated}: raise --max-states/--max-depth for full coverage` });
     if (bw.truncated) add({ width, path: '(build)', id: 'budget-truncated', severity: 'warn', detail: `the build record stopped at ${bw.truncated}` });
   }
-  return { findings, visual: profile === 'replica' ? visual : [], ...(hide ? { hide } : {}) };
+  return { findings, visual: profile === 'replica' ? visual.map((p) => ({ ...p, hidden: hiddenAt([src, bld], p.width) })) : [], ...(hide ? { hide } : {}) };
 }
 
 /** Mark the error findings a valid decision clears: a site owner's (exact or prefix*) in any run, an agent's (exact,
@@ -267,11 +286,13 @@ const loadDep = async (name) => {
   const m = await import(name); return m.default || m;
 };
 
-/** Crop pairs → ratio of differing pixels over the union box (size differences count as different). */
+/** Crop pairs → ratio of differing pixels over the union box (size differences count as different); a difference the
+ * hide list explains (hideOffset, shared area within the bar) is `info` with its `evidence`. */
 export async function visualFindings(pairs, { srcDir, buildDir, bar }) {
   if (!pairs.length) return [];
+  const bare = ({ src, build, srcRect, buildRect, hidden, ...f }) => f;
   let PNG; let pixelmatch;
-  try { ({ PNG } = await loadDep('pngjs')); pixelmatch = await loadDep('pixelmatch'); } catch { return pairs.map((p) => ({ ...p, id: 'panel-visual', severity: 'error', detail: 'crops not compared: pngjs + pixelmatch are not installed in this project' })); }
+  try { ({ PNG } = await loadDep('pngjs')); pixelmatch = await loadDep('pixelmatch'); } catch { return pairs.map((p) => bare({ ...p, id: 'panel-visual', severity: 'error', detail: 'crops not compared: pngjs + pixelmatch are not installed in this project' })); }
   const out = [];
   for (const p of pairs) {
     const fa = join(srcDir, p.src); const fb = p.build && join(buildDir, p.build);
@@ -289,9 +310,17 @@ export async function visualFindings(pairs, { srcDir, buildDir, bar }) {
     let thick = 0;
     for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) if (on(x, y)) { let k = 0; for (let dy = -1; dy <= 1; dy += 1) for (let dx = -1; dx <= 1; dx += 1) if ((dx || dy) && on(x + dx, y + dy)) k += 1; if (k >= 5) thick += 1; }
     const thickPct = diff ? Math.round((thick / diff) * 100) : 0;
-    if (ratio > bar) out.push({ ...p, id: 'panel-visual', severity: 'error', detail: `open-state crop differs by ${(ratio * 100).toFixed(1)}% (bar ${(bar * 100).toFixed(0)}%; source ${a.width}×${a.height}, build ${b.width}×${b.height}; texture ${thickPct}% thick${thickPct <= 15 && a.width === b.width && a.height === b.height ? ', thin-edge: glyph antialiasing, a font substitution the site owner can accept' : ''})` });
+    if (ratio <= bar) continue;
+    const shared = diff / (w * h);
+    const off = hideOffset({ srcRect: p.srcRect, buildRect: p.buildRect, hidden: p.hidden, shared, bar });
+    const pct = (x) => `${(x * 100).toFixed(1)}%`;
+    if (off && off.within) {
+      out.push({ ...p, id: 'panel-visual', severity: 'info', detail: `open-state crop differs by ${pct(ratio)} (bar ${(bar * 100).toFixed(0)}%; source ${a.width}×${a.height}, build ${b.width}×${b.height}), shared area ${pct(shared)}: the source panel sits ${Math.abs(off.dy)}px ${off.dy > 0 ? 'lower' : 'higher'} than the build's — the height of the hidden region ${off.region} (${off.h}px): a hide-list offset, a measurement artefact`, evidence: { kind: 'hide-offset', region: off.region, h: off.h, dy: off.dy, shared: Math.round(shared * 10000) / 10000 } });
+      continue;
+    }
+    out.push({ ...p, id: 'panel-visual', severity: 'error', detail: `open-state crop differs by ${pct(ratio)} (bar ${(bar * 100).toFixed(0)}%; source ${a.width}×${a.height}, build ${b.width}×${b.height}; texture ${thickPct}% thick${thickPct <= 15 && a.width === b.width && a.height === b.height ? ', thin-edge: glyph antialiasing, a font substitution the site owner can accept' : ''})${off ? `; the offset equals the hidden region ${off.region} (${off.h}px), but the shared area differs by ${pct(shared)}` : ''}` });
   }
-  return out.map(({ src, build, ...f }) => f);
+  return out.map(bare);
 }
 
 function decideMain(argv) {
@@ -344,16 +373,16 @@ async function main() {
   const handsOff = handsOffOf(stateFile || join('stardust', 'state.json'));
   const all = applyDecisions(findings, readDecisions(df), { handsOff });
   const errors = all.filter((f) => f.severity === 'error' && !f.decided); const warns = all.filter((f) => f.severity === 'warn'); const decided = all.filter((f) => f.decided);
-  const byAgent = decided.filter((f) => f.decided.agent);
-  for (const f of [...errors, ...warns]) console.log(`${f.severity === 'error' ? '🔴' : '🟡'} ${findingKey(f)} — ${f.detail}`);
+  const byAgent = decided.filter((f) => f.decided.agent); const infos = all.filter((f) => f.severity === 'info');
+  for (const f of [...errors, ...warns, ...infos]) console.log(`${{ error: '🔴', warn: '🟡' }[f.severity] || '⚪'} ${findingKey(f)} — ${f.detail}`);
   for (const f of byAgent) console.log(`🔵 decided by the agent: ${findingKey(f)} — ${f.decided.decision}: ${f.decided.reason} (${f.decided.at})`);
   const widths = Object.keys(src.widths || {}).map(Number);
   const decidedByAgent = byAgent.map((f) => ({ key: findingKey(f), decision: f.decided.decision, reason: f.decided.reason, at: f.decided.at }));
-  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), handsOff, counts: { error: errors.length, warn: warns.length, decided: decided.length, decidedByAgent: byAgent.length }, decidedByAgent, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
+  const verdict = { tool: 'chrome-compare', at: new Date().toISOString(), source: src.url, build: bld.url, profile, bar, widths, ...(hide ? { hide } : {}), handsOff, counts: { error: errors.length, warn: warns.length, info: infos.length, decided: decided.length, decidedByAgent: byAgent.length }, decidedByAgent, findings: all.map((f) => ({ key: findingKey(f), ...f })) };
   const out = arg('json', null);
   if (out) { mkdirSync(dirname(out), { recursive: true }); writeFileSync(out, `${JSON.stringify(verdict, null, 1)}\n`); }
   if (hide) { const show = (l) => `[${l.join(', ')}]`; console.log(`chrome-compare hide: source ${show(hide.source)} · build ${show(hide.build)} · expected ${hide.expected ? show(hide.expected) : 'not given'}${hide.site ? ` (with site ${hide.site})` : ''} → ${hide.consistent ? 'consistent' : 'INCONSISTENT'}`); }
-  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s), ${decided.length} decided${handsOff ? ` (${byAgent.length} by the agent, hands-off — for the owner's review)` : ''} (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
+  console.log(`chrome-compare: ${errors.length} error(s), ${warns.length} warning(s)${infos.length ? `, ${infos.length} info` : ''}, ${decided.length} decided${handsOff ? ` (${byAgent.length} by the agent, hands-off — for the owner's review)` : ''} (profile ${profile}, widths ${widths.join(',')})${out ? ` → ${out}` : ''}`);
   process.exit(errors.length ? 2 : 0);
 }
 

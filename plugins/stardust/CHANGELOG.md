@@ -27,6 +27,11 @@ a sibling run fixed its findings in code instead. Touches #132 (the header contr
   agent-signed entry, written atomically; the same entry again changes nothing, a changed decision or reason
   replaces it, a site owner's entry is kept; refused in an attended run (exit 3, the owner sentence), usage exit 1.
 - **qa's `chrome` check** applies the same rule; its message names an agent's decision for the owner's review.
+- **A hide-list offset is a measurement artefact, not an error:** when the panels' top edges differ by the height of a
+  region hidden at that width (±2 px, from the records' `hide.perWidth`), the panels are as wide and the shared,
+  top-aligned crop area is within the bar, the `panel-visual` finding is `info` with `evidence: { kind: "hide-offset",
+  region, h, dy, shared }`; a shared area over the bar stays an error and names the offset. chrome-compare prints
+  `info` findings (⚪) and counts them (an `info` count beside `error` and `warn`).
 - **The owner report** lists "decisions the agent took" — every `decidedByAgent` entry (diff/SKILL.md).
 - done-check is unchanged: it reads `findings[].decided`, which an accepted agent decision sets.
 

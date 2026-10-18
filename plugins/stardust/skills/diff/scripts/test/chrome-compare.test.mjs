@@ -4,16 +4,18 @@
 // motion and scroll states under `replica` only, search typeahead, and decisions: a site owner's in an attended run;
 // in a hands-off run (state.json handsOff) an agent's too, with a reason of ≥ 40 characters, listed in decidedByAgent;
 // the `decide` subcommand writes the agent's entry once; the one rule reads the same in --help and the three docs;
+// a crop difference the hide list explains (panel tops a hidden region's height apart, shared area within the bar) is
+// info with its evidence (the pixel part runs where pngjs + pixelmatch are installed);
 // hide lists: records explored with different ones (or not the expected --hide / presence.json one) are one error; the
 // site-wide stardust/replica/presence.json sets the expected list with no flag (and names itself in the verdict).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-compare.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { DECISION_RULE, applyDecisions, compareDocs, compareHide, findingKey, pairControls } from '../chrome-compare.mjs';
+import { DECISION_RULE, applyDecisions, compareDocs, compareHide, findingKey, hideOffset, pairControls, visualFindings } from '../chrome-compare.mjs';
 
 let failed = 0;
 const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -140,6 +142,45 @@ check('hide: none anywhere → compareDocs returns { findings, visual } as befor
   assert.deepEqual(compareHide(source, source, []), { hide: null, finding: null });
 });
 
+// hide-list offset: an in-flow region hidden after load leaves a panel the source's script pinned at the region's height
+const shot = (d, rect) => { const x = structuredClone(d); Object.assign(x.widths[1440].controls[0].actions.hover, { shot: 'shop.png' }); x.widths[1440].controls[0].actions.hover.panel.rect = rect; return x; };
+check('compareDocs: each crop pair carries both panel rects and the hidden regions\' heights at its width (either record, h > 0)', () => {
+  const s = shot(hid(source, ['.geo-bar']), [0, 160, 1440, 600]); s.hide.perWidth = { 1440: [{ sel: '.geo-bar', n: 1, h: 88 }] };
+  const b = shot(hid(source, ['.geo-bar']), [0, 72, 1440, 688]); b.hide.perWidth = { 1440: [{ sel: '.geo-bar', n: 0, h: 0 }] };
+  const [pair] = compareDocs(s, b).visual;
+  assert.deepEqual([pair.srcRect, pair.buildRect, pair.hidden], [[0, 160, 1440, 600], [0, 72, 1440, 688], [{ sel: '.geo-bar', h: 88 }]]);
+});
+check('hideOffset: panel tops 88 px apart = a hidden region\'s height (±2 px), same panel width → the offset, judged on the shared area', () => {
+  const hidden = [{ sel: '.geo-bar', h: 88 }];
+  assert.deepEqual(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 73, 1440, 688], hidden, shared: 0.004, bar: 0.02 }), { region: '.geo-bar', h: 88, dy: 87, shared: 0.004, within: true });
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 72, 1440, 688], hidden, shared: 0.05, bar: 0.02 }).within, false, 'a shared area over the bar stays an error');
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 110, 1440, 688], hidden, shared: 0, bar: 0.02 }), null, '50 px is no hidden height');
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 72, 1200, 688], hidden, shared: 0, bar: 0.02 }), null, 'another panel width is not an offset');
+  assert.equal(hideOffset({ srcRect: [0, 160, 1440, 600], buildRect: [0, 72, 1440, 688], hidden: [], shared: 0, bar: 0.02 }), null, 'nothing hidden');
+  assert.equal(hideOffset({ srcRect: null, buildRect: [0, 72, 1440, 688], hidden, shared: 0, bar: 0.02 }), null);
+});
+const deps = await (async () => { try { const { createRequire } = await import('node:module'); const req = createRequire(join(process.cwd(), 'package.json')); const m = await import(req.resolve('pngjs')); req.resolve('pixelmatch'); return { PNG: m.PNG || m.default.PNG }; } catch { return null; } })();
+if (!deps) console.log('skip  hide-offset pixels: visualFindings and the CLI ⚪ line (pngjs + pixelmatch not installed where this runs)');
+else {
+  const shots = mkdtempSync(join(tmpdir(), 'chrome-crops-'));
+  const png = (name, w, h, paint) => { const p = new deps.PNG({ width: w, height: h }); for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) { const i = (y * w + x) * 4; const c = paint(x, y); p.data[i] = c; p.data[i + 1] = c; p.data[i + 2] = c; p.data[i + 3] = 255; } writeFileSync(join(shots, name), deps.PNG.sync.write(p)); };
+  const stripes = (x, y) => ((Math.floor(y / 10) % 2) ? 40 : 220);
+  png('src.png', 100, 120, stripes); png('build.png', 100, 208, stripes); png('other.png', 100, 208, (x, y) => (y < 60 ? 0 : stripes(x, y)));
+  const pair = (build) => ({ width: 1440, path: 'Shop', action: 'hover', src: 'src.png', build, srcRect: [0, 160, 100, 120], buildRect: [0, 72, 100, 208], hidden: [{ sel: '.geo-bar', h: 88 }] });
+  const out = await visualFindings([pair('build.png'), pair('other.png')], { srcDir: shots, buildDir: shots, bar: 0.02 });
+  check('visualFindings: a crop whose size differs by the hide offset but whose shared area matches is info, with its evidence', () => {
+    assert.deepEqual([out[0].id, out[0].severity], ['panel-visual', 'info']);
+    assert.match(out[0].detail, /shared area 0\.0%.*the source panel sits 88px lower than the build's — the height of the hidden region \.geo-bar \(88px\): a hide-list offset, a measurement artefact/);
+    assert.deepEqual(out[0].evidence, { kind: 'hide-offset', region: '.geo-bar', h: 88, dy: 88, shared: 0 });
+    assert.equal(out[0].srcRect, undefined, 'the pair\'s inputs are not in the finding');
+  });
+  check('visualFindings: the same offset with a differing shared area stays an error, naming the offset', () => {
+    assert.equal(out[1].severity, 'error');
+    assert.match(out[1].detail, /the offset equals the hidden region \.geo-bar \(88px\), but the shared area differs by \d+\.\d%/);
+  });
+  rmSync(shots, { recursive: true });
+}
+
 const COMPARE = fileURLToPath(new URL('../chrome-compare.mjs', import.meta.url));
 const dir = mkdtempSync(join(tmpdir(), 'chrome-compare-'));
 const put = (name, d) => { const f = join(dir, name); writeFileSync(f, JSON.stringify(d)); return f; };
@@ -220,7 +261,7 @@ check('CLI hands-off: an agent decision counts as decided (exit 0); the verdict 
     + `chrome-compare: 0 error(s), 0 warning(s), 1 decided (1 by the agent, hands-off — for the owner's review) (profile replica, widths 1440) → ${v}\n`);
   const verdict = JSON.parse(readFileSync(v, 'utf8'));
   assert.equal(verdict.handsOff, true);
-  assert.deepEqual(verdict.counts, { error: 0, warn: 0, decided: 1, decidedByAgent: 1 });
+  assert.deepEqual(verdict.counts, { error: 0, warn: 0, info: 0, decided: 1, decidedByAgent: 1 });
   assert.deepEqual(verdict.decidedByAgent, [{ key: KEY, decision: 'accept', reason: REASON, at: agentEntry().at }]);
   assert.equal(verdict.findings.find((f) => f.key === KEY).decided.agent, true, 'done-check reads findings[].decided');
 });
@@ -233,7 +274,7 @@ check('CLI attended (--state with handsOff false, or no state file): the agent d
   assert.match(r.stdout, /^🟡 decision-invalid@0 \(decisions\) — ignored: state-missing@1440 search \[type\] — an attended run: only the site owner clears a finding/m);
   assert.doesNotMatch(r.stdout, /decided by the agent/);
   const verdict = JSON.parse(readFileSync(v, 'utf8'));
-  assert.deepEqual([verdict.handsOff, verdict.counts, verdict.decidedByAgent], [false, { error: 1, warn: 1, decided: 0, decidedByAgent: 0 }, []]);
+  assert.deepEqual([verdict.handsOff, verdict.counts, verdict.decidedByAgent], [false, { error: 1, warn: 1, info: 0, decided: 0, decidedByAgent: 0 }, []]);
   const hands = projectWith('state-flag', { handsOff: true }, null);
   assert.equal(cliIn(root, plain, noTa, '--state', join(hands, 'stardust', 'state.json')).status, 0, '--state names the state file');
   assert.equal(cliIn(projectWith('no-state', null, [agentEntry()]), plain, noTa).status, 2, 'no state file: attended');
@@ -275,6 +316,25 @@ check('decide: refused in an attended run (exit 3, the owner sentence, nothing w
   }
   assert.equal(existsSync(join(hands, 'stardust', 'chrome', 'header-decisions.json')), false);
 });
+if (deps) {
+  check('CLI: a hide-offset crop is printed as a ⚪ info line and counted as info, never an error (exit 0)', () => {
+    const root = projectWith('offset', null, null);
+    symlinkSync(join(process.cwd(), 'node_modules'), join(root, 'node_modules')); writeFileSync(join(root, 'package.json'), '{}');
+    const sd = join(root, 'src-shots'); const bd = join(root, 'build-shots'); mkdirSync(sd); mkdirSync(bd);
+    const png = (f, h) => { const p = new deps.PNG({ width: 100, height: h }); for (let i = 0; i < p.data.length; i += 4) { const c = (Math.floor(i / 400 / 10) % 2) ? 40 : 220; p.data[i] = c; p.data[i + 1] = c; p.data[i + 2] = c; p.data[i + 3] = 255; } writeFileSync(f, deps.PNG.sync.write(p)); };
+    png(join(sd, 'shop.png'), 120); png(join(bd, 'shop.png'), 208);
+    const s = shot(hid(source, ['.geo-bar']), [0, 160, 100, 120]); s.hide.perWidth = { 1440: [{ sel: '.geo-bar', n: 1, h: 88 }] }; s.shots = sd;
+    const b = shot(hid(source, ['.geo-bar']), [0, 72, 100, 208]); b.shots = bd;
+    const v = join(root, 'parity.json');
+    const r = cliIn(root, put('offset-src.json', s), put('offset-build.json', b), '--json', v);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    assert.match(r.stdout, /^⚪ panel-visual@1440 Shop \[hover\] — open-state crop differs by 42\.3% .*a hide-list offset, a measurement artefact$/m);
+    assert.match(r.stdout, /^chrome-compare: 0 error\(s\), 0 warning\(s\), 1 info, 0 decided \(profile replica, widths 1440\) → /m);
+    const verdict = JSON.parse(readFileSync(v, 'utf8'));
+    assert.equal(verdict.counts.info, 1);
+    assert.equal(verdict.findings[0].evidence.kind, 'hide-offset');
+  });
+}
 check('the one rule: DECISION_RULE reads the same in --help, diff/SKILL.md, the handoff contract and replica/SKILL.md', () => {
   const norm = (s) => s.replace(/\s+/g, ' ');
   assert.ok(norm(cli('--help').stdout).includes(norm(DECISION_RULE)), '--help');

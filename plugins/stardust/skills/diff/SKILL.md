@@ -165,6 +165,8 @@ offset); chrome-compare counts it as decided and lists it in `decidedByAgent` fo
 run (`handsOff` false or absent) only the site owner clears a finding (`by`, `at`); an agent-signed entry is ignored
 and reported. A site owner's entry (`{ finding: "<key or prefix*>", decision, reason, by, at }`) counts in both modes
 and wins over the agent's for the same key. A proposals file is no decision: each proposal becomes a `decide` or a fix.
+A crop difference the hide list explains — the panels' tops a hidden region's height apart, the shared area within
+the bar — is `info` with its `evidence`, never an error.
 
 **Decisions the agent took (for the owner report).** The run's final report — rollout's `H-report`, replica's
 `handoff end` detail — lists every `decidedByAgent` entry of `stardust/chrome/header-parity.json` (key, decision,
