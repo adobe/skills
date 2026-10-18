@@ -27,6 +27,15 @@ freshness check caught it, and nothing re-ran it. done-check counted the same he
   line. The handoff contract's gap-closure exit re-runs the export before `handoff end` when an input changed.
 - **Header gaps counted once.** `header_parity_errors` is left out when `header_parity` already names the same
   undecided errors; for another `header_parity` cause it stays.
+- **A planned page the source no longer serves leaves with a record.** `state.mjs exclude <slug…> --reason "<why>"`
+  writes `excluded { reason, at }` on the page (`--url <url>` lists one `init` never had in a top-level
+  `excluded[]`); `inventory.mjs` moves it out of `pages[]` into a `pages.json` `excluded[]` row (`status:
+  excluded`, the key only when there is one), never counted in a denominator, a pass or a fail; done-check prints
+  `info: pages_excluded:N` (JSON `info[]`), never a gap. In a recorded run such a page vanished with no record.
+- **A block is pending only when delivered without a conversion record** (`workspace-manifest.mjs`
+  `pendingBlocks`): one manifest placeholders line and `info: blocks_pending:N` in done-check; the C-deliver unit
+  checklist records each converted block (`update-coverage.mjs --block`) first. The runner's count still reads
+  `rollout.json` `lastRun.blocks.pending`.
 
 ## 0.36.0 — local integration for the next recorded run (not a release)
 
