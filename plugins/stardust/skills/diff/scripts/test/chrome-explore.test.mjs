@@ -7,7 +7,13 @@
 // parsing and the effective list, with the site-wide stardust/replica/presence.json read by default and merged under
 // --presence (pure; a malformed one exits 1 before any browser); the CLI on a header with an in-flow location bar (its
 // own button inside the header root) records `hide`, prints the hidden line and never records the bar's button — by
-// --hide, by --presence and by the site file alone (browser).
+// --hide, by --presence and by the site file alone (browser). Pollution guard: sampleDelta (identical 0, a changed link
+// set or image count over the bar, one side closed 1, the crop part skipped without crops), unstableAsWarn (an error on
+// an unstable source state, its close paths and its children becomes a warning; stable states, other widths and warnings
+// untouched), the `, <n> unstable` summary and the stability line, --bar / --no-repeat parsing (pure); cropRatio as
+// chrome-compare counts it, the rich fixture's top-level states repeated on a fresh page and all stable, a header whose
+// panel holds hydration placeholder content on its first load only: unstable, re-sampled, settled on the real links,
+// named in the header and on stdout — and with --no-repeat the skip recorded instead (browser).
 // Run: node plugins/stardust/skills/diff/scripts/test/chrome-explore.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -16,7 +22,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { controlKind, effectiveHide, exploreWidth, hideArgs, normName, summarize } from '../chrome-explore.mjs';
+import { controlKind, cropDeps, cropRatio, effectiveHide, exploreWidth, hideArgs, normName, sampleDelta, stabilityLine, summarize, unstableAsWarn } from '../chrome-explore.mjs';
 import { compareDocs, visualFindings } from '../chrome-compare.mjs';
 import { serve } from './chrome-fixtures.mjs';
 
@@ -39,6 +45,48 @@ await check('summarize: controls, states, distinct links, depth, truncation', ()
   const lines = summarize({ widths: { 1440: { controls: [{ role: 'toggle', kind: 'menu', actions: { hover: s, click: s }, children: [{ role: 'toggle', kind: 'menu', actions: { hover: { opened: true, panel: { links: [{ text: 'C', href: '/c' }] } } } }] }, { role: 'link', kind: 'link', actions: {} }], truncated: 'depth 4 at Shop' } } });
   assert.equal(lines[0], '1440: 1 controls (1 menu), 3 states, 3 links, depth 2, TRUNCATED at depth 4 at Shop');
 });
+const sample = (links, extra = {}) => ({ opened: true, panel: { links: links.map((h) => ({ text: h.toUpperCase(), href: `/${h}` })), headings: ['Menu'], images: 0, inputs: [], ...extra } });
+await check('sampleDelta: identical 0, a changed link set over the bar, a changed image count, one side closed 1; the crop part skipped without crops', () => {
+  assert.deepEqual(sampleDelta(sample(['a', 'b', 'c']), sample(['a', 'b', 'c'])), { delta: 0, structural: 0, crop: 'skipped: no crops' });
+  // {menu, a, b, c, d}: c and d differ
+  assert.deepEqual(sampleDelta(sample(['a', 'b', 'c']), sample(['a', 'b', 'd'])), { delta: 0.4, structural: 0.4, crop: 'skipped: no crops' });
+  assert.equal(sampleDelta(sample(['a']), sample(['a'], { images: 1 })).delta, 0.3333);
+  assert.equal(sampleDelta(sample(['a']), sample(['a'], { inputs: ['search'] })).delta, 0.3333);
+  assert.deepEqual(sampleDelta(sample(['a']), sample(['a']), { cropRatio: 0.05 }), { delta: 0.05, structural: 0, crop: 0.05 });
+  assert.deepEqual(sampleDelta(sample(['a']), sample(['a']), { cropRatio: 'pngjs + pixelmatch not installed in this project' }).crop, 'skipped: pngjs + pixelmatch not installed in this project');
+  assert.equal(sampleDelta(sample(['a']), null).delta, 1);
+  assert.equal(sampleDelta(sample(['a']), { opened: false, navigates: 'http://x/a' }).delta, 1);
+});
+const open = { opened: true, panel: { links: [], headings: [], images: 0, inputs: [] } };
+const marked = { ...open, unstable: { delta: 1, resample: 'agrees', resampleDelta: 0 } };
+const srcDoc = { widths: { 1440: { controls: [
+  { name: 'Products', kind: 'menu', role: 'toggle', actions: { hover: null, click: marked, key: open }, children: [{ name: 'Tab', kind: 'menu', role: 'toggle', actions: { hover: open } }] },
+  { name: 'Help', kind: 'menu', role: 'toggle', actions: { hover: marked, click: open }, children: [{ name: 'Topic', kind: 'menu', role: 'toggle', actions: { click: open } }] },
+  { name: '', kind: 'cart', role: 'toggle', actions: { click: marked } },
+] }, 390: { controls: [{ name: 'Products', kind: 'menu', role: 'toggle', actions: { click: open } }] } } };
+await check('unstableAsWarn: an error on an unstable source state, its close paths and its children becomes a warning; stable states, other widths and warnings untouched', () => {
+  const f = (path, action, id, severity = 'error', width = 1440) => ({ width, path, ...(action ? { action } : {}), id, severity, detail: 'd' });
+  const findings = [f('Products', 'click', 'panel-content'), f('Products', null, 'close-path'), f('Products > Tab', 'hover', 'state-missing'), f('Products', 'key', 'keyboard'),
+    f('Products', 'click', 'panel-content', 'error', 390), f('Products', 'click', 'link-href', 'warn'), f('Help', 'hover', 'motion'), f('Help', null, 'close-path'), f('Help > Topic', 'click', 'state-missing'), f('cart', 'click', 'state-missing')];
+  const before = JSON.stringify(findings);
+  const out = unstableAsWarn(findings, srcDoc);
+  assert.equal(JSON.stringify(findings), before, 'the input is not changed');
+  const warned = out.map((x) => (x.unstable ? `${x.width} ${x.path} ${x.action || '-'} ${x.id}` : null)).filter(Boolean);
+  // Help's opener (click before hover, as chrome-compare's) is stable: its close paths and children are not the hover state's
+  assert.deepEqual(warned, ['1440 Products click panel-content', '1440 Products - close-path', '1440 Products > Tab hover state-missing', '1440 Help hover motion', '1440 cart click state-missing']);
+  assert.deepEqual(out[0], { width: 1440, path: 'Products', action: 'click', id: 'panel-content', severity: 'warn', unstable: true, detail: 'd (source state unstable: sampled differently on a fresh page)' });
+  assert.deepEqual([out[3], out[4], out[5], out[7], out[8]], [findings[3], findings[4], findings[5], findings[7], findings[8]]);
+  assert.deepEqual(unstableAsWarn(findings, { widths: {} }), findings);
+});
+await check('summarize counts unstable states; stabilityLine names them, the clean check, a crop skip and a guard skip', () => {
+  assert.match(summarize(srcDoc).find((l) => l.startsWith('1440:')), /^1440: .*, 3 unstable$/);
+  assert.match(summarize(srcDoc).find((l) => l.startsWith('390:')), /depth 1$/);
+  assert.equal(stabilityLine({ stability: { bar: 0.02, checked: 3, unstable: ['1440 Products [click]', '390 Menu [key]'] } }), 'UNSTABLE: 2 state(s) sampled differently on a fresh page (1440 Products [click], 390 Menu [key]) — contract findings on them are warnings');
+  assert.equal(stabilityLine({ stability: { bar: 0.02, checked: 3, unstable: [] } }), 'stability: 3 top-level state(s) repeated on a fresh page, all within the bar 0.02');
+  assert.equal(stabilityLine({ stability: { bar: 0.05, checked: 3, unstable: [], crops: 'skipped: pngjs + pixelmatch not installed in this project' } }), 'stability: 3 top-level state(s) repeated on a fresh page, all within the bar 0.05 (crops skipped: pngjs + pixelmatch not installed in this project)');
+  assert.equal(stabilityLine({ stability: 'skipped: --no-repeat' }), 'stability skipped: --no-repeat — first samples were not repeated on a fresh page');
+  assert.equal(stabilityLine({ widths: {} }), null);
+});
 await check('hideArgs: --hide repeatable comma lists; --presence needs --slug; a flag without its value is a usage error', () => {
   assert.deepEqual(hideArgs(['https://x/', 'o.json', '--hide', '.geo-bar, .promo-strip', '--plain', '--hide', '.geo-bar,,.x']), { hide: ['.geo-bar', '.promo-strip', '.x'], presence: null, slug: null });
   assert.deepEqual(hideArgs(['u', 'o', '--presence', 'p.json', '--slug', 'home']), { hide: [], presence: 'p.json', slug: 'home' });
@@ -58,6 +106,11 @@ await check('effectiveHide: --hide first, then presence.json "*" and the slug (h
   const none = effectiveHide({ presence: join(pure, 'none.json'), slug: 'home', site: null });
   assert.deepEqual([none.entries, none.found], [[], false]); assert.match(none.note, /not found/);
   assert.deepEqual(effectiveHide({ hide: [], site: null }), { entries: [], presence: null, found: null, note: null });
+});
+await check('CLI: --no-repeat takes no value (the URL after it is read); --bar outside [0, 1] exits 1 before any browser or file', () => {
+  const r = spawnSync(process.execPath, [EXPLORE, '--no-repeat', 'http://127.0.0.1:9/', join(pure, 'x.json'), '--bar', '2'], { cwd: pure, encoding: 'utf8' });
+  assert.equal(r.status, 1); assert.match(r.stderr, /--bar needs a ratio in \[0, 1\]/);
+  assert.ok(!existsSync(join(pure, 'x.json')) && !existsSync(join(pure, 'stardust')), 'nothing written');
 });
 await check('CLI: --presence without --slug exits 1 before any browser or file', () => {
   const r = spawnSync(process.execPath, [EXPLORE, 'http://127.0.0.1:9/', join(pure, 'x.json'), '--presence', join(pure, 'presence.json')], { cwd: pure, encoding: 'utf8' });
@@ -117,7 +170,8 @@ else {
       const ctx = await browser.newContext({ viewport: { width, height: width < 768 ? 844 : 900 } });
       const page = await ctx.newPage();
       const gotoFn = async (p, u) => { await p.goto(u, { waitUntil: 'load' }); await p.waitForTimeout(200); };
-      doc.widths[width] = await exploreWidth(page, { url: doc.url, width, rootSel: null, maxStates: 400, maxDepth: 4, probe: 'shoes', shotsDir: doc.shots, settleMs: 150, gotoFn });
+      // the pollution guard on the rich record only (it proves the states stable; the copies need not pay for it again)
+      doc.widths[width] = await exploreWidth(page, { url: doc.url, width, rootSel: null, maxStates: 400, maxDepth: 4, probe: 'shoes', shotsDir: doc.shots, settleMs: 150, gotoFn, repeat: name === 'rich' });
       await ctx.close();
     }
     writeFileSync(join(dir, `${name}.json`), JSON.stringify(doc));
@@ -143,6 +197,28 @@ else {
     const shop = burger.children.find((c) => c.name === 'Shop');
     assert.ok(shop.actions.click.opened); assert.ok(shop.children.some((c) => c.name === 'Back' && c.returns));
   });
+  await check('rich: every top-level open state repeated on a fresh page agrees with its first sample, crops compared — nothing unstable', () => {
+    for (const w of [1440, 390]) {
+      const st = rich.widths[w].stability;
+      const opened = rich.widths[w].controls.reduce((n, c) => n + Object.values(c.actions || {}).filter((x) => x && x.opened).length, 0);
+      assert.ok(opened > 3, `${w}: ${opened} top-level states`);
+      assert.deepEqual(st, { checked: opened, unstable: [] }, `${w}: crops compared, nothing unstable`);
+      const flagged = []; const walk = (cs) => { for (const c of cs || []) { for (const [a, x] of Object.entries(c.actions || {})) if (x && x.unstable) flagged.push(`${c.name} [${a}]`); walk(c.children); } };
+      walk(rich.widths[w].controls); assert.deepEqual(flagged, [], `${w}: no state marked`);
+    }
+    assert.equal('stability' in rich2.widths[1440], false, 'repeat: false runs no guard');
+  });
+  const deps = await cropDeps();
+  if (!deps) console.log('- cropRatio skipped: no pngjs + pixelmatch in this project');
+  else {
+    await check('cropRatio counts as chrome-compare does: identical 0, half the pixels 0.5, a size difference over the union box', () => {
+      const png = (w, h, paint) => { const p = new deps.PNG({ width: w, height: h }); for (let i = 0; i < w * h; i += 1) p.data.set([...paint(i % w), 255], i * 4); return deps.PNG.sync.write(p); };
+      const red = png(10, 10, () => [200, 0, 0]);
+      assert.equal(cropRatio(red, png(10, 10, () => [200, 0, 0]), deps), 0);
+      assert.equal(cropRatio(red, png(10, 10, (x) => (x < 5 ? [200, 0, 0] : [0, 0, 200])), deps), 0.5);
+      assert.equal(cropRatio(red, png(10, 20, () => [200, 0, 0]), deps), 0.5);
+    });
+  }
   await check('identical copy compares clean, crops included; the stock header fails on behaviour, content, motion, crops', async () => {
     const same = compareDocs(rich, rich2);
     assert.deepEqual(same.findings, []);
@@ -212,6 +288,34 @@ else {
     assert.deepEqual(d.hide, { list: ['.geo-bar'], presence: null, site: 'stardust/replica/presence.json', perWidth: { 360: [{ sel: '.geo-bar', source: 'site presence.json', n: 1, h: 268 }] } });
     assert.ok(!names(d, 360).includes('Change location') && names(d, 360).includes('About'), names(d, 360).join(', '));
     assert.match(bySite.out, /^chrome-explore 360: hidden \.geo-bar ×1 \(268px\) \[site presence\.json\]$/m);
+  });
+  // the server counts loads per URL: the placeholder panel is on each query's first load only
+  const hydrateOut = join(dir, 'hydrate.json');
+  const byGuard = await cli([`${srv.origin}/hydrate?run=guard`, hydrateOut, '--width', '1440', '--probe', 'shoes', '--plain', '--shots', join(dir, 'hydrate')]);
+  await check('CLI on a header whose panel holds placeholder content on the first load: both states unstable, re-sampled, settled on the real links; the header and stdout name them', () => {
+    assert.equal(byGuard.code, 0, byGuard.err);
+    const d = JSON.parse(readFileSync(hydrateOut, 'utf8'));
+    const products = d.widths[1440].controls.find((c) => c.name === 'Products');
+    for (const a of ['click', 'key']) {
+      const s = products.actions[a];
+      assert.ok(s.unstable && s.unstable.delta > 0.02 && s.unstable.resample === 'agrees' && s.unstable.resampleDelta <= 0.02, `${a}: ${JSON.stringify(s.unstable)}`);
+      assert.deepEqual(s.panel.links.map((l) => new URL(l.href).pathname), ['/products/0', '/products/1', '/products/2', '/products/3'], `${a}: the settled sample's links`);
+      assert.deepEqual(s.panel.headings, ['Products']);
+      assert.ok(s.shot && existsSync(join(dir, 'hydrate', s.shot)), `${a}: the settled crop ${s.shot}`);
+    }
+    assert.deepEqual(d.stability, { bar: 0.02, checked: 2, unstable: ['1440 Products [click]', '1440 Products [key]'] });
+    assert.match(byGuard.out, /^chrome-explore 1440: 1 controls \(1 menu\), 2 states, 4 links, depth 1, 2 unstable$/m);
+    assert.match(byGuard.out, /^chrome-explore UNSTABLE: 2 state\(s\) sampled differently on a fresh page \(1440 Products \[click\], 1440 Products \[key\]\) — contract findings on them are warnings$/m);
+  });
+  const offOut = join(dir, 'hydrate-off.json');
+  const byOff = await cli([`${srv.origin}/hydrate?run=off`, offOut, '--no-repeat', '--width', '1440', '--probe', 'shoes', '--plain', '--shots', join(dir, 'hydrate-off')]);
+  await check('CLI --no-repeat: the skip is recorded in the header and printed; the placeholder panel stays in the contract, unmarked', () => {
+    assert.equal(byOff.code, 0, byOff.err);
+    const d = JSON.parse(readFileSync(offOut, 'utf8'));
+    assert.equal(d.stability, 'skipped: --no-repeat');
+    const s = d.widths[1440].controls.find((c) => c.name === 'Products').actions.click;
+    assert.deepEqual([s.panel.headings, 'unstable' in s], [['Loading'], false]);
+    assert.match(byOff.out, /^chrome-explore stability skipped: --no-repeat — first samples were not repeated on a fresh page$/m);
   });
   await browser.close(); srv.close(); rmSync(dir, { recursive: true });
 }
