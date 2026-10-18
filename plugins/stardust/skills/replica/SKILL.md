@@ -193,7 +193,11 @@ Full contract: `reference/preserve-direction.md`. Summary:
    per-visitor in-flow region's entry (`kind: per-visitor-region`) carries its
    `selector`; write it with `node stardust/scripts/replica/presence.mjs add --hide <sel> --reason <R-nn> --verify <url>`
    — refused with candidates when it matches nothing live (`presence.mjs suggest <url>`
-   lists them: the in-flow blocks above the header).
+   lists them: the in-flow blocks above the header). Every other capture setting
+   goes there too, never only on a command line, so the roster gate reads it:
+   `presence.mjs add --dismiss <sel>` (an extra closer), `--pin <sel> --state <label>`
+   (a rotator pinned), `--allow clip|per-visitor-dialog=<sel>` — each with
+   `--reason <R-nn>` (and `--slug <s>` for one page).
 4. **Target breakpoints (only with `--target-breakpoints`)**, before any
    CSS exists (`reference/preserve-direction.md` § 4): persist the list, map
    each source breakpoint to a step by intent in
