@@ -54,7 +54,7 @@
  *   deliver (nothing written).
  * Needs migrate's encode/dom.mjs: skills/migrate/scripts/encode/ (plugin) or stardust/scripts/migrate/encode/ (project copy).
  */
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { daPath, deliveredUrl } from './eds-path.mjs';
@@ -332,15 +332,19 @@ const body = `${['<body>', '<header></header>', '<main>', ...metaHtml, ...sectio
 
 const target = resolve(out);
 let written;
+let tmp;
 try {
   written = !(existsSync(target) && readFileSync(target, 'utf8') === body);
   if (written) {
     mkdirSync(dirname(target), { recursive: true });
-    const tmp = `${target}.tmp-${process.pid}`;
+    tmp = `${target}.tmp-${process.pid}`;
     writeFileSync(tmp, body);
     renameSync(tmp, target);
   }
-} catch (e) { fail(1, `proto-to-doc: cannot write ${out} (${e.code || e.message})`); }
+} catch (e) {
+  if (tmp) { try { rmSync(tmp, { force: true }); } catch { /* best effort: do not leave the temp file behind */ } }
+  fail(1, `proto-to-doc: cannot write ${out} (${e.code || e.message})`);
+}
 
 const blocks = sections.flat().filter((x) => x.cls).map((b) => ({ name: b.cls, rows: b.rows.length, cells: b.rows.reduce((n, r) => n + r.length, 0) }));
 const listed = [...unmapped].sort();
