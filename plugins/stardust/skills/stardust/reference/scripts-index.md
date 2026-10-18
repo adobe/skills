@@ -33,6 +33,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `diff/content-presence.mjs` — visible content per band + control state — `<origin> <served> [--variable <selO=selE,…>] [--json [f]] [--origin-cache <json>] [--hide <sel,…>]`; exit 2 = MISSING/HIDDEN link or heading
 - `diff/content-inventory.mjs` — library (classifier copy), no CLI
 - `diff/diff-profiles.mjs` — library (profiles copy), no CLI
+- `diff/dom-probe.mjs` — boxes, DOM skeleton, heading/landmark outline under CSS roots; two documents compared; never gate evidence — `<url|file> [--selector <css>] [--depth 4] [--compare <url|file>] [--json [f.json]]`
 - `diff/live-session.mjs` — library (hardened session; one consent table; `overlayLeft`; `--headed` = window-free real Chrome; a 2xx denial page = bot challenge; `dismissOverlays` closes open dialogs — the scroll lock a closed dialog leaves is released (overflow-y visible, a hidden overflow-x clipped), only when the pass closed one and none survives; client hints from the browser's UA metadata (CDP, set from the UA string) on every live page, `STARDUST_LIVE_HINTS=native` opts out; `launchChromium` prefers the full Chromium build; the nav-timeout floor above), no CLI
 - `diff/measure-live.mjs` — library (settle + rect/type measurement for gate probes), no CLI
 - `diff/page-probe.mjs` — the one ad-hoc look at a page, never gate evidence — `<url> [--hide <sel>] [--click <sel>] [--eval <js>] [--shot <png>]`; `--sbs <a> <b> <out>`; images are capped JPEGs, `--full-res` keeps the PNG

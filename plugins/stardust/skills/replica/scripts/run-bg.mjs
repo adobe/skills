@@ -228,7 +228,7 @@ const LOCK_CANDIDATES = [resolve(dirname(SELF), '../stardust/browser-lock.mjs'),
 // them. A job whose argv names one takes a machine-wide slot unless --no-lock.
 export const BROWSER_SCRIPTS = new Set([
   'ai-readability.mjs', 'block-roundtrip.mjs', 'ew-editability-probe.mjs', 'qa-gate.mjs', 'render-harness.mjs', 'section-schema.mjs', 'style-fingerprint.mjs', // deploy
-  'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'page-probe.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
+  'chrome-explore.mjs', 'clip-probe.mjs', 'content-diff.mjs', 'content-presence.mjs', 'dom-probe.mjs', 'page-probe.mjs', 'unit-geometry.mjs', 'visual-diff.mjs', // diff
   'dynamics-check.mjs', 'dynamics-detect.mjs', 'snapshot-api.mjs', 'snapshot-forms.mjs', // dynamics
   'crawl.mjs', 'media-harvest.mjs', 'style-census.mjs', // extract
   'qa.mjs', // qa
