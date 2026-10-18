@@ -827,7 +827,7 @@ check('without a mapping a fork reads the page JSON slots (slotSource page-json)
   const r = run(['render', 'trip-one', '--slots', 'mapping']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused trip-one: strict slots — the block mapping is unusable: stardust\/rollout\/workspace\/mapping\.json is absent — re-run the rollout skill's block-origin\.mjs --verify, then workspace-manifest\.mjs, or pass --slots page-json$/m);
   assert.ok(!has(`${OUT}/trips/one/index.html`) && !has(`${OUT}/trips/one/_meta.json`));
-  const bad = run(['render', 'trip-one', '--slots', 'pagejson']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --slots takes mapping or page-json \(got pagejson\)/);
+  const bad = run(['render', 'trip-one', '--slots', 'pagejson']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --slots takes mapping, page-json or derived \(got pagejson\)/);
   const plain = run(['render', 'guide-alpha', '--force']); assert.equal(plain.status, 0, plain.err);
   assert.doesNotMatch(plain.out, /^slots:/m, 'no mapping in the project: the page JSON path, silently'); assert.equal(json(`${OUT}/guides/alpha/_meta.json`).slotMapSkipped, null);
 });
@@ -1078,6 +1078,51 @@ check('plan --force keeps a recorded decision (hand-authored, a reason) when not
   const r = run(['plan', 'show-one', '--force']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^encode-attempt shows: hand-authored — the show pages are written by hand \(1 page\(s\): show-one\) \(kept from /m);
   assert.equal(json(ENC('shows')).verdict, 'hand-authored'); assert.deepEqual(json(ENC('shows')).pages, ['show-one']);
+});
+
+// ---- the encoder path without a hand-written map: derived slots (fixtures in test/fixtures/derive/) -----------------
+console.log('derived slot map: plan, render, render --from-archetype --capture');
+const DFIX = join(dirname(fileURLToPath(import.meta.url)), 'fixtures', 'derive');
+const dfx = (name) => readFileSync(join(DFIX, name), 'utf8');
+const sF = json(STATE);
+sF.pages.push(page('ferries', '/ferries/', 'approved', 'ferry'), page('ferry-north', '/ferries/north/', 'directed', 'ferry'), page('ferry-south', '/ferries/south/', 'directed', 'ferry'));
+write(STATE, `${JSON.stringify(sF, null, 2)}\n`);
+write(`${P}/ferries-proposed.html`, dfx('ferries-proposed.html'));
+const ferryCap = (slug, title, extra = {}) => write(`stardust/current/pages/${slug}.json`, JSON.stringify({ url: slug === 'ferries' ? 'https://example.test/ferries/' : `https://example.test/ferries/${slug.slice('ferry-'.length)}/`, title, metaDescription: `${title}.`, _provenance: { unsourcedContent: [] }, ...extra }));
+ferryCap('ferries', 'Ferries'); ferryCap('ferry-north', 'North ferries'); ferryCap('ferry-south', 'South ferries');
+for (const s of ['ferries', 'ferry-north', 'ferry-south']) write(`stardust/current/pages/${s}.html`, dfx(`${s}.html`));
+const FERRY_SLOTS = ['body-p', 'hero-h1', 'hero-img', 'hero-p'];
+recordAttempt(tmp, 'ferries', { notAttempted: 'fixture: siblings forked from the archetype' });
+check('render <slug>: a fork whose capture JSON has no slots reads them from its capture HTML through the archetype\'s (slotSource derived), one run line per archetype', () => {
+  const r = run(['render', 'ferry-south']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' ferry-south → ferries\/south\/index\.html {2}\(ferry; fork of ferries via the derived slot map; /m);
+  assert.match(r.out, /^slots: archetype ferries — derived from its capture \(4\/4 slot\(s\) located; page JSON values win\)$/m);
+  const m = mainOf(read(`${OUT}/ferries/south/index.html`));
+  assert.match(m, /<h1 data-slot="hero-h1">Southern crossings<\/h1>/); assert.match(m, /<p data-slot="hero-p">Hourly boats to the south bay\.<\/p>/);
+  assert.match(m, /<img src="https:\/\/example\.test\/content\/media\/ferry-south\.jpg" alt="A boat in the south bay" data-slot="hero-img">/);
+  assert.match(m, /<p data-slot="body-p">South route seats are sold online\.<\/p>/); assert.ok(!/Island ferries|harbour/.test(m), 'no archetype content left');
+  const meta = json(`${OUT}/ferries/south/_meta.json`);
+  assert.equal(meta.slotSource, 'derived'); assert.equal(meta.slotMapSkipped, null);
+  assert.deepEqual(meta.slotMap, { anchor: 'main', capture: 'stardust/current/pages/ferries.html', slots: Object.fromEntries(FERRY_SLOTS.map((n) => [n, 'main'])) });
+  assert.equal(JSON.parse(read('stardust/current/pages/ferry-south.json')).slots, undefined, 'the page JSON is never written');
+  const again = run(['render', 'ferry-south']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged ferry-south → /m);
+});
+check('a page JSON slots key (any value) keeps the page-json source; --slots derived forces the derived one (page JSON values win), refusing a missing capture HTML by name; without the capture HTML today\'s refusal names the derive precondition', () => {
+  ferryCap('ferry-south', 'South ferries', { slots: { 'hero-h1': 'Paged south' } });
+  const paged = run(['render', 'ferry-south']); assert.equal(paged.status, 2);
+  assert.match(paged.err, /^refused ferry-south: strict slots — stardust\/current\/pages\/ferry-south\.json#slots has no value for slot\(s\) body-p, hero-img, hero-p of archetype ferries — /m);
+  const forced = run(['render', 'ferry-south', '--slots', 'derived']); assert.equal(forced.status, 0, forced.err);
+  assert.match(mainOf(read(`${OUT}/ferries/south/index.html`)), /<h1 data-slot="hero-h1">Paged south<\/h1>/);
+  assert.match(mainOf(read(`${OUT}/ferries/south/index.html`)), /<p data-slot="body-p">South route seats are sold online\.<\/p>/);
+  assert.deepEqual(Object.keys(json(`${OUT}/ferries/south/_meta.json`).slotMap.slots), ['body-p', 'hero-img', 'hero-p']);
+  ferryCap('ferry-south', 'South ferries'); rmSync(join(tmp, 'stardust/current/pages/ferry-south.html'));
+  const before = read(`${OUT}/ferries/south/_meta.json`);
+  const missing = run(['render', 'ferry-south', '--slots', 'derived', '--force']); assert.equal(missing.status, 2);
+  assert.match(missing.err, /^refused ferry-south: strict slots — no capture HTML at stardust\/current\/pages\/ferry-south\.html to read the derived slots from — /m);
+  const today = run(['render', 'ferry-south', '--force']); assert.equal(today.status, 2);
+  assert.match(today.err, /^refused ferry-south: strict slots — stardust\/current\/pages\/ferry-south\.json#slots has no value for slot\(s\) body-p, hero-h1, hero-img, hero-p of archetype ferries — add each name to slots \(null when the page has none; extract\/reference\/prep-mode\.md § 4\), or capture the page \(stardust\/current\/pages\/ferry-south\.html is absent\) so its slots derive from the archetype's capture, or pass --source ferry-south=<file>$/m);
+  assert.equal(read(`${OUT}/ferries/south/_meta.json`), before, 'nothing written');
+  write('stardust/current/pages/ferry-south.html', dfx('ferry-south.html'));
 });
 
 // ---- --help ---------------------------------------------------------------------------------

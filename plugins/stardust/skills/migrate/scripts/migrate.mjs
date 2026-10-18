@@ -19,7 +19,7 @@
  *   node migrate.mjs render <slug…|--all> [--force] [--state stardust/state.json]
  *        [--proto-dir stardust/prototypes] [--current stardust/current] [--out stardust/migrated]
  *        [--canon-css <file>] [--inline-canon] [--source <slug>=<file>]…
- *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--slots mapping|page-json]
+ *        [--archetype <slug>=<archetype-slug>]… [--branch-b <slug,…>] [--from-archetype] [--slots mapping|page-json|derived]
  *        [--accept-variance "<reason>"] [--media-map <file>] [--media-ledger <file>]
  *        [--variance-dir <dir>] [--stardust-version <v>]
  *   node migrate.mjs plan <slug…|--all> [--force] [--encoder <file>] [--source <slug>=<file>]…
@@ -77,7 +77,7 @@
  *   Canon CSS: --canon-css, else stardust/canon/canon.css, else the single *canon*.css under
  *   --proto-dir. Per page one line `A  <slug> → <path>  (<type>; n assets, n links, n broken,
  *   n sections)` (a fork adds `fork of <archetype>; `, with --slots mapping `fork of <archetype> via the
- *   block mapping; `), `unchanged` when the recorded shas, the variance record and the slot source match
+ *   block mapping; `, with derived `fork of <archetype> via the derived slot map; `), `unchanged` when the recorded shas, the variance record and the slot source match
  *   (--force overrides), `passthrough` for a non-HTML leaf,
  *   `refused <slug>: strict <n> — <what> — <fix>` on stderr. Page status is NOT advanced
  *   here — that is `state.mjs advance <slug…> --to migrated`.
@@ -144,7 +144,8 @@
  *   (strict slots): no data-slot
  *   inside the archetype's <main> and none derived (the fork would carry the archetype's own content —
  *   mark the typed slots, or pass --source); a slot
- *   name with no key in slots (every missing name listed); a value its element cannot take.
+ *   name with no key in slots (every missing name listed; with no slots key at all the fix names the capture HTML that
+ *   is absent — with both captured the slots derive, below); a value its element cannot take.
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
  *   canonical, hreflang alternate links, og:*, twitter:* and every application/ld+json script
@@ -161,10 +162,16 @@
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
- * Fork slot source (--slots mapping|page-json). Default: page-json when <dirname(state)>/rollout/workspace/mapping.json is
- *   absent; mapping when it is usable (below), has a verified selector for the archetype and both captures exist; else
- *   page-json, never silently — one run line per archetype and reason `slots: archetype <a> — mapping not used
- *   (<reason>); page JSON slots` and the sidecar slotMapSkipped <reason>. An explicit --slots mapping refuses instead.
+ * Fork slot source (--slots mapping|page-json|derived). Default, first that holds: mapping when
+ *   <dirname(state)>/rollout/workspace/mapping.json is usable (below), has a verified selector for the archetype and both
+ *   captures exist; page-json when the page JSON has a `slots` key (any value); derived when it has none and both
+ *   <current>/pages/<archetype>.html and <current>/pages/<slug>.html exist; else page-json. A mapping file not used is never
+ *   silent — one run line per archetype, reason and source `slots: archetype <a> — mapping not used (<reason>); page JSON
+ *   slots` (or `; derived from its capture`) and the sidecar slotMapSkipped <reason>. An explicit --slots mapping or
+ *   derived refuses instead (strict slots; derived: a missing capture HTML, named). derived (slot-map.mjs deriveRecipes):
+ *   mapping mode below with one anchor, the archetype capture's <main> (exactly one, else <body>) — every refusal of
+ *   mapping mode applies, a page JSON value wins per name; one run line per archetype `slots: archetype <a> — derived from
+ *   its capture (<located>/<total> slot(s) located; page JSON values win)`; sourceForked names the derived slot map.
  *   page-json: the page JSON slots above. mapping (slot-map.mjs): the rollout block mapping (the rollout skill's
  *   coverage-contract.md § mapping), read only when rollout/workspace/manifest.json lists its sha256 under outputs
  *   and its generatedAt equals rollout/coverage/pages.json's. Each data-slot of the archetype's <main> is found in the
@@ -216,8 +223,9 @@
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
  *                                    (`variance`: null on A / B, the variance record on A'; `slotSource`: mapping |
- *                                    page-json on a fork, else null; `slotMap`: { mapping, generatedAt, anchors,
- *                                    slots: { name: anchor selector } } of the mapped values, else null;
+ *                                    page-json | derived on a fork, else null; `slotMap`: { mapping, generatedAt, anchors,
+ *                                    slots: { name: anchor selector } } of the mapped values (derived: { anchor,
+ *                                    capture, slots }), else null;
  *                                    `slotMapSkipped`: why a default fork did not use the mapping, else null);
  *                                    a re-render carries the recorded judgments, encode.mjs's
  *                                    `encode` / `audit` keys and `passedOn` over (sourceCurrentSha stays
@@ -239,7 +247,7 @@ import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpat
 import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
+import { anchorsFor, deriveRecipes, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
 import { attemptLine, isAutoNotAttempted, readAttempt, sidecarsBySlug, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -735,7 +743,7 @@ export function deriveSlots(html) {
 
 // The A' fork (exported, pure but for resolveMedia): every data-slot inside the archetype's <main> takes this page's value.
 // → { html, slots: [names placed], decisions: [_driver records] }; throws Refusal (strict slots) when it cannot.
-export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', archetype = 'archetype', capturePath = 'the capture', resolveMedia = null } = {}) {
+export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', archetype = 'archetype', capturePath = 'the capture', resolveMedia = null, deriveHint = null } = {}) {
   const base = capture?.finalUrl || capture?.url || null;
   const resolveRef = resolveMedia || ((ref) => mediaRefFor(ref, { base, map: null, ledger: null }));
   const headed = forkHead(archetypeHtml, capture); // the archetype's own JSON-LD goes before any slot HTML is inserted
@@ -815,7 +823,7 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
     }
     work = splice(work, edits);
   }
-  if (missing.size) throw new Refusal(slug, 'slots', `${capturePath}#slots has no value for slot(s) ${[...missing].sort().join(', ')} of archetype ${archetype}`, `add each name to slots (null when the page has none; extract/reference/prep-mode.md § 4), or pass --source ${slug}=<file>`);
+  if (missing.size) throw new Refusal(slug, 'slots', `${capturePath}#slots has no value for slot(s) ${[...missing].sort().join(', ')} of archetype ${archetype}`, `add each name to slots (null when the page has none; extract/reference/prep-mode.md § 4)${deriveHint ? `, or ${deriveHint}` : ''}, or pass --source ${slug}=<file>`);
   if (problems.length) throw new Refusal(slug, 'slots', `slot value(s) the archetype ${archetype} cannot take: ${problems.join('; ')}`, `fix the value in ${capturePath}#slots or the archetype's markup, or pass --source ${slug}=<file>`);
   work = work.replace(new RegExp(` ${FORK_MARK}="(?:kept|done)"`, 'g'), '');
   const html = headed.slice(0, mi) + open[0] + work + headed.slice(mj);
@@ -896,14 +904,14 @@ export function renderPage(run, page, entry) {
     // A prototype without data-slot marks: its slots derive from its section structure (deriveSlots) instead of a refusal.
     const derived = deriveSlots(archetypeHtml);
     if (derived.slots.length) { archetypeHtml = derived.html; derivedSlots = derived.slots; repeats = derived.repeats; run.slotsDerived.set(archetype.slug, derived.slots); }
-    slotPlan = slotSourceFor(run, page, archetype);
-    if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
+    slotPlan = slotSourceFor(run, page, archetype, capture);
+    if (slotPlan.mode !== 'page-json') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath), slotPlan.mode);
     // A derived slot repeated across containers (a card list) needs one value per container: the fork clones or drops
     // elements, never their containers — a card would land inside its neighbour.
     const given = slotValues(mapped ? mapped.slots : capture?.slots).map;
     const off = Object.entries(repeats).filter(([n, r]) => given.has(n) && given.get(n).length !== r.count);
     if (off.length) throw new Refusal(slug, 'slots', `derived slot(s) of archetype ${archetype.slug} repeat across containers: ${off.map(([n, r]) => `${n} (${r.count} under ${r.where}, ${given.get(n).length} value(s))`).join('; ')}`, 'mark the repeated container in the prototype (replica recreation-procedure.md § Slot markers), or give one value per container');
-    forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
+    forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture), deriveHint: mapped ? null : deriveHintFor(run, page, archetype, capture) });
     sourceHtml = forked.html;
   } else sourceHtml = readFileSync(source, 'utf8');
   const canonDir = join(dirname(run.stateFile), 'canon');
@@ -936,7 +944,7 @@ export function renderPage(run, page, entry) {
   if (!run.inlineCanon && !report.refs.has(run.canon.subpath)) { run.bundler.ensure(run.canon.subpath, [run.canon.file]); report.refs.add(run.canon.subpath); canonLink = `${prefix}assets/${run.canon.subpath}`; }
   // <head>
   const at = nowIso();
-  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? (mapped ? `${toPosix(archetypeSource)} + ${mapped.record.mapping} on ${mapped.capture}${mapped.pageJson ? ` + ${toPosix(capturePath)}#slots` : ''}` : `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots`) : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
+  const prov = provenanceComment({ at, title: String(page.title || slug).replace(/\s+/g, ' ').replace(/--/g, '-'), slug, pagePath: posix.join(basename(run.outDir), outputPath), branch, template: archetype?.slug, archetypePath: archetypeSource && toPosix(archetypeSource), archetypeSha: keys.archetypeSha, sourceForked: forked ? (mapped ? `${toPosix(archetypeSource)} + ${mapped.via} on ${mapped.capture}${mapped.pageJson ? ` + ${toPosix(capturePath)}#slots` : ''}` : `${toPosix(archetypeSource)} + ${toPosix(capturePath)}#slots`) : null, sourceProposed: toPosix(source), sourceCurrent: toPosix(capturePath), direction: run.direction, designMdSha: run.designMdSha, designJsonSha: run.designJsonSha, canonShas, decisionTrace: posix.basename(sideRel), broken: linked.broken.length, stardustVersion: run.stardustVersion });
   const head = composeHead(html, { prov, rootBlock: run.canon.rootBlock, inlineCss: run.inlineCanon ? run.canon.css : null, canonLink, capture, deployHost: run.deployHost, outputPath, pageUrl, type: page.type });
   if (!head) throw new Refusal(slug, 3, 'no <head> element', 'add <head> to the source');
   html = head.html;
@@ -952,48 +960,75 @@ export function renderPage(run, page, entry) {
   validatePage(slug, html, sidecar, run.outDir, report.refs);
   mkdirSync(dirname(outFile), { recursive: true });
   writeFileSync(outFile, html); writeFileSync(sideFile, `${JSON.stringify(sidecar, null, 2)}\n`);
-  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, mapped: !!mapped, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped', varianceHeld: variance?.verdict === 'differs' && !run.acceptVariance };
+  return { status: 'rendered', branch, fork: forked ? archetype.slug : null, slotSource: mapped ? slotPlan.mode : null, outputPath, type: page.type, assets: report.refs.size, links: linked.links, broken: linked.broken.length, sections: tagged.sections, missing: report.missing, modulesEmpty: modulesOut.length === 0, varianceSkipped: variance?.status === 'skipped', varianceHeld: variance?.verdict === 'differs' && !run.acceptVariance };
 }
-// The fork's slot source for a page → { mode: 'mapping' | 'page-json', skipped: reason | null }. --slots as given (an
-// explicit mapping refuses in mappedSlots when unusable); by default the page JSON when there is no mapping file, the mapping
-// when readMapping finds it usable, it has a verified selector for the archetype and both captures (the archetype's, this
-// page's) exist, else the page JSON with the reason (sidecar slotMapSkipped, one run summary line per archetype and reason —
-// never a silent fallback).
-function slotSourceFor(run, page, archetype) {
+// The fork's slot source for a page → { mode: 'mapping' | 'page-json' | 'derived', skipped: reason | null }. --slots as given
+// (an explicit mapping or derived refuses in mappedSlots when it cannot be used); by default the mapping when readMapping finds
+// it usable, it has a verified selector for the archetype and both captures (the archetype's, this page's) exist; else the page
+// JSON when it has a slots key (any value); else derived when both capture HTML files exist; else the page JSON. A mapping file
+// that is not used leaves its reason (sidecar slotMapSkipped, one run summary line per archetype, reason and source — never a
+// silent fallback).
+const captureHtmls = (run, page, archetype) => [archetype.slug, page.slug].map((s) => toPosix(join(run.currentDir, 'pages', `${s}.html`)));
+const hasSlotsKey = (capture) => !!capture && typeof capture === 'object' && Object.hasOwn(capture, 'slots');
+function slotSourceFor(run, page, archetype, capture) {
   if (run.slotFlag) return { mode: run.slotFlag, skipped: null };
-  if (!run.mappingPresent) return { mode: 'page-json', skipped: null };
-  const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
-  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${page.slug}.html`));
-  const skipped = !m.mapping ? m.reason : !anchorsFor(m.mapping, null, archetype.slug).length ? `${m.file} has no verified selector for archetype ${archetype.slug}`
-    : !isFile(archCapture) ? `no capture HTML of archetype ${archetype.slug} at ${archCapture}` : !isFile(ownCapture) ? `no capture HTML at ${ownCapture}` : null;
-  if (skipped) { if (!run.slotFallbacks.has(archetype.slug)) run.slotFallbacks.set(archetype.slug, new Set()); run.slotFallbacks.get(archetype.slug).add(skipped); }
-  return { mode: skipped ? 'page-json' : 'mapping', skipped };
+  const [archCapture, ownCapture] = captureHtmls(run, page, archetype); let skipped = null;
+  if (run.mappingPresent) {
+    const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+    skipped = !m.mapping ? m.reason : !anchorsFor(m.mapping, null, archetype.slug).length ? `${m.file} has no verified selector for archetype ${archetype.slug}`
+      : !isFile(archCapture) ? `no capture HTML of archetype ${archetype.slug} at ${archCapture}` : !isFile(ownCapture) ? `no capture HTML at ${ownCapture}` : null;
+    if (!skipped) return { mode: 'mapping', skipped: null };
+  }
+  const mode = !hasSlotsKey(capture) && isFile(archCapture) && isFile(ownCapture) ? 'derived' : 'page-json';
+  if (skipped) run.slotFallbacks.add(`slots: archetype ${archetype.slug} — mapping not used (${skipped}); ${mode === 'derived' ? 'derived from its capture' : 'page JSON slots'}`);
+  return { mode, skipped };
 }
-// --slots mapping (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors in the rollout
-// block mapping; a name in the page JSON slots keeps that value. → { slots (array form: the page JSON entries, then the mapped
-// names), record (the sidecar slotMap), capture, pageJson (the page JSON has slots) }; throws Refusal (strict slots) when the
-// mapping cannot be used or a slot gets no value. Recipes are built once per archetype source per run.
-function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath) {
-  const { slug } = page; const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
-  if (!m.mapping) throw new Refusal(slug, 'slots', `the block mapping is unusable: ${m.reason}`, "re-run the rollout skill's block-origin.mjs --verify, then workspace-manifest.mjs, or pass --slots page-json");
-  const archCapture = toPosix(join(run.currentDir, 'pages', `${archetype.slug}.html`)); const ownCapture = toPosix(join(run.currentDir, 'pages', `${slug}.html`));
-  const anchors = anchorsFor(m.mapping, null, archetype.slug);
-  if (!anchors.length) throw new Refusal(slug, 'slots', `${m.file} has no verified selector for archetype ${archetype.slug}`, `map the archetype with the rollout skill's block-origin.mjs --verify (its capture: ${archCapture}), or pass --slots page-json`);
-  if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to find its slots in`, 're-capture the archetype (extract), or pass --slots page-json');
-  if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the mapped slots from`, 're-capture the page (extract), or pass --slots page-json');
-  const key = `${archetype.slug}\n${sha(archetypeHtml)}`;
-  if (!run.recipeCache.has(key)) run.recipeCache.set(key, slotRecipes(archetypeHtml, readFileSync(archCapture, 'utf8'), anchors));
-  const recipes = run.recipeCache.get(key);
+// Today's refusal of a page JSON without slots names the derive precondition: the capture HTML files that are absent.
+function deriveHintFor(run, page, archetype, capture) {
+  if (hasSlotsKey(capture)) return null;
+  const [archCapture, ownCapture] = captureHtmls(run, page, archetype); const arch = !isFile(archCapture); const own = !isFile(ownCapture);
+  if (arch && own) return `capture both pages (${archCapture} and ${ownCapture} are absent) so the slots derive from the archetype's capture`;
+  if (arch) return `capture the archetype (${archCapture} is absent) so the slots derive from its capture`;
+  if (own) return `capture the page (${ownCapture} is absent) so its slots derive from the archetype's capture`;
+  return "pass --slots derived (the slots derive from the archetype's capture)";
+}
+// --slots mapping | derived (slot-map.mjs): this page's slot values read from its capture through the archetype's anchors — in
+// the rollout block mapping (mapping), or the archetype capture's <main> (else <body>; derived: deriveRecipes); a name in the
+// page JSON slots keeps that value. → { slots (array form: the page JSON entries, then the mapped names), record (the sidecar
+// slotMap), capture, pageJson (the page JSON has slots), via (the provenance's map) }; throws Refusal (strict slots) when the
+// mapping or a capture cannot be used or a slot gets no value. Recipes are built once per archetype source per run.
+function mappedSlots(run, page, archetype, archetypeHtml, capture, capturePath, mode = 'mapping') {
+  const { slug } = page; const [archCapture, ownCapture] = captureHtmls(run, page, archetype); const key = `${mode}\n${archetype.slug}\n${sha(archetypeHtml)}`;
+  let recipes; let base; let label; let via;
+  if (mode === 'derived') {
+    if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to derive its slot map from`, 're-capture the archetype (extract), or pass --slots page-json');
+    if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the derived slots from`, 're-capture the page (extract), or pass --slots page-json');
+    if (!run.recipeCache.has(key)) run.recipeCache.set(key, deriveRecipes(archetypeHtml, readFileSync(archCapture, 'utf8')));
+    const d = run.recipeCache.get(key); recipes = d.recipes;
+    const total = Object.keys(recipes).length; const located = Object.values(recipes).filter((r) => (Array.isArray(r) ? r : [r]).every((x) => x.anchor)).length;
+    run.slotsDerivedFrom.set(archetype.slug, `slots: archetype ${archetype.slug} — derived from its capture (${located}/${total} slot(s) located; page JSON values win)`);
+    base = { anchor: d.anchor, capture: archCapture }; label = `the archetype's capture (${archCapture}, anchor ${d.anchor})`; via = `the slot map derived from ${archCapture}`;
+  } else {
+    const m = run.mapping || (run.mapping = readMapping(run.rolloutDir));
+    if (!m.mapping) throw new Refusal(slug, 'slots', `the block mapping is unusable: ${m.reason}`, "re-run the rollout skill's block-origin.mjs --verify, then workspace-manifest.mjs, or pass --slots page-json");
+    const anchors = anchorsFor(m.mapping, null, archetype.slug);
+    if (!anchors.length) throw new Refusal(slug, 'slots', `${m.file} has no verified selector for archetype ${archetype.slug}`, `map the archetype with the rollout skill's block-origin.mjs --verify (its capture: ${archCapture}), or pass --slots page-json`);
+    if (!isFile(archCapture)) throw new Refusal(slug, 'slots', `no capture HTML of archetype ${archetype.slug} at ${archCapture} to find its slots in`, 're-capture the archetype (extract), or pass --slots page-json');
+    if (!isFile(ownCapture)) throw new Refusal(slug, 'slots', `no capture HTML at ${ownCapture} to read the mapped slots from`, 're-capture the page (extract), or pass --slots page-json');
+    if (!run.recipeCache.has(key)) run.recipeCache.set(key, slotRecipes(archetypeHtml, readFileSync(archCapture, 'utf8'), anchors));
+    recipes = run.recipeCache.get(key);
+    base = { mapping: m.file, generatedAt: m.generatedAt, anchors: anchors.length }; label = 'the block mapping'; via = m.file;
+  }
   const { slots: derived, unresolved } = mappedSlotValues(recipes, readFileSync(ownCapture, 'utf8'));
   const own = capture?.slots; const explicit = slotValues(own).map; const problems = [];
   for (const [name, r] of Object.entries(recipes)) { const none = (Array.isArray(r) ? r : [r]).find((x) => !x.anchor); if (none && !explicit.has(name)) problems.push(`${name} (no recipe: ${none.reason})`); }
   for (const u of unresolved) if (!explicit.has(u.slot)) problems.push(`${u.slot} (${u.reason})`);
-  if (problems.length) throw new Refusal(slug, 'slots', `the block mapping gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, `add each name to ${capturePath}#slots (a page value wins over the mapped one), or pass --slots page-json`);
+  if (problems.length) throw new Refusal(slug, 'slots', `${label} gives no value for slot(s) ${problems.sort().join('; ')} of archetype ${archetype.slug}`, `add each name to ${capturePath}#slots (a page value wins over the ${mode === 'derived' ? 'derived' : 'mapped'} one), or pass --slots page-json`);
   const names = Object.keys(derived).filter((n) => !explicit.has(n)).sort();
   const entries = Array.isArray(own) ? [...own] : own && typeof own === 'object' ? Object.entries(own).map(([name, value]) => ({ name, value })) : [];
   for (const name of names) entries.push({ name, value: derived[name] });
   const anchorOf = (r) => { const sels = [...new Set((Array.isArray(r) ? r : [r]).map((x) => x.anchor))]; return sels.length === 1 ? sels[0] : sels; };
-  return { slots: entries, capture: ownCapture, pageJson: explicit.size > 0, record: { mapping: m.file, generatedAt: m.generatedAt, anchors: anchors.length, slots: Object.fromEntries(names.map((n) => [n, anchorOf(recipes[n])])) } };
+  return { slots: entries, capture: ownCapture, pageJson: explicit.size > 0, via, record: { ...base, slots: Object.fromEntries(names.map((n) => [n, anchorOf(recipes[n])])) } };
 }
 // The fork's media lookups: the media map and the ledger are read once per run, on the first slot value that names media.
 function mediaSource(run, which, slug) {
@@ -1177,7 +1212,7 @@ export function renderRun(o) {
   for (const [flag, file] of [['media-map', o.mediaMap], ['media-ledger', o.mediaLedger]]) if (file && !isFile(file)) throw new UsageError(`--${flag} ${file} does not exist`);
   if (o.varianceDir && !existsSync(o.varianceDir)) throw new UsageError(`--variance-dir ${o.varianceDir} does not exist`);
   if (o.acceptVariance != null && !String(o.acceptVariance).trim()) throw new UsageError('--accept-variance needs a non-empty reason');
-  if (o.slotSource != null && !['mapping', 'page-json'].includes(o.slotSource)) throw new UsageError(`--slots takes mapping or page-json (got ${o.slotSource})`);
+  if (o.slotSource != null && !['mapping', 'page-json', 'derived'].includes(o.slotSource)) throw new UsageError(`--slots takes mapping, page-json or derived (got ${o.slotSource})`);
   const rolloutDir = join(dirname(o.state), 'rollout');
   const renderSet = new Set(set.filter((s) => !pageMap.bySlug.get(s).passthrough));
   let origin = 'https://origin.invalid'; const originHosts = new Set();
@@ -1189,7 +1224,7 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
-    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(), slotsDerived: new Map(),
+    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Set(), slotsDerived: new Map(), slotsDerivedFrom: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = []; const varianceHeld = [];
   for (const slug of set) {
@@ -1203,7 +1238,7 @@ export function renderRun(o) {
     if (r.modulesEmpty) modulesEmpty.push(slug);
     if (r.varianceSkipped) varianceSkipped.push(slug);
     if (r.varianceHeld) varianceHeld.push(slug);
-    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}${r.mapped ? ' via the block mapping' : ''}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
+    console.log(`${r.branch.padEnd(2)} ${slug} → ${r.outputPath}  (${r.type || 'untyped'}; ${r.fork ? `fork of ${r.fork}${{ mapping: ' via the block mapping', derived: ' via the derived slot map' }[r.slotSource] || ''}; ` : ''}${r.assets} assets, ${r.links} links, ${r.broken} broken, ${r.sections} sections)`);
   }
   const prev = state.migrate || {}; const at = nowIso(); const outRel = toPosix(o.out).replace(/\/+$/, '');
   const pageRecs = new Map((prev.pages || []).map((p) => [p.slug, p]));
@@ -1216,7 +1251,8 @@ export function renderRun(o) {
   if (modulesEmpty.length) console.log(`modules[] empty on ${modulesEmpty.length} page(s) — migrate.mjs modules <slug> <id…> (${modulesEmpty.slice(0, 6).join(', ')})`);
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
   if (varianceHeld.length) console.log(`variance: ${varianceHeld.length} A′ page(s) rendered on an earlier acceptance of an unchanged variance (${varianceHeld.slice(0, 6).join(', ')}${varianceHeld.length > 6 ? ', …' : ''})`);
-  for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
+  for (const line of [...run.slotFallbacks].sort(byStr)) console.log(line);
+  for (const [, line] of [...run.slotsDerivedFrom].sort(([x], [y]) => byStr(x, y))) console.log(line);
   for (const [a, names] of [...run.slotsDerived].sort(([x], [y]) => byStr(x, y))) console.log(`slots derived (no data-slot markers): archetype ${a} — ${names.length} slot(s): ${names.slice(0, 24).join(', ')}${names.length > 24 ? ', …' : ''} — mark them in the prototype to name them (replica recreation-procedure.md § Slot markers)`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
