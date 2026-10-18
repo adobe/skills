@@ -578,16 +578,22 @@ else {
     + '<div id="site-notice" class="cookie-banner"><p>We use cookies.</p><a href="/privacy">Privacy policy</a>'
     + '<button class="banner-btn primary">Continue to site</button><button class="banner-btn">Preferences</button>'
     + '<button class="banner-x" aria-label="Close notice">×</button></div></body></html>';
+  // commas in a region's class and a control's label: parseHideList splits every value on ',' — a printed selector holding
+  // one could never pass --verify, so neither is suggested (the control falls through to its nth-of-type path)
+  const COMMA = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} header{height:60px} .notice{position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff}</style></head><body>'
+    + '<div class="geo,bar">Choose your region</div><header>Header</header><main><p>Content</p></main>'
+    + '<div class="notice"><button aria-label="No, thanks">No thanks</button></div></body></html>';
   const server = createServer((req, res) => {
     if (req.url === '/challenge') { res.writeHead(403, { 'content-type': 'text/html', 'cf-ray': '0-TEST' }); res.end('<html><body>Just a moment…</body></html>'); return; }
     if (req.url === '/missing') { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<html><body>Not found</body></html>'); return; }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(req.url === '/consent' ? CONSENT : DELAYED);
+    res.end({ '/consent': CONSENT, '/comma': COMMA }[req.url] || DELAYED);
   });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const url = `${base}/delayed-bar`;
   const consentUrl = `${base}/consent`;
+  const commaUrl = `${base}/comma`;
   const collect = (child) => new Promise((done) => {
     let out = ''; let err = '';
     child.stdout.on('data', (d) => { out += d; });
@@ -602,13 +608,14 @@ else {
     const right = seeded(); const wrong = seeded(); const blocked = seeded(); const missing = seeded(); const plain2 = project();
     const stale = project();
     write(stale, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
-    const settled = project(); const unsettled = project(); const consentMiss = seeded(); const plain3 = project();
-    const [okSettings, refusedSettings, dismissMiss, dismissListed, pinListed] = await Promise.all([
+    const settled = project(); const unsettled = project(); const consentMiss = seeded(); const plain3 = project(); const commaMiss = seeded();
+    const [okSettings, refusedSettings, dismissMiss, dismissListed, pinListed, commaMissed] = await Promise.all([
       runAsync(settled, ['add', '--dismiss', '.geo-bar', '--pin', 'header', '--state', 'at rest', '--verify', url, '--reason', 'R-02']),
       runAsync(unsettled, ['add', '--dismiss', '.geo-bar,.nl-close', '--verify', url, '--wait-ms', '0']),
       runAsync(consentMiss, ['add', '--dismiss', 'button.not-there', '--verify', consentUrl, '--wait-ms', '0']),
       runAsync(plain3, ['suggest', consentUrl, '--kind', 'dismiss', '--wait-ms', '0']),
       runAsync(plain3, ['suggest', consentUrl, '--kind', 'pin']),
+      runAsync(commaMiss, ['add', '--hide', '.nope', '--dismiss', '.nope-too', '--verify', commaUrl, '--wait-ms', '0']),
     ]);
     await checkAsync('e2e add --verify with capture settings: every selector of the call polled like a hide (the delayed bar found), written; one that never matches refuses the call — exit 2, named, nothing written', async () => {
       assert.equal(okSettings.code, 0, okSettings.err);
@@ -647,6 +654,21 @@ else {
       assert.equal(r.code, 0, `${first}\n${r.err}`);
       assert.deepEqual(lines(r.out), [`verified on ${consentUrl} @ 1440px: button[aria-label="Close notice"] ×1`, '*.dismiss: button[aria-label="Close notice"]', `wrote ${DEFAULT_FILE}: +1 setting, 0 reasons`]);
       assert.deepEqual(json(consentMiss)['*'], { hide: ['.promo'], dismiss: ['button[aria-label="Close notice"]'] });
+    });
+    await checkAsync('e2e a miss never suggests a selector holding a comma (parseHideList would split it): the region is skipped, the control takes its path — run as printed, it verifies', async () => {
+      assert.equal(commaMissed.code, 2, `${commaMissed.out}${commaMissed.err}`);
+      assert.deepEqual(lines(commaMissed.err), [
+        'presence: hide matched nothing on live — candidates: div.geo\\,bar (div, 20px) (.nope)',
+        `presence: dismiss / pin / allow matched nothing on ${commaUrl} @ 1440px (.nope-too)`,
+        `presence: suggest on ${commaUrl} @ 1440px — no hide candidate found for --hide .nope`,
+        `presence: suggest on ${commaUrl} @ 1440px — top candidates for --dismiss .nope-too:`,
+        'presence:   body > div:nth-of-type(2) > button:nth-of-type(1)  "No thanks"  button',
+        `presence:     presence.mjs add --dismiss 'body > div:nth-of-type(2) > button:nth-of-type(1)' --verify ${commaUrl} --wait-ms 0`,
+        `presence: refused — nothing written to ${DEFAULT_FILE}`,
+      ]);
+      const r = await runPrinted(commaMiss, lines(commaMissed.err)[5].replace(/^presence: +/, ''));
+      assert.equal(r.code, 0, r.err);
+      assert.deepEqual(json(commaMiss)['*'], { hide: ['.promo'], dismiss: ['body > div:nth-of-type(2) > button:nth-of-type(1)'] });
     });
     await checkAsync('e2e suggest --kind dismiss lists the same top three as the miss; --kind pin the rotator controls (a pin\'s --state is the control\'s text, else "pinned"; never a selector on a state class) — exit 0, nothing written', async () => {
       assert.equal(dismissListed.code, 0, dismissListed.err);

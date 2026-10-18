@@ -107,9 +107,10 @@
  * fixed layer; weaker: sticky or z-index ≥ 100), a consent label (live-session's CONSENT_LABEL_SWEEP) first, then a
  * close-like one, then the rest; pin — the displayed tabs and rotator controls (next / prev / pause / play / slide / dot
  * / pagination … in the text, label, title, class or aria-controls) — controlCandidatesInPage has the rules. Every
- * selector is light-DOM and matched exactly one element when read — by document.querySelectorAll, the counter --verify
- * uses (a candidate without such a selector is skipped). suggest prints one line per candidate in document
- * order, `<selector>  <tag>  <h>px` (`(no unique selector)` when the page has none for it), then
+ * selector is light-DOM, matched exactly one element when read — by document.querySelectorAll, the counter --verify
+ * uses — and holds no comma (add splits every value on ','); a candidate without such a selector is skipped.
+ * suggest prints one line per candidate in document order, `<selector>  <tag>  <h>px` (`(no unique selector)` when
+ * the page has none for it), then
  * `presence.mjs add --hide <first candidate> --verify <url>` (+ `--width <w>` off the default; shell-quoted
  * where needed); no candidate → `none found above the header`; a `"*".hide` selector that matched nothing →
  * one more line on stderr, `presence: WARNING hide matched nothing on live — candidates: <…> (<sel>, …)`. suggest
@@ -224,9 +225,10 @@ default; --wait-ms / --headed when given; shell-quoted). hide: the in-flow block
 displayed controls inside an overlay (dialog, aria-modal, a cookie|consent|gdpr|privacy|banner|modal|popup|overlay id
 or class, fixed; weaker: sticky or z-index ≥ 100) — a consent label first, then close-like, then the rest; pin: the
 displayed tabs and rotator controls (next/prev/pause/play/slide/dot/pagination… in text, label, title, class). Each
-selector is light-DOM and matched exactly one element when read (what --verify counts; none such → skipped). None:
-"presence: suggest on <url> @ <w>px — no <kind> candidate found for --<kind> <sel>"; an --allow: "… — no allow
-candidate for --allow <k>=<sel>: an allowance names a recorded finding's selector, so there is nothing to suggest".
+selector is light-DOM, matched exactly one element when read (what --verify counts) and holds no comma (add splits
+values on ','); none such → skipped. None: "presence: suggest on <url> @ <w>px — no <kind> candidate found for
+--<kind> <sel>"; an --allow: "… — no allow candidate for --allow <k>=<sel>: an allowance names a recorded finding's
+selector, so there is nothing to suggest".
 suggest: one line per candidate in document order, "<selector>  <tag>  <h>px", then
 "presence.mjs add --hide <first candidate> --verify <url>"; no candidate: "none found above the header"; a "*".hide
 selector of the file that matched nothing (polled like --verify) adds on stderr, exit still 0:
@@ -559,9 +561,9 @@ async function scrollThroughInPage() {
  * [A-Za-z0-9_-], no run of 4 digits), `tag[data-testid|aria-label|name|title="…"]` (a value ≤ 80 chars on one line),
  * `#anchor tag`, `#anchor tag.class` (the nearest ancestor with a clean unique id), `tag.class` (clean classes, no state
  * class — is- / has-, active, selected, current, … move with the state), then the `body > …:nth-of-type(i)` path, that
- * matches only this element (querySelectorAll length 1); none → the control is skipped. text: whitespace-collapsed (an
- * input's value), else aria-label / title, cut to 40 chars; role: the role attribute, else button (button, summary, input
- * button / submit), link (a[href]), else the tag.
+ * matches only this element (querySelectorAll length 1) and holds no comma (add splits its values on ','); none → the
+ * control is skipped. text: whitespace-collapsed (an input's value), else aria-label / title, cut to 40 chars; role: the
+ * role attribute, else button (button, summary, input button / submit), link (a[href]), else the tag.
  */
 export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
   const CONTROLS = 'button, [role="button"], a[href], input[type="button"], input[type="submit"], [role="tab"], summary';
@@ -622,7 +624,9 @@ export function controlCandidatesInPage({ kind, labels = [], limit = 3 }) {
     ranked.push({ el, text, rank: [...rank, leaves(el) ? 1 : 0, order] });
   });
   ranked.sort((a, b) => a.rank.reduce((d, x, i) => d || x - b.rank[i], 0));
-  const only = (sel, el) => { try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; } catch { return false; } };
+  // unique, and no comma: add splits every --hide / --dismiss value on ',' (parseHideList), so a printed selector holding
+  // one could never pass --verify
+  const only = (sel, el) => { if (sel.includes(',')) return false; try { const m = document.querySelectorAll(sel); return m.length === 1 && m[0] === el; } catch { return false; } };
   const clean = (s) => /^[A-Za-z][\w-]*$/.test(s) && !/\d{4}/.test(s);
   // a state class moves with the state (the active dot): a selector built on it would match another control later
   const STATEFUL = /^(is|has)[-_]|active|selected|current|focus|hover|visible|hidden|^(show|open|closed|in)$/i;
@@ -786,13 +790,14 @@ export function missSuggestLines(misses, candidates, opts) {
 }
 
 /** On the loaded page: the candidates of each kind in `kinds` → { hide?, dismiss?, pin? } ([{ selector, text, role }], ≤
- * TOP_CANDIDATES each). hide: `regions` (inFlowRegionsAboveHeader's, document order) with a selector, enriched in one
- * page.evaluate (regionFactsInPage; one that no longer matches exactly one element is skipped); dismiss / pin:
- * controlCandidatesInPage with the consent label sweep's labels. No navigation — the page the poll ran on. */
+ * TOP_CANDIDATES each). hide: `regions` (inFlowRegionsAboveHeader's, document order) with a selector holding no comma (add
+ * splits its values on ','), enriched in one page.evaluate (regionFactsInPage; one that no longer matches exactly one
+ * element is skipped); dismiss / pin: controlCandidatesInPage with the consent label sweep's labels. No navigation — the
+ * page the poll ran on. */
 async function readCandidates(page, kinds, { regions = [], labels = [] } = {}) {
   const out = {};
   if (kinds.includes('hide')) {
-    const rows = (regions || []).filter((c) => c && c.selector);
+    const rows = (regions || []).filter((c) => c && c.selector && !c.selector.includes(','));
     const facts = rows.length ? await page.evaluate(regionFactsInPage, rows.map((c) => c.selector)) : [];
     out.hide = rows.flatMap((c, i) => (facts[i] ? [{ selector: c.selector, ...facts[i] }] : [])).slice(0, TOP_CANDIDATES);
   }
