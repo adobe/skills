@@ -147,6 +147,8 @@ check('ownedBy: the dedicated writers; * is one segment', () => {
   assert.equal(ownedBy('stardust/state.json.bak'), null);
   assert.equal(ownedBy('src/stardust/state.json'), null);
   assert.equal(ownedBy('styles/site.css'), null);
+  assert.equal(ownedBy('STARDUST/Rollout/Progress.JSON'), 'stardust/progress.mjs', 'case ignored: a case-insensitive disk holds one file under every casing');
+  assert.equal(ownedBy('Stardust/Rollout/Coverage/Home.JSON'), 'rollout/update-coverage.mjs');
 });
 check('resolveInside: inside → { abs, real, rel, realRel }; outside, missing, resolving outside, a symlink loop, not a regular file refused', () => {
   const p = project();

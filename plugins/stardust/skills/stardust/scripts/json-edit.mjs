@@ -17,9 +17,10 @@
 // and \\ escaped inside); [n] is an index segment (a[0].b = a.0.b); "." alone is the root (merge, and
 // append when the root is an array). Value: JSON when it parses, else the string as given.
 // Guards (refused, nothing written): a path outside the project (the cwd), resolving outside it, a
-// symlink loop or not a regular file; a file with a dedicated writer (replace.mjs OWNED, compared by the
-// on-disk path, case included); an absent file without --create; a file that is not JSON; __proto__ /
-// constructor / prototype in the path or at any depth of a value.
+// symlink loop or not a regular file — for --create the would-be path, whose existing ancestors must not
+// be dangling symlinks; a file with a dedicated writer (replace.mjs ownedBy, case ignored); an absent
+// file without --create; a file that is not JSON; __proto__ / constructor / prototype in the path or at
+// any depth of a value.
 // Write: replace.mjs writeAll — a sibling temp file, created exclusively, renamed over the real path,
 // mode kept; indent, line endings and the trailing newline as the file had them; a result equal to the
 // file byte for byte is not written.
@@ -65,8 +66,9 @@ Operations — in an object a segment is an own key, in an array an index 0 ≤ 
   --create  an absent file starts as {} ([] for append .), parent directories created
 Refused (exit 2, nothing written, one stderr line "json-edit: refused — <reason>"): a path outside the
   project, resolving outside it (a symlink), a symlink loop or not a regular file — for --create the
-  would-be path; a file with a dedicated writer, compared by its on-disk path (a progress ledger →
-  progress.mjs, …: use the writer); an absent file without --create; a file that is not JSON;
+  would-be path, and a symlink to a missing file or directory on it; a file with a dedicated writer,
+  case ignored (a progress ledger → progress.mjs, …: use the writer); an absent file without --create;
+  a file that is not JSON;
   ${UNSAFE_KEYS.join(', ')} in the path or at any depth of the value; an index out of range; a
   non-object on the way ("a.b is a number, not an object"); a merge target that is not an object, an
   append target that is not an array; delete of a missing path; something already at the temp
@@ -317,15 +319,16 @@ function wouldBe(file, root) {
   const abs = resolve(logical, file);
   const lexical = isInside(abs, logical) ? logical : isInside(abs, base) ? base : null;
   if (lexical === null) throw new Refusal(`${file} is outside the project (${base})`);
-  let present = true;
-  try { lstatSync(abs); } catch { present = false; }
-  if (present) throw new Refusal(`${file} is a symlink to a missing file`);
+  const entry = (p) => { try { lstatSync(p); return true; } catch { return false; } };
+  if (entry(abs)) throw new Refusal(`${file} is a symlink to a missing file`);
   let dir = dirname(abs);
   let real = null;
   while (real === null) {
     try { real = realpathSync.native(dir); } catch (e) {
       if (e.code === 'ELOOP') throw new Refusal(`${file}: symlink loop`);
       if (e.code !== 'ENOENT' && e.code !== 'ENOTDIR') throw e;
+      // an entry that does not resolve is a symlink whose target is missing: the parent directories could not be made
+      if (entry(dir)) throw new Refusal(`${file}: ${toPosix(relative(lexical, dir))} is a symlink to a missing directory`);
       dir = dirname(dir);
     }
   }
@@ -341,7 +344,8 @@ export function locate(file, { create = false, root = process.cwd() } = {}) {
   // ENOENT / ENOTDIR = absent; anything else (a symlink loop, …) is resolveInside's to report
   try { statSync(resolve(root, file)); } catch (e) { if (e.code === 'ENOENT' || e.code === 'ENOTDIR') present = false; }
   const r = present ? resolveInside(file, root) : wouldBe(file, root);
-  for (const rel of [r.rel, r.realRel]) {
+  // the on-disk path first: the refusal names the ledger as it is spelled on disk (ownedBy ignores case)
+  for (const rel of [r.realRel, r.rel]) {
     const writer = ownedBy(rel);
     if (writer) throw new Refusal(`${rel} is written by ${writer} — use it`);
   }

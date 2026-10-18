@@ -38,7 +38,7 @@ export const CONTEXT = { matches: 5, around: 2, half: 60, width: 120 };
 export const JSON_MATCHES = 20;
 const SKIP_DIRS = new Set(['.git', 'node_modules']);
 
-// Project files with a dedicated writer (project-relative; `*` = one path segment).
+// Project files with a dedicated writer (project-relative; `*` = one path segment; ownedBy ignores case).
 export const OWNED = [
   { pattern: 'stardust/state.json', writer: 'stardust/state.mjs' },
   { pattern: 'stardust/rollout/progress.json', writer: 'stardust/progress.mjs' },
@@ -104,8 +104,8 @@ Writes: a sibling temp file (.<name>.<pid>.tmp, created exclusively) renamed ove
 Refused (exit 2, nothing written, one stderr line "replace: refused — <reason>"): a missed expectation; a
   path outside the project, missing, resolving outside it (a symlink), a symlink loop or not a regular
   file; a NUL byte ("looks binary") or bytes that are not UTF-8; a regex match of length 0; a --files-from
-  glob matching nothing; something already at a temp file's name; a file with a dedicated writer — use
-  the writer:
+  glob matching nothing; something already at a temp file's name; a file with a dedicated writer (case
+  ignored) — use the writer:
 ${ownedTable()}
 Usage errors (exit 2, one stderr line "replace: <message>"): no file and no --files-from; --from missing or
   empty; --to missing; --all with --count; --count not an integer ≥ 1; --flags without --regex or outside
@@ -324,10 +324,14 @@ export function expandGlob(pattern, root = process.cwd()) {
   return [...found].sort(byCodePoint);
 }
 
-/** The dedicated writer of a project-relative path, or null. */
+/**
+ * The dedicated writer of a project-relative path, or null. Case is ignored: on a case-insensitive disk every
+ * casing names the same ledger, and a path whose missing tail keeps the typed case has no on-disk case to
+ * compare; on a case-sensitive disk this only adds refusals.
+ */
 export function ownedBy(rel) {
-  const path = toPosix(rel);
-  const hit = OWNED.find(({ pattern }) => new RegExp(`^${pattern.split('*').map((s) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')).join('[^/]*')}$`).test(path));
+  const path = toPosix(rel).toLowerCase();
+  const hit = OWNED.find(({ pattern }) => new RegExp(`^${pattern.toLowerCase().split('*').map((s) => s.replace(/[\\^$.*+?()[\]{}|/]/g, '\\$&')).join('[^/]*')}$`).test(path));
   return hit ? hit.writer : null;
 }
 
@@ -364,7 +368,8 @@ function collect(o, root) {
     const r = resolveInside(file, root);
     if (seen.has(r.real)) return;
     seen.add(r.real);
-    for (const rel of [r.rel, r.realRel]) {
+    // the on-disk path first: the refusal names the ledger as it is spelled on disk
+    for (const rel of [r.realRel, r.rel]) {
       const writer = ownedBy(rel);
       if (writer) throw new Refusal(`${rel} is written by ${writer} — use it`);
     }

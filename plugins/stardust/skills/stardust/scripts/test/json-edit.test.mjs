@@ -9,7 +9,7 @@
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -229,7 +229,6 @@ check('unsafe keys: __proto__ / constructor / prototype in the path or inside a 
   refusedCli(run(p, 'u.json', 'merge', '.', '{"a":{"__proto__":{"x":1}}}'), /^json-edit: refused — .*"__proto__" at a\.__proto__/);
   refusedCli(run(p, 'u.json', 'set', 'b', '{"constructor":{"prototype":{"x":1}}}'), /^json-edit: refused — .*"constructor"/);
   assert.equal(read(f), '{"a":{}}\n');
-  assert.equal({}.x, undefined);
 });
 check('guards: outside the project, a symlink leaving it (file or directory), not a regular file — refused, nothing written', () => {
   const p = project();
@@ -248,9 +247,12 @@ check('guards: outside the project, a symlink leaving it (file or directory), no
   symlinkSync('loop.json', join(p, 'loop.json'));
   refusedCli(run(p, 'loop.json', 'set', 'a', '2'), /^json-edit: refused — loop\.json: symlink loop$/);
   refusedCli(run(p, 'loop.json/new.json', 'set', 'a', '2', '--create'), /^json-edit: refused — loop\.json\/new\.json: symlink loop$/);
+  symlinkSync(join(other, 'missing-dir'), join(p, 'gone'));
+  refusedCli(run(p, 'gone/new.json', 'set', 'a', '2', '--create'), /^json-edit: refused — gone\/new\.json: gone is a symlink to a missing directory$/);
+  refusedCli(run(p, 'gone/sub/new.json', 'set', 'a', '2', '--create'), /^json-edit: refused — gone\/sub\/new\.json: gone is a symlink to a missing directory$/);
   assert.equal(read(ext), '{"a":1}\n');
   assert.deepEqual(readdirSync(other).sort(), ['x.json']);
-  assert.deepEqual(readdirSync(p).sort(), ['dir.json', 'ext', 'link.json', 'loop.json']);
+  assert.deepEqual(readdirSync(p).sort(), ['dir.json', 'ext', 'gone', 'link.json', 'loop.json']);
 });
 check('guards: a ledger with a dedicated writer refused naming the writer (also through --create, and differently cased on a case-insensitive disk)', () => {
   const p = project();
@@ -263,6 +265,13 @@ check('guards: a ledger with a dedicated writer refused naming the writer (also 
   }
   assert.equal(read(led), '{"units":{}}\n');
   assert.deepEqual(readdirSync(join(p, 'stardust')), ['rollout']);
+});
+check('guards: --create on a miscased owned ledger whose directory is absent — refused on any disk, nothing created', () => {
+  const p = project();
+  mkdirSync(join(p, 'stardust'));
+  refusedCli(run(p, 'stardust/Rollout/progress.json', 'set', 'units.c1', '{}', '--create'), /^json-edit: refused — stardust\/Rollout\/progress\.json is written by stardust\/progress\.mjs — use it$/);
+  refusedCli(run(p, 'STARDUST/STATE.JSON', 'set', 'a', '1', '--create'), /is written by stardust\/state\.mjs — use it$/);
+  assert.deepEqual(readdirSync(join(p, 'stardust')), [], 'no file and no directory left behind');
 });
 check('absent file: refused without --create (nothing created); --create starts {} with parent dirs, [] for append .', () => {
   const p = project();
@@ -290,6 +299,21 @@ check('style: a tab, 4 spaces, a compact one-line file, no trailing newline, CRL
   assert.equal(read(compact), '{"a":1,"b":{"c":2},"z":{"k":true}}\n');
   assert.equal(read(bare), '{\n  "a": 1,\n  "z": {\n    "k": true\n  }\n}');
   assert.equal(read(crlf), '{\r\n  "a": 1,\r\n  "z": {\r\n    "k": true\r\n  }\r\n}\r\n');
+});
+check('write: a symlink inside the project stays a link (its target edited); the file mode kept', () => {
+  const p = project();
+  const target = put(join(p, 'data', 'real.json'), '{"a":1}\n');
+  symlinkSync(join('data', 'real.json'), join(p, 'alias.json'));
+  const r = run(p, 'alias.json', 'set', 'b', '2');
+  assert.equal(r.code, 0, r.err); assert.equal(oneLine(r.out), 'json-edit alias.json set b: (absent) → 2');
+  assert.ok(lstatSync(join(p, 'alias.json')).isSymbolicLink(), 'the link stays a link');
+  assert.equal(read(target), '{"a":1,"b":2}\n');
+  for (const mode of [0o640, 0o600, 0o755]) {
+    chmodSync(target, mode);
+    assert.equal(run(p, 'data/real.json', 'set', 'm', String(mode)).code, 0);
+    assert.equal(statSync(target).mode & 0o7777, mode, `mode ${mode.toString(8)} kept`);
+  }
+  noLeftovers(join(p, 'data'));
 });
 check('unchanged: the same value again writes nothing (mtime kept) and the line says unchanged', () => {
   const p = project();
