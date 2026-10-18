@@ -291,8 +291,9 @@ otherwise):
   `skills/stardust/scripts/progress.mjs wait`, which returns the moment a
   watched unit of the progress ledger (every `running` one, or `--unit
   <name>`) is `done` or `failed`. Exit 75 = still going: wait again as the
-  NEXT call, never in a shell loop, never after a `sleep`; exit 76 = the
-  pause file below exists. The numbers are not taste: the prompt cache
+  NEXT call, never in a shell loop; exit 76 = the pause file below exists;
+  exit 77 = the runner's wake line (`stardust/.labs/wake` grew: a
+  background agent finished). The numbers are not taste: the prompt cache
   expires after 5 idle minutes, and at the 500–900k-token contexts a
   migration reaches every expiry re-writes the whole prefix at write price
   (12× a cached read). Field data, 48 sessions: a foreground wait of ≤ 4
