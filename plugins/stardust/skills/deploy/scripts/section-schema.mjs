@@ -36,27 +36,23 @@
  *                      else <body>) holds no `section, [data-section]`; when given, it
  *                      applies even if it does.
  *
- * --split inference: the outermost matches inside the root, in document order (script/
- * style/template/noscript/link/meta skipped; a lone unmarked wrapper is unwrapped into
- * its children) — each section/div/article/aside/header/footer/nav/form or data-section/
- * data-block/data-module element is one section, each run of other elements between
- * them is ONE section, named by its first element's data-section, else first class,
- * else tag. A section of several elements is inventoried through a `<div data-ss-split>`
- * (display: contents) wrapped around them in the rendered page only.
+ * --split rule: outermost matches in the root (a lone unmarked wrapper unwrapped); each container tag or
+ * data-section/-block/-module element is one section, each same-parent run of other elements is one.
+ * A wrapped section (<div data-ss-split>) loses direct-child CSS (e.g. `main > p`) — prefer real <section>s.
  *
  * Writes: only --out <file> when given (parent directories are created; a one-line
  * section summary then goes to stdout); without --out the schema JSON is stdout.
  * The JSON's `split` is null when the prototype's own sections were used, else
  * { selector, inferred: <n sections> }; with --out the summary of an inferred schema
  * starts with `inferred <n> section(s) from --split '<sel>' (no <section> in <main>)`
- * — or `(--split given)`.
+ * — or `(--split given)`, or a `--split 'body > *'` hint on a page without <main>.
  *
  * Exit codes: 0 ok · 1 usage / error.
  *
  * Imported as a module it loads no browser and runs nothing; it exports the pure
  * rule groupSections(nodes, { tagOf, childrenOf, isMarked }) (childrenOf → ELEMENT
- * children; isMarked → carries data-section/data-block/data-module), CONTAINER_TAGS
- * and SPLIT_DEFAULT.
+ * children; isMarked → carries a MARK_ATTRS attribute), CONTAINER_TAGS, MARK_ATTRS and
+ * SPLIT_DEFAULT.
  *
  * The prototype must be RENDERABLE (serve static prototypes from their own dir;
  * pre-render JSX first — deploy SKILL.md Step 1). file:// works when the
@@ -70,6 +66,7 @@ import { fileURLToPath } from 'url';
 
 export const SPLIT_DEFAULT = 'main > *';
 export const CONTAINER_TAGS = Object.freeze(['section', 'div', 'article', 'aside', 'header', 'footer', 'nav', 'form']);
+export const MARK_ATTRS = Object.freeze(['data-section', 'data-block', 'data-module']);
 const SKIP_TAGS = Object.freeze(['script', 'style', 'template', 'noscript', 'link', 'meta']);
 
 // The --split grouping rule, pure: only the adapter callbacks touch a node, so the same
@@ -121,7 +118,7 @@ function parseArgs(argv) {
 // prototype section (or with --split given) the sections are inferred by
 // groupSections (passed in as its injected source).
 /* eslint-disable no-undef */
-function mapSections(groupSections, { selector, given }) {
+function mapSections(groupSections, { selector, given, markAttrs, containerTags }) {
   const root = document.querySelector('main') || document.body;
   const all = [...root.querySelectorAll('section, [data-section]')];
   let sections;
@@ -133,16 +130,23 @@ function mapSections(groupSections, { selector, given }) {
   } else {
     const inRoot = (el) => !!el && el !== root && root.contains(el);
     const candidates = [...document.querySelectorAll(selector)].filter((el) => inRoot(el) && !inRoot(el.parentElement.closest(selector)));
-    const parts = groupSections(candidates, {
-      tagOf: (el) => el.tagName.toLowerCase(),
-      childrenOf: (el) => [...el.children],
-      isMarked: (el) => ['data-section', 'data-block', 'data-module'].some((a) => el.hasAttribute(a)),
-    });
-    // inventory()/editableInventory() read only the FIRST match of their root selector,
-    // so a section of several elements gets one wrapper; display: contents keeps the
-    // wrapped elements in their parent's layout.
+    const tagOf = (el) => el.tagName.toLowerCase();
+    const isMarked = (el) => markAttrs.some((a) => el.hasAttribute(a));
+    const container = (el) => containerTags.includes(tagOf(el));
+    // One call keeps the rule's lone-wrapper unwrap about the whole candidate list; a group
+    // is then cut wherever its nodes change parent, so a section never spans two parents.
+    const parts = groupSections(candidates, { tagOf, childrenOf: (el) => [...el.children], isMarked })
+      .flatMap((g) => g.reduce((runs, n) => {
+        const last = runs[runs.length - 1];
+        if (last && last[0].parentElement === n.parentElement) last.push(n); else runs.push([n]);
+        return runs;
+      }, []));
+    // inventory()/editableInventory() read only the FIRST match of their root selector and
+    // scan only its descendants, so a group of several nodes or a lone content node gets a
+    // wrapper (display: contents keeps its parent's layout); a lone container or marked
+    // element is tagged in place, so its own selectors keep matching.
     sections = parts.map((g) => {
-      if (g.length === 1) return g[0];
+      if (g.length === 1 && (container(g[0]) || isMarked(g[0]))) return g[0];
       const wrap = document.createElement('div');
       wrap.setAttribute('data-ss-split', '');
       wrap.style.display = 'contents';
@@ -150,7 +154,7 @@ function mapSections(groupSections, { selector, given }) {
       wrap.append(...g);
       return wrap;
     });
-    names = parts.map((g) => g[0].getAttribute('data-section') || g[0].classList[0] || g[0].tagName.toLowerCase());
+    names = parts.map((g) => g[0].getAttribute('data-section') || g[0].classList[0] || tagOf(g[0]));
     split = { selector, inferred: parts.length };
   }
   const out = [];
@@ -193,9 +197,26 @@ function mapSections(groupSections, { selector, given }) {
     }
     out.push({ idx, section: name, repeats: groups });
   });
-  return { split, sections: out };
+  return { split, root: root.tagName.toLowerCase(), sections: out };
 }
 /* eslint-enable no-undef */
+
+// The one page.evaluate expression: mapSections with groupSections' injected source and the
+// --split settings (split = the --split selector, or null when not given).
+export function mapSectionsExpr(split) {
+  const arg = JSON.stringify({ selector: split || SPLIT_DEFAULT, given: split !== null, markAttrs: MARK_ATTRS, containerTags: CONTAINER_TAGS });
+  return `(${mapSections})(${GROUP_SECTIONS_PAGE_SRC}, ${arg})`;
+}
+
+// The --out summary's first line for an inferred schema (null on the old path). root is the
+// content root's tag: on a page without <main> the default split finds nothing, so say so.
+export function splitSummary(split, { given, root }) {
+  if (!split) return null;
+  let why = 'no <section> in <main>';
+  if (given) why = '--split given';
+  else if (root === 'body' && !split.inferred) why = 'no <main> in the page — try --split \'body > *\'';
+  return `inferred ${split.inferred} section(s) from --split '${split.selector}' (${why})`;
+}
 
 const USAGE = 'usage: node skills/deploy/scripts/section-schema.mjs <prototypeURL> [--out file] [--width px] [--profile eds|generic] [--split sel]';
 
@@ -209,6 +230,7 @@ async function main() {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   let split;
+  let root;
   let sections;
   try {
     // reducedMotion matches content-diff's grab(): all three gates must inventory
@@ -222,10 +244,8 @@ async function main() {
     });
     await page.waitForTimeout(400);
 
-    // One expression: mapSections called with groupSections' injected source and the --split settings.
-    const splitArg = JSON.stringify({ selector: opts.split || SPLIT_DEFAULT, given: opts.split !== null });
-    const mapped = await page.evaluate(`(${mapSections})(${GROUP_SECTIONS_PAGE_SRC}, ${splitArg})`);
-    split = mapped.split;
+    const mapped = await page.evaluate(mapSectionsExpr(opts.split));
+    ({ split, root } = mapped);
     sections = [];
     for (const m of mapped.sections) {
       const inv = await page.evaluate(inventory, [`[data-ss-idx="${m.idx}"]`, prof.eyebrow]);
@@ -248,8 +268,8 @@ async function main() {
     fs.mkdirSync(path.dirname(opts.out), { recursive: true });
     fs.writeFileSync(opts.out, `${json}\n`);
     const totals = sections.map((s) => `${s.section}(${s.items.length} items${s.repeats.length ? `, ${s.repeats.map((r) => `${r.count}×${r.unitSelector}`).join('+')}` : ''}, ${s.editableTexts} editable)`).join(', ');
-    const inferred = split ? `inferred ${split.inferred} section(s) from --split '${split.selector}' (${opts.split !== null ? '--split given' : 'no <section> in <main>'})\n` : '';
-    process.stdout.write(`${inferred}schema → ${opts.out}\n${sections.length} sections: ${totals}\n`);
+    const inferred = splitSummary(split, { given: opts.split !== null, root });
+    process.stdout.write(`${inferred ? `${inferred}\n` : ''}schema → ${opts.out}\n${sections.length} sections: ${totals}\n`);
   } else {
     process.stdout.write(`${json}\n`);
   }
