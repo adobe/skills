@@ -84,7 +84,13 @@
  *     document.fonts.ready, any declared FontFace with status 'error' is
  *     reported LOUDLY with the family names; the operator must decide
  *     whether the failure is instrument-induced (a capture defect — fix the
- *     instrument) or real on the live site (capture-state — log it).
+ *     instrument) or real on the live site (capture-state — log it). A DEAD
+ *     declaration is not counted: an @font-face whose every requested src
+ *     answered 404 (recorded: a duplicate always-404 face beside the one that
+ *     loaded) fails for every visitor alike — `fontsDead` and one stdout line
+ *     `fonts: not counted — …`, never the warning (deadFontFaces: a family
+ *     counts while it has more failed faces than dead declarations, or a rule
+ *     in a stylesheet that cannot be read).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
  *     pre-settle height is fake.
@@ -150,8 +156,29 @@
  *     <descriptor>` line there (a consent-sweep click that left the page:
  *     `(consent sweep navigated to <url>)`); exit stays 0 (gate.sh / gate-all
  *     decide).
+ *   - the DIALOG-LEFT check: a dialog the last sweep could not close
+ *     (dialogsLeft) is named on ONE `dialog-left: <name>` line each, after
+ *     the overlay-left line, and recorded as `dialogLeft` — hidden or not: a
+ *     recorded hands-off run kept a consent dialog open on four origin
+ *     captures and passed them because its container was on a per-slug hide
+ *     list. Only a container hidden for the page AND allowed as a
+ *     per-visitor dialog (--allow-dialog <sel>, presence.json `allow` kind
+ *     per-visitor-dialog) takes it out: `dialog left open, hidden as a
+ *     per-visitor dialog: <name> (<sel>)`, `dialogsAllowed`. The container
+ *     is read before the hide pass (the hide selector whose match is the
+ *     dialog or holds it). Exit stays 0: gate.sh gives no verdict, gate-all
+ *     marks the row INCONCLUSIVE.
+ *   - --pin <sel,…> clicks each rotator control once on the frozen page,
+ *     right after the first-slide dot (transitions off, so the state is
+ *     instant), then clears the timers again — `pinned: <sel> (clicked)` or
+ *     `pin not applied: <sel> (no visible match)`; the record's `pinned`.
+ *   - --slug <s> / --presence <file> read the page's capture settings from
+ *     presence.json (the site-wide stardust/replica/presence.json under
+ *     --presence's file; presence.mjs captureSettings, "*" then the slug's):
+ *     its hide, dismiss, pin and per-visitor-dialog allowances join the
+ *     flags'. gate.sh and gate-all pass the merged lists as flags instead.
  *     --json <file> writes the capture record once the PNG is written: the
- *     sweeps' dismissals, overlayLeft, fontsFailed (the font-load
+ *     sweeps' dismissals, overlayLeft, dialogLeft, fontsFailed (the font-load
  *     assertion's families — an array when it ran, null when it could not,
  *     with fontCheck "failed: <msg>"), the hide records (each with
  *     nAtCapture), hideMiss, height and the overflow line.
@@ -169,6 +196,10 @@
  *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
  *     --hide <sel,...>    in-flow per-visitor regions to remove before the
  *                         capture (repeatable; see above)
+ *     --pin <sel,...>     rotator controls clicked on the frozen page
+ *     --allow-dialog <sel,...>  hide containers a dialog left open may sit
+ *                         in (per-visitor dialogs)
+ *     --slug <s> / --presence <file>  read presence.json's capture settings
  *     --headed            escalation: headed stealth real Chrome
  *     --hints <v>         client hints: ua-metadata (sec-ch-ua* brands and
  *                         version from the UA) | native (the browser's own);
@@ -183,7 +214,7 @@
  *     --inventory <spec>  also write the presence / clip / unit inventories of
  *                         the settled page, before the freeze (gate-all --one-load)
  *     --json <file>       after the PNG, write the capture record (gate.sh /
- *                         gate-all read overlayLeft, fontsFailed and hideMiss)
+ *                         gate-all read overlayLeft, dialogLeft, fontsFailed and hideMiss)
  *
  * Output: <out.png> and, beside it, <stem>.capture.json (build.png →
  * build.capture.json — never <stem>.json, which gate.sh / gate-all write
@@ -206,15 +237,15 @@
  * Requires: playwright, pngjs (project devDependencies; imported lazily, so
  * --help needs neither), and the diff skill's scripts dir alongside
  * (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written (an overlay left included), 1 error (a scroll stall
- * included), 3 bot challenge (live side blocked — an edge interstitial or a
+ * Exit codes: 0 written (an overlay or a dialog left included), 1 error (a scroll stall
+ * included, an unreadable presence.json or a missing --presence file), 3 bot challenge (live side blocked — an edge interstitial or a
  * 2xx denial page; fail loud, never captured, no PNG, no capture.json and no
  * --json record; escalate with --headed).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { writeFileSync, mkdirSync, existsSync, realpathSync, rmSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, rmSync } from 'fs';
 import { basename, dirname, extname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -245,6 +276,14 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --hide <sel,…>    remove in-flow per-visitor regions (a location bar above the header — dismissal can't)
                     after dismissal + settle, before --inventory and the capture (repeatable)
+  --pin <sel,…>     rotator controls clicked once on the frozen page (after the first-slide dot), timers cleared
+                    again: "pinned: <sel> (clicked)" / "pin not applied: <sel> (no visible match)" (repeatable)
+  --allow-dialog <sel,…>  hide containers that may hold a dialog left open (per-visitor dialogs): only a dialog
+                    such a hidden container holds is no "dialog-left:" line (repeatable)
+  --slug <s>        read the page's capture settings from presence.json — stardust/replica/presence.json (cwd-relative)
+                    under --presence's file, "*" then <s>: hide, dismiss, pin, per-visitor-dialog allowances join
+                    the flags' (presence.mjs beside this file)
+  --presence <f>    a gate dir's presence.json over the site file (with --slug, or "*" only)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --hints <v>       client hints: ua-metadata (sec-ch-ua* with the UA's brands and version, the host's platform;
                     out-of-process iframes and service workers keep the browser's own) | native (escape hatch: the
@@ -258,8 +297,10 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --inventory <f>   also write the probes' inventories of the settled page, before the freeze (gate-all --one-load)
   --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle, dismissed
                     ({ consent, extra, marketing } over the sweeps; null under --no-dismiss), overlayLeft (null when
-                    clean), fontsFailed ([] or the families whose face failed; null = the check could not run, then
-                    fontCheck "failed: <msg>" follows), hidden (the --hide records: sel, source, n, h at the hide pass,
+                    clean), dialogLeft (null, or the dialogs left open), dialogsAllowed ([{ name, hiddenBy }], only
+                    when any), pinned ([{ sel, state, clicked }], only with pins),
+                    fontsFailed ([] or the families whose face failed; null = the check could not run, then fontCheck
+                    "failed: <msg>" follows), fontsDead (the dead declarations' families, only when any), hidden (the --hide records: sel, source, n, h at the hide pass,
                     nAtCapture = the match count right before the capture), hideMiss ({ sels, candidates } when a
                     selector matched nothing at both counts — candidates = the in-flow blocks above the header,
                     { tag, id, classes, top, height, selector }; null when none), height, overflow
@@ -273,6 +314,12 @@ painting ≥ 80 % of the viewport, or a scroll lock (html / body overflow:hidden
 page prints \`overlay-left: (consent sweep navigated to <url>)\`, a check that could not run
 \`overlay-left: (overlay check failed: <msg>)\`. Exit stays 0: gate.sh gives no verdict, gate-all marks the row
 INCONCLUSIVE. --json records it as overlayLeft; a failed capture writes no record.
+Prints \`dialog-left: <name>\` (+ \` (hidden by <sel> — not an allowed per-visitor dialog)\`) once per dialog the last
+sweep left open, after the overlay-left line — a hide alone does not take it out: only a hidden container listed by
+--allow-dialog does (\`dialog left open, hidden as a per-visitor dialog: <name> (<sel>)\`). Exit stays 0; gate.sh gives
+no verdict, gate-all marks the row INCONCLUSIVE ("dialog left open (<name>)").
+A face that failed is counted (WARNING FONT LOAD FAILED) unless it is a dead declaration — an @font-face whose every
+requested src answered 404, the same for every visitor: \`fonts: not counted — … : <families>\`, the record's fontsDead.
 Prints \`overflow: scrollWidth=<n> viewport=<n> delta=<n>\` right before the \`stitched\` line: the document width
 vs the viewport at --width (delta = px over, 0 when it fits), read after the chunk loop, back at the top with
 finite animations finished (the page at rest) — gate.sh's horizontal-overflow assert reads it from the build capture.
@@ -321,7 +368,7 @@ export function parseArgs(argv, nav = {}) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], headed: false, hints: null, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], pin: [], allowDialog: [], slug: null, presence: null, headed: false, hints: null, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -334,6 +381,13 @@ export function parseArgs(argv, nav = {}) {
       const v = rest[i += 1];
       if (v === undefined || v.startsWith('--')) { console.error(`--hide needs a selector list\n\n${HELP}`); process.exit(1); }
       opts.hide = parseHideList(opts.hide, v);
+    }
+    else if (a === '--pin' || a === '--allow-dialog' || a === '--slug' || a === '--presence') {
+      const v = rest[i += 1];
+      if (v === undefined || v.trim() === '' || v.startsWith('--')) { console.error(`${a} needs a value\n\n${HELP}`); process.exit(1); }
+      if (a === '--pin') opts.pin = parseHideList(opts.pin, v);
+      else if (a === '--allow-dialog') opts.allowDialog = parseHideList(opts.allowDialog, v);
+      else opts[a.slice(2)] = v.trim();
     }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--hints') {
@@ -460,6 +514,58 @@ export function hideMissOutcome(sels, candidates, error) {
   return { sels: missed, candidates: null, candidatesCheck: `failed: ${why}` };
 }
 
+/**
+ * The capture settings of a run: the flags, then a page's presence.json settings (presence.mjs captureSettings, read with
+ * --slug / --presence; null = none) after them → { hide, dismiss, pins: [{ sel, state }], allowDialog } — lists
+ * de-duplicated in order; a pin keeps the flag's position and takes the file's state (a flag alone: state null).
+ */
+export function withPresence(opts, settings) {
+  const s = settings || {};
+  const pins = (opts.pin || []).map((sel) => ({ sel, state: null }));
+  for (const x of s.pin || []) {
+    const at = pins.findIndex((y) => y.sel === x.sel);
+    if (at < 0) pins.push({ sel: x.sel, state: x.state }); else pins[at] = { sel: x.sel, state: x.state };
+  }
+  return { hide: parseHideList(opts.hide, s.hide), dismiss: parseHideList(opts.dismiss, s.dismiss), pins, allowDialog: parseHideList(opts.allowDialog, s.allowDialog) };
+}
+
+/**
+ * The dialog-left check: the last sweep's dialogsLeft (names), `hiders` (name → the hide selector whose match contains
+ * that dialog, null when none) and the allowed per-visitor-dialog containers → { dialogLeft: [names] | null, allowed:
+ * [{ name, hiddenBy }] }. A dialog left open is left — hidden or not: a hide alone no longer silences it — unless the
+ * container hiding it is an allowed per-visitor dialog (presence.json allow, kind per-visitor-dialog).
+ */
+export function dialogOutcome(names, hiders, allowDialog = []) {
+  const left = []; const allowed = [];
+  for (const name of names || []) {
+    const by = hiders && hiders.get(name);
+    if (by && allowDialog.includes(by)) allowed.push({ name, hiddenBy: by }); else left.push(name);
+  }
+  return { dialogLeft: left.length ? left : null, allowed };
+}
+
+/**
+ * The font check's failed faces less the dead declarations: `errored` = the family of every face whose status is
+ * 'error' (one entry per face), `rules` = the readable @font-face rules ({ family, srcs: absolute URLs }), `statuses` =
+ * url → HTTP status of every font response the page received. A rule is dead when at least one of its srcs was requested
+ * and every requested one answered 404 (srcs the browser skipped — an unsupported format — are not requested): every
+ * visitor gets the same failure, so it is no capture defect. A family is dead when it has no more failed faces than dead
+ * rules (each dead rule is a failed face); else it still counts — a failure no 404 explains, a rule in a stylesheet that
+ * cannot be read. → { failed, dead }: unquoted families, unique, sorted.
+ */
+export function deadFontFaces({ errored = [], rules = [], statuses = {} } = {}) {
+  const key = (f) => fontFamilies([f])[0] || '';
+  const deadN = new Map(); const failedN = new Map(); const names = new Map();
+  for (const r of rules) {
+    const asked = (r.srcs || []).filter((u) => Object.hasOwn(statuses, u));
+    if (asked.length && asked.every((u) => statuses[u] === 404)) deadN.set(key(r.family).toLowerCase(), (deadN.get(key(r.family).toLowerCase()) || 0) + 1);
+  }
+  for (const f of errored) { const k = key(f).toLowerCase(); if (!k) continue; failedN.set(k, (failedN.get(k) || 0) + 1); if (!names.has(k)) names.set(k, key(f)); }
+  const failed = []; const dead = [];
+  for (const [k, n] of failedN) (n <= (deadN.get(k) || 0) ? dead : failed).push(names.get(k));
+  return { failed: fontFamilies(failed), dead: fontFamilies(dead) };
+}
+
 // <stem>.capture.json beside the PNG (build.png → build.capture.json) — never <stem>.json: gate.sh / gate-all write
 // live.json, origin.json and eds.json AFTER the capture returns, and gate-all reads live.json to reuse live.png.
 function captureSidecarPath(out) {
@@ -478,11 +584,61 @@ export function isHeaderMorph({ y, target, actualY, totalH, h2, vh }) {
   return Math.abs(shortfall - shrink) <= SCROLL_SLACK || Math.abs(Math.max(0, Math.min(y, h2 - vh)) - actualY) <= SCROLL_SLACK;
 }
 
+// --slug / --presence: the page's capture settings from presence.json — the site-wide file (cwd-relative) merged UNDER
+// --presence's file (live-session mergePresence), read by presence.mjs captureSettings ("*" then the slug's). A file that
+// is not readable JSON, or a --presence file that does not exist, is an error (exit 1) before any browser starts.
+async function readPresenceSettings(opts) {
+  if (!opts.slug && !opts.presence) return { settings: null, note: null };
+  const pres = resolvePath(HERE, 'presence.mjs');
+  if (!existsSync(pres)) throw new Error('--slug / --presence need presence.mjs beside stitch-shot.mjs — copy the replica scripts dir whole (replica SKILL.md § Setup)');
+  const { captureSettings } = await import(pathToFileURL(pres).href);
+  const site = liveSession.SITE_PRESENCE || 'stardust/replica/presence.json';
+  if (opts.presence && !existsSync(opts.presence)) throw new Error(`--presence ${opts.presence} not found`);
+  const files = [...(existsSync(site) && !(opts.presence && resolvePath(opts.presence) === resolvePath(site)) ? [site] : []), ...(opts.presence ? [opts.presence] : [])];
+  const read = (f) => { try { return JSON.parse(readFileSync(f, 'utf8')); } catch (e) { throw new Error(`presence.json ${f} unreadable (${String(e.message).split('\n')[0]})`); } };
+  const merge = typeof liveSession.mergePresence === 'function' ? liveSession.mergePresence : (a, b) => ({ ...a, ...b });
+  const merged = files.length === 2 ? merge(read(files[0]), read(files[1])) : files.length ? read(files[0]) : {};
+  return { settings: captureSettings(merged, opts.slug), note: `presence: ${files.length ? files.join(' under ') : 'no presence.json'} → ${opts.slug || '"*"'}` };
+}
+
+// The dialogs the last sweep left open → name → the first hide selector whose match is the dialog or contains it (null
+// when none), read BEFORE the hide pass (a hidden dialog is no longer visible). The same reading as live-session's dialog
+// pass: native `dialog[open]` and the visible, overlay-like MODAL_DIALOGS matches, named by describeElementInPage. A
+// live-session copy without those exports leaves every hider null — the dialog then stays left, never allowed.
+async function dialogHiders(page, names, hideSels) {
+  const out = new Map(names.map((n) => [n, null]));
+  const { NATIVE_DIALOG, MODAL_DIALOGS, overlayLikeInPage, describeElementInPage } = liveSession;
+  if (!hideSels.length || !NATIVE_DIALOG || !Array.isArray(MODAL_DIALOGS) || typeof describeElementInPage !== 'function' || typeof overlayLikeInPage !== 'function') return out;
+  for (const sel of [NATIVE_DIALOG, ...MODAL_DIALOGS]) {
+    const hs = await page.locator(sel).elementHandles().catch(() => []);
+    try {
+      for (const h of hs.slice(0, 25)) {
+        try {
+          if (!(await h.isVisible())) continue;
+          if (sel !== NATIVE_DIALOG && !(await h.evaluate(overlayLikeInPage))) continue;
+          const name = await h.evaluate(describeElementInPage);
+          if (!out.has(name) || out.get(name)) continue;
+          out.set(name, await h.evaluate((el, sels) => sels.find((s) => { try { return !!el.closest(s); } catch { return false; } }) || null, hideSels));
+        } catch { /* detached under the read — not open */ }
+      }
+    } finally {
+      await Promise.all(hs.map((h) => h.dispose().catch(() => {})));
+    }
+  }
+  return out;
+}
+
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
   // Before anything can fail: a failed capture never leaves a stale sidecar beside an older PNG.
   const sidecar = captureSidecarPath(out);
   rmSync(sidecar, { force: true });
+  const pres = await readPresenceSettings(opts);
+  const eff = withPresence(opts, pres.settings);
+  if (pres.note) console.log(`${pres.note}: hide ${eff.hide.length}, dismiss ${eff.dismiss.length}, pin ${eff.pins.length}, allow-dialog ${eff.allowDialog.length}`);
+  opts.dismiss = eff.dismiss;
+  const cliHide = new Set(opts.hide);
+  const hideList = eff.hide.map((sel) => ({ sel, source: cliHide.has(sel) ? '--hide' : 'presence.json' }));
   // Lazy: --help (inside parseArgs) answers without playwright / pngjs installed.
   const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
   const browser = await launchCaptureBrowser(liveSession, chromium, opts);
@@ -493,6 +649,9 @@ async function main() {
       viewport: { width: opts.width, height: opts.vh },
     });
     const page = await ctx.newPage();
+    // every font response's status (the font check tells a dead @font-face — every src 404 — from a capture defect)
+    const fontStatuses = {};
+    page.on('response', (r) => { try { if (r.request().resourceType() === 'font') fontStatuses[r.url()] = r.status(); } catch { /* a response without its request — not a font read */ } });
     // Read once the page exists: the UA metadata is set per page, and a page it could not be set on runs 'native'.
     const { browserBuild, hints } = captureHintRecord(liveSession, ctx);
     console.log(`browser: ${browserBuild}, client hints: ${hints}`);
@@ -555,14 +714,22 @@ async function main() {
     // --hide: after the last dismissal sweep and the denial re-check, before --inventory, the freeze and the height
     // read — the inventories, the page height and every chunk see the page without the in-flow regions (header, the
     // --hide bullet).
-    const hidden = opts.hide.length ? await hideRegions(page, opts.hide) : [];
-    if (opts.hide.length) console.log(`hidden: ${formatHidden(hidden)}`);
+    // The dialog-left check (header): the last sweep's dialogsLeft and, read now — before the hide pass — the hide
+    // selector containing each; printed after the overlay-left check.
+    const leftNames = opts.noDismiss ? [] : [...((sweeps.at(-1) || {}).dialogsLeft || [])];
+    const hiders = leftNames.length ? await dialogHiders(page, leftNames, eff.hide) : new Map();
+    const dialogs = dialogOutcome(leftNames, hiders, eff.allowDialog);
+
+    const hidden = hideList.length ? await hideRegions(page, hideList) : [];
+    if (hideList.length) console.log(`hidden: ${formatHidden(hidden)}`);
 
     // The overlay-left check (header): once, on the page the chunks will show — after the last sweep and --hide,
     // under --no-dismiss too; a sweep that navigated away is named instead. Never removed; the exit code stays 0
     // (gate.sh / gate-all decide).
     const overlayLeft = navigated || await detectOverlayLeft(page);
     if (overlayLeft) console.log(`overlay-left: ${overlayLeft}`);
+    for (const name of dialogs.dialogLeft || []) console.log(`dialog-left: ${name}${hiders.get(name) ? ` (hidden by ${hiders.get(name)} — not an allowed per-visitor dialog)` : ''}`);
+    for (const { name, hiddenBy } of dialogs.allowed) console.log(`dialog left open, hidden as a per-visitor dialog: ${name} (${hiddenBy})`);
 
     // --inventory: the probes read this settled page (read only, before the freeze; a failure never fails the capture).
     if (opts.inventory) await import(pathToFileURL(resolvePath(dirname(LIVE_SESSION), 'content-presence.mjs')).href).then((m) => m.inventoryToFile(page, opts.inventory, { url })).catch((e) => console.error(`stitch-shot WARNING: --inventory not taken (${e.message}) — the capture continues`));
@@ -610,6 +777,22 @@ async function main() {
         while (id-- > 0) { window.clearTimeout(id); window.clearInterval(id); }
       }
     });
+    // --pin (header): each rotator control clicked once on the frozen page — its first visible match, transitions off,
+    // so the state it selects is instant — then the timers it re-armed cleared again; the same on both sides.
+    const pinned = [];
+    for (const { sel, state } of eff.pins) {
+      const clicked = await page.evaluate((s) => {
+        let el = null;
+        try { el = [...document.querySelectorAll(s)].find((x) => { const r = x.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(x).visibility !== 'hidden'; }) || null; } catch { el = null; }
+        if (!el) return false;
+        el.click();
+        let id = window.setTimeout(() => {}, 0);
+        while (id-- > 0) { window.clearTimeout(id); window.clearInterval(id); }
+        return true;
+      }, sel).catch(() => false);
+      pinned.push({ sel, state, clicked });
+      console.log(clicked ? `pinned: ${sel}${state ? ` → ${state}` : ''} (clicked)` : `pin not applied: ${sel} (no visible match)`);
+    }
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
 
@@ -627,13 +810,30 @@ async function main() {
     // could not run (the evaluate threw) is recorded as not checked —
     // fontsFailed null + fontCheck in the --json record, its own warning —
     // never as "every face loaded".
+    // A dead declaration is not counted (deadFontFaces): an @font-face whose every requested src answered 404 fails
+    // for every visitor alike (recorded: a duplicate always-404 face beside the one that loaded) — it is listed as
+    // fontsDead with one stdout line, never a FONT LOAD FAILED warning.
     let fontError = null;
-    const failedFonts = await page.evaluate(async () => {
+    const fontRead = await page.evaluate(async () => {
       await document.fonts.ready;
-      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
-    }).catch((e) => { fontError = e; return []; });
-    const fonts = fontCheckOutcome(failedFonts, fontError);
+      const errored = [...document.fonts].filter((f) => f.status === 'error').map((f) => f.family);
+      const rules = [];
+      const walk = (list, base) => {
+        for (const r of list) {
+          if (r instanceof CSSFontFaceRule) {
+            const srcs = [...r.style.getPropertyValue('src').matchAll(/url\(\s*(['"]?)(.*?)\1\s*\)/g)].map((m) => { try { return new URL(m[2], base).href; } catch { return m[2]; } });
+            rules.push({ family: r.style.getPropertyValue('font-family'), srcs });
+          } else if (r instanceof CSSImportRule) { try { if (r.styleSheet) walk(r.styleSheet.cssRules, r.styleSheet.href || base); } catch { /* unreadable import */ } } else if (r.cssRules) walk(r.cssRules, base);
+        }
+      };
+      for (const sh of document.styleSheets) { try { walk(sh.cssRules, sh.href || document.baseURI); } catch { /* a cross-origin sheet: its rules unreadable, its faces stay counted */ } }
+      return { errored, rules };
+    }).catch((e) => { fontError = e; return null; });
+    const fontSplit = fontRead ? deadFontFaces({ ...fontRead, statuses: fontStatuses }) : { failed: [], dead: [] };
+    const failedFonts = fontSplit.failed;
+    const fonts = { ...fontCheckOutcome(fontRead ? failedFonts : null, fontError), ...(fontSplit.dead.length ? { fontsDead: fontSplit.dead } : {}) };
     if (fonts.fontCheck) console.error(`stitch-shot WARNING: font-load check failed (${fonts.fontCheck.slice('failed: '.length)}) — the record says fontsFailed: null (not checked)`);
+    if (fontSplit.dead.length) console.log(`fonts: not counted — @font-face whose every src returned 404 (a dead declaration, the same for every visitor): ${fontSplit.dead.join(', ')}`);
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
@@ -749,7 +949,7 @@ async function main() {
     // --json: the capture record, only once the PNG is written (a failed capture leaves none).
     if (opts.json) {
       mkdirSync(dirname(opts.json), { recursive: true });
-      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, ...fonts, hidden: hides, hideMiss, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
+      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, dialogLeft: dialogs.dialogLeft, ...(dialogs.allowed.length ? { dialogsAllowed: dialogs.allowed } : {}), ...(pinned.length ? { pinned } : {}), ...fonts, hidden: hides, hideMiss, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
     }
     console.log(overflowLine(root));
     // Last stdout line, no line after it: gate-all keeps the last two (overflow + stitched) in origin.json's log.
