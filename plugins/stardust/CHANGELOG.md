@@ -41,7 +41,9 @@ contract recorded a body-hydration state as a panel and cost two sessions and ei
   unit gate on the preview host when the final roster gate measures the live host and both gate keys are known and
   equal but for the build host (the delivered document, the chrome documents and every code hash unchanged since that
   gate): `reused build capture (unchanged since <ts>)`, the row's `buildReused`, its `host` the one the pixels came from,
-  and one summary.md line naming those rows.
+  and one summary.md line naming those rows. In the local integration this is an experiment behind
+  `--reuse-across-hosts`, off by default: a C-final row is measured on the live host, and the preview-vs-live
+  difference in published inputs the key does not hash is what C-final exists to catch.
 - **chrome-explore's pollution guard.** Every top-level open state is sampled again on a fresh page; a repeat that
   differs by more than `--bar` (default 0.02) marks the state `unstable` and is re-sampled once. The contract's header
   records `stability`; `unstableAsWarn` turns chrome-compare's errors on an unstable source state into warnings

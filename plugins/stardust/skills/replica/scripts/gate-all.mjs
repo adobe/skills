@@ -150,8 +150,9 @@
  * A PASS row whose key holds, from a table written under the same criteria, is reused whole (no stitch, probe or
  * compare). The EDS side is re-shot unless gate-key.json holds the same known key — or, the key unknown now, the
  * same parts, reason, upstream commit and ledger rows; a dir without gate-key.json (legacy) is re-shot once. C-FINAL
- * REUSE: the unit gates measure the preview host and the final roster gate the live host (--eds-host), so every key
- * differs by build.origin; a stored key and a current key that are both known (each host proven to serve the hashed
+ * REUSE (--reuse-across-hosts, an experiment, off by default — off, the live-host gate re-shoots): the unit gates
+ * measure the preview host and the final roster gate the live host (--eds-host), so every key differs by
+ * build.origin; a stored key and a current key that are both known (each host proven to serve the hashed
  * tree — the live tier only by `live` ledger rows) and equal but for build.origin keep the EDS capture
  * (sameTreeOtherHost): logged `eds <slug> → reused build capture (unchanged since <ts>) — taken on <host>, the same
  * tree <host> serves`, the row's `buildReused` { host, at } and `host` the one the pixels came from, one summary.md line
@@ -235,7 +236,7 @@
  * skipped — <why>`: the verdict and the exit code never change.
  *
  * Usage: node skills/replica/scripts/gate-all.mjs [--stage published|prototype] [--proto-base <url>]
- *        [--coverage f] [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
+ *        [--coverage f] [--state f] [--out dir] [--width 1440] [--only <slug,…>] [--skip-existing] [--reuse-across-hosts] [--recapture-eds] [--recapture-origin] [--eds-host <h>]
  *        [--blocked <re>] [--try-blocked] [--crawl-shots <dir>] [--origin-max-age <h>] [--origin-concurrency 2]
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
@@ -301,11 +302,14 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
                             only while <slug>/gate-key.json proves it current (same key, or unknown
-                            key with the same tree, reason, upstream, ledger rows) — or a key that
-                            differs only by the build host, both known (the final roster gate on the
-                            live host keeps the preview-host unit gate's capture of the same tree:
-                            "reused build capture (unchanged since <ts>)", the row's buildReused and
-                            host); no local content/<page>.html → nothing to compare → re-shot every run (slower)
+                            key with the same tree, reason, upstream, ledger rows); no local
+                            content/<page>.html → nothing to compare → re-shot every run (slower)
+  --reuse-across-hosts      EXPERIMENT, off by default; with --skip-existing: a key that differs only by
+                            the build host, both known, keeps the other host's capture (the final roster
+                            gate on the live host keeps the preview-host unit gate's capture of the same
+                            tree: "reused build capture (unchanged since <ts>)", the row's buildReused and
+                            host). Off, the live-host gate re-shoots: preview and live may still differ in
+                            published inputs the key does not hash (fragments, metadata, placeholders)
   --recapture-eds           re-shoot eds.png only; the origin is reused while fresh (always with --skip-existing)
   --recapture-origin        re-shoot origin.png even when fresh (previous kept on failure)
   --origin-max-age <h>      also reuse origin captures from earlier runs up to <h> hours old (env
@@ -459,7 +463,7 @@ function poolFlag(flag, raw) {
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null, dismiss: [] };
+  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, reuseAcrossHosts: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null, dismiss: [] };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     // a value flag's value: never missing, never another flag or a dash-led word — the usage line, exit 2, before any I/O
@@ -468,7 +472,7 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--proto-base') o.protoBase = v().replace(/\/$/, '');
     else if (a === '--coverage') o.coverage = v(); else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
-    else if (a === '--skip-existing') o.skip = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
+    else if (a === '--skip-existing') o.skip = true; else if (a === '--reuse-across-hosts') o.reuseAcrossHosts = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') { const e = edsOrigin(v()); if (e.error) { console.error(`gate-all: ${e.error}\n${USAGE}`); process.exit(2); } o.edsHost = e.origin; } else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
     else if (a === '--origin-max-age') { o.originMaxAge = Number(v()); if (!(o.originMaxAge >= 0)) { console.error(`--origin-max-age must be a number of hours >= 0\n\n${HELP}`); process.exit(1); } }
     else if (a === '--origin-concurrency') o.oc = poolFlag(a, v()); else if (a === '--eds-concurrency') o.ec = poolFlag(a, v()); else if (a === '--probe-concurrency') o.pc = poolFlag(a, v());
@@ -1711,8 +1715,9 @@ async function main() {
   }
   const storedKey = (p) => readSafe(join(dir(p), 'gate-key.json'));
   const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
-  // a key that differs only by the build host, both known (sameTreeOtherHost), keeps the EDS capture: the same tree
-  const otherHost = (p) => opts.stage === 'published' && sameTreeOtherHost(storedKey(p), KEYS[p.slug]);
+  // with --reuse-across-hosts (an experiment, off by default), a key that differs only by the build host, both known
+  // (sameTreeOtherHost), keeps the EDS capture: the same tree
+  const otherHost = (p) => opts.reuseAcrossHosts && opts.stage === 'published' && sameTreeOtherHost(storedKey(p), KEYS[p.slug]);
   const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), KEYS[p.slug]) && !otherHost(p),
     // a stitched capture records the hide list it was taken with (absent = none); a crawl shot can hide nothing
     hideChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !sameHide(m.hide, hideOf(p)); },
