@@ -409,7 +409,7 @@ replaces that line with the three `replica/gates` lines of
 | `migrated/**/*.html`, `_meta.json`, `robots.txt`, `sitemap.xml` | yes | migrate | the deliverable and its reasoning |
 | `migrated/assets/**` | **no** | migrate | byte copy of `current/assets/media` + favicon variants |
 | `import/**`, `encoded/**`, `patches/**` | yes | deploy (map) / migrate | a template's map + manifest, the encoded documents, per-page patches |
-| `migrate/encode/<template>.json` | yes | migrate | the template's encode attempt (`{verdict: encoded\|no-roundtrip\|not-attempted, lint, at}`, `migrate.mjs plan`); an A′ render requires it |
+| `migrate/encode/<template>.json` | yes | migrate | the template's encode attempt (`{verdict: encoded\|no-roundtrip\|not-attempted\|hand-authored, lint, at}`, + `pages` when hand-authored; `migrate.mjs plan`); an A′ render requires it |
 | `audit/**` | yes | audit | score of the original site; irreplaceable after launch |
 | `spec/**` (`spec.config.json`, `judgement/`, `knowledge/`) | yes | spec | judgement and computed knowledge; raw material stays in `.work/spec/` |
 | `eds-schema/**` | yes | deploy | small JSON |
