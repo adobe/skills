@@ -12,8 +12,9 @@ B1 measures geometry, B3 the generated `:root` block and each text style, B2 com
 the frame's copy is the section's copy) and B4 writes a divergence register. The agent authors
 `reskin/figma-checks/<slug>.json` from `boxes` outlines; the coverage floor comes from Figma, so a file cannot cover only
 what the page got right (every text style of each checked root, a mobile root at the variant's own width; only a `waive`
-or `skip` with a `why` lowers it, a miss is exit 2). B0, B1 and B3 block. Phase 5 gains **(d)**, and Phase 4 renders every
-slot as `section[data-slot][data-module]` and emits `render/root-tokens.mjs`'s `:root` block first.
+or `skip` with a `why` lowers it, a miss is exit 2). B0, B1 and B3 block. Phase 5 gains **(d)**; Phase 4 renders each `mapped`
+or `new-module` slot as a top-level `section[data-slot]` (`data-module` on `mapped` only) and emits
+`render/root-tokens.mjs`'s `:root` block first.
 
 Nothing checked a reskin page where it ships. The new `reskin/deployed-gate.mjs` holds the page `deploy` made to the reskin
 page and the donor on its `aem.page` preview, any donor, in an aem-boilerplate project: `preview` (isolation: `--namespace
