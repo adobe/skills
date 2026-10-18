@@ -3,7 +3,7 @@
 // { tag, attrs, children } tree: sibling containers are one section each, a lone wrapper is unwrapped and its
 // prose merged, runs of non-containers between containers are one section each, a marked non-container stands
 // alone, script/style are skipped; the in-page copy is groupSections' own source and runs standalone; importing
-// the module loads no browser and runs no CLI; --help names --split; a --split without a selector is a usage
+// the module resolves no inventory, profile or browser module and runs no CLI; --help names --split; a --split without a selector is a usage
 // error before any browser work. No browser.
 // Run: node --test <this file>   (or node <this file>).
 import assert from 'node:assert/strict';
@@ -68,6 +68,21 @@ test('the in-page copy is groupSections\' own source and runs with no module sco
   const nodes = [el('h1', { id: 'h1' }), el('script'), el('p', { id: 'p1' }), el('section', { id: 'sec' }), el('figure', { id: 'fig', 'data-module': 'm' }), el('p', { id: 'p2' })];
   assert.deepEqual(ids(inPage(nodes, adapter)), split(nodes));
   assert.deepEqual(split(nodes), [['h1', 'p1'], ['sec'], ['fig'], ['p2']]);
+});
+
+test('importing the module resolves only node builtins: no inventory, profile or browser module', async (t) => {
+  const { registerHooks } = await import('node:module');
+  if (typeof registerHooks !== 'function') { t.skip('module.registerHooks needs Node >= 22.15'); return; }
+  const url = pathToFileURL(SCRIPT).href;
+  const probe = `import { registerHooks } from 'node:module';
+const seen = [];
+registerHooks({ resolve(s, c, next) { seen.push(s); return next(s, c); } });
+await import(${JSON.stringify(url)});
+console.log(JSON.stringify(seen));`;
+  const r = run(['--input-type=module', '-e', probe]);
+  assert.equal(r.status, 0, r.stderr);
+  const seen = JSON.parse(r.stdout).filter((s) => s !== url);
+  assert.deepEqual(seen.filter((s) => !/^(node:)?(fs|path|url)$/.test(s)), []);
 });
 
 test('importing the module loads no browser and runs no CLI: a bare import exits 0 silently', () => {

@@ -67,8 +67,6 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { resolveProfile } from './diff-profiles.mjs';
-import { inventory, editableInventory } from './content-inventory.mjs';
 
 export const SPLIT_DEFAULT = 'main > *';
 export const CONTAINER_TAGS = Object.freeze(['section', 'div', 'article', 'aside', 'header', 'footer', 'nav', 'form']);
@@ -204,8 +202,10 @@ const USAGE = 'usage: node skills/deploy/scripts/section-schema.mjs <prototypeUR
 async function main() {
   const { url, opts } = parseArgs(process.argv);
   if (!url) throw new UsageError('');
+  // Imported only here, so --help and an import of this module (for groupSections) load nothing heavy.
+  const { resolveProfile } = await import('./diff-profiles.mjs');
+  const { inventory, editableInventory } = await import('./content-inventory.mjs');
   const prof = resolveProfile(opts.profile);
-  // playwright is imported only here, so --help and an import of this module answer on a checkout without it.
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   let split;
