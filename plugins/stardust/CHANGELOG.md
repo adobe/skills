@@ -23,16 +23,23 @@ push (median 5–6 minutes, p90 10) is paid serially by serial units and overlap
   above 600 prints one notice line that a one-hour cache does not need it.
 - **One wait rule, three places.** The master skill's wait discipline, the handoff contract's § Fan-out discipline and
   replica's gate-round example say the same sentence: wait in steps of at most five minutes, lead and subagents
-  alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait. A unit's subagent
-  records its own end (`progress.mjs unit done|failed`) as its last command, so the lead's wait sees it.
+  alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait.
+- **Each unit flips its own end.** A unit's subagent runs `progress.mjs unit done|failed <unit> …` as its last act,
+  after its commit, so the lead's wait sees the end within five seconds; the lead records an end only for a unit that
+  died without flipping it (`failed`, with the reason).
+- **Wake (exit 77, both waits).** `progress.mjs wait` and `run-bg.mjs wait` also return 77, first line
+  `wake: <last line>`, when `stardust/.labs/wake` has grown since the wait started — the runner appends a line there
+  when a background agent finishes; an absent file means nothing.
 - **Every disjoint unit starts at once (rollout Phase C, delivery-gates).** After C0 is committed and frozen, every
   archetype unit starts in the same turn, each cluster the moment its archetype is `done`; disjoint units are never
   serialized to spare browsers — the browser slot queue paces captures. The lead's loop is `progress.mjs wait` →
   record what ended (the wait's lines and any end `show --waves` lists that the last wait did not print) → start what
-  is now unblocked → wait again, with a worked example; the one exception is a unit that edits a shared file, which
-  waits for that file's lock.
+  is now unblocked → wait again; the one exception is a unit that edits a shared file, which waits for that file's
+  lock. The worked example shows no `sleep`, each exit code (0 / 75 / 76 / 77) with what the lead does, and one
+  launch line's `deadline: <UTC HH:MM>` — the earlier of the unit budget and the session end minus five minutes (the
+  brief carries the clock, contract § Unit briefs).
 - **A re-recorded end keeps its time (`progress.mjs unit done|failed`).** On an entry that already has that status the
-  fields still apply and `endedAt` stays the subagent's own end, so the lead's bookkeeping re-record does not move it.
+  fields still apply and `endedAt` stays the first recorded end, so a re-record never moves it.
 - **`progress.mjs show --waves`.** The dependency view foundation → archetypes → clusters → final, each unit with its
   state (recorded, or `planned` from `coverage/templates.json`), and a last line `can start now: <names>`.
 - **The slots follow the browser budget (`run-bg.mjs`).** With `STARDUST_BROWSER_SLOTS` unset, run-bg derives it from
