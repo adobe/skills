@@ -10,8 +10,11 @@
  *   --out        rollout dir (default stardust/rollout): coverage/pages.json, optimize/findings.json, rollout.json,
  *                progress.json, units/<unit>.paths
  *   --ledger     run-status ledger (default stardust/status.jsonl)
- *   --live-host  aem.live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost)
- *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so
+ *   --live-host  live host or origin the delivered pages must answer 200 on (default rollout.json site.liveHost,
+ *                else the host the coverage records the delivered rows were deployed/gated on — inferred so the
+ *                live-host header-parity rule applies by default)
+ *   --offline    skip the live probe; pages_not_live is not checked and the verdict says so (the inferred/given
+ *                live host is still used for the header-parity rule — where parity was measured vs where the gates ran)
  *   --chrome     header contract and comparison dir (default stardust/chrome)
  *   --state      project state whose `flow` makes it a migration (default stardust/state.json)
  *   --widths     the gate widths every delivered page is proven at (default 1440,360); judged for
@@ -129,6 +132,24 @@ export const openP1 = (findings) => findings.filter((f) => (f.status === 'open' 
 
 const hostOf = (u) => { try { return new URL(/^https?:/.test(u) ? u : `https://${u}`).host; } catch { return ''; } };
 
+/**
+ * The live host the delivered pages were deployed/gated on, inferred from the coverage: the most common host
+ * among delivered rows' delivery.deployedUrl (an http(s) URL), ties broken by host string; null when none records
+ * one. When pages.json records a live host, done-check applies the live-host header-parity rule by default
+ * (--live-host inferred): a recorded run measured header parity on the preview host while its gates ran on the
+ * live host, and the rule never fired because --live-host was not passed. Pure.
+ */
+export function inferredLiveHost(pages = []) {
+  const counts = new Map();
+  for (const p of (Array.isArray(pages) ? pages : []).filter(isDelivered)) {
+    const u = p.delivery && p.delivery.deployedUrl;
+    const h = typeof u === 'string' && /^https?:\/\//.test(u) ? hostOf(u) : '';
+    if (h) counts.set(h, (counts.get(h) || 0) + 1);
+  }
+  if (!counts.size) return null;
+  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))[0][0];
+}
+
 /** The header's gap, or null: a migration is not done while its header's behaviour is unproven (header-parity). */
 export function headerGap({ flow = null, contract = null, parity = null, liveHost = null }) {
   if (!flow) return null;
@@ -140,7 +161,7 @@ export function headerGap({ flow = null, contract = null, parity = null, liveHos
   if (parity.profile !== want) return `header_parity:profile ${parity.profile}; the ${flow} flow needs ${want}`;
   const short = Object.keys(contract.widths || {}).filter((w) => !(parity.widths || []).map(String).includes(w));
   if (short.length) return `header_parity:not compared at ${short.join(', ')}`;
-  if (liveHost && hostOf(parity.build) !== hostOf(liveHost)) return `header_parity:compared on ${hostOf(parity.build)}, not the live host ${hostOf(liveHost)}`;
+  if (liveHost && hostOf(parity.build) !== hostOf(liveHost)) return `header_parity:measured on ${hostOf(parity.build)}, not the live host the gates ran on (${hostOf(liveHost)})`;
   const open = (parity.findings || []).filter((f) => f.severity === 'error' && !f.decided);
   return open.length ? `header_parity:${open.length}: ${listed(open.map((f) => f.key))}` : null;
 }
@@ -491,8 +512,12 @@ async function main() {
   const pagesDoc = readJSON(join(OUT, 'coverage', 'pages.json'));
   if (!pagesDoc) { console.error(`rollout done-check: no ${join(OUT, 'coverage', 'pages.json')} — run inventory.mjs first.`); process.exit(2); }
   const config = readJSON(join(OUT, 'rollout.json'), {});
-  const host = arg('live-host', config.site && config.site.liveHost);
-  if (!OFFLINE && !host) { console.error('rollout done-check: need --live-host <host> (or rollout.json site.liveHost), or --offline.'); process.exit(2); }
+  const pages = pagesDoc.pages || [];
+  // The live host: --live-host, else rollout.json site.liveHost, else the host the coverage records the pages were
+  // deployed/gated on (inferredLiveHost) — so the live-host header-parity rule applies by default. --offline keeps
+  // this host for the rule but skips the network probe.
+  const host = arg('live-host', (config.site && config.site.liveHost) || inferredLiveHost(pages));
+  if (!OFFLINE && !host) { console.error('rollout done-check: need --live-host <host> (or rollout.json site.liveHost or a deployed live host in coverage), or --offline.'); process.exit(2); }
 
   // sibling skills resolve in both layouts: plugin tree (skills/<b>/scripts/) and project copy (stardust/scripts/<b>/)
   const sibling = (plugin, project) => [join(HERE, '..', '..', ...plugin), join(HERE, '..', ...project)].find((x) => existsSync(x));
@@ -501,7 +526,6 @@ async function main() {
   let unpairedEnds = null;
   if (ledgerLib) { try { ({ unpairedEnds } = await import(pathToFileURL(ledgerLib).href)); } catch { unpairedEnds = null; } }
 
-  const pages = pagesDoc.pages || [];
   const ledgerLines = readLedger(LEDGER);
   const textOf = (f) => (existsSync(f) ? readFileSync(f, 'utf8') : '');
   const tables = new Map();
@@ -528,7 +552,8 @@ async function main() {
   const notLive = OFFLINE ? null : await probeLive(host, deliveredPaths(pages));
   const chrome = arg('chrome', 'stardust/chrome');
   const parity = readJSON(join(chrome, 'header-parity.json'));
-  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity, liveHost: OFFLINE ? null : host });
+  // the live-host rule applies whether or not the network probe ran (--offline keeps the host, skips the probe)
+  const header = headerGap({ flow, contract: readJSON(join(chrome, 'header-contract.json')), parity, liveHost: host });
   const wm = await loadManifestLib();
   const exported = await exportState({ out: OUT, config, pagesDoc, wm });
   const blocksDoc = readJSON(join(OUT, 'coverage', 'blocks.json'));

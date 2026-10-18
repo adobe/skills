@@ -30,7 +30,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as doneCheck from '../done-check.mjs';
-import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, headerParityErrors, inferredLiveHost, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
 import { blockOriginInputDirs, inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
@@ -489,6 +489,33 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.match(headerGap({ flow: 'replica', contract, parity: { ...parity, build: 'https://main--site--org.aem.page/' }, liveHost: live }), /not the live host/);
   const findings = [{ key: 'state-missing@1440 Shop [hover]', severity: 'error' }, { key: 'motion@390 Open menu [click]', severity: 'error', decided: { by: 'Site owner' } }, { key: 'link-href@1440 Shop', severity: 'warn' }];
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings }, liveHost: live }), 'header_parity:1: state-missing@1440 Shop [hover]');
+});
+
+check('inferredLiveHost: the most common delivered deployedUrl host; a non-URL or no deployed row → null', () => {
+  const dep = (slug, url) => ({ slug, delivery: { status: 'verified', deployedUrl: url } });
+  assert.equal(inferredLiveHost([dep('a', 'https://main--site--org.aem.live/a'), dep('b', 'https://main--site--org.aem.live/b'), dep('c', 'https://other.example/c')]), 'main--site--org.aem.live');
+  assert.equal(inferredLiveHost([row('p', '/p', 'pending')]), null, 'pending rows are not delivered');
+  assert.equal(inferredLiveHost([{ slug: 'x', delivery: { status: 'verified', deployedUrl: '/x' } }]), null, 'a path, not a host');
+  assert.equal(inferredLiveHost([]), null);
+});
+
+check('CLI: --offline infers the live host from the coverage — header parity measured on the preview host while the gates ran on the live host is a gap (the rule applies by default, no --live-host)', () => {
+  const live = 'main--site--org.aem.live';
+  const pages = [
+    { ...proven(row('home', '/', 'verified')), delivery: { ...proven(row('home', '/', 'verified')).delivery, deployedUrl: `https://${live}/` } },
+    { ...proven(row('about', '/about', 'verified')), delivery: { ...proven(row('about', '/about', 'verified')).delivery, deployedUrl: `https://${live}/about` } },
+  ];
+  const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 360: {} } };
+  const parity = { source: 'https://example.com/', build: 'https://main--site--org.aem.page/', at: '2026-10-09T12:00:00Z', profile: 'replica', widths: [1440, 360], findings: [] };
+  const proj = project({ pages, files: {
+    'stardust/state.json': { flow: 'replica' },
+    'stardust/chrome/header-contract.json': contract,
+    'stardust/chrome/header-parity.json': parity,
+  } });
+  const r = run(proj, ['--offline', '--json']);
+  const header = JSON.parse(r.stdout).gaps.filter((g) => g.startsWith('header_parity'));
+  assert.deepEqual(header, [`header_parity:measured on main--site--org.aem.page, not the live host the gates ran on (${live})`], r.stdout);
+  rmSync(proj, { recursive: true, force: true });
 });
 
 check('CLI: a replica project without a header contract is not complete', () => {
