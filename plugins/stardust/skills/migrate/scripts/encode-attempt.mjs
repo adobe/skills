@@ -14,7 +14,7 @@
  *   node stardust/scripts/migrate/encode-attempt.mjs record --template <t> --hand-authored --reason "<why>"
  *        [--pages <slug,…>] [--root .] [--state <file>]
  *   node stardust/scripts/migrate/encode-attempt.mjs check --template <t>[,<t>…] [--root .]
- *   node stardust/scripts/migrate/encode-attempt.mjs summary [--root .] [--json]
+ *   node stardust/scripts/migrate/encode-attempt.mjs summary [--root .] [--state <file>] [--json]
  *   (--template repeats or takes a comma list; a template name is letters, digits, `_`, `.`, `-` and not only dots;
  *   --root is the project directory, default the cwd; a value flag followed by nothing or by another --flag is a
  *   usage error)
@@ -56,13 +56,21 @@
  *   exit 0 `encode-attempt: <n> template(s) recorded`; else exit 2 and, on stderr, one line per missing or invalid
  *   template: `encode-attempt <t>: no attempt record — run: node stardust/scripts/migrate/encode-attempt.mjs record
  *   --template <t>`.
- * summary — every record under the record directory: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m>
- *   not-attempted, <h> hand-authored)`; an invalid record file is named on stderr and not counted. --json: { total,
- *   encoded, aPrime, noRoundtrip, notAttempted, handAuthored, templates: [{ template, verdict, reason[, pages] }] }
- *   sorted by template (pages on hand-authored only).
+ * summary — first one line per template (every record's, and every representative the state names; sorted) — the
+ *   line the roster report quotes: `encode-attempt <t>: <s> sibling(s) · <e> encoded · <r> slot-rendered · <h>
+ *   hand-authored · <n> not-attempted (<verdict | no record>[; <k> hand-authored without a record: <slug, …>])`; each
+ *   sibling (siblingsOf) counted once, first match: encoded (its migrate sidecar has `encode` and audit.encode.status
+ *   clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource), hand-authored (named by the template's
+ *   hand-authored record, or an A′ render from its own file — listed as without a record), else not-attempted; the
+ *   sidecars are read under state.migrate.outputDir, else stardust/migrated. Then, last, every record under the record
+ *   directory: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`; an invalid
+ *   record file is named on stderr and not counted. --json: { total, encoded, aPrime, noRoundtrip, notAttempted,
+ *   handAuthored, templates: [{ template, verdict, reason[, pages] }] (pages on hand-authored only), perTemplate:
+ *   [{ template, verdict, siblings, encoded, slotRendered, handAuthored, notAttempted, unrecorded[] }] } sorted by
+ *   template.
  *
  * Reads:  <root>/stardust/migrate/encode/<t>.json, <root>/stardust/import/<t>/vocabulary.json (existence only), the
- *         state file (record: the sibling count), and the encoder's stdout / stderr / exit code (the encoder's
+ *         state file (record and summary: the siblings), the migrate sidecars (summary), and the encoder's stdout / stderr / exit code (the encoder's
  *         --roundtrip and --lint write nothing).
  * Writes: <root>/stardust/migrate/encode/<t>.json (record only; tmp + rename; fixed key order):
  *         { "_provenance": { writtenBy: "stardust:migrate/encode-attempt", writtenAt }, "template",
@@ -75,7 +83,7 @@
  *   state, siblings, timeoutMs }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
  *   Refusal, the encoder-first line, when it refuses; siblings: slugs that replace the state's) · siblingsOf(state,
  *   t) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
- *   attemptLine(record) → the record's stdout line ·
+ *   attemptLine(record) → the record's stdout line · siblingTally(state, record, sidecars, t) → the summary's counts ·
  *   summaryLine(records) → the summary line (a null entry is counted as ` · <k> without a record`).
  * Exit: 0 ok · 1 I/O (a record could not be written) · 2 usage error (an --encoder or --state that does not exist
  *   included), an encoder-first refusal or a check refusal (message on stderr).
@@ -255,8 +263,47 @@ function countVerdicts(records) {
   return { ...c, aPrime: c.noRoundtrip + c.notAttempted + c.handAuthored };
 }
 
+// The migrate sidecars under the render output (state.migrate.outputDir, else stardust/migrated): slug → sidecar.
+function sidecarsBySlug(root, state) {
+  const out = typeof state?.migrate?.outputDir === 'string' && state.migrate.outputDir.trim() ? state.migrate.outputDir : 'stardust/migrated';
+  const bySlug = new Map();
+  const walk = (dir) => {
+    let names; try { names = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const d of names.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))) {
+      const f = join(dir, d.name);
+      if (d.isDirectory()) { walk(f); continue; }
+      if (d.name !== '_meta.json' && !d.name.endsWith('._meta.json')) continue;
+      let m; try { m = JSON.parse(readFileSync(f, 'utf8')); } catch { continue; }
+      if (m && typeof m.slug === 'string' && !bySlug.has(m.slug)) bySlug.set(m.slug, m);
+    }
+  };
+  walk(resolve(root, out));
+  return bySlug;
+}
+
+/**
+ * One template's siblings by how they were built (the roster report's line), first match: encoded (a sidecar whose
+ * `encode` is set and audit.encode.status clean), slot-rendered (an A′ fork: renderBranch A′ with a slotSource),
+ * hand-authored (named by the template's hand-authored record, or an A′ render from its own file — those without a
+ * record are listed in `unrecorded`), else not-attempted.
+ */
+export function siblingTally(state, record, sidecars, template) {
+  const t = { template, verdict: record?.verdict ?? null, siblings: 0, encoded: 0, slotRendered: 0, handAuthored: 0, notAttempted: 0, unrecorded: [] };
+  const named = new Set(record?.verdict === 'hand-authored' && Array.isArray(record.pages) ? record.pages : []);
+  for (const slug of siblingsOf(state, template)) {
+    const m = sidecars.get(slug); t.siblings++;
+    if (m?.encode && typeof m.encode === 'object' && m.audit?.encode?.status === 'clean') t.encoded++;
+    else if (m?.renderBranch === "A'" && (m.slotSource === 'mapping' || m.slotSource === 'page-json')) t.slotRendered++;
+    else if (named.has(slug)) t.handAuthored++;
+    else if (m?.renderBranch === "A'") { t.handAuthored++; t.unrecorded.push(slug); }
+    else t.notAttempted++;
+  }
+  return t;
+}
+const tallyLine = (t) => `encode-attempt ${t.template}: ${t.siblings} sibling(s) · ${t.encoded} encoded · ${t.slotRendered} slot-rendered · ${t.handAuthored} hand-authored · ${t.notAttempted} not-attempted (${t.verdict ?? 'no record'}${t.unrecorded.length ? `; ${t.unrecorded.length} hand-authored without a record: ${t.unrecorded.join(', ')}` : ''})`;
+
 // ---- CLI -----------------------------------------------------------------------------------------
-const FLAGS = { record: ['template', 'root', 'encoder', 'not-attempted', 'reason', 'state', 'hand-authored', 'pages'], check: ['template', 'root'], summary: ['root', 'json'] };
+const FLAGS = { record: ['template', 'root', 'encoder', 'not-attempted', 'reason', 'state', 'hand-authored', 'pages'], check: ['template', 'root'], summary: ['root', 'json', 'state'] };
 const BOOL = new Set(['json', 'hand-authored']);
 
 function parseArgs(argv) {
@@ -335,9 +382,15 @@ function summaryCmd(o) {
     if (rec) records.push(rec); else console.error(`encode-attempt: stardust/migrate/encode/${f} is not a valid attempt record — not counted`);
   }
   records.sort((a, b) => (a.template < b.template ? -1 : a.template > b.template ? 1 : 0));
-  if (!o.json) { console.log(summaryLine(records)); return 0; }
+  const state = readState(o.state || join(o.root, 'stardust', 'state.json'));
+  const sidecars = sidecarsBySlug(o.root, state);
+  const named = (Array.isArray(state?.pages) ? state.pages : []).map((p) => p?.representative).filter((r) => typeof r === 'string' && validTemplate(r));
+  const templates = [...new Set([...records.map((r) => r.template), ...named])].sort();
+  const byTemplate = new Map(records.map((r) => [r.template, r]));
+  const tallies = templates.map((t) => siblingTally(state, byTemplate.get(t), sidecars, t));
+  if (!o.json) { for (const t of tallies) console.log(tallyLine(t)); console.log(summaryLine(records)); return 0; }
   const c = countVerdicts(records);
-  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, handAuthored: c.handAuthored, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null, ...(r.verdict === 'hand-authored' ? { pages: Array.isArray(r.pages) ? r.pages : [] } : {}) })) }, null, 2));
+  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, handAuthored: c.handAuthored, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null, ...(r.verdict === 'hand-authored' ? { pages: Array.isArray(r.pages) ? r.pages : [] } : {}) })), perTemplate: tallies }, null, 2));
   return 0;
 }
 

@@ -330,7 +330,9 @@ express, a reasoned `not-attempted`), in this order:
 3. **Hand-authoring, last.** A sibling written by hand (its own source
    file, a generator script) needs the template's record first:
    `encode-attempt.mjs record --template <t> --hand-authored --reason
-   "<why>" [--pages <slug,…>]`; `plan` and `summary` count them. Two
+   "<why>" [--pages <slug,…>]`; `plan` counts them, and `encode-attempt.mjs
+   summary` prints per template the line the roster report quotes
+   (siblings · encoded · slot-rendered · hand-authored · not-attempted). Two
    recorded runs generated siblings with per-template scripts because no
    map existed — and nothing recorded it.
 

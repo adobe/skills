@@ -170,7 +170,7 @@ console.log('summary');
 check('summary counts encoded vs A′ (no-roundtrip + not-attempted); a malformed record is not counted', () => {
   // good: encoded · diff, nogated: no-roundtrip · nomap, owner: not-attempted · broken: malformed
   const r = run(['summary', '--root', ROOT]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)\n');
+  assert.equal(r.out.split('\n').at(-2), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)', 'the totals line comes last');
   assert.match(r.err, /broken/);
 });
 check('summary --json: counts + per-template verdicts sorted by template', () => {
@@ -183,6 +183,25 @@ check('summary of a project with no record directory → all zero, exit 0', () =
   const empty = join(tmp, 'empty'); mkdirSync(empty);
   const r = run(['summary', '--root', empty]); assert.equal(r.status, 0, r.err);
   assert.equal(r.out, 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)\n');
+});
+check('summary per template (the roster report\'s line): siblings · encoded · slot-rendered · hand-authored · not-attempted, from the state, the sidecars and the record', () => {
+  const proj = join(tmp, 'roster'); const put = (rel, data) => { const f = join(proj, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, typeof data === 'string' ? data : `${JSON.stringify(data, null, 2)}\n`); };
+  put('stardust/state.json', { pages: ['tours', 'a', 'b', 'c', 'd', 'e'].map((x) => ({ slug: x, url: `https://example.test/${x}/`, status: x === 'tours' ? 'approved' : 'directed', type: 'tour' })).concat([{ slug: 'solo', status: 'approved', type: 'solo' }]), migrate: { outputDir: 'stardust/migrated/' } });
+  put('stardust/migrated/tours/a/_meta.json', { slug: 'a', renderBranch: null, encode: { output: { path: 'x' } }, audit: { encode: { status: 'clean' } } });
+  put('stardust/migrated/tours/b/_meta.json', { slug: 'b', renderBranch: "A'", slotSource: 'page-json' });
+  put('stardust/migrated/tours/c._meta.json', { slug: 'c', renderBranch: "A'", slotSource: null });
+  put('stardust/migrated/tours/e/_meta.json', { slug: 'e', renderBranch: "A'", slotSource: null });
+  put('stardust/migrated/tours/stop/_meta.json', { slug: 'd', encode: { output: { path: 'y' } }, audit: { encode: { status: 'variance' } } });
+  recordAttempt(proj, 'tours', { handAuthored: true, reason: 'the itinerary tables are written per tour', pages: ['c'] });
+  recordAttempt(proj, 'solo', { notAttempted: 'one page' });
+  const r = run(['summary', '--root', proj]); assert.equal(r.status, 0, r.err);
+  assert.deepEqual(r.out.trim().split('\n'), [
+    'encode-attempt solo: 0 sibling(s) · 0 encoded · 0 slot-rendered · 0 hand-authored · 0 not-attempted (not-attempted)',
+    'encode-attempt tours: 5 sibling(s) · 1 encoded · 1 slot-rendered · 2 hand-authored · 1 not-attempted (hand-authored; 1 hand-authored without a record: e)',
+    'encode: 0 encoded · 2 A′ (0 no-roundtrip, 1 not-attempted, 1 hand-authored)',
+  ]);
+  const j = JSON.parse(run(['summary', '--root', proj, '--json']).out);
+  assert.deepEqual(j.perTemplate.find((t) => t.template === 'tours'), { template: 'tours', verdict: 'hand-authored', siblings: 5, encoded: 1, slotRendered: 1, handAuthored: 2, notAttempted: 1, unrecorded: ['e'] });
 });
 
 // ---- determinism ----------------------------------------------------------------------------------
