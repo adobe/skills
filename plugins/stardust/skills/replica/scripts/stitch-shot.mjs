@@ -76,6 +76,10 @@
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --token-env <NAME> | --auth-header "<value>"  [--auth-origin <url>]
+ *                         opt-in site auth for a protected origin: the token rides requests to ONE
+ *                         origin (default: the URL's), never to another origin the page loads, and
+ *                         is never picked up from SITE_TOKEN unasked. A usage error exits 2.
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -106,7 +110,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, AUTH_HELP, instrumentAuth, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -126,8 +130,15 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --timeout <ms>    goto timeout (default 60000)
   --help            this text
 
+Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
+${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
+
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+Exit codes: 0 written, 1 error, 2 site-auth usage error, 3 bot challenge (live side blocked — fail loud).`;
+
+// A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
+// undefined only when absent, and a missing value is its usage error.
+const flagValue = (rest, i) => (i + 1 < rest.length && !rest[i + 1].startsWith('--') ? rest[i + 1] : '');
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -147,6 +158,11 @@ function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
+      const v = flagValue(rest, i);
+      opts[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
+      if (v) i += 1;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -172,12 +188,19 @@ async function dismissAndLog(page, url, opts) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  let auth;
+  try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [url] }); } catch (e) {
+    if (e.code !== 2) throw e;
+    console.error(`stitch-shot error: ${e.message}\n\n${HELP}`);
+    process.exit(2);
+  }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
+      ...auth,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
