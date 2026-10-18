@@ -234,8 +234,8 @@ stays 0.36.0). Merged, in this order, each under its own `0.36.x (<branch>)` hea
 - Local-only commits: the qa `chrome` check's wording for decided findings; the self-representative refusal names
   the variant path; the handoff contract's derived slots and plan line; the artifact map's `hand-authored` verdict;
   run-bg's wait bound and pause exit in the handoff contract, rollout, the gate doc and the replica card, and
-  source-parity findings recorded `informational`; chrome-compare turns errors on unstable source states into
-  warnings (`unstableAsWarn`); gate-all's cross-host capture reuse behind `--reuse-across-hosts`, an experiment,
+  source-parity findings recorded `informational`; chrome-compare and qa's `chrome` check turn errors on unstable
+  source states into warnings (`unstableAsWarn`); gate-all's cross-host capture reuse behind `--reuse-across-hosts`, an experiment,
   off by default; the replica card names `presence.mjs add`'s capture settings; this renumbering.
 
 Not in this image: none — every run-16 branch is merged.
