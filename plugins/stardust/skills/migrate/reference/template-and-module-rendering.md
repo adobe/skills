@@ -42,7 +42,18 @@ target page.
 For each slot in the archetype (identified by `data-slot="..."`
 within `data-template="<type>"`), inject this page's value; the
 injection preserves the archetype's structural elements (wrapping
-divs, classes, data-attributes) and replaces the inner content.
+divs, classes, data-attributes) and replaces the inner content. An
+archetype without any `data-slot` in its `<main>` gets them derived
+in-process from its section structure — per section (the top-level
+elements `data-section` numbers) each heading, phrasing-only text
+element, text link and image is one slot named `<section>-<tag>`
+(repeats at the same structure share the name, as a repeated slot; the
+next structure takes `-2`); the run prints `slots derived (no data-slot
+markers)` and the sidecar records a `slots-derived` decision. A derived
+slot repeated across containers (one per card) takes exactly one value
+per container — else strict slots asks to mark the repeated container. Both
+sources below read the derived names; a page-JSON value is keyed by
+them.
 `migrate.mjs render --slots mapping|page-json` picks the source:
 
 - **page-json** — the page's typed slots in

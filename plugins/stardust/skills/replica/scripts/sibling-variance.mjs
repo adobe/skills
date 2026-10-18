@@ -33,7 +33,11 @@
  * differ, the run says so: the template is re-typed (sub-archetypes by locale
  * family or composition via state.mjs set --representative, then the new
  * template probed) — the re-typing recorded as a deviation, never cloned
- * mechanically.
+ * mechanically (two or more differing). When a single sibling differs (the
+ * template's only one included), or fewer than 20 % of them, the
+ * advice is a variant class on the template with the exact migrate.mjs render
+ * --accept-variance and variant commands — never a new archetype for a few
+ * pages.
  *
  * Usage:
  *   node skills/replica/scripts/sibling-variance.mjs <archetypeURL> <siblingURL> [<siblingURL>…] [options]
@@ -69,7 +73,11 @@
  *   A value flag followed by nothing or by another --flag is a usage error.
  *
  * Output: the report (or --json), then `variance → <file> (<s> same, <d> differ)`
- * and, when more than half of the file's siblings differ, the re-type advice.
+ * and the advice: more than half (two or more) differ → re-type; a single sibling or fewer
+ * than 20 % → `<d> of <t> sibling(s) of <template> differ (<slugs>): a variant
+ * class on the template, not a new archetype — … then: node
+ * stardust/scripts/migrate/migrate.mjs render <slugs> --accept-variance "…" &&
+ * … variant <slug> <variant-class>` per slug; otherwise none.
  * Writes: <variance-dir>/<template>.json on exit 0 and 2 only.
  * Exit codes: 0 every sibling matches the archetype within tolerance, 2 variance
  * found (budget it), 1 error or usage, 3 bot challenge (fail loud — never measured).
@@ -122,8 +130,10 @@ Writes: <variance-dir>/<template>.json (atomic) once every page was probed (exit
   extra, every other finding → deltas. Same archetype URL as the existing file → merged (an earlier
   row whose slug or URL this run probed is dropped, others kept, at = now); a different archetype
   URL → replaced.
-Prints after the report: variance → <file> (<s> same, <d> differ) — and, when more than half of the
-  file's siblings differ, the advice to re-type the template (never a mechanical clone).
+Prints after the report: variance → <file> (<s> same, <d> differ) — and the advice: more than half of
+  the file's siblings (two or more) differ → re-type the template (never a mechanical clone); a single sibling or
+  fewer than 20 % → a variant class on the template, with the exact migrate.mjs render
+  --accept-variance and variant commands (never a new archetype for a few pages); otherwise none.
 
 Exit codes: 0 no variance, 2 variance found, 1 error or usage, 3 bot challenge.`;
 
@@ -359,6 +369,21 @@ export function retypeAdvice(rows, template) {
     : null;
 }
 
+const MIGRATE = 'node stardust/scripts/migrate/migrate.mjs';
+// The advice after the variance line: a majority (two or more) differing → re-type (retypeAdvice); a single differing sibling, or
+// fewer than 20 % of them → a variant class on the template with the exact commands — never a new archetype for a few
+// pages (one recorded run moved a single differing sibling to an archetype of its own and had to record it again);
+// otherwise none.
+export function varianceAdvice(rows, template) {
+  const differ = rows.filter((r) => r.verdict !== 'same');
+  // A single differing sibling is never a majority to re-type — the template's only clone included.
+  const retype = differ.length > 1 ? retypeAdvice(rows, template) : null;
+  if (retype) return retype;
+  if (!differ.length || (differ.length > 1 && differ.length * 5 >= rows.length)) return null;
+  const slugs = differ.map((r) => r.slug);
+  return `${differ.length} of ${rows.length} sibling(s) of ${template} differ (${slugs.join(', ')}): a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, then: ${MIGRATE} render ${slugs.join(' ')} --accept-variance "<the delta and its variant class>" && ${slugs.map((x) => `${MIGRATE} variant ${x} <variant-class>`).join(' && ')}`;
+}
+
 // Reads <dir>/<template>.json (if any), merges or replaces, writes it atomically.
 export function recordVariance({ dir, template, archetype, rows, at = nowIso() }) {
   const file = join(dir, `${template}.json`);
@@ -375,7 +400,7 @@ export function recordVariance({ dir, template, archetype, rows, at = nowIso() }
   writeFileSync(tmp, `${JSON.stringify(sidecar, null, 2)}\n`);
   renameSync(tmp, file);
   const differ = sidecar.siblings.filter((s) => s.verdict !== 'same').length;
-  return { file, sidecar, same: sidecar.siblings.length - differ, differ, advice: retypeAdvice(sidecar.siblings, template), note };
+  return { file, sidecar, same: sidecar.siblings.length - differ, differ, advice: varianceAdvice(sidecar.siblings, template), note };
 }
 
 export const varianceLines = (rec) => [`variance → ${rec.file} (${rec.same} same, ${rec.differ} differ)`, ...(rec.advice ? [rec.advice] : [])];

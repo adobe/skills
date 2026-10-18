@@ -89,19 +89,27 @@
  *   `A' <template>: <n> sibling(s): <slug> (fork), <slug>, …`, `B  <n> page(s): …`, `passthrough <n> page(s): …`.
  *   Then the encode attempt (encode-attempt.mjs) of every template with A' siblings in the set — the attempt
  *   decides how a template's siblings are built, so an A page without siblings and a B page get none: an existing
- *   record (any verdict) is kept, --force re-records; else recordAttempt runs the encoder (encode.mjs beside
- *   encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error) and writes
- *   stardust/migrate/encode/<template>.json under the project root (the cwd). One line per template
+ *   record (any verdict) is kept, --force re-records — except an automatic not-attempted (no map / no encoder, no
+ *   reason given), which is always recorded again, so a map drafted since is picked up; else recordAttempt runs the
+ *   encoder (encode.mjs beside encode-attempt.mjs; --encoder <file> names another, a missing one is a usage error)
+ *   and writes stardust/migrate/encode/<template>.json under the project root (the cwd). Encoder first: a template
+ *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record — its stderr line
+ *   is encode-attempt.mjs's refusal, nothing is written (an earlier automatic record goes), and after the per-template
+ *   lines one stdout line names them all: `maps due: <k> template(s) — <t> (<n> siblings), … — draft each map in
+ *   the C-archetype unit (…), or record why not: … --reason "<why>"`; with --force, a decision on record (a reason,
+ *   hand-authored) is kept when nothing new can run (no map, no encoder) — ` (kept from <at>; a recorded decision —
+ *   nothing new could run)`. Siblings: the state's (encode-attempt.mjs siblingsOf, delivered ones by their migrate
+ *   sidecar) and this set's. One line per template
  *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, with ` (kept from <at>; --force re-records)`
  *   when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
  *   `encode-attempt <t>: not recorded — <why>`. The LAST stdout line is the count for the plan unit's ledger
- *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted)`, plus ` · <k> without a
- *   record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
+ *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`, plus ` · <k>
+ *   without a record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
  *   page is refused or a template is left without a record.
  *
  * Encode-attempt gate (every A' page, own file or fork; before the sidecar and variance checks): the template (the
  *   archetype's slug) needs an attempt record, stardust/migrate/encode/<template>.json under the project root, that
- *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted): the gate is that the
+ *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted, hand-authored): the gate is that the
  *   attempt was made, not that it encoded. None (or an invalid one) → refused, nothing written, `refused <slug>:
  *   strict encode-attempt — template <t> has no encode attempt record (stardust/migrate/encode/<t>.json) — run: node
  *   stardust/scripts/migrate/encode-attempt.mjs record --template <t>` (migrate.mjs plan records it too). A and B
@@ -119,8 +127,23 @@
  *   last element after it, fewer remove the rest; a single value is a list of one) | null (the
  *   page has none: the element is removed, decision slot-empty). Outermost slots first: slots
  *   nested in replaced content go with it; inside a kept container (an image / link value) they
- *   are filled next. Refused (strict slots): no data-slot inside the archetype's <main> (the fork
- *   would carry the archetype's own content — mark the typed slots, or pass --source); a slot
+ *   are filled next. Slots derived: an archetype with no data-slot inside its <main> (the strict-slots
+ *   check's own test) is not refused — deriveSlots marks its content units in-process from its section
+ *   structure (the prototype file is never written): per section (a top-level element of <main> as
+ *   data-section counts them — first class, else tag; a repeated name numbered -2 …) each heading,
+ *   phrasing-only p li dt dd figcaption blockquote td th caption or link with text, and each image (a
+ *   <picture> for its <img>), the outermost such element, named `<section>-<tag>` — units of one tag at the
+ *   same structure (the tag.class chain from the section) share the name, the next structure takes -2 …;
+ *   the values come by those names from either slot source below; one run line per archetype `slots
+ *   derived (no data-slot markers): archetype <a> — <n> slot(s): <names> — mark them in the prototype …`
+ *   and the driver decision slots-derived { archetype, slots }. A derived name whose elements sit in different
+ *   containers (one per card of a card list) needs exactly one value per container — the fork clones or drops
+ *   elements, never containers: else refused (strict slots) `derived slot(s) of archetype <a> repeat across
+ *   containers: <name> (<n> under <tag.class chain>, <k> value(s)); … — mark the repeated container in the prototype
+ *   …, or give one value per container`. A section or slot name already issued takes the next free -<k>. Refused
+ *   (strict slots): no data-slot
+ *   inside the archetype's <main> and none derived (the fork would carry the archetype's own content —
+ *   mark the typed slots, or pass --source); a slot
  *   name with no key in slots (every missing name listed); a value its element cannot take.
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
@@ -134,7 +157,7 @@
  *   relative to --proto-dir (bundled to <out>/assets/ like any asset); else a --media-ledger
  *   record (default <dirname(state)>/deploy/media-ledger.json; keyed by DA path, or { entries })
  *   with status uploaded and that source → its contentUrl; else the source URL is kept and a
- *   media-unmapped decision recorded. Driver decisions: archetype-fork, slot-empty, slot-unused
+ *   media-unmapped decision recorded. Driver decisions: slots-derived, archetype-fork, slot-empty, slot-unused
  *   (values no element took), media-unmapped; the provenance comment adds a sourceForked row. A
  *   malformed media map or ledger refuses the page.
  *
@@ -174,7 +197,7 @@
  *   `variance: <n> A′ page(s) rendered on an earlier acceptance of an unchanged variance (…)`; a
  *   changed row — or an earlier record without archetype / deltaKinds, or whose deltaKinds lack
  *   the messages (refused once) — is refused naming each changed field and quoting the earlier
- *   reason. More than half
+ *   reason. More than half (two or more)
  *   of the archetype's current clones differ → refused even with --accept-variance or an earlier
  *   acceptance (`<d> of <t> current clone(s)`). A current clone is a row whose slug is a state page that clones
  *   this archetype now, resolved as the branch is: --archetype <slug>=<a>, else its representative,
@@ -183,7 +206,11 @@
  *   locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then
  *   probe the new template); the re-typing is recorded as a deviation (migrate.mjs decision <slug>
  *   --kind re-type …, or deviation), never a mechanical clone. A malformed variance file refuses
- *   the page.
+ *   the page. The refusal of a differing page names the share (`<d> of <t> current clone(s) differ`): a single one,
+ *   or fewer than 20 % → `a variant class on the template, not a new archetype — …, re-run with --accept-variance
+ *   "<the delta and its variant class>", then node stardust/scripts/migrate/migrate.mjs variant <slug>
+ *   <variant-class>` (never a re-type for a few pages); 20 % up to half → --accept-variance with a variant class, or
+ *   the re-type above.
  *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
@@ -213,7 +240,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
-import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
+import { attemptLine, isAutoNotAttempted, readAttempt, sidecarsBySlug, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -644,6 +671,68 @@ export function forkHead(html, capture) {
   if (lang) html = html.replace(/<html\b(?:[^>"']|"[^"]*"|'[^']*')*>/i, (m) => setAttr(m, 'lang', String(lang)));
   return html;
 }
+// ---- derived slots: an archetype prototype without data-slot marks (replica recreation-procedure.md § Slot markers) ----
+const SLOT_PHRASING = new Set(['a', 'abbr', 'b', 'bdi', 'bdo', 'br', 'cite', 'code', 'data', 'del', 'dfn', 'em', 'i', 'img', 'ins', 'kbd', 'mark', 'picture', 'q', 's', 'samp', 'small', 'source', 'span', 'strong', 'sub', 'sup', 'svg', 'time', 'u', 'var', 'wbr']);
+const TEXT_UNITS = new Set(['p', 'li', 'dt', 'dd', 'figcaption', 'blockquote', 'td', 'th', 'caption']);
+const slotToken = (s) => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+// When no element inside <main> carries data-slot (the strict-slots check's own test, on the same element model), every
+// content unit gets one: per section (a top-level element of <main> as tagSections counts them — first class, else tag; a
+// repeated name numbered -2, -3 …) each heading, paragraph-like element (p li dt dd figcaption blockquote td th caption)
+// or link holding only phrasing content and some text, each image (a <picture> for the <img> in it) — the outermost such
+// element; any other element is walked into (never script, style, template or svg). Name `<section>-<tag>`; units of one
+// tag share it while they sit at the same structure (the tag.class chain from the section down), the next structure gets
+// -2, -3 … — so cards repeat as one slot. A section that is itself a unit is named by the section. A name already issued
+// for another section or unit takes the next free -<k>. Only data-slot attributes are added. → { html, slots: [names
+// sorted], derived, repeats: { name: { count, where } } } — repeats: the names whose elements sit in different containers
+// (a card list: one per card, `where` the tag.class chain) — the fork cannot add or drop those containers, so the caller
+// needs exactly `count` values; derived false (html as given) when a mark exists.
+export function deriveSlots(html) {
+  const mi = html.search(/<main\b/i); const mj = html.toLowerCase().lastIndexOf('</main>');
+  const open = mi >= 0 && mj > mi ? html.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
+  if (!open) return { html, slots: [], derived: false, repeats: {} };
+  const start = mi + open[0].length; const inner = html.slice(start, mj); const els = elementsOf(inner);
+  if (els.some((e) => slotNameOf(e.attrs))) return { html, slots: [], derived: false, repeats: {} };
+  const kids = new Map(); for (const e of els) { if (!kids.has(e.parent)) kids.set(e.parent, []); kids.get(e.parent).push(e); }
+  const below = (e) => { const out = []; const walk = (x) => { for (const k of kids.get(x) || []) { out.push(k); if (k.tag !== 'svg') walk(k); } }; walk(e); return out; };
+  const hasText = (e) => !!inner.slice(e.openEnd, e.closeStart).replace(/<[^>]*>/g, '').replace(/&nbsp;|\s+/g, '');
+  const hasImg = (e) => below(e).some((d) => d.tag === 'img');
+  const isUnit = (e) => {
+    if (/^h[1-6]$/.test(e.tag)) return hasText(e) || hasImg(e);
+    if (e.tag === 'picture') return hasImg(e);
+    if (e.tag === 'img') return e.parent?.tag !== 'picture';
+    if (e.tag === 'a') return below(e).every((d) => SLOT_PHRASING.has(d.tag) && d.tag !== 'img') && hasText(e);
+    return TEXT_UNITS.has(e.tag) && below(e).every((d) => SLOT_PHRASING.has(d.tag)) && (hasText(e) || hasImg(e));
+  };
+  const step = (e) => { const c = (attrValue(e.attrs, 'class') || '').split(/\s+/).filter(Boolean)[0]; return c ? `${e.tag}.${c}` : e.tag; };
+  const edits = []; const issued = new Set(); const byKey = new Map(); const sections = new Set(); const placed = new Map();
+  const free = (cand, taken) => { let name = cand; for (let k = 2; taken(name); k += 1) name = `${cand}-${k}`; return name; };
+  const nameFor = (cand, key) => { if (!byKey.has(key)) { const n = free(cand, (x) => issued.has(x)); issued.add(n); byKey.set(key, n); } return byKey.get(key); };
+  for (const sec of (kids.get(null) || []).filter((e) => !RAW.has(e.tag))) {
+    const base = slotToken((attrValue(sec.attrs, 'class') || '').split(/\s+/).filter(Boolean)[0] || sec.tag);
+    const secName = free(base, (x) => sections.has(x)); sections.add(secName); const shapes = new Map();
+    const visit = (e, chain) => {
+      if (RAW.has(e.tag) || e.tag === 'svg') return;
+      if (isUnit(e)) {
+        let name = nameFor(secName, `${secName}\u0000`);
+        if (e !== sec) {
+          const list = shapes.get(e.tag) || []; shapes.set(e.tag, list);
+          let k = list.indexOf(chain.join('>')); if (k < 0) k = list.push(chain.join('>')) - 1;
+          name = nameFor(`${secName}-${e.tag}${k ? `-${k + 1}` : ''}`, `${secName}\u0000${e.tag}\u0000${k}`);
+        }
+        edits.push([e.start, e.openEnd, setAttr(inner.slice(e.start, e.openEnd), 'data-slot', name)]);
+        if (!placed.has(name)) placed.set(name, { parents: new Set(), count: 0, where: chain.join(' > ') });
+        const p = placed.get(name); p.parents.add(e.parent); p.count += 1;
+        return;
+      }
+      for (const c of kids.get(e) || []) visit(c, e === sec ? chain : [...chain, step(e)]);
+    };
+    visit(sec, []);
+  }
+  if (!edits.length) return { html, slots: [], derived: true, repeats: {} };
+  const repeats = Object.fromEntries([...placed].filter(([, p]) => p.parents.size > 1).sort(([x], [y]) => byStr(x, y)).map(([n, p]) => [n, { count: p.count, where: p.where }]));
+  return { html: html.slice(0, start) + splice(inner, edits) + html.slice(mj), slots: [...placed.keys()].sort(), derived: true, repeats };
+}
+
 // The A' fork (exported, pure but for resolveMedia): every data-slot inside the archetype's <main> takes this page's value.
 // → { html, slots: [names placed], decisions: [_driver records] }; throws Refusal (strict slots) when it cannot.
 export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', archetype = 'archetype', capturePath = 'the capture', resolveMedia = null } = {}) {
@@ -653,7 +742,7 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
   const mi = headed.search(/<main\b/i); const mj = headed.toLowerCase().lastIndexOf('</main>');
   const open = mi >= 0 && mj > mi ? headed.slice(mi).match(/^<main\b(?:[^>"']|"[^"]*"|'[^']*')*>/i) : null;
   let work = open ? headed.slice(mi + open[0].length, mj) : '';
-  if (!elementsOf(work).some((e) => slotNameOf(e.attrs))) throw new Refusal(slug, 'slots', `archetype ${archetype} has no data-slot inside <main>, so a fork would carry the archetype's own content`, `mark its typed slots (stardust/reference/data-attributes.md § Slot identity), or pass --source ${slug}=<file>`);
+  if (!elementsOf(work).some((e) => slotNameOf(e.attrs))) throw new Refusal(slug, 'slots', `archetype ${archetype} has no data-slot inside <main> and none derive from its sections (no heading, paragraph, list item, link or image with content), so a fork would carry the archetype's own content`, `mark its typed slots (stardust/reference/data-attributes.md § Slot identity), or pass --source ${slug}=<file>`);
   const { map: values, bad: badEntries } = slotValues(capture?.slots);
   const placed = new Set(); const missing = new Set(); const problems = [...badEntries]; const empty = new Set(); const unmapped = new Set();
   const media = (ref) => { const r = resolveRef(ref); if (r.unmapped) unmapped.add(r.unmapped); return r.ref; };
@@ -801,11 +890,19 @@ export function renderPage(run, page, entry) {
   if (old === null && isFile(sideFile)) throw new Refusal(slug, 'sidecar', `${toPosix(sideFile)} exists but is not valid JSON`, 'fix or delete the sidecar (its recorded judgments would be lost by overwriting), then re-run');
   // variance gate — every A' page, before its HTML is built (a refused page is never reported unchanged)
   const variance = branch === "A'" ? varianceGate(run, page, archetype, old) : null;
-  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null;
+  let forked = null; let sourceHtml; let mapped = null; let slotPlan = null; let derivedSlots = null; let repeats = {};
   if (fork) {
-    const archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    let archetypeHtml = readFileSync(archetypeSource, 'utf8');
+    // A prototype without data-slot marks: its slots derive from its section structure (deriveSlots) instead of a refusal.
+    const derived = deriveSlots(archetypeHtml);
+    if (derived.slots.length) { archetypeHtml = derived.html; derivedSlots = derived.slots; repeats = derived.repeats; run.slotsDerived.set(archetype.slug, derived.slots); }
     slotPlan = slotSourceFor(run, page, archetype);
     if (slotPlan.mode === 'mapping') mapped = mappedSlots(run, page, archetype, archetypeHtml, capture, toPosix(capturePath));
+    // A derived slot repeated across containers (a card list) needs one value per container: the fork clones or drops
+    // elements, never their containers — a card would land inside its neighbour.
+    const given = slotValues(mapped ? mapped.slots : capture?.slots).map;
+    const off = Object.entries(repeats).filter(([n, r]) => given.has(n) && given.get(n).length !== r.count);
+    if (off.length) throw new Refusal(slug, 'slots', `derived slot(s) of archetype ${archetype.slug} repeat across containers: ${off.map(([n, r]) => `${n} (${r.count} under ${r.where}, ${given.get(n).length} value(s))`).join('; ')}`, 'mark the repeated container in the prototype (replica recreation-procedure.md § Slot markers), or give one value per container');
     forked = forkFromArchetype(archetypeHtml, mapped ? { ...capture, slots: mapped.slots } : capture, { slug, archetype: archetype.slug, capturePath: toPosix(capturePath), resolveMedia: mediaResolver(run, slug, capture) });
     sourceHtml = forked.html;
   } else sourceHtml = readFileSync(source, 'utf8');
@@ -846,7 +943,8 @@ export function renderPage(run, page, entry) {
   // sidecar: spec keys first, then the tier/judgment fields; recorded judgments are carried over
   const carried = (old?.migrationDecisions || []).filter((d) => !(d && d._driver));
   const driverDecisions = [...report.missing.map((m) => ({ kind: 'asset-missing', ref: m.ref, subpath: m.subpath, _driver: true })), ...report.traversal.map((ref) => ({ kind: 'asset-path-traversal', ref, _driver: true }))];
-  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...(forked ? forked.decisions : []), ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
+  const derivedRec = derivedSlots ? [{ kind: 'slots-derived', archetype: archetype.slug, slots: derivedSlots, _driver: true }] : [];
+  const meta = { slug, type: page.type ?? null, renderBranch: branch, template: archetype ? archetype.slug : null, modules: modulesOut, slotsFilled: tagged.slots, canonShas, migrationDecisions: [...carried, ...derivedRec, ...(forked ? forked.decisions : []), ...driverDecisions], metadata: head.metadata, jsonLd: head.jsonLd, migratedAt: at, ...keys,
     fidelityTier: tier, archetypeSource: archetype ? archetype.slug : null, assetsBundled: report.refs.size, missingAssets: report.missing, brokenInternalLinks: linked.broken, outputPath, outputPathDefault, sidecar: sideRel };
   const defaults = { gatesPassed: [], gateEvidence: {}, variants: [], contentDeviations: [], deviations: [] };
   for (const k of CARRIED) meta[k] = old?.[k] ?? defaults[k];
@@ -938,7 +1036,7 @@ export function varianceGate(run, page, archetype, old = null) {
   });
   const differ = clones.filter((s) => s.verdict === 'differs').length;
   const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica/sibling-variance.mjs); the re-typing is recorded as a deviation (migrate.mjs decision <slug> --kind re-type …, or deviation), never a mechanical clone`;
-  if (differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
+  if (differ > 1 && differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
   if (run.acceptVariance) return { ...rec, accepted: run.acceptVariance };
   const prior = priorVariance(run, page.slug, old);
   const reason = prior && typeof prior.accepted === 'string' && prior.accepted.trim() ? prior.accepted : null;
@@ -946,7 +1044,12 @@ export function varianceGate(run, page, archetype, old = null) {
   if (reason && !changed.length) return { ...rec, accepted: reason, ...(prior.acceptedAt != null ? { acceptedAt: prior.acceptedAt } : {}) };
   const shown = (v) => (Array.isArray(v) ? `[${v.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(', ')}]` : v == null ? '(not recorded)' : String(v));
   const since = reason ? `; changed since an earlier render accepted it ("${reason}"): ${changed.map((k) => `${k} ${shown(prior[k])} → ${shown(rec[k])}`).join('; ')}` : '';
-  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, `check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: ${retype}`);
+  // A single differing clone, or fewer than 20 % of them: a variant class on the template — never a new archetype for a few pages.
+  const share = `${differ} of ${clones.length} current clone(s) differ`;
+  const fix = differ <= 1 || differ * 5 < clones.length
+    ? `${share}: a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, re-run with --accept-variance "<the delta and its variant class>", then node stardust/scripts/migrate/migrate.mjs variant ${page.slug} <variant-class>`
+    : `${share}: check the clone against the archetype and re-run with --accept-variance "<reason>" (a variant class on the template), or re-type it: ${retype}`;
+  throw new Refusal(page.slug, 'variance', `the variance probe (${rel}) found ${page.slug} differs from archetype ${archetype.slug}: missing [${rec.missing.join(', ')}], extra [${rec.extra.join(', ')}], ${rec.deltas} delta(s)${since}`, fix);
 }
 // An earlier render's acceptance holds while the probe row is unchanged on these fields (lists compared in any order): the
 // archetype it was made against, and the deltas' fingerprint besides their count — a record without them never holds, and
@@ -1031,21 +1134,30 @@ export function planRun(o) {
   for (const t of templates) console.log(`A' ${t}: ${siblings.get(t).length} sibling(s): ${siblings.get(t).join(', ')}`);
   if (groups.B.length) console.log(`B  ${groups.B.length} page(s): ${groups.B.join(', ')}`);
   if (groups.passthrough.length) console.log(`passthrough ${groups.passthrough.length} page(s): ${groups.passthrough.join(', ')}`);
-  const records = [];
+  const records = []; const due = []; const sidecars = templates.length ? sidecarsBySlug(PROJECT_ROOT, state) : null;
   for (const t of templates) {
-    const kept = o.force ? null : readAttempt(PROJECT_ROOT, t);
+    const prior = readAttempt(PROJECT_ROOT, t);
+    // An automatic not-attempted (no map / no encoder) is recorded again: a map drafted since then is picked up.
+    let kept = !o.force && prior && !isAutoNotAttempted(prior) ? prior : null;
     let rec = kept;
     if (!rec) {
-      try { rec = recordAttempt(PROJECT_ROOT, t, o.encoder ? { encoder: o.encoder } : {}); } catch (e) {
-        if (e instanceof AttemptUsageError) console.error(`encode-attempt ${t}: not recorded — ${e.message}`);
+      const sibs = [...new Set([...siblingsOf(state, t, sidecars), ...siblings.get(t).map((s) => s.replace(/ \(fork\)$/, ''))])];
+      // --force on a template whose record is a decision (a reason, hand-authored) keeps it when nothing new can run
+      try {
+        rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs, keepDecision: true });
+        if (prior && rec.at === prior.at && rec.verdict === prior.verdict) kept = rec;
+      } catch (e) {
+        if (e instanceof AttemptRefusal) { console.error(e.message); due.push(`${t} (${sibs.length} siblings)`); }
+        else if (e instanceof AttemptUsageError) console.error(`encode-attempt ${t}: not recorded — ${e.message}`);
         else if (e.code) console.error(`encode-attempt ${t}: not recorded — could not write stardust/migrate/encode/${t}.json (${e.code})`);
         else throw e;
         records.push(null); continue;
       }
     }
-    console.log(`encode-attempt ${t}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; --force re-records)` : ''}`);
+    console.log(`${attemptLine(rec)}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; ${o.force ? 'a recorded decision — nothing new could run' : '--force re-records'})` : ''}`);
     records.push(rec);
   }
+  if (due.length) console.log(`maps due: ${due.length} template(s) — ${due.join(', ')} — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"`);
   console.log(summaryLine(records));
   return groups.refused.length || records.includes(null) ? 2 : 0;
 }
@@ -1077,7 +1189,7 @@ export function renderRun(o) {
     designMdSha: fsha('DESIGN.md'), designJsonSha: fsha('DESIGN.json'), direction: directionLine(o.state), stardustVersion: o.stardustVersion || process.env.STARDUST_VERSION || 'local',
     fromArchetype: !!o.fromArchetype, mediaMap: o.mediaMap || join(o.current, 'assets', 'media-map.json'), mediaLedger: o.mediaLedger || join(dirname(o.state), 'deploy', 'media-ledger.json'), mediaCache: {},
     acceptVariance: o.acceptVariance ? String(o.acceptVariance).trim() : null, varianceDir: o.varianceDir || join(dirname(o.state), 'rollout', 'variance'), varianceCache: new Map(),
-    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(),
+    slotFlag: o.slotSource || null, mappingPresent: isFile(join(rolloutDir, 'workspace', 'mapping.json')), rolloutDir, mapping: null, recipeCache: new Map(), slotFallbacks: new Map(), slotsDerived: new Map(),
     available: (e) => isFile(join(o.out, e.outputPath)) || (renderSet.has(e.slug) && !e.passthrough) };
   const missing = []; const modulesEmpty = []; const rendered = new Map(); const varianceSkipped = []; const varianceHeld = [];
   for (const slug of set) {
@@ -1105,6 +1217,7 @@ export function renderRun(o) {
   if (varianceSkipped.length) console.log(`variance: ${varianceSkipped.length} A′ page(s) rendered without a variance probe row — recorded as skipped (${varianceSkipped.slice(0, 6).join(', ')}${varianceSkipped.length > 6 ? ', …' : ''})`);
   if (varianceHeld.length) console.log(`variance: ${varianceHeld.length} A′ page(s) rendered on an earlier acceptance of an unchanged variance (${varianceHeld.slice(0, 6).join(', ')}${varianceHeld.length > 6 ? ', …' : ''})`);
   for (const [a, reasons] of [...run.slotFallbacks].sort(([x], [y]) => byStr(x, y))) for (const reason of [...reasons].sort(byStr)) console.log(`slots: archetype ${a} — mapping not used (${reason}); page JSON slots`);
+  for (const [a, names] of [...run.slotsDerived].sort(([x], [y]) => byStr(x, y))) console.log(`slots derived (no data-slot markers): archetype ${a} — ${names.length} slot(s): ${names.slice(0, 24).join(', ')}${names.length > 24 ? ', …' : ''} — mark them in the prototype to name them (replica recreation-procedure.md § Slot markers)`);
   console.log(`rendered ${counts.rendered.length}, unchanged ${counts.unchanged.length}, refused ${counts.refused.length}, passthrough ${counts.passthrough.length} → ${outRel}/`);
   return counts.refused.length ? 2 : 0;
 }

@@ -14,7 +14,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { composeHead, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
+import { composeHead, deriveSlots, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
 import { recordAttempt } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
@@ -532,9 +532,10 @@ check("the state representative names the archetype (a type with no candidate of
   const r = run(['render', 'howto-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^A' howto-one → howto\/one\/index\.html {2}\(howto; fork of guides; /m); assert.equal(json(`${OUT}/howto/one/_meta.json`).template, 'guides');
 });
-check('fork refusals: archetype without data-slot, missing slot values (every name listed), archetype without source HTML; nothing written', () => {
+check('fork refusals: missing slot values (every name listed; a markerless archetype names its derived slots), archetype without source HTML; nothing written', () => {
   const r = run(['render', 'note-one', 'guide-short', 'guide-orphan']); assert.equal(r.status, 2);
-  assert.match(r.err, /^refused note-one: strict slots — archetype notes has no data-slot inside <main>, so a fork would carry the archetype's own content — mark its typed slots \(stardust\/reference\/data-attributes\.md § Slot identity\), or pass --source note-one=<file>$/m);
+  assert.match(r.err, /^refused note-one: strict slots — stardust\/current\/pages\/note-one\.json#slots has no value for slot\(s\) intro-a, intro-h1 of archetype notes — /m);
+  assert.match(r.out, /^slots derived \(no data-slot markers\): archetype notes — 2 slot\(s\): intro-a, intro-h1 — /m);
   assert.match(r.err, /^refused guide-short: strict slots — stardust\/current\/pages\/guide-short\.json#slots has no value for slot\(s\) sidebar, tip of archetype guides — /m);
   assert.match(r.err, /^refused guide-orphan: strict source — archetype guide-draft has no proposed HTML at stardust\/prototypes\/guide-draft-proposed\.html — /m);
   assert.match(r.out, /^rendered 0, unchanged 0, refused 3, passthrough 0 /m);
@@ -572,6 +573,96 @@ check('forkFromArchetype (pure): inserted HTML maps src / srcset on img, source,
   assert.deepEqual(seen.sort(), ['/a.jpg', '/au.mp3', '/p.jpg', '/s.webm', '/v.mp4']);
 });
 
+// ---- a markerless prototype: render derives the slots from its section structure ----------------------
+console.log('A\' fork, slots derived from a markerless prototype');
+const sParks = json(STATE); sParks.pages.push(page('parks', '/parks/', 'approved', 'park'), page('park-one', '/parks/one/', 'directed', 'park'));
+write(STATE, `${JSON.stringify(sParks, null, 2)}\n`);
+recordAttempt(tmp, 'parks', { notAttempted: 'fixture: siblings rendered from the archetype' });
+const PARKS = `<!doctype html>
+<html lang="en">
+<head><title>Parks</title></head>
+<body>
+<main>
+  <section class="hero">
+    <h1>Archetype park</h1>
+    <p>Archetype <em>intro</em></p>
+    <picture><source srcset="assets/img/hero@2x.jpg"><img src="assets/img/hero.jpg" alt="Archetype"></picture>
+    <a class="button" href="/tours/">See tours</a>
+    <a class="icon" href="/"><svg viewBox="0 0 1 1"><path d="M0 0"></path></svg></a>
+  </section>
+  <section class="cards">
+    <h2>Highlights</h2>
+    <ul>
+      <li><h3>Card one</h3><p>Card one text</p></li>
+      <li><h3>Card two</h3><p>Card two text</p></li>
+    </ul>
+  </section>
+  <section class="cards">
+    <p>Second band</p>
+    <div class="note"><p>Aside text</p></div>
+  </section>
+  <script>var archetypeOnly = '<p>not content</p>';</script>
+  <div class="spacer"></div>
+</main>
+</body>
+</html>
+`;
+write(`${P}/parks-proposed.html`, PARKS);
+const PARK_SLOTS = ['cards-2-p', 'cards-2-p-2', 'cards-h2', 'cards-h3', 'cards-p', 'hero-a', 'hero-h1', 'hero-p', 'hero-picture'];
+check('deriveSlots (pure): one name per section (first class, else tag; a repeated name numbered) and content unit (heading, phrasing-only paragraph / list item / link, image or picture) — repeats of one structure share a name; scripts, empty units and a marked prototype untouched', () => {
+  const d = deriveSlots(PARKS);
+  assert.equal(d.derived, true); assert.deepEqual(d.slots, PARK_SLOTS);
+  const m = mainOf(d.html);
+  assert.match(m, /<h1 data-slot="hero-h1">Archetype park<\/h1>/); assert.match(m, /<p data-slot="hero-p">Archetype <em>intro<\/em><\/p>/);
+  assert.match(m, /<picture data-slot="hero-picture"><source srcset="assets\/img\/hero@2x\.jpg"><img src="assets\/img\/hero\.jpg" alt="Archetype"><\/picture>/);
+  assert.match(m, /<a class="button" href="\/tours\/" data-slot="hero-a">See tours<\/a>/); assert.match(m, /<a class="icon" href="\/"><svg/, 'a link without text is not content');
+  assert.equal([...m.matchAll(/<h3 data-slot="cards-h3">/g)].length, 2); assert.equal([...m.matchAll(/<p data-slot="cards-p">/g)].length, 2); assert.match(m, /<li><h3/, 'a list item holding blocks is walked into');
+  assert.match(m, /<p data-slot="cards-2-p">Second band<\/p>/); assert.match(m, /<div class="note"><p data-slot="cards-2-p-2">Aside text<\/p><\/div>/);
+  assert.match(m, /var archetypeOnly = '<p>not content<\/p>';/); assert.match(m, /<div class="spacer"><\/div>/);
+  assert.equal(d.html.replace(/ data-slot="[^"]*"/g, ''), PARKS, 'only data-slot attributes are added');
+  const twins = deriveSlots('<main><section class="band"><p>A</p></section><section class="band"><p>B</p></section><section class="band-2"><p>C</p></section></main>');
+  assert.deepEqual(twins.slots, ['band-2-2-p', 'band-2-p', 'band-p'], 'a section name already taken is never issued twice');
+  const marked = PARKS.replace('<h1>', '<h1 data-slot="headline">');
+  assert.deepEqual(deriveSlots(marked), { html: marked, slots: [], derived: false, repeats: {} });
+  assert.deepEqual(d.repeats, { 'cards-h3': { count: 2, where: 'ul > li' }, 'cards-p': { count: 2, where: 'ul > li' } }, 'names whose elements sit in different containers');
+  assert.deepEqual(deriveSlots('<html><body><main><div class="x"><span></span></div></main></body></html>').slots, []);
+});
+check('render forks a markerless archetype on its derived slots instead of refusing: the run line says so, the sidecar records slots-derived, the page JSON names the values', () => {
+  cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: {
+    'hero-h1': 'Park one', 'hero-p': { html: 'Park <em>one</em> intro' }, 'hero-picture': { src: 'https://media.example.test/park.jpg', alt: 'Park' }, 'hero-a': { href: '/tours/north/' },
+    'cards-h2': 'Park highlights', 'cards-h3': ['Lake', 'Forest'], 'cards-p': ['Lake text', 'Forest text'], 'cards-2-p': 'Band text', 'cards-2-p-2': null } });
+  const r = run(['render', 'park-one']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' park-one → parks\/one\/index\.html {2}\(park; fork of parks; /m);
+  assert.match(r.out, new RegExp(`^slots derived \\(no data-slot markers\\): archetype parks — 9 slot\\(s\\): ${PARK_SLOTS.join(', ')} — mark them in the prototype to name them \\(replica recreation-procedure\\.md § Slot markers\\)$`, 'm'));
+  const m = mainOf(read(`${OUT}/parks/one/index.html`));
+  assert.ok(!/Archetype|Card one|Second band|Aside text/.test(m), 'no archetype content left');
+  assert.match(m, /<h1 data-slot="hero-h1">Park one<\/h1>/); assert.match(m, /<picture data-slot="hero-picture"><img src="https:\/\/media\.example\.test\/park\.jpg" alt="Park"><\/picture>/);
+  assert.match(m, /<a class="button" href="\.\.\/\.\.\/tours\/north\/index\.html" data-slot="hero-a">See tours<\/a>/);
+  assert.deepEqual([...m.matchAll(/<h3 data-slot="cards-h3">(.*?)<\/h3>/g)].map((x) => x[1]), ['Lake', 'Forest']);
+  assert.ok(!/cards-2-p-2/.test(m), 'a null slot is removed');
+  const meta = json(`${OUT}/parks/one/_meta.json`);
+  assert.deepEqual(meta.migrationDecisions.find((d) => d.kind === 'slots-derived'), { kind: 'slots-derived', archetype: 'parks', slots: PARK_SLOTS, _driver: true });
+  assert.equal(read(`${P}/parks-proposed.html`), PARKS, 'the prototype file is never written');
+  const again = run(['render', 'park-one']); assert.equal(again.status, 0, again.err); assert.match(again.out, /^unchanged park-one → /m);
+});
+check('a derived slot repeated across containers (a card list) takes exactly one value per container, else strict slots names it and the repeated container — never a card spliced into its neighbour', () => {
+  const before = read(`${OUT}/parks/one/index.html`);
+  for (const [h3, p] of [[['Lake', 'Forest', 'Dunes'], ['a', 'b', 'c']], [['Lake'], ['a']]]) {
+    cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: { 'hero-h1': 'Park one', 'hero-p': 'Intro', 'hero-picture': { src: '/m/p.jpg' }, 'hero-a': { href: '/' }, 'cards-h2': 'H', 'cards-h3': h3, 'cards-p': p, 'cards-2-p': 'Band', 'cards-2-p-2': null } });
+    const r = run(['render', 'park-one']); assert.equal(r.status, 2);
+    assert.match(r.err, new RegExp(`^refused park-one: strict slots — derived slot\\(s\\) of archetype parks repeat across containers: cards-h3 \\(2 under ul > li, ${h3.length} value\\(s\\)\\); cards-p \\(2 under ul > li, ${p.length} value\\(s\\)\\) — mark the repeated container in the prototype \\(replica recreation-procedure\\.md § Slot markers\\), or give one value per container$`, 'm'));
+  }
+  assert.equal(read(`${OUT}/parks/one/index.html`), before, 'nothing written');
+});
+check('the template\'s only clone differs → a single differing sibling: the variant way out, and --accept-variance renders it (never a majority re-type)', () => {
+  cap('park-one', { url: 'https://example.test/parks/one/', title: 'Park one', slots: { 'hero-h1': 'Park one', 'hero-p': 'Intro', 'hero-picture': { src: '/m/p.jpg' }, 'hero-a': { href: '/' }, 'cards-h2': 'H', 'cards-h3': ['A', 'B'], 'cards-p': ['a', 'b'], 'cards-2-p': 'Band', 'cards-2-p-2': null } });
+  write('stardust/alt-variance-parks/parks.json', `${JSON.stringify({ template: 'parks', at: '2026-10-01T00:00:00Z', siblings: [{ slug: 'park-one', url: 'https://example.test/parks/one/', verdict: 'differs', missing: [], extra: ['badge'], deltas: [{ kind: 'EXTRA', probe: 'badge', msg: 'badge extra' }] }] }, null, 2)}\n`);
+  const r = run(['render', 'park-one', '--variance-dir', 'stardust/alt-variance-parks']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused park-one: strict variance — .* — 1 of 1 current clone\(s\) differ: a variant class on the template, not a new archetype — /m);
+  const ok = run(['render', 'park-one', '--variance-dir', 'stardust/alt-variance-parks', '--accept-variance', 'the badge is a variant class']); assert.equal(ok.status, 0, ok.err);
+  assert.equal(json(`${OUT}/parks/one/_meta.json`).variance.accepted, 'the badge is a variant class');
+});
+
 // ---- variance gate: the sibling-variance record gates every A′ page ------------------------------------
 console.log('variance gate');
 const VAR = 'stardust/rollout/variance/guides.json';
@@ -587,7 +678,8 @@ check('verdict same → recorded (the changed variance record re-renders the pag
 check('verdict differs → strict variance refusal (nothing written) until --accept-variance "<reason>", then recorded as accepted; a plain re-run holds it (unchanged)', () => {
   const before = read(`${OUT}/guides/beta/_meta.json`);
   const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
-  assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — 1 of 3 current clone\(s\) differ: a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, re-run with --accept-variance "<the delta and its variant class>", then node stardust\/scripts\/migrate\/migrate\.mjs variant guide-beta <variant-class>$/m);
+  assert.doesNotMatch(r.err, /re-type|--representative/, 'a single differing sibling is never re-typed');
   assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
   const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
   assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card'], deltas: 2, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent'], accepted: 'the hero is a page-level promo' });
@@ -602,6 +694,11 @@ check('more than half of the current clones differ → strict variance refusal e
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
 });
+check('20 % to half of the current clones differ → the refusal keeps both ways out: --accept-variance with a variant class, or a re-type', () => {
+  write('stardust/alt-variance-2/guides.json', varDoc([sib('guide-alpha', 'same'), sib('guide-beta', 'differs', ['hero']), sib('guide-gamma', 'differs', [], ['map']), sib('guide-short', 'same'), sib('howto-one', 'same')]));
+  const r = run(['render', 'guide-beta', '--variance-dir', 'stardust/alt-variance-2']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused guide-beta: strict variance — .* — 2 of 5 current clone\(s\) differ: check the clone against the archetype and re-run with --accept-variance "<reason>" \(a variant class on the template\), or re-type it: sub-archetypes by locale family or composition/m);
+});
 check('an earlier acceptance holds while the probe row is unchanged on archetype, verdict, missing, extra, deltas and their fingerprint (sidecar, else the coverage row; lists in any order); a changed row is refused quoting it; --accept-variance sets a new reason', () => {
   const BETA = `${OUT}/guides/beta/_meta.json`; const COVERAGE = 'stardust/rollout/coverage/pages.json';
   const reprobe = (at, missing, extra, deltas = null, file = VAR, template = 'guides') => write(file, `${JSON.stringify({ template, at, siblings: [sib('guide-alpha', 'same'), { ...sib('guide-beta', 'differs', missing, extra), ...(deltas ? { deltas } : {}) }, sib('guide-gamma', 'same')] }, null, 2)}\n`);
@@ -614,7 +711,7 @@ check('an earlier acceptance holds while the probe row is unchanged on archetype
   // only the deltas' kinds change (same count, missing and extra) → refused, quoting the earlier reason
   reprobe('2026-10-05T00:00:00Z', ['hero'], ['card'], [{ kind: 'SECTIONS', msg: '5 vs 7 top-level sections — a different template family' }, { kind: 'SECTION HEIGHTS', msg: 'hero 410 → 380px' }]);
   const kindsOnly = run(['render', 'guide-beta']); assert.equal(kindsOnly.status, 2);
-  assert.match(kindsOnly.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent\] → \[SECTION HEIGHTS, SECTIONS: 5 vs 7 top-level sections — a different template family\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(kindsOnly.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\); changed since an earlier render accepted it \("the hero is a page-level promo"\): deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent\] → \[SECTION HEIGHTS, SECTIONS: 5 vs 7 top-level sections — a different template family\] — 1 of 3 current clone\(s\) differ: a variant class on the template, /m);
   assert.equal(read(BETA), heldMeta, 'nothing written');
   // re-typed to another archetype: the same row probed against guides-b does not carry the acceptance made against guides
   reprobe('2026-10-05T00:00:00Z', ['hero'], ['card']);
@@ -645,7 +742,7 @@ check('an earlier acceptance holds while the probe row is unchanged on archetype
   reprobe('2026-10-07T00:00:00Z', ['hero'], ['card', 'quote']); const before = read(BETA);
   coverage({ verdict: 'differs', file: VAR, at: '2026-10-07T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['quote', 'card'], deltas: 3, deltaKinds: ['missing(hero): hero absent', 'extra(quote): quote extra', 'extra(card): card extra'], accepted: 'a stale coverage acceptance' });
   const changed = run(['render', 'guide-beta']); assert.equal(changed.status, 2);
-  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\]; deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] → \[extra\(card\): card extra, extra\(quote\): quote extra, missing\(hero\): hero absent\] — check the clone against the archetype and re-run with --accept-variance "<reason>", or re-type it: /m);
+  assert.match(changed.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card, quote\], 3 delta\(s\); changed since an earlier render accepted it \("the hero and the map are page-level promos"\): missing \[hero, map\] → \[hero\]; extra \[card\] → \[card, quote\]; deltaKinds \[extra\(card\): card extra, missing\(hero\): hero absent, missing\(map\): map absent\] → \[extra\(card\): card extra, extra\(quote\): quote extra, missing\(hero\): hero absent\] — 1 of 3 current clone\(s\) differ: a variant class on the template, /m);
   assert.equal(read(BETA), before, 'nothing written');
   const fresh = run(['render', 'guide-beta', '--accept-variance', 'the quote is a page-level promo']); assert.equal(fresh.status, 0, fresh.err);
   assert.doesNotMatch(fresh.out, /earlier acceptance/);
@@ -753,6 +850,18 @@ check('a hash-listed, fresh mapping is the default: each sibling takes its own t
   assert.match(two, /<div data-slot="body" class="prose"><p>Coast body\.<\/p><\/div>/);
   assert.ok(!/Archetype/.test(one) && !/Archetype/.test(two), 'no archetype content left in <main>');
   assert.deepEqual(['trip-one', 'trip-two'].map((s) => read(`stardust/current/pages/${s}.json`)), pageJsonBefore, 'the page JSON is never written');
+});
+check('a markerless archetype in mapping mode: the derived slots are found through the block mapping like marked ones', () => {
+  write(`${P}/trips-bare-proposed.html`, fixture('trips-proposed.html').replace(/ data-slot="[^"]*"/g, ''));
+  const r = run(['render', 'trip-one', '--source', 'trips=stardust/prototypes/trips-bare-proposed.html', '--out', 'stardust/migrated-bare']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^A' trip-one → trips\/one\/index\.html {2}\(trip; fork of trips via the block mapping; /m);
+  assert.match(r.out, /^slots derived \(no data-slot markers\): archetype trips — 4 slot\(s\): body-p, hero-a, hero-h1, hero-img — /m);
+  const one = mainOf(read('stardust/migrated-bare/trips/one/index.html'));
+  assert.match(one, /<h1 data-slot="hero-h1">Northern lights<\/h1>/); assert.match(one, /<a class="button" href="https:\/\/booking\.example\.org\/north" data-slot="hero-a">Book the north<\/a>/);
+  assert.match(one, /<img src="https:\/\/example\.test\/content\/media\/north\.jpg" alt="Aurora over the fjord" data-slot="hero-img" srcset=/);
+  assert.deepEqual([...one.matchAll(/<p data-slot="body-p">(.*?)<\/p>/g)].map((x) => x[1]), ['North body one.', 'North body two.']);
+  assert.ok(!/Archetype/.test(one));
+  rmSync(join(tmp, 'stardust/migrated-bare'), { recursive: true, force: true }); rmSync(join(tmp, P, 'trips-bare-proposed.html'));
 });
 check('mapped fork sidecar: slotSource mapping, slotMap { mapping, generatedAt, anchors, slots: {name: anchor} }; provenance names the mapping; a re-run is unchanged', () => {
   const m = json(`${OUT}/trips/one/_meta.json`);
@@ -893,7 +1002,7 @@ check('plan records one encode attempt per template with A′ siblings (not for 
     'B  1 page(s): press',
     'encode-attempt events: encoded — roundtrip events at text: equal — content/events.html',
     'encode-attempt venues: no-roundtrip — roundtrip venues at text: not equal (2 differences) — content/venues.html',
-    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)',
+    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted, 0 hand-authored)',
   ]);
   const ev = json(ENC('events'));
   assert.equal(ev.template, 'events'); assert.equal(ev.verdict, 'encoded'); assert.deepEqual(ev.lint, { exit: 0, line: 'lint events: 0 findings · 0 notes' }); assert.match(ev.at, /^\d{4}-\d{2}-\d{2}T/);
@@ -906,7 +1015,7 @@ check('a re-run keeps an existing record (the encoder is not run again); --force
   const at = json(ENC('events')).at;
   const r = run(PLAN); assert.equal(r.status, 0, r.err);
   assert.match(r.out, new RegExp(`^encode-attempt events: encoded — roundtrip events at text: equal — content/events\\.html \\(kept from ${at.replace(/\./g, '\\.')}; --force re-records\\)$`, 'm'));
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)');
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted, 0 hand-authored)');
   assert.equal(encRuns().length, 4, 'nothing run'); assert.equal(json(ENC('events')).at, at);
   const f = run([...PLAN, '--force']); assert.equal(f.status, 0, f.err);
   assert.doesNotMatch(f.out, /kept from/); assert.equal(encRuns().length, 8);
@@ -914,7 +1023,7 @@ check('a re-run keeps an existing record (the encoder is not run again); --force
 check('the production default encoder (encode.mjs beside encode-attempt.mjs): a template without a map is recorded not-attempted, nothing run', () => {
   const r = run(['plan', 'show-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
   assert.equal(json(ENC('shows')).verdict, 'not-attempted');
 });
 check('any recorded verdict opens the A′ path: encoded (events), no-roundtrip (venues), not-attempted (shows)', () => {
@@ -926,13 +1035,49 @@ check('plan refusals: a missing --encoder is a usage error; a template name the 
   const bad = run(['plan', 'venue-one', '--encoder', 'nope.mjs', '--force']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --encoder nope\.mjs does not exist/);
   const odd = run(['plan', 'odd-one']); assert.equal(odd.status, 2);
   assert.equal(odd.err, 'encode-attempt odd!: not recorded — template "odd!" is not a template name (letters, digits, _ . - and not only dots)\n');
-  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record');
   const all = run(['plan', '--all', '--encoder', 'fake-encode.mjs']); assert.equal(all.status, 2);
   assert.match(all.err, /^refused faq: strict branch — /m); assert.match(all.out, /^skip contact: status extracted$/m); assert.match(all.out.trim().split('\n').at(-1), /^encode: \d+ encoded · /);
 });
 check('plan is flow-guarded like render', () => {
   const s = json(STATE); const keep = read(STATE); delete s.flow; write(STATE, `${JSON.stringify(s, null, 2)}\n`);
   try { const r = run(['plan', 'event-one']); assert.equal(r.status, 2); assert.match(r.err, /no top-level flow/); assert.equal(r.out, ''); } finally { write(STATE, keep); }
+});
+check('encoder first: a template with ≥ 2 siblings and no map is a map due — plan names it, records nothing, exit 2; render keeps its A′ path closed', () => {
+  const s = json(STATE); s.pages.push(page('halls', '/halls/', 'approved', 'hall'), page('hall-one', '/halls/one/', 'directed', 'hall'), page('hall-two', '/halls/two/', 'directed', 'hall'));
+  write(STATE, `${JSON.stringify(s, null, 2)}\n`); write(`${P}/halls-proposed.html`, minimal('Halls')); for (const h of ['halls', 'hall-one', 'hall-two']) capture(h, h, `${h} description.`);
+  // an automatic not-attempted record written before the rule is not kept: plan records again, and the refusal removes it
+  recordAttempt(tmp, 'halls', { siblings: [] }); assert.equal(json(ENC('halls')).verdict, 'not-attempted');
+  const r = run(['plan', 'hall-one', 'hall-two']); assert.equal(r.status, 2);
+  assert.match(r.err, /^encode-attempt halls: refused not-attempted — 2 sibling\(s\) \(hall-one, hall-two\) and (no map at stardust\/import\/halls\/vocabulary\.json|encode\.mjs not found beside this script): /m);
+  assert.deepEqual(r.out.trim().split('\n').slice(-2), [
+    'maps due: 1 template(s) — halls (2 siblings) — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"',
+    'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record',
+  ]);
+  assert.ok(!has(ENC('halls')), 'the earlier automatic record is gone');
+  const rr = run(['render', 'hall-one']); assert.equal(rr.status, 2); assert.match(rr.err, /^refused hall-one: strict encode-attempt — /m);
+});
+check('encoder first: a reason recorded for the template (or a drafted map) clears the due; plan keeps the reasoned record', () => {
+  const rec = recordAttempt(tmp, 'halls', { reason: 'every hall page is a one-off floor plan' });
+  assert.match(rec.reason, /^every hall page is a one-off floor plan \(/);
+  const r = run(['plan', 'hall-one', 'hall-two']); assert.equal(r.status, 0, r.err);
+  assert.doesNotMatch(r.out, /^maps due/m); assert.match(r.out, /^encode-attempt halls: not-attempted — every hall page is a one-off floor plan \(.*\(kept from /m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
+});
+
+check('a hand-authored record (encode-attempt.mjs record --hand-authored --reason) opens the A′ path and plan counts it, naming its pages', () => {
+  const r0 = recordAttempt(tmp, 'halls', { handAuthored: true, reason: 'the floor plans are drawn per hall', pages: ['hall-two'] });
+  assert.equal(r0.verdict, 'hand-authored');
+  const r = run(['plan', 'hall-one', 'hall-two', '--force']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt halls: hand-authored — the floor plans are drawn per hall \(1 page\(s\): hall-two\) \(kept from /m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
+  const rr = run(['render', 'hall-two', '--from-archetype']); assert.equal(rr.status, 2); assert.doesNotMatch(rr.err, /strict encode-attempt/);
+});
+check('plan --force keeps a recorded decision (hand-authored, a reason) when nothing new can run — a one-sibling template without a map too', () => {
+  recordAttempt(tmp, 'shows', { handAuthored: true, reason: 'the show pages are written by hand' });
+  const r = run(['plan', 'show-one', '--force']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt shows: hand-authored — the show pages are written by hand \(1 page\(s\): show-one\) \(kept from /m);
+  assert.equal(json(ENC('shows')).verdict, 'hand-authored'); assert.deepEqual(json(ENC('shows')).pages, ['show-one']);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

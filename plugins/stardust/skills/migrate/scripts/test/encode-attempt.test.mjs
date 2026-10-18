@@ -13,7 +13,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readAttempt, recordAttempt, requireEncodeAttempt, summaryLine, UsageError } from '../encode-attempt.mjs';
+import { readAttempt, recordAttempt, Refusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'encode-attempt.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'encode-attempt-test-'));
@@ -170,19 +170,52 @@ console.log('summary');
 check('summary counts encoded vs A′ (no-roundtrip + not-attempted); a malformed record is not counted', () => {
   // good: encoded · diff, nogated: no-roundtrip · nomap, owner: not-attempted · broken: malformed
   const r = run(['summary', '--root', ROOT]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted)\n');
+  assert.equal(r.out.split('\n').at(-2), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)', 'the totals line comes last');
   assert.match(r.err, /broken/);
 });
 check('summary --json: counts + per-template verdicts sorted by template', () => {
   const r = run(['summary', '--root', ROOT, '--json']); assert.equal(r.status, 0, r.err);
   const j = JSON.parse(r.out);
-  assert.equal(j.encoded, 1); assert.equal(j.aPrime, 4); assert.equal(j.noRoundtrip, 2); assert.equal(j.notAttempted, 2); assert.equal(j.total, 5);
+  assert.equal(j.encoded, 1); assert.equal(j.aPrime, 4); assert.equal(j.noRoundtrip, 2); assert.equal(j.notAttempted, 2); assert.equal(j.handAuthored, 0); assert.equal(j.total, 5);
   assert.deepEqual(j.templates.map((t) => [t.template, t.verdict]), [['diff', 'no-roundtrip'], ['good', 'encoded'], ['nogated', 'no-roundtrip'], ['nomap', 'not-attempted'], ['owner', 'not-attempted']]);
 });
 check('summary of a project with no record directory → all zero, exit 0', () => {
   const empty = join(tmp, 'empty'); mkdirSync(empty);
   const r = run(['summary', '--root', empty]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted)\n');
+  assert.equal(r.out, 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)\n');
+});
+check('summary per template (the roster report\'s line): siblings · encoded · slot-rendered · hand-authored · not-attempted, from the state, the sidecars and the record', () => {
+  const proj = join(tmp, 'roster'); const put = (rel, data) => { const f = join(proj, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, typeof data === 'string' ? data : `${JSON.stringify(data, null, 2)}\n`); };
+  put('stardust/state.json', { pages: ['tours', 'a', 'b', 'c', 'd', 'e'].map((x) => ({ slug: x, url: `https://example.test/${x}/`, status: x === 'tours' ? 'approved' : 'directed', type: 'tour' })).concat([{ slug: 'solo', status: 'approved', type: 'solo' }]), migrate: { outputDir: 'stardust/migrated/' } });
+  put('stardust/migrated/tours/a/_meta.json', { slug: 'a', renderBranch: null, encode: { output: { path: 'x' } }, audit: { encode: { status: 'clean' } } });
+  put('stardust/migrated/tours/b/_meta.json', { slug: 'b', renderBranch: "A'", slotSource: 'page-json' });
+  put('stardust/migrated/tours/c._meta.json', { slug: 'c', renderBranch: "A'", slotSource: null });
+  put('stardust/migrated/tours/e/_meta.json', { slug: 'e', renderBranch: "A'", slotSource: null });
+  put('stardust/migrated/tours/stop/_meta.json', { slug: 'd', encode: { output: { path: 'y' } }, audit: { encode: { status: 'variance' } } });
+  recordAttempt(proj, 'tours', { handAuthored: true, reason: 'the itinerary tables are written per tour', pages: ['c'] });
+  recordAttempt(proj, 'solo', { notAttempted: 'one page' });
+  const r = run(['summary', '--root', proj]); assert.equal(r.status, 0, r.err);
+  assert.deepEqual(r.out.trim().split('\n'), [
+    'encode-attempt solo: 0 sibling(s) · 0 encoded · 0 slot-rendered · 0 hand-authored · 0 not-attempted (not-attempted)',
+    'encode-attempt tours: 5 sibling(s) · 1 encoded · 1 slot-rendered · 2 hand-authored · 1 not-attempted (hand-authored; 1 hand-authored without a record: e)',
+    'encode: 0 encoded · 2 A′ (0 no-roundtrip, 1 not-attempted, 1 hand-authored)',
+  ]);
+  const j = JSON.parse(run(['summary', '--root', proj, '--json']).out);
+  assert.deepEqual(j.perTemplate.find((t) => t.template === 'tours'), { template: 'tours', verdict: 'hand-authored', siblings: 5, encoded: 1, slotRendered: 1, handAuthored: 2, notAttempted: 1, unrecorded: ['e'] });
+});
+
+check('after delivery (every page migrated) the siblings still count: a migrate sidecar naming the template is a sibling — in summary and in the record threshold', () => {
+  const proj = join(tmp, 'delivered'); const put = (rel, data) => { const f = join(proj, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`); };
+  put('stardust/state.json', { pages: ['tours', 'a', 'b'].map((x) => ({ slug: x, url: `https://example.test/${x}/`, status: 'migrated', type: 'tour' })) });
+  put('stardust/migrated/tours/_meta.json', { slug: 'tours', template: null, renderBranch: 'A' });
+  put('stardust/migrated/tours/a/_meta.json', { slug: 'a', template: 'tours', renderBranch: "A'", slotSource: 'page-json' });
+  put('stardust/migrated/tours/b/_meta.json', { slug: 'b', template: 'tours', fidelityTier: 'sibling', encode: { output: { path: 'x' } }, audit: { encode: { status: 'clean' } } });
+  const state = JSON.parse(readFileSync(join(proj, 'stardust/state.json'), 'utf8'));
+  assert.deepEqual(siblingsOf(state, 'tours'), [], 'the state alone no longer tells them apart');
+  const r = run(['record', '--template', 'tours', '--root', proj, '--encoder', FAKE]); assert.equal(r.status, 2);
+  assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(a, b\) and no map at /);
+  recordAttempt(proj, 'tours', { reason: 'delivered before the map rule' });
+  assert.match(run(['summary', '--root', proj]).out, /^encode-attempt tours: 2 sibling\(s\) · 1 encoded · 1 slot-rendered · 0 hand-authored · 0 not-attempted \(not-attempted\)$/m);
 });
 
 // ---- determinism ----------------------------------------------------------------------------------
@@ -192,10 +225,86 @@ check('two records of the same attempt → the same bytes but at / writtenAt; fi
   rec('diff'); const a = read(P(REC('diff')));
   rec('diff'); const b = read(P(REC('diff')));
   assert.equal(strip(a), strip(b)); assert.ok(a.endsWith('}\n'));
-  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'at']);
+  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'at']);
+  assert.equal(JSON.parse(a).pages, null, 'pages: the hand-authored siblings only');
   assert.deepEqual(Object.keys(JSON.parse(a)._provenance), ['writtenBy', 'writtenAt']);
   assert.deepEqual(readdirSync(join(ROOT, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), []);
 });
+
+// ---- encoder first: a template with ≥ 2 siblings gets a map, or a reason why not ---------------------------
+console.log('encoder first');
+const STATE_FILE = join(ROOT, 'stardust', 'state.json');
+const pg = (slug, status, type, extra = {}) => ({ slug, url: `https://example.test/${slug}/`, status, type, ...extra });
+writeFileSync(STATE_FILE, `${JSON.stringify({ pages: [
+  pg('guides', 'approved', 'guide'), pg('guide-a', 'directed', 'guide'), pg('guide-b', 'directed', 'guide'), pg('guide-c', 'extracted', 'guide', { representative: 'guides' }),
+  pg('notes', 'approved', 'note'), pg('note-a', 'directed', 'note'),
+  pg('tours', 'approved', 'tour'), pg('tour-a', 'directed', 'listing', { representative: 'tours' }), pg('tour-b', 'directed', 'listing', { representative: 'tours' }),
+  pg('listing', 'approved', 'listing'), pg('listing-a', 'directed', 'listing'),
+] }, null, 2)}\n`);
+check('siblingsOf: representative links, else the directed pages of the template\'s type without one (the template the single approved page of its type)', () => {
+  const state = JSON.parse(readFileSync(STATE_FILE, 'utf8'));
+  assert.deepEqual(siblingsOf(state, 'guides'), ['guide-a', 'guide-b', 'guide-c']);
+  assert.deepEqual(siblingsOf(state, 'notes'), ['note-a']);
+  assert.deepEqual(siblingsOf(state, 'tours'), ['tour-a', 'tour-b'], 'a representative link wins over the type');
+  assert.deepEqual(siblingsOf(state, 'listing'), ['listing-a'], 'pages linked to another archetype are not the type\'s');
+  assert.deepEqual(siblingsOf(state, 'unknown'), []); assert.deepEqual(siblingsOf(null, 'guides'), []);
+});
+check('no map and ≥ 2 siblings → not-attempted refused: exit 2, nothing written, the line names the siblings, the C-archetype map and --reason', () => {
+  const before = runs().length;
+  const r = rec('guides'); assert.equal(r.status, 2); assert.equal(r.out, '');
+  assert.equal(r.err, 'encode-attempt guides: refused not-attempted — 3 sibling(s) (guide-a, guide-b, guide-c) and no map at stardust/import/guides/vocabulary.json: draft the map in the C-archetype unit (migrate SKILL.md § Encoder first), then record again — or pass --reason "<why the encoder cannot serve this template>"\n');
+  assert.ok(!has(P(REC('guides')))); assert.equal(runs().length, before);
+  assert.throws(() => recordAttempt(ROOT, 'guides', { encoder: FAKE }), (e) => e instanceof Refusal && /^encode-attempt guides: refused not-attempted — 3 sibling\(s\)/.test(e.message));
+});
+check('--reason names why → recorded not-attempted, the reason first and the cause in brackets; one sibling needs no reason', () => {
+  const r = rec('guides', ['--reason', 'each guide is a one-off legal text']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: not-attempted — each guide is a one-off legal text (no map at stardust/import/guides/vocabulary.json — the encoder needs the template\'s map)\n');
+  assert.equal(json(P(REC('guides'))).verdict, 'not-attempted');
+  const one = rec('notes'); assert.equal(one.status, 0, one.err);
+  assert.equal(one.out, 'encode-attempt notes: not-attempted — no map at stardust/import/notes/vocabulary.json — the encoder needs the template\'s map\n');
+  for (const t of ['guides', 'notes']) rmSync(join(ROOT, REC(t)));
+});
+check('the encoder-absent default with ≥ 2 siblings → refused naming the copy; --state points at another roster; with the map present the encoder runs as before', () => {
+  const copy = join(tmp, 'copy', 'stardust', 'scripts', 'migrate', 'encode-attempt.mjs');
+  const r = run(['record', '--template', 'tours', '--root', ROOT], copy); assert.equal(r.status, 2);
+  assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(tour-a, tour-b\) and encode\.mjs not found beside this script: copy the migrate scripts \(encode\.mjs and encode\/\) beside encode-attempt\.mjs, then record again — or pass --reason "/);
+  const alt = write('alt-state.json', JSON.stringify({ pages: [pg('tours', 'approved', 'tour')] }));
+  const solo = run(['record', '--template', 'tours', '--root', ROOT, '--state', alt], copy); assert.equal(solo.status, 0, solo.err);
+  assert.match(solo.out, /^encode-attempt tours: not-attempted — encode\.mjs not found beside this script\n$/);
+  map('tours'); const enc = rec('tours'); assert.equal(enc.status, 0, enc.err); assert.match(enc.out, /^encode-attempt tours: no-roundtrip — /);
+  rmSync(join(ROOT, 'stardust', 'import', 'tours'), { recursive: true }); rmSync(join(ROOT, REC('tours')));
+});
+check('usage: --reason with --not-attempted (which carries its own), an empty --reason, a --state that does not exist → exit 2, nothing written', () => {
+  for (const extra of [['--not-attempted', 'x', '--reason', 'y'], ['--reason', ''], ['--reason', '  '], ['--state', join(tmp, 'nope.json')]]) {
+    const r = rec('guides', extra); assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, /^usage error: /);
+  }
+  assert.ok(!has(P(REC('guides'))));
+});
+check('--hand-authored --reason: verdict hand-authored, nothing run, pages = the template\'s siblings, the earlier run\'s roundtrip and lint kept as evidence', () => {
+  map('guides'); rec('guides'); const tried = json(P(REC('guides'))); assert.equal(tried.verdict, 'no-roundtrip');
+  const before = runs().length;
+  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: hand-authored — the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
+  const j = json(P(REC('guides')));
+  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'the map cannot express the per-page legal tables');
+  assert.deepEqual(j.pages, ['guide-a', 'guide-b', 'guide-c']); assert.deepEqual(j.roundtrip, tried.roundtrip); assert.deepEqual(j.lint, tried.lint);
+  assert.equal(runs().length, before, 'nothing run');
+  const some = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'two exception pages', '--pages', 'guide-c,guide-a']); assert.equal(some.status, 0, some.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-a', 'guide-c']);
+  assert.equal(run(['check', '--template', 'guides', '--root', ROOT]).status, 0, 'a hand-authored record passes check (render\'s A′ gate)');
+  const s = run(['summary', '--root', ROOT, '--json']); const sj = JSON.parse(s.out);
+  assert.equal(sj.handAuthored, 1); assert.deepEqual(sj.templates.find((t) => t.template === 'guides'), { template: 'guides', verdict: 'hand-authored', reason: 'two exception pages', pages: ['guide-a', 'guide-c'] });
+  assert.match(run(['summary', '--root', ROOT]).out, /, 1 hand-authored\)\n$/);
+  rmSync(join(ROOT, 'stardust', 'import', 'guides'), { recursive: true }); rmSync(join(ROOT, REC('guides')));
+});
+check('usage: --hand-authored needs --reason and runs nothing (no --encoder, no --not-attempted); --pages needs --hand-authored → exit 2, nothing written', () => {
+  for (const extra of [['--hand-authored'], ['--hand-authored', '--reason', 'x', '--encoder', FAKE], ['--hand-authored', '--reason', 'x', '--not-attempted', 'y'], ['--pages', 'guide-a', '--reason', 'x']]) {
+    const r = run(['record', '--template', 'guides', '--root', ROOT, ...extra]); assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, /^usage error: /);
+  }
+  assert.ok(!has(P(REC('guides'))));
+  assert.throws(() => recordAttempt(ROOT, 'guides', { handAuthored: true }), (e) => e instanceof UsageError && /--hand-authored needs --reason/.test(e.message));
+});
+rmSync(STATE_FILE);
 
 // ---- the library (Task 9's migrate.mjs hooks) ---------------------------------------------------
 console.log('library');
@@ -221,9 +330,10 @@ check('recordAttempt returns the record it wrote; timeoutMs stops a slow encoder
 });
 check('summaryLine counts records; a missing record (null) is named, not counted as A′', () => {
   const recs = ['good', 'diff', 'nogated', 'nomap', 'owner'].map((t) => readAttempt(ROOT, t));
-  assert.equal(summaryLine(recs), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted)');
-  assert.equal(summaryLine([]), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted)');
-  assert.equal(summaryLine([readAttempt(ROOT, 'good'), null]), 'encode: 1 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  assert.equal(summaryLine(recs), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)');
+  assert.equal(summaryLine([]), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)');
+  assert.equal(summaryLine([readAttempt(ROOT, 'good'), null]), 'encode: 1 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record');
+  assert.equal(summaryLine([readAttempt(ROOT, 'good'), { template: 'h', verdict: 'hand-authored' }]), 'encode: 1 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
 });
 
 // ---- done -----------------------------------------------------------------------------------
