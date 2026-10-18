@@ -94,7 +94,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/blocks.mjs` — block dedup ledger; registers every `blocks/<name>/` — `[--out <dir>] [--blocks <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
 - `rollout/delivery-lint.mjs` — pre-PUT static lint P0–P2; source without h1 = note — `--file <html> [--path </da/path>] [--slug <s>] [--current <dir>] [--coverage <json>] [--content <dir>] [--json]`
-- `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units (every width), sidecars, ledger pairs proven; names inconclusive gates, header-parity errors — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
+- `rollout/done-check.mjs` — run complete? exit 0 = yes; overrides, units (every width), sidecars, ledger pairs, export freshness proven; names inconclusive gates, header-parity errors (once) — `[--live-host <h>|--offline] [--widths 1440,360] [--json]`
 - `rollout/findings.mjs` — record/resolve findings — `record --source --layer --check --severity`; `resolve <id> --status`
 - `rollout/inventory.mjs` — coverage from migrated tree; keeps `--new` rows — `[--migrated <dir>] [--content <dir>] [--site-url <u>] [--state <f>] [--export <name>]`; exit 2 = `--state` refused
 - `rollout/lib.mjs` — library, no CLI
@@ -105,7 +105,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
 - `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>` (`not-delivered --reason "<t>"`); `--gate <table>` (verdict per width); `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table | dir>` (records `host`)
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all] [--current <dir>]`
-- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft — `[--out <dir>] [--draft-judgement] [--force] [--dry-run]`
+- `rollout/workspace-manifest.mjs` — migration manifest + judgement draft; exit 2 = captures without mapping.json — `[--out <dir>] [--draft-judgement] [--allow-no-mapping] [--force] [--dry-run]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops — `[--urls <f>] [--from-cache]`

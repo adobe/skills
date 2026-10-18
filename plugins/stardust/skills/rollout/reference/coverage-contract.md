@@ -60,7 +60,7 @@ absent (sections live in `delivered.sections`, chrome in the blocks.json chrome 
 | `inputs` | `sha256:` hashes of what coverage was built from: `content {files, sha256, tracked}` and the files `blocks.mjs` read (`judgement.json`, `stardust/eds-conversion-log.md`, each `blocks/<n>/<n>.{js,css}`, when present) |
 | `outputs` | hashes of what a client reads: the three coverage files and `workspace/mapping.json` when present; a client trusts one only when its hash matches |
 | `placeholders[]` | "(not judged)" summary lines (template names, template descriptions, blocks with base type `unknown`, blocks without purpose or reuse guidance); pages with `delivered: null` |
-| `handover` | null, or `{at, detectedFrom}` (`marker` / `manifest` / `untracked-content`) from the first `--force` run; later forced runs keep it |
+| `handover` | null, or `{at, detectedFrom}` (`marker` / `manifest` / `untracked-content`) from the first `--force` run; later forced runs keep it; absent while captures exist without `mapping.json` (exit 2): not ready to hand over |
 | `degraded` | only once a `--force` run found inputs differing from the manifest's: `{reason, inputs[]}`, accumulated across forced runs |
 
 **Freshness:** the manifest refuses coverage older than its inputs (exit 1, naming what to re-run): a page with a
@@ -100,18 +100,17 @@ Deliberately absent: screenshots (none are committed). Source selectors live onl
 ## How it is produced
 
 Structural fields are always written, by `skills/rollout/scripts/inventory.mjs` (`delivered`, template fields) and
-`skills/rollout/scripts/blocks.mjs` (block fields, judged template values). Only the manifest, the judgement draft and
-the mapping are opt-in (`rollout.json` `exports: ["migration-workspace"]`, set by a person, a supervising process, or
-`inventory.mjs --export migration-workspace`): Phase I, after `dashboard.mjs`, before the `I-dashboard` end line,
-non-gating (a failure goes into that line's `--detail`, never `blocked`):
+`skills/rollout/scripts/blocks.mjs` (block fields, judged template values). The export — the manifest, the judgement and
+`mapping.json`, all three — is written when `rollout.json` `exports` lists `migration-workspace` (set by a person, a
+supervising process, or `inventory.mjs --export migration-workspace`): Phase I, after `dashboard.mjs`, before the
+`I-dashboard` end line, by three commands in order, each required (procedure and `export_stale`: rollout
+`SKILL.md § Phase I`):
 
 ```bash
-node skills/rollout/scripts/inventory.mjs …                            # the Phase A flags
-node skills/rollout/scripts/blocks.mjs
 node skills/rollout/scripts/workspace-manifest.mjs --draft-judgement   # once; then fill judgement.json
-node skills/rollout/scripts/blocks.mjs                                 # judged values → coverage, template names too
-node skills/rollout/scripts/block-origin.mjs --verify                  # → workspace/mapping.json, source selectors
-node skills/rollout/scripts/workspace-manifest.mjs                     # → workspace/manifest.json
+node skills/rollout/scripts/inventory.mjs … && node skills/rollout/scripts/blocks.mjs   # 1. Phase A flags; judged values → coverage
+node skills/rollout/scripts/block-origin.mjs --verify                  # 2. required → workspace/mapping.json
+node skills/rollout/scripts/workspace-manifest.mjs                     # 3. → workspace/manifest.json
 ```
 
 **Handover:** `workspace/handover.json` (`{at, by}`, written by the adopting client, never by stardust), a manifest
