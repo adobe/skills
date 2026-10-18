@@ -73,15 +73,22 @@
 // C-final reuse (the reuse sandbox): a --skip-existing run on the live host keeps the preview-host gate's EDS capture while
 // both keys are known and differ only by the build host (logged, the row's buildReused); a changed document, or a live
 // host not proven to serve it, re-shoots.
+// Fingerprint and --changed-only: fingerprintOf (the delivered parts: a block CSS / JS, styles, page or chrome document byte
+// moves it; the EDS origin, a threshold, a mask, a dismiss list, the instruments do not — the gate key moves) and
+// rowFingerprint (only beside a known key its parts hash to); changedOnly / changedOnlyLine over real tables (latestRows):
+// an unchanged PASS left out, every other case gated with its why; --changed-only --stage prototype → exit 2, nothing
+// written. The reuse sandbox: live-host PASS rows → both pages gated on the preview host as an --only run; nothing changed →
+// the one line, nothing written (with --only too); a pushed block CSS byte → that page alone; a newer FAIL over a matching
+// PASS → gated, and refused at the fix-round cap like --only.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, capRefusal, capturePollution, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gatedBefore, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundSkip, roundsOf, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
+import { MAX_ROUNDS, OVERRIDE_VERDICTS, REGISTER_FILE, browserPools, buildHost, canon, capRefusal, capturePollution, changedOnly, changedOnlyLine, checkOverride, codeDeployed, contentDeployed, countsAsRound, coveragePages, deployedDocs, edsHostOf, edsOrigin, emptySelection, estimateFactor, fingerprintOf, fontChecksSkipped, fontsNotLoaded, foundationPart, formatSummary, gatedBefore, gateKeyOf, gateKeyParts, hideMissOf, hideMissText, hostServes, instrumentFiles, inventoryWhy, keyChanged, latestRows, liveReusePlan, nextRounds, oneLoadKeep, originReusePlan, parseArgs, probeInputs, probeReuse, registerIds, rosterEstimate, roundSkip, roundsOf, rowFingerprint, rowKey, rowReuse, runTables, selectPages, sharedBlocks, skipCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -480,6 +487,83 @@ check('blocks not authored by the page still key it: auto-blocks and foundation-
   }
   put('blocks/tabs/tabs.css', '.tabs{ }'); assert.equal(key(), k0, 'a block only another page authors');
   rmSync(root, { recursive: true, force: true });
+});
+check('fingerprintOf / rowFingerprint: the delivered parts only — the same tree, the same fingerprint; a block CSS or JS byte, a styles byte, the page document or a chrome document → another; the EDS origin, a threshold, a mask, a dismiss list or the instruments → the same (the gate key moves); a row carries it only beside a known key its parts hash to', () => {
+  const root = mkdtempSync(join(tmpdir(), 'gate-all-fp-'));
+  const put = (f, s) => { mkdirSync(dirname(join(root, f)), { recursive: true }); writeFileSync(join(root, f), s); };
+  put('styles/styles.css', 'body{}'); put('blocks/cards/cards.css', '.cards{}'); put('blocks/cards/cards.js', 'export default 1;');
+  put('content/index.html', '<main><div><div class="cards"></div></div></main>'); put('content/nav.html', '<nav></nav>');
+  const opts = parseArgs(['node', 'x']); const page = { slug: 'home', url: 'https://o.test/', liveUrl: 'https://main--s--o.aem.page/' };
+  const parts = (ctx = {}, p = page) => gateKeyParts(p, { root, opts, instruments: 'i', ...ctx }).parts;
+  const fp = (ctx, p) => fingerprintOf(parts(ctx, p));
+  const P = parts(); const f0 = fp(); const k0 = gateKeyOf(P);
+  assert.match(f0, /^[0-9a-f]{64}$/); assert.equal(fp(), f0, 'the same tree');
+  assert.equal(f0, createHash('sha256').update(canon({ v: 1, foundation: P.foundation, runtime: P.runtime, shared: P.shared, blocks: P.blocks, content: P.content })).digest('hex'), 'the canonical JSON of { v: 1, foundation, runtime, shared, blocks, content }');
+  for (const [f, edit, what] of [['blocks/cards/cards.css', '.cards{ }', 'a block CSS byte'], ['blocks/cards/cards.js', 'export default 2;', 'a block JS byte'], ['styles/styles.css', 'body{ }', 'a styles byte'], ['content/index.html', '<main><div><div class="cards"></div><p>new</p></div></main>', 'the page document'], ['content/nav.html', '<nav> </nav>', 'a chrome document']]) {
+    const before = readFileSync(join(root, f), 'utf8'); put(f, edit); assert.notEqual(fp(), f0, what); put(f, before);
+  }
+  assert.equal(fp(), f0, 'restored');
+  const live = { ...page, liveUrl: 'https://main--s--o.aem.live/' };
+  for (const [ctx, p, what] of [[{}, live, 'the EDS origin'], [{ opts: { ...opts, threshold: 12 } }, page, 'a threshold'], [{ masks: { home: { masks: ['0-80'], reason: 'banner' } } }, page, 'a mask'], [{ opts: { ...opts, dismiss: ['.modal-close'] } }, page, 'a dismiss list'], [{ instruments: 'other' }, page, 'the instruments']]) {
+    assert.equal(fp(ctx, p), f0, `${what}: build only`); assert.notEqual(gateKeyOf(parts(ctx, p)), k0, `${what} moves the gate key`);
+  }
+  assert.equal(fingerprintOf(null), null);
+  const stored = JSON.parse(JSON.stringify({ gateKey: k0, parts: P })); // as gate-key.json reads back
+  assert.equal(rowFingerprint(stored, k0), f0, 'the parts the key was issued for');
+  assert.equal(rowFingerprint(stored, null), null, 'no key (rowKey null): no fingerprint');
+  assert.equal(rowFingerprint(stored, gateKeyOf(parts({}, live))), null, 'parts that do not hash to the key');
+  assert.equal(rowFingerprint({ gateKey: k0 }, k0), null, 'no parts recorded'); assert.equal(rowFingerprint(null, k0), null);
+  rmSync(root, { recursive: true, force: true });
+});
+check('changedOnly: only an unchanged PASS is left out — a changed fingerprint, a newer FAIL over a matching PASS, a null or missing fingerprint, other criteria, another host, an INCONCLUSIVE or override-lifted latest row, no row or a key unknown now is gated; sorted, each with its why; only the slugs given (--only already applied); changedOnlyLine', () => {
+  const out = mkdtempSync(join(tmpdir(), 'gate-all-changed-'));
+  const H = 'https://main--site--org.aem.page'; const F = (x) => createHash('sha256').update(x).digest('hex');
+  const prov = (writtenAt, over = {}) => ({ writtenBy: 'gate-all.mjs', writtenAt, stage: 'published', breakpoint: 1440, threshold: 10, heightTolerance: 0.05, clipMax: 0, unitTol: 4, criteria: { pixel: true, height: true, clip: true, content: true }, ...over });
+  const pass = (slug, over = {}) => ({ slug, pct: 2, pass: true, passWithOverride: true, inconclusive: false, originAsymmetric: false, host: H, gateKey: `k-${slug}`, fingerprint: F(slug), ...over });
+  const fail = (slug, over = {}) => pass(slug, { pct: 30, pass: false, passWithOverride: false, ...over });
+  const legacy = pass('m'); delete legacy.fingerprint;
+  writeFileSync(join(out, 'summary.json'), JSON.stringify({ _provenance: prov(T(1)), rows: [pass('a'), pass('b'), pass('c'), pass('d', { fingerprint: null }), legacy, pass('f'), pass('g', { host: 'https://main--site--org.aem.live' }), pass('i'), pass('k')] }));
+  mkdirSync(join(out, 'runs'));
+  writeFileSync(join(out, 'runs/2026-01-01T00-02-00-000Z-c.json'), JSON.stringify({ _provenance: prov(T(2), { only: ['c', 'h', 'i'] }), rows: [fail('c'), pass('h', { pass: false, passWithOverride: false, inconclusive: true, pixelPass: null }), fail('i', { passWithOverride: true })] }));
+  writeFileSync(join(out, 'runs/2026-01-01T00-03-00-000Z-e.json'), JSON.stringify({ _provenance: prov(T(3), { threshold: 12 }), rows: [pass('e')] }));
+  writeFileSync(join(out, 'runs/2026-01-01T00-04-00-000Z-k.json'), JSON.stringify({ _provenance: prov(T(4)), rows: [pass('k', { reused: { what: 'row', from: 'summary.json', at: T(1), gateKey: 'k-k' } })] }));
+  writeFileSync(join(out, 'runs/2026-01-01T00-05-00-000Z-a.json'), JSON.stringify({ _provenance: prov(T(5), { breakpoint: 390 }), rows: [fail('a')] }));
+  const latest = latestRows(out, 1440); const opts = parseArgs(['node', 'x']);
+  const all = ['k', 'j', 'i', 'h', 'g', 'f', 'e', 'd', 'c', 'b', 'a', 'm'];
+  const keys = Object.fromEntries(all.map((x) => [x, { fingerprint: F(x), why: null }])); keys.b = { fingerprint: F('b2'), why: null }; keys.f = { fingerprint: null, why: 'no content/f.html' };
+  const hosts = Object.fromEntries(all.map((x) => [x, H]));
+  const sel = changedOnly(all, { latest, keys, hosts, opts });
+  assert.deepEqual(sel.unchanged, [{ slug: 'a', fingerprint: F('a'), at: T(1), from: 'summary.json' }, { slug: 'k', fingerprint: F('k'), at: T(1), from: 'runs/2026-01-01T00-04-00-000Z-k.json' }], 'a PASS (another width\'s FAIL is another table); a row reused whole: when it was measured');
+  assert.deepEqual(sel.gate, [
+    { slug: 'b', why: `changed since the PASS (${F('b').slice(0, 12)} → ${F('b2').slice(0, 12)})` },
+    { slug: 'c', why: 'latest row FAIL' },
+    { slug: 'd', why: 'latest PASS has no fingerprint' },
+    { slug: 'e', why: 'latest PASS written under other criteria' },
+    { slug: 'f', why: 'gate key unknown now (no content/f.html)' },
+    { slug: 'g', why: `latest PASS measured on https://main--site--org.aem.live, not ${H}` },
+    { slug: 'h', why: 'latest row INCONCLUSIVE' },
+    { slug: 'i', why: 'latest row FAIL (an override does not count here)' },
+    { slug: 'j', why: 'no row yet' },
+    { slug: 'm', why: 'latest PASS has no fingerprint' }]);
+  assert.equal(changedOnly(['a', 'k'], { latest, keys, hosts, opts: { ...opts, clip: false } }).gate.length, 2, 'this run under other criteria (--no-clip)');
+  assert.equal(changedOnly(['a'], { latest, keys, hosts: {}, opts }).gate[0].why, 'latest PASS measured on https://main--site--org.aem.page, not this run\'s build host', 'no build host now');
+  assert.equal(changedOnlyLine(sel), `gate-all changed-only: 10 to gate (b, c, d, e, f, g, h, i, j, m) · 2 unchanged since their PASS (a ${F('a').slice(0, 12)} ${T(1)}, k ${F('k').slice(0, 12)} ${T(1)})`);
+  const only = changedOnly(['k', 'a'], { latest, keys, hosts, opts });
+  assert.deepEqual(only.gate, []); assert.deepEqual(only.unchanged.map((u) => u.slug), ['a', 'k'], 'only the slugs given');
+  assert.equal(changedOnlyLine(only), 'gate-all changed-only: nothing changed since the last PASS — 2 page(s) keep their rows');
+  assert.equal(changedOnlyLine(changedOnly(['b'], { latest, keys, hosts, opts })), 'gate-all changed-only: 1 to gate (b) · 0 unchanged since their PASS');
+  rmSync(out, { recursive: true, force: true });
+});
+check('--changed-only with --stage prototype: a usage error before any I/O — exit 2, one stderr line and the usage line, nothing written (either order); parseArgs reads the flag', () => {
+  const cwd = mkdtempSync(join(tmpdir(), 'gate-all-changed-proto-'));
+  for (const args of [['--changed-only', '--stage', 'prototype'], ['--stage', 'prototype', '--only', 'home', '--changed-only']]) {
+    const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+    assert.equal(r.status, 2, r.stderr); assert.equal(r.stdout, '');
+    assert.match(r.stderr, /^gate-all: --changed-only is published-stage only \(it selects by the fingerprint beside each published verdict; prototype rows carry none\) — drop it or --stage prototype\nUsage: node gate-all\.mjs/);
+  }
+  assert.deepEqual(readdirSync(cwd), []);
+  assert.equal(parseArgs(['node', 'x']).changedOnly, false); assert.equal(parseArgs(['node', 'x', '--changed-only']).changedOnly, true);
+  rmSync(cwd, { recursive: true, force: true });
 });
 check('deploy-state guard: the gated host serves the pushed branch and repo; every document is its newest ledger row, delivered to that org/repo', () => {
   const code = { ok: true, branch: 'feature/Hero', ref: 'feature-hero', owner: 'org', repo: 'site' };
@@ -1011,6 +1095,57 @@ check('C-final without --reuse-across-hosts (the default): the live-host gate re
   assert.equal(d.status, 0, d.stderr); assert.equal(d.n.eds, 2, 'both re-shot on the live host');
   assert.doesNotMatch(d.stdout, /reused build capture/);
   for (const slug of ['home', 'about']) { const x = row(summary(), slug); assert.equal(x.host, LIVE); assert.equal('buildReused' in x, false); }
+});
+// --changed-only over the same sandbox: the summary.json above holds live-host PASS rows; these runs gate the preview host.
+const zeroRounds = () => { for (const slug of ['home', 'about']) writeFileSync(pageFile(slug, 'rounds.json'), JSON.stringify({ rounds: 0, max: 3, at: [] })); };
+const runOf = (x) => { const f = (x.stdout.match(/run → (.*)/) || [])[1]; return f ? JSON.parse(readFileSync(join(reuseRoot, f), 'utf8')) : null; };
+const outSnap = () => readdirSync(REUSE_OUT, { recursive: true }).sort().map((f) => { const st = statSync(join(REUSE_OUT, f)); return `${f} ${st.isFile() ? `${st.size}:${st.mtimeMs}` : 'dir'}`; });
+const fpOf = (slug) => fingerprintOf(JSON.parse(readFileSync(pageFile(slug, 'gate-key.json'), 'utf8')).parts);
+let co1 = null;
+check('--changed-only, 1: the latest PASS rows were measured on another host — both pages gated as an --only run (runs/<ts>-<first slug>.json, summary.* untouched, rounds counted); each row carries gateKey and the fingerprint of the parts gate-key.json records; _run.log names why', () => {
+  zeroRounds(); const before = readFileSync(join(REUSE_OUT, 'summary.json'), 'utf8');
+  const x = gateAll(['--changed-only']);
+  assert.equal(x.status, 0, x.stderr + x.stdout); assert.deepEqual(x.n, { origin: 2, eds: 2, probes: 2, compares: 2 });
+  assert.equal(x.stdout.split('\n')[0], 'gate-all changed-only: 2 to gate (about, home) · 0 unchanged since their PASS');
+  co1 = runOf(x); assert.deepEqual(co1._provenance.only, ['about', 'home']); assert.deepEqual(co1._provenance.changedOnly, { unchanged: [] });
+  assert.match(x.stdout, /run → stardust\/replica\/gates\/all-1440\/runs\/[^ ]+-about\.json/); assert.equal(readFileSync(join(REUSE_OUT, 'summary.json'), 'utf8'), before, 'summary.json untouched');
+  for (const slug of ['home', 'about']) {
+    const r1 = row(co1, slug); assert.equal(r1.pass, true); assert.equal(r1.host, 'https://main--site--org.aem.page');
+    assert.match(r1.gateKey, HEX); assert.equal(r1.gateKey, storedKey(slug)); assert.equal(r1.fingerprint, fpOf(slug)); assert.match(r1.fingerprint, HEX); assert.equal(r1.round, 1);
+  }
+  assert.match(readFileSync(join(REUSE_OUT, '_run.log'), 'utf8'), /changed-only: gating about \(latest PASS measured on https:\/\/main--site--org\.aem\.live, not https:\/\/main--site--org\.aem\.page\), home \(latest PASS measured on https:\/\/main--site--org\.aem\.live, not https:\/\/main--site--org\.aem\.page\); unchanged since their PASS: none$/m);
+});
+check('--changed-only, 2: nothing changed since those PASS rows — the one line, exit 0, nothing launched and nothing written (with --only: of those)', () => {
+  const snap = outSnap();
+  const x = gateAll(['--changed-only']);
+  assert.equal(x.status, 0, x.stderr); assert.equal(x.stdout, 'gate-all changed-only: nothing changed since the last PASS — 2 page(s) keep their rows\n'); assert.equal(x.stderr, '');
+  assert.deepEqual(x.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.deepEqual(outSnap(), snap, 'no file written or touched under <out>');
+  const y = gateAll(['--changed-only', '--only', 'home']);
+  assert.equal(y.status, 0, y.stderr); assert.equal(y.stdout, 'gate-all changed-only: nothing changed since the last PASS — 1 page(s) keep their rows\n'); assert.deepEqual(outSnap(), snap);
+});
+put('blocks/cards/cards.css', '.cards { gap: 5rem; }'); git('add', '--', 'blocks/cards/cards.css'); git('commit', '-qm', 'cards gap 5'); git('push', '-q');
+check('--changed-only, 3: one byte of the cards CSS (about\'s block), pushed — about alone is gated under a new fingerprint, home stays out with its PASS named (fingerprint, measured at); --only home: nothing to gate', () => {
+  const snap = outSnap();
+  const y = gateAll(['--changed-only', '--only', 'home']);
+  assert.equal(y.stdout, 'gate-all changed-only: nothing changed since the last PASS — 1 page(s) keep their rows\n'); assert.deepEqual(outSnap(), snap, 'the intersection with --only');
+  const x = gateAll(['--changed-only']);
+  assert.equal(x.status, 0, x.stderr + x.stdout); assert.deepEqual([x.n.eds, x.n.compares], [1, 1]);
+  assert.equal(x.stdout.split('\n')[0], `gate-all changed-only: 1 to gate (about) · 1 unchanged since their PASS (home ${row(co1, 'home').fingerprint.slice(0, 12)} ${co1._provenance.writtenAt})`);
+  const doc = runOf(x); assert.deepEqual(doc.rows.map((r) => r.slug), ['about']); assert.deepEqual(doc._provenance.changedOnly.unchanged, [{ slug: 'home', fingerprint: row(co1, 'home').fingerprint, at: co1._provenance.writtenAt }]);
+  assert.notEqual(row(doc, 'about').fingerprint, row(co1, 'about').fingerprint); assert.equal(row(doc, 'about').fingerprint, fpOf('about'));
+  assert.match(readFileSync(join(REUSE_OUT, '_run.log'), 'utf8'), /changed-only: gating about \(changed since the PASS \([0-9a-f]{12} → [0-9a-f]{12}\)\); unchanged since their PASS: home [0-9a-f]{12} \S+ \(runs\/\S+-about\.json\)$/m);
+});
+check('--changed-only, 4: a FAIL after a matching PASS is gated (the newest row counts); a page at the fix-round cap refuses the run as --only would (no verdict, exit 2, nothing written)', () => {
+  const failed = gateAll(['--only', 'about'], { STUB_FAIL: 'about' });
+  assert.equal(failed.status, 2, failed.stderr); assert.equal(row(runOf(failed), 'about').pass, false); assert.equal(row(runOf(failed), 'about').round, 3);
+  const snap = outSnap();
+  const capped = gateAll(['--changed-only']);
+  assert.equal(capped.status, 2, capped.stderr); assert.equal(capped.stdout.split('\n')[0].startsWith('gate-all changed-only: 1 to gate (about) · 1 unchanged since their PASS (home '), true, capped.stdout);
+  assert.match(capped.stderr, /no verdict — cap reached — re-prototype decision: about 3\/3 @1440/); assert.deepEqual(capped.n, { origin: 0, eds: 0, probes: 0, compares: 0 }); assert.deepEqual(outSnap(), snap);
+  zeroRounds();
+  const x = gateAll(['--changed-only']);
+  assert.equal(x.status, 0, x.stderr + x.stdout); assert.deepEqual([x.n.eds, x.n.compares], [1, 1]); assert.equal(row(runOf(x), 'about').pass, true);
+  assert.match(readFileSync(join(REUSE_OUT, '_run.log'), 'utf8'), /changed-only: gating about \(latest row FAIL\); unchanged since their PASS: home /);
 });
 rmSync(base, { recursive: true, force: true });
 
