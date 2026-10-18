@@ -4,6 +4,33 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — the lead waits five minutes, not twenty-five, and starts every disjoint unit at once (#NNN)
+
+The recorded hands-off runs: the lead handed each delivery unit to a subagent and then polled with foreground `sleep`
+calls of 9–23 minutes — one 93-minute session held 15 such sleeps totalling 99 minutes, another 83 of 97, a third 76
+of 93 — and a finished unit waited until the current sleep ended before the lead saw it. The previous rule let a lead
+whose cache holds an hour wait with `run-bg.mjs wait --max 1500`; with a one-hour cache a five-minute poll costs about
+three cents, so the long wait bought nothing and cost up to twenty minutes per unit. One run delivered its archetype
+units one after another (the first alone for 70 minutes, then its cluster, then the next archetype alone) while another
+started four units in one turn and finished ten units in the time the first finished five; code propagation after a
+push (median 5–6 minutes, p90 10) is paid serially by serial units and overlapped by parallel ones.
+
+- **`progress.mjs wait` (stardust).** Watches the progress ledger — every unit `running` when the wait starts, `--unit`
+  narrows — and returns 0 the moment one is `done` or `failed`, printing its line; 75 at `--max` (default 300) with the
+  units still running; 76 at once while `$STARDUST_PAUSE_FILE` exists; 2 when nothing is running. Polls every 5 s,
+  reads without the lock, `--json`.
+- **`run-bg.mjs wait` defaults to 300 s for everyone (replica).** The 1500 s ceiling and `--until <ISO>` stay; a `--max`
+  above 600 prints one notice line that a one-hour cache does not need it.
+- **One wait rule, three places.** The master skill's wait discipline, the handoff contract's § Fan-out discipline and
+  replica's gate-round example say the same sentence: wait in steps of at most five minutes, lead and subagents
+  alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait. A unit's subagent
+  records its own end (`progress.mjs unit done|failed`) as its last command, so the lead's wait sees it.
+- **Every disjoint unit starts at once (rollout Phase C, delivery-gates).** After C0 is committed and frozen, every
+  archetype unit starts in the same turn, each cluster the moment its archetype is `done`; disjoint units are never
+  serialized to spare browsers — the browser slot queue paces captures. The lead's loop is `progress.mjs wait` →
+  record what ended → start what is now unblocked → wait again, with a worked example; the one exception is a unit
+  that edits a shared file, which waits for that file's lock.
+
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
 The recorded hands-off runs: an independent roster re-gate of one run reproduced 8/10 instead of its 10/10 — the run
