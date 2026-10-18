@@ -153,3 +153,52 @@ so the gates run uniformly:
 - **zsh gotcha:** `node`/`curl` inside a multi-line `while`/`for` can lose PATH
   ("command not found") — write the loop to a `bash` script file with absolute
   binaries and run it, rather than inlining.
+
+## Iteration discipline + the fix-round brief
+
+These rules set when a unit STOPS its published-origin fix rounds, never what
+PASS means: the verdict criteria and the cap of 3 fix rounds per page
+(`gate-all.mjs` counts them, handoff contract § 1 row 5) are unchanged.
+Recorded (a hands-off run, ≈ 232 browser minutes of gates): three rounds at
+both widths even at 0.05 % pixel ("iter3 confirm"), seven archetypes re-gated
+after each shared-CSS change, a killed 16-page gate restarted from scratch.
+- **Stop at PASS** at both widths with Δh 0 — no "confirm" round; a unit stops
+  once all its pages do. A PASS with Δh ≠ 0 is still a PASS: a further round
+  names the cause it fixes, inside the cap.
+- **Confirm only after a shared change** — the foundation (`styles/`,
+  `scripts/`, `head.html`, `blocks/header/`, `blocks/footer/`, where the
+  prototype canon `stardust/canon/` lands) or a block other pages use changed
+  after the pass: ONE round at both widths, `gate-all.mjs --changed-only` — the
+  roster pages whose delivered CSS/JS fingerprint changed since their last PASS,
+  an `--only` run over that set (rounds counted alike), never every archetype;
+  `nothing changed since the last PASS` (exit 0) ends it.
+- **Resume, never restart:** a killed `gate-all.mjs` run (a unit's `--only` or
+  the roster) re-runs the same command plus `--skip-existing`, reusing the
+  captures and PASS rows it wrote.
+
+**The fix-round brief** — the lead fills it in and pastes it into the brief of
+a subagent running fix rounds after C0 (an archetype, a cluster or sub-unit, a
+gap-closure pass); plugin paths, a project copy reads `stardust/scripts/<skill>/…`:
+
+```text
+Fix round <n> of 3 — unit <unit>; pages <slug,…>; widths 1440 + 360; host <preview host>.
+FAIL lines, verbatim with their numbers (and <out>/triage.json):
+  <slug> <w>: pixel <x>% Δh <px> clipped <c> content <m> — <reasons>
+Edit only <your unit's blocks/<name>/>; a frozen-file finding (styles/, fonts/, head.html, scripts/,
+blocks/header/, blocks/footer/) is ONE stardust/rollout/foundation-requests.md line:
+  - <unit> | <what> | <evidence: instrument + numbers> | <templates affected>
+Each round:
+  fix → npm run lint → node skills/stardust/scripts/unit-commit.mjs <unit> --code blocks/<name> --push
+  → node skills/deploy/scripts/fresh-check.mjs <css-or-js-url> --grep '<marker>'
+  → per width: node skills/replica/scripts/run-bg.mjs start --name <unit>-r<n>-<w> -- \
+      node skills/replica/scripts/gate-all.mjs --only <pages> --eds-host <host> --width <w>
+    (after a shared-file change: --changed-only for --only <pages>)
+  → node skills/replica/scripts/run-bg.mjs wait   (exit 75: wait again next; never a sleep)
+  → node skills/rollout/scripts/update-coverage.mjs --gate <its "run →" file>; unit-commit.mjs <unit>
+  → PASS at both widths with Δh 0: stop, no confirm round (Δh ≠ 0: a further round names its cause).
+    Still FAIL after round 3: stop — a 4th round is the re-prototype decision, not yours.
+A server: run-bg.mjs start --kind server --name <unit>-srv -- <cmd> (never waited); run-bg.mjs stop --servers at the end.
+STARDUST_PAUSE_FILE present → finish the round, return "paused: <report>".
+Return ONE verdict line; last command (not when paused):
+  node skills/stardust/scripts/progress.mjs unit done|failed <unit> --verdict "<the line>"
+```

@@ -258,7 +258,8 @@ gate runs once, on that archetype page (a failing check reopens the sub-unit own
 `progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze` runs once it
 passes (handoff contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
-(`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
+(`gate-all.mjs --only`, cap 3 fix rounds, stop at PASS — `reference/delivery-gates.md`
+§ Iteration discipline) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 An encoded template's C-archetype also drafts and round-trips its map — and every template with two or more
 siblings is one: its C-archetype drafts the map (`stardust/import/<template>/`) once the archetype gates and
@@ -272,10 +273,10 @@ never its own archetype; a hand-authored sibling is recorded `--hand-authored --
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry
-(`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint
-commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
-are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
+with its own `stardust/rollout/progress.json` entry, checkpoint commit and
+boundary ask; fix rounds (cap 3, stop at PASS — `reference/delivery-gates.md`
+§ Iteration discipline) and the `gate-all.mjs --only` scope are per sub-unit.
+Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
 `STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
