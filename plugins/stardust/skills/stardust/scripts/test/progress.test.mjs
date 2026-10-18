@@ -4,22 +4,33 @@
 // key inside the entry, JSON or string value, __proto__ / constructor / prototype refused), the
 // shape refusals (not JSON, not an object, a non-object map or entry, a replica file holding one
 // archetype's bare record), the replica ledger's other top-level keys kept as they were, the one
-// status line, show, both script layouts, and parallel writers losing no entry. Run: node <this file>.
+// status line, show, both script layouts, and parallel writers losing no entry; wait (the watched set and
+// --unit, a unit ending mid-wait, --max with its notice and clamp, the pause file at the start and mid-wait,
+// a watched unit gone, a ledger unreadable at the bound, --json, no file-lock.mjs needed). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyUnit, formatLine, parseArgs, parseSetValue, setPath } from '../progress.mjs';
+import {
+  applyUnit, formatLine, parseArgs, parseSetValue, pauseState, pickWatched, setPath, waitBound, waitEndedLine, waitPausedLine,
+  waitState, waitTimeoutLine,
+} from '../progress.mjs';
 
+// A supervised session's pause file must not end these waits; the pause tests set their own.
+delete process.env.STARDUST_PAUSE_FILE;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'progress.mjs');
 const LOCK_LIB = join(HERE, '..', '..', '..', 'deploy', 'scripts', 'file-lock.mjs');
 const root = mkdtempSync(join(tmpdir(), 'progress-test-'));
 let seq = 0;
 const project = () => { seq += 1; const d = join(root, `p${seq}`); mkdirSync(d); return d; };
-const runWith = (script, cwd, args) => { const r = spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8' }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const runWith = (script, cwd, args, env = {}) => {
+  const t = Date.now();
+  const r = spawnSync(process.execPath, [script, ...args], { cwd, encoding: 'utf8', env: { ...process.env, ...env } });
+  return { code: r.status, out: r.stdout, err: r.stderr, ms: Date.now() - t };
+};
 const runIn = (cwd, ...args) => runWith(SCRIPT, cwd, args);
 const readJ = (p) => JSON.parse(readFileSync(p, 'utf8'));
 const put = (p, v) => { mkdirSync(dirname(p), { recursive: true }); writeFileSync(p, typeof v === 'string' ? v : `${JSON.stringify(v, null, 2)}\n`); };
@@ -34,6 +45,7 @@ const REPLICA = 'stardust/replica/progress.json';
 const T0 = '2026-01-02T03:04:05Z';
 const T1 = '2026-01-02T04:00:00Z';
 const opts = (o) => ({ ledger: 'rollout', file: ROLLOUT, fields: {}, sets: [], again: false, ...o });
+const running = (names) => ({ units: Object.fromEntries(names.map((n) => [n, { status: 'running', kind: 'cluster', startedAt: T0 }])) });
 
 // ---- pure helpers -------------------------------------------------------------------------------
 check('parseSetValue: JSON when it parses, else the string as given', () => {
@@ -141,13 +153,81 @@ check('formatLine: deterministic field order, unset fields omitted, (resumed), o
   assert.equal(formatLine('migrate', 'm1', { status: 'running', startedAt: T0 }, { resumed: true }), `progress migrate m1: running (resumed) startedAt=${T0}`);
   assert.equal(formatLine('replica', 'home', { pageType: 'landing' }), 'progress replica home: -');
 });
+check('parseArgs: wait — defaults, --unit repeatable (a repeat is dropped), --max; flags that belong elsewhere refused', () => {
+  const w = parseArgs(['wait']);
+  assert.equal(w.cmd, 'wait'); assert.deepEqual(w.units, []); assert.equal(w.max, 300); assert.equal(w.ledger, 'rollout'); assert.equal(w.json, false);
+  const n = parseArgs(['wait', '--unit', 'b', '--unit', 'a', '--unit', 'b', '--max', '1.5', '--ledger', 'replica', '--file', 'x.json', '--json']);
+  assert.deepEqual(n.units, ['b', 'a']); assert.equal(n.max, 1.5); assert.equal(n.ledger, 'replica'); assert.equal(n.file, 'x.json'); assert.equal(n.json, true);
+  assert.equal(parseArgs(['wait', '--max', '0']).max, 0);
+  const bad = (argv, re) => assert.throws(() => parseArgs(argv), (e) => e.code === 2 && re.test(e.message), `${argv.join(' ')} → ${re}`);
+  bad(['wait', 'c1'], /^unexpected argument\(s\) after wait: c1 — name a unit with --unit <name>$/);
+  for (const v of ['-1', 'x', '1e3', '', '5s']) bad(['wait', '--max', v], new RegExp(`^--max needs a number of seconds ≥ 0, got "${v}"$`));
+  bad(['wait', '--max'], /--max needs a value/);
+  bad(['wait', '--max', '1', '--max', '2'], /--max given twice/);
+  bad(['wait', '--unit', 'a b'], /must match/);
+  bad(['wait', '--unit', '__proto__'], /reserved/);
+  bad(['wait', '--unit', '--json'], /--unit needs a value \(got --json, which is a flag\)/);
+  bad(['wait', '--kind', 'cluster'], /^--kind applies to unit only$/);
+  bad(['wait', '--again'], /^--again applies to unit only$/);
+  bad(['show', '--max', '3'], /^--max applies to wait only$/);
+  bad(['show', 'c1', '--unit', 'c1'], /^--unit applies to wait only$/);
+  bad(['unit', 'start', 'c1', '--max', '3'], /^--max applies to wait only$/);
+});
+check('wait helpers: pickWatched (every running unit, or the running ones among --unit), waitState (ended / running / gone)', () => {
+  const doc = { units: { b: { status: 'running' }, a: { status: 'running' }, c: { status: 'done' }, d: { status: 'pending' }, e: {} } };
+  assert.deepEqual(pickWatched(doc, 'rollout'), { watched: ['a', 'b'], skipped: [] });
+  assert.deepEqual(pickWatched(doc, 'rollout', ['b', 'c', 'z', 'e']), { watched: ['b'], skipped: [{ name: 'c', status: 'done' }, { name: 'z', status: 'absent' }, { name: 'e', status: 'no status' }] });
+  assert.deepEqual(pickWatched({ types: { home: { status: 'running' } }, units: { x: { status: 'running' } } }, 'replica'), { watched: ['home'], skipped: [] });
+  assert.deepEqual(pickWatched({}, 'migrate'), { watched: [], skipped: [] });
+  const s = waitState({ units: { a: { status: 'failed', verdict: 'x' }, b: { status: 'running' }, c: { status: 'done' }, d: { status: 'pending' } } }, 'rollout', ['d', 'c', 'b', 'a', 'z']);
+  assert.deepEqual(s, { ended: { a: { status: 'failed', verdict: 'x' }, c: { status: 'done' } }, running: ['b'], gone: [{ name: 'd', status: 'pending' }, { name: 'z', status: 'absent' }] });
+  assert.deepEqual(Object.keys(s.ended), ['a', 'c']);
+  assert.deepEqual(waitState({ units: {} }, 'rollout', []), { ended: {}, running: [], gone: [] });
+});
+check('wait helpers: waitBound (a notice over 600 s, clamped over 1500 s) and the three wait lines', () => {
+  assert.deepEqual(waitBound(300), { sec: 300, notes: [] });
+  assert.deepEqual(waitBound(600), { sec: 600, notes: [] });
+  const n = waitBound(700);
+  assert.equal(n.sec, 700);
+  assert.deepEqual(n.notes, ['progress: --max 700 — a wait over 600 s buys nothing; a one-hour cache does not need it (a 300 s step costs about three cents and sees an ended unit up to 20 minutes sooner)']);
+  const c = waitBound(2000);
+  assert.equal(c.sec, 1500); assert.equal(c.notes.length, 2);
+  assert.equal(c.notes[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the pause file ends a wait early');
+  assert.equal(waitBound(1500).notes.length, 1);
+  assert.equal(waitEndedLine(1, 2, ['b']), 'progress wait: 1 of 2 ended — still running: b');
+  assert.equal(waitEndedLine(2, 2, []), 'progress wait: 2 of 2 ended — none still running');
+  assert.equal(waitTimeoutLine(2, 300, ['a', 'b']), 'progress wait: none of 2 ended within 300s — still running: a, b — wait again as the next call');
+  const p = { path: 'p.json', reason: 'stop', at: T0 };
+  assert.equal(waitPausedLine(p, ['a', 'b']), `progress wait: paused — p.json present (reason: stop, at ${T0}) — start nothing new; still running: a, b`);
+  assert.match(waitPausedLine(p, []), /— start nothing new; still running: none$/);
+  assert.match(waitPausedLine(p, null), /— start nothing new; still running: unknown$/);
+});
+check('pauseState: unset / empty / missing = no pause; JSON {at, reason}; anything else still counts (reason unreadable); relative = from the cwd', () => {
+  const d = project();
+  assert.equal(pauseState(undefined, { cwd: d }), null);
+  assert.equal(pauseState('', { cwd: d }), null);
+  assert.equal(pauseState('  ', { cwd: d }), null);
+  assert.equal(pauseState('p.json', { cwd: d }), null);
+  put(join(d, 'p.json'), { at: T0, reason: 'budget\n spent' });
+  assert.deepEqual(pauseState('p.json', { cwd: d }), { path: 'p.json', reason: 'budget spent', at: T0 });
+  put(join(d, 'q.json'), {});
+  assert.deepEqual(pauseState(join(d, 'q.json')), { path: join(d, 'q.json'), reason: 'unspecified', at: 'unknown' });
+  for (const junk of ['not json', '[1]', 'null']) {
+    put(join(d, 'r.json'), junk);
+    assert.deepEqual(pauseState('r.json', { cwd: d }), { path: 'r.json', reason: 'unreadable', at: 'unknown' }, junk);
+  }
+});
 
 // ---- the CLI -----------------------------------------------------------------------------------
 check('--help: exit 0, usage on stdout, nothing written (also before a bad flag)', () => {
   const d = project();
   const h = runIn(d, '--help');
   assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /progress\.mjs unit <start\|done\|failed> <name>/); assert.match(h.out, /Exit codes: 0/);
+  assert.match(h.out, /progress\.mjs wait \[--ledger …\] \[--file …\] \[--unit <name>\]… \[--max <seconds>\] \[--json\]/);
+  assert.match(h.out, /^wait: /m);
+  assert.match(h.out, /75 wait: none ended within --max · 76 wait: the pause file is present/);
   assert.equal(runIn(d, 'unit', 'start', 'c1', '--frob', '-h').code, 0);
+  assert.equal(runIn(d, 'wait', '--max', '-1', '--help').code, 0);
   assert.deepEqual(readdirSync(d), []);
 });
 check('rollout: start → done round trip; the file is created with its map; one status line per write', () => {
@@ -322,6 +402,183 @@ check('layouts: the project copy (stardust/scripts/stardust + ../deploy/file-loc
   const r = runWith(bare, lone, ['unit', 'start', 'c1']);
   assert.equal(r.code, 2); assert.match(r.err, /file-lock\.mjs not found.*deploy\/scripts\/file-lock\.mjs.*deploy\/file-lock\.mjs/);
   assert.deepEqual(readdirSync(lone), ['bin']);
+});
+
+// ---- wait: the immediate outcomes ----------------------------------------------------------------
+check('wait --max 0: one pass, exit 75 with the still-running line (and --json); needs no file-lock.mjs; writes nothing', () => {
+  const d = project();
+  put(join(d, ROLLOUT), { units: { b: { status: 'running', startedAt: T0 }, a: { status: 'running' }, c: { status: 'done' }, e: { status: 'pending' } } });
+  const before = readFileSync(join(d, ROLLOUT), 'utf8');
+  const r = runIn(d, 'wait', '--max', '0');
+  assert.equal(r.code, 75, r.err); assert.equal(r.err, '');
+  assert.equal(r.out, 'progress wait: none of 2 ended within 0s — still running: a, b — wait again as the next call\n');
+  const j = runIn(d, 'wait', '--max', '0', '--json');
+  assert.equal(j.code, 75, j.err); assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: null });
+  const u = runIn(d, 'wait', '--max', '0', '--unit', 'b', '--unit', 'c', '--unit', 'z');
+  assert.equal(u.code, 75, u.err); assert.equal(u.out, 'progress wait: none of 1 ended within 0s — still running: b — wait again as the next call\n');
+  assert.equal(u.err, 'progress wait: --unit c is done — not watched\nprogress wait: --unit z is absent — not watched\n');
+  const lone = project();
+  const bare = join(lone, 'bin', 'progress.mjs');
+  mkdirSync(dirname(bare)); copyFileSync(SCRIPT, bare);
+  const b = runWith(bare, d, ['wait', '--max', '0']);
+  assert.equal(b.code, 75, b.err);
+  assert.equal(readFileSync(join(d, ROLLOUT), 'utf8'), before);
+  assert.deepEqual(readdirSync(join(d, 'stardust', 'rollout')), ['progress.json'], 'no lock dir');
+});
+check('wait: the pause file at the start → exit 76 at once, before the ledger is read; not JSON still counts; empty = no check', () => {
+  const d = project();
+  put(join(d, ROLLOUT), running(['b', 'a']));
+  const P = join(d, 'pause.json');
+  put(P, { at: T0, reason: 'session budget' });
+  const r = runWith(SCRIPT, d, ['wait', '--max', '30'], { STARDUST_PAUSE_FILE: P });
+  assert.equal(r.code, 76, r.err); assert.ok(r.ms < 1500, `returned after ${r.ms} ms`); assert.equal(r.err, '');
+  assert.equal(r.out, `progress wait: paused — ${P} present (reason: session budget, at ${T0}) — start nothing new; still running: a, b\n`);
+  const u = runWith(SCRIPT, d, ['wait', '--unit', 'b'], { STARDUST_PAUSE_FILE: 'pause.json' });
+  assert.equal(u.code, 76); assert.equal(u.out, `progress wait: paused — pause.json present (reason: session budget, at ${T0}) — start nothing new; still running: b\n`);
+  put(P, 'half written');
+  const j = runWith(SCRIPT, d, ['wait', '--json'], { STARDUST_PAUSE_FILE: 'pause.json' });
+  assert.equal(j.code, 76); assert.equal(j.err, '');
+  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: { path: 'pause.json', reason: 'unreadable', at: 'unknown' } });
+  const empty = project();
+  const n = runWith(SCRIPT, empty, ['wait'], { STARDUST_PAUSE_FILE: P });
+  assert.equal(n.code, 76, n.err); assert.match(n.out, /— start nothing new; still running: unknown\n$/, 'no ledger: the pause still wins');
+  assert.deepEqual(readdirSync(empty), []);
+  assert.equal(runWith(SCRIPT, d, ['wait', '--max', '0'], { STARDUST_PAUSE_FILE: '' }).code, 75);
+  assert.equal(runWith(SCRIPT, d, ['wait', '--max', '0'], { STARDUST_PAUSE_FILE: join(d, 'absent.json') }).code, 75);
+});
+check('wait --max over 600: one stderr notice; over 1500: the notice and the clamp line; usage errors exit 2', () => {
+  const d = project();
+  put(join(d, ROLLOUT), running(['a']));
+  const env = { STARDUST_PAUSE_FILE: 'pause.json' };
+  put(join(d, 'pause.json'), { at: T0, reason: 'r' });
+  const q = runWith(SCRIPT, d, ['wait', '--max', '600'], env);
+  assert.equal(q.code, 76); assert.equal(q.err, '');
+  const n = runWith(SCRIPT, d, ['wait', '--max', '700'], env);
+  assert.equal(n.code, 76); assert.match(oneLine(n.err), /^progress: --max 700 — a wait over 600 s buys nothing; a one-hour cache does not need it/);
+  const c = runWith(SCRIPT, d, ['wait', '--max', '2000'], env);
+  assert.equal(c.code, 76);
+  const lines = c.err.trimEnd().split('\n');
+  assert.equal(lines.length, 2); assert.match(lines[0], /^progress: --max 2000 — a wait over 600 s/);
+  assert.equal(lines[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the pause file ends a wait early');
+  for (const [args, re] of [[['wait', '--max', '-1'], /--max needs a number of seconds ≥ 0, got "-1"/], [['wait', '--max', 'x'], /got "x"/],
+    [['show', '--max', '3'], /--max applies to wait only/], [['wait', '--kind', 'cluster'], /--kind applies to unit only/], [['wait', 'a'], /unexpected argument/]]) {
+    const r = runIn(d, ...args);
+    assert.equal(r.code, 2, args.join(' ')); assert.match(oneLine(r.err), re); assert.equal(r.out, '');
+  }
+});
+check('wait refusals (exit 2, one stderr line, nothing on stdout): no ledger, no unit running, none of the --unit names running, a shape refusal, not JSON', () => {
+  const d = project();
+  const no = (args, err) => { const r = runIn(d, ...args); assert.equal(r.code, 2, `${args.join(' ')}: ${r.err}`); assert.equal(r.out, ''); if (typeof err === 'string') assert.equal(r.err, `progress: ${err}\n`); else assert.match(oneLine(r.err), err); };
+  no(['wait'], `no ${ROLLOUT}`);
+  no(['wait', '--ledger', 'migrate'], `no ${MIGRATE}`);
+  assert.deepEqual(readdirSync(d), []);
+  put(join(d, ROLLOUT), { units: { a: { status: 'done' }, b: { status: 'pending' } } });
+  no(['wait'], `no running unit in ${ROLLOUT} — nothing to wait for (progress.mjs unit start <name> records one)`);
+  put(join(d, ROLLOUT), { units: { a: { status: 'done' }, c: { status: 'running' } } });
+  no(['wait', '--unit', 'a', '--unit', 'b'], `no running unit among --unit a, b in ${ROLLOUT} (a: done, b: absent)`);
+  put(join(d, REPLICA), { archetype: 'home', breakpoints: {} });
+  no(['wait', '--ledger', 'replica'], /^progress: stardust\/replica\/progress\.json is one archetype's record at the top level/);
+  put(join(d, 'x.json'), { units: { a: 'running' } });
+  no(['wait', '--file', 'x.json'], /^progress: x\.json: units\.a is not an object$/);
+  put(join(d, 'y.json'), '{ "units": ');
+  no(['wait', '--file', 'y.json'], /^progress: y\.json is not JSON \(/);
+});
+
+// ---- wait over time ------------------------------------------------------------------------------
+// Every scenario runs in its own project, all at once. The poll is 5 s; a change made 1.5 s after a wait starts (late
+// enough that a slow node start has read the ledger first) is seen at the first poll, about 5 s in.
+const TRIGGER_MS = 1500;
+const runAsync = (cwd, args, env = {}) => new Promise((res) => {
+  const t = Date.now();
+  const c = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...process.env, ...env }, stdio: ['ignore', 'pipe', 'pipe'] });
+  let out = ''; let err = '';
+  c.stdout.on('data', (b) => { out += b; });
+  c.stderr.on('data', (b) => { err += b; });
+  c.on('close', (code) => res({ code, out, err, ms: Date.now() - t }));
+});
+const after = (ms, fn) => new Promise((res) => { setTimeout(() => res(fn()), ms); });
+const S = Object.fromEntries(['ends', 'max1', 'pause', 'narrow', 'ignores', 'json', 'gone', 'broken'].map((k) => [k, project()]));
+for (const k of ['ends', 'narrow', 'ignores', 'gone']) put(join(S[k], ROLLOUT), running(['a', 'b']));
+for (const k of ['max1', 'pause', 'broken']) put(join(S[k], ROLLOUT), running(['a']));
+put(join(S.json, REPLICA), { _provenance: { writtenBy: 'gate-evidence.mjs' }, types: { home: { status: 'running', startedAt: T0 } } });
+const [W, fired] = await Promise.all([
+  Promise.all([
+    runAsync(S.ends, ['wait', '--max', '30']),
+    runAsync(S.max1, ['wait', '--max', '1']),
+    runAsync(S.pause, ['wait', '--max', '30'], { STARDUST_PAUSE_FILE: 'pause.json' }),
+    runAsync(S.narrow, ['wait', '--unit', 'b', '--unit', 'c', '--max', '8']),
+    runAsync(S.ignores, ['wait', '--unit', 'b', '--max', '6']),
+    runAsync(S.json, ['wait', '--ledger', 'replica', '--json', '--max', '30']),
+    runAsync(S.gone, ['wait', '--max', '30']),
+    runAsync(S.broken, ['wait', '--max', '6']),
+  ]).then((rs) => Object.fromEntries(Object.keys(S).map((k, i) => [k, rs[i]]))),
+  Promise.all([
+    after(TRIGGER_MS, () => runAsync(S.ends, ['unit', 'done', 'a', '--verdict', 'pass'])),
+    after(TRIGGER_MS, () => put(join(S.pause, 'pause.json'), { at: T1, reason: 'runner stop' })),
+    after(TRIGGER_MS, () => runAsync(S.narrow, ['unit', 'done', 'a'])),
+    after(TRIGGER_MS + 1000, () => runAsync(S.narrow, ['unit', 'failed', 'b', '--verdict', 'fail: 2 bands'])),
+    after(TRIGGER_MS, () => runAsync(S.ignores, ['unit', 'done', 'a'])),
+    after(TRIGGER_MS, () => runAsync(S.json, ['unit', 'done', 'home', '--ledger', 'replica', '--set', 'pageType=landing'])),
+    after(TRIGGER_MS, () => put(join(S.gone, ROLLOUT), { units: { a: { status: 'pending' } } })),
+    after(TRIGGER_MS, () => put(join(S.broken, ROLLOUT), '{ "units": { "a": ')),
+  ]),
+]);
+check('wait: the unit done / failed calls made during the waits succeeded', () => {
+  for (const f of fired) if (f) assert.equal(f.code, 0, f.err);
+});
+check('wait: a watched unit ends (unit done from another process) → exit 0 at the next poll: its line, then the summary naming the one still running', () => {
+  const r = W.ends;
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  assert.equal(r.out, `${formatLine('rollout', 'a', readJ(join(S.ends, ROLLOUT)).units.a)}\nprogress wait: 1 of 2 ended — still running: b\n`);
+  assert.match(r.out, /^progress rollout a: done kind=cluster startedAt=\S+ endedAt=\S+ verdict=pass\n/);
+  assert.ok(r.ms >= TRIGGER_MS && r.ms < 7000, `returned after ${r.ms} ms`);
+});
+check('wait --max 1 → exit 75 after ≥ 1 s and < 6 s, naming the unit still running', () => {
+  const r = W.max1;
+  assert.equal(r.code, 75, r.err);
+  assert.equal(r.out, 'progress wait: none of 1 ended within 1s — still running: a — wait again as the next call\n');
+  assert.ok(r.ms >= 1000 && r.ms < 6000, `returned after ${r.ms} ms`);
+});
+check('wait: a pause file that appears during the wait (relative, from the cwd) ends it with 76 at the next poll', () => {
+  const r = W.pause;
+  assert.equal(r.code, 76, r.err);
+  assert.equal(r.out, `progress wait: paused — pause.json present (reason: runner stop, at ${T1}) — start nothing new; still running: a\n`);
+  assert.ok(r.ms < 7000, `returned after ${r.ms} ms`);
+});
+check('wait --unit narrows: an unwatched unit ending is not reported; the watched one failing ends the wait; a named unit not running gets a note', () => {
+  const r = W.narrow;
+  assert.equal(r.code, 0, r.err);
+  assert.equal(r.out, `${formatLine('rollout', 'b', readJ(join(S.narrow, ROLLOUT)).units.b)}\nprogress wait: 1 of 1 ended — none still running\n`);
+  assert.match(r.out, /^progress rollout b: failed .*verdict=fail: 2 bands\n/);
+  assert.equal(r.err, 'progress wait: --unit c is absent — not watched\n');
+});
+check('wait --unit b: a ending mid-wait does not end it → exit 75 at --max', () => {
+  const r = W.ignores;
+  assert.equal(r.code, 75, r.err);
+  assert.equal(r.out, 'progress wait: none of 1 ended within 6s — still running: b — wait again as the next call\n');
+  assert.equal(readJ(join(S.ignores, ROLLOUT)).units.a.status, 'done');
+  assert.ok(r.ms >= 6000, `returned after ${r.ms} ms`);
+});
+check('wait --json on the replica ledger: the ended record under its archetype name, nothing running, no pause', () => {
+  const r = W.json;
+  assert.equal(r.code, 0, r.err);
+  const home = readJ(join(S.json, REPLICA)).types.home;
+  assert.equal(home.status, 'done'); assert.equal(home.pageType, 'landing');
+  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'replica', ended: { home }, running: [], paused: null });
+});
+check('wait: every watched unit gone (pending again, removed) → a note each, then exit 2 "nothing left to wait for"', () => {
+  const r = W.gone;
+  assert.equal(r.code, 2); assert.equal(r.out, '');
+  assert.equal(r.err, `progress wait: a is now pending — no longer watched\nprogress wait: b is now absent — no longer watched\nprogress: nothing left to wait for in ${ROLLOUT}\n`);
+});
+check('wait: a ledger that stops parsing is read again at each poll; still unreadable at the bound → exit 2 naming the file', () => {
+  const r = W.broken;
+  assert.equal(r.code, 2); assert.equal(r.out, '');
+  const lines = r.err.trimEnd().split('\n');
+  assert.equal(lines.length, 2, r.err);
+  assert.match(lines[0], /^progress wait: stardust\/rollout\/progress\.json is not JSON \(.+\) — read again at the next poll$/);
+  assert.match(lines[1], /^progress: stardust\/rollout\/progress\.json is not JSON \(.+\) — still unreadable at the end of the wait \(6s\)$/);
+  assert.ok(r.ms >= 6000, `returned after ${r.ms} ms`);
 });
 
 // ---- parallel writers --------------------------------------------------------------------------

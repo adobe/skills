@@ -6,6 +6,7 @@
 //        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
 //        [--set <key>=<value>]… [--again] [--json]
 //   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
+//   node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
 //
 // Ledgers (paths relative to the project root, the cwd):
 //   rollout  stardust/rollout/progress.json  { units: { <name>: { status, kind, templates[], pages, blocks?, gates?,
@@ -27,9 +28,19 @@
 // dotted key inside the entry (value parsed as JSON when it parses, else kept as a string).
 // Shape refusals write nothing: a file that is not JSON or not an object, a map or entry that is not an
 // object, an unknown status, a replica file holding one archetype's bare record at the top level.
-// Exit codes: 0 written / printed · 1 I/O error · 2 usage, refusal, lock timeout, file-lock.mjs missing.
+//
+// wait: returns as soon as a unit that was running when the wait started is done or failed (--unit narrows the
+// set), re-reading the ledger every 5 s without the lock (writers rename atomically), for at most --max seconds
+// (default 300, ceiling 1500); the pause file ($STARDUST_PAUSE_FILE) ends it at once. Writes nothing.
+// Why: in recorded hands-off runs the lead handed each delivery unit to a subagent, then polled with foreground
+// sleeps of 9–23 minutes — one 93-minute session held 15 such sleeps totalling 99 minutes — and a finished unit
+// waited until the current sleep ended before the lead saw it. With a one-hour cache a five-minute poll costs
+// about three cents, so a longer wait buys nothing and costs up to twenty minutes per unit.
+// Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
+// file-lock.mjs missing, nothing to wait for · 75 wait: none ended within --max · 76 wait: the pause file is present.
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { dirname, join, relative } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -52,12 +63,21 @@ export const FIELD_ORDER = ['status', 'kind', 'templates', 'pages', 'blocks', 'g
 const COMMAND_FIELDS = ['status', 'startedAt', 'endedAt'];
 const FLAG_FIELDS = { kind: '--kind', templates: '--templates', pages: '--pages', blocks: '--blocks', verdict: '--verdict' };
 const UNIT_ONLY = ['--kind', '--pages', '--blocks', '--templates', '--verdict', '--set', '--again'];
+const WAIT_ONLY = ['--unit', '--max'];
+// wait: the default bound, the notice above which a longer bound is pointless, the hard ceiling, the poll period.
+export const DEFAULT_WAIT_SEC = 300;
+export const WAIT_NOTICE_SEC = 600;
+export const WAIT_CEILING_SEC = 1500;
+export const WAIT_POLL_MS = 5000;
+export const STILL_RUNNING_EXIT = 75;
+export const PAUSED_EXIT = 76;
 
 const HELP = `Usage:
   node stardust/scripts/stardust/progress.mjs unit <start|done|failed> <name> [--ledger rollout|migrate|replica]
        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
        [--set <key>=<value>]… [--again] [--json]
   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
+  node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
   (run from the project root; <name> matches ${NAME_RE}, never ${UNSAFE_KEYS.join(', ')})
 
 Records a unit's start and end in a progress ledger — never a hand-written node -e edit of the JSON.
@@ -89,7 +109,23 @@ Output: one stdout line per write, fields omitted when unset —
   (one line; "-" when an entry has no status). --json prints the entry as JSON instead.
 show: one such line per entry, sorted by name, or the named one (missing → exit 2); --json prints
   the entry, or the map of entries by name. An absent ledger → nothing printed, a note on stderr. Writes nothing.
-Exit codes: 0 written / printed · 1 I/O error · 2 usage, refusal, lock timeout, file-lock.mjs not found.`;
+wait: returns as soon as a watched unit ends — the lead's wait for its unit subagents, never a long sleep.
+  Watched: every unit running when the wait starts; --unit <name> (repeatable) narrows it, and a named unit
+  that is not running gets one stderr note and is not watched. The ledger is read every ${WAIT_POLL_MS / 1000} s without the
+  lock (writers rename atomically; a file that does not parse is read again at the next poll). Writes nothing.
+  A watched unit done or failed → exit 0: its status line (one per ended unit, sorted by name), then
+    progress wait: <k> of <n> ended — still running: <a, b>        (or "— none still running")
+  --max <seconds> (default ${DEFAULT_WAIT_SEC}; 0 = one pass) passes with none ended → exit ${STILL_RUNNING_EXIT}:
+    progress wait: none of <n> ended within <max>s — still running: <a, b> — wait again as the next call
+  Over ${WAIT_NOTICE_SEC} s a stderr notice (a one-hour cache needs no longer wait); over ${WAIT_CEILING_SEC} s clamped to ${WAIT_CEILING_SEC}.
+  Pause: while $STARDUST_PAUSE_FILE (JSON {at, reason}; relative = from the cwd; unset or empty = no check) names
+  a file that exists — checked before the first read and on every poll — exit ${PAUSED_EXIT} at once:
+    progress wait: paused — <path> present (reason: <r>, at <at>) — start nothing new; still running: <a, b|none|unknown>
+  Exit 2 (one stderr line): no ledger; no unit running (or none of the --unit names); every watched unit gone
+  (removed or pending again: "nothing left to wait for"); the ledger still unreadable at the bound; a shape refusal.
+  --json: one object {"ledger","ended":{<name>:<entry>},"running":[…],"paused":null|{path,reason,at}} instead.
+Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
+  file-lock.mjs missing, nothing to wait for · ${STILL_RUNNING_EXIT} wait: none ended within --max · ${PAUSED_EXIT} wait: the pause file is present.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -135,9 +171,13 @@ const count = (flag, v) => {
   if (!/^\d+$/.test(v) || !Number.isSafeInteger(Number(v))) throw new UsageError(`${flag} needs an integer ≥ 0, got "${v}"`);
   return Number(v);
 };
+const seconds = (flag, v) => {
+  if (!/^\d+(?:\.\d+)?$/.test(v) || !Number.isFinite(Number(v))) throw new UsageError(`${flag} needs a number of seconds ≥ 0, got "${v}"`);
+  return Number(v);
+};
 
 export function parseArgs(argv) {
-  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false };
+  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false, units: [], max: null };
   const pos = [];
   const seen = new Set();
   const given = [];
@@ -164,10 +204,12 @@ export function parseArgs(argv) {
       o.fields.verdict = oneLine(need());
       if (!o.fields.verdict) throw new UsageError('--verdict needs a non-empty line');
     } else if (a === '--set') { given.push(a); o.sets.push(parseSet(need())); }
+    else if (a === '--unit') { given.push(a); o.units.push(need()); }
+    else if (a === '--max') { once(); o.max = seconds(a, need()); }
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
   }
-  if (!pos.length) throw new UsageError('usage: progress.mjs unit <start|done|failed> <name> … | show [<name>] (--help)');
+  if (!pos.length) throw new UsageError('usage: progress.mjs unit <start|done|failed> <name> … | show [<name>] | wait [--unit <name>]… [--max <s>] (--help)');
   if (!hasOwn(LEDGERS, o.ledger)) throw new UsageError(`--ledger must be rollout|migrate|replica, got "${o.ledger}"`);
   const [cmd, ...rest] = pos;
   const checkName = (n) => {
@@ -175,20 +217,32 @@ export function parseArgs(argv) {
     if (UNSAFE_KEYS.includes(n)) throw new UsageError(`unit name "${n}" is reserved`);
     return n;
   };
+  const waitOnly = given.find((f) => WAIT_ONLY.includes(f));
   if (cmd === 'show') {
     if (rest.length > 1) throw new UsageError(`unexpected argument(s) after show <name>: ${rest.slice(1).join(' ')}`);
     const misplaced = given.find((f) => UNIT_ONLY.includes(f));
     if (misplaced) throw new UsageError(`${misplaced} applies to unit only`);
+    if (waitOnly) throw new UsageError(`${waitOnly} applies to wait only`);
     o.cmd = 'show';
     o.name = rest.length ? checkName(rest[0]) : null;
     return o;
   }
-  if (cmd !== 'unit') throw new UsageError(`unknown command "${cmd}" — unit <start|done|failed> <name> or show [<name>]`);
+  if (cmd === 'wait') {
+    if (rest.length) throw new UsageError(`unexpected argument(s) after wait: ${rest.join(' ')} — name a unit with --unit <name>`);
+    const misplaced = given.find((f) => UNIT_ONLY.includes(f));
+    if (misplaced) throw new UsageError(`${misplaced} applies to unit only`);
+    o.cmd = 'wait';
+    o.units = [...new Set(o.units.map(checkName))];
+    o.max ??= DEFAULT_WAIT_SEC;
+    return o;
+  }
+  if (cmd !== 'unit') throw new UsageError(`unknown command "${cmd}" — unit <start|done|failed> <name>, show [<name>] or wait`);
   const [event, name, ...extra] = rest;
   if (!EVENTS.includes(event)) throw new UsageError(`unit needs an event start|done|failed, got ${event === undefined ? 'nothing' : `"${event}"`}`);
   if (name === undefined) throw new UsageError(`unit ${event} needs a <name>`);
   if (extra.length) throw new UsageError(`unexpected argument(s) after unit ${event} ${name}: ${extra.join(' ')}`);
   o.cmd = 'unit'; o.event = event; o.name = checkName(name);
+  if (waitOnly) throw new UsageError(`${waitOnly} applies to wait only`);
   if (o.again && event !== 'start') throw new UsageError('--again applies to unit start only');
   const { kinds } = LEDGERS[o.ledger];
   if (hasOwn(o.fields, 'kind')) {
@@ -259,9 +313,143 @@ export function formatLine(ledger, name, entry, { resumed = false } = {}) {
   return parts.join(' ');
 }
 
+// ---- wait (pure helpers exported for tests) ----------------------------------------------------
+const mapOf = (doc, ledger) => { const m = isMap(doc) ? doc[LEDGERS[ledger].map] : undefined; return isMap(m) ? m : {}; };
+/** A unit's status for wait's notes: its status, "absent" with no entry, "no status" with none recorded. */
+export function statusOf(doc, ledger, name) {
+  const map = mapOf(doc, ledger);
+  if (!hasOwn(map, name)) return 'absent';
+  const s = isMap(map[name]) ? map[name].status : undefined;
+  return typeof s === 'string' && s ? s : 'no status';
+}
+
+/** The watched set at the start: every running unit, or the running ones among `units` → { watched (sorted), skipped [{ name, status }] }. */
+export function pickWatched(doc, ledger, units = []) {
+  const names = units.length ? units : Object.keys(mapOf(doc, ledger));
+  const watched = []; const skipped = [];
+  for (const name of names) {
+    const status = statusOf(doc, ledger, name);
+    if (status === 'running') watched.push(name);
+    else if (units.length) skipped.push({ name, status });
+  }
+  return { watched: watched.sort(), skipped };
+}
+
+/** The watched units now: ended (done / failed, name → entry, sorted), running (sorted), gone (anything else: [{ name, status }]). */
+export function waitState(doc, ledger, watched) {
+  const map = mapOf(doc, ledger);
+  const ended = []; const running = []; const gone = [];
+  for (const name of [...watched].sort()) {
+    const status = statusOf(doc, ledger, name);
+    if (status === 'done' || status === 'failed') ended.push([name, map[name]]);
+    else if (status === 'running') running.push(name);
+    else gone.push({ name, status });
+  }
+  return { ended: Object.fromEntries(ended), running, gone };
+}
+
+/** --max seconds → { sec (clamped to WAIT_CEILING_SEC), notes (stderr lines) }. */
+export function waitBound(max) {
+  const notes = [];
+  if (max > WAIT_NOTICE_SEC) notes.push(`progress: --max ${max} — a wait over ${WAIT_NOTICE_SEC} s buys nothing; a one-hour cache does not need it (a ${DEFAULT_WAIT_SEC} s step costs about three cents and sees an ended unit up to 20 minutes sooner)`);
+  if (max > WAIT_CEILING_SEC) notes.push(`progress: --max ${max} clamped to ${WAIT_CEILING_SEC} s — wait in steps; the pause file ends a wait early`);
+  return { sec: Math.min(max, WAIT_CEILING_SEC), notes };
+}
+
+// The pause file: the runner that supervises a hands-off run writes it (JSON {at, reason}) when it wants the session to
+// stop. → { path, reason, at } while `file` (relative: from `cwd`, the project root) exists, else null; unset or empty =
+// no check. A file that is not JSON {at, reason} still counts: reason unreadable. (The same reading as replica's run-bg.)
+export function pauseState(file = process.env.STARDUST_PAUSE_FILE, { cwd = process.cwd() } = {}) {
+  if (file == null || String(file).trim() === '') return null;
+  const p = resolve(cwd, String(file));
+  if (!existsSync(p)) return null;
+  let j = null; try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { /* present, unreadable */ }
+  const ok = isMap(j);
+  const field = (v, none) => { const s = v == null ? '' : String(v).replace(/\s+/g, ' ').trim().slice(0, 200); return s || none; };
+  return { path: String(file), reason: ok ? field(j.reason, 'unspecified') : 'unreadable', at: ok ? field(j.at, 'unknown') : 'unknown' };
+}
+
+const list = (names) => (names.length ? names.join(', ') : 'none');
+export const waitEndedLine = (k, n, running) => `progress wait: ${k} of ${n} ended — ${running.length ? `still running: ${running.join(', ')}` : 'none still running'}`;
+export const waitTimeoutLine = (n, sec, running) => `progress wait: none of ${n} ended within ${sec}s — still running: ${list(running)} — wait again as the next call`;
+/** `running` null = the ledger could not be read at that moment. */
+export const waitPausedLine = (p, running) => `progress wait: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — start nothing new; still running: ${running == null ? 'unknown' : list(running)}`;
+
 function readDoc(file) {
   const raw = readFileSync(file, 'utf8');
   try { return JSON.parse(raw); } catch (e) { throw new UsageError(`${file} is not JSON (${e.message.split('\n')[0]}) — nothing written`); }
+}
+
+/** wait's read — no lock (writers rename atomically): → { doc } shape-checked for `names` (default all), or { error, io? }. */
+function readLedger(file, ledger, names = null) {
+  let raw;
+  try { raw = readFileSync(file, 'utf8'); } catch (e) { return { error: e.code === 'ENOENT' ? `no ${file}` : `${file} could not be read (${e.code ?? e.message})`, io: e }; }
+  let doc;
+  try { doc = JSON.parse(raw); } catch (e) { return { error: `${file} is not JSON (${e.message.split('\n')[0]})` }; }
+  try {
+    checkDoc(doc, ledger, file);
+    checkDoc(doc, ledger, file, names ?? Object.keys(mapOf(doc, ledger)));
+  } catch (e) { return { error: e.message }; }
+  return { doc };
+}
+
+async function waitCmd(o, file) {
+  const { sec, notes } = waitBound(o.max);
+  for (const n of notes) console.error(n);
+  const pauseFile = process.env.STARDUST_PAUSE_FILE;
+  const print = (ended, running, paused, lines) => console.log(o.json ? JSON.stringify({ ledger: o.ledger, ended, running, paused }) : lines.join('\n'));
+  // On a pause the names come from a fresh best-effort read: the watched units still running, or unknown.
+  const paused = (p, watched) => {
+    const r = readLedger(file, o.ledger, watched);
+    const running = !r.doc ? null : watched ? waitState(r.doc, o.ledger, watched).running : pickWatched(r.doc, o.ledger, o.units).watched;
+    print({}, running, p, [waitPausedLine(p, running)]);
+    return PAUSED_EXIT;
+  };
+  const t0 = Date.now();
+  let p = pauseState(pauseFile);
+  if (p) return paused(p, null);
+  const first = readLedger(file, o.ledger);
+  if (first.io && first.io.code !== 'ENOENT') throw first.io;
+  if (first.error) throw new UsageError(first.error);
+  const { watched: initial, skipped } = pickWatched(first.doc, o.ledger, o.units);
+  if (!initial.length) {
+    if (o.units.length) throw new UsageError(`no running unit among --unit ${o.units.join(', ')} in ${file} (${skipped.map((s) => `${s.name}: ${s.status}`).join(', ')})`);
+    throw new UsageError(`no running unit in ${file} — nothing to wait for (progress.mjs unit start <name> records one)`);
+  }
+  for (const s of skipped) console.error(`progress wait: --unit ${s.name} is ${s.status} — not watched`);
+  let watched = initial;
+  let state = waitState(first.doc, o.ledger, watched);
+  let unreadable = null;
+  const deadline = t0 + sec * 1000;
+  for (;;) {
+    if (!unreadable) {
+      for (const g of state.gone) console.error(`progress wait: ${g.name} is now ${g.status} — no longer watched`);
+      watched = [...Object.keys(state.ended), ...state.running].sort();
+      const ended = Object.keys(state.ended).sort();
+      if (ended.length) {
+        print(state.ended, state.running, null, [...ended.map((n) => formatLine(o.ledger, n, state.ended[n])), waitEndedLine(ended.length, watched.length, state.running)]);
+        return 0;
+      }
+      if (!watched.length) throw new UsageError(`nothing left to wait for in ${file}`);
+    }
+    if (Date.now() >= deadline) {
+      if (unreadable) throw new UsageError(`${unreadable} — still unreadable at the end of the wait (${sec}s)`);
+      print({}, state.running, null, [waitTimeoutLine(watched.length, sec, state.running)]);
+      return STILL_RUNNING_EXIT;
+    }
+    await sleep(Math.min(WAIT_POLL_MS, deadline - Date.now()));
+    p = pauseState(pauseFile);
+    if (p) return paused(p, watched);
+    const r = readLedger(file, o.ledger, watched);
+    if (r.error) {
+      // a hand edit in progress: read again at the next poll
+      if (r.error !== unreadable) console.error(`progress wait: ${r.error} — read again at the next poll`);
+      unreadable = r.error;
+      continue;
+    }
+    unreadable = null;
+    state = waitState(r.doc, o.ledger, watched);
+  }
 }
 
 async function loadLock() {
@@ -279,6 +467,9 @@ export async function main(argv) {
   const o = parseArgs(argv);
   const L = LEDGERS[o.ledger];
   const file = o.file ?? L.file;
+
+  // wait reads without the lock, so it needs no file-lock.mjs
+  if (o.cmd === 'wait') return waitCmd(o, file);
 
   if (o.cmd === 'show') {
     if (!existsSync(file)) {
