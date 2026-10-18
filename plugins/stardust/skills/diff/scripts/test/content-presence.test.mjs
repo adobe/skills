@@ -8,7 +8,7 @@
 // --help in an empty cwd. Site auth (--token-env / --auth-header / --auth-origin): pure (--help lists the flags, an
 // absent flag parses to undefined) and, where playwright is importable, against a two-origin fixture whose protected
 // origin loads its stylesheet and image from a second one (which also serves the same page, as the served build): the
-// token reaches the protected origin and never the other, two origins need --auth-origin (exit 2 before any request),
+// token reaches the protected origin and never the other, two origins need --auth-origin (a usage error, exit 1, before any request),
 // nothing is sent without a flag — a SITE_TOKEN in the environment and .env included — and that run is the run of
 // today (origin side: exit 4 on the 401; served side: the 401 page measured with a warning), and a run with no auth
 // flag on open pages is unchanged. Run: node <this file>.
@@ -108,7 +108,7 @@ check('--help lists the three site-auth flags', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0);
   for (const flag of ['--token-env <NAME>', '--auth-header <value>', '--auth-origin <url>']) assert.ok(r.stdout.includes(flag), flag);
-  assert.match(r.stdout, /or a site-auth usage error, stderr names it/);
+  assert.match(r.stdout, /2 any MISSING\/HIDDEN link or heading, 1 error \(a usage error, a site-auth one included\)/);
 });
 check('parseArgs: an absent site-auth flag stays undefined (never ""), a given one is read, a missing value is ""', () => {
   const urls = ['https://a.test/', 'http://127.0.0.1:1/x'];
@@ -153,9 +153,9 @@ else {
     assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200), 'the served page was measured');
     noLeak(fx, r);
   }));
-  await checkAsync('a token and two origins without --auth-origin: exit 2 before any request, naming the flag', () => fixture(async (fx) => {
+  await checkAsync('a token and two origins without --auth-origin: a usage error (exit 1, not the MISSING/HIDDEN code) before any request, naming the flag', () => fixture(async (fx) => {
     const r = await runAsync([`${fx.originA}/page`, `${fx.originB}/page`, ...probe, '--token-env', 'FIXTURE_SITE_TOKEN'], cwd, cleanEnv({ FIXTURE_SITE_TOKEN: fx.token }));
-    assert.equal(r.code, 2, r.out + r.err);
+    assert.equal(r.code, 1, r.out + r.err);
     assert.match(r.err, /^content-presence error: .*one origin only and these URLs have 2.*--auth-origin/);
     assert.equal(r.out, '');
     assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
@@ -191,7 +191,7 @@ else {
     assert.equal(fx.a.log.length, 0, 'origin A was never asked');
     noLeak(fx, r);
   }));
-  await checkAsync('auth usage errors exit 2 before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
+  await checkAsync('auth usage errors exit 1 (not the MISSING/HIDDEN code) before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
     const urls = [`${fx.originA}/page`, `${fx.originA}/copy`];
     const cases = [
       [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /NO_SUCH_FIXTURE_VAR/],
@@ -201,7 +201,7 @@ else {
     ];
     for (const [flags, re] of cases) {
       const r = await runAsync([...urls, ...probe, ...flags], cwd, cleanEnv());
-      assert.equal(r.code, 2, `${flags.join(' ')}: ${r.out}${r.err}`);
+      assert.equal(r.code, 1, `${flags.join(' ')}: ${r.out}${r.err}`);
       assert.match(r.err, re); assert.match(r.err, /^content-presence error: /);
     }
     assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');

@@ -55,7 +55,7 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --warmup <url>           visit this URL first on the ORIGIN side (bot-managed sites)
   --locale <tag>           default en-US
   --help                   this text
-Exit: 0 clean, 2 any MISSING/HIDDEN link or heading (or a site-auth usage error, stderr names it), 1 error, 3 bot challenge, 4 origin HTTP >= 400.
+Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error (a usage error, a site-auth one included), 3 bot challenge, 4 origin HTTP >= 400.
 
 Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
 ${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
@@ -359,7 +359,7 @@ async function main() {
   try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [opts.origin, opts.eds, opts.warmup].filter(Boolean) }); } catch (e) {
     if (e.code !== 2) throw e;
     console.error(`content-presence error: ${e.message}\n\n${HELP}`);
-    process.exit(2);
+    process.exit(1);
   }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
