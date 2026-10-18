@@ -8,10 +8,10 @@ git history only (plus the branch-scoped notes in
 
 Four recorded hands-off runs made 4177 shell calls: 598 heredocs and 345 inline interpreter calls. 238 heredocs were
 python programs; ~150 of them read a tracked HTML or CSS file, replaced a string or a regex and wrote it back — one
-page's HTML 17 times, the shared CSS 11 times. 18 edited JSON ledgers in place, and a node script was written 32 times
-just to update a notes JSON. The earlier rule "the edit tool, not an interpreter" changed nothing: the edit tool ran
-1–18 times per run against ~150 inline rewrites in the four runs — the inline rewrite handles several occurrences and
-regexes in one call without a prior read.
+page's HTML 17 times, the shared CSS 11 times. 18 python programs edited JSON ledgers in place, and a node script was
+written 32 times just to update a notes JSON. The earlier rule "the edit tool, not an interpreter" changed nothing: the
+edit tool ran 1–18 times per run against ~150 inline rewrites in the four runs — the inline rewrite handles several
+occurrences and regexes in one call without a prior read. replace.mjs now offers that, counted and atomic.
 
 - **Counted, atomic text replacement (`stardust/scripts/replace.mjs`).** `<file>… --from <text> --to <text>`, literal
   by default; `--regex` (flag g always, `--flags <imsu>` adds more) with `$1`, `$<name>`, `$&`. The expectation is per
@@ -20,8 +20,8 @@ regexes in one call without a prior read.
   writes nothing to any file. `--files-from <glob>` adds files, `--dry-run` prints what would be replaced, `--json`
   prints one object. A write is a sibling temp file renamed over the path (mode, line endings and a BOM kept). Refused
   (exit 2): a path outside the project or a symlink leaving it, a binary or non-UTF-8 file, and a file with a dedicated
-  writer — state, the progress ledgers, presence, the foundation freeze, coverage, encode attempts, `status.jsonl` —
-  with the writer named.
+  writer under any casing — state, the progress ledgers, presence, the foundation freeze, the rollout coverage files,
+  `rollout.json` and `templates.json`, encode attempts, `status.jsonl` — with the writer named.
 - **One locked JSON edit (`stardust/scripts/json-edit.mjs`).** `<file> set|merge|append|delete <path> [<value>]` at a
   dotted path — a key in double quotes may hold dots, `[n]` is an index; the value is JSON when it parses, else the
   text as given; `merge` deep-merges an object. `__proto__`, `constructor` and `prototype` are refused in the path and
@@ -29,8 +29,12 @@ regexes in one call without a prior read.
   keeping the file's indentation, line endings and trailing newline; `--create` starts an absent file. The same path
   and dedicated-writer refusals as replace.mjs (exit 2).
 - **Reading discipline** (`replica/reference/reading-discipline.md`): rewritten around one "I want to … → use …" table
+  (text in a tracked file: the edit tool or replace.mjs; a JSON value: json-edit.mjs; a progress ledger: progress.mjs)
   and one rule — an inline interpreter may read and print; it never writes a tracked file.
-- **The skills point at it.** One sentence each in the replica, rollout, migrate and extract SKILL.md names the table.
+- **The skills say it where they edit.** The rollout, migrate and extract SKILL.md each gain one sentence that points at
+  reading-discipline.md; replica's sits in the paragraph that opens with its pointer to it. Each says text in a tracked
+  file goes through the edit tool or replace.mjs and a JSON value through json-edit.mjs (replica's adds a ledger
+  through progress.mjs) — an inline interpreter may read and print, never write a tracked file.
 - **`evals/lint/inline-writes.mjs`** (chained in `lint:stardust`; test in `evals/lint/test/`): fails when a SKILL.md
   or a reference doc shows an inline interpreter (python `-c` / stdin / heredoc, `node -e` / `-p` / heredoc) and a
   file-write call (`open(…)` with a write mode, `write_text`, `json.dump`, `writeFileSync`, …) in one fenced block or
