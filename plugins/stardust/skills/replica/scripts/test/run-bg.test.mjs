@@ -8,7 +8,8 @@
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
 // holders within STARDUST_BROWSER_SLOTS, a wait without a limit by default (lockWaitS), no slot within a set
 // STARDUST_BROWSER_WAIT = exit 124, --lock/--no-lock, a dead holder reclaimed, the browsers per slot it exports
-// (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT); the job's deadline exported as
+// (browsersPerSlot, STARDUST_BROWSERS_PER_SLOT) and the slots derived from STARDUST_BROWSER_BUDGET when unset
+// (derivedBrowserSlots); the job's deadline exported as
 // RUN_BG_DEADLINE_SEC, and a gate-all job without --timeout sized from gate-all's roster estimate (gateAllTimeout) — × 1
 // with the lock off, × 4 at the default one browser per slot; whose jobs a bare wait/status covers — the caller's own
 // (ownerPid: RUN_BG_OWNER, else callerOwner's ancestry walk), --all every owner's, a state without ownerPid only by name
@@ -20,7 +21,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdir
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -29,7 +30,7 @@ const dir = mkdtempSync(join(tmpdir(), 'run-bg-test-'));
 const lockRoot = mkdtempSync(join(tmpdir(), 'run-bg-lock-test-'));
 const LOCKS = join(lockRoot, 'locks');
 const env = { ...process.env, RUN_BG_POLL_MS: '100', STARDUST_BROWSER_LOCK_DIR: LOCKS, STARDUST_BROWSER_POLL_MS: '100' };
-delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT;
+delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_BROWSER_SLOT; delete env.STARDUST_BROWSER_WAIT; delete env.STARDUST_BROWSER_TTL_MIN; delete env.RUN_BG_DEADLINE_SEC; delete env.STARDUST_BROWSER_BUDGET; delete env.STARDUST_BROWSERS_PER_SLOT; delete env.RUN_BG_SLOTS_DERIVED;
 // No RUN_BG_OWNER: every job started here is owned by this process — run-bg's parent, the nearest non-shell ancestor.
 delete env.RUN_BG_OWNER;
 // No inherited pause file: a supervised session running these tests must not end their waits with exit 76.
@@ -309,9 +310,16 @@ await check('browsersPerSlot: max(1, floor(STARDUST_BROWSER_BUDGET / STARDUST_BR
   for (const s of [undefined, '0', '', ' ', 'x', '-2']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: '9', STARDUST_BROWSER_SLOTS: s }), 3, `slots ${JSON.stringify(s)}: 9 / 3`);
   for (const b of [undefined, '0', '', 'x', '-6']) assert.equal(browsersPerSlot({ STARDUST_BROWSER_BUDGET: b, STARDUST_BROWSER_SLOTS: '1' }), 3, `budget ${JSON.stringify(b)}: 3 / 1`);
 });
-await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot count before it is zeroed; a budget below the slots says so in one run-bg: line', () => {
+await check('derivedBrowserSlots: STARDUST_BROWSER_SLOTS unset → from a positive budget: 3 for 3 or 6, below 2 max(1, floor), else 2; set (0 included) it wins, a budget unset or junk derives nothing', () => {
+  for (const [b, s] of [['3', 3], ['4', 2], ['5', 2], ['6', 3], ['1', 1], ['1.5', 1], ['0.5', 1], ['2', 2], ['8', 2]]) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: b }), s, `budget ${b}`);
+  for (const blank of ['', ' ']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: blank }), 2, `slots ${JSON.stringify(blank)} counts as unset`);
+  for (const b of [undefined, '', 'x', '0', '-4']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: b }), null, `budget ${JSON.stringify(b)}`);
+  for (const s of ['4', '0', '3']) assert.equal(derivedBrowserSlots({ STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: s }), null, `explicit slots ${s} win`);
+});
+await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot count before it is zeroed (derived from the budget when unset, one run-bg: line naming it; set, it wins); a budget below the slots says so in one run-bg: line', () => {
   const d = join(lockRoot, 'per-slot', 'bg');
-  const jobs = [['ps62', { STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }, '3'], ['ps23', { STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }, '1'], ['psdef', {}, '1']];
+  const jobs = [['ps62', { STARDUST_BROWSER_BUDGET: '6', STARDUST_BROWSER_SLOTS: '2' }, '3'], ['ps23', { STARDUST_BROWSER_BUDGET: '2', STARDUST_BROWSER_SLOTS: '3' }, '1'], ['psdef', {}, '1'],
+    ['ps4', { STARDUST_BROWSER_BUDGET: '4' }, '2'], ['ps44', { STARDUST_BROWSER_BUDGET: '4', STARDUST_BROWSER_SLOTS: '4' }, '1']];
   for (const [name, x] of jobs) assert.equal(bgIn(d, x, 'start', '--name', name, '--lock', '--', process.execPath, '-e', SLOT_JOB(0)).code, 0);
   const w = bgIn(d, {}, 'wait', '--max', '30', ...jobs.map(([n]) => n)); assert.equal(w.code, 0, w.out);
   for (const [name, , per] of jobs) {
@@ -320,7 +328,9 @@ await check('a slot-holding job gets STARDUST_BROWSERS_PER_SLOT from the slot co
     assert.match(log, new RegExp(`^holders \\d+ perSlot=${per} slots=0 slot=\\S+$`, 'm'), `${name}: ${log}`);
   }
   assert.deepEqual(logIn(d, 'ps23').match(/^run-bg: STARDUST_BROWSER_BUDGET.*$/gm), ['run-bg: STARDUST_BROWSER_BUDGET 2 is below STARDUST_BROWSER_SLOTS 3 — one browser per slot, 3 at most; set STARDUST_BROWSER_SLOTS=2 to hold the budget']);
-  for (const name of ['ps62', 'psdef']) assert.doesNotMatch(logIn(d, name), /STARDUST_BROWSER_BUDGET/, name);
+  assert.deepEqual(logIn(d, 'ps4').match(/^run-bg: STARDUST_BROWSER_.*$/gm), ['run-bg: STARDUST_BROWSER_SLOTS=2 derived from STARDUST_BROWSER_BUDGET 4 — 2 browsers per slot']);
+  assert.equal(stateIn(d, 'ps4').slots, 2, 'the dir\'s --slots default follows the derived count');
+  for (const name of ['ps62', 'psdef', 'ps44']) assert.doesNotMatch(logIn(d, name), /STARDUST_BROWSER_BUDGET/, name);
   assert.deepEqual(locks(), []);
 });
 await check('lockWaitS: a job waits for its machine-wide slot without a limit unless STARDUST_BROWSER_WAIT is set to seconds ≥ 0', () => {
@@ -445,7 +455,7 @@ await check('gateAllTimeout: a gate-all job without --timeout gets max(900, 25 s
     assert.deepEqual(await gateAllTimeout(process.execPath, ['/abs/gate-all.mjs', '--state', 'small.json'], { cwd: proj }), { timeoutSec: 900, note: 'gates 8 page(s) × 1 width ≈ 800 s (gate-all estimate, 25 s per page per width) — within the 900 s default — kept' }, 'raised only, never lowered');
   });
 });
-await check('start without --timeout on a gate-all.mjs job: deadline = the estimate (× 1 with the lock off, × 4 under the default slot env), named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
+await check('start without --timeout on a gate-all.mjs job: deadline = the estimate (× 1 with the lock off, × 4 under the default slot env, × 2 with budget 4 and the slots derived), named on stdout, exported as RUN_BG_DEADLINE_SEC; an explicit --timeout and a non-gate-all job keep theirs; --timeout 0 leaves an inherited value alone', () => {
   const fake = join(lockRoot, 'fake'); mkdirSync(fake); // stand-ins that print the deadline they see
   for (const f of ['gate-all.mjs', 'stitch-shot.mjs']) writeFileSync(join(fake, f), "console.log('deadline='+process.env.RUN_BG_DEADLINE_SEC)");
   const d = join(proj, 'bg');
@@ -455,12 +465,14 @@ await check('start without --timeout on a gate-all.mjs job: deadline = the estim
   assert.match(ga, /^run-bg: ga gates 40 page\(s\) × 1 width ≈ 1000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 1000 s instead of the 900 s default$/m, ga);
   const ga4 = startIn({}, 'ga4', '--', process.execPath, join(fake, 'gate-all.mjs')); // the default slot env: 1 browser per slot, × 4
   assert.match(ga4, /^run-bg: ga4 gates 40 page\(s\) × 1 width ≈ 4000 s \(gate-all estimate, 25 s per page per width\) — no --timeout given: deadline 4000 s instead of the 900 s default$/m, ga4);
+  const ga2 = startIn({ STARDUST_BROWSER_BUDGET: '4' }, 'ga2', '--', process.execPath, join(fake, 'gate-all.mjs')); // slots derived: 2, 2 browsers per slot, × 2
+  assert.match(ga2, /^run-bg: ga2 gates 40 page\(s\) × 1 width ≈ 2000 s /m, ga2);
   const given = startIn(OFF, 'given', '--timeout', '30', '--', process.execPath, join(fake, 'gate-all.mjs'));
   const shot = startIn(OFF, 'shot', '--', process.execPath, join(fake, 'stitch-shot.mjs'));
   const zero = startIn({ ...OFF, RUN_BG_DEADLINE_SEC: '77' }, 'zero', '--timeout', '0', '--', process.execPath, join(fake, 'gate-all.mjs'));
   for (const out of [given, shot, zero]) assert.doesNotMatch(out, /gates|estimate/, out);
-  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'ga4', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
-  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['ga4', 4000, '4000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
+  const w = bgIn(d, {}, 'wait', '--max', '20', 'ga', 'ga4', 'ga2', 'given', 'shot', 'zero'); assert.equal(w.code, 0, w.out);
+  for (const [name, timeoutSec, seen] of [['ga', 1000, '1000'], ['ga4', 4000, '4000'], ['ga2', 2000, '2000'], ['given', 30, '30'], ['shot', 900, '900'], ['zero', 0, '77']]) {
     assert.equal(stateIn(d, name).timeoutSec, timeoutSec, name); assert.equal(stateIn(d, name).exit, 0, name);
     assert.match(logIn(d, name), new RegExp(`^deadline=${seen}$`, 'm'), `${name}: ${logIn(d, name)}`);
   }

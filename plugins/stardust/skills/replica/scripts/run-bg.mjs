@@ -55,8 +55,8 @@
  *        fan-out (several subagents and the main agent on one pool) still queued
  *        84 of its 272 jobs for more than 10 s (90th percentile 78 s, longest
  *        210 s) with no memory pressure. So 3 is the default; RUN_BG_SLOTS lowers
- *        it on a small machine. On a large one raise STARDUST_BROWSER_BUDGET and
- *        STARDUST_BROWSER_SLOTS with it (below). STARDUST_BROWSER_SLOTS is the
+ *        it on a small machine. On a large one raise STARDUST_BROWSER_BUDGET —
+ *        STARDUST_BROWSER_SLOTS follows it (below). STARDUST_BROWSER_SLOTS is the
  *        machine's concurrent browser jobs, and this default while RUN_BG_SLOTS
  *        is unset: browser jobs are bounded by it too, so RUN_BG_SLOTS above it
  *        adds no browser jobs. Start the jobs all at once and let the slots pace
@@ -81,11 +81,15 @@
  *        STARDUST_BROWSER_SLOT=<slot file>) and STARDUST_BROWSERS_PER_SLOT =
  *        max(1, floor(STARDUST_BROWSER_BUDGET (default 3) /
  *        STARDUST_BROWSER_SLOTS)): the contract's 3 browsers = budget 3 across
- *        all jobs; a larger machine raises STARDUST_BROWSER_BUDGET, and
- *        STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent
- *        browser jobs. A budget below the slots cannot be held (one browser per
- *        slot is the floor): the job logs one `run-bg:` line saying so — set
- *        STARDUST_BROWSER_SLOTS to the budget to hold it. Without
+ *        all jobs; a larger machine raises STARDUST_BROWSER_BUDGET. Unset or
+ *        blank, STARDUST_BROWSER_SLOTS is derived from a positive budget B
+ *        (derivedBrowserSlots, once per run-bg call; the job logs one `run-bg:`
+ *        line naming it when it takes its slot): 3 when B is 3 or 6, below 2
+ *        max(1, floor(B)), else 2 — 3 → 3 × 1, 4 → 2 × 2, 5 → 2 × 2, 6 → 3 × 2
+ *        (a fixed 3 slots left one browser of a budget of 4 idle); set, it
+ *        wins (0 = off included). A budget below the slots cannot be held (one
+ *        browser per slot is the floor): the job logs one `run-bg:` line saying
+ *        so — set STARDUST_BROWSER_SLOTS to the budget to hold it. Without
  *        browser-lock.mjs the job runs unlocked after one log line saying so.
  * wait   polls until the selected jobs have ended — the named ones; bare, the
  *        caller's own (Owner, below): those unfinished when the wait began, if
@@ -170,7 +174,7 @@
  * challenge, 4 identity, 1 error); 124 = deadline, or no machine-wide browser
  * slot within a set STARDUST_BROWSER_WAIT — no verdict, re-run.
  *
- * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
+ * Also importable: start(), wait(), status(), pauseState(), pauseLine(), callerOwner(), alive(), phase(), isBrowserJob(), lockWaitS(), browsersPerSlot(), derivedBrowserSlots(), gateAllInvocations(), gateAllTimeout(), BROWSER_SCRIPTS, report helpers — see the tests.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
@@ -185,8 +189,8 @@ export const DEFAULT_TIMEOUT_SEC = 900;
 // Each capture is a Chromium and a `gate.sh --full` round holds up to six at its peak, so the cap bounds the Chromiums at
 // six per slot — yet at 3 slots a recorded hands-off fan-out still queued 84 of 272 jobs for more than 10 s (90th
 // percentile 78 s), so 3 is the default. RUN_BG_SLOTS, else STARDUST_BROWSER_SLOTS, lowers it on a small machine. On a
-// large one raise STARDUST_BROWSER_BUDGET and STARDUST_BROWSER_SLOTS with it (up to the budget) — the machine's slots
-// bound browser jobs too, so RUN_BG_SLOTS above them adds none.
+// large one raise STARDUST_BROWSER_BUDGET — STARDUST_BROWSER_SLOTS, unset, follows it (derivedBrowserSlots) — the
+// machine's slots bound browser jobs too, so RUN_BG_SLOTS above them adds none.
 export const DEFAULT_SLOTS = 3;
 // One wait's default 5 minutes, ceiling 25. Default: in recorded hands-off runs the lead polled delegated units with
 // foreground waits of 9–23 minutes and an ended job or unit waited for the current wait to end; with a one-hour cache a
@@ -310,10 +314,10 @@ const HELP = `Usage:
   (STARDUST_BROWSER_LOCK_DIR); the job waits for it queued, without a limit unless STARDUST_BROWSER_WAIT <s> is set (no
   slot within it = exit 124, no verdict). The job runs inside its slot (STARDUST_BROWSER_SLOTS=0, STARDUST_BROWSER_SLOT=<slot
   file>) and STARDUST_BROWSERS_PER_SLOT = max(1, floor(STARDUST_BROWSER_BUDGET (default 3) / STARDUST_BROWSER_SLOTS)): the
-  contract's 3 browsers = budget 3 across all jobs; a larger machine raises STARDUST_BROWSER_BUDGET, and
-  STARDUST_BROWSER_SLOTS with it (up to the budget) for more concurrent browser jobs — RUN_BG_SLOTS above the slots adds
-  none. A budget below the slots cannot be held (one browser per slot is the floor): one run-bg: line says so — set
-  STARDUST_BROWSER_SLOTS to the budget to hold it.
+  contract's 3 browsers = budget 3 across all jobs; a larger machine raises STARDUST_BROWSER_BUDGET B and, unset,
+  STARDUST_BROWSER_SLOTS follows it: 3 when B is 3 or 6, below 2 max(1, floor(B)), else 2 (4 → 2 × 2, 6 → 3 × 2; one run-bg:
+  line in the job's log names it); set, it wins — RUN_BG_SLOTS above the slots adds none. A budget below the slots cannot
+  be held (one browser per slot is the floor): one run-bg: line says so — set STARDUST_BROWSER_SLOTS to the budget to hold it.
   Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
   · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return · 2 (start) the name is still
   queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
@@ -465,6 +469,18 @@ function browserBudget(env) {
   return { budget, slots, perSlot: Math.max(1, Math.floor(budget / slots)) };
 }
 export function browsersPerSlot(env = process.env) { return browserBudget(env).perSlot; }
+// STARDUST_BROWSER_SLOTS unset (undefined, empty, blank) → derived from a positive STARDUST_BROWSER_BUDGET B so the
+// budget's browsers are at work: 3 when B is 3 or 6, below 2 max(1, floor(B)) (two slots would overshoot a budget of 1),
+// else 2 — 3 → 3 × 1, 4 → 2 × 2, 5 → 2 × 2, 6 → 3 × 2; a fixed 3 slots left one browser of a budget of 4 idle. null: the
+// slots set (any value, 0 = lock off included — it wins), or B unset or not a positive number (the defaults stay).
+// cli() applies it once to process.env, so parse(), gateAllTimeout, browser-lock's acquire() and the wrapper agree.
+export function derivedBrowserSlots(env = process.env) {
+  if (String(env.STARDUST_BROWSER_SLOTS ?? '').trim() !== '') return null;
+  const b = envNum(env.STARDUST_BROWSER_BUDGET);
+  if (!Number.isFinite(b) || b <= 0) return null;
+  if (b < 2) return Math.max(1, Math.floor(b));
+  return b === 3 || b === 6 ? 3 : 2;
+}
 
 // The machine-wide browser slot for a browser job (lock on, or auto and the argv names a browser instrument).
 // Resolves { st, slot } (slot null = unlocked: not a browser job, STARDUST_BROWSER_SLOTS=0, browser-lock.mjs absent or
@@ -510,9 +526,11 @@ async function runWrapper(dir, name) {
   // STARDUST_BROWSERS_PER_SLOT browsers — computed from the machine's slot count before it is zeroed here.
   if (held.slot) {
     const { budget, slots, perSlot } = browserBudget(process.env);
-    if (budget < slots) console.log(`run-bg: STARDUST_BROWSER_BUDGET ${budget} is below STARDUST_BROWSER_SLOTS ${slots} — one browser per slot, ${slots} at most; set STARDUST_BROWSER_SLOTS=${Math.max(1, Math.floor(budget))} to hold the budget`);
+    // RUN_BG_SLOTS_DERIVED: the slot count cli() derived from the budget (in this process or the starter's).
+    if (process.env.RUN_BG_SLOTS_DERIVED && process.env.RUN_BG_SLOTS_DERIVED === process.env.STARDUST_BROWSER_SLOTS) console.log(`run-bg: STARDUST_BROWSER_SLOTS=${slots} derived from STARDUST_BROWSER_BUDGET ${budget} — ${perSlot} browser${perSlot === 1 ? '' : 's'} per slot`);
+    else if (budget < slots) console.log(`run-bg: STARDUST_BROWSER_BUDGET ${budget} is below STARDUST_BROWSER_SLOTS ${slots} — one browser per slot, ${slots} at most; set STARDUST_BROWSER_SLOTS=${Math.max(1, Math.floor(budget))} to hold the budget`);
     process.env.STARDUST_BROWSERS_PER_SLOT = String(perSlot);
-    process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file;
+    process.env.STARDUST_BROWSER_SLOTS = '0'; process.env.STARDUST_BROWSER_SLOT = held.slot.file; delete process.env.RUN_BG_SLOTS_DERIVED;
   }
   // The deadline (it starts at launch) is the time the command has; gate-all refuses a roster it cannot finish in it.
   // 0 = no deadline: an inherited value stays.
@@ -727,6 +745,8 @@ function parse(argv) {
 
 async function cli(argv) {
   if (!argv.length || argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
+  const derived = derivedBrowserSlots(process.env);
+  if (derived != null) { process.env.STARDUST_BROWSER_SLOTS = String(derived); process.env.RUN_BG_SLOTS_DERIVED = String(derived); }
   const { sub, o } = parse(argv);
   switch (sub) {
     case 'start': {
