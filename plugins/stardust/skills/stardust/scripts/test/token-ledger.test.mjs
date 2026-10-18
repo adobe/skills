@@ -15,20 +15,26 @@
  *     (concurrent: 10:25:10→10:45 and 10:30→10:50), cluster-c (pending, never started), final (running, no endedAt).
  *   transcripts-units/ — one request per unit (one shared by both clusters), one between the windows, a subagent
  *     request inside both clusters, a prompt before C-deliver and a `continue` ack inside cluster-a.
+ *   later-session/sess-02.jsonl — a second main session after sess-01: requests E (model-y) and F (model-x, the
+ *     newest, 16:40) and two cumulative cost-state lines (USD 0.50, then 1.25 over model-x 0.75 + model-y 0.50).
  *
  * Cases:
  *   (a) --transcripts on project/: windows from status.jsonl (4 + unwindowed), requests de-duplicated by requestId
  *       (4 main, not 6 lines; 1 subagent, not 2), the subagent column separate, prompts 2 / acks 1 (tool_result and
  *       <system-reminder> lines skipped), pages + tokens/page from the end detail, the cost-state line surfaced as
- *       session cost, the unwindowed row reconciling the late request;
+ *       session cost, the unwindowed row reconciling the late request; sessionsCovered { count 1 (the subagent
+ *       transcript is not a session), first, last = request D } and the `Written … · sessions covered 1 (last
+ *       request …)` line under the heading;
  *   (b) no --transcripts and a HOME with no harness project dir → `usage: unknown (…) → stardust/usage.md (windows
  *       without tokens)`, exit 0, the table written: the 4 windows + unwindowed with from/to, wall min and pages kept and
- *       every token / request cell `unknown` (JSON null, top-level usage "unknown" + unknownReason); under --dry-run the
+ *       every token / request cell `unknown` (JSON null, top-level usage "unknown" + unknownReason); sessionsCovered
+ *       { count 0, first / last null } and `sessions covered 0 (last request unknown)`; under --dry-run the
  *       bare `usage: unknown (…)` line and nothing written; the same for a --transcripts dir that does not exist;
- *   (c) --json schema keys; (d) a second run is byte-identical except generatedAt / writtenAt;
+ *   (c) --json schema keys; (d) a second run with unchanged inputs leaves usage.md and usage.json byte-identical
+ *       (writtenAt not bumped, nothing written), --json prints the record as written, the summary says `(unchanged)`;
  *   (e) --dry-run writes nothing; the fixture tree is untouched; (f) a value flag followed by a flag exits 2;
  *   (g) --prices with fewer than four numbers → a note, no NaN; (h) a rollout wave closes the previous one;
- *   (i) harness cost sessions are counted over the summed list;
+ *   (i) harness cost: one session with a cost line (the subagent transcript has none);
  *   (j) unit rows on project-units/: one per started unit, parent = the phase window holding its start, overlaps on
  *       the two concurrent clusters, pages / tokens/page from the unit, md rows directly under their phase row;
  *   (k) Σ phase rows + unwindowed = total — unit rows are a breakdown, never added;
@@ -44,7 +50,11 @@
  *       cells (the running unit's `to` and wall min stay unknown: `—`, not a zero-minute span), usage.json usage
  *       "unknown"; --json keeps stdout the record (the line on stderr); --dry-run writes nothing; no status.jsonl →
  *       the table is one `usage: unknown (…)` row and nothing else; a transcript dir that cannot be listed → unknown
- *       (not readable), exit 0.
+ *       (not readable), exit 0; a re-run with the same unreachable transcripts → `(unchanged)`, byte-identical;
+ *   (r) a later session added after the ledger was written (later-session/sess-02.jsonl): the re-run rewrites both
+ *       files, writtenAt moves, sessionsCovered { count 2, last = request F }; harness cost = each session's LAST cost
+ *       line, summed (USD 3.21 + 1.25 = 4.46, not 4.96), sessions 2, models summed per model across sessions
+ *       (model-x 3.96, model-y 0.50 — not the last session's map); a third run is `(unchanged)`.
  */
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -64,7 +74,6 @@ cpSync(join(FIX, 'project'), proj, { recursive: true });
 const baseEnv = { ...process.env, HOME: home }; delete baseEnv.STARDUST_TRANSCRIPTS;
 const runIn = (root, env, ...a) => spawnSync(process.execPath, [CLI, '--root', root, ...a], { encoding: 'utf8', env: { ...baseEnv, ...env } });
 const run = (...a) => runIn(proj, {}, ...a);
-const strip = (s) => s.replace(/"?(generatedAt|writtenAt)"?: ?"?[^",\n]+"?,?/g, '');
 const before = snapshot(FIX);
 try {
   // (b) unknown first: no transcripts to read, yet the table is written — windows from status.jsonl, token cells unknown
@@ -85,8 +94,11 @@ try {
   const pk = jk.windows[0];
   assert.deepEqual([pk.from, pk.to, pk.wallMin, pk.pages, pk.secondsPerPage], ['2026-09-10T15:20:00Z', '2026-09-10T15:24:12Z', 4, 6, 40], 'from/to, wall min and pages stay');
   assert.deepEqual([jk.source.main, jk.source.sub, jk.harnessCost, jk.retention], [0, 0, null, null]);
+  assert.deepEqual(jk.sessionsCovered, { count: 0, first: null, last: null }, 'no session read, no request timestamp');
+  assert.equal(jk.writtenAt, jk.generatedAt);
   const mdk = readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8');
   assert.ok(mdk.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
+  assert.ok(mdk.includes(`\n# Usage — project\n\nWritten ${jk.writtenAt} · sessions covered 0 (last request unknown)\n\n`), mdk);
   assert.ok(mdk.includes(`| migrate plan | 2026-09-10T15:20:00Z | 2026-09-10T15:24:12Z | 4 | ${U8} | 6 | unknown |\n`), mdk);
   assert.ok(mdk.includes(`| unwindowed | — | — | — | ${U8} | — | unknown |\n`), 'the unwindowed row keeps the shape');
   assert.ok(mdk.includes(`| **total** | 2026-09-10T15:20:00Z | 2026-09-10T15:40:02Z | — | ${U8} | — | unknown |\n`), 'the total row too');
@@ -103,8 +115,10 @@ try {
   assert.match(r.stdout, /^usage: 4 window\(s\) \+ unwindowed · 4 requests \(1 subagent\) · fresh 2\.1 k · cache write 45\.0 k · cache read 382\.0 k · output 3\.9 k · est\. USD \d+\.\d\d · harness-reported USD 3\.21 \(session, not per phase\)/m);
   assert.ok(!/^usage: transcripts start/m.test(r.stdout), 'no retention hint on a 10-second gap');
   const j = JSON.parse(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8'));
-  for (const k of ['_provenance', 'generatedAt', 'source', 'windows', 'total', 'harnessCost', 'units']) assert.ok(k in j, `usage.json has ${k}`);
+  for (const k of ['_provenance', 'writtenAt', 'generatedAt', 'sessionsCovered', 'source', 'windows', 'total', 'harnessCost', 'units']) assert.ok(k in j, `usage.json has ${k}`);
   assert.equal(j.source.harness, 'transcripts-dir');
+  assert.deepEqual(j.sessionsCovered, { count: 1, first: '2026-09-10T15:20:31.000Z', last: '2026-09-10T16:05:00.000Z' }, 'one main session; the subagent transcript is not a session; last = request D');
+  assert.deepEqual([j.writtenAt, j._provenance.writtenAt], [j.generatedAt, j.generatedAt]);
   assert.deepEqual(j.units, [], 'no progress.json → no unit rows');
   assert.equal(j.windows.length, 5, '4 windows + unwindowed');
   assert.equal(j.windows.at(-1).label, 'unwindowed');
@@ -123,17 +137,23 @@ try {
   assert.equal(typeof j.total.estCost, 'number');
   const md = readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8');
   assert.ok(md.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
+  assert.ok(md.includes(`\n# Usage — project\n\nWritten ${j.writtenAt} · sessions covered 1 (last request 2026-09-10T16:05:00.000Z)\n\n`), 'the coverage line right under the heading');
   assert.match(md, /^\| migrate plan \| 2026-09-10T15:20:00Z \| 2026-09-10T15:24:12Z \| 4 \| 1 \| 0 \| 0 \| 1\.2 k \| 40\.0 k \(40\.0 k \/ 0\) \| 100\.0 k \| 900 \(50\) \| 0 \/ 0 \/ 0 \| 6 \| 23683 \| /m);
-  assert.match(md, /^Harness-reported session cost \(not per phase\): USD 3\.21/m);
+  assert.match(md, /^Harness-reported session cost \(not per phase\): USD 3\.21 over 1 session\(s\), each session's last cost line — model-x 3\.21\.$/m);
   assert.ok(!md.includes('↳'), 'no unit rows without progress.json');
 
-  // (d) idempotent
-  const md1 = strip(md); const j1 = strip(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8'));
+  // (d) idempotent: unchanged inputs → both files byte-identical, writtenAt not bumped, nothing written
+  const md1 = md; const j1 = readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8');
   r = run('--transcripts', join(FIX, 'transcripts'), '--prices', '3,3.75,0.3,15', '--json');
   assert.equal(r.status, 0);
-  assert.equal(strip(readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8')), md1, 'usage.md identical except timestamps');
-  assert.equal(strip(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8')), j1, 'usage.json identical except timestamps');
+  assert.equal(readFileSync(join(proj, 'stardust', 'usage.md'), 'utf8'), md1, 'usage.md byte-identical');
+  assert.equal(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8'), j1, 'usage.json byte-identical');
+  assert.equal(r.stdout, j1, '--json prints the record as written (its writtenAt)');
   assert.equal(JSON.parse(r.stdout).total.turns, 4, '--json prints the record');
+  r = run('--transcripts', join(FIX, 'transcripts'), '--prices', '3,3.75,0.3,15');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^usage: 4 window\(s\) \+ unwindowed · 4 requests [^\n]* → [^\n]*usage\.md \(unchanged\)$/m, 'the summary says unchanged');
+  assert.equal(readFileSync(join(proj, 'stardust', 'usage.json'), 'utf8'), j1, 'still byte-identical');
 
   // (f) a value flag followed by a flag is usage (exit 2), decided before anything is read
   r = run('--transcripts', '--dry-run');
@@ -159,8 +179,8 @@ try {
   const wv = JSON.parse(r.stdout).windows;
   assert.deepEqual(wv.filter((w) => w.label.startsWith('rollout')).map((w) => [w.label, w.to]), [['rollout wave 1', '2026-09-10T15:30:00Z'], ['rollout wave 2', '2026-09-10T15:39:52Z'], ['rollout wave 3', wv[2].to]], 'wave 1 and 2 close when the next wave starts');
   assert.notEqual(wv[2].to, null, 'the open last wave ends at the last request');
-  // (i) harness cost sessions are counted over the same list that is summed (main + subagent cost-state lines)
-  assert.equal(j.harnessCost.sessions, 1, 'fixture: one cost-state line in main, none in the subagent');
+  // (i) harness cost: one session (transcript file) with a cost line — the subagent transcript has none
+  assert.deepEqual(j.harnessCost, { totalCostUSD: 3.21, sessions: 1, models: { 'model-x': 3.21 } });
 
   // (j) recorded-unit rows
   const units = join(tmp, 'units');
@@ -272,6 +292,10 @@ try {
     `| ↳ rollout final | 2026-09-12T09:00:00Z | — | — | ${U8} | — | unknown |`,
     `| unwindowed | — | — | — | ${U8} | — | unknown |`,
     `| **total** | 2026-09-12T08:00:00Z | 2026-09-12T09:10:30Z | — | ${U8} | — | unknown |`], 'phase rows, unit rows under their phase, unknown cells');
+  r = runIn(unk, {}, '--transcripts', noJsonl);
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, `usage: unknown (${why}) → stardust/usage.md (windows without tokens) (unchanged)\n`, 'the same unreachable transcripts: nothing written');
+  assert.equal(readFileSync(join(unk, 'stardust', 'usage.md'), 'utf8'), mdq, 'usage.md byte-identical');
   // no status.jsonl either: one `usage: unknown (…)` row and nothing else
   const none = join(tmp, 'no-status');
   mkdirSync(join(none, 'stardust'), { recursive: true });
@@ -317,6 +341,30 @@ try {
   r = runIn(proj, { STARDUST_TRANSCRIPTS: join(tmp, 'no-such-dir') }, '--dry-run');
   assert.equal(r.status, 0); assert.match(r.stdout, /^usage: unknown \(transcript directory .*no-such-dir does not exist/);
 
+  // (r) a later session after the ledger was written (a recorded run wrote usage.md before its last two sessions):
+  //     the re-run rewrites both files and says what it covered; harness cost = each session's last cost line, summed
+  const later = join(tmp, 'later'); const two = join(tmp, 'two-sessions');
+  cpSync(join(FIX, 'project'), later, { recursive: true }); cpSync(join(FIX, 'transcripts'), two, { recursive: true });
+  r = runIn(later, {}, '--transcripts', two);
+  assert.equal(r.status, 0, r.stderr);
+  const jl1 = JSON.parse(readFileSync(join(later, 'stardust', 'usage.json'), 'utf8'));
+  assert.equal(jl1.sessionsCovered.count, 1);
+  cpSync(join(FIX, 'later-session', 'sess-02.jsonl'), join(two, 'sess-02.jsonl'));
+  r = runIn(later, {}, '--transcripts', two);
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(!r.stdout.includes('(unchanged)'), r.stdout);
+  const jl2 = JSON.parse(readFileSync(join(later, 'stardust', 'usage.json'), 'utf8'));
+  const mdl2 = readFileSync(join(later, 'stardust', 'usage.md'), 'utf8');
+  assert.ok(jl2.writtenAt > jl1.writtenAt, `writtenAt moves (${jl1.writtenAt} → ${jl2.writtenAt})`);
+  assert.deepEqual(jl2.sessionsCovered, { count: 2, first: '2026-09-10T15:20:31.000Z', last: '2026-09-10T16:40:00.000Z' }, 'two main sessions; last = request F');
+  assert.deepEqual(jl2.harnessCost, { totalCostUSD: 4.46, sessions: 2, models: { 'model-x': 3.96, 'model-y': 0.5 } }, "each session's last cost line (3.21 + 1.25), models summed across sessions");
+  assert.ok(mdl2.includes(`\nWritten ${jl2.writtenAt} · sessions covered 2 (last request 2026-09-10T16:40:00.000Z)\n`), mdl2);
+  assert.ok(mdl2.includes(`  writtenAt: ${jl2.writtenAt}\n`), 'the provenance carries the same writtenAt');
+  assert.match(mdl2, /^Harness-reported session cost \(not per phase\): USD 4\.46 over 2 session\(s\), each session's last cost line — model-x 3\.96, model-y 0\.50\.$/m);
+  r = runIn(later, {}, '--transcripts', two);
+  assert.match(r.stdout, /usage\.md \(unchanged\)$/m);
+  assert.equal(readFileSync(join(later, 'stardust', 'usage.md'), 'utf8'), mdl2, 'unchanged again: byte-identical');
+
   // (e) dry-run, fixture untouched
   rmSync(join(proj, 'stardust', 'usage.md')); rmSync(join(proj, 'stardust', 'usage.json'));
   r = run('--transcripts', join(FIX, 'transcripts'), '--dry-run');
@@ -330,8 +378,9 @@ try {
   assert.equal(r.status, 0); assert.ok(elapsed < 15000, `--help took ${elapsed} ms`); assert.deepEqual(wrote, [], '--help writes nothing');
   assert.match(r.stdout, /Exit codes: 0 always/); assert.match(r.stdout, /2 only for a\nvalue flag followed by another flag/);
   assert.match(r.stdout, /STARDUST_TRANSCRIPTS/); assert.match(r.stdout, /unit rows/i);
+  assert.match(r.stdout, /Run it LAST in a hands-off run/); assert.match(r.stdout, /sessionsCovered/); assert.match(r.stdout, /\(unchanged\)/);
   assert.deepEqual(snapshot(FIX), before, 'fixture untouched');
-  console.log('token-ledger test: ok (unknown → exit 0, table written with unknown cells, dry-run writes nothing, no status → one row; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; idempotent; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; offsets normalised; discovery; env; help)');
+  console.log('token-ledger test: ok (unknown → exit 0, table written with unknown cells, dry-run writes nothing, no status → one row; 4 windows + unwindowed; requestId dedupe 4 main / 1 sub; prompts 2 acks 1; pages + tokens/page; cost-state; sessions covered + written line; idempotent: byte-identical, (unchanged); a later session rewrites; harness cost = last cost line per session, summed; dry-run; unit rows 7 with parents + overlaps; Σ windows = total; bare record noted; offsets normalised; discovery; env; help)');
 } finally {
   rmSync(tmp, { recursive: true, force: true });
 }
