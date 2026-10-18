@@ -101,13 +101,13 @@
  *   `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, with ` (kept from <at>; --force re-records)`
  *   when kept; a template name the record cannot take, or a record that cannot be written, is one stderr line
  *   `encode-attempt <t>: not recorded — <why>`. The LAST stdout line is the count for the plan unit's ledger
- *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted)`, plus ` · <k> without a
- *   record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
+ *   detail: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`, plus ` · <k>
+ *   without a record` (a recorded hands-off run never invoked the encoder and hand-built every sibling). Exit 2 when a
  *   page is refused or a template is left without a record.
  *
  * Encode-attempt gate (every A' page, own file or fork; before the sidecar and variance checks): the template (the
  *   archetype's slug) needs an attempt record, stardust/migrate/encode/<template>.json under the project root, that
- *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted): the gate is that the
+ *   encode-attempt.mjs reads as valid — any verdict (encoded, no-roundtrip, not-attempted, hand-authored): the gate is that the
  *   attempt was made, not that it encoded. None (or an invalid one) → refused, nothing written, `refused <slug>:
  *   strict encode-attempt — template <t> has no encode attempt record (stardust/migrate/encode/<t>.json) — run: node
  *   stardust/scripts/migrate/encode-attempt.mjs record --template <t>` (migrate.mjs plan records it too). A and B
@@ -219,7 +219,7 @@ import { createHash } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { anchorsFor, readMapping, slotRecipes, slotValues as mappedSlotValues } from './slot-map.mjs';
-import { isAutoNotAttempted, readAttempt, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
+import { attemptLine, isAutoNotAttempted, readAttempt, recordAttempt, Refusal as AttemptRefusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError as AttemptUsageError } from './encode-attempt.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 // Only the main-module check below calls it: importing this module never prints or exits.
@@ -1055,7 +1055,7 @@ export function planRun(o) {
         if (!rec) { records.push(null); continue; }
       }
     }
-    console.log(`encode-attempt ${t}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; --force re-records)` : ''}`);
+    console.log(`${attemptLine(rec)}${kept ? ` (kept${kept.at ? ` from ${kept.at}` : ''}; --force re-records)` : ''}`);
     records.push(rec);
   }
   if (due.length) console.log(`maps due: ${due.length} template(s) — ${due.join(', ')} — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"`);

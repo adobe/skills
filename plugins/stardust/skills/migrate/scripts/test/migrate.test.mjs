@@ -893,7 +893,7 @@ check('plan records one encode attempt per template with A′ siblings (not for 
     'B  1 page(s): press',
     'encode-attempt events: encoded — roundtrip events at text: equal — content/events.html',
     'encode-attempt venues: no-roundtrip — roundtrip venues at text: not equal (2 differences) — content/venues.html',
-    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)',
+    'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted, 0 hand-authored)',
   ]);
   const ev = json(ENC('events'));
   assert.equal(ev.template, 'events'); assert.equal(ev.verdict, 'encoded'); assert.deepEqual(ev.lint, { exit: 0, line: 'lint events: 0 findings · 0 notes' }); assert.match(ev.at, /^\d{4}-\d{2}-\d{2}T/);
@@ -906,7 +906,7 @@ check('a re-run keeps an existing record (the encoder is not run again); --force
   const at = json(ENC('events')).at;
   const r = run(PLAN); assert.equal(r.status, 0, r.err);
   assert.match(r.out, new RegExp(`^encode-attempt events: encoded — roundtrip events at text: equal — content/events\\.html \\(kept from ${at.replace(/\./g, '\\.')}; --force re-records\\)$`, 'm'));
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted)');
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 1 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted, 0 hand-authored)');
   assert.equal(encRuns().length, 4, 'nothing run'); assert.equal(json(ENC('events')).at, at);
   const f = run([...PLAN, '--force']); assert.equal(f.status, 0, f.err);
   assert.doesNotMatch(f.out, /kept from/); assert.equal(encRuns().length, 8);
@@ -914,7 +914,7 @@ check('a re-run keeps an existing record (the encoder is not run again); --force
 check('the production default encoder (encode.mjs beside encode-attempt.mjs): a template without a map is recorded not-attempted, nothing run', () => {
   const r = run(['plan', 'show-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
   assert.equal(json(ENC('shows')).verdict, 'not-attempted');
 });
 check('any recorded verdict opens the A′ path: encoded (events), no-roundtrip (venues), not-attempted (shows)', () => {
@@ -926,7 +926,7 @@ check('plan refusals: a missing --encoder is a usage error; a template name the 
   const bad = run(['plan', 'venue-one', '--encoder', 'nope.mjs', '--force']); assert.equal(bad.status, 1); assert.match(bad.err, /^usage error: --encoder nope\.mjs does not exist/);
   const odd = run(['plan', 'odd-one']); assert.equal(odd.status, 2);
   assert.equal(odd.err, 'encode-attempt odd!: not recorded — template "odd!" is not a template name (letters, digits, _ . - and not only dots)\n');
-  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  assert.equal(odd.out.trim().split('\n').at(-1), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record');
   const all = run(['plan', '--all', '--encoder', 'fake-encode.mjs']); assert.equal(all.status, 2);
   assert.match(all.err, /^refused faq: strict branch — /m); assert.match(all.out, /^skip contact: status extracted$/m); assert.match(all.out.trim().split('\n').at(-1), /^encode: \d+ encoded · /);
 });
@@ -943,7 +943,7 @@ check('encoder first: a template with ≥ 2 siblings and no map is a map due —
   assert.match(r.err, /^encode-attempt halls: refused not-attempted — 2 sibling\(s\) \(hall-one, hall-two\) and (no map at stardust\/import\/halls\/vocabulary\.json|encode\.mjs not found beside this script): /m);
   assert.deepEqual(r.out.trim().split('\n').slice(-2), [
     'maps due: 1 template(s) — halls (2 siblings) — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"',
-    'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record',
+    'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record',
   ]);
   assert.ok(!has(ENC('halls')), 'the earlier automatic record is gone');
   const rr = run(['render', 'hall-one']); assert.equal(rr.status, 2); assert.match(rr.err, /^refused hall-one: strict encode-attempt — /m);
@@ -953,7 +953,16 @@ check('encoder first: a reason recorded for the template (or a drafted map) clea
   assert.match(rec.reason, /^every hall page is a one-off floor plan \(/);
   const r = run(['plan', 'hall-one', 'hall-two']); assert.equal(r.status, 0, r.err);
   assert.doesNotMatch(r.out, /^maps due/m); assert.match(r.out, /^encode-attempt halls: not-attempted — every hall page is a one-off floor plan \(.*\(kept from /m);
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted)');
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
+});
+
+check('a hand-authored record (encode-attempt.mjs record --hand-authored --reason) opens the A′ path and plan counts it, naming its pages', () => {
+  const r0 = recordAttempt(tmp, 'halls', { handAuthored: true, reason: 'the floor plans are drawn per hall', pages: ['hall-two'] });
+  assert.equal(r0.verdict, 'hand-authored');
+  const r = run(['plan', 'hall-one', 'hall-two', '--force']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /^encode-attempt halls: hand-authored — the floor plans are drawn per hall \(1 page\(s\): hall-two\) \(kept from /m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
+  const rr = run(['render', 'hall-two', '--from-archetype']); assert.equal(rr.status, 2); assert.doesNotMatch(rr.err, /strict encode-attempt/);
 });
 
 // ---- --help ---------------------------------------------------------------------------------

@@ -3,13 +3,16 @@
  * migrate/encode-attempt.mjs — records, per template, whether the shipped sibling encoder (encode.mjs) was tried on
  * it and what its round-trip said. A template whose archetype round-trips is `encoded`: its siblings are encoded,
  * not hand-built. Every other template is A′ (siblings rendered from the archetype by migrate.mjs) — and the record
- * says why: `no-roundtrip` (the encoder ran and the archetype does not round-trip) or `not-attempted` (no encoder,
- * no map, or an owner decision). A recorded hands-off run never invoked the encoder and hand-built every sibling;
+ * says why: `no-roundtrip` (the encoder ran and the archetype does not round-trip), `not-attempted` (no encoder,
+ * no map, or an owner decision) or `hand-authored` (the siblings are written by hand, with the reason). A recorded
+ * hands-off run never invoked the encoder and hand-built every sibling;
  * this record makes the choice explicit, so migrate can refuse an A′ sibling whose template has none.
  *
  * Usage:
  *   node stardust/scripts/migrate/encode-attempt.mjs record --template <t>[,<t>…] [--root .] [--encoder <file>]
  *        [--not-attempted "<reason>" | --reason "<why>"] [--state <file>]
+ *   node stardust/scripts/migrate/encode-attempt.mjs record --template <t> --hand-authored --reason "<why>"
+ *        [--pages <slug,…>] [--root .] [--state <file>]
  *   node stardust/scripts/migrate/encode-attempt.mjs check --template <t>[,<t>…] [--root .]
  *   node stardust/scripts/migrate/encode-attempt.mjs summary [--root .] [--json]
  *   (--template repeats or takes a comma list; a template name is letters, digits, `_`, `.`, `-` and not only dots;
@@ -30,6 +33,11 @@
  *                                           (nothing run)
  *     --not-attempted "<reason>"          → not-attempted with that reason — an owner decision, nothing run; the
  *                                           reason must be non-empty
+ *     --hand-authored --reason "<why>"    → hand-authored: the siblings are written by hand (migrate SKILL.md § When
+ *                                           the encoder cannot); nothing run, the reason required, pages = --pages
+ *                                           <slug,…> (sorted) else the template's siblings, an earlier record's
+ *                                           roundtrip and lint kept as the evidence; never with --encoder or
+ *                                           --not-attempted; --pages needs --hand-authored
  *   Encoder first (migrate SKILL.md § Encoder first): the two automatic not-attempted outcomes (encoder absent, no
  *   map) are REFUSED for a template with ≥ 2 siblings unless --reason "<why>" names why the encoder cannot serve it —
  *   its map is due in the C-archetype unit. Refused: nothing written (an earlier automatic not-attempted record of
@@ -40,7 +48,8 @@
  *   <root>/stardust/state.json; none when it is absent) whose representative is <t>, and — when <t> is the single
  *   approved / migrated page of its type — every other page of that type that is not approved / migrated and names
  *   no representative.
- *   One stdout line per template: `encode-attempt <t>: <verdict> — <reason or roundtrip line>`. A record is
+ *   One stdout line per template: `encode-attempt <t>: <verdict> — <reason or roundtrip line>` (hand-authored adds
+ *   ` (<n> page(s): <slug, …>)`). A record is
  *   rewritten on every `record`; the verdict is information, not a failure (exit 0 whatever it is; 2 when a template
  *   was refused).
  * check — every named template needs a readable record (valid JSON, its own template name, a verdict above):
@@ -48,22 +57,25 @@
  *   template: `encode-attempt <t>: no attempt record — run: node stardust/scripts/migrate/encode-attempt.mjs record
  *   --template <t>`.
  * summary — every record under the record directory: `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m>
- *   not-attempted)`; an invalid record file is named on stderr and not counted. --json: { total, encoded, aPrime,
- *   noRoundtrip, notAttempted, templates: [{ template, verdict, reason }] } sorted by template.
+ *   not-attempted, <h> hand-authored)`; an invalid record file is named on stderr and not counted. --json: { total,
+ *   encoded, aPrime, noRoundtrip, notAttempted, handAuthored, templates: [{ template, verdict, reason[, pages] }] }
+ *   sorted by template (pages on hand-authored only).
  *
  * Reads:  <root>/stardust/migrate/encode/<t>.json, <root>/stardust/import/<t>/vocabulary.json (existence only), the
  *         state file (record: the sibling count), and the encoder's stdout / stderr / exit code (the encoder's
  *         --roundtrip and --lint write nothing).
  * Writes: <root>/stardust/migrate/encode/<t>.json (record only; tmp + rename; fixed key order):
  *         { "_provenance": { writtenBy: "stardust:migrate/encode-attempt", writtenAt }, "template",
- *           "verdict": "encoded" | "no-roundtrip" | "not-attempted", "roundtrip": { exit, line } | null,
- *           "lint": { exit, line } | null, "reason": <string | null>, "at": <ISO> }
+ *           "verdict": "encoded" | "no-roundtrip" | "not-attempted" | "hand-authored", "roundtrip": { exit, line } |
+ *           null, "lint": { exit, line } | null, "reason": <string | null>, "pages": [<slug>…] (hand-authored) | null,
+ *           "at": <ISO> }
  *         check and summary write nothing.
  * Library (imported by migrate.mjs): readAttempt(root, t) → the record or null · requireEncodeAttempt(root, t) →
- *   null or the check refusal line · recordAttempt(root, t, { encoder, notAttempted, reason, state, siblings,
- *   timeoutMs }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
+ *   null or the check refusal line · recordAttempt(root, t, { encoder, notAttempted, reason, handAuthored, pages,
+ *   state, siblings, timeoutMs }) → the record it wrote (throws UsageError, writing nothing, when a named encoder does not exist;
  *   Refusal, the encoder-first line, when it refuses; siblings: slugs that replace the state's) · siblingsOf(state,
  *   t) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
+ *   attemptLine(record) → the record's stdout line ·
  *   summaryLine(records) → the summary line (a null entry is counted as ` · <k> without a record`).
  * Exit: 0 ok · 1 I/O (a record could not be written) · 2 usage error (an --encoder or --state that does not exist
  *   included), an encoder-first refusal or a check refusal (message on stderr).
@@ -84,7 +96,7 @@ function help() {
 const SELF = fileURLToPath(import.meta.url);
 const HERE = dirname(SELF);
 const WRITTEN_BY = 'stardust:migrate/encode-attempt';
-const VERDICTS = ['encoded', 'no-roundtrip', 'not-attempted'];
+const VERDICTS = ['encoded', 'no-roundtrip', 'not-attempted', 'hand-authored'];
 const TIMEOUT_MS = 120000;
 const RECORD_CMD = 'node stardust/scripts/migrate/encode-attempt.mjs record --template';
 
@@ -172,19 +184,28 @@ function writeRecord(root, rec) {
  */
 export function recordAttempt(root, template, opts = {}) {
   assertTemplate(template);
-  const { encoder = null, notAttempted = null, reason: given = null, state = null, siblings = null, timeoutMs = TIMEOUT_MS } = opts;
+  const { encoder = null, notAttempted = null, reason: given = null, handAuthored = false, pages: named = null, state = null, siblings = null, timeoutMs = TIMEOUT_MS } = opts;
   if (notAttempted !== null && notAttempted !== undefined && (typeof notAttempted !== 'string' || !notAttempted.trim())) throw new UsageError('--not-attempted needs a non-empty reason');
   if (given !== null && given !== undefined && (typeof given !== 'string' || !given.trim())) throw new UsageError('--reason needs a non-empty reason');
   if (typeof given === 'string' && typeof notAttempted === 'string') throw new UsageError('--not-attempted carries its own reason — drop --reason');
+  if (handAuthored && typeof given !== 'string') throw new UsageError('--hand-authored needs --reason "<why the siblings are written by hand>"');
+  if (handAuthored && (encoder || typeof notAttempted === 'string')) throw new UsageError('--hand-authored runs nothing — drop --encoder and --not-attempted');
+  if (named !== null && !handAuthored) throw new UsageError('--pages names hand-authored siblings — pass --hand-authored');
   const rootAbs = resolve(root);
   if (!isDir(rootAbs)) throw new UsageError(`--root ${root} is not a directory`);
   if (state && !isFile(state)) throw new UsageError(`--state ${state} does not exist`);
   const at = new Date().toISOString();
-  let verdict; let roundtrip = null; let lint = null; let reason = null; let cause = null; let fix = null;
+  let verdict; let roundtrip = null; let lint = null; let reason = null; let cause = null; let fix = null; let pages = null;
+  const siblingList = () => (Array.isArray(siblings) ? [...new Set(siblings)].sort() : siblingsOf(readState(state || join(rootAbs, 'stardust', 'state.json')), template));
   const encoderFile = encoder ? resolve(encoder) : join(HERE, 'encode.mjs');
   // A named encoder that is not there is a typo, never "not attempted": that record would open render's A′ path.
   if (encoder && !isFile(encoderFile)) throw new UsageError(`--encoder ${encoder} does not exist`);
-  if (typeof notAttempted === 'string') { verdict = 'not-attempted'; reason = notAttempted.trim(); }
+  if (handAuthored) {
+    // The siblings are written by hand: nothing runs; an earlier attempt's roundtrip and lint stay as the evidence.
+    const prev = readAttempt(rootAbs, template);
+    verdict = 'hand-authored'; reason = given.trim(); roundtrip = prev?.roundtrip ?? null; lint = prev?.lint ?? null;
+    pages = Array.isArray(named) ? [...new Set(named)].sort() : siblingList();
+  } else if (typeof notAttempted === 'string') { verdict = 'not-attempted'; reason = notAttempted.trim(); }
   else if (!isFile(encoderFile)) { cause = 'encode.mjs not found beside this script'; fix = 'copy the migrate scripts (encode.mjs and encode/) beside encode-attempt.mjs, then record again'; }
   else if (!isFile(join(rootAbs, mapRel(template)))) { cause = `no map at ${mapRel(template)} — the encoder needs the template's map`; fix = 'draft the map in the C-archetype unit (migrate SKILL.md § Encoder first), then record again'; }
   else {
@@ -197,7 +218,7 @@ export function recordAttempt(root, template, opts = {}) {
   }
   if (cause) {
     // Encoder first: a template with ≥ 2 siblings gets its map in the C-archetype unit — not-attempted only with a reason.
-    const sibs = Array.isArray(siblings) ? [...new Set(siblings)].sort() : siblingsOf(readState(state || join(rootAbs, 'stardust', 'state.json')), template);
+    const sibs = siblingList();
     if (sibs.length >= SIBLING_MIN && typeof given !== 'string') {
       // An automatic not-attempted written before this rule would still open render's A′ path: it goes with the refusal.
       if (isAutoNotAttempted(readAttempt(rootAbs, template))) rmSync(join(recordDir(rootAbs), `${template}.json`), { force: true });
@@ -205,34 +226,41 @@ export function recordAttempt(root, template, opts = {}) {
     }
     verdict = 'not-attempted'; reason = typeof given === 'string' ? `${given.trim()} (${cause})` : cause;
   }
-  const rec = { _provenance: { writtenBy: WRITTEN_BY, writtenAt: new Date().toISOString() }, template, verdict, roundtrip, lint, reason, at };
+  const rec = { _provenance: { writtenBy: WRITTEN_BY, writtenAt: new Date().toISOString() }, template, verdict, roundtrip, lint, reason, pages, at };
   writeRecord(rootAbs, rec);
   return rec;
 }
 
-/** `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted)`; null entries add ` · <k> without a record`. */
+/** `encode-attempt <t>: <verdict> — <reason or roundtrip line>`, a hand-authored record's pages after it. */
+export function attemptLine(rec) {
+  const pages = Array.isArray(rec.pages) ? ` (${rec.pages.length} page(s)${rec.pages.length ? `: ${rec.pages.join(', ')}` : ''})` : '';
+  return `encode-attempt ${rec.template}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}${pages}`;
+}
+
+/** `encode: <e> encoded · <a> A′ (<n> no-roundtrip, <m> not-attempted, <h> hand-authored)`; null entries add ` · <k> without a record`. */
 export function summaryLine(records) {
   const c = countVerdicts(records);
-  return `encode: ${c.encoded} encoded · ${c.aPrime} A′ (${c.noRoundtrip} no-roundtrip, ${c.notAttempted} not-attempted)${c.missing ? ` · ${c.missing} without a record` : ''}`;
+  return `encode: ${c.encoded} encoded · ${c.aPrime} A′ (${c.noRoundtrip} no-roundtrip, ${c.notAttempted} not-attempted, ${c.handAuthored} hand-authored)${c.missing ? ` · ${c.missing} without a record` : ''}`;
 }
 
 function countVerdicts(records) {
-  const c = { encoded: 0, noRoundtrip: 0, notAttempted: 0, missing: 0 };
+  const c = { encoded: 0, noRoundtrip: 0, notAttempted: 0, handAuthored: 0, missing: 0 };
   for (const r of records || []) {
     if (r?.verdict === 'encoded') c.encoded++;
     else if (r?.verdict === 'no-roundtrip') c.noRoundtrip++;
     else if (r?.verdict === 'not-attempted') c.notAttempted++;
+    else if (r?.verdict === 'hand-authored') c.handAuthored++;
     else c.missing++;
   }
-  return { ...c, aPrime: c.noRoundtrip + c.notAttempted };
+  return { ...c, aPrime: c.noRoundtrip + c.notAttempted + c.handAuthored };
 }
 
 // ---- CLI -----------------------------------------------------------------------------------------
-const FLAGS = { record: ['template', 'root', 'encoder', 'not-attempted', 'reason', 'state'], check: ['template', 'root'], summary: ['root', 'json'] };
-const BOOL = new Set(['json']);
+const FLAGS = { record: ['template', 'root', 'encoder', 'not-attempted', 'reason', 'state', 'hand-authored', 'pages'], check: ['template', 'root'], summary: ['root', 'json'] };
+const BOOL = new Set(['json', 'hand-authored']);
 
 function parseArgs(argv) {
-  const o = { cmd: null, templates: [], root: '.', encoder: null, notAttempted: null, reason: null, state: null, json: false };
+  const o = { cmd: null, templates: [], root: '.', encoder: null, notAttempted: null, reason: null, state: null, handAuthored: false, pages: null, json: false };
   const positional = []; const used = new Set();
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -240,9 +268,9 @@ function parseArgs(argv) {
     const eq = a.indexOf('=');
     const name = eq > 0 ? a.slice(2, eq) : a.slice(2);
     let val = eq > 0 ? a.slice(eq + 1) : undefined;
-    if (!['template', 'root', 'encoder', 'not-attempted', 'reason', 'state', 'json'].includes(name)) throw new UsageError(`unknown flag --${name}`);
+    if (!['template', 'root', 'encoder', 'not-attempted', 'reason', 'state', 'hand-authored', 'pages', 'json'].includes(name)) throw new UsageError(`unknown flag --${name}`);
     used.add(name);
-    if (BOOL.has(name) && val === undefined) { o[name] = true; continue; }
+    if (BOOL.has(name) && val === undefined) { o[name === 'hand-authored' ? 'handAuthored' : name] = true; continue; }
     // A value flag never swallows the next flag: `--not-attempted --root x` is a forgotten value.
     if (val === undefined) {
       val = argv[++i];
@@ -250,6 +278,7 @@ function parseArgs(argv) {
       if (val.startsWith('--')) throw new UsageError(`--${name} needs a value (got ${val}, which is a flag)`);
     }
     if (name === 'template') o.templates.push(...val.split(',').map((t) => t.trim()).filter(Boolean));
+    else if (name === 'pages') o.pages = [...(o.pages || []), ...val.split(',').map((t) => t.trim()).filter(Boolean)];
     else if (name === 'not-attempted') o.notAttempted = val;
     else o[name] = val;
   }
@@ -267,6 +296,9 @@ function parseArgs(argv) {
   if (o.reason !== null && !o.reason.trim()) throw new UsageError('--reason needs a non-empty reason');
   if (o.reason !== null && o.notAttempted !== null) throw new UsageError('--not-attempted carries its own reason — drop --reason');
   if (o.state !== null && !isFile(o.state)) throw new UsageError(`--state ${o.state} does not exist`);
+  if (o.handAuthored && o.reason === null) throw new UsageError('--hand-authored needs --reason "<why the siblings are written by hand>"');
+  if (o.handAuthored && (o.encoder || o.notAttempted !== null)) throw new UsageError('--hand-authored runs nothing — drop --encoder and --not-attempted');
+  if (o.pages !== null && !o.handAuthored) throw new UsageError('--pages names hand-authored siblings — pass --hand-authored');
   if (!isDir(o.root)) throw new UsageError(`--root ${o.root} is not a directory`);
   if (o.encoder && !isFile(o.encoder)) throw new UsageError(`--encoder ${o.encoder} does not exist`);
   return o;
@@ -276,13 +308,13 @@ function recordCmd(o) {
   let code = 0;
   for (const t of o.templates) {
     let rec;
-    try { rec = recordAttempt(o.root, t, { encoder: o.encoder, notAttempted: o.notAttempted, reason: o.reason, state: o.state }); } catch (e) {
+    try { rec = recordAttempt(o.root, t, { encoder: o.encoder, notAttempted: o.notAttempted, reason: o.reason, state: o.state, handAuthored: o.handAuthored, pages: o.pages }); } catch (e) {
       if (e instanceof UsageError) throw e;
       if (e instanceof Refusal) { console.error(e.message); code = 2; continue; }
       console.error(`encode-attempt ${t}: could not write ${join('stardust/migrate/encode', `${t}.json`)} — ${e.code || e.message}`);
       code = code || 1; continue;
     }
-    console.log(`encode-attempt ${t}: ${rec.verdict} — ${rec.reason ?? rec.roundtrip?.line ?? `roundtrip exit ${rec.roundtrip?.exit}`}`);
+    console.log(attemptLine(rec));
   }
   return code;
 }
@@ -305,7 +337,7 @@ function summaryCmd(o) {
   records.sort((a, b) => (a.template < b.template ? -1 : a.template > b.template ? 1 : 0));
   if (!o.json) { console.log(summaryLine(records)); return 0; }
   const c = countVerdicts(records);
-  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null })) }, null, 2));
+  console.log(JSON.stringify({ total: records.length, encoded: c.encoded, aPrime: c.aPrime, noRoundtrip: c.noRoundtrip, notAttempted: c.notAttempted, handAuthored: c.handAuthored, templates: records.map((r) => ({ template: r.template, verdict: r.verdict, reason: r.reason ?? null, ...(r.verdict === 'hand-authored' ? { pages: Array.isArray(r.pages) ? r.pages : [] } : {}) })) }, null, 2));
   return 0;
 }
 

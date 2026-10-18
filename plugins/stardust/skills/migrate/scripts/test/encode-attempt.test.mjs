@@ -170,19 +170,19 @@ console.log('summary');
 check('summary counts encoded vs A′ (no-roundtrip + not-attempted); a malformed record is not counted', () => {
   // good: encoded · diff, nogated: no-roundtrip · nomap, owner: not-attempted · broken: malformed
   const r = run(['summary', '--root', ROOT]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted)\n');
+  assert.equal(r.out, 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)\n');
   assert.match(r.err, /broken/);
 });
 check('summary --json: counts + per-template verdicts sorted by template', () => {
   const r = run(['summary', '--root', ROOT, '--json']); assert.equal(r.status, 0, r.err);
   const j = JSON.parse(r.out);
-  assert.equal(j.encoded, 1); assert.equal(j.aPrime, 4); assert.equal(j.noRoundtrip, 2); assert.equal(j.notAttempted, 2); assert.equal(j.total, 5);
+  assert.equal(j.encoded, 1); assert.equal(j.aPrime, 4); assert.equal(j.noRoundtrip, 2); assert.equal(j.notAttempted, 2); assert.equal(j.handAuthored, 0); assert.equal(j.total, 5);
   assert.deepEqual(j.templates.map((t) => [t.template, t.verdict]), [['diff', 'no-roundtrip'], ['good', 'encoded'], ['nogated', 'no-roundtrip'], ['nomap', 'not-attempted'], ['owner', 'not-attempted']]);
 });
 check('summary of a project with no record directory → all zero, exit 0', () => {
   const empty = join(tmp, 'empty'); mkdirSync(empty);
   const r = run(['summary', '--root', empty]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted)\n');
+  assert.equal(r.out, 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)\n');
 });
 
 // ---- determinism ----------------------------------------------------------------------------------
@@ -192,7 +192,8 @@ check('two records of the same attempt → the same bytes but at / writtenAt; fi
   rec('diff'); const a = read(P(REC('diff')));
   rec('diff'); const b = read(P(REC('diff')));
   assert.equal(strip(a), strip(b)); assert.ok(a.endsWith('}\n'));
-  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'at']);
+  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'at']);
+  assert.equal(JSON.parse(a).pages, null, 'pages: the hand-authored siblings only');
   assert.deepEqual(Object.keys(JSON.parse(a)._provenance), ['writtenBy', 'writtenAt']);
   assert.deepEqual(readdirSync(join(ROOT, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), []);
 });
@@ -246,6 +247,30 @@ check('usage: --reason with --not-attempted (which carries its own), an empty --
   }
   assert.ok(!has(P(REC('guides'))));
 });
+check('--hand-authored --reason: verdict hand-authored, nothing run, pages = the template\'s siblings, the earlier run\'s roundtrip and lint kept as evidence', () => {
+  map('guides'); rec('guides'); const tried = json(P(REC('guides'))); assert.equal(tried.verdict, 'no-roundtrip');
+  const before = runs().length;
+  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: hand-authored — the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
+  const j = json(P(REC('guides')));
+  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'the map cannot express the per-page legal tables');
+  assert.deepEqual(j.pages, ['guide-a', 'guide-b', 'guide-c']); assert.deepEqual(j.roundtrip, tried.roundtrip); assert.deepEqual(j.lint, tried.lint);
+  assert.equal(runs().length, before, 'nothing run');
+  const some = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'two exception pages', '--pages', 'guide-c,guide-a']); assert.equal(some.status, 0, some.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-a', 'guide-c']);
+  assert.equal(run(['check', '--template', 'guides', '--root', ROOT]).status, 0, 'a hand-authored record passes check (render\'s A′ gate)');
+  const s = run(['summary', '--root', ROOT, '--json']); const sj = JSON.parse(s.out);
+  assert.equal(sj.handAuthored, 1); assert.deepEqual(sj.templates.find((t) => t.template === 'guides'), { template: 'guides', verdict: 'hand-authored', reason: 'two exception pages', pages: ['guide-a', 'guide-c'] });
+  assert.match(run(['summary', '--root', ROOT]).out, /, 1 hand-authored\)\n$/);
+  rmSync(join(ROOT, 'stardust', 'import', 'guides'), { recursive: true }); rmSync(join(ROOT, REC('guides')));
+});
+check('usage: --hand-authored needs --reason and runs nothing (no --encoder, no --not-attempted); --pages needs --hand-authored → exit 2, nothing written', () => {
+  for (const extra of [['--hand-authored'], ['--hand-authored', '--reason', 'x', '--encoder', FAKE], ['--hand-authored', '--reason', 'x', '--not-attempted', 'y'], ['--pages', 'guide-a', '--reason', 'x']]) {
+    const r = run(['record', '--template', 'guides', '--root', ROOT, ...extra]); assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, /^usage error: /);
+  }
+  assert.ok(!has(P(REC('guides'))));
+  assert.throws(() => recordAttempt(ROOT, 'guides', { handAuthored: true }), (e) => e instanceof UsageError && /--hand-authored needs --reason/.test(e.message));
+});
 rmSync(STATE_FILE);
 
 // ---- the library (Task 9's migrate.mjs hooks) ---------------------------------------------------
@@ -272,9 +297,10 @@ check('recordAttempt returns the record it wrote; timeoutMs stops a slow encoder
 });
 check('summaryLine counts records; a missing record (null) is named, not counted as A′', () => {
   const recs = ['good', 'diff', 'nogated', 'nomap', 'owner'].map((t) => readAttempt(ROOT, t));
-  assert.equal(summaryLine(recs), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted)');
-  assert.equal(summaryLine([]), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted)');
-  assert.equal(summaryLine([readAttempt(ROOT, 'good'), null]), 'encode: 1 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted) · 1 without a record');
+  assert.equal(summaryLine(recs), 'encode: 1 encoded · 4 A′ (2 no-roundtrip, 2 not-attempted, 0 hand-authored)');
+  assert.equal(summaryLine([]), 'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored)');
+  assert.equal(summaryLine([readAttempt(ROOT, 'good'), null]), 'encode: 1 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record');
+  assert.equal(summaryLine([readAttempt(ROOT, 'good'), { template: 'h', verdict: 'hand-authored' }]), 'encode: 1 encoded · 1 A′ (0 no-roundtrip, 0 not-attempted, 1 hand-authored)');
 });
 
 // ---- done -----------------------------------------------------------------------------------
