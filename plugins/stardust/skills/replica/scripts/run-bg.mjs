@@ -116,8 +116,14 @@
  *        matching --grep (default: the gate instruments' verdict vocabulary),
  *        else the last --tail (8) lines.
  *        Exit 0 = every selected job ended; 75 = some still queued/running —
- *        run `wait` again as your NEXT step. Never loop on it inside one
- *        command; that recreates the blocked step this tool removes.
+ *        run `wait` again as your NEXT step; 77 = the runner's wake file grew —
+ *        a background agent finished: act on it, then wait again. Never loop on
+ *        it inside one command; that recreates the blocked step this tool removes.
+ *        Wake: the runner appends a line to WAKE_FILE (stardust/.labs/wake, from
+ *        the cwd; absent = nothing) whenever a background agent finishes; every
+ *        poll compares its size with the size at the start (after the pause and
+ *        the jobs' end, before the bound), and growth ends the wait with
+ *        `wake: <its last line>` before the report.
  *        Pause: the runner writes $STARDUST_PAUSE_FILE (JSON {at, reason}; a
  *        relative path from the cwd, the project root) when it wants the
  *        session to stop — it alone writes, edits or deletes it. Unset or empty
@@ -179,7 +185,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn, spawnSync } from 'node:child_process';
-import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
+import { closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync, realpathSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { DEADLINE_EXIT, runCapped } from './run-capped.mjs';
@@ -208,6 +214,10 @@ const UNTIL_USAGE = 'run-bg: --until needs an ISO-8601 instant with an offset or
 export const DEFAULT_TAIL = 8;
 export const STILL_RUNNING_EXIT = 75;
 export const PAUSED_EXIT = 76;
+// The runner appends one line here (from the cwd, the project root) whenever a background agent finishes; a wait that
+// sees it grow returns WAKE_EXIT so the lead acts at once. Read only — run-bg never writes it.
+export const WAKE_FILE = 'stardust/.labs/wake';
+export const WAKE_EXIT = 77;
 // With nothing going and no names given, `wait`/`status` report the latest batch: jobs that ended
 // within this window of the newest ending. Earlier sessions' jobs stay on disk (their logs are
 // evidence) but out of the report — one session's wait had dumped every prior session's summary.
@@ -305,6 +315,8 @@ const HELP = `Usage:
   Pause: while $STARDUST_PAUSE_FILE (the runner's JSON {at, reason}; relative = from the cwd; unset or empty = no check)
   names a file that exists, wait ends at once — checked on every poll — with exit ${PAUSED_EXIT} and the one-pass report after a
   \`run-bg: paused — <path> present …\` line; status shows that line first. Jobs keep running; nothing is signalled.
+  Wake: the runner appends a line to ${WAKE_FILE} (from the cwd; absent = nothing) when a background agent finishes; a
+  wait that sees it grow ends with exit ${WAKE_EXIT} and the one-pass report after a \`wake: <its last line>\` line.
   Deadline: --timeout (0 = none) is exported to the job as RUN_BG_DEADLINE_SEC. A gate-all.mjs job started without
   --timeout gets max(${DEFAULT_TIMEOUT_SEC}, 25 s × pages × widths) — gate-all's roster estimate, summed over its invocations,
   logged on start's stdout; an explicit --timeout is never changed, every other job keeps ${DEFAULT_TIMEOUT_SEC} s.
@@ -319,8 +331,9 @@ const HELP = `Usage:
   line in the job's log names it); set, it wins — RUN_BG_SLOTS above the slots adds none. A budget below the slots cannot
   be held (one browser per slot is the floor): one run-bg: line says so — set STARDUST_BROWSER_SLOTS to the budget to hold it.
   Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
-  · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return · 2 (start) the name is still
-  queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
+  · ${PAUSED_EXIT} (wait) the pause file is present — stop waiting, finish the iteration and return
+  · ${WAKE_EXIT} (wait) the runner's wake file grew — a background agent finished: act on it, then wait again · 2 (start) the
+  name is still queued/running, (log) no log · 125 usage · 1 error. A job's own exit (124 = deadline, no verdict) is on its line.`;
 
 class UsageError extends Error { constructor(msg, code = 125) { super(msg); this.code = code; } }
 const sleep = (ms) => new Promise((r) => { setTimeout(r, ms); });
@@ -560,6 +573,14 @@ export function pauseState(file = process.env.STARDUST_PAUSE_FILE, { cwd = proce
   return { path: String(file), reason: ok ? field(j.reason, 'unspecified') : 'unreadable', at: ok ? field(j.at, 'unknown') : 'unknown' };
 }
 export const pauseLine = (p) => `run-bg: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — jobs keep running; finish the iteration, record it and return`;
+// The wake file (WAKE_FILE): its size in bytes — absent or unreadable = 0 — and, on a wake, its last non-empty line,
+// whitespace folded, at most 200 chars.
+const wakeSize = (p) => { try { return statSync(p).size; } catch { return 0; } };
+function wakeText(p) {
+  let text = ''; try { text = readFileSync(p, 'utf8'); } catch { /* gone again */ }
+  const last = text.split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).at(-1);
+  return last ? last.slice(0, 200) : '(no text)';
+}
 
 export function verdictLines(p, { tail = DEFAULT_TAIL, grep = null } = {}) {
   let text; try { text = readFileSync(p, 'utf8'); } catch { return ['(no log)']; }
@@ -586,10 +607,11 @@ export function describe(st) {
 
 // The first line names the selection and its count — `sub`: wait | status, `scope`: pickNames' — plus `hidden`, the jobs
 // --all would add (it folds in the former trailing "earlier job(s) not shown" line). `pause` (pauseState): its line comes
-// first, and a pending job gets no "wait again".
-export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0, pause = null } = {}) {
+// first, and a pending job gets no "wait again". `wake` (the wake file's last line): its `wake:` line comes first.
+export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'status', scope = 'named', hidden = 0, elapsedSec = 0, ceilingSec = 0, pause = null, wake = null } = {}) {
   const lines = [`run-bg: ${sub} — ${scope}: ${names.length} job(s)${hidden ? `; ${hidden} other job(s) not shown — --all` : ''}`]; let pending = 0;
   if (pause) lines.unshift(pauseLine(pause));
+  else if (wake != null) lines.unshift(`wake: ${wake}`);
   for (const name of names) {
     const st = readState(dir, name);
     if (!st) { lines.push(`${name}  no such job in ${dir}`); continue; }
@@ -599,9 +621,10 @@ export function report(dir, names, { tail = DEFAULT_TAIL, grep = null, sub = 'st
   }
   if (!names.length) lines.push(hidden ? `run-bg: no jobs of yours in ${dir}` : `run-bg: no jobs in ${dir}`);
   else if (pending && pause) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — paused: no further wait; they keep running, \`status\` reads them later; logs: ${dir}/<job>.log`);
+  else if (pending && wake != null) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going — woken (a background agent finished): run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else if (pending) lines.push(`run-bg: ${names.length - pending}/${names.length} ended, ${pending} still going${elapsedSec ? ` after ${Math.round(elapsedSec)}s (ceiling ${ceilingSec}s)` : ''} — run \`wait\` again as your next step; logs: ${dir}/<job>.log`);
   else lines.push(`run-bg: all ${names.length} ended — full output per job: \`log <job> --grep <re>\` (${dir}/<job>.log)`);
-  return { text: lines.join('\n'), pending, paused: Boolean(pause) };
+  return { text: lines.join('\n'), pending, paused: Boolean(pause), woken: wake ?? null };
 }
 
 // Among `jobs` (queue order): the unfinished ones, else every job (`onDisk`), else the latest batch — the jobs that ended
@@ -630,9 +653,10 @@ function pickNames(dir, requested, { all = false, owner = null } = {}) {
   return { names: [...shown], scope: `yours (owner ${owner})${mine.length ? `, ${own.what}` : ''}`, hidden: everyone.picked.filter((j) => !shown.has(j.name)).length };
 }
 
-// The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. The
-// pause file (pauseState) is checked before the first poll and on every poll: present → return at once, `paused`.
-export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
+// The bound is --max seconds or --until an instant (untilMs; past = one pass), clamped to MAX_CEILING_SEC from now. Each
+// poll, the first included, in order: the pause file present (pauseState) → `paused`; every job ended; the wake file
+// (relative: from the cwd) grown past its size at the start → `woken` (a shrunk file lowers that size); the bound.
+export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs = null, pauseFile = process.env.STARDUST_PAUSE_FILE, wakeFile = WAKE_FILE, tail, grep, all = false, owner = callerOwner() } = {}) {
   let ceilingSec;
   if (untilMs != null) {
     if (!Number.isFinite(untilMs)) throw new UsageError(`${UNTIL_USAGE} (got ${untilMs})\n${HELP}`);
@@ -645,15 +669,20 @@ export async function wait(dir, requested, { maxSec = DEFAULT_MAX_SEC, untilMs =
     if (maxSec > MAX_CEILING_SEC) { ceilingSec = MAX_CEILING_SEC; console.error(`run-bg: --max ${maxSec} clamped to ${MAX_CEILING_SEC}s — ${CLAMP_WHY}.`); }
   }
   const { names, scope, hidden } = pickNames(dir, requested, { all, owner });
+  const wakePath = resolve(String(wakeFile)); let wakeBase = wakeSize(wakePath); let woken = null;
   const t0 = Date.now(); let pause = null;
   for (;;) {
     pause = pauseState(pauseFile);
     if (pause) break;
     const pending = names.map((n) => readState(dir, n)).filter((st) => st && isPending(st));
-    if (!pending.length || (Date.now() - t0) / 1000 >= ceilingSec) break;
+    if (!pending.length) break;
+    const size = wakeSize(wakePath);
+    if (size > wakeBase) { woken = wakeText(wakePath); break; }
+    wakeBase = Math.min(wakeBase, size);
+    if ((Date.now() - t0) / 1000 >= ceilingSec) break;
     await sleep(Math.min(POLL_MS, Math.max(50, ceilingSec * 1000 - (Date.now() - t0))));
   }
-  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause });
+  return report(dir, names, { tail, grep, sub: 'wait', scope, hidden, elapsedSec: (Date.now() - t0) / 1000, ceilingSec: untilMs != null ? Math.round(ceilingSec) : ceilingSec, pause, wake: woken });
 }
 
 export function status(dir, requested, { tail, grep, all = false, owner = callerOwner(), pauseFile = process.env.STARDUST_PAUSE_FILE } = {}) { const { names, scope, hidden } = pickNames(dir, requested, { all, owner }); return report(dir, names, { tail, grep, sub: 'status', scope, hidden, pause: pauseState(pauseFile) }); }
@@ -757,7 +786,7 @@ async function cli(argv) {
       console.log(`run-bg: queued ${r.name} → ${r.log}   (next step: node stardust/scripts/replica/run-bg.mjs wait)`);
       return 0;
     }
-    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
+    case 'wait': { const r = await wait(o.dir, o.names, { maxSec: o.maxSec, untilMs: o.untilMs, tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); if (r.paused) return PAUSED_EXIT; if (r.woken != null) return WAKE_EXIT; return r.pending ? STILL_RUNNING_EXIT : 0; }
     case 'status': { const r = status(o.dir, o.names, { tail: o.tail, grep: o.grep, all: o.all }); console.log(r.text); return 0; }
     case 'log': console.log(showLog(o.dir, o.names[0], { tail: o.tail ?? 40, grep: o.grep })); return 0;
     case 'clean': console.log(await clean(o.dir, { all: o.all })); return 0;

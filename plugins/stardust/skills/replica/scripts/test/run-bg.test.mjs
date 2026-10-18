@@ -2,7 +2,7 @@
 // skills/replica/scripts/test/run-bg.test.mjs — the run-bg.mjs contract: detached start, FIFO
 // concurrency slots (default 3), bounded wait (exit 75 while jobs are going; --max default 300, a notice over 600, ceiling 1500, or
 // --until <ISO> clamped to the same ceiling; exit 76 at once on the pause file $STARDUST_PAUSE_FILE, which status
-// shows too), instrument
+// shows too; exit 77 when the runner's wake file stardust/.labs/wake grows), instrument
 // deadline (124), verdict-line extraction, duplicate-name refusal, pid identity (a recycled pid is lost, holds no
 // slot, is never signalled), the value-flag swallow rule, log/clean (--all stops wrapper + instrument), and the
 // machine-wide browser slot a browser job takes through browser-lock.mjs (temp STARDUST_BROWSER_LOCK_DIR): peak
@@ -17,11 +17,11 @@
 // Run: node plugins/stardust/skills/replica/scripts/test/run-bg.test.mjs   (about 45 s)
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, gateAllTimeout, isBrowserJob, lockWaitS, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -35,7 +35,8 @@ delete env.RUN_BG_SLOTS; delete env.STARDUST_BROWSER_SLOTS; delete env.STARDUST_
 delete env.RUN_BG_OWNER;
 // No inherited pause file: a supervised session running these tests must not end their waits with exit 76.
 delete env.STARDUST_PAUSE_FILE; delete process.env.STARDUST_PAUSE_FILE;
-const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+// wait reads the runner's wake file (stardust/.labs/wake) from the cwd: CLI calls run in a temp dir, never a project root.
+const run = (extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', dir, ...args], { cwd: lockRoot, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const bg = (sub, ...args) => run({}, sub, ...args);
 const pidAlive = (pid) => { try { process.kill(pid, 0); return true; } catch { return false; } };
 // A state file as the wrapper would leave it (owned by this process, like the jobs bg() starts), with the identity fields the caller sets.
@@ -244,7 +245,7 @@ await check('VERDICT_RE covers the gate instruments and skips prose', () => {
 // ---- the machine-wide browser slot (browser-lock.mjs) ------------------------------------------
 const LOCK_CLI = join(HERE, '..', '..', '..', 'stardust', 'scripts', 'browser-lock.mjs');
 const lockCli = (extra, ...args) => spawnSync(process.execPath, [LOCK_CLI, ...args, '--lock-dir', LOCKS], { encoding: 'utf8', env: { ...env, ...extra } });
-const bgIn = (d, extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
+const bgIn = (d, extra, sub, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { cwd: lockRoot, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const stateIn = (d, name) => JSON.parse(readFileSync(join(d, `${name}.json`), 'utf8'));
 const logIn = (d, name) => readFileSync(join(d, `${name}.log`), 'utf8');
 const locks = () => (existsSync(LOCKS) ? readdirSync(LOCKS) : []);
@@ -548,7 +549,8 @@ await check('two owners in one dir: a bare wait/status covers the caller\'s own 
 const pd = join(lockRoot, 'pz', 'bg'); mkdirSync(pd, { recursive: true });
 const PAUSE = join(lockRoot, 'pz', 'pause.json');
 const pauseLine = (path, reason, at) => `run-bg: paused — ${path} present (reason: ${reason}, at ${at}) — jobs keep running; finish the iteration, record it and return`;
-const bgAsync = (d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
+const bgAt = (cwd, d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { cwd, env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
+const bgAsync = (d, extra, sub, ...args) => bgAt(lockRoot, d, extra, sub, ...args);
 
 await check(`wait exits ${PAUSED_EXIT} at once when the pause file is present — the pause line, then the one-pass report without "wait again"; the job is not signalled`, async () => {
   assert.equal(PAUSED_EXIT, 76);
@@ -632,9 +634,44 @@ await check('--help: wait\'s default --max 300 or --until, the five-minute rule,
   assert.ok(h.stdout.includes('wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait'), 'the rule, verbatim');
   assert.match(h.stdout, /timeout longer than the wait/);
   assert.match(h.stdout, /76 \(wait\) the pause file is present — stop waiting, finish the iteration and return/);
+  assert.ok(h.stdout.includes("77 (wait) the runner's wake file grew — a background agent finished: act on it, then wait again"), 'exit 77');
 });
 await check('the paused-on job ends on its own, unsignalled (exit 0)', () => {
   const w = bgIn(pd, {}, 'wait', '--max', '30', 'p1'); assert.equal(w.code, 0, w.out); assert.match(w.out, /^p1 {2}done exit=0/m);
+});
+
+// ---- the wake file (stardust/.labs/wake, from the cwd) --------------------------------------------------------------
+// The runner appends a line whenever a background agent finishes: a wait that sees the file grow ends with exit 77.
+const wp = join(lockRoot, 'wake-proj'); const wd = join(wp, 'bg'); const WAKE = join(wp, WAKE_FILE);
+mkdirSync(dirname(WAKE), { recursive: true });
+const startRunning = async (name, ms) => {
+  assert.equal((await bgAt(wp, wd, {}, 'start', '--name', name, '--slots', '9', '--', process.execPath, '-e', `setTimeout(()=>{},${ms})`)).code, 0);
+  for (let i = 0; i < 50 && !stateIn(wd, name).launchedAt; i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
+};
+await check(`wait exits ${WAKE_EXIT} within a poll when the wake file in the cwd grows mid-wait — the wake: line (its last non-empty line, folded), then the report, the job still running; a file that does not grow wakes nothing, a shrunk one lowers the size to beat`, async () => {
+  assert.equal(WAKE_EXIT, 77); await startRunning('wk', 10000);
+  writeFileSync(WAKE, 'agent a finished\n');
+  const still = await bgAt(wp, wd, {}, 'wait', '--max', '1', 'wk');
+  assert.equal(still.code, STILL_RUNNING_EXIT, still.out); assert.doesNotMatch(still.out, /^wake:/m, 'present from the start, not growing');
+  const waiting = bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk');
+  await sleep(800);
+  appendFileSync(WAKE, '  unit  hero\tfinished  \n\n'); const wrote = Date.now();
+  const r = await waiting; const lines = r.out.trim().split('\n');
+  assert.equal(r.code, WAKE_EXIT, r.out + r.err); assert.ok(r.at - wrote < 1500, `ended ${r.at - wrote} ms after the append`); assert.equal(r.err, '');
+  assert.equal(lines[0], 'wake: unit hero finished'); assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)'); assert.match(lines[2], /^wk {2}running \d+s$/);
+  assert.match(lines.at(-1), /^run-bg: 0\/1 ended, 1 still going — woken \(a background agent finished\): run `wait` again as your next step; logs: /);
+  const shrink = bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk'); // a shrunk file lowers the size to beat: a shorter line then wakes
+  await sleep(800); writeFileSync(WAKE, ''); await sleep(400); appendFileSync(WAKE, 'short\n');
+  const s = await shrink; assert.equal(s.code, WAKE_EXIT, s.out); assert.equal(firstLine(s.out), 'wake: short');
+});
+await check('every job ended in the poll that sees the wake file grown: exit 0 wins — woken null (per poll: pause, ended, wake, bound)', async () => {
+  await startRunning('we', 1000);
+  const waiting = wait(wd, ['we'], { maxSec: 20, wakeFile: WAKE }); // in-process: polls every 2 s, so both land in one poll
+  for (let i = 0; i < 100 && !stateIn(wd, 'we').endedAt; i += 1) await sleep(20); // eslint-disable-line no-await-in-loop
+  appendFileSync(WAKE, 'agent c finished\n');
+  const r = await waiting;
+  assert.equal(r.woken, null, r.text); assert.equal(r.pending, 0); assert.doesNotMatch(r.text, /wake:/); assert.match(r.text, /all 1 ended/);
+  assert.equal((await bgAt(wp, wd, {}, 'wait', '--max', '30', 'wk')).code, 0, 'wk ends on its own');
 });
 
 rmSync(dir, { recursive: true, force: true });
