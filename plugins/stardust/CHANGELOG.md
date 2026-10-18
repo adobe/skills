@@ -36,6 +36,10 @@ contract recorded a body-hydration state as a panel and cost two sessions and ei
 - **Dead font declarations do not count.** An `@font-face` whose every requested src answered 404, beside a face of its
   family that loaded, is `fontsDead` with one stdout line, not a `FONT LOAD FAILED` warning or a `font-not-loaded` row
   reason; a family with no loaded face renders fallback type and still counts.
+- **C-final re-captures only what changed.** Under `--skip-existing`, gate-all keeps a page's EDS capture from its
+  unit gate on the preview host when the final roster gate measures the live host and both gate keys are known and
+  equal but for the build host (the delivered document, the chrome documents and every code hash unchanged since that
+  gate): `reused build capture (unchanged since <ts>)`, the row's `buildReused`, its `host` the one the pixels came from.
 - **chrome-explore's pollution guard.** Every top-level open state is sampled again on a fresh page; a repeat that
   differs by more than `--bar` (default 0.02) marks the state `unstable` and is re-sampled once. The contract's header
   records `stability`; `unstableAsWarn` turns chrome-compare's errors on an unstable source state into warnings

@@ -147,7 +147,13 @@
  * contentSha), else null with the reason in the run log (a frozen-file edit since the freeze: null until re-frozen).
  * A PASS row whose key holds, from a table written under the same criteria, is reused whole (no stitch, probe or
  * compare). The EDS side is re-shot unless gate-key.json holds the same known key — or, the key unknown now, the
- * same parts, reason, upstream commit and ledger rows; a dir without gate-key.json (legacy) is re-shot once. A
+ * same parts, reason, upstream commit and ledger rows; a dir without gate-key.json (legacy) is re-shot once. C-FINAL
+ * REUSE: the unit gates measure the preview host and the final roster gate the live host (--eds-host), so every key
+ * differs by build.origin; a stored key and a current key that are both known (each host proven to serve the hashed
+ * tree — the live tier only by `live` ledger rows) and equal but for build.origin keep the EDS capture
+ * (sameTreeOtherHost): logged `eds <slug> → reused build capture (unchanged since <ts>) — taken on <host>, the same
+ * tree <host> serves`, the row's `buildReused` { host, at } and `host` the one the pixels came from; gate-key.json
+ * keeps the gate that took it, so a full-site C-final re-captures only the pages whose document or code changed. A
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
  *
@@ -292,8 +298,11 @@ Usage: node gate-all.mjs [options]   (from the project root)
                             re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
                             only while <slug>/gate-key.json proves it current (same key, or unknown
-                            key with the same tree, reason, upstream, ledger rows); no local
-                            content/<page>.html → nothing to compare → re-shot every run (slower)
+                            key with the same tree, reason, upstream, ledger rows) — or a key that
+                            differs only by the build host, both known (the final roster gate on the
+                            live host keeps the preview-host unit gate's capture of the same tree:
+                            "reused build capture (unchanged since <ts>)", the row's buildReused and
+                            host); no local content/<page>.html → nothing to compare → re-shot every run (slower)
   --recapture-eds           re-shoot eds.png only; the origin is reused while fresh (always with --skip-existing)
   --recapture-origin        re-shoot origin.png even when fresh (previous kept on failure)
   --origin-max-age <h>      also reuse origin captures from earlier runs up to <h> hours old (env
@@ -1078,6 +1087,18 @@ export function keyChanged(stored, current) {
   return !same;
 }
 /**
+ * sameTreeOtherHost(stored, current) — may --skip-existing keep a page's EDS capture taken on another build host (the
+ * unit gates measure the preview host, the final roster gate the live host)? Only when both keys are known — the gate
+ * that took it proved its host served the hashed tree, this run proves the gated host serves it — and the parts are equal
+ * but for build.origin: the delivered content document (and the chrome documents), every code hash (foundation, runtime,
+ * shared and page blocks), the source, width, settings, sidecars and instruments. Pure.
+ */
+export function sameTreeOtherHost(stored, current) {
+  if (!stored || !current || !stored.gateKey || !current.gateKey || !stored.parts || !current.parts || !stored.parts.build || !current.parts.build) return false;
+  const bare = (parts) => canon({ ...parts, build: { ...parts.build, origin: null } });
+  return stored.parts.build.origin !== current.parts.build.origin && bare(stored.parts) === bare(current.parts);
+}
+/**
  * --skip-existing reuse of one side's capture: on disk, not that side's --recapture-*, for EDS not a changed key, not a
  * capture taken with another hide list or another --dismiss list, not a stitched one whose record predates the
  * overlay-left check. ctx = { opts, has(p, side), keyChanged(p), hideChanged(p, side), dismissChanged(p, side), unchecked(p, side) }.
@@ -1645,7 +1666,14 @@ async function main() {
   async function captureEds(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
-    if (skipCapture(p, 'eds', capCtx)) { rec(p, 'eds', readJson(meta)); return; }
+    if (skipCapture(p, 'eds', capCtx)) {
+      const m = readJson(meta);
+      if (!otherHost(p)) { rec(p, 'eds', m); return; }
+      // C-final reuse: the capture of another host's gate, the same tree (the row's host stays the one the pixels came from)
+      const host = rowHost(p, m);
+      log(`eds ${p.slug} → reused build capture (unchanged since ${m.at}) — taken on ${host}, the same tree ${hostOf(p)} serves`);
+      rec(p, 'eds', { ...m, buildReused: { host, at: m.at } }); return;
+    }
     logNotKept(p, 'eds');
     const t0 = new Date().toISOString(); const hide = hideOf(p);
     const s = await stitch(p, 'eds', edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }, OL ? ['--headed'] : []);
@@ -1677,7 +1705,9 @@ async function main() {
   }
   const storedKey = (p) => readSafe(join(dir(p), 'gate-key.json'));
   const currentKey = (p) => (KEYS[p.slug] ? KEYS[p.slug].gateKey : null);
-  const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), KEYS[p.slug]),
+  // a key that differs only by the build host, both known (sameTreeOtherHost), keeps the EDS capture: the same tree
+  const otherHost = (p) => opts.stage === 'published' && sameTreeOtherHost(storedKey(p), KEYS[p.slug]);
+  const capCtx = { opts, has: (p, side) => existsSync(join(dir(p), `${side}.png`)) && existsSync(join(dir(p), `${side}.json`)), keyChanged: (p) => keyChanged(storedKey(p), KEYS[p.slug]) && !otherHost(p),
     // a stitched capture records the hide list it was taken with (absent = none); a crawl shot can hide nothing
     hideChanged: (p, side) => { const m = readSafe(join(dir(p), `${side}.json`)); return !!m && m.instrument === 'stitch-live' && !sameHide(m.hide, hideOf(p)); },
     // and the --dismiss list (absent = none) — a crawl shot dismissed nothing either
@@ -1851,7 +1881,7 @@ async function main() {
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: ((CLIP_ALLOW[p.slug] || {}).max || 0) + ca.n, capture: { polluted: capturePollution(r.origin, r.eds, { hide: hideOf(p), dismiss: dismissOf(p), pin: pinOf(p), allowDialog: capOf(p).allowDialog }), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
-      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...missField(r.origin && r.origin.hideMiss),
+      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(r.eds && r.eds.buildReused ? { buildReused: r.eds.buildReused } : {}), ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...missField(r.origin && r.origin.hideMiss),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null, ...(ca.n ? { clipAllowed: ca } : {}),
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,

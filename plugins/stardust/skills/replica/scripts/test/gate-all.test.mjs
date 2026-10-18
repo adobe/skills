@@ -70,6 +70,9 @@
 // verdicts), pin / per-visitor-dialog reach both stitches and a capture without them is re-shot, a clip allowance passes
 // the findings under its selector (clipAllowed); the build side's "hide matched nothing" is an info line. The trust
 // sandbox: a dialog left open on either side (STUB_DIALOG_*) → INCONCLUSIVE, and never kept by a fix round.
+// C-final reuse (the reuse sandbox): a --skip-existing run on the live host keeps the preview-host gate's EDS capture while
+// both keys are known and differ only by the build host (logged, the row's buildReused); a changed document, or a live
+// host not proven to serve it, re-shoots.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -968,6 +971,37 @@ check('fix rounds: an --only --skip-existing row reused whole is no round (round
   assert.equal(measured.row.round, 1); assert.deepEqual(JSON.parse(readFileSync(pageFile('home', 'rounds.json'), 'utf8')), { rounds: 1, max: 3, at: [measured.doc._provenance.writtenAt] });
   assert.match(measured.log, /rounds @1440: home 1\/3$/m);
 });
+// C-final reuse: the unit gates measure the preview host, the final roster gate the live host (--eds-host). Under
+// --skip-existing a page's EDS capture is kept across that host change while both keys are known (each host provably
+// serves the hashed tree) and the parts are equal but for build.origin — the delivered document and every code hash.
+check('C-final reuse: a --skip-existing run on the live host keeps each page\'s EDS capture from its preview-host gate while only the build origin differs — logged "reused build capture (unchanged since <ts>)", the row says so and keeps the host the pixels came from; a page whose document changed is re-shot, and so is one the live host is not proven to serve', () => {
+  const LIVE = 'https://main--site--org.aem.live'; const PREVIEW = 'https://main--site--org.aem.page';
+  let a = gateAll(['--skip-existing']);
+  assert.equal(a.status, 0, a.stderr);
+  const at = (slug) => JSON.parse(readFileSync(pageFile(slug, 'eds.json'), 'utf8')).at;
+  const before = { home: at('home'), about: at('about') };
+  a = gateAll(['--skip-existing', '--eds-host', LIVE]);
+  assert.equal(a.status, 0, a.stderr); assert.equal(a.n.eds, 0, 'no EDS stitch: the same tree');
+  for (const slug of ['home', 'about']) {
+    assert.ok(a.stdout.includes(`eds ${slug} → reused build capture (unchanged since ${before[slug]}) — taken on ${PREVIEW}, the same tree ${LIVE} serves`), a.stdout);
+    const x = row(summary(), slug); assert.deepEqual([x.host, x.buildReused, x.gateKey], [PREVIEW, { host: PREVIEW, at: before[slug] }, null]);
+  }
+  const ledger = readFileSync(join(reuseRoot, 'content/.deploy-ledger.json'), 'utf8'); const aboutDoc = readFileSync(join(reuseRoot, 'content/about.html'), 'utf8');
+  try {
+    put('content/about.html', '<main><div><div class="cards"></div><p>new copy</p></div></main>');
+    const l = JSON.parse(ledger); l['/about'] = { ...l['/about'], contentSha: sha('content/about.html'), ts: '2026-01-02T00:00:00.000Z' }; put('content/.deploy-ledger.json', JSON.stringify(l));
+    const b = gateAll(['--skip-existing', '--eds-host', LIVE]);
+    assert.equal(b.status, 0, b.stderr); assert.equal(b.n.eds, 1, 'about only');
+    assert.match(b.stdout, /eds home → reused build capture/); assert.doesNotMatch(b.stdout, /eds about → reused build capture/);
+    assert.equal(row(summary(), 'about').host, LIVE); assert.equal('buildReused' in row(summary(), 'about'), false);
+    const m = JSON.parse(ledger); m['/index'] = { ...m['/index'], status: 'previewed' }; put('content/.deploy-ledger.json', JSON.stringify({ ...l, '/index': m['/index'] }));
+    const c = gateAll(['--skip-existing', '--eds-host', LIVE]);
+    assert.equal(c.n.eds >= 1, true); assert.doesNotMatch(c.stdout, /eds home → reused build capture/, 'the live host is not proven to serve the document: no reuse');
+  } finally {
+    put('content/about.html', aboutDoc); put('content/.deploy-ledger.json', ledger);
+  }
+});
+
 rmSync(base, { recursive: true, force: true });
 
 // ---- origin reuse: the pure deciders, --origin-max-age, the pool budgets ----------------------------------
