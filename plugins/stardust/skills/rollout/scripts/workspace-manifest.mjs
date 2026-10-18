@@ -43,8 +43,9 @@
  * it degraded with the inputs that differ from the last manifest before it.
  *
  * Exit 0 written or unchanged, 1 coverage missing, without formatVersion, stale or unreadable,
- * 2 usage, or written (or unchanged) without handover because mapping.json is missing while captures
- * exist, 3 handed over.
+ * 2 usage, or mapping.json missing while captures exist (the manifest written or unchanged without handover —
+ * a handover a forced run recorded is kept; the `missing:` line on stderr tells it from a usage error),
+ * 3 handed over.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';

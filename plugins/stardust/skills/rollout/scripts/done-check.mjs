@@ -309,16 +309,16 @@ export const EXPORT_REMEDY = 're-run inventory.mjs + blocks.mjs, then block-orig
  * could not be computed (unchecked is a gap); `mapping` = mapping.json (null: absent; not an object: unreadable);
  * `pagesGeneratedAt` = pages.json generatedAt; `captures` = a capture exists; `handedOver` = why a client owns the
  * export now (handover.json, or a manifest recording one), else null — then nothing is judged and a skipped line
- * says so. Causes, joined by `; `: no manifest; manifest hashes that differ from the tree (content by files and
+ * says so. `treeError` names why the tree could not be read (an unreadable file), shown in the unchecked cause. Causes, joined by `; `: no manifest; manifest hashes that differ from the tree (content by files and
  * sha256 — git tracking is not a hash); mapping.json missing while captures exist, unreadable, or with a generatedAt
  * other than pages.json's. Pure.
  */
-export function exportGap({ listed: judged = false, manifest = null, tree = null, mapping = null, pagesGeneratedAt = null, captures = false, handedOver = null, dir = 'stardust/rollout/workspace' } = {}) {
+export function exportGap({ listed: judged = false, manifest = null, tree = null, treeError = null, mapping = null, pagesGeneratedAt = null, captures = false, handedOver = null, dir = 'stardust/rollout/workspace' } = {}) {
   if (!judged) return { gap: null, skipped: [] };
   if (handedOver) return { gap: null, skipped: [`export_stale: handed over (${handedOver}) — stardust no longer writes the export`] };
   const why = [];
   if (!isMap(manifest)) why.push(`no ${dir}/manifest.json`);
-  if (!tree) why.push('unchecked (workspace-manifest.mjs not found beside done-check.mjs)');
+  if (!tree) why.push(`unchecked (${treeError || 'workspace-manifest.mjs not found beside done-check.mjs'})`);
   else if (isMap(manifest)) {
     const norm = (k, v) => JSON.stringify(k === 'content' && isMap(v) ? [v.files, v.sha256] : v ?? null);
     const differ = (was = {}, now = {}) => [...new Set([...Object.keys(isMap(was) ? was : {}), ...Object.keys(now)])]
@@ -402,23 +402,28 @@ async function exportState({ out, config, pagesDoc }) {
   const ws = join(out, 'workspace');
   const isFile = (f) => { try { return statSync(f).isFile(); } catch { return false; } };
   const manifest = readJSON(join(ws, 'manifest.json'));
-  const handedOver = isFile(join(ws, 'handover.json')) ? join(ws, 'handover.json')
+  // the marker as workspace-manifest.mjs reads it: any entry at that path
+  const handedOver = existsSync(join(ws, 'handover.json')) ? join(ws, 'handover.json')
     : isMap(manifest) && manifest.handover ? `${join(ws, 'manifest.json')} records one` : null;
   let wm = null;
   try { wm = await import(pathToFileURL(join(HERE, 'workspace-manifest.mjs')).href); } catch { wm = null; }
   const project = resolve('.');
   const rel = (abs) => relative(project, abs).split(sep).join('/');
   let tree = null;
+  let treeError = null;
   if (wm && typeof wm.inputHashes === 'function') {
-    const { inputs } = wm.inputHashes({ project, contentDir: resolve('content'), blocksDir: resolve('blocks'), judgementFile: resolve(ws, 'judgement.json') });
-    const files = [...['pages', 'templates', 'blocks'].map((n) => resolve(out, 'coverage', `${n}.json`)), resolve(ws, 'mapping.json')];
-    tree = { inputs, outputs: Object.fromEntries(files.filter(isFile).map((f) => [rel(f), sha256(readFileSync(f))])) };
+    try {
+      const { inputs } = wm.inputHashes({ project, contentDir: resolve('content'), blocksDir: resolve('blocks'), judgementFile: resolve(ws, 'judgement.json') });
+      const files = [...['pages', 'templates', 'blocks'].map((n) => resolve(out, 'coverage', `${n}.json`)), resolve(ws, 'mapping.json')];
+      tree = { inputs, outputs: Object.fromEntries(files.filter(isFile).map((f) => [rel(f), sha256(readFileSync(f))])) };
+    } catch (e) { treeError = e.message; }
   }
   const mappingFile = join(ws, 'mapping.json');
   return exportGap({
     listed,
     manifest,
     tree,
+    treeError,
     mapping: isFile(mappingFile) ? readJSON(mappingFile, 'unreadable') : null,
     pagesGeneratedAt: (pagesDoc && pagesDoc.generatedAt) ?? null,
     captures: !!(wm && typeof wm.hasCaptures === 'function' && wm.hasCaptures(resolve('stardust', 'current', 'pages'))),

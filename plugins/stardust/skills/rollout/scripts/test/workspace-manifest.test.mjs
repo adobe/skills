@@ -228,6 +228,21 @@ check('mapping required: with mapping.json the manifest carries handover null an
   assert.equal(doc(moved, 'manifest.json').handover, null, 'no capture under the default dir: no mapping needed');
 });
 
+check('round trip: the export as the skill runs it (block-origin.mjs --verify, then this script) is fresh to done-check.mjs; a block file changed after it is export_stale naming that file; the three commands make it fresh again', () => {
+  const dir = withCaptures('round-trip');
+  editJSON(join(dir, 'stardust', 'rollout', 'rollout.json'), (c) => { c.exports = ['migration-workspace']; });
+  ok(node(dir, 'block-origin.mjs', '--verify'));
+  ok(run(dir));
+  const exportGaps = () => { const r = node(dir, 'done-check.mjs', '--offline', '--json'); return JSON.parse(r.stdout).gaps.filter((g) => g.startsWith('export_stale')); };
+  assert.deepEqual(exportGaps(), []);
+  editText(join(dir, 'blocks', 'hero', 'hero.css'), '}', '}\n.hero { margin: 1px; }');
+  assert.deepEqual(exportGaps(), ['export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — re-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs']);
+  rebuild(dir);
+  ok(node(dir, 'block-origin.mjs', '--verify'));
+  ok(run(dir));
+  assert.deepEqual(exportGaps(), []);
+});
+
 check('mapping required: --allow-no-mapping keeps the manifest as before (handover null, exit 0) with captures present', () => {
   const dir = withCaptures('allow-no-mapping');
   const r = run(dir, '--allow-no-mapping');

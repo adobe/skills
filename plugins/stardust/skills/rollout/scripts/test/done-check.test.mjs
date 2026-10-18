@@ -662,6 +662,7 @@ check('export_stale: names each cause — no manifest, hashes that differ from t
   assert.equal(exportGap({ ...FRESH, mapping: 'not json' }).gap, `export_stale:${WS}/mapping.json unreadable — ${REMEDY}`);
   assert.equal(exportGap({ ...FRESH, mapping: { generatedAt: 'T0' } }).gap, `export_stale:${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`);
   assert.equal(exportGap({ ...FRESH, tree: null }).gap, `export_stale:unchecked (workspace-manifest.mjs not found beside done-check.mjs) — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, tree: null, treeError: 'EACCES: permission denied, open \'content/index.html\'' }).gap, `export_stale:unchecked (EACCES: permission denied, open 'content/index.html') — ${REMEDY}`);
   assert.equal(exportGap({ ...FRESH, manifest: null, mapping: { generatedAt: 'T0' } }).gap, `export_stale:no ${WS}/manifest.json; ${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`, 'causes joined in one line');
 });
 
