@@ -249,7 +249,8 @@ const bgIn = (d, extra, sub, ...args) => { const r = spawnSync(process.execPath,
 const stateIn = (d, name) => JSON.parse(readFileSync(join(d, `${name}.json`), 'utf8'));
 const logIn = (d, name) => readFileSync(join(d, `${name}.log`), 'utf8');
 const locks = () => (existsSync(LOCKS) ? readdirSync(LOCKS) : []);
-// A job that prints the slot it runs in (holder files in the lock dir, the env its children see), then holds it.
+// A job that prints the slot it runs in (holder files in the lock dir, the env its children see), then holds it. Match its
+// line from `^holders `: the wrapper's `run-bg: <job> launched …` line echoes this source text, slots= and slot= included.
 const SLOT_JOB = (ms) => `const fs=require('fs'),d=process.env.STARDUST_BROWSER_LOCK_DIR;console.log('holders '+(fs.existsSync(d)?fs.readdirSync(d).length:0)+' perSlot='+(process.env.STARDUST_BROWSERS_PER_SLOT||'')+' slots='+process.env.STARDUST_BROWSER_SLOTS+' slot='+(process.env.STARDUST_BROWSER_SLOT||''));setTimeout(()=>{},${ms})`;
 // The most [launchedAt, endedAt] intervals open at one instant (an end before a start at the same ms).
 const peak = (sts) => { let n = 0; let m = 0; for (const [, d] of sts.flatMap((s) => [[Date.parse(s.launchedAt), 1], [Date.parse(s.endedAt), -1]]).sort((a, b) => a[0] - b[0] || a[1] - b[1])) { n += d; m = Math.max(m, n); } return m; };
@@ -296,7 +297,7 @@ await check('three --lock jobs from three run-bg dirs under STARDUST_BROWSER_SLO
 });
 await check('a slot-holding job runs with STARDUST_BROWSER_SLOTS=0 (its children take no second slot) and STARDUST_BROWSER_SLOT = its slot file in the lock dir', () => {
   for (const [i, d] of dirs3.entries()) {
-    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/ slots=(\S*) slot=(\S*)$/m);
+    const st = stateIn(d, `b${i}`); const m = logIn(d, `b${i}`).match(/^holders \d+ perSlot=\S* slots=(\S*) slot=(\S*)$/m);
     assert.ok(m, `b${i} printed its slot`); assert.equal(m[1], '0'); assert.equal(m[2], st.lockFile); assert.equal(dirname(m[2]), LOCKS, m[2]);
   }
 });
@@ -384,7 +385,7 @@ await check('--no-lock, an unclassified command and STARDUST_BROWSER_SLOTS=0 tak
     assert.equal(bg('wait', '--max', '20', 'nl', 'plain', 'auto', 'off').code, 0);
     for (const n of ['nl', 'plain', 'off']) {
       const st = state(n); const log = readFileSync(join(dir, `${n}.log`), 'utf8');
-      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, / perSlot= slots=\S* slot=$/m, n);
+      assert.equal(st.exit, 0, `${n}: ${log}`); assert.equal(st.lockFile ?? null, null, n); assert.match(log, /^holders \d+ perSlot= slots=\S* slot=$/m, n);
     }
     assert.equal(state('auto').exit, 124, 'stitch-shot.mjs in the argv asks for a slot by default');
     assert.equal(state('auto').lockTimeout, true);
