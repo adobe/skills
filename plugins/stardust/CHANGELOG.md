@@ -4,6 +4,30 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — the migration export is required, fresh, and counted once (#NNN)
+
+In every recorded hands-off run the agent drafted the judgement and wrote the manifest but never ran
+`block-origin.mjs --verify`: the export step called both scripts opt-in and read as optional, so no `mapping.json`
+reached the migration tool. In one run gap-closure fixes landed after the export was written; the manifest's own
+freshness check caught it, and nothing re-ran it. done-check counted the same header findings twice.
+
+- **The export is required once listed.** When `rollout.json` `exports` lists `migration-workspace`, rollout's
+  Phase I runs the judgement draft once, then three commands in order, each required: `inventory.mjs` +
+  `blocks.mjs`, `block-origin.mjs --verify`, `workspace-manifest.mjs`. `mapping.json` is part of the export
+  (`reference/coverage-contract.md`); the "opt-in" wording is gone for both scripts.
+- **workspace-manifest.mjs refuses to call an export without its mapping ready.** When the capture dir
+  (`--captures`, default `stardust/current/pages`) holds a capture and `workspace/mapping.json` is absent, the
+  manifest is written without `handover`, `missing: stardust/rollout/workspace/mapping.json — run block-origin.mjs
+  --verify first` goes to stderr and the exit is 2; `--json` carries `missing[]`. `--allow-no-mapping` keeps the
+  manifest as before; a project without captures needs no mapping. The manifest schema makes `handover` optional
+  (absent = not ready to hand over).
+- **done-check gains `export_stale:<why>`** (export listed, not handed over): no manifest; manifest input or output
+  hashes that differ from the tree; `mapping.json` missing while captures exist, unreadable, or with another
+  `generatedAt` than `pages.json`. One line, the three commands as the remedy; a handed-over export is a `skipped:`
+  line. The handoff contract's gap-closure exit re-runs the export before `handoff end` when an input changed.
+- **Header gaps counted once.** `header_parity_errors` is left out when `header_parity` already names the same
+  undecided errors; for another `header_parity` cause it stays.
+
 ## 0.36.0 — local integration for the next recorded run (not a release)
 
 A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,
