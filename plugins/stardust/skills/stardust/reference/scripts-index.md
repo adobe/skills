@@ -26,7 +26,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `deploy/section-schema.mjs` — section roles — `<protoURL> [--out <f>]`
 - `deploy/stage-content.mjs` — encoded → content/ — `--template <a>|--paths <f> [--record]`
 - `deploy/style-fingerprint.mjs` — variant groups — `"file:///abs/<proto>.html"`
-- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json); exit 2 = undecided error
+- `diff/chrome-compare.mjs` — header parity vs contract — `<contract> <build> [--profile replica|functional] [--json f] [--hide <sel,…>] [--slug <s> [--presence <json>]] [--state f]` (+ site presence.json); exit 2 = undecided error; `decide <key> --decision d --reason r` (hands-off only)
 - `diff/chrome-explore.mjs` — the header used: open states, close paths, motion, scroll — `<url> <out.json> [--width 1440,390] [--hide <sel,…>] [--slug <s> [--presence <json>]]` (+ site presence.json)
 - `diff/clip-probe.mjs` — text/controls cut or hidden by an overflow ancestor — `<url> [--width 1440] [--json [f]] [--advisory] [--hide <sel,…>]`; exit 2 = clipped > 0
 - `diff/content-diff.mjs` — structure + attribute/icon diff, main + chrome — `<protoURL> <edsURL> [--main <sel,…>] [--no-chrome] [--profile generic] [--json] [--live-cache <json>] [--hide <sel,…>]`
