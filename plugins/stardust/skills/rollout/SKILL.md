@@ -236,27 +236,33 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, stop and prove the foundation before
-authoring any second page: run the stardust `diff` skill (both probes) against its
+authoring any sibling page of that template: run the stardust `diff` skill (both probes) against its
 prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe). Its probes run against the preview URL, never a
-harness (step 1). A wrong runtime assumption (block wrapper class,
-button classes) is silent and sitewide — typography still looks fine while
-every grid stacks. The same gate runs `qa.mjs --checks metadata`
+harness (step 1). The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
 (deploy Step 3 § Favicon) — recorded first passes served the boilerplate
 icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
-the foundation is three recorded units run one after another — `foundation-chrome`
-(header + footer blocks, the chrome documents), `foundation-styles` (styles, fonts,
-favicon, scripts, `stardust/runtime-contract.json`),
-then `archetype-<template>` of the shell template — each its own `progress.json`
-entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
-ask; the foundation sub-units close on their own lint and `.plain.html` checks, this
-gate runs once, on that archetype page (a failing check reopens the sub-unit owning its files:
-`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze` runs once it
-passes (handoff contract § 3, row C). **Archetype first, per template (#126):** the
+the foundation is three recorded units — `foundation-chrome` (header + footer
+blocks, the chrome documents) and `foundation-styles` (styles, fonts, favicon,
+scripts, `stardust/runtime-contract.json`) may run in parallel (disjoint files);
+`archetype-<template>` of the shell template may convert its blocks and write its
+document meanwhile, but deploys only once `foundation-styles` is `done` and is
+gated only once header, footer, styles and fonts are deployed — each its own
+`progress.json` entry, a subagent that returns one verdict line, a checkpoint
+commit and a boundary ask. While another C0 subagent runs, a checkpoint stages
+and commits only its own paths (its frozen-set files, its chrome documents,
+`stardust/runtime-contract.json`, `stardust/rollout/progress.json`, any other
+file only it wrote — the favicon, `stardust/rollout/chrome-map.json`), never
+`git add -A`, which sweeps in the other's half-written files. The foundation
+sub-units close on their own lint and `.plain.html` checks, this gate runs once,
+on that archetype page (a failing check reopens the sub-unit owning its files:
+`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze`
+runs once it passes, before any sibling page is authored or any other unit
+starts (handoff contract § 3, row C). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds, stop at PASS — `reference/delivery-gates.md`
 § Iteration discipline) before any of its siblings is rendered
