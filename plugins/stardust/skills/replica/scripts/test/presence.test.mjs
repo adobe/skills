@@ -14,6 +14,10 @@
 // --verify with the right selector verifies once the bar arrives and writes; the old wrong selector exits 2 naming
 // the wrapper (hideMissLine) with the file untouched; suggest lists the wrapper, the add line, and warns on a stale
 // "*".hide selector; a bot challenge exits 3, an HTTP error 1. Prints a skip line otherwise.
+// A refused add --verify suggests (missSuggestLines, pure: per missed selector the top three of its kind with the add
+// command carrying the call's flags, shell-quoted; an allowance has none); e2e the hide miss prints the block after
+// hideMissLine, and a --dismiss miss on a fixed consent-style banner the default dismissal leaves lists its controls
+// ranked, the first printed command run verbatim verifies and writes.
 // Capture settings: add --dismiss / --pin --state / --allow <kind>=<sel> --reason store dismiss / pin / allow per key
 // (idempotent; a new state or reason replaces), a per-visitor-dialog allow needs its container hidden for the page, the
 // usage refusals, a malformed field refused; captureSettings ("*" then the slug, lenient) and clipAllowed (whole path
@@ -26,7 +30,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, captureSettings, clipAllowed, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
+import { DEFAULT_FILE, InputError, UNVERIFIED, applyHide, captureSettings, clipAllowed, missSuggestLines, pollSelectors, shellArg, suggestLines, writeAtomic } from '../presence.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'presence.mjs');
@@ -60,7 +64,7 @@ check('--help: usage, inputs, outputs and exit codes on stdout; no import, no fi
     const r = run(cwd, ['add', flag], { script: join(lone, 'presence.mjs') });
     assert.equal(r.code, 0, r.err);
     assert.match(r.out, /Usage:/);
-    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', 'suggest <url> [--width 1440]', '--verify <url>', '--wait-ms', '--headed', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', UNVERIFIED, 'hide matched nothing on live — candidates:', 'none found above the header', 'Exit codes', '3 bot challenge']) assert.ok(r.out.includes(s), `--help names ${s}`);
+    for (const s of ['add --hide', 'seed [--run stardust/.labs/run.json]', 'suggest <url> [--width 1440]', '--verify <url>', '--wait-ms', '--headed', '--slug', '--reason <R-nn>', '--file', DEFAULT_FILE, 'STARDUST_SITE_OVERLAYS', 'unchanged', 'nothing to seed', UNVERIFIED, 'hide matched nothing on live — candidates:', 'top candidates for --<kind> <sel>:', 'no <kind> candidate found', 'none found above the header', 'Exit codes', '3 bot challenge']) assert.ok(r.out.includes(s), `--help names ${s}`);
     assert.equal(r.err, '');
   }
   assert.deepEqual(listing(cwd), []);
@@ -363,6 +367,41 @@ check('suggestLines: one "<selector>  <tag>  <h>px" line per candidate in order,
   assert.equal(shellArg("div[data-x='a b']"), "'div[data-x='\\''a b'\\'']'");
 });
 
+check('missSuggestLines: per missed selector in call order, the top three of its kind, each with the exact add command carrying the call\'s flags', () => {
+  const url = 'https://www.example.com/';
+  const at = `presence: suggest on ${url} @`;
+  const ctl = (selector, text, role = 'button') => ({ selector, text, role });
+  const dismiss = [ctl('button[aria-label="Close notice"]', '×'), ctl('#notice button.primary', 'Say "hi"'), ctl("a[title=\"it's\"]", 'Privacy', 'link'), ctl('#fourth', 'never printed')];
+  // dismiss: --slug / --reason / --width carried, --file only off the default, at most three, selectors with spaces and
+  // quotes shell-quoted, text JSON-quoted
+  assert.deepEqual(missSuggestLines([{ kind: 'dismiss', selector: 'button.not-there' }], { dismiss }, { url, width: 390, slug: 'home', reason: 'R-07', file: DEFAULT_FILE }), [
+    `${at} 390px — top candidates for --dismiss button.not-there:`,
+    'presence:   button[aria-label="Close notice"]  "×"  button',
+    `presence:     presence.mjs add --dismiss 'button[aria-label="Close notice"]' --slug home --reason R-07 --verify ${url} --width 390`,
+    'presence:   #notice button.primary  "Say \\"hi\\""  button',
+    `presence:     presence.mjs add --dismiss '#notice button.primary' --slug home --reason R-07 --verify ${url} --width 390`,
+    'presence:   a[title="it\'s"]  "Privacy"  link',
+    `presence:     presence.mjs add --dismiss 'a[title="it'\\''s"]' --slug home --reason R-07 --verify ${url} --width 390`,
+  ]);
+  // pin carries --state; --file off the default, --wait-ms when given, --headed
+  assert.deepEqual(missSuggestLines([{ kind: 'pin', selector: '.dot-9' }], { pin: [ctl('#hero button.next', 'Next slide')] }, { url, state: 'slide 1', file: 'out/p.json', waitMs: 2000, headed: true }), [
+    `${at} 1440px — top candidates for --pin .dot-9:`,
+    'presence:   #hero button.next  "Next slide"  button',
+    `presence:     presence.mjs add --pin '#hero button.next' --state 'slide 1' --file out/p.json --verify ${url} --wait-ms 2000 --headed`,
+  ]);
+  // hide, then allow and a kind with no candidate — blocks in call order, each naming its missed selector
+  const misses = [{ kind: 'hide', selector: '.location-bar' }, { kind: 'dismiss', selector: '.x' }, { kind: 'allow', selector: 'div.card', allowKind: 'clip' }];
+  assert.deepEqual(missSuggestLines(misses, { hide: [ctl('section.bar__wrapper', 'Use the site for your region?', 'region')], dismiss: [] }, { url, waitMs: 0 }), [
+    `${at} 1440px — top candidates for --hide .location-bar:`,
+    'presence:   section.bar__wrapper  "Use the site for your region?"  region',
+    `presence:     presence.mjs add --hide section.bar__wrapper --verify ${url} --wait-ms 0`,
+    `${at} 1440px — no dismiss candidate found for --dismiss .x`,
+    `${at} 1440px — no allow candidate for --allow clip=div.card: an allowance names a recorded finding's selector, so there is nothing to suggest`,
+  ]);
+  assert.deepEqual(missSuggestLines([{ kind: 'pin', selector: '.dot' }], {}, { url, state: 'x' }), [`${at} 1440px — no pin candidate found for --pin .dot`], 'no list read → no candidate');
+  assert.deepEqual(missSuggestLines([], { dismiss }, { url }), []);
+});
+
 await checkAsync('pollSelectors: polls until every selector matched once (a block rendered late is found), the highest count kept; never-matched ones are the misses', async () => {
   const stub = (frames) => { let i = 0; return { looks: () => i, evaluate: async (fn, sels) => { const f = frames[Math.min(i, frames.length - 1)]; i += 1; return sels.map((_, k) => f[k]); }, waitForTimeout: (ms) => new Promise((r) => { setTimeout(r, ms); }) }; };
   // .geo-bar arrives on the third look; .strip matched once and went away — still verified
@@ -502,38 +541,81 @@ else {
   const DELAYED = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} .geo-bar{height:88px;background:#eee} header{height:60px;background:#333;color:#fff}</style></head><body>'
     + '<script>addEventListener(\'load\', () => setTimeout(() => { document.querySelector(\'.bar__wrapper\').innerHTML = \'<div class="geo-bar">Use the site for your region?</div>\'; }, 4000));</script>'
     + '<section class="bar__wrapper"></section><header>Header</header><main><p>Content</p></main></body></html>';
+  // a fixed consent-style banner the default dismissal leaves alone: no label of the consent tables, no dialog role, no
+  // modal / popup marker — its controls are the dismiss candidates; the header link and the in-content button are not
+  // in an overlay, and the off-page link sorts after the controls that stay on the page
+  const CONSENT = '<!doctype html><html><head><style>body{margin:0;font:16px/20px sans-serif} header{height:60px} .cookie-banner{position:fixed;left:0;right:0;bottom:0;padding:16px;background:#fff;border-top:1px solid #ccc}</style></head><body>'
+    + '<header><a href="/home">Home</a></header><main><p>Content</p><button class="cta">Read more</button></main>'
+    + '<div id="site-notice" class="cookie-banner"><p>We use cookies.</p><a href="/privacy">Privacy policy</a>'
+    + '<button class="banner-btn primary">Continue to site</button><button class="banner-btn">Preferences</button>'
+    + '<button class="banner-x" aria-label="Close notice">×</button></div></body></html>';
   const server = createServer((req, res) => {
     if (req.url === '/challenge') { res.writeHead(403, { 'content-type': 'text/html', 'cf-ray': '0-TEST' }); res.end('<html><body>Just a moment…</body></html>'); return; }
     if (req.url === '/missing') { res.writeHead(404, { 'content-type': 'text/html' }); res.end('<html><body>Not found</body></html>'); return; }
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-    res.end(DELAYED);
+    res.end(req.url === '/consent' ? CONSENT : DELAYED);
   });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const base = `http://127.0.0.1:${server.address().port}`;
   const url = `${base}/delayed-bar`;
-  const runAsync = (cwd, args) => new Promise((done) => {
-    const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: baseEnv() });
+  const consentUrl = `${base}/consent`;
+  const collect = (child) => new Promise((done) => {
     let out = ''; let err = '';
     child.stdout.on('data', (d) => { out += d; });
     child.stderr.on('data', (d) => { err += d; });
     child.on('close', (code) => done({ code, out, err }));
   });
+  const runAsync = (cwd, args) => collect(spawn(process.execPath, [SCRIPT, ...args], { cwd, env: baseEnv() }));
+  // a printed `presence.mjs add …` line run as a shell would run it — the quoting is part of what is tested
+  const runPrinted = (cwd, line) => collect(spawn('/bin/sh', ['-c', `${shellArg(process.execPath)} ${shellArg(SCRIPT)} ${line.replace(/^presence\.mjs /, '')}`], { cwd, env: baseEnv() }));
   const seeded = () => { const root = project(); write(root, DEFAULT_FILE, pretty({ '*': { hide: ['.promo'] } })); return root; };
   try {
     const right = seeded(); const wrong = seeded(); const blocked = seeded(); const missing = seeded(); const plain2 = project();
     const stale = project();
     write(stale, DEFAULT_FILE, pretty({ '*': { hide: ['.geo-bar', '.location-bar'] } }));
-    const settled = project(); const unsettled = project();
-    const [okSettings, refusedSettings] = await Promise.all([
+    const settled = project(); const unsettled = project(); const consentMiss = seeded();
+    const [okSettings, refusedSettings, dismissMiss] = await Promise.all([
       runAsync(settled, ['add', '--dismiss', '.geo-bar', '--pin', 'header', '--state', 'at rest', '--verify', url, '--reason', 'R-02']),
       runAsync(unsettled, ['add', '--dismiss', '.geo-bar,.nl-close', '--verify', url, '--wait-ms', '0']),
+      runAsync(consentMiss, ['add', '--dismiss', 'button.not-there', '--verify', consentUrl, '--wait-ms', '0']),
     ]);
     await checkAsync('e2e add --verify with capture settings: every selector of the call polled like a hide (the delayed bar found), written; one that never matches refuses the call — exit 2, named, nothing written', async () => {
       assert.equal(okSettings.code, 0, okSettings.err);
       assert.deepEqual(lines(okSettings.out), [`verified on ${url} @ 1440px: .geo-bar ×1, header ×1`, '*.dismiss: .geo-bar', '*.pin: header → at rest', `wrote ${DEFAULT_FILE}: +2 settings, 2 reasons`]);
       assert.equal(refusedSettings.code, 2, refusedSettings.out);
-      assert.deepEqual(lines(refusedSettings.err), [`presence: dismiss / pin / allow matched nothing on ${url} @ 1440px (.geo-bar, .nl-close)`, `presence: refused — nothing written to ${DEFAULT_FILE}`], '--wait-ms 0: one look, before the bar arrives');
+      assert.deepEqual(lines(refusedSettings.err), [
+        `presence: dismiss / pin / allow matched nothing on ${url} @ 1440px (.geo-bar, .nl-close)`,
+        `presence: suggest on ${url} @ 1440px — no dismiss candidate found for --dismiss .geo-bar`,
+        `presence: suggest on ${url} @ 1440px — no dismiss candidate found for --dismiss .nl-close`,
+        `presence: refused — nothing written to ${DEFAULT_FILE}`,
+      ], '--wait-ms 0: one look, before the bar arrives; the page has no control to suggest');
       assert.deepEqual(listing(unsettled), []);
+    });
+    // the consent banner's controls as a miss lists them: close-like first, then the other controls in the fixed banner in
+    // document order — the off-page link after them; the header link and the in-content button are in no overlay
+    const DISMISS_TOP = [
+      'presence:   button[aria-label="Close notice"]  "×"  button',
+      `presence:     presence.mjs add --dismiss 'button[aria-label="Close notice"]' --verify ${consentUrl} --wait-ms 0`,
+      'presence:   #site-notice button.primary  "Continue to site"  button',
+      `presence:     presence.mjs add --dismiss '#site-notice button.primary' --verify ${consentUrl} --wait-ms 0`,
+      'presence:   body > div:nth-of-type(1) > button:nth-of-type(2)  "Preferences"  button',
+      `presence:     presence.mjs add --dismiss 'body > div:nth-of-type(1) > button:nth-of-type(2)' --verify ${consentUrl} --wait-ms 0`,
+    ];
+    await checkAsync('e2e add --dismiss that matches nothing: exit 2, nothing written, the top three overlay controls the default dismissal left on the same page, each with its add command — the first one, run as printed, verifies and writes', async () => {
+      assert.equal(dismissMiss.code, 2, `${dismissMiss.out}${dismissMiss.err}`);
+      assert.deepEqual(lines(dismissMiss.err), [
+        `presence: dismiss / pin / allow matched nothing on ${consentUrl} @ 1440px (button.not-there)`,
+        `presence: suggest on ${consentUrl} @ 1440px — top candidates for --dismiss button.not-there:`,
+        ...DISMISS_TOP,
+        `presence: refused — nothing written to ${DEFAULT_FILE}`,
+      ]);
+      assert.equal(dismissMiss.out, '');
+      assert.equal(read(consentMiss), pretty({ '*': { hide: ['.promo'] } }));
+      const first = lines(dismissMiss.err).find((l) => /^presence: +presence\.mjs add /.test(l)).replace(/^presence: +/, '');
+      const r = await runPrinted(consentMiss, first);
+      assert.equal(r.code, 0, `${first}\n${r.err}`);
+      assert.deepEqual(lines(r.out), [`verified on ${consentUrl} @ 1440px: button[aria-label="Close notice"] ×1`, '*.dismiss: button[aria-label="Close notice"]', `wrote ${DEFAULT_FILE}: +1 setting, 0 reasons`]);
+      assert.deepEqual(json(consentMiss)['*'], { hide: ['.promo'], dismiss: ['button[aria-label="Close notice"]'] });
     });
     const [ok, refused, listed, challengedAdd, challengedSuggest, notFound] = await Promise.all([
       runAsync(right, ['add', '--hide', '.geo-bar', '--verify', url]),
@@ -549,10 +631,13 @@ else {
       assert.equal(ok.err, '');
       assert.deepEqual(json(right)['*'].hide, ['.promo', '.geo-bar']);
     });
-    await checkAsync('e2e add --verify: the old wrong selector exits 2 with the wrapper as a candidate (hideMissLine) and the file untouched', async () => {
+    await checkAsync('e2e add --verify: the old wrong selector exits 2 with the wrapper as a candidate (hideMissLine), then the suggest block (text, role, the add command with the call\'s --reason) — the file untouched', async () => {
       assert.equal(refused.code, 2, `${refused.out}${refused.err}`);
       assert.deepEqual(lines(refused.err), [
         'presence: hide matched nothing on live — candidates: section.bar__wrapper (section, 88px) (.location-bar)',
+        `presence: suggest on ${url} @ 1440px — top candidates for --hide .location-bar:`,
+        'presence:   section.bar__wrapper  "Use the site for your region?"  region',
+        `presence:     presence.mjs add --hide section.bar__wrapper --reason R-04 --verify ${url}`,
         `presence: refused — nothing written to ${DEFAULT_FILE}`,
       ]);
       assert.equal(refused.out, '');
