@@ -136,5 +136,121 @@ check('resolveSiteAuth keeps its behaviour: --auth-header verbatim, SITE_TOKEN b
     if (saved.named === undefined) delete process.env.NAMED_VAR; else process.env.NAMED_VAR = saved.named;
   }
 }));
+
+// ---- in Chromium: the token goes to its origin and to no other, redirects included (skipped without playwright) ----
+const browserAvailable = await import('playwright').then(async ({ chromium }) => { const b = await chromium.launch(); await b.close(); return true; }, () => false);
+if (!browserAvailable) console.log('skip  live-session Chromium checks (playwright or Chromium not importable here; run this test in an environment that has them)');
+else {
+  const { chromium } = await import('playwright');
+  const { startTwoOriginServer } = await import('../../../replica/scripts/test/fixtures/two-origin-server.mjs');
+  const { newLiveContext, attachOriginAuth, standardHeaders } = await import('../live-session.mjs');
+  const checkAsync = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
+  const browser = await chromium.launch();
+  const session = async (open, fn) => {
+    const fx = await startTwoOriginServer();
+    const ctx = await open(fx);
+    try { await fn(fx, await ctx.newPage()); } finally { await ctx.close(); await fx.stop(); }
+  };
+  const live = (fx) => newLiveContext(browser, { authOrigin: fx.originA, authHeader: fx.authorization });
+  const seenOnA = (fx, path) => fx.a.log.filter((e) => e.path === path);
+
+  await checkAsync('a redirect off the origin (a page): origin A sees the token, origin B — the page, its stylesheet and image — none', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
+    assert.equal(page.url(), `${fx.originB}/page`, 'the redirect was followed');
+    assert.ok(seenOnA(fx, '/hop-b').every((e) => e.status === 302 && e.authorization === fx.authorization), 'origin A saw the token');
+    assert.ok(['/page', '/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)), 'origin B served the page and its sub-resources');
+    assert.deepEqual(fx.authorizations('B'), [], 'origin B saw no Authorization');
+  }));
+  await checkAsync('a redirect within the origin keeps the token and the URL; the page and its other-origin sub-resources load', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/hop-a`, { waitUntil: 'load' });
+    assert.equal(page.url(), `${fx.originA}/page`);
+    assert.ok(seenOnA(fx, '/hop-a').every((e) => e.authorization === fx.authorization));
+    assert.ok(seenOnA(fx, '/page').some((e) => e.status === 200 && e.authorization === fx.authorization), 'the page behind the redirect was served to the token');
+    assert.ok(fx.a.log.every((e) => e.authorization === fx.authorization), 'every request to origin A carried the token');
+    assert.ok(['/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200)));
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+  await checkAsync('a redirect within the origin and then off it: the token never reaches the other origin', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/hop-ab`, { waitUntil: 'load' });
+    assert.equal(page.url(), `${fx.originB}/page`);
+    assert.ok(fx.a.log.length > 0 && fx.a.log.every((e) => e.authorization === fx.authorization));
+    assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200));
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+  await checkAsync('a sub-resource redirected off the origin (an image) loads without the token', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/page`, { waitUntil: 'load' });
+    fx.reset();
+    const width = await page.evaluate(() => new Promise((resolve) => { const i = new Image(); i.onload = () => resolve(i.naturalWidth); i.onerror = () => resolve(-1); i.src = '/hop-pic'; }));
+    assert.equal(width, 1, 'the image behind the redirect loaded');
+    assert.ok(seenOnA(fx, '/hop-pic').every((e) => e.authorization === fx.authorization));
+    assert.ok(fx.b.log.some((e) => e.path === '/pic.png' && e.status === 200));
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+  await checkAsync('attachOriginAuth on a plain context: the same, a redirect off the origin gets no token', () => session((fx) => browser.newContext().then(async (ctx) => { await attachOriginAuth(ctx, fx.originA, fx.authorization); return ctx; }), async (fx, page) => {
+    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
+    assert.equal(page.url(), `${fx.originB}/page`);
+    assert.ok(seenOnA(fx, '/hop-b').every((e) => e.authorization === fx.authorization));
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+  await checkAsync('the standard header set reaches document requests on both paths (the origin\'s, made by the auth route, and another origin\'s), and stays off sub-resources', () => session(live, async (fx, page) => {
+    await page.goto(`${fx.originA}/page`, { waitUntil: 'load' });
+    await page.goto(`${fx.originB}/page`, { waitUntil: 'load' });
+    const accept = standardHeaders().Accept;
+    for (const [side, log] of [['A', fx.a.log], ['B', fx.b.log]]) {
+      const docs = log.filter((e) => e.path === '/page');
+      assert.ok(docs.length > 0 && docs.every((e) => e.accept === accept), `origin ${side}: ${JSON.stringify(docs)}`);
+    }
+    assert.notEqual(fx.b.log.find((e) => e.path === '/pic.png').accept, accept, 'the standard Accept stays off sub-resources');
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+  await checkAsync('no auth given: nothing is sent, a redirect included', () => session((fx) => newLiveContext(browser, {}), async (fx, page) => {
+    await page.goto(`${fx.originA}/hop-b`, { waitUntil: 'load' });
+    assert.deepEqual(fx.a.log.map((e) => [e.authorization, e.status]), [[null, 401]]);
+    assert.deepEqual(fx.authorizations('B'), []);
+  }));
+
+  // A request to the origin that cannot be made (dropped, stalled) fails the navigation: it is never continued, which
+  // would send it without the token and let the instrument measure a 401 page as the site.
+  const { createServer } = await import('node:http');
+  const silent = (behave) => new Promise((resolve) => {
+    const seen = [];
+    const server = createServer((req, res) => { seen.push(req.headers.authorization || null); behave(req, res); });
+    server.listen(0, '127.0.0.1', () => resolve({ seen, origin: `http://127.0.0.1:${server.address().port}`, stop: () => { server.closeAllConnections(); server.close(); } }));
+  });
+  const withStderr = async (fn) => {
+    const lines = [];
+    const write = process.stderr.write;
+    process.stderr.write = (chunk) => { lines.push(String(chunk)); return true; };
+    try { await fn(); } finally { process.stderr.write = write; }
+    return lines.join('');
+  };
+  // Closing a context resumes the requests still paused in it, so a stalled request reaches the origin bare as the
+  // browser is torn down; the navigation has failed by then, and what is asserted is the time before.
+  for (const [kind, behave, navigationTimeout, strictToTheEnd] of [['drops the connection', (req) => req.socket.destroy(), 15000, true], ['stalls', () => {}, 1500, false]]) {
+    await checkAsync(`the origin ${kind}: the navigation fails, one stderr line names the origin, no request goes out without the token`, async () => {
+      const srv = await silent(behave);
+      const ctx = await newLiveContext(browser, { authOrigin: srv.origin, authHeader: 'token t0k3n' });
+      let navigation;
+      let whileOpen;
+      // a stalled request ends when the context closes, so the stderr line is collected up to then
+      const err = await withStderr(async () => {
+        const page = await ctx.newPage();
+        navigation = await page.goto(`${srv.origin}/page`, { timeout: navigationTimeout, waitUntil: 'load' }).then(() => null, (e) => e);
+        await new Promise((r) => { setTimeout(r, 300); });
+        whileOpen = [...srv.seen];
+        await ctx.close();
+        await new Promise((r) => { setTimeout(r, 200); });
+      });
+      srv.stop();
+      assert.ok(navigation, 'the navigation failed');
+      assert.match(err, new RegExp(`^live-session: a request to ${srv.origin.replace(/[.:/]/g, '\\$&')} failed[^\\n]*\\n$`), err);
+      assert.ok(!err.includes('t0k3n'), 'the token is not printed');
+      assert.deepEqual(whileOpen, ['token t0k3n'], 'the origin saw one request, with the token, and no retry without it');
+      if (strictToTheEnd) assert.deepEqual(srv.seen, ['token t0k3n'], 'nor at teardown');
+    });
+  }
+  await browser.close();
+}
+
 console.log(failed ? `\n${failed} failed` : '\nall passed');
 process.exit(failed ? 1 : 0);

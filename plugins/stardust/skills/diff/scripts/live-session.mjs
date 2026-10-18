@@ -163,17 +163,22 @@ export async function newLiveContext(browser, { ua, locale, viewport, authOrigin
   // navigation request, which still carries the full set below.
   const { extraHTTPHeaders, ...base } = contextOptions({ ua, locale, viewport });
   const ctx = await browser.newContext({ ...rest, ...base });
+  // Routes run last-registered first and pass on with route.fallback(), so the auth route goes FIRST: the header
+  // route below runs before it, and the origin's documents are made (route.fetch) with the standard headers too.
+  const authed = !!(authOrigin && authHeader);
+  if (authed) await attachOriginAuth(ctx, authOrigin, authHeader);
+  const standardNames = new Set(Object.keys(extraHTTPHeaders).map((k) => k.toLowerCase()));
   await ctx.route('**/*', (route) => {
-    if (route.request().resourceType() === 'document') {
-      route.continue({ headers: { ...route.request().headers(), ...extraHTTPHeaders } });
-    } else {
-      route.continue();
-    }
+    if (route.request().resourceType() !== 'document') { route.fallback(); return; }
+    let own = route.request().headers();
+    // route.fetch joins a name given in two cases, so behind the auth route the browser's own value of a header the
+    // standard set replaces is dropped; without it the request goes out exactly as it always did.
+    if (authed) own = Object.fromEntries(Object.entries(own).filter(([k]) => !standardNames.has(k.toLowerCase())));
+    route.fallback({ headers: { ...own, ...extraHTTPHeaders } });
   });
   await ctx.addInitScript(() => {
     Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
   });
-  if (authOrigin && authHeader) await attachOriginAuth(ctx, authOrigin, authHeader);
   return ctx;
 }
 
@@ -209,14 +214,60 @@ export function resolveSiteAuth({ authHeader, tokenEnv } = {}) {
   const v = readTokenVar(name);
   return v === null ? null : withTokenPrefix(v);
 }
+
+const REDIRECT_STATUS = new Set([301, 302, 303, 307, 308]);
+const MAX_AUTH_HOPS = 10;
+
+// The attachOriginAuth route. A header set with route.continue() stays on the request when the server redirects to
+// ANOTHER origin, and a redirect answered with route.fulfill() is followed by the browser without going through any
+// route again, so the follow-up carries nothing. So a redirect is settled here, on the origin's side of it:
+//   - no redirect → the origin's answer is handed to the browser (route.fetch, redirects unfollowed + route.fulfill);
+//   - a redirect that leaves the origin (directly, or after hops inside it) → the browser gets that redirect, and
+//     follows it without the token;
+//   - a redirect chain that stays inside the origin → route.continue() with the header: the browser follows it
+//     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
+//     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
+//     answer as it came, a redirect included.
+// A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: continued, it
+// would go out without the token and the instrument would measure a 401 page as the site. One stderr line names
+// the origin. The requests here set no timeout of their own (0): the caller's navigation timeout ends a stall.
+async function authRoute(route, context, o, headerValue) {
+  const request = route.request();
+  const onOrigin = (u) => { try { return new URL(u).origin === o; } catch { return false; } };
+  if (!onOrigin(request.url())) { await route.fallback(); return; }
+  const headers = { ...request.headers(), authorization: headerValue };
+  const target = (response, from) => {
+    const location = REDIRECT_STATUS.has(response.status()) && response.headers().location;
+    try { return location ? new URL(location, from).href : null; } catch { return null; }
+  };
+  let last;
+  let replay = false;
+  try {
+    last = await route.fetch({ headers, maxRedirects: 0, timeout: 0 });
+    let next = target(last, request.url());
+    if (next && ['GET', 'HEAD'].includes(request.method())) {
+      for (let hop = 0; next && onOrigin(next) && hop < MAX_AUTH_HOPS; hop += 1) {
+        const answer = await context.request.fetch(next, { method: request.method(), headers, maxRedirects: 0, timeout: 0 });
+        const after = target(answer, next);
+        if (!after) { replay = true; break; }
+        last = answer;
+        next = after;
+      }
+    }
+  } catch {
+    console.error(`live-session: a request to ${o} failed and was not sent again without the site token`);
+    await route.abort('failed').catch(() => {});
+    return;
+  }
+  // (a page that closed meanwhile leaves nothing to answer)
+  if (replay) await route.continue({ headers }).catch(() => {});
+  else await route.fulfill({ response: last }).catch(() => {});
+}
+
 export async function attachOriginAuth(context, origin, headerValue) {
   if (!headerValue || !origin) return;
   const o = new URL(origin).origin;
-  await context.route('**/*', (route) => {
-    const u = route.request().url();
-    if (u === o || u.startsWith(`${o}/`)) route.continue({ headers: { ...route.request().headers(), authorization: headerValue } });
-    else route.continue();
-  });
+  await context.route('**/*', (route) => authRoute(route, context, o, headerValue));
 }
 
 /** The help lines every instrument prints for its site-auth flags (one source of wording). */

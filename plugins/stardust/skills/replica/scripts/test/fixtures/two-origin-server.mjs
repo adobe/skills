@@ -3,6 +3,8 @@
 //
 //   origin A  the protected site. Every request needs `Authorization: token t0k3n`; without it the answer is 401.
 //             /page and /copy are one page whose stylesheet and image come from origin B.
+//             /hop-b answers 302 to origin B's /page, /hop-a 302 to its own /page, /hop-ab 302 to its own /hop-b, /hop-pic
+//             302 to origin B's /pic.png: a redirect off the origin (a page and an image), within it, and both in a row.
 //   origin B  the third party the page loads from (a font or image host, or the local reskin server). It never asks for
 //             anything, serves /style.css, /pic.png and the same /page and /copy, and records every request together
 //             with the Authorization it carried, if any — the proof that the token never left origin A.
@@ -12,7 +14,7 @@
 //                                                      // instruments do not treat as local; Chromium resolves *.localhost
 //   fx.originA, fx.originB                             // 'http://127.0.0.1:<port>' — the two origins
 //   fx.token, fx.authorization                         // 't0k3n', 'token t0k3n'
-//   fx.a.log, fx.b.log                                 // [{ path, authorization: string | null, status }] in arrival order
+//   fx.a.log, fx.b.log                                 // [{ path, authorization: string | null, status, accept: string | null }] in arrival order
 //   fx.authorizations('B')                             // the Authorization values origin B saw (must stay [])
 //   fx.reset()                                         // empty both logs
 //   await fx.stop()
@@ -37,9 +39,14 @@ export async function startTwoOriginServer({ hostA = '127.0.0.1', hostB = '127.0
   const serve = (side, protectedSide) => (req, res) => {
     const path = req.url.split('?')[0];
     const authorization = req.headers.authorization || null;
-    const send = (status, type, body) => { side.log.push({ path, authorization, status }); res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store' }); res.end(body); };
+    const accept = req.headers.accept || null;
+    const send = (status, type, body, headers = {}) => { side.log.push({ path, authorization, status, accept }); res.writeHead(status, { 'content-type': type, 'cache-control': 'no-store', ...headers }); res.end(body); };
     if (protectedSide && authorization !== AUTHORIZATION) { send(401, 'text/html; charset=utf-8', '<!doctype html><title>401</title><h1>401 Unauthorized</h1>'); return; }
-    if (path === '/page' || path === '/copy') send(200, 'text/html; charset=utf-8', html(originB));
+    if (protectedSide && path === '/hop-b') send(302, 'text/plain', '', { location: `${originB}/page` });
+    else if (protectedSide && path === '/hop-a') send(302, 'text/plain', '', { location: '/page' });
+    else if (protectedSide && path === '/hop-ab') send(302, 'text/plain', '', { location: '/hop-b' });
+    else if (protectedSide && path === '/hop-pic') send(302, 'text/plain', '', { location: `${originB}/pic.png` });
+    else if (path === '/page' || path === '/copy') send(200, 'text/html; charset=utf-8', html(originB));
     else if (!protectedSide && path === '/style.css') send(200, 'text/css', CSS);
     else if (!protectedSide && path === '/pic.png') send(200, 'image/png', PNG_1X1);
     else send(404, 'text/plain', 'not found');
