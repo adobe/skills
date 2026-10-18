@@ -25,15 +25,30 @@ const rootOf = (section, joined) => (text(section?.node) ? section.node : joined
 // reskin page was written with), its selector otherwise. Either one is scoped to the section the join found.
 export const selectorFor = (entry, regime) => (regime === 'preview' ? entry.previewSelector ?? entry.selector : entry.selector);
 
-// Walks a selector for its structure: `visit(char, index, depth)` is called for every character that is not escaped
-// and not inside a quoted string, with `depth` the nesting of (…) and […] that surrounds it (a bracket itself is
-// visited at the depth outside the pair it opens or closes). visit returns true to stop. The one lexical scan
-// selectorBranches and leavesSection share, so a quote or an escape means the same to both.
+const HEX = /[0-9a-f]/i;
+
+// The index of the last character of the CSS escape that starts at selector[i] (a backslash): per CSS Syntax, 1 to 6
+// hex digits and one optional whitespace after them (a CRLF is one), else the one character after the backslash.
+// Nothing after it ends the escape at the end of the string.
+function escapeEnd(selector, i) {
+  let j = i + 1;
+  if (!HEX.test(selector[j] ?? '')) return j;
+  for (let digits = 0; digits < 6 && HEX.test(selector[j] ?? ''); digits += 1) j += 1;
+  if (selector[j] === '\r' && selector[j + 1] === '\n') j += 1;
+  if (/[ \t\r\n\f]/.test(selector[j] ?? '')) j += 1;
+  return j - 1;
+}
+
+// Walks a selector for its structure: `visit(char, index, depth)` is called for every character that is not part of an
+// escape and not inside a quoted string, with `depth` the nesting of (…) and […] that surrounds it (a bracket itself is
+// visited at the depth outside the pair it opens or closes). An escape (escapeEnd) belongs to the identifier or string it
+// is in: never a combinator, comma, bracket or quote, whatever character it spells. visit returns true to stop. The one
+// lexical scan selectorBranches and leavesSection share, so a quote or an escape means the same to both.
 function scanSelector(selector, visit) {
   let depth = 0; let quote = null;
   for (let i = 0; i < selector.length; i += 1) {
     const c = selector[i];
-    if (c === '\\') i += 1;
+    if (c === '\\') i = escapeEnd(selector, i);
     else if (quote) { if (c === quote) quote = null; }
     else if (c === '"' || c === "'") quote = c;
     else if (c === '(' || c === '[') { if (visit(c, i, depth)) return; depth += 1; }

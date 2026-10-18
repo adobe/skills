@@ -1306,7 +1306,7 @@ if (playwrightOk) {
     } finally { await server.close(); await source.close(); }
   });
 
-  await check('real run on a clean preview without eds-schema/home.json (deploy Step 2b omitted): all exits 1, "FAIL inherited 2/3", qa-gate still ran its own checks, the fragment says FAIL — never "PASS (n/a: qa-gate)"', async () => {
+  await check('real run on a clean preview without eds-schema/home.json (deploy Step 2b omitted): all exits 1, "FAIL inherited 1/3", qa-gate still ran its own checks, the fragment says FAIL — never "PASS (n/a: qa-gate)"', async () => {
     const source = await startSourceServer();
     const server = await startPreviewServer({ pages: { '/ns/home': HOME } });
     try {

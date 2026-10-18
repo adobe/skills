@@ -549,6 +549,36 @@ check('a selector or previewSelector that reaches the section\'s siblings is a p
   assert.match(problemsOf(geo({ selector: '.card', previewSelector: '.a, ~ .b', node: 'I1:7;5:7', measure: 'width' })), /^x: previewSelector: selector "~ \.b" reaches the section's siblings/);
 });
 
+check('leavesSection reads CSS escapes as CSS does: 1 to 6 hex digits and one optional whitespace, or any one character, belong to the identifier, never a combinator, comma, bracket or paren', () => {
+  for (const ok of [
+    ':scope.foo\\3a bar > section h2', ':scope.hover\\3a bg-red .a + .b', ':scope.a\\2b b .c', ':scope.a\\2c b > p', ':scope.a\\7e b .c', ':scope.a\\00003a b > p',
+    ':scope.a\\3a\tb .c', ':scope.a\\3a\r\nb .c', ':scope.a\\+b > p', ':scope.a\\~b .c', ':scope.a\\> .c', ':scope.a\\ b > p', ':scope.a\\\\ > p',
+    ':scope.a\\3a', ':scope.a\\3a ', ':scope.a\\', ':scope.a\\\\', '.a\\3a b + p', '\\2b p', '\\+ p', ':scope[data-x="\\22 ("] > p',
+  ]) assert.equal(leavesSection(ok), null, JSON.stringify(ok));
+  for (const bad of [
+    ':scope.foo\\3a bar + section h2', ':scope.a\\2c b + p', ':scope.a\\7e b ~ p', ':scope.a\\2b b + p', ':scope.a\\00003a b + p', ':scope.a\\3a\tb + p', ':scope.a\\3a\r\nb ~ p',
+    ':scope.a\\3a bar ~ p, .x', ':scope.a\\2c b, :scope + p', ':scope.a\\+ + p', ':scope.a\\> ~ p', ':scope.a\\\\ + p', ':scope.a\\ + p', ':scope.a\\3a  + p',
+    ':scope[data-x="\\22 ("] + p',
+  ]) assert.match(leavesSection(bad), /reaches the section's siblings/, JSON.stringify(bad));
+  assert.deepEqual(selectorBranches('.a\\2c b, .c'), ['.a\\2c b', ' .c'], 'a hex-escaped comma is not a branch');
+  assert.deepEqual(selectorBranches('.a\\,b, .c\\2c d'), ['.a\\,b', ' .c\\2c d']);
+  assert.deepEqual(selectorBranches('a[title="\\22 , x"], b'), ['a[title="\\22 , x"]', ' b'], 'a hex-escaped quote does not close the string');
+});
+
+check('an escaped selector that would leave its section is a problem however it is spelled, in selector and in previewSelector; an escaped class that stays inside still validates', () => {
+  const leaving = ':scope.foo\\3a bar + section h2';
+  assert.match(problemsOf(geo({ selector: leaving, node: 'I1:7;5:7', measure: 'width' })), /^x: selector ":scope\.foo\\3a bar \+ section h2" reaches the section's siblings/);
+  assert.match(problemsOf(geo({ selector: '.card', previewSelector: leaving, node: 'I1:7;5:7', measure: 'width' })), /^x: previewSelector: selector ":scope\.foo\\3a bar \+ section h2" reaches the section's siblings/);
+  for (const spelled of [':scope.a\\2b b + p', ':scope.a\\2c b ~ p', ':scope.a\\7e b + p', ':scope.a\\00003a b + p']) {
+    assert.match(problemsOf(geo({ selector: spelled, node: 'I1:7;5:7', measure: 'width' })), /reaches the section's siblings/, spelled);
+    assert.match(problemsOf(geo({ selector: '.card', previewSelector: spelled, node: 'I1:7;5:7', measure: 'width' })), /previewSelector: .*reaches the section's siblings/, spelled);
+  }
+  for (const stays of [':scope.hover\\3a bg-red > section h2', ':scope .md\\:flex .a', ':scope.a\\3a', ':scope.a\\']) {
+    assert.equal(problemsOf(geo({ selector: stays, node: 'I1:7;5:7', measure: 'width' })), '', stays);
+    assert.equal(problemsOf(geo({ selector: '.card', previewSelector: stays, node: 'I1:7;5:7', measure: 'width' })), '', stays);
+  }
+});
+
 check('a quoted ( or ) before a sibling combinator no longer hides it: the entry is a problem in selector and in previewSelector, and the file that passes only scopes inside its section', () => {
   const quoted = ':scope[data-note="("] + section h2';
   assert.match(problemsOf(geo({ selector: quoted, node: 'I1:7;5:7', measure: 'width' })), /^x: selector ":scope\[data-note="\("\] \+ section h2" reaches the section's siblings/);
