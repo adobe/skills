@@ -1355,7 +1355,7 @@ export function forkRun(o) {
   const target = page.prototypePath || join(o.protoDir, `${slug}-proposed.html`); const targetRel = toPosix(target);
   if (safeRealpath(resolve(target)) === real) throw new UsageError(`${slug}'s source HTML ${targetRel} is the archetype prototype itself`);
   if (requireEncodeAttempt(PROJECT_ROOT, archetype.slug)) throw new Refusal(slug, 'encode-attempt', `template ${archetype.slug} has no encode attempt record (stardust/migrate/encode/${archetype.slug}.json)`, `run: node stardust/scripts/migrate/migrate.mjs plan ${slug}`);
-  const variance = forkVariance(o, run, state, page, archetype, capture);
+  const variance = forkVariance(o, state, page, archetype, capture);
   // the fork, as render's: a markerless prototype's slots derive; values from the page JSON slots when it has the key, else derived
   let archetypeHtml = readFileSync(proto, 'utf8'); let repeats = {};
   const derived = deriveSlots(archetypeHtml); if (derived.slots.length) { archetypeHtml = derived.html; repeats = derived.repeats; }
@@ -1375,7 +1375,7 @@ export function forkRun(o) {
 }
 // The fork mode's variance class from <variance-dir>/<archetype>.json → 'identical' (verdict same) | 'minor' (differs, no missing or
 // extra probe and no SECTIONS delta); a major variance, no file, no row or a malformed one → Refusal (strict variance).
-function forkVariance(o, run, state, page, archetype, capture) {
+function forkVariance(o, state, page, archetype, capture) {
   const dir = o.varianceDir || join(dirname(o.state), 'rollout', 'variance'); const rel = toPosix(join(dir, `${archetype.slug}.json`));
   const origin = state.site?.originUrl || null; const archetypeUrl = pageUrlOf(readJson(join(o.current, 'pages', `${archetype.slug}.json`)), archetype, origin);
   const probe = `run: node stardust/scripts/replica/sibling-variance.mjs ${archetypeUrl} ${pageUrlOf(capture, page, origin)}${o.varianceDir ? ` --variance-dir ${toPosix(o.varianceDir)}` : ''}`;
