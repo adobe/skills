@@ -17,11 +17,12 @@
 //        added and lets every other request through untouched, so a webfont, an image host, a vendor — or the target
 //        of a redirect off the origin — never sees it. A redirect is settled inside the route (see the comment above
 //        it): off the origin, the browser gets the redirect and follows it without the token; within the origin, it
-//        keeps it. A request of the origin that fails (a drop, a stall past the page's own timeout) is aborted, never
-//        continued without the header — that would measure the 401 — and one stderr line names the origin. Attach it
-//        before the first navigation; `context.request` (APIRequestContext) bypasses routes and keeps a header across
-//        a redirect too — send the header there yourself, to the origin only. Same semantics as diff/scripts/
-//        live-session.mjs `attachOriginAuth`, kept here because deploy does not import diff.
+//        keeps it. A request of the origin that fails (a drop, a stall past the page's own timeout), or whose redirect
+//        chain inside the origin is still going after ten hops (a loop), is aborted, never continued without the header
+//        — that would measure the 401 — and one stderr line names the origin. Attach it before the first navigation;
+//        `context.request` (APIRequestContext) bypasses routes and keeps a header across a redirect too — send the
+//        header there yourself, to the origin only. Same semantics as diff/scripts/live-session.mjs
+//        `attachOriginAuth`, kept here because deploy does not import diff.
 //   strayEnvLine(name, { cwd }) / strayMessage(flag, name)  whether the `.env` has a line for `name` the grammar does
 //        not read (`export NAME=`, `NAME = v`), and the usage-error text for it, so it is not reported as "not set".
 import { existsSync, readFileSync } from 'node:fs';
@@ -92,7 +93,8 @@ const MAX_HOPS = 10;
 //   - a redirect chain that stays inside the origin → route.continue() with the header: the browser follows it
 //     itself (its URL stays true) and every hop is the origin's. The chain was walked first, so this relies on the
 //     origin redirecting the same way twice; only GET/HEAD are walked and replayed — any other method gets its
-//     answer as it came, a redirect included.
+//     answer as it came, a redirect included. A chain (or loop) still inside the origin after MAX_HOPS hops fails
+//     closed like a failed request: aborted, one stderr line naming the origin and the hop count.
 // A request that cannot be made here (a timeout, a dropped connection) is ABORTED, never continued: continued, it
 // would go out without the token and the instrument would measure a 401 page as the site. One stderr line (per
 // attachSiteAuth) names the origin. The requests here set no timeout of their own (0): the caller's navigation
@@ -105,7 +107,9 @@ export async function attachSiteAuth(context, origin, header) {
     const location = REDIRECT_STATUS.has(response.status()) && response.headers().location;
     try { return location ? new URL(location, from).href : null; } catch { return null; }
   };
+  const tooLong = new Error('redirect chain past the hop budget');
   let said = false;
+  let saidLong = false;
   await context.route('**/*', async (route) => {
     const request = route.request();
     if (!onOrigin(request.url())) { await route.fallback(); return; }
@@ -123,9 +127,12 @@ export async function attachSiteAuth(context, origin, header) {
           last = answer;
           next = after;
         }
+        if (!replay && next && onOrigin(next)) throw tooLong;
       }
-    } catch {
-      if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
+    } catch (e) {
+      if (e === tooLong) {
+        if (!saidLong) { saidLong = true; console.error(`site-auth: a redirect chain inside ${only} was still going after ${MAX_HOPS} hops (a loop?) and was not followed without the site token`); }
+      } else if (!said) { said = true; console.error(`site-auth: a request to ${only} failed and was not retried without the site token`); }
       await route.abort('failed').catch(() => {});
       return;
     }

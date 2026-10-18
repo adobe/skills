@@ -204,10 +204,33 @@ test('attachSiteAuth: a redirect within the origin is walked, then replayed with
   // another method gets its answer as it came, redirect included, and no walk
   assert.deepEqual(await ctx.visit('https://a.test/hop-a', { accept: '*/*' }, { method: 'POST' }), { fetched: { headers: { accept: '*/*', authorization: header }, maxRedirects: 0, timeout: 0 }, fulfilled: 'https://a.test/hop-a' });
   assert.deepEqual(ctx.walked, []);
-  // a loop inside the origin is cut after ten hops and handed over, never replayed
-  const loop = await ctx.visit('https://a.test/loop');
-  assert.equal(loop.continued, undefined); assert.equal(loop.fulfilled, 'https://a.test/loop');
-  assert.equal(ctx.walked.length, 10);
+});
+
+test('attachSiteAuth: a redirect loop, or a chain still inside the origin after ten hops, fails closed — aborted, one stderr line naming the origin and the hop count, never replayed or handed over', async () => {
+  const lines = [];
+  const real = console.error;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  try {
+    const chain = (n) => Object.fromEntries(Array.from({ length: n }, (_, i) => [`https://a.test/c${i}`, { status: 302, location: `/c${i + 1}` }]));
+    const ctx = fakeContext({ answers: { 'https://a.test/loop': { status: 302, location: '/loop' }, ...chain(11) } });
+    await attachSiteAuth(ctx, 'https://a.test', `token ${T}`);
+    // ten hops inside the origin and then an answer is within the budget: replayed
+    const within = fakeContext({ answers: chain(10) });
+    await attachSiteAuth(within, 'https://a.test', `token ${T}`);
+    assert.equal((await within.visit('https://a.test/c0')).aborted, undefined);
+    assert.deepEqual(Object.keys(await within.visit('https://a.test/c0')), ['fetched', 'continued']);
+    assert.equal(lines.length, 0);
+    // a loop and a chain of eleven redirects are not
+    const loop = await ctx.visit('https://a.test/loop');
+    assert.deepEqual(loop, { fetched: { headers: { accept: '*/*', authorization: `token ${T}` }, maxRedirects: 0, timeout: 0 }, aborted: 'failed' });
+    assert.equal(ctx.walked.length, 10, 'the walk stopped at the budget');
+    ctx.walked.length = 0;
+    assert.equal((await ctx.visit('https://a.test/c0')).aborted, 'failed');
+    assert.deepEqual(lines, [
+      'site-auth: a redirect chain inside https://a.test was still going after 10 hops (a loop?) and was not followed without the site token',
+    ], 'one line per attachSiteAuth');
+    assert.ok(!lines.join('').includes(T));
+  } finally { console.error = real; }
 });
 
 test('attachSiteAuth: a request of the origin that fails — at the first fetch or on a hop of its redirect — is aborted, never continued without the header; one stderr line names the origin and no token', async () => {
@@ -382,6 +405,36 @@ test('an image redirected within the origin loads (A → A): the follow-up carri
     assert.ok(seen.some((q) => q.path === '/real.png'), 'the redirect target was requested');
     assert.ok(seen.every((q) => q.authorization === `token ${T}`), `a request reached the origin without the token: ${JSON.stringify(seen)}`);
   } finally { await browser.close(); A.closeAllConnections(); A.close(); }
+});
+
+// A same-origin redirect loop must not end on a silent 401: the page fails, the route says why, and every request the
+// origin saw carried the token.
+test('attachSiteAuth in Chromium: a same-origin redirect loop fails the page loudly — one stderr line naming the origin and the hop count, no request without the token', { skip: !hasBrowser && 'playwright / Chromium not available' }, async () => {
+  const { chromium } = await import('playwright');
+  const seen = [];
+  const site = await listen((req, res) => {
+    seen.push({ path: req.url, authorization: req.headers.authorization || null });
+    if (req.headers.authorization !== `token ${T}`) { res.writeHead(401); res.end('401'); return; }
+    if (req.url === '/loop') { res.writeHead(302, { location: '/loop' }); res.end(); } else { res.writeHead(200, { 'content-type': 'text/html' }); res.end('<!doctype html><p>page</p>'); }
+  });
+  const origin = `http://127.0.0.1:${site.address().port}`;
+  const lines = [];
+  const real = console.error;
+  console.error = (...a) => { lines.push(a.join(' ')); };
+  const browser = await chromium.launch();
+  try {
+    const context = await browser.newContext();
+    await attachSiteAuth(context, origin, `token ${T}`);
+    const page = await context.newPage();
+    await assert.rejects(page.goto(`${origin}/loop`, { timeout: 15000 }), (e) => /ERR_FAILED/.test(e.message) && !e.message.includes(T));
+    assert.deepEqual(lines, [`site-auth: a redirect chain inside ${origin} was still going after 10 hops (a loop?) and was not followed without the site token`]);
+    assert.ok(seen.length >= 1 && seen.every((q) => q.authorization === `token ${T}`), `a request reached the origin without the token: ${JSON.stringify(seen)}`);
+    assert.ok(!seen.some((q) => q.authorization === null), 'no 401 was measured');
+  } finally {
+    console.error = real;
+    await browser.close();
+    site.closeAllConnections(); site.close();
+  }
 });
 
 // An origin that never answers well: `how` is 'drop' (the socket is destroyed) or 'stall' (the request is never answered).
