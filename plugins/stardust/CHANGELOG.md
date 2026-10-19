@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x — the unit ends with its sidecar, deploy-batch knows its site, and the tail re-gates only what changed (#NNN)
+## 0.36.x (stardust/r16-tail-and-defaults) — the unit ends with its sidecar, deploy-batch knows its site, and the tail re-gates only what changed (#157)
 
 A recorded hands-off run that finished `ready` in 8 h 58 min spent its last minutes on work the tail should have
 avoided: `deploy-batch` was invoked without its coordinates and token four times across two sessions, eight
@@ -495,13 +495,14 @@ stays 0.36.0). Batch 1, merged in this order, each under its own `0.36.x (<branc
 - `stardust/r16-census-and-clock` — 0.36.x (#154 local).
 - `stardust/r16-gates-and-jobs` — 0.36.x (#155 local).
 - `stardust/r16-export-fresh` — 0.36.x (#156 local).
+- `stardust/r16-tail-and-defaults` — 0.36.x (#157 local, taken as a fast-forward).
 - Local-only commits: the new scripts-index rows trimmed and the lint cap raised to 20 KiB + 96 bytes for the
   four-branch union (a maintainer question); the extract SKILL and scripts-index name style-census's `--page-timeout`
   and `--resume`; the validate workflow runs the inline-writes lint beside the other stardust lints; a pre-existing
   "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; the run-bg server/stall/stop machinery merged beside the wake/exit-77 machinery, and rollout restores four sentences the gates-and-jobs condensing dropped while delivery-gates names exit 77; migrate plan engages the encoder for a one-sibling template and the roster line quotes the source, encode-attempt's script guard flags a generator path/existing file (not a sentence that names one), and done-check infers the live host from the gates (not the preview deployedUrl); this
   renumbering.
 
-Not in this image: none — all six batch-1 branches are merged.
+Not in this image: none — all seven batch-1 branches are in the image.
 
 ## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
 
