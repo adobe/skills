@@ -344,6 +344,35 @@ export function priorVariantIds(pagesDoc) {
   return ids;
 }
 
+/** `{ total, singleUse }` of one row's `variants[]`: distinct class combinations, and those a single instance uses. */
+export const variantsSummary = (variants) => {
+  const list = Array.isArray(variants) ? variants.filter((v) => v && typeof v === 'object') : [];
+  return { total: list.length, singleUse: list.filter((v) => v.instances === 1).length };
+};
+
+/**
+ * The variant explosion of a blocks.json ledger, `{ total, singleUse, blocks }`: over the module rows whose EDS name is
+ * not default-content (one per EDS name — two module ids recorded on one block carry the same variants[] and count
+ * once), `total` variants, `singleUse` of them used by exactly one instance, `blocks` the rows with at least one
+ * variant (the blocks the delivered documents show). blocks.mjs writes it at the top of blocks.json and
+ * workspace-manifest.mjs recomputes it into the manifest; both call this, so the two agree. Pure.
+ */
+export function variantsSummaryOf(blocks) {
+  const seen = new Set();
+  const out = { total: 0, singleUse: 0, blocks: 0 };
+  for (const b of Array.isArray(blocks) ? blocks : []) {
+    if (!b || (b.kind || kindOf(b.id)) !== 'module') continue;
+    const name = (b.delivery && b.delivery.edsBlockName) || edsName(b.id);
+    if (name === DEFAULT_CONTENT || seen.has(name)) continue;
+    seen.add(name);
+    const s = variantsSummary(b.variants);
+    out.total += s.total;
+    out.singleUse += s.singleUse;
+    if (s.total) out.blocks += 1;
+  }
+  return out;
+}
+
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW = new Set(['script', 'style']);
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
