@@ -947,7 +947,7 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
   const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
   const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
-  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }], encode: { encoded: 0, noRoundtrip: 0, handAuthored: 1, notAttempted: 0, notApplicable: 1, unrecorded: 2 } };
+  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }], encode: { encoded: 0, noRoundtrip: 0, notAttempted: 0, handAuthored: 1, notApplicable: 1, unrecorded: 2 } };
   const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
   const judgement = { toFill: 23, byKind: { baseType: 3, purpose: 10, reuseGuidance: 10 } };
   writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, judgement, handover: null }));
@@ -966,7 +966,7 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   assert.ok(r.stdout.split('\n').includes('info: export_quality:encode_unrecorded:2'), r.stdout);
   // without the counts, the byTemplate rows that carry a decision are counted; a manifest from before the field is silent
   const manifestWith = (sq) => writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality: sq, sectionGaps, judgement, handover: null }));
-  const row = (template, decision) => ({ template, instances: 1, encoderMap: 0, textAlignment: 1, position: 0, encoderCoverage: 0, encode: { decision, vocabulary: null, recordedAt: null } });
+  const row = (template, decision) => ({ template, instances: 1, encoderMap: 0, textAlignment: 1, position: 0, encoderCoverage: 0, encode: { decision, reason: null, vocabulary: null, recordedAt: null } });
   const { encode, ...noCounts } = selectorQuality;
   manifestWith({ ...noCounts, byTemplate: [row('a', 'unrecorded'), row('b', 'hand-authored'), row('c', 'unrecorded'), row('d', 'unrecorded')] });
   assert.ok(JSON.parse(run(proj, ['--offline', '--json']).stdout).info.includes('export_quality:encode_unrecorded:3'), 'counted from the rows');

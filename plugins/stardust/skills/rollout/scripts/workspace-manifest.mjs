@@ -23,7 +23,7 @@
  * in the content files, no update-coverage.mjs --block record), a `templateGroups` {total, archetypes, siblings} count
  * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `selectorQuality` block derived from mapping.json
  * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
- * the same split per template, each row with the template's encode decision `encode {decision, vocabulary,
+ * the same split per template, each row with the template's encode decision `encode {decision, reason, vocabulary,
  * recordedAt}` read from migrate's record <project>/stardust/migrate/encode/<template>.json — never written here —
  * and `selectorQuality.encode` counting the decisions), a `sectionGaps` list derived from mapping.json the same way
  * (sections an adopter
@@ -228,13 +228,16 @@ const ENCODE_VERDICTS = ['encoded', 'no-roundtrip', 'not-attempted', 'hand-autho
 const ENCODE_COUNTER = { encoded: 'encoded', 'no-roundtrip': 'noRoundtrip', 'not-attempted': 'notAttempted', 'hand-authored': 'handAuthored', 'not-applicable': 'notApplicable', unrecorded: 'unrecorded' };
 // A template id used as a path segment: letters, digits, _ . - and not only dots (as encode-attempt.mjs validates it).
 const pathSafeId = (t) => typeof t === 'string' && /^[\w.-]+$/.test(t) && !/^\.+$/.test(t);
+// The owner's reason a record carries is quoted into the manifest up to this many characters.
+const REASON_MAX = 300;
 
 /**
  * The encode decision migrate recorded for `templateId` — <project>/stardust/migrate/encode/<templateId>.json, written
  * by migrate/encode-attempt.mjs (`{_provenance: {writtenBy, writtenAt}, template, verdict, roundtrip, lint, reason,
  * pages, siblings, encoded, at, source, …}`) — read tolerantly: a JSON object whose `verdict` is one of
  * ENCODE_VERDICTS and whose `template`, when a string, is this template; `recordedAt` = its `at`, else
- * `_provenance.writtenAt`, else null. Every other key is ignored, so older or richer records read alike. null when
+ * `_provenance.writtenAt`, else null; `reason` = its `reason` trimmed, capped at REASON_MAX chars (an ellipsis closes a
+ * cut one), null when absent or blank. Every other key is ignored, so older or richer records read alike. null when
  * there is no such record (absent, unreadable, another template's, an unknown verdict). Never writes. Pure but for
  * the one read.
  */
@@ -248,7 +251,9 @@ export function encodeRecordOf(project, templateId) {
   if (typeof rec.template === 'string' && rec.template !== templateId) return null;
   if (!ENCODE_VERDICTS.includes(rec.verdict)) return null;
   const recordedAt = [rec.at, rec._provenance && rec._provenance.writtenAt].find((v) => typeof v === 'string' && v) ?? null;
-  return { verdict: rec.verdict, recordedAt };
+  const why = typeof rec.reason === 'string' ? rec.reason.trim() : '';
+  const reason = !why ? null : why.length > REASON_MAX ? `${why.slice(0, REASON_MAX - 1)}…` : why;
+  return { verdict: rec.verdict, recordedAt, reason };
 }
 
 /**
@@ -284,10 +289,12 @@ export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = 
  * with no text to anchor), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
  * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, position, encoderCoverage, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
- * back — `encode {decision, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never applicable
- * (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under `project`;
- * vocabularyOf names the map) so `encoderCoverage` reads with its reason) and `encode` ({encoded, noRoundtrip,
- * handAuthored, notAttempted, notApplicable, unrecorded}, the decisions counted). null when there is no readable
+ * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
+ * applicable (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under
+ * `project`; vocabularyOf names the map; `reason` and `recordedAt` are the record's only when the decision IS its
+ * verdict — a decision the mapping or the page count made carries null for both) so `encoderCoverage` reads with its
+ * reason) and `encode` ({encoded, noRoundtrip, notAttempted, handAuthored, notApplicable, unrecorded}, the decisions
+ * counted). null when there is no readable
  * mapping (nothing shipped to measure). Derived, so --check keeps it out of the drift classification (it hashes only
  * inputs/outputs; the encode records are never hashed). Pure but for the reads.
  */
@@ -309,12 +316,14 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     const pages = new Set(slugs.filter((s) => typeof s === 'string' && s)).size;
     const record = encodeRecordOf(project, template);
     const decision = encodeDecisionOf({ record, encoderMap, pages });
+    // the record's stamp and reason belong to the decision only when the decision is the record's verdict
+    const recorded = record && record.verdict === decision ? record : null;
     encode[ENCODE_COUNTER[decision]] += 1;
     return {
       template, instances: insts.length,
       encoderMap, textAlignment: bySource('text-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
-      encode: { decision, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null },
+      encode: { decision, reason: recorded ? recorded.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: recorded ? recorded.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
