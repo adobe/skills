@@ -556,7 +556,7 @@ check('mapping: status lines — counts, verified skipped, sources, confidence b
     'sources encoder-map 0 · text-alignment 3 · position 2',
     'confidence ≥0.9 2 · 0.5–<0.9 1 · >0–<0.5 0 · 0 2',
     'encode none',
-    'encoder-coverage 0.000 · zero-confidence 2',
+    'encoder-coverage 0.000 · zero-confidence 2 · sections-without-selector 1',
     'position fallback: hero ×1, media ×1',
     `→ ${MAPPING} (written)`,
   ]);
@@ -566,7 +566,7 @@ check('mapping: --max-zero-confidence gates the confidence-0 count — exit 0 at
   // the hub run has confidence.none 2 (hero + media, position fallback)
   const under = runMap(hubProject('max-zero-under'), ['--max-zero-confidence', '2']);
   ok(under, 0);
-  assert.ok(lines(under).includes('encoder-coverage 0.000 · zero-confidence 2'), under.stdout);
+  assert.ok(lines(under).includes('encoder-coverage 0.000 · zero-confidence 2 · sections-without-selector 1'), under.stdout);
   const overDir = hubProject('max-zero-over');
   const over = runMap(overDir, ['--max-zero-confidence', '1']);
   ok(over, 3);
@@ -606,7 +606,7 @@ check('mapping: --json — one object { status, out, encode, counts, skipped }, 
     out: MAPPING,
     encode: null,
     counts: {
-      templates: 1, blocks: 5, instances: 5, verified: null, verifiedPct: null,
+      templates: 1, blocks: 5, instances: 5, sectionsWithoutSelector: 1, verified: null, verifiedPct: null,
       sources: { 'encoder-map': 0, 'text-alignment': 3, position: 2 },
       confidence: { high: 2, medium: 1, low: 0, none: 2 },
       positionBlocks: { hero: 1, media: 1 },

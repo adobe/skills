@@ -21,10 +21,12 @@
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
  * in the content files, no update-coverage.mjs --block record), a `selectorQuality` block derived from mapping.json
- * when present (block-origin's countsOf: the selector sources, encoderCoverage and the zeroConfidence count — not a
- * rewrite of mapping.json, so a re-hash recomputes it and --check never counts it as drift), the handover state and `handoverNotes` (owner
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage and the zeroConfidence count), a
+ * `sectionGaps` list derived from mapping.json the same way (sections an adopter projecting per selector drops: a null
+ * selector, or a selector kept but the blocks lost to the projection) — neither a rewrite of mapping.json, so a re-hash
+ * recomputes both and --check never counts them as drift, the handover state and `handoverNotes` (owner
  * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
- * value, the owner names them). It refuses (exit 1,
+ * value, the owner names them; the section-gap counts). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
  * a file blocks.json records in _provenance.inputs that changed or is gone, a judgement.json it did
@@ -219,6 +221,62 @@ export function selectorQualityOf(mappingFile) {
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
   };
+}
+
+/**
+ * The sections an adopter projecting mapping.json per selector would drop, derived from mapping.json (NOT a rewrite of it,
+ * like selectorQuality). Two reasons, from block-origin's section/block model. `no-selector` is exact (a property of the
+ * export); `blocks-unprojected` is a PREDICTION of the adopter's current per-selector merge (each variant homes to its
+ * first emitted section), so it can under- or over-count a given adopter's real losses.
+ *   - 'no-selector'       a template section whose `selector` is null/absent (generalise found no selector resolving to
+ *                         its element on any page): the adopter does not emit it — its blocks go with it.
+ *   - 'blocks-unprojected' a section that HAS a selector (so it is emitted) and declares blocks (`blocks[]` non-empty), yet
+ *                         no block homes to it under a per-selector projection — the adopter merges block instances by
+ *                         variant into the FIRST emitted section carrying that variant, so a sibling section sharing a
+ *                         variant, or one whose only instances were emitted unsectioned, keeps its selector but loses its
+ *                         blocks. `home` is each variant's first `blocks[]` entry; a section is homed when some variant's
+ *                         home is it.
+ * Each gap: { page (the section's first page, else the templateId), template (templateId), section (id), reason,
+ * blocks (the declared block names dropped) }. Entries in template then section emission order. null (field omitted) when
+ * there is no readable mapping; [] when a mapping has no such section. Derived, so --check never counts it as drift and
+ * --rehash-only recomputes it. Pure but for the one read.
+ */
+export function sectionGapsOf(mappingFile) {
+  if (!isFile(mappingFile)) return null;
+  let mapping;
+  try { mapping = JSON.parse(readFileSync(mappingFile, 'utf8')); } catch { return null; }
+  if (!mapping || !Array.isArray(mapping.templates)) return null;
+  const gaps = [];
+  for (const t of mapping.templates) {
+    const sections = Array.isArray(t.sections) ? t.sections : [];
+    const blocks = Array.isArray(t.blocks) ? t.blocks : [];
+    const emitted = new Set(sections.filter((s) => s && s.selector).map((s) => s.id));
+    const home = new Map();
+    for (const b of blocks) {
+      if (!b || home.has(b.variantId)) continue;
+      home.set(b.variantId, b.section && emitted.has(b.section) ? b.section : null);
+    }
+    const homed = new Set([...home.values()].filter((id) => id != null));
+    for (const s of sections) {
+      if (!s) continue;
+      const page = (Array.isArray(s.pages) && s.pages[0]) || t.templateId;
+      const blockNames = Array.isArray(s.blocks) ? s.blocks : [];
+      if (!s.selector) gaps.push({ page, template: t.templateId, section: s.id, reason: 'no-selector', blocks: [...blockNames] });
+      else if (blockNames.length && !homed.has(s.id)) gaps.push({ page, template: t.templateId, section: s.id, reason: 'blocks-unprojected', blocks: [...blockNames] });
+    }
+  }
+  return gaps;
+}
+
+/** Owner handover sentences for the section gaps, counted by reason; [] when there are none. */
+export function sectionGapNotes(gaps) {
+  if (!Array.isArray(gaps) || !gaps.length) return [];
+  const nulls = gaps.filter((g) => g.reason === 'no-selector').length;
+  const unprojected = gaps.filter((g) => g.reason === 'blocks-unprojected').length;
+  const notes = [];
+  if (nulls) notes.push(`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`);
+  if (unprojected) notes.push(`${unprojected} section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps`);
+  return notes;
 }
 
 /** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
@@ -550,13 +608,15 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
+  // Derived from mapping.json (not a rewrite of it), so both are recomputed on a re-hash and never count as drift.
+  const selectorQuality = selectorQualityOf(mappingFile);
+  const sectionGaps = sectionGapsOf(mappingFile);
   // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.
   const unjudged = unjudgedBaseTypes(coverage.blocks);
-  const handoverNotes = unjudged.length
-    ? [`${unjudged.length} delivered block(s) have no judged base type; the owner names them (${unjudged.join(', ')})`]
-    : [];
-  // Derived from mapping.json (not a rewrite of it), so it is recomputed on a re-hash and never counts as drift.
-  const selectorQuality = selectorQualityOf(mappingFile);
+  const handoverNotes = [
+    ...(unjudged.length ? [`${unjudged.length} delivered block(s) have no judged base type; the owner names them (${unjudged.join(', ')})`] : []),
+    ...sectionGapNotes(sectionGaps),
+  ];
   const manifest = {
     _provenance: provenance,
     formatVersion: FORMAT_VERSION,
@@ -564,6 +624,7 @@ function main(argv) {
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
     ...(selectorQuality ? { selectorQuality } : {}),
+    ...(sectionGaps ? { sectionGaps } : {}),
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
     ...(handoverNotes.length ? { handoverNotes } : {}),

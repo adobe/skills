@@ -106,6 +106,15 @@ check('export_quality: the manifest zero-confidence count is an info line above 
   assert.ok(withGap.gaps.includes('rollout_incomplete') && !withGap.complete);
   assert.deepEqual(withGap.info, ['export_quality:zero_confidence:5', 'pages_excluded:1: /news']);
 });
+check('export_quality: the manifest null-selector section count is an info line when > 0, never a gap; 0 and null are silent; it rides beside zero_confidence and completeness never flips', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, nullSelectorSections: 9 }).info, ['export_quality:null_selector_sections:9']);
+  assert.deepEqual(doneGaps({ ...base, nullSelectorSections: 0 }).info, [], '0: no line');
+  assert.deepEqual(doneGaps({ ...base }).info, [], 'null (no manifest / not listed): no line');
+  // both quality lines together, zero_confidence first; completeness stays true
+  const both = doneGaps({ ...base, zeroConfidence: 2, nullSelectorSections: 9 });
+  assert.deepEqual([both.complete, both.gaps, both.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:null_selector_sections:9']]);
+});
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
   const blocks = { blocks: [
     { id: 'hero-banner', kind: 'module', delivery: { status: 'pending', edsBlockName: 'hero' }, variants: [{ id: 'v_1', classes: [], pages: 1, instances: 2 }] },
@@ -907,15 +916,18 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
   const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
   const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }] };
-  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, handover: null }));
+  const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
+  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, handover: null }));
   const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.deepEqual(v.gaps.filter((g) => g.startsWith('export')), [], 'the export is fresh: no export_stale');
   assert.ok(v.info.includes('export_quality:zero_confidence:2'), JSON.stringify(v.info));
-  assert.equal(v.complete, true, 'the info line never flips completeness');
+  assert.ok(v.info.includes('export_quality:null_selector_sections:1'), JSON.stringify(v.info));
+  assert.equal(v.complete, true, 'the info lines never flip completeness');
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:zero_confidence:2'), r.stdout);
-  // once handed over, the export is the client's: the figure is not surfaced
+  assert.ok(r.stdout.split('\n').includes('info: export_quality:null_selector_sections:1'), r.stdout);
+  // once handed over, the export is the client's: neither figure is surfaced
   writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
   const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.ok(!handed.info.some((i) => i.startsWith('export_quality')), JSON.stringify(handed.info));

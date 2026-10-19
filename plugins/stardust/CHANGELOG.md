@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-null-sections) — null-selector sections surfaced in the migration export (#164)
+
+A recorded hands-off run ended READY with a fresh, Tier-2-adoptable export, yet when the adopter
+projected its page templates per selector it silently dropped 9 sections that carried no source
+selector and lost the blocks of 13 more — nothing in the manifest, the done-check or the handover
+said so (a green READY hid it). `mapping.json` already described every section and block instance
+with its source selector; the drop was only ever visible to the downstream adopter. This wave
+derives those gaps from `mapping.json` at export time, the same way `selectorQuality` is derived
+(never rewriting it). `no-selector` is exact — it matches the adopter's "not emitted" entries on
+that run (9). `blocks-unprojected` is a PREDICTION of the adopter's current per-selector merge (each
+variant homes to its first emitted section), so the shipped manifest reports 10 for that run — close
+to, but not, the adopter's own 13 lost; it can under- or over-count a given adopter's real losses:
+
+- **`workspace-manifest.mjs`** now adds a `sectionGaps` list to the manifest, derived from
+  `mapping.json` (present when a readable mapping exists, `[]` when none apply): one entry per
+  section an adopter projecting per selector would drop — `{page, template, section, reason,
+  blocks[]}`, `reason` `no-selector` (the section has no source selector, so it is not emitted) or
+  `blocks-unprojected` (the section keeps its selector but its declared blocks merge by variant into
+  an earlier section and are lost), `blocks[]` the dropped block names. The section-gap counts ride
+  the `handoverNotes`. It is derived, so a `--rehash-only` recomputes it and `--check` keeps it out
+  of the drift classification. Schema + contract updated.
+- **`done-check.mjs`** surfaces the manifest's `sectionGaps` no-selector count as an
+  `export_quality:null_selector_sections:N` info line (migration-workspace export only, when
+  `N > 0`) — informational, it never flips completeness, and it is hidden once the export is handed
+  over, matching the `export_quality:zero_confidence` line.
+- **`block-origin.mjs`** status lines now also print `sections-without-selector N` beside the
+  selector-quality figures (no gate flag).
+
 ## 0.36.x (stardust/r17-encoder-figures) — selector-quality figures in the migration export, and a zero-confidence gate (#163)
 
 Across four recorded hands-off runs `block-origin.mjs` assigned its selector sources

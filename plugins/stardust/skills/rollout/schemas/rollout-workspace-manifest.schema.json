@@ -67,6 +67,26 @@
         }
       }
     },
+    "sectionGaps": {
+      "type": "array",
+      "description": "Derived from workspace/mapping.json at manifest time (not a rewrite of it). Present only when a readable mapping exists ([] when none apply). The sections an adopter projecting mapping.json per selector would drop: a section with no source selector (reason no-selector) is not emitted at all; a section that keeps its selector but whose declared blocks are merged away under the per-selector projection (reason blocks-unprojected). Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "items": {
+        "type": "object",
+        "required": ["page", "template", "section", "reason", "blocks"],
+        "additionalProperties": false,
+        "properties": {
+          "page": { "type": "string", "description": "A page slug the section appears on (the section's first page, else the template id)." },
+          "template": { "type": "string", "description": "The mapping template id (templateId)." },
+          "section": { "type": "string", "description": "The mapping section id." },
+          "reason": {
+            "type": "string",
+            "enum": ["no-selector", "blocks-unprojected"],
+            "description": "no-selector = the section has no source selector, so the adopter does not emit it; blocks-unprojected = the section keeps its selector but its blocks are lost to the per-selector projection."
+          },
+          "blocks": { "type": "array", "description": "The declared block names dropped with the section.", "items": { "type": "string" } }
+        }
+      }
+    },
     "handover": {
       "type": ["object", "null"],
       "description": "null before handover; set only by a forced run after a client took the project over. Absent while the export is incomplete: captures exist and workspace/mapping.json does not (the writer exits 2) — not ready to hand over.",
