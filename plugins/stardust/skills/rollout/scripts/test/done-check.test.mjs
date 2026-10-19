@@ -124,6 +124,14 @@ check('export_quality: the manifest judgement.toFill count is an info line when 
   const all3 = doneGaps({ ...base, zeroConfidence: 2, nullSelectorSections: 9, judgementToFill: 14 });
   assert.deepEqual([all3.complete, all3.gaps, all3.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:null_selector_sections:9', 'export_quality:judgement_to_fill:14']]);
 });
+check('export_quality: the manifest variantsSummary.singleUse count is an info line when > 0, never a gap; 0 and null are silent; it rides last of the quality lines and completeness never flips', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, singleUseVariants: 75 }).info, ['export_quality:single_use_variants:75']);
+  assert.deepEqual(doneGaps({ ...base, singleUseVariants: 0 }).info, [], '0: no line');
+  assert.deepEqual(doneGaps({ ...base }).info, [], 'null (no manifest / older manifest / not listed): no line');
+  const all4 = doneGaps({ ...base, zeroConfidence: 2, nullSelectorSections: 9, judgementToFill: 14, singleUseVariants: 75, excluded: [{ slug: 'news', path: '/news' }] });
+  assert.deepEqual([all4.complete, all4.gaps, all4.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:null_selector_sections:9', 'export_quality:judgement_to_fill:14', 'export_quality:single_use_variants:75', 'pages_excluded:1: /news']]);
+});
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
   const blocks = { blocks: [
     { id: 'hero-banner', kind: 'module', delivery: { status: 'pending', edsBlockName: 'hero' }, variants: [{ id: 'v_1', classes: [], pages: 1, instances: 2 }] },
@@ -917,7 +925,7 @@ check('CLI: export_stale on block-origin\'s own inputs — an eds-schema sidecar
   rmSync(proj, { recursive: true, force: true });
 });
 
-check('CLI: export_quality — a fresh migration-workspace manifest carrying selectorQuality.zeroConfidence, sectionGaps and judgement.toFill prints all three info lines and stays complete (exit 0); handed over, they are silent', () => {
+check('CLI: export_quality — a fresh migration-workspace manifest carrying selectorQuality.zeroConfidence, sectionGaps, judgement.toFill and variantsSummary.singleUse prints all four info lines and stays complete (exit 0); handed over, they are silent', () => {
   const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
   const files = {
     'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
@@ -937,18 +945,21 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }] };
   const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
   const judgement = { toFill: 23, byKind: { baseType: 3, purpose: 10, reuseGuidance: 10 } };
-  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, judgement, handover: null }));
+  const variantsSummary = { total: 90, singleUse: 75, blocks: 17 };
+  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, judgement, variantsSummary, handover: null }));
   const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.deepEqual(v.gaps.filter((g) => g.startsWith('export')), [], 'the export is fresh: no export_stale');
   assert.ok(v.info.includes('export_quality:zero_confidence:2'), JSON.stringify(v.info));
   assert.ok(v.info.includes('export_quality:null_selector_sections:1'), JSON.stringify(v.info));
   assert.ok(v.info.includes('export_quality:judgement_to_fill:23'), JSON.stringify(v.info));
+  assert.ok(v.info.includes('export_quality:single_use_variants:75'), JSON.stringify(v.info));
   assert.equal(v.complete, true, 'the info lines never flip completeness');
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:zero_confidence:2'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:null_selector_sections:1'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:judgement_to_fill:23'), r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: export_quality:single_use_variants:75'), r.stdout);
   // once handed over, the export is the client's: neither figure is surfaced
   writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
   const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);

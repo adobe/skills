@@ -97,8 +97,10 @@
  * export_quality:null_selector_sections:N — the manifest's sectionGaps with reason no-selector (sections an adopter
  * projecting per selector drops) when N>0, informational, never a gap;
  * export_quality:judgement_to_fill:N — the manifest's judgement.toFill (judgement.json fields still empty: block
- * purpose / reuseGuidance / a default-fallback baseType) when N>0, informational, never a gap; all three hidden once
- * the export is handed over.
+ * purpose / reuseGuidance / a default-fallback baseType) when N>0, informational, never a gap;
+ * export_quality:single_use_variants:N — the manifest's variantsSummary.singleUse (block variants used by exactly one
+ * instance; an adopter emits one catalog block per variant, so each is a one-off catalog entry to review or fold)
+ * when N>0, informational, never a gap; all four hidden once the export is handed over.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -428,7 +430,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -456,11 +458,13 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
   // the migration export's zero-confidence selector count (manifest selectorQuality), null-selector section count
-  // (manifest sectionGaps) and judgement documentation debt (manifest judgement.toFill): informational, never a gap
+  // (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill) and single-use variant count
+  // (manifest variantsSummary.singleUse — one catalog block each for an adopter): informational, never a gap
   const info = [
     ...(zeroConfidence != null && zeroConfidence > zeroConfidenceThreshold ? [`export_quality:zero_confidence:${zeroConfidence}`] : []),
     ...(nullSelectorSections != null && nullSelectorSections > 0 ? [`export_quality:null_selector_sections:${nullSelectorSections}`] : []),
     ...(judgementToFill != null && judgementToFill > 0 ? [`export_quality:judgement_to_fill:${judgementToFill}`] : []),
+    ...(singleUseVariants != null && singleUseVariants > 0 ? [`export_quality:single_use_variants:${singleUseVariants}`] : []),
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
     ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
     ...(headerAgent ? [headerAgent] : []),
@@ -533,16 +537,18 @@ async function exportState({ out, config, pagesDoc, wm }) {
     handedOver,
     dir: ws,
   });
-  // the shipped manifest's zero-confidence figure, null-selector section count and judgement debt, for the info lines;
-  // none surfaced once a client owns the export
+  // the shipped manifest's zero-confidence figure, null-selector section count, judgement debt and single-use variant
+  // count, for the info lines; none surfaced once a client owns the export
   const sq = !handedOver && isMap(manifest) && isMap(manifest.selectorQuality) ? manifest.selectorQuality : null;
   const gaps = !handedOver && isMap(manifest) && Array.isArray(manifest.sectionGaps) ? manifest.sectionGaps : null;
   const judgement = !handedOver && isMap(manifest) && isMap(manifest.judgement) ? manifest.judgement : null;
+  const variants = !handedOver && isMap(manifest) && isMap(manifest.variantsSummary) ? manifest.variantsSummary : null;
   return {
     ...gap,
     zeroConfidence: sq && typeof sq.zeroConfidence === 'number' ? sq.zeroConfidence : null,
     nullSelectorSections: gaps ? gaps.filter((g) => g && g.reason === 'no-selector').length : null,
     judgementToFill: judgement && typeof judgement.toFill === 'number' ? judgement.toFill : null,
+    singleUseVariants: variants && typeof variants.singleUse === 'number' ? variants.singleUse : null,
   };
 }
 
@@ -633,6 +639,7 @@ async function main() {
     zeroConfidence: exported.zeroConfidence,
     nullSelectorSections: exported.nullSelectorSections,
     judgementToFill: exported.judgementToFill,
+    singleUseVariants: exported.singleUseVariants,
     skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped, ...(pendingKnown ? [] : ['blocks_pending: workspace-manifest.mjs not found beside done-check.mjs'])],
   });
 
