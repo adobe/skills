@@ -344,8 +344,10 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # deadline (exit 124 = re-run, not FAIL). Rounds run in the BACKGROUND: start every round at once
 # (the slots pace the Chromiums — no `sleep N;` staggering), then `wait` prints verdict lines only;
 # exit 75 = still going → `wait` again as your NEXT step, never in a shell loop;
-# exit 76 = the pause file appeared, stop waiting; exit 77 = the runner's wake line (`stardust/.labs/wake`
-# grew: a background agent finished) → `wait` again; --max 240 under a five-minute cache (default 300)
+# exit 77 = a background agent finished (`stardust/.labs/wake` grew) → `wait` again;
+# exit 78 = the runner asked to stop (the pause file `$STARDUST_PAUSE_FILE` appeared): stop
+# launching, let running units finish on their own (they survive the session), ask /boundary
+# once, write the two-line note and end; --max 240 under a five-minute cache (default 300)
 # (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
 # '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
 # Origin baseline (opt-in, default OFF): when the live origin moves under the run (personalisation, a

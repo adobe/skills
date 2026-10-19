@@ -4,7 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x (stardust/r17-unit-proof) — unit done proves its delivered pages before it flips (#165)
+## 0.36.x (stardust/r17-stop-aware-wait) — the wait instruments stop on the runner's stop file (#169)
+
+In a recorded hands-off run three sessions were killed at the end of the runner's stop grace: the lead
+was inside a five-minute `progress.mjs wait` / `run-bg.mjs wait` step when the runner's boundary reply
+said `stop`, and the instruments could not see it, so the lead kept waiting on its units until the grace
+killed the session — work in flight lost, a re-orientation next session. The runner now writes the pause
+file (`STARDUST_PAUSE_FILE`) on every `stop` reply, so its presence is a stop signal the wait can watch.
+
+- **`run-bg.mjs wait` and `progress.mjs wait`** check the pause file on every poll (a cheap `existsSync`):
+  present → they stop waiting at once with a new distinct **exit 78**, printing
+  `wait: the runner asked to stop (<stopAt or "now">; <reason or "no reason given">) — end the session now`
+  to stderr and to stdout (as the wake exit prints its line). The file's presence is the signal; the JSON
+  `{stopRequested, stopAt, reason}` is optional detail and an unparseable file still counts. Exit 78 is
+  distinct from 0/75/76/77 and wins over the wake file (77) when both are present. `STARDUST_PAUSE_FILE`
+  unset → nothing changes. Exit 76 is retained: `run-bg.mjs status` still shows the soft-pause line (exit 0).
+- **The lead's response to exit 78:** stop launching, let running units finish on their own (they survive
+  the session), ask `/boundary` once so the runner checkpoints, write the two-line note and end — documented
+  in replica/SKILL.md, rollout/SKILL.md and the handoff contract's wait exit-code bullet.
+
+
 
 A recorded hands-off run delivered all 21 pages about 2.7 h sooner than the day before, but the 18
 sibling pages shipped as clones of their archetypes were never gated at unit level — done-check later
