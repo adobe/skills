@@ -3,7 +3,7 @@
  * rollout/workspace-manifest.mjs — hashes, placeholders and handover state for the coverage a client reads (the
  * migration export: required when rollout.json `exports` lists `migration-workspace`).
  *
- * Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json]
+ * Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--check] [--rehash-only] [--draft-judgement] [--force] [--dry-run] [--json]
  *   defaults: --out stardust/rollout  --project .  --content <project>/content  --blocks <project>/blocks
  *             --captures <project>/stardust/current/pages
  *
@@ -30,6 +30,20 @@
  * manifest, and then nothing is rewritten ("unchanged"); a write goes to a temp file renamed into
  * place.
  *
+ * --check (read-only) classifies drift between the last manifest and the files on disk, so a stale
+ * export gets the cheapest safe refresh. `fresh` nothing drifted (exit 0); `rehash-safe` only inputs
+ * that cannot change the mapping or the page/template/block set drifted — a block's CSS, or a coverage
+ * file regenerated with the same page and block set (only generatedAt moved) — so a re-hash suffices
+ * (exit 5); `rebuild` the content summary, a capture, an eds-schema sidecar, an encoder map, a block's
+ * JS or the judgement changed, or mapping.json itself — anything feeding selectors or templates — so
+ * the full sequence is needed (exit 4). It prints the classification, the drifted inputs and the exact
+ * next command; when coverage/pages.json drifted it also notes the adopter refuses the export until it
+ * is refreshed. --rehash-only is allowed only when --check is rehash-safe (or already fresh): it
+ * refreshes the manifest's input and output hashes (and reconciles mapping.json's generatedAt to
+ * pages.json's — the only field block-origin would move when its own inputs are unchanged), keeping
+ * every other field byte-identical, and refuses with the rebuild command (exit 4) otherwise. Idempotent:
+ * a second run is byte-identical, "unchanged". 5/4 are used in place of a 3 that `handed over` holds.
+ *
  * --draft-judgement writes only <out>/workspace/judgement.json, and only when it is absent; it needs
  * the three coverage files with formatVersion, fresh or not. Every field to judge is empty (toFill
  * lists them) and counts as judged once non-empty; blocks.mjs and inventory.mjs carry judged values
@@ -48,7 +62,7 @@
  * Exit 0 written or unchanged, 1 coverage missing, without formatVersion, stale or unreadable,
  * 2 usage, or mapping.json missing while captures exist (the manifest written or unchanged without handover —
  * a handover a forced run recorded is kept; the `missing:` line on stderr tells it from a usage error),
- * 3 handed over.
+ * 3 handed over. --check: 0 fresh, 5 rehash-safe, 4 rebuild. --rehash-only: 0 rehashed or unchanged, 4 rebuild.
  */
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
@@ -56,7 +70,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   readJSON, sha256, byStr, kebab, edsName, kindOf, DEFAULT_CONTENT, contentFileFor, identityTokens, scrubIdentity,
-  COVERAGE_FORMAT_VERSION,
+  COVERAGE_FORMAT_VERSION, classifyExportDrift,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -76,8 +90,12 @@ const COVERAGE = ['pages', 'templates', 'blocks'];
 // (`unknown` is not among them: it is not a judged value, it is the absence of one).
 const BASE_TYPE_CANDIDATES = ['accordion', 'breadcrumbs', 'cards', 'carousel', 'columns', 'embed', 'form', 'fragment', 'hero', 'modal', 'quote', 'search', 'table', 'tabs', 'video'];
 const VALUE_FLAGS = ['out', 'project', 'content', 'blocks', 'captures'];
-const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json', 'allow-no-mapping'];
-const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
+const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json', 'allow-no-mapping', 'check', 'rehash-only'];
+const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--check] [--rehash-only] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
+// --check exit codes (5/4 not 3/4: a `handed over` run already holds 3) and the next-command strings it prints.
+export const CHECK_EXIT = { fresh: 0, 'rehash-safe': 5, rebuild: 4 };
+export const REHASH_CMD = 'node skills/rollout/scripts/workspace-manifest.mjs --rehash-only';
+export const REBUILD_CMD = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
 
 const serialize = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
 const fail = (code, msg) => { console.error(`rollout workspace-manifest: ${msg}`); return code; };
@@ -304,6 +322,8 @@ function main(argv) {
   const opts = parseArgs(argv);
   if (opts.error) return fail(2, `${opts.error}\n${USAGE}`);
   const { flags } = opts;
+  const modes = ['check', 'rehash-only', 'draft-judgement'].filter((f) => flags.has(f));
+  if (modes.length > 1) return fail(2, `--${modes.join(' and --')} cannot be combined\n${USAGE}`);
   const dry = flags.has('dry-run');
   const out = opts.out || join('stardust', 'rollout');
   const OUT = resolve(out);
@@ -321,7 +341,7 @@ function main(argv) {
   if (existsSync(join(W, FILES.handover))) detectedFrom = 'marker';
   else if (priorManifest && priorManifest.handover) detectedFrom = 'manifest';
   else if (priorManifest?.inputs?.content?.tracked === true && tracked === false) detectedFrom = 'untracked-content';
-  if (detectedFrom && !flags.has('force')) {
+  if (detectedFrom && !flags.has('force') && !flags.has('check')) {
     const why = {
       marker: `${join(shown, FILES.handover)} exists (a client adopted the project)`,
       manifest: 'the last manifest records a handover (a forced run)',
@@ -402,6 +422,56 @@ function main(argv) {
     return lacking.length ? 2 : 0;
   };
 
+  // --- --check / --rehash-only: classify drift from the last manifest to the files on disk ---------
+  const rehashing = flags.has('rehash-only');
+  if (flags.has('check') || rehashing) {
+    const sortedOutputs = Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]]));
+    if (!priorManifest || typeof priorManifest.inputs !== 'object') {
+      return fail(rehashing ? 4 : 1, `no ${join(shown, FILES.manifest)} to check — build the export first: ${REBUILD_CMD}`);
+    }
+    const norm = (k, v) => JSON.stringify(k === 'content' && v && typeof v === 'object' ? [v.files, v.sha256] : v ?? null);
+    const diff = (was, now) => [...new Set([...Object.keys(was || {}), ...Object.keys(now || {})])]
+      .filter((k) => norm(k, (was || {})[k]) !== norm(k, (now || {})[k])).sort(byStr);
+    const inDrift = diff(priorManifest.inputs, sortedInputs);
+    const outDrift = diff(priorManifest.outputs, sortedOutputs);
+    const classification = classifyExportDrift(inDrift, outDrift);
+    const drifted = [...inDrift, ...outDrift].sort(byStr);
+    const adopterBlocked = outDrift.includes(relP(join(OUT, 'coverage', 'pages.json')));
+    const nextCmd = classification === 'rehash-safe' ? REHASH_CMD : classification === 'rebuild' ? REBUILD_CMD : null;
+
+    if (!rehashing) {
+      if (flags.has('json')) {
+        console.log(JSON.stringify({ status: classification, dir: shown, drifted, next: nextCmd, adopterBlocked }));
+      } else {
+        console.log(`rollout workspace-manifest --check → ${shown}`);
+        console.log('='.repeat(60));
+        console.log(`Classification  ${classification}`);
+        console.log(`Drifted         ${drifted.length ? drifted.join(', ') : '(none)'}`);
+        if (adopterBlocked) console.log('Adopter         refuses this export until coverage/pages.json is refreshed');
+        console.log(`Next            ${nextCmd || 'nothing to do — the export is current'}`);
+      }
+      return CHECK_EXIT[classification];
+    }
+
+    // --rehash-only: refuse a rebuild; else reconcile mapping.json's generatedAt and fall through to the
+    // write with the current hashes (the stale guards below are skipped — this drift is rehash-safe).
+    if (classification === 'rebuild') {
+      if (flags.has('json')) console.log(JSON.stringify({ status: 'rebuild', dir: shown, drifted, next: REBUILD_CMD, adopterBlocked }));
+      return fail(4, `rebuild needed, not a re-hash — drifted: ${drifted.join(', ') || '(none)'} — ${REBUILD_CMD}`);
+    }
+    const pagesAt = coverage.pages.generatedAt;
+    if (isFile(mappingFile) && typeof pagesAt === 'string') {
+      const mapText = readFileSync(mappingFile, 'utf8');
+      let mapAt; try { mapAt = JSON.parse(mapText).generatedAt ?? null; } catch { mapAt = undefined; }
+      const line = mapText.match(/^(\s*"generatedAt":\s*)(?:"[^"]*"|null)(,?)[^\n]*$/m);
+      if (mapAt !== undefined && mapAt !== pagesAt && line) {
+        const next = mapText.replace(line[0], () => `${line[1]}${JSON.stringify(pagesAt)}${line[2]}`);
+        if (!dry) { try { writeAtomic(mappingFile, next); } catch (e) { return fail(1, `rehash write failed: ${e.message}`); } }
+        outputs[relP(mappingFile)] = sha256(Buffer.from(next));
+      }
+    }
+  }
+
   // --- --draft-judgement: only judgement.json, only when absent --------------------
   if (flags.has('draft-judgement')) {
     if (judged) {
@@ -416,25 +486,29 @@ function main(argv) {
   }
 
   // --- Freshness: coverage must describe the files on disk (the manifest run only) --
-  const stale = coverage.pages.pages.filter((p) => {
-    if (!p) return false;
-    const rel = contentFileFor(p.path, (k) => contentHashes.has(k));
-    return rel ? !p.delivered || p.delivered.contentHash !== contentHashes.get(rel) : p.delivered != null;
-  }).map((p) => p.slug);
-  if (stale.length) {
-    return fail(1, `coverage is stale: ${stale.length} page(s) whose content file changed, appeared or went away since inventory.mjs ran (${stale.slice(0, 5).join(', ')}${stale.length > 5 ? ', …' : ''}) — re-run inventory.mjs and blocks.mjs`);
+  // --rehash-only skips these refusals on purpose: --check already classified the drift rehash-safe,
+  // so the block code that drifted (CSS) is exactly what a plain run would refuse — re-hashing is the fix.
+  if (!rehashing) {
+    const stale = coverage.pages.pages.filter((p) => {
+      if (!p) return false;
+      const rel = contentFileFor(p.path, (k) => contentHashes.has(k));
+      return rel ? !p.delivered || p.delivered.contentHash !== contentHashes.get(rel) : p.delivered != null;
+    }).map((p) => p.slug);
+    if (stale.length) {
+      return fail(1, `coverage is stale: ${stale.length} page(s) whose content file changed, appeared or went away since inventory.mjs ran (${stale.slice(0, 5).join(', ')}${stale.length > 5 ? ', …' : ''}) — re-run inventory.mjs and blocks.mjs`);
+    }
+    const blocksShown = join(out, 'coverage', 'blocks.json');
+    const read = coverage.blocks._provenance && coverage.blocks._provenance.inputs;
+    if (!read || typeof read !== 'object' || Array.isArray(read)) {
+      return fail(1, `${blocksShown} records no _provenance.inputs (written by an older blocks.mjs) — re-run blocks.mjs`);
+    }
+    const at = (p) => (isAbsolute(p) ? p : resolve(project, p));
+    const samePath = (a, b) => { if (a === b) return true; try { return realpathSync(a) === realpathSync(b); } catch { return false; } };
+    const off = Object.keys(read).sort(byStr).filter((p) => !isFile(at(p)) || sha256(readFileSync(at(p))) !== read[p])
+      .map((p) => `${p} (${isFile(at(p)) ? 'changed' : 'gone'})`);
+    if (judged && !Object.keys(read).some((p) => samePath(at(p), judgementFile))) off.push(`${relP(judgementFile)} (not read)`);
+    if (off.length) return fail(1, `coverage is stale: ${blocksShown} was built from other files — ${off.join(', ')} — re-run blocks.mjs`);
   }
-  const blocksShown = join(out, 'coverage', 'blocks.json');
-  const read = coverage.blocks._provenance && coverage.blocks._provenance.inputs;
-  if (!read || typeof read !== 'object' || Array.isArray(read)) {
-    return fail(1, `${blocksShown} records no _provenance.inputs (written by an older blocks.mjs) — re-run blocks.mjs`);
-  }
-  const at = (p) => (isAbsolute(p) ? p : resolve(project, p));
-  const samePath = (a, b) => { if (a === b) return true; try { return realpathSync(a) === realpathSync(b); } catch { return false; } };
-  const off = Object.keys(read).sort(byStr).filter((p) => !isFile(at(p)) || sha256(readFileSync(at(p))) !== read[p])
-    .map((p) => `${p} (${isFile(at(p)) ? 'changed' : 'gone'})`);
-  if (judged && !Object.keys(read).some((p) => samePath(at(p), judgementFile))) off.push(`${relP(judgementFile)} (not read)`);
-  if (off.length) return fail(1, `coverage is stale: ${blocksShown} was built from other files — ${off.join(', ')} — re-run blocks.mjs`);
 
   // --- Manifest ---------------------------------------------------------------------
   let degraded = null;
@@ -467,8 +541,9 @@ function main(argv) {
   if (isFile(file) && readFileSync(file).equals(Buffer.from(text))) {
     return report('unchanged', hashes, { degraded, missing, line: 'unchanged — the same bytes; nothing written' });
   }
-  if (dry) return report('dry-run', hashes, { degraded, missing, line: `would write ${join(shown, FILES.manifest)} (dry run: nothing written)` });
+  if (dry) return report('dry-run', hashes, { degraded, missing, line: `would ${rehashing ? 're-hash' : 'write'} ${join(shown, FILES.manifest)} (dry run: nothing written)` });
   try { writeAtomic(file, text); } catch (e) { return fail(1, `write failed: ${e.message}`); }
+  if (rehashing) return report('rehashed', hashes, { degraded, missing, line: `re-hashed ${join(shown, FILES.manifest)} — input/output hashes refreshed, every other field unchanged` });
   return report('written', hashes, { degraded, missing, line: `written ${join(shown, FILES.manifest)}${missing.length ? ' without handover' : ''}` });
 }
 

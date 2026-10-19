@@ -503,6 +503,27 @@ export function contentFileFor(deliveredPath, exists) {
   return (p ? [`${p}.html`, `${p}/index.html`] : ['index.html']).find((k) => has(k)) || null;
 }
 
+/**
+ * Classify migration-export drift from the project-relative keys that drifted between the manifest and
+ * the tree on disk — `inputKeys` from `inputs`, `outputKeys` from `outputs`. Returns:
+ *   `fresh`       nothing drifted;
+ *   `rehash-safe` every drifted artifact keeps the frozen mapping valid — a block's CSS
+ *                 (`…/<name>/<name>.css`; presentation, `cssOptionClasses` is re-derived, never a
+ *                 source selector) among the inputs, and a regenerated coverage file
+ *                 (`…/coverage/{pages,templates,blocks}.json`; same page and block set, only
+ *                 generatedAt moved) among the outputs;
+ *   `rebuild`     anything else drifted — the `content` summary, a capture, an eds-schema sidecar, an
+ *                 encoder map, a block's JS (its description) or the judgement (each feeds the source
+ *                 selectors or the templates), or `workspace/mapping.json` itself (the selectors).
+ * Pure; the keys alone decide, so done-check.mjs and workspace-manifest.mjs classify a drift alike.
+ */
+export function classifyExportDrift(inputKeys = [], outputKeys = []) {
+  if (!inputKeys.length && !outputKeys.length) return 'fresh';
+  const safeInput = (k) => /(?:^|\/)([^/]+)\/\1\.css$/.test(k);
+  const safeOutput = (k) => /(?:^|\/)coverage\/(?:pages|templates|blocks)\.json$/.test(k);
+  return inputKeys.every(safeInput) && outputKeys.every(safeOutput) ? 'rehash-safe' : 'rebuild';
+}
+
 /** Classes chained to `.name` in one compound selector (`.teaser.list` → list); pseudo-classes ignored. */
 export function cssOptionClasses(name, css) {
   if (!css || !name) return [];
