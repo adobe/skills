@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x (stardust/r16-gates-and-jobs) — servers are not jobs, the unit commits its report, the source contract is cached, and gates stop at PASS (#NNN)
+## 0.36.x (stardust/r16-gates-and-jobs) — servers are not jobs, the unit commits its report, the source contract is cached, and gates stop at PASS (#155)
 
 The recorded hands-off runs: a 26-second measure queued 615 s behind a static file server because `run-bg.mjs`
 counted every running job toward its slots, and a bare `wait` blocked the full tool cap on a unit's own prototype and
@@ -430,13 +430,14 @@ stays 0.36.0). Batch 1, merged in this order, each under its own `0.36.x (<branc
 - `stardust/r16-wait-and-waves` — 0.36.x (#152 local).
 - `stardust/r16-proto-to-doc` — 0.36.x (#153 local).
 - `stardust/r16-census-and-clock` — 0.36.x (#154 local).
+- `stardust/r16-gates-and-jobs` — 0.36.x (#155 local).
 - Local-only commits: the new scripts-index rows trimmed and the lint cap raised to 20 KiB + 96 bytes for the
   four-branch union (a maintainer question); the extract SKILL and scripts-index name style-census's `--page-timeout`
   and `--resume`; the validate workflow runs the inline-writes lint beside the other stardust lints; a pre-existing
-  "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; this
+  "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; the run-bg server/stall/stop machinery merged beside the wake/exit-77 machinery, and rollout restores four sentences the gates-and-jobs condensing dropped while delivery-gates names exit 77; this
   renumbering.
 
-Not in this image yet: `stardust/r16-gates-and-jobs` and `stardust/r16-export-fresh` (verifications pending — the
+Not in this image yet: `stardust/r16-export-fresh` (verification pending — the
 integration branch stays open for later batches).
 
 ## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
