@@ -182,9 +182,10 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   const expected = JSON.parse(JSON.stringify(without));
   expected.outputs[MAP] = mf.outputs[MAP];
   expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
-  // an empty-templates mapping now adds a zeroed selectorQuality block (derived from mapping.json, not a drift input)
+  // an empty-templates mapping now adds a zeroed selectorQuality block and an empty sectionGaps (derived from mapping.json, not drift inputs)
   expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] };
-  assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality');
+  expected.sectionGaps = [];
+  assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality and sectionGaps');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
   assert.equal(jsonOut(run(dir, '--json')).status, 'unchanged');
   writeFileSync(join(dir, MAP), mapping('2026-01-02T00:00:00.000Z'));
@@ -227,6 +228,58 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
   writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] });
+});
+
+check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
+  // s1 keeps hero+promo (both home to it); s2/s4 have no selector; s3 keeps its selector but promo homed to s1, so it is lost.
+  const gapMapping = {
+    formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
+    templates: [{
+      templateId: 't1',
+      sections: [
+        { id: 's1', selector: 'h1', pages: ['home'], style: null, blocks: ['hero', 'promo'], defaultContent: [], confidence: 1 },
+        { id: 's2', selector: null, pages: [], style: null, blocks: ['cards'], defaultContent: [], confidence: 0 },
+        { id: 's3', selector: 'section.x', pages: ['home'], style: null, blocks: ['promo'], defaultContent: [], confidence: 1 },
+        { id: 's4', selector: null, pages: [], style: null, blocks: [], defaultContent: [], confidence: 0 },
+      ],
+      blocks: [
+        { block: 'hero', variant: null, variantId: 'v_hero', section: 's1', positions: [0], instances: [{ slug: 'home', pos: 0, selector: 'h1 a', confidence: 1, source: 'text-alignment', verified: null }] },
+        { block: 'promo', variant: null, variantId: 'v_promo', section: 's1', positions: [1], instances: [{ slug: 'home', pos: 1, selector: 'p1', confidence: 1, source: 'text-alignment', verified: null }] },
+        { block: 'promo', variant: null, variantId: 'v_promo', section: 's3', positions: [2], instances: [{ slug: 'home', pos: 2, selector: 'p2', confidence: 1, source: 'text-alignment', verified: null }] },
+      ],
+    }],
+  };
+  const EXPECTED = [
+    { page: 't1', template: 't1', section: 's2', reason: 'no-selector', blocks: ['cards'] },
+    { page: 'home', template: 't1', section: 's3', reason: 'blocks-unprojected', blocks: ['promo'] },
+    { page: 't1', template: 't1', section: 's4', reason: 'no-selector', blocks: [] },
+  ];
+  const dir = withCaptures('section-gaps');
+  mkdirSync(W(dir), { recursive: true });
+  writeFileSync(join(dir, MAP), `${JSON.stringify(gapMapping, null, 2)}\n`);
+  ok(run(dir));
+  const mf = doc(dir, 'manifest.json');
+  assert.deepEqual(mf.sectionGaps, EXPECTED);
+  // the counts ride the handover notes (two null-selector, one blocks-unprojected)
+  assert.deepEqual((mf.handoverNotes || []).filter((n) => n.includes('selector')), [
+    '2 section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps',
+    '1 section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps',
+  ]);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
+  // --check compares inputs/outputs only; the derived sectionGaps is never a drift
+  const c = run(dir, '--check', '--json');
+  ok(c, 0);
+  assert.equal(jsonOut(c).status, 'fresh');
+  // --rehash-only recomputes it (not a carry-over): corrupt the field, re-hash, it comes back right
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.sectionGaps = [{ page: 'x', template: 'x', section: 'x', reason: 'no-selector', blocks: [] }]; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.deepEqual(doc(dir, 'manifest.json').sectionGaps, EXPECTED, 'derived, recomputed from the mapping');
+  // none → empty list and no handover sentence
+  writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
+  ok(run(dir));
+  const clean = doc(dir, 'manifest.json');
+  assert.deepEqual(clean.sectionGaps, []);
+  assert.ok(!(clean.handoverNotes || []).some((n) => n.includes('selector')), JSON.stringify(clean.handoverNotes));
 });
 
 check('mapping required: captures present and no mapping.json → the manifest is written without handover, the missing line names block-origin.mjs --verify, exit 2; unchanged on a re-run, still 2; --dry-run writes nothing', () => {
