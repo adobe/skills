@@ -123,7 +123,7 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   const mf = doc(dir, 'manifest.json');
   assert.equal(mf.formatVersion, '0.1.0');
   // the fixture's teaser has no judged base type, so the manifest carries handoverNotes (unknown is not judged)
-  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'handover', 'handoverNotes']);
+  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'excluded', 'handover', 'handoverNotes']);
   assert.deepEqual(mf.handoverNotes, ['1 delivered block(s) have no judged base type; the owner names them (teaser)']);
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
@@ -323,6 +323,59 @@ check('templateGroups: {total, archetypes, siblings} splits the template count b
   const j = jsonOut(run(dir, '--json'));
   assert.deepEqual([j.counts.templates, j.counts.archetypes, j.counts.siblingGroups], [3, 2, 1]);
   assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+});
+
+check('excluded: planned URLs that never became a page — the coverage excluded[] rows (recorded reason), the crawl log\'s failures (crawl: <message>), state.json pages[] and plan.json steps with no row (unrecorded); a URL is one planned page whatever its /index, .html or slash; derived — recomputed by --rehash-only, --check never a drift; validates', () => {
+  // the pure helper
+  const pages = [{ slug: 'home', path: '/', source: { sourceUrl: 'https://www.example.com/' } }, { slug: 'about', path: '/about', source: { sourceUrl: 'https://www.example.com/about.html' } }];
+  assert.deepEqual(wm.excludedOf({ pages }), []);
+  assert.deepEqual(wm.excludedOf({ pages, state: { pages: [{ slug: 'home', url: 'https://www.example.com/index.html' }, { slug: 'about-x', url: 'https://www.example.com/about/' }] }, plan: { steps: [{ slug: 'home', path: '/' }] } }), [], 'every planned URL is a page');
+  const excluded = [{ slug: 'news', path: '/news', sourceUrl: 'https://www.example.com/news.html', status: 'excluded', reason: 'the source answers 404', at: null }, { slug: 'bare', path: null, sourceUrl: null, status: 'excluded', reason: null, at: null }];
+  const crawlLog = { crawl: { failures: [{ url: 'https://www.example.com/faq.html', slug: 'faq', errorClass: 'HTTPError', message: 'HTTP 404' }, { url: 'https://www.example.com/about.html', message: 'HTTP 503' }, { url: 'https://www.example.com/news/', message: 'HTTP 410' }] } };
+  const state = { pages: [{ slug: 'home', url: 'https://www.example.com/' }, { slug: 'team', url: 'https://www.example.com/team.html' }, { slug: 'news', url: 'https://www.example.com/news.html', excluded: { reason: 'the source answers 404', at: null } }], excluded: [{ slug: 'old', url: 'https://www.example.com/old.html', reason: 'merged into /about' }] };
+  const plan = { steps: [{ slug: 'home', path: '/' }, { slug: 'gone', path: '/gone' }] };
+  assert.deepEqual(wm.excludedOf({ pages, excluded, crawlLog, state, plan }), [
+    { url: '/bare', reason: 'unrecorded' },
+    { url: '/gone', reason: 'unrecorded' },
+    { url: 'https://www.example.com/faq.html', reason: 'crawl: HTTP 404' },
+    { url: 'https://www.example.com/news.html', reason: 'the source answers 404' },
+    { url: 'https://www.example.com/old.html', reason: 'merged into /about' },
+    { url: 'https://www.example.com/team.html', reason: 'unrecorded' },
+  ], 'sorted by url; the coverage record of /news wins over the crawl\'s; a captured page\'s crawl failure is no exclusion');
+  assert.deepEqual(wm.excludedOf({ pages, crawlLog: { crawl: { failures: [{ url: 'https://www.example.com/x.html' }] } } }), [{ url: 'https://www.example.com/x.html', reason: 'crawl: failed' }]);
+  assert.deepEqual(wm.excludedOf({ pages, state: 'not a state', crawlLog: [], plan: null, excluded: null }), [], 'malformed sources add nothing');
+  // in a manifest: the fixture's state.json plans a contact page that was never migrated → unrecorded
+  const dir = copy('excluded');
+  const planned = 'https://www.example.com/contact.html';
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'unrecorded' }]);
+  assert.equal(jsonOut(run(dir, '--json')).counts.excluded, 1);
+  // the crawl's record of that URL gives the reason
+  mkdirSync(join(dir, 'stardust', 'current'), { recursive: true });
+  writeFileSync(join(dir, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [{ url: planned, slug: 'contact', errorClass: 'HTTPError', message: 'HTTP 404', at: '2026-01-01T00:00:00Z' }] } }));
+  const r = run(dir);
+  ok(r);
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'crawl: HTTP 404' }]);
+  assert.match(r.stdout, /^Excluded\s+1 planned URL\(s\) never became a page \(manifest\.json excluded\[\]\)$/m, r.stdout);
+  // the roster-freeze record (state.mjs exclude → inventory.mjs → pages.json excluded[]) wins over the crawl's
+  editJSON(join(dir, 'stardust', 'state.json'), (d) => { d.pages.find((p) => p.slug === 'contact').excluded = { reason: 'the source answers 404 since the crawl', at: '2026-01-02T00:00:00Z' }; });
+  rebuild(dir);
+  assert.equal(JSON.parse(readFileSync(join(OUT(dir), 'coverage', 'pages.json'), 'utf8')).excluded.length, 1, 'inventory records the exclusion in pages.json');
+  ok(run(dir));
+  const recorded = [{ url: planned, reason: 'the source answers 404 since the crawl' }];
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, recorded);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // derived: corrupt the field, --check stays fresh (never a drift input), --rehash-only recomputes it
+  editJSON(join(W(dir), 'manifest.json'), (d) => { d.excluded = []; });
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+  ok(run(dir, '--rehash-only'));
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, recorded);
+  // every planned URL a page → []
+  editJSON(join(dir, 'stardust', 'state.json'), (d) => { d.pages = d.pages.filter((p) => p.slug !== 'contact'); });
+  rmSync(join(dir, 'stardust', 'current'), { recursive: true, force: true });
+  rebuild(dir);
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, []);
 });
 
 check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
