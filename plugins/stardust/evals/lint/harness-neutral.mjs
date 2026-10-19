@@ -27,7 +27,7 @@ const files = [];
 
 const findings = [];
 for (const f of files) {
-  readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+  readFileSync(f, 'utf8').split(/\r?\n/).forEach((line, i) => {
     if (KEEP.some((k) => k.test(line))) return;
     if (NAMESPACED.test(line)) findings.push(`${relative(process.cwd(), f)}:${i + 1}: namespaced skill reference: ${line.trim().slice(0, 120)}`);
     else if (CLAUDE_TOOLS.test(line)) findings.push(`${relative(process.cwd(), f)}:${i + 1}: Claude-only tool name without a "Claude Code" marker: ${line.trim().slice(0, 120)}`);

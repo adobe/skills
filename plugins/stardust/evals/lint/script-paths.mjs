@@ -38,7 +38,7 @@ const SKIP_SKILLS = new Set(['impeccable']);
 const findings = [];
 let checked = 0;
 for (const f of files) {
-  readFileSync(f, 'utf8').split('\n').forEach((line, i) => {
+  readFileSync(f, 'utf8').split(/\r?\n/).forEach((line, i) => {
     if (line.includes('script-paths: ignore')) return;
     for (const { re, to } of PATTERNS) {
       for (const m of line.matchAll(re)) {
