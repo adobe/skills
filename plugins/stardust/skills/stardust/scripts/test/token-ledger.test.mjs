@@ -139,7 +139,7 @@ try {
   assert.ok(md.startsWith('<!-- stardust:provenance\n'), 'provenance block first');
   assert.ok(md.includes(`\n# Usage — project\n\nWritten ${j.writtenAt} · sessions covered 1 (last request 2026-09-10T16:05:00.000Z)\n\n`), 'the coverage line right under the heading');
   assert.match(md, /^\| migrate plan \| 2026-09-10T15:20:00Z \| 2026-09-10T15:24:12Z \| 4 \| 1 \| 0 \| 0 \| 1\.2 k \| 40\.0 k \(40\.0 k \/ 0\) \| 100\.0 k \| 900 \(50\) \| 0 \/ 0 \/ 0 \| 6 \| 23683 \| /m);
-  assert.match(md, /^Harness-reported session cost \(not per phase\): USD 3\.21 over 1 session\(s\), each session's last cost line — model-x 3\.21\.$/m);
+  assert.match(md, /^Harness-reported session cost \(not per phase\): USD 3\.21 over 1 session\(s\), each session's last cost line — model-x 3\.21; 1 cost line\(s\) seen, last 2026-09-10T15:40:10\.000Z \(run after the final session's last cost line, or this is one session short\)\.$/m);
   assert.ok(!md.includes('↳'), 'no unit rows without progress.json');
 
   // (d) idempotent: unchanged inputs → both files byte-identical, writtenAt not bumped, nothing written
@@ -180,7 +180,7 @@ try {
   assert.deepEqual(wv.filter((w) => w.label.startsWith('rollout')).map((w) => [w.label, w.to]), [['rollout wave 1', '2026-09-10T15:30:00Z'], ['rollout wave 2', '2026-09-10T15:39:52Z'], ['rollout wave 3', wv[2].to]], 'wave 1 and 2 close when the next wave starts');
   assert.notEqual(wv[2].to, null, 'the open last wave ends at the last request');
   // (i) harness cost: one session (transcript file) with a cost line — the subagent transcript has none
-  assert.deepEqual(j.harnessCost, { totalCostUSD: 3.21, sessions: 1, models: { 'model-x': 3.21 } });
+  assert.deepEqual(j.harnessCost, { totalCostUSD: 3.21, sessions: 1, costLinesSeen: 1, lastCostAt: '2026-09-10T15:40:10.000Z', models: { 'model-x': 3.21 } });
 
   // (j) recorded-unit rows
   const units = join(tmp, 'units');
@@ -357,10 +357,10 @@ try {
   const mdl2 = readFileSync(join(later, 'stardust', 'usage.md'), 'utf8');
   assert.ok(jl2.writtenAt > jl1.writtenAt, `writtenAt moves (${jl1.writtenAt} → ${jl2.writtenAt})`);
   assert.deepEqual(jl2.sessionsCovered, { count: 2, first: '2026-09-10T15:20:31.000Z', last: '2026-09-10T16:40:00.000Z' }, 'two main sessions; last = request F');
-  assert.deepEqual(jl2.harnessCost, { totalCostUSD: 4.46, sessions: 2, models: { 'model-x': 3.96, 'model-y': 0.5 } }, "each session's last cost line (3.21 + 1.25), models summed across sessions");
+  assert.deepEqual(jl2.harnessCost, { totalCostUSD: 4.46, sessions: 2, costLinesSeen: 3, lastCostAt: '2026-09-10T16:40:30.000Z', models: { 'model-x': 3.96, 'model-y': 0.5 } }, "each session's last cost line (3.21 + 1.25), models summed; 3 cost lines seen across the two sessions");
   assert.ok(mdl2.includes(`\nWritten ${jl2.writtenAt} · sessions covered 2 (last request 2026-09-10T16:40:00.000Z)\n`), mdl2);
   assert.ok(mdl2.includes(`  writtenAt: ${jl2.writtenAt}\n`), 'the provenance carries the same writtenAt');
-  assert.match(mdl2, /^Harness-reported session cost \(not per phase\): USD 4\.46 over 2 session\(s\), each session's last cost line — model-x 3\.96, model-y 0\.50\.$/m);
+  assert.match(mdl2, /^Harness-reported session cost \(not per phase\): USD 4\.46 over 2 session\(s\), each session's last cost line — model-x 3\.96, model-y 0\.50; 3 cost line\(s\) seen, last 2026-09-10T16:40:30\.000Z \(run after the final session's last cost line, or this is one session short\)\.$/m);
   r = runIn(later, {}, '--transcripts', two);
   assert.match(r.stdout, /usage\.md \(unchanged\)$/m);
   assert.equal(readFileSync(join(later, 'stardust', 'usage.md'), 'utf8'), mdl2, 'unchanged again: byte-identical');

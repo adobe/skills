@@ -20,7 +20,9 @@
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
- * in the content files, no update-coverage.mjs --block record) and the handover state. It refuses (exit 1,
+ * in the content files, no update-coverage.mjs --block record), the handover state and `handoverNotes` (owner
+ * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
+ * value, the owner names them). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
  * file whose hash is not its page's delivered.contentHash (re-run inventory.mjs and blocks.mjs), or
  * a file blocks.json records in _provenance.inputs that changed or is gone, a judgement.json it did
@@ -70,6 +72,9 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const WRITTEN_BY = 'stardust:rollout/workspace-manifest';
 const FILES = { manifest: 'manifest.json', judgement: 'judgement.json', handover: 'handover.json', mapping: 'mapping.json' };
 const COVERAGE = ['pages', 'templates', 'blocks'];
+// The standard base types a delivered block can be judged as — the candidate list the draft offers for an unjudged one
+// (`unknown` is not among them: it is not a judged value, it is the absence of one).
+const BASE_TYPE_CANDIDATES = ['accordion', 'breadcrumbs', 'cards', 'carousel', 'columns', 'embed', 'form', 'fragment', 'hero', 'modal', 'quote', 'search', 'table', 'tabs', 'video'];
 const VALUE_FLAGS = ['out', 'project', 'content', 'blocks', 'captures'];
 const BOOL_FLAGS = ['draft-judgement', 'force', 'dry-run', 'json', 'allow-no-mapping'];
 const USAGE = 'usage: workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json] (--help for details)';
@@ -137,6 +142,36 @@ function walkHtml(dir, acc = []) {
   return acc;
 }
 
+/** Every file under `dir` (recursively, dotfiles skipped) whose basename `match` accepts, absolute paths. */
+function walkMatch(dir, match, acc = []) {
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue;
+    if (e.isDirectory()) walkMatch(join(dir, e.name), match, acc);
+    else if (e.isFile() && match(e.name)) acc.push(join(dir, e.name));
+  }
+  return acc;
+}
+
+const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+
+/**
+ * block-origin.mjs's own inputs under `project`, so the export's freshness is measured on what the
+ * mapping was built from: the captures (<project>/stardust/current/pages/<slug>.html, or `capturesDir`),
+ * the eds-schema sidecars (the .json files under <project>/stardust/eds-schema) and the encoder maps
+ * (a vocabulary.json under <project>/stardust/import or stardust/migrate/encode — the dirs block-origin
+ * reads). The same set the tree is hashed from in done-check.mjs, so a sidecar, capture or map changed
+ * after the mapping shows as a differing hash.
+ */
+export function blockOriginInputDirs(project, capturesDir = join(project, 'stardust', 'current', 'pages')) {
+  return {
+    capturesDir,
+    edsDir: join(project, 'stardust', 'eds-schema'),
+    encodeDirs: [join(project, 'stardust', 'import'), join(project, 'stardust', 'migrate', 'encode')].filter(isDir),
+  };
+}
+
 /** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
 export function hasCaptures(dir) {
   try { return readdirSync(dir, { withFileTypes: true }).some((e) => e.isFile() && !e.name.startsWith('.') && /\.(html|json)$/.test(e.name)); } catch { return false; }
@@ -144,11 +179,13 @@ export function hasCaptures(dir) {
 
 /**
  * The manifest's inputs as on disk, keys sorted: `content` {files, sha256[, tracked when given]} (one hash over the
- * sorted "<project-relative path> <sha>" lines of every <content>/**.html), each <blocks>/<n>/<n>.{js,css}, and the
- * judgement when it is a file. Also returns the content hashes by content-relative path and the counts readArtifacts
- * needs. done-check.mjs compares a manifest against it.
+ * sorted "<project-relative path> <sha>" lines of every <content>/**.html), each <blocks>/<n>/<n>.{js,css}, the
+ * judgement when it is a file, and — so the export's freshness covers what block-origin.mjs built the mapping from —
+ * each capture (an .html under <capturesDir>), each eds-schema sidecar (a .json under <edsDir>) and each
+ * encoder map (a vocabulary.json under <encodeDirs>), by project-relative path to sha256. Also returns the content hashes by
+ * content-relative path and the counts readArtifacts needs. done-check.mjs compares a manifest against it.
  */
-export function inputHashes({ project, contentDir, blocksDir, judgementFile, tracked }) {
+export function inputHashes({ project, contentDir, blocksDir, judgementFile, tracked, capturesDir = null, edsDir = null, encodeDirs = [] }) {
   const relP = (abs) => relative(project, abs).split(sep).join('/');
   const contentHashes = new Map(walkHtml(contentDir).map((abs) => [relative(contentDir, abs).split(sep).join('/'), sha256(readFileSync(abs))]));
   const lines = [...contentHashes].map(([rel, sha]) => `${relP(join(contentDir, rel))} ${sha}\n`).sort(byStr);
@@ -162,6 +199,11 @@ export function inputHashes({ project, contentDir, blocksDir, judgementFile, tra
   }
   const judged = isFile(judgementFile);
   if (judged) inputs[relP(judgementFile)] = sha256(readFileSync(judgementFile));
+  // block-origin's inputs: a capture, sidecar or map changed after the mapping is a differing hash here.
+  const addFiles = (files) => { for (const abs of files) inputs[relP(abs)] = sha256(readFileSync(abs)); };
+  if (capturesDir) addFiles(walkMatch(capturesDir, (n) => n.endsWith('.html')));
+  if (edsDir) addFiles(walkMatch(edsDir, (n) => n.endsWith('.json')));
+  for (const d of encodeDirs) addFiles(walkMatch(d, (n) => n === 'vocabulary.json'));
   return { inputs: Object.fromEntries(Object.keys(inputs).sort(byStr).map((k) => [k, inputs[k]])), contentHashes, contentFiles: lines.length, blockFiles, judged };
 }
 
@@ -186,6 +228,11 @@ export function pendingBlocks(blocksDoc) {
   const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
   return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !RECORDED.has(b.delivery && b.delivery.status))
     .map(([name]) => name).sort(byStr);
+}
+
+/** The delivered module blocks whose base type is not judged (`unknown` or missing — `unknown` is not a judged value), by EDS name, sorted. done-check.mjs reads this too. */
+export function unjudgedBaseTypes(blocksDoc) {
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => !b.baseType || b.baseType === 'unknown').map(([name]) => name).sort(byStr);
 }
 
 /** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file, blocks pending (pendingBlocks). Sorted. */
@@ -230,7 +277,8 @@ export function draftJudgement(coverage, provenance, tokens = []) {
   for (const [name, b] of [...moduleBlocks(coverage.blocks)].sort(([a], [c]) => byStr(a, c))) {
     const baseType = b.baseType && b.baseType !== 'unknown' ? b.baseType : '';
     blocks[name] = { baseType, purpose: '', reuseGuidance: { suitableFor: [], notSuitableFor: [] }, colorScheme: '' };
-    defaults.blocks[name] = { baseType: b.baseType || 'unknown' };
+    // unknown is not a judged value: an unjudged block stays in toFill and the owner picks from the candidate list.
+    defaults.blocks[name] = { baseType: b.baseType || 'unknown', ...(baseType ? {} : { baseTypeCandidates: BASE_TYPE_CANDIDATES }) };
     toFill.push(`blocks.${name}.purpose`, `blocks.${name}.reuseGuidance`);
     if (!baseType) toFill.push(`blocks.${name}.baseType`);
   }
@@ -314,7 +362,8 @@ function main(argv) {
 
   // --- Inputs: what the coverage was built from ------------------------------------
   const judgementFile = join(W, FILES.judgement);
-  const { inputs: sortedInputs, contentHashes, contentFiles, blockFiles, judged } = inputHashes({ project, contentDir, blocksDir, judgementFile, tracked });
+  const { capturesDir: edsCapturesDir, edsDir, encodeDirs } = blockOriginInputDirs(project, capturesDir);
+  const { inputs: sortedInputs, contentHashes, contentFiles, blockFiles, judged } = inputHashes({ project, contentDir, blocksDir, judgementFile, tracked, capturesDir: edsCapturesDir, edsDir, encodeDirs });
 
   const readArtifacts = [...Object.keys(outputs), ...(contentFiles ? [relP(contentDir)] : []),
     ...(blockFiles ? [relP(blocksDir)] : []), ...(judged ? [relP(judgementFile)] : [])].sort(byStr);
@@ -396,6 +445,11 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
+  // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.
+  const unjudged = unjudgedBaseTypes(coverage.blocks);
+  const handoverNotes = unjudged.length
+    ? [`${unjudged.length} delivered block(s) have no judged base type; the owner names them (${unjudged.join(', ')})`]
+    : [];
   const manifest = {
     _provenance: provenance,
     formatVersion: FORMAT_VERSION,
@@ -404,6 +458,7 @@ function main(argv) {
     placeholders,
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
+    ...(handoverNotes.length ? { handoverNotes } : {}),
     ...(degraded ? { degraded } : {}),
   };
   const text = serialize(manifest);

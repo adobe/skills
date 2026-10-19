@@ -46,6 +46,11 @@
         }
       }
     },
+    "handoverNotes": {
+      "type": "array",
+      "description": "Owner handover actions — sentences for the project owner. Present only when non-empty (e.g. delivered blocks with no judged base type; unknown is not a judged value, the owner names them).",
+      "items": { "type": "string" }
+    },
     "degraded": {
       "type": "object",
       "description": "Present only when a forced run read inputs that differ from the previous manifest.",

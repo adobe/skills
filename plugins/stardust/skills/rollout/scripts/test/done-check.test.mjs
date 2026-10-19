@@ -30,9 +30,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as doneCheck from '../done-check.mjs';
-import { doneGaps, deliveredPaths, headerGap, headerParityErrors, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, headerGap, headerParityErrors, inferredLiveHost, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
-import { inputHashes } from '../workspace-manifest.mjs';
+import { blockOriginInputDirs, inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { unpairedEnds } from '../../../stardust/scripts/ledger.mjs';
 
@@ -103,6 +103,23 @@ check('CLI: coverage blocks.json rows delivered without a conversion record prin
   assert.equal(r.status, 0, r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name|id> --status converted'), r.stdout);
   rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: blocks_unjudged — a migration-workspace export with delivered blocks whose base type is not judged (unknown or missing) is a gap; a judged base type clears it; not an export → not judged here', () => {
+  const blocks = (bt) => ({ blocks: [
+    { id: 'hero-banner', kind: 'module', delivery: { status: 'converted', edsBlockName: 'hero' }, ...(bt.hero !== undefined ? { baseType: bt.hero } : {}), variants: [{ id: 'v1', classes: [], pages: 1, instances: 1 }] },
+    { id: 'link-list', kind: 'module', delivery: { status: 'converted', edsBlockName: 'teaser' }, ...(bt.teaser !== undefined ? { baseType: bt.teaser } : {}), variants: [{ id: 'v2', classes: [], pages: 1, instances: 1 }] },
+  ] });
+  const unjudged = (listed, bt) => {
+    const proj = project({ files: { 'stardust/rollout/rollout.json': listed ? { exports: ['migration-workspace'] } : {}, 'stardust/rollout/coverage/blocks.json': blocks(bt) } });
+    const g = JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((x) => x.startsWith('blocks_unjudged'));
+    rmSync(proj, { recursive: true, force: true });
+    return g;
+  };
+  assert.deepEqual(unjudged(true, { hero: 'unknown', teaser: 'cards' }), ['blocks_unjudged:1'], 'unknown is not a judged value; cards is');
+  assert.deepEqual(unjudged(true, {}), ['blocks_unjudged:2'], 'both missing a base type');
+  assert.deepEqual(unjudged(true, { hero: 'hero', teaser: 'cards' }), [], 'both judged → no gap');
+  assert.deepEqual(unjudged(false, {}), [], 'not a migration-workspace export: base types are not judged here');
 });
 
 check('unfinished counts every not-yet-verified status, and only those', () => {
@@ -491,6 +508,33 @@ check('headerGap: none without a flow; otherwise the contract, a fresh compariso
   assert.equal(headerGap({ flow: 'replica', contract, parity: { ...parity, findings }, liveHost: live }), 'header_parity:1: state-missing@1440 Shop [hover]');
 });
 
+check('inferredLiveHost: the most common delivered deployedUrl host; a non-URL or no deployed row → null', () => {
+  const dep = (slug, url) => ({ slug, delivery: { status: 'verified', deployedUrl: url } });
+  assert.equal(inferredLiveHost([dep('a', 'https://main--site--org.aem.live/a'), dep('b', 'https://main--site--org.aem.live/b'), dep('c', 'https://other.example/c')]), 'main--site--org.aem.live');
+  assert.equal(inferredLiveHost([row('p', '/p', 'pending')]), null, 'pending rows are not delivered');
+  assert.equal(inferredLiveHost([{ slug: 'x', delivery: { status: 'verified', deployedUrl: '/x' } }]), null, 'a path, not a host');
+  assert.equal(inferredLiveHost([]), null);
+});
+
+check('CLI: --offline infers the live host from the coverage — header parity measured on the preview host while the gates ran on the live host is a gap (the rule applies by default, no --live-host)', () => {
+  const live = 'main--site--org.aem.live';
+  const pages = [
+    { ...proven(row('home', '/', 'verified')), delivery: { ...proven(row('home', '/', 'verified')).delivery, deployedUrl: `https://${live}/` } },
+    { ...proven(row('about', '/about', 'verified')), delivery: { ...proven(row('about', '/about', 'verified')).delivery, deployedUrl: `https://${live}/about` } },
+  ];
+  const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 360: {} } };
+  const parity = { source: 'https://example.com/', build: 'https://main--site--org.aem.page/', at: '2026-10-09T12:00:00Z', profile: 'replica', widths: [1440, 360], findings: [] };
+  const proj = project({ pages, files: {
+    'stardust/state.json': { flow: 'replica' },
+    'stardust/chrome/header-contract.json': contract,
+    'stardust/chrome/header-parity.json': parity,
+  } });
+  const r = run(proj, ['--offline', '--json']);
+  const header = JSON.parse(r.stdout).gaps.filter((g) => g.startsWith('header_parity'));
+  assert.deepEqual(header, [`header_parity:measured on main--site--org.aem.page, not the live host the gates ran on (${live})`], r.stdout);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('CLI: a replica project without a header contract is not complete', () => {
   const proj = project();
   writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ flow: 'replica' }));
@@ -737,7 +781,7 @@ check('CLI: export_stale reads the project — fresh after the three commands, s
   const proj = project({ files });
   const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
   const writeManifest = () => {
-    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json') });
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
     const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].filter((f) => existsSync(join(proj, f))).map((f) => [f, sha(f)]));
     writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
   };
@@ -757,6 +801,40 @@ check('CLI: export_stale reads the project — fresh after the three commands, s
   rmSync(join(proj, WS, 'handover.json'));
   writeFileSync(join(proj, 'stardust/rollout/rollout.json'), JSON.stringify({ exports: [] }));
   assert.deepEqual(stale(), [], 'not listed: not judged');
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: export_stale on block-origin\'s own inputs — an eds-schema sidecar (or a capture) changed after the mapping is a differing hash, named, with the remedy', () => {
+  const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
+  const files = {
+    'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
+    'stardust/rollout/coverage/pages.json': pagesDoc,
+    'stardust/rollout/coverage/templates.json': { templates: [] },
+    'stardust/rollout/coverage/blocks.json': { blocks: [] },
+    'stardust/current/pages/home.html': '<main><h1>Home</h1></main>',
+    'stardust/eds-schema/home.json': { slug: 'home', sections: [{ items: [{ role: 'heading', text: 'Home' }] }] },
+    'content/index.html': '<main><div><h1>Home</h1></div></main>',
+    'blocks/hero/hero.css': '.hero { margin: 0; }',
+    'blocks/hero/hero.js': 'export default function decorate() {}',
+    [`${WS}/mapping.json`]: { formatVersion: '0.1.0', generatedAt: pagesDoc.generatedAt, skipped: [], templates: [] },
+  };
+  const proj = project({ files });
+  const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
+  const writeManifest = () => {
+    const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
+    const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
+    writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], handover: null }));
+  };
+  const stale = () => JSON.parse(run(proj, ['--offline', '--json']).stdout).gaps.filter((g) => g.startsWith('export_stale'));
+  writeManifest();
+  assert.deepEqual(stale(), [], 'the sidecar and capture are hashed into the manifest; a fresh export is no gap');
+  // a gap-closure that rewrites a sidecar AFTER the mapping is the stale case the export must catch
+  writeFileSync(join(proj, 'stardust/eds-schema/home.json'), JSON.stringify({ slug: 'home', sections: [{ items: [{ role: 'eyebrow', text: 'Welcome' }] }] }));
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/eds-schema/home.json — ${REMEDY}`]);
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  writeFileSync(join(proj, 'stardust/current/pages/home.html'), '<main><h1>Home v2</h1></main>');
+  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/current/pages/home.html — ${REMEDY}`]);
   rmSync(proj, { recursive: true, force: true });
 });
 

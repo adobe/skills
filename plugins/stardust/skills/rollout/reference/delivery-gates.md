@@ -106,6 +106,35 @@ that **404 on the source** (stale entries) and pages with **no HTML body**
   that is correct. (Same root rule as Gate 1: reproduce the source, never
   out-author it.)
 
+## Export freshness + gap-closure order
+
+When `rollout.json` `exports` lists `migration-workspace`, the export a client
+reads (`workspace/mapping.json` + `workspace/manifest.json`) is only valid while
+it still describes the files it was built from. The mapping is built by
+`block-origin.mjs` from three input families beside the content and block code:
+the **captures** (`stardust/current/pages/<slug>.html`), the **eds-schema
+sidecars** (`stardust/eds-schema/<slug>.json`, the default-content roles) and the
+**encoder maps** (`stardust/import/<t>/vocabulary.json`, else
+`stardust/migrate/encode/<t>/vocabulary.json`). `workspace-manifest.mjs` hashes
+all three into the manifest's `inputs`, and `done-check.mjs` re-hashes the same
+tree and raises `export_stale` naming any file whose hash differs — a sidecar,
+capture or map rewritten after the mapping is a stale export, not a fresh one.
+
+**Run the steps in this order, never the other way round.** A gap-closure fix
+(`done-check.mjs` → a `sidecars_missing` or similar gap → the fix) rewrites
+sidecars/captures/content; it MUST land **before** the export is regenerated:
+
+1. gap-closure fix writes (sidecars, captures, content, block code);
+2. `block-origin.mjs --verify` → rewrites `workspace/mapping.json`;
+3. `workspace-manifest.mjs` → records the new input hashes;
+4. `done-check.mjs` → re-checks; `export_stale` clears only once 1–3 ran in order.
+
+Regenerating the manifest BEFORE re-running `block-origin` records input hashes
+the committed mapping was never built from: the manifest then looks fresh while
+the mapping is stale. A recorded run closed `sidecars_missing` five minutes after
+its mapping was committed and the export went out stale — this ordering is the
+fix.
+
 ## Batched delivery at scale (clusters of 6–20+ siblings)
 
 Separate the concerns so an agent crash or token blowout can't corrupt state, and

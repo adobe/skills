@@ -61,6 +61,10 @@
  * Harness-reported cost (`harnessCost`): a session's cost-state lines are cumulative, so per transcript
  * file (a session) only its LAST cost line counts; `totalCostUSD` sums those across sessions, `sessions`
  * = the transcript files with a cost line, `models` = each model's `costUSD` summed across sessions.
+ * `costLinesSeen` = how many cost lines were present at write time (main + subagent) and `lastCostAt` =
+ * the newest one's timestamp, so a reader can tell a ledger run BEFORE the final session's last cost line
+ * is one session short (a recorded run's harnessCost stopped one session short of the run's meter because
+ * the ledger ran first) — run it after that line.
  *
  * Ported from the `stardust/next` branch (commits fb704109, 40a07747, ea00c4f4) as a file copy, not a
  * merge; the recorded-unit rows are this port's addition.
@@ -167,7 +171,7 @@ export function readTranscripts(files) {
     for (const m of readJsonl(f)) {
       const ts = m.timestamp ?? m.ts ?? null;
       if (ts && (!oldest || ts < oldest)) oldest = ts;
-      if (m.type === 'cost-state' || (m.totalCostUSD !== undefined && m.modelUsage)) { costs.push({ file: f, totalCostUSD: num(m.totalCostUSD), modelUsage: m.modelUsage ?? {}, startTime: m.startTime ?? null }); continue; }
+      if (m.type === 'cost-state' || (m.totalCostUSD !== undefined && m.modelUsage)) { costs.push({ file: f, totalCostUSD: num(m.totalCostUSD), modelUsage: m.modelUsage ?? {}, startTime: m.startTime ?? null, ts }); continue; }
       const u = usageOf(m);
       if (u && (m.type === 'assistant' || m.message?.role === 'assistant')) {
         const key = m.requestId ?? (m.message?.id ? `mid:${m.message.id}` : `line:${f}:${req.size}`);
@@ -295,11 +299,15 @@ const sum = table.reduce((a, w) => { for (const x of Object.keys(zero())) a[x] +
 sum.estCost = cost(sum);
 const total = blank(sum);
 // Cost-state lines are cumulative within a session: each transcript file's LAST line is its session's figure.
-const lastCostOf = new Map(); for (const c of [...M.costs, ...S.costs]) lastCostOf.set(c.file, c);
+const allCosts = [...M.costs, ...S.costs];
+const lastCostOf = new Map(); for (const c of allCosts) lastCostOf.set(c.file, c);
 const lastCosts = [...lastCostOf.values()];
 const usd = (n) => Math.round(n * 1e6) / 1e6; // float sums of cents stay 4.46, not 4.460000000000001
 const modelCost = {}; for (const c of lastCosts) for (const [m, v] of Object.entries(c.modelUsage)) modelCost[m] = (modelCost[m] ?? 0) + num(v?.costUSD);
-const harnessCost = lastCosts.length ? { totalCostUSD: usd(lastCosts.reduce((a, c) => a + c.totalCostUSD, 0)), sessions: lastCosts.length, models: Object.fromEntries(Object.keys(modelCost).sort().map((m) => [m, usd(modelCost[m])])) } : null;
+// costLinesSeen / lastCostAt: the number of cost lines present at write time and the newest one's timestamp, so a
+// reader can tell a ledger run before the final session's last cost line is one session short (a recorded run's did).
+const costTimes = allCosts.map((c) => c.ts).filter(Boolean).sort();
+const harnessCost = lastCosts.length ? { totalCostUSD: usd(lastCosts.reduce((a, c) => a + c.totalCostUSD, 0)), sessions: lastCosts.length, costLinesSeen: allCosts.length, lastCostAt: costTimes.at(-1) ?? null, models: Object.fromEntries(Object.keys(modelCost).sort().map((m) => [m, usd(modelCost[m])])) } : null;
 const firstStatus = statusLines[0]?.ts ?? null;
 const oldest = [M.oldest, S.oldest].filter(Boolean).sort()[0] ?? null;
 const retention = firstStatus && oldest && Date.parse(oldest) - Date.parse(firstStatus) > 3_600_000 ? `transcripts start ${oldest}, over an hour after the project's first status line ${firstStatus} — earlier windows are unrecoverable; keep the harness's transcript retention above the run's span (an owner setting)` : null;
@@ -326,7 +334,7 @@ table.forEach((w, i) => {
 });
 if (!single) md.push(line({ ...total, label: '**total**', from: table[0]?.from ?? null, to: table.at(-2)?.to ?? null, wallMin: null, pages: null, tokensPerPage: null }));
 md.push('');
-if (harnessCost) md.push(`Harness-reported session cost (not per phase): USD ${harnessCost.totalCostUSD.toFixed(2)} over ${harnessCost.sessions} session(s), each session's last cost line${Object.keys(harnessCost.models).length ? ` — ${Object.entries(harnessCost.models).map(([m, c]) => `${m} ${c.toFixed(2)}`).join(', ')}` : ''}.`, '');
+if (harnessCost) md.push(`Harness-reported session cost (not per phase): USD ${harnessCost.totalCostUSD.toFixed(2)} over ${harnessCost.sessions} session(s), each session's last cost line${Object.keys(harnessCost.models).length ? ` — ${Object.entries(harnessCost.models).map(([m, c]) => `${m} ${c.toFixed(2)}`).join(', ')}` : ''}; ${harnessCost.costLinesSeen} cost line(s) seen, last ${harnessCost.lastCostAt ?? 'unknown'} (run after the final session's last cost line, or this is one session short).`, '');
 if (retention) md.push(`Retention: ${retention}`, '');
 const json = { _provenance: { writtenBy: 'stardust:stardust token-ledger.mjs', writtenAt: now }, writtenAt: now, generatedAt: now, sessionsCovered, ...(unknown ? { usage: 'unknown', unknownReason: unknownWhy } : {}), source: { harness: tSource, dir: tDir, main: main.length, sub: sub.length }, windows: table, units, total, harnessCost, retention, prices };
 const mdText = `${md.join('\n')}\n`; let jsonText = `${JSON.stringify(json, null, 2)}\n`;

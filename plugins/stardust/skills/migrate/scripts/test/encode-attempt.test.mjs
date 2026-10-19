@@ -197,12 +197,12 @@ check('summary per template (the roster report\'s line): siblings · encoded · 
   recordAttempt(proj, 'solo', { notAttempted: 'one page' });
   const r = run(['summary', '--root', proj]); assert.equal(r.status, 0, r.err);
   assert.deepEqual(r.out.trim().split('\n'), [
-    'encode-attempt solo: 0 sibling(s) · 0 encoded · 0 slot-rendered · 0 hand-authored · 0 not-attempted (not-attempted)',
-    'encode-attempt tours: 5 sibling(s) · 1 encoded · 1 slot-rendered · 2 hand-authored · 1 not-attempted (hand-authored; 1 hand-authored without a record: e)',
+    'encode-attempt solo: 0 siblings · 0 encoded · 0 A′ · one page',
+    'encode-attempt tours: 5 siblings · 1 encoded · 4 A′ · the itinerary tables are written per tour; 1 A′ without a record: e',
     'encode: 0 encoded · 2 A′ (0 no-roundtrip, 1 not-attempted, 1 hand-authored)',
   ]);
   const j = JSON.parse(run(['summary', '--root', proj, '--json']).out);
-  assert.deepEqual(j.perTemplate.find((t) => t.template === 'tours'), { template: 'tours', verdict: 'hand-authored', siblings: 5, encoded: 1, slotRendered: 1, handAuthored: 2, notAttempted: 1, unrecorded: ['e'] });
+  assert.deepEqual(j.perTemplate.find((t) => t.template === 'tours'), { template: 'tours', verdict: 'hand-authored', siblings: 5, encoded: 1, slotRendered: 1, handAuthored: 2, notAttempted: 1, unrecorded: ['e'], aPrime: 4, reason: 'the itinerary tables are written per tour' });
 });
 
 check('after delivery (every page migrated) the siblings still count: a migrate sidecar naming the template is a sibling — in summary and in the record threshold', () => {
@@ -216,7 +216,7 @@ check('after delivery (every page migrated) the siblings still count: a migrate 
   const r = run(['record', '--template', 'tours', '--root', proj, '--encoder', FAKE]); assert.equal(r.status, 2);
   assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(a, b\) and no map at /);
   recordAttempt(proj, 'tours', { reason: 'delivered before the map rule' });
-  assert.match(run(['summary', '--root', proj]).out, /^encode-attempt tours: 2 sibling\(s\) · 1 encoded · 1 slot-rendered · 0 hand-authored · 0 not-attempted \(not-attempted\)$/m);
+  assert.match(run(['summary', '--root', proj]).out, /^encode-attempt tours: 2 siblings · 1 encoded · 1 A′ · delivered before the map rule \(no map at stardust\/import\/tours\/vocabulary\.json — the encoder needs the template's map\)$/m);
 });
 
 // ---- determinism ----------------------------------------------------------------------------------
@@ -226,7 +226,7 @@ check('two records of the same attempt → the same bytes but at / writtenAt; fi
   rec('diff'); const a = read(P(REC('diff')));
   rec('diff'); const b = read(P(REC('diff')));
   assert.equal(strip(a), strip(b)); assert.ok(a.endsWith('}\n'));
-  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'at', 'source', 'sourceReason', 'derive', 'forked']);
+  assert.deepEqual(Object.keys(JSON.parse(a)), ['_provenance', 'template', 'verdict', 'roundtrip', 'lint', 'reason', 'pages', 'siblings', 'encoded', 'at', 'source', 'sourceReason', 'derive', 'forked']);
   assert.equal(JSON.parse(a).pages, null, 'pages: the hand-authored siblings only');
   assert.deepEqual(Object.keys(JSON.parse(a)._provenance), ['writtenBy', 'writtenAt']);
   assert.deepEqual(readdirSync(join(ROOT, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), []);
@@ -253,22 +253,45 @@ check('siblingsOf: representative links, else the directed pages of the template
 check('no map and ≥ 2 siblings → not-attempted refused: exit 2, nothing written, the line names the siblings, the C-archetype map and --reason', () => {
   const before = runs().length;
   const r = rec('guides'); assert.equal(r.status, 2); assert.equal(r.out, '');
-  assert.equal(r.err, 'encode-attempt guides: refused not-attempted — 3 sibling(s) (guide-a, guide-b, guide-c) and no map at stardust/import/guides/vocabulary.json: draft the map in the C-archetype unit (migrate SKILL.md § Encoder first), then record again — or pass --reason "<why the encoder cannot serve this template>"\n');
+  assert.equal(r.err, 'encode-attempt guides: refused not-attempted — 3 sibling(s) (guide-a, guide-b, guide-c) and no map at stardust/import/guides/vocabulary.json: draft the map: `migrate.mjs plan guides` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"\n');
   assert.ok(!has(P(REC('guides')))); assert.equal(runs().length, before);
   assert.throws(() => recordAttempt(ROOT, 'guides', { encoder: FAKE }), (e) => e instanceof Refusal && /^encode-attempt guides: refused not-attempted — 3 sibling\(s\)/.test(e.message));
 });
-check('--reason names why → recorded not-attempted, the reason first and the cause in brackets; one sibling needs no reason', () => {
-  const r = rec('guides', ['--reason', 'each guide is a one-off legal text']); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode-attempt guides: not-attempted — each guide is a one-off legal text (no map at stardust/import/guides/vocabulary.json — the encoder needs the template\'s map)\n');
+check('--reason with a recorded refusal reason → not-attempted, the reason first and the cause in brackets; a single sibling is refused too (draft the map)', () => {
+  const r = rec('guides', ['--reason', 'no-repeatable-structure: each guide is a one-off legal text']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: not-attempted — no-repeatable-structure: each guide is a one-off legal text (no map at stardust/import/guides/vocabulary.json — the encoder needs the template\'s map)\n');
   assert.equal(json(P(REC('guides'))).verdict, 'not-attempted');
-  const one = rec('notes'); assert.equal(one.status, 0, one.err);
-  assert.equal(one.out, 'encode-attempt notes: not-attempted — no map at stardust/import/notes/vocabulary.json — the encoder needs the template\'s map\n');
-  for (const t of ['guides', 'notes']) rmSync(join(ROOT, REC(t)));
+  // one sibling and no map is refused now — the map is due, not an automatic not-attempted record
+  const one = rec('notes'); assert.equal(one.status, 2, one.out + one.err);
+  assert.equal(one.err, 'encode-attempt notes: refused not-attempted — 1 sibling(s) (note-a) and no map at stardust/import/notes/vocabulary.json: draft the map: `migrate.mjs plan notes` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"\n');
+  assert.ok(!has(P(REC('notes'))));
+  rmSync(join(ROOT, REC('guides')));
+});
+const recNoEnc = (t, extra = []) => run(['record', '--template', t, '--root', ROOT, ...extra]);
+check('a --reason / --not-attempted that names a generator script (.mjs/.js/.py/.sh or a stardust/.work path) is refused: exit 2, nothing written', () => {
+  for (const extra of [['--reason', 'gen-content.mjs says so'], ['--reason', 'see stardust/.work/cluster-a/build-proposed.py'], ['--not-attempted', 'extract.mjs decided it']]) {
+    const r = recNoEnc('guides', extra);
+    assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`);
+    assert.match(r.err, /a generator script is not a decision; the owner's decision is a sentence/);
+  }
+  assert.ok(!has(P(REC('guides'))));
+});
+check('--not-attempted on a template with siblings must name a recorded refusal reason; a defined tag records, with the siblings/encoded counts; 0 siblings takes any reason', () => {
+  const bad = recNoEnc('guides', ['--not-attempted', 'sub-archetype (re-typed to adventure-detail)']);
+  assert.equal(bad.status, 2, bad.out + bad.err);
+  assert.match(bad.err, /is not a recorded refusal reason for a template with 3 sibling\(s\) — use re-typed \| no-repeatable-structure/);
+  assert.ok(!has(P(REC('guides'))));
+  const ok2 = recNoEnc('guides', ['--not-attempted', 're-typed: the siblings moved to adventure-detail']);
+  assert.equal(ok2.status, 0, ok2.err);
+  const j = json(P(REC('guides')));
+  assert.equal(j.verdict, 'not-attempted'); assert.equal(j.reason, 're-typed: the siblings moved to adventure-detail');
+  assert.equal(j.siblings, 3); assert.equal(j.encoded, 0, 'none of the siblings have an encoded sidecar');
+  rmSync(join(ROOT, REC('guides')));
 });
 check('the encoder-absent default with ≥ 2 siblings → refused naming the copy; --state points at another roster; with the map present the encoder runs as before', () => {
   const copy = join(tmp, 'copy', 'stardust', 'scripts', 'migrate', 'encode-attempt.mjs');
   const r = run(['record', '--template', 'tours', '--root', ROOT], copy); assert.equal(r.status, 2);
-  assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(tour-a, tour-b\) and encode\.mjs not found beside this script: copy the migrate scripts \(encode\.mjs and encode\/\) beside encode-attempt\.mjs, then record again — or pass --reason "/);
+  assert.match(r.err, /^encode-attempt tours: refused not-attempted — 2 sibling\(s\) \(tour-a, tour-b\) and encode\.mjs not found beside this script: copy the migrate scripts \(encode\.mjs and encode\/\) beside encode-attempt\.mjs, then record again — or a recorded refusal reason: --reason "/);
   const alt = write('alt-state.json', JSON.stringify({ pages: [pg('tours', 'approved', 'tour')] }));
   const solo = run(['record', '--template', 'tours', '--root', ROOT, '--state', alt], copy); assert.equal(solo.status, 0, solo.err);
   assert.match(solo.out, /^encode-attempt tours: not-attempted — encode\.mjs not found beside this script\n$/);
@@ -360,7 +383,7 @@ check('a derivation (plan) lets an automatic not-attempted through for ≥ 2 sib
   const cause = { cause: 'the archetype capture stardust/current/pages/parks.html is absent', fix: 'run: node stardust/scripts/extract/crawl.mjs --url https://example.test/parks/ --pages https://example.test/parks/ --out stardust/current' };
   assert.throws(() => recordAttempt(DP, 'parks', { derive: cause }), (e) => e instanceof Refusal
     && e.message.startsWith('encode-attempt parks: refused not-attempted — 3 sibling(s) (park-a, park-b, park-c) and no map at stardust/import/parks/vocabulary.json: ')
-    && e.message.endsWith(` — or pass --reason "<why the encoder cannot serve this template>"; no slot map derives either (${cause.cause}) — ${cause.fix}`));
+    && e.message.endsWith(` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"; no slot map derives either (${cause.cause}) — ${cause.fix}`));
   assert.ok(!existsSync(join(DP, REC('parks'))), 'the earlier automatic record goes with the refusal');
 });
 check('recordFork adds the slug to forked (sorted, once) and sets source forked, everything else kept; a re-record keeps the list; no record → refused', () => {
@@ -380,7 +403,7 @@ check('summary counts a sibling listed in forked as slot-rendered (its own-file 
   dput('stardust/migrated/parks/a/_meta.json', { slug: 'park-a', renderBranch: "A'", slotSource: null });
   dput('stardust/migrated/parks/c/_meta.json', { slug: 'park-c', renderBranch: "A'", slotSource: 'derived' });
   const r = run(['summary', '--root', DP]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 sibling(s) · 0 encoded · 3 slot-rendered · 0 hand-authored · 0 not-attempted (not-attempted)');
+  assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 siblings · 0 encoded · 3 A′ · no map at stardust/import/parks/vocabulary.json — the encoder needs the template\'s map');
   const j = JSON.parse(run(['summary', '--root', DP, '--json']).out);
   assert.deepEqual(j.templates, [{ template: 'parks', verdict: 'not-attempted', reason: djson('parks').reason, source: 'forked' }]);
   assert.deepEqual(j.perTemplate[0].unrecorded, []);

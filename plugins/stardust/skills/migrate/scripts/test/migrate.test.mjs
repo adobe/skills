@@ -1184,7 +1184,7 @@ check('a minor variance (differs without a missing or extra probe or a SECTIONS 
   assert.equal(r.out, `forked ferry-south → ${P}/ferry-south-proposed.html (archetype ferries; minor; 4 slot(s), slots derived)\n`);
   assert.deepEqual(json(ENC('ferries')).forked, ['ferry-north', 'ferry-south']);
   const sum = spawnSync(process.execPath, [join(dirname(SCRIPT), 'encode-attempt.mjs'), 'summary'], { cwd: tmp, encoding: 'utf8' });
-  assert.match(sum.stdout, /^encode-attempt ferries: 2 sibling\(s\) · 0 encoded · 2 slot-rendered · 0 hand-authored · 0 not-attempted \(not-attempted\)$/m);
+  assert.match(sum.stdout, /^encode-attempt ferries: 2 siblings · 0 encoded · 2 A′ · no map at stardust\/import\/ferries\/vocabulary\.json — the encoder needs the template's map$/m);
 });
 check('a sibling with a new block (variance differs: an extra probe and a SECTIONS delta) is refused: strict variance names them and the hand-authored record; nothing written', () => {
   const s = json(STATE); s.pages.push(page('ferry-east', '/ferries/east/', 'directed', 'ferry'), page('ferry-west', '/ferries/west/', 'directed', 'ferry')); write(STATE, `${JSON.stringify(s, null, 2)}\n`);
