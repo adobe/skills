@@ -133,10 +133,16 @@ const site = (dir, names) => {
     writeFileSync(f, FRAG[`/${n}`]);
   }
 };
-const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN', origin = BASE } = {}) => new Promise((resolve) => {
+const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN', origin = BASE, coords = true, rolloutConfig = null, imsFile = null } = {}) => new Promise((resolve) => {
   const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: origin };
-  delete env.DA_TOKEN; if (token) env[tokenEnv] = token;
-  const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--branch', BRANCH, '--backoff-ms', '1', ...args], { cwd: proj, env });
+  // deterministic defaults: the org/repo/branch-from-rollout and token-from-ADOBE_IMS_TOKEN_FILE features
+  // read these only when the test opts in (coords omits the explicit flags, rolloutConfig / imsFile set the env)
+  delete env.DA_TOKEN; delete env.ADOBE_IMS_TOKEN_FILE; delete env.ROLLOUT_CONFIG;
+  if (token) env[tokenEnv] = token;
+  if (imsFile) env.ADOBE_IMS_TOKEN_FILE = imsFile;
+  if (rolloutConfig) env.ROLLOUT_CONFIG = rolloutConfig;
+  const coord = coords ? ['--org', ORG, '--repo', REPO, '--branch', BRANCH] : [];
+  const p = spawn(process.execPath, [SCRIPT, ...coord, '--backoff-ms', '1', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
   p.on('close', (code) => { allOutput.push(out, err); resolve({ code, out, err }); });
@@ -475,14 +481,16 @@ await check('usage errors exit 2 (unknown flag, missing --org/--repo/--branch, n
   const from = requests.length;
   const bad = async (args, re, opts) => { const r = await run(args, opts); assert.equal(r.code, 2, `${args.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); };
   await bad(['--content', 'site-a', '--bogus'], /^\[deploy-batch\] fatal: unknown arg: --bogus$/m);
-  await bad(['--content', 'site-a'], /fatal: missing token in env DA_TOKEN/, { token: null });
+  // the default token path (no flag) names $ADOBE_IMS_TOKEN_FILE and DA_TOKEN; an explicit --token-env names only it
+  await bad(['--content', 'site-a'], /fatal: missing token — set \$ADOBE_IMS_TOKEN_FILE to a token file or DA_TOKEN in the env \(or pass --token-file \/ --token-env\)/, { token: null });
   await bad(['--content', 'site-a', '--token-env', 'OTHER'], /fatal: missing token in env OTHER/);
   await bad(['--content', 'site-a', '--verify-max-age', 'x'], /^\[deploy-batch\] fatal: --verify-max-age takes minutes, a number ≥ 0 \(got x\)$/m);
   await bad(['--content', 'site-a', '--verify-max-age', '-5'], /fatal: --verify-max-age takes minutes, a number ≥ 0 \(got -5\)$/m);
   await bad(['--content', 'site-a', '--verify-max-age'], /fatal: --verify-max-age takes minutes, a number ≥ 0 \(got nothing\)$/m);
-  const p = spawn(process.execPath, [SCRIPT, '--repo', REPO, '--branch', BRANCH], { cwd: proj, env: { ...process.env, DA_TOKEN: TOKEN } });
+  // --org absent and no rollout.json to default it from: exit 2, the error names the missing flag and the file it read
+  const p = spawn(process.execPath, [SCRIPT, '--repo', REPO, '--branch', BRANCH], { cwd: proj, env: { ...process.env, DA_TOKEN: TOKEN, ADOBE_IMS_TOKEN_FILE: '', ROLLOUT_CONFIG: join(proj, 'none.json') } });
   const noOrg = await new Promise((resolve) => { let err = ''; p.stderr.on('data', (d) => { err += d; }); p.on('close', (code) => resolve({ code, err })); });
-  assert.equal(noOrg.code, 2); assert.match(noOrg.err, /--org, --repo and --branch are required/); allOutput.push(noOrg.err);
+  assert.equal(noOrg.code, 2); assert.match(noOrg.err, /--org required — not given and .*none\.json not found/); allOutput.push(noOrg.err);
   assert.equal(requests.length, from, 'no request left the process');
   const scratch = mkdtempSync(join(tmpdir(), 'deploy-batch-help-'));
   const h = spawn(process.execPath, [SCRIPT, '--help'], { cwd: scratch, env: { ...process.env, DA_TOKEN: '' } });
@@ -545,6 +553,72 @@ await check('--token-file usage errors exit 2 with nothing sent: together with -
   assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, new RegExp(`^\\[deploy-batch\\] fatal: --token-file ${esc(tokenFile)} is empty$`, 'm'));
   assert.equal(requests.length, from, 'no request left the process');
   const help = await run(['--help']); assert.equal(help.code, 0); assert.match(help.out, /--token-env DA_TOKEN \| --token-file <path>/); assert.match(help.out, /--token-file read the token from this file instead/);
+});
+
+// ---- (h) --org/--repo/--branch default from rollout.json site.da ----------------------------------------
+await check('--org/--repo/--branch default from rollout.json site.da (explicit flags win); the resolved line names each source; ref defaults to main; a missing/absent site.da errors clearly naming the file and fields', async () => {
+  site('site-g', ['g1', 'g2']);
+  const cfg = join(proj, 'rollout-g.json');
+  writeFileSync(cfg, JSON.stringify({ site: { da: { org: ORG, site: REPO, ref: BRANCH } } }));
+  // no --org/--repo/--branch: all three come from site.da and the page lands on the fake's org/repo/branch
+  const from = requests.length;
+  const r = await run(['--content', 'site-g'], { coords: false, rolloutConfig: cfg });
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[\d\/2\] OK {3}\/g1 \(live\)$/m); assert.match(r.err, /^\[\d\/2\] OK {3}\/g2 \(live\)$/m);
+  assert.match(r.err, new RegExp(`^\\[deploy-batch\\] resolved: org ${ORG} \\(from ${esc(cfg)} site\\.da\\.org\\), repo ${REPO} \\(from ${esc(cfg)} site\\.da\\.site\\), branch ${BRANCH} \\(from ${esc(cfg)} site\\.da\\.ref\\), token env DA_TOKEN$`, 'm'));
+  for (const q of since(from).filter((x) => x.method !== 'GET')) assert.ok(q.url.startsWith(`${SRC}/`) || q.url.startsWith(PREVIEW) || q.url.startsWith(LIVE), q.url);
+  // an explicit flag wins: --repo REPO beats a config that names REPO_B (the request goes to REPO, not REPO_B)
+  const cfgB = join(proj, 'rollout-b.json');
+  writeFileSync(cfgB, JSON.stringify({ site: { da: { org: ORG, site: REPO_B, ref: BRANCH } } }));
+  const from1 = requests.length;
+  const r1 = await run(['--content', 'site-g', '--repo', REPO, '--force'], { coords: false, rolloutConfig: cfgB });
+  assert.equal(r1.code, 0, r1.out + r1.err);
+  assert.match(r1.err, new RegExp(`resolved: org ${ORG} \\(from ${esc(cfgB)} site\\.da\\.org\\), repo ${REPO} \\(from --flag\\), branch ${BRANCH} \\(from ${esc(cfgB)} site\\.da\\.ref\\)`));
+  assert.equal(since(from1).filter((q) => q.url.includes(REPO_B)).length, 0, 'the explicit --repo wins over the config');
+  // ref absent → branch defaults to main (= BRANCH); the resolved line marks it the schema default
+  const cfgNoRef = join(proj, 'rollout-noref.json');
+  writeFileSync(cfgNoRef, JSON.stringify({ site: { da: { org: ORG, site: REPO } } }));
+  const r2 = await run(['--content', 'site-g', '--force'], { coords: false, rolloutConfig: cfgNoRef });
+  assert.equal(r2.code, 0, r2.out + r2.err);
+  assert.match(r2.err, new RegExp(`branch ${BRANCH} \\(from ${esc(cfgNoRef)} site\\.da\\.ref default\\)`));
+  // a missing rollout.json: exit 2, names every missing flag and the file
+  const r3 = await run(['--content', 'site-g'], { coords: false, rolloutConfig: join(proj, 'no-rollout.json'), token: TOKEN });
+  assert.equal(r3.code, 2, r3.out + r3.err);
+  assert.match(r3.err, new RegExp(`fatal: --org, --repo, --branch required — not given and ${esc(join(proj, 'no-rollout.json'))} not found; pass the flag\\(s\\) or set site\\.da\\.org / site\\.da\\.site / site\\.da\\.ref in `));
+  // a rollout.json without site.da: names it
+  const cfgEmpty = join(proj, 'rollout-empty.json'); writeFileSync(cfgEmpty, JSON.stringify({ site: {} }));
+  const r4 = await run(['--content', 'site-g'], { coords: false, rolloutConfig: cfgEmpty, token: TOKEN });
+  assert.equal(r4.code, 2, r4.out + r4.err); assert.match(r4.err, new RegExp(`required — not given and ${esc(cfgEmpty)} has no site\\.da`));
+  // site.da present but missing org: only --org is required, named with the field
+  const cfgNoOrg = join(proj, 'rollout-noorg.json'); writeFileSync(cfgNoOrg, JSON.stringify({ site: { da: { site: REPO, ref: BRANCH } } }));
+  const r5 = await run(['--content', 'site-g'], { coords: false, rolloutConfig: cfgNoOrg, token: TOKEN });
+  assert.equal(r5.code, 2, r5.out + r5.err); assert.match(r5.err, new RegExp(`fatal: --org required — not given and ${esc(cfgNoOrg)} site\\.da is missing site\\.da\\.org`));
+});
+
+// ---- (i) --token-file defaults to $ADOBE_IMS_TOKEN_FILE -------------------------------------------------
+await check('with no token flag, the token comes from the file named by $ADOBE_IMS_TOKEN_FILE; the resolved, expiry and HALT lines name the file and the variable; the value never leaks', async () => {
+  const tf = join(proj, 'ims-token'); writeFileSync(tf, `${TOKEN}\n`);
+  site('site-i', ['i1']);
+  const from = requests.length;
+  const r = await run(['--content', 'site-i'], { token: null, imsFile: tf });
+  assert.equal(r.code, 0, r.out + r.err);
+  assert.match(r.err, /^\[1\/1\] OK {3}\/i1 \(live\)$/m);
+  assert.match(r.err, new RegExp(`resolved: .* token file ${esc(tf)} \\(from \\$ADOBE_IMS_TOKEN_FILE\\)$`, 'm'));
+  assert.equal(since(from).filter((q) => q.method !== 'GET').every((q) => q.headers.authorization === `Bearer ${TOKEN}`), true, 'the file token authorised the admin calls');
+  // a 401 that persists: the HALT line names the file and the variable, no <var>=<fresh> prefix
+  site('site-i2', ['i-dead']);
+  const h = await run(['--content', 'site-i2', '--retries', '1'], { token: null, imsFile: tf });
+  assert.equal(h.code, 3, h.out + h.err);
+  assert.match(haltLines(h.err)[0], new RegExp(`write a fresh token to ${esc(tf)} \\(from \\$ADOBE_IMS_TOKEN_FILE\\) and re-run: node `));
+  assert.doesNotMatch(h.err, /<fresh token>/);
+  // an expired JWT in the file: exit 3 before any request, one line naming the file and the variable
+  writeFileSync(tf, `${EXPIRED_JWT}\n`);
+  const from2 = requests.length;
+  const x = await run(['--content', 'site-i2', '--force'], { token: null, imsFile: tf });
+  assert.equal(x.code, 3, x.out + x.err);
+  assert.equal(x.err.trim().split('\n').length, 1, x.err);
+  assert.match(x.err, new RegExp(`^\\[deploy-batch\\] the token in ${esc(tf)} \\(from \\$ADOBE_IMS_TOKEN_FILE\\) is expired — `));
+  assert.equal(requests.length, from2, 'nothing was sent');
 });
 
 // ---- (f) the token never leaks ---------------------------------------------------------------------------

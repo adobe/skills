@@ -67,20 +67,32 @@
  *   (expired JWT before any request, or a 401 that persisted through its
  *   retries — refresh the token and re-run the same command).
  *
- * Token: from the environment variable named by --token-env (default DA_TOKEN),
- * or from --token-file <path> (read once at start, trimmed; never both flags — the
- * same two sources as da-media-upload.mjs). Never printed, never part of the
- * re-run command, never written to the ledger or the log; the expiry and HALT
- * lines name the variable or the file, never the value.
+ * Token: from --token-file <path>, or from the environment variable named by
+ * --token-env (default DA_TOKEN); with neither flag it defaults to the file named
+ * by $ADOBE_IMS_TOKEN_FILE when that is set, else to DA_TOKEN (the same two sources
+ * as da-media-upload.mjs; never both flags). Never printed, never part of the
+ * re-run command, never written to the ledger or the log; the expiry and HALT lines
+ * name the variable or the file (and $ADOBE_IMS_TOKEN_FILE when that was its
+ * default), never the value.
+ *
+ * Org/repo/branch: --org, --repo and --branch default from stardust/rollout/rollout.json
+ * `site.da` — --org from site.da.org, --repo from site.da.site, --branch from
+ * site.da.ref (its schema default main when site.da is present without a ref). An
+ * explicit flag always wins. When one is neither given nor in rollout.json, the usage
+ * error (exit 2) names the missing flags, rollout.json and the site.da fields it read.
  *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
  * Usage:
- *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
+ *   node deploy-batch.mjs [--org <org>] [--repo <repo>] [--branch <branch>] \
  *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
  *     [--force] [--verify-max-age 60] [--ledger path] [--log path] [--retries 4] \
  *     [--backoff-ms 500] [--token-env DA_TOKEN | --token-file <path>]
+ *   (org/repo/branch default from stardust/rollout/rollout.json site.da; the token
+ *    from $ADOBE_IMS_TOKEN_FILE, else DA_TOKEN, when no token flag is given)
  *
+ * --org/--repo/--branch  the DA org, site and ref; each defaults from
+ *             stardust/rollout/rollout.json (site.da.org / site.da.site / site.da.ref).
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
  * --paths     optional newline-delimited file of web paths (no extension) to
@@ -129,7 +141,32 @@ const DA_SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
 const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
 const VERIFY_ORIGIN = process.env.DEPLOY_VERIFY_ORIGIN || '';
 const TOKEN_EXIT = 3;
+// Where --org/--repo/--branch default from (the rollout config's DA coordinates), and the env var
+// that names a token file when no token flag is given. ROLLOUT_CONFIG is a test hook, unset in production.
+const ROLLOUT_CONFIG = process.env.ROLLOUT_CONFIG || 'stardust/rollout/rollout.json';
+const IMS_TOKEN_FILE_VAR = 'ADOBE_IMS_TOKEN_FILE';
 const sha256 = (buf) => createHash('sha256').update(buf).digest('hex');
+
+// Fill a.org / a.repo / a.branch from rollout.json site.da when the flag was not given. Records the
+// source of each filled value on a.<x>From. Returns { readErr, hadDa } so the required-check can say why a
+// value is still missing. An explicit flag is never overwritten; a value already set skips the whole read.
+function applyRolloutDefaults(a) {
+  if (a.org && a.repo && a.branch) return { readErr: null, hadDa: false };
+  let doc = null;
+  let readErr = null;
+  try { doc = JSON.parse(readFileSync(ROLLOUT_CONFIG, 'utf8')); } catch (e) { readErr = e; }
+  const da = doc && doc.site && doc.site.da && typeof doc.site.da === 'object' ? doc.site.da : null;
+  const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  if (da) {
+    if (!a.org && str(da.org)) { a.org = str(da.org); a.orgFrom = `${ROLLOUT_CONFIG} site.da.org`; }
+    if (!a.repo && str(da.site)) { a.repo = str(da.site); a.repoFrom = `${ROLLOUT_CONFIG} site.da.site`; }
+    if (!a.branch) {
+      if (str(da.ref)) { a.branch = str(da.ref); a.branchFrom = `${ROLLOUT_CONFIG} site.da.ref`; }
+      else { a.branch = 'main'; a.branchFrom = `${ROLLOUT_CONFIG} site.da.ref default`; } // schema default
+    }
+  }
+  return { readErr, hadDa: !!da };
+}
 
 function parseArgs(argv) {
   const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4, backoffMs: 500, verifyMaxAge: 60 };
@@ -157,29 +194,52 @@ function parseArgs(argv) {
     else if (k === '--token-file') a.tokenFile = next();
     else throw new Error(`unknown arg: ${k}`);
   }
-  if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
-  // The token source: one variable (default DA_TOKEN) or one file, never both — the uploader's rule. The
-  // file is read here, once, before anything else runs; the value lives on `token` only and every message
-  // names the source (tokenLabel), never the value.
+  // --org/--repo/--branch default from rollout.json site.da; an explicit flag wins. A still-missing one is a
+  // usage error that names the flag, rollout.json and the site.da field it read (a missing file, or no site.da).
+  const rd = applyRolloutDefaults(a);
+  const missing = [['--org', 'site.da.org'], ['--repo', 'site.da.site'], ['--branch', 'site.da.ref']].filter(([f]) => !a[f.slice(2)]);
+  if (missing.length) {
+    const why = rd.readErr && rd.readErr.code === 'ENOENT' ? `${ROLLOUT_CONFIG} not found`
+      : rd.readErr ? `${ROLLOUT_CONFIG} unreadable (${rd.readErr.message})`
+        : !rd.hadDa ? `${ROLLOUT_CONFIG} has no site.da`
+          : `${ROLLOUT_CONFIG} site.da is missing ${missing.map(([, k]) => k).join(' / ')}`;
+    throw new Error(`${missing.map(([f]) => f).join(', ')} required — not given and ${why}; pass the flag(s) or set ${missing.map(([, k]) => k).join(' / ')} in ${ROLLOUT_CONFIG}`);
+  }
+  // The token source: one variable (default DA_TOKEN) or one file, never both — the uploader's rule. With no
+  // token flag it defaults to the file named by $ADOBE_IMS_TOKEN_FILE when that is set, else DA_TOKEN. The file
+  // is read here, once, before anything else runs; the value lives on `token` only and every message names the
+  // source (tokenLabel), never the value.
   if (a.tokenEnv && a.tokenFile) throw new Error('give at most one of --token-env / --token-file');
+  const envExplicit = !!a.tokenEnv;
+  if (!a.tokenEnv && !a.tokenFile && process.env[IMS_TOKEN_FILE_VAR] && process.env[IMS_TOKEN_FILE_VAR].trim()) {
+    a.tokenFile = process.env[IMS_TOKEN_FILE_VAR].trim();
+    a.tokenFileFrom = IMS_TOKEN_FILE_VAR; // the default file source, named in error messages
+  }
   a.tokenEnv ||= 'DA_TOKEN';
+  const fileLabel = () => `--token-file ${a.tokenFile}${a.tokenFileFrom ? ` (from $${a.tokenFileFrom})` : ''}`;
   if (a.tokenFile) {
     let raw;
-    try { raw = readFileSync(a.tokenFile, 'utf8'); } catch (e) { throw new Error(`cannot read --token-file ${a.tokenFile}: ${e.message}`); }
+    try { raw = readFileSync(a.tokenFile, 'utf8'); } catch (e) { throw new Error(`cannot read ${fileLabel()}: ${e.message}`); }
     a.token = raw.trim();
-    if (!a.token) throw new Error(`--token-file ${a.tokenFile} is empty`);
+    if (!a.token) throw new Error(`${fileLabel()} is empty`);
   } else {
     a.token = process.env[a.tokenEnv];
-    if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
+    if (!a.token) {
+      throw new Error(envExplicit
+        ? `missing token in env ${a.tokenEnv}`
+        : `missing token — set $${IMS_TOKEN_FILE_VAR} to a token file or ${a.tokenEnv} in the env (or pass --token-file / --token-env)`);
+    }
   }
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   return a;
 }
 
-// How the messages name the token and say how to refresh it — the variable or the file, never the value.
-const tokenLabel = (a) => (a.tokenFile ? `the token in ${a.tokenFile}` : a.tokenEnv);
-const refreshHint = (a) => (a.tokenFile ? `write a fresh token to ${a.tokenFile}` : `refresh ${a.tokenEnv}`);
+// How the messages name the token and say how to refresh it — the variable or the file (and the env var
+// that named the file when it was the default), never the value.
+const fileSuffix = (a) => (a.tokenFileFrom ? ` (from $${a.tokenFileFrom})` : '');
+const tokenLabel = (a) => (a.tokenFile ? `the token in ${a.tokenFile}${fileSuffix(a)}` : a.tokenEnv);
+const refreshHint = (a) => (a.tokenFile ? `write a fresh token to ${a.tokenFile}${fileSuffix(a)}` : `refresh ${a.tokenEnv}`);
 // The exact command to re-run once the token is fresh: same script, same arguments (the token itself is
 // never on the command line — it comes from the environment variable, or from the --token-file path).
 // Same helpers as da-media-upload.
@@ -331,6 +391,11 @@ async function main() {
     console.error(`[deploy-batch] ${tokenLabel(args)} is expired — its exp claim is ${new Date(exp * 1000).toISOString()} (${ago} min ago); nothing was sent. Refresh it and re-run: ${rerunCommand(args)}`);
     process.exit(TOKEN_EXIT);
   }
+  // First line of a proceeding run: where org/repo/branch and the token came from (a flag, rollout.json, or
+  // the default env/file) so a log reader can see it; never the token value.
+  const whence = (from) => (from ? `from ${from}` : 'from --flag');
+  const tokSrc = args.tokenFile ? `file ${args.tokenFile}${fileSuffix(args)}` : `env ${args.tokenEnv}`;
+  console.error(`[deploy-batch] resolved: org ${args.org} (${whence(args.orgFrom)}), repo ${args.repo} (${whence(args.repoFrom)}), branch ${args.branch} (${whence(args.branchFrom)}), token ${tokSrc}`);
   let pages = await walkHtml(args.content);
   if (args.paths) {
     const want = new Set((await readFile(args.paths, 'utf8')).split('\n').map((s) => s.trim()).filter(Boolean)
