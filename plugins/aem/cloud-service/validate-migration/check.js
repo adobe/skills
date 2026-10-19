@@ -13,10 +13,10 @@
  * build → deploy → verify task — each task produces its own outcome and MCP payload.
  *
  * Config, all optional (never persisted to disk):
- *   AEM_SDK_URL      SDK base URL (default http://localhost:4502)
+ *   AEM_SDK_URL      SDK base URL (default http://localhost:4602)
  *   --sdk            CLI override
  *
- * The skill holds no SDK credentials and never calls the SDK console: deploy
+ * The skill never persists SDK credentials or calls the SDK console: deploy
  * runs the project's own auto-install Maven profile, and runtime state comes
  * from the AEM Quickstart MCP `diagnose-osgi-bundle` tool.
  *
@@ -135,7 +135,7 @@ async function main() {
   const anyNeedsSdk = tasks.some((t) => PATTERNS[t.pattern].mode !== 'source-only');
   const sdkUrl = anyNeedsSdk ? await resolveSdkUrl(args) : null;
   if (anyNeedsSdk && !sdkUrl) {
-    fatal('no running SDK found on ports 4502 / 4602 / 4503 and none could be started from the workspace. Download the AEM SDK, or set AEM_SDK_URL / pass --sdk <url> (--search <dir> to locate the Quickstart jar).');
+    fatal('Cloud SDK unavailable or its product identity could not be verified. Check the readiness diagnostic above, run init.js, or pass --sdk <url> (--search <dir> to locate the SDK jar).');
   }
   const prepared = [];
   for (const task of tasks) {

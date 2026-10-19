@@ -46,10 +46,11 @@ an unverifiable mapping is then a restricted pass.
 
 ## 1. Readiness and Scope
 
-- Confirm an isolated **source legacy AEM** and **target AEM Cloud SDK**. A Cloud
-  SDK runs through its included Quickstart JAR; these are two AEM instances, not
-  separate SDK and Quickstart product requirements. Confirm product/version and
-  roles instead of assuming them from ports. Pin both URLs for the whole run.
+- **Source AEM 6.5** defaults to `http://localhost:4502`; **target Cloud SDK**
+  defaults to `http://localhost:4602`. Explicit URLs override saved setup and
+  defaults. Run `init.js --pattern custom-templates` with those URL overrides to
+  verify source `6.5.*` and SDK `20xx.*` through their About pages; HTTP 200 alone
+  does not verify either role. Pin both verified URLs for the whole run.
 - Honor supplied URLs first and check whether each instance is already running.
   Otherwise use bounded local discovery, then ask for each missing installation's
   absolute directory. A workspace search miss is not proof of a missing instance.
@@ -62,9 +63,11 @@ an unverifiable mapping is then a restricted pass.
   template content, saved PNG screenshots and actual image review. If unavailable,
   stop with the missing capability; a screenshot capture alone is not a visual
   comparison. Use existing authenticated sessions or user-configured tools.
-- **Credentials.** Use only `AEM_SOURCE_AUTH` / `AEM_TARGET_AUTH` (`user:password`).
-  If either is unset or returns 401, ask the user to set it in their own terminal
-  (`export AEM_TARGET_AUTH=...`) and to sign in to the browser tabs themselves; then
+- **Credentials.** Do not ask for a login up front. Use existing authenticated
+  sessions or user-configured tools. If an About-page script check requires login,
+  ask the developer to set `AEM_SOURCE_AUTH` / `AEM_TARGET_AUTH` (`user:password`)
+  in their terminal and rerun; a browser session does not authenticate the script.
+  If a browser request is rejected, ask them to sign in to that tab themselves; then
   continue. Never assume a default password, never ask for the value in chat, and
   never put credentials in CLI flags, logs, evidence, reports, files or screenshots
   of login screens. Send them only as an in-process `Authorization` header.

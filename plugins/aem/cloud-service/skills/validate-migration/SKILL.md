@@ -39,8 +39,9 @@ When a pattern has a reference, read it before running that pattern; skip it oth
 | `legacy-ui`, `cdw` | Dialog files in the built package | No | none |
 | `custom-templates` | Offline component mapping, SDK health, side-by-side page compare | Yes | [custom-templates](references/patterns/custom-templates.md) |
 
-The validator holds no SDK credentials and never calls the SDK console. Bundle
-runtime state comes only from the AEM Quickstart MCP.
+The validator never persists SDK credentials or calls the SDK console. Instance
+identity is checked through the read-only About page, using existing environment
+credentials only when needed. Bundle runtime state comes only from the AEM Quickstart MCP.
 
 Resolve `$VALIDATOR` to the absolute path of `../../validate-migration` relative
 to this file. Run commands from the customer's project/module root. For a
@@ -67,58 +68,77 @@ to obtain a pass. Only a pattern reference may grant narrow, approved exceptions
 Existing comparison pages remain read-only;
 never overwrite or delete them. Existing customer tests may be run separately, unchanged, only
 with explicit authorization and a safe test environment; never infer their result.
-Before deployment, confirm the selected SDK is safe for automatic activation:
-installing a bundle can start scheduled work or listeners. If isolation from
-production systems and side effects cannot be established, stop and ask for safe
-SDK configuration. Do not change credentials or SDK configuration without approval.
+Installing a bundle can start scheduled work or listeners. Before deployment,
+inspect available project configuration for production connections or other unsafe
+side effects. Raise a specific, plain-language deployment blocker when evidence
+shows a risk or a concrete uncertainty needs resolving; do not add a generic
+"SDK is isolated and safe" confirmation to instance startup.
+Do not change credentials or SDK configuration without approval.
 
 ## Workflow
 
-1. **Readiness.** Confirm `diagnose-osgi-bundle` (bundle-runtime patterns) and
-  `submit-migration-validation-result` are available before building. Confirm the reporting
-   server's CAM URL configuration and intended environment when inspectable;
-   tool availability alone does not prove configuration readiness. Never probe
-  reporting by sending a fabricated outcome. Load the actual project ID from the
-  nearest `migration-runbook.json` (`project.id`), or use an explicit project
-  flag. Explicit selection wins. If absent, ask once for the CAM project name;
-  never guess or assume a context file is consumed.
-Only skip submission when the user explicitly asks for local-only
-    validation; state that end-to-end reporting remains incomplete.
+1. **Setup and readiness.**
 
-    **Setup (always first, before any comparison).** Ask the user to export their
-    logins in the shell (`AEM_TARGET_AUTH` for the Cloud SDK, `AEM_SOURCE_AUTH` for
-    AEM 6.5, as `user:password`); never ask for them in chat. Then run
-    `node "$VALIDATOR/init.js" --search <workspace>` from the project root. It reads
-    each local instance's About page (`2026.x` = Cloud SDK, `6.5.x` = AEM 6.5),
-    checks the SDK, its AEM Quickstart MCP server, the editor MCP config and the
-    Quickstart, and saves the URLs to `.validate-migration/setup.json`; later
-    `check.js` runs reuse that SDK. Only items needed by the changed patterns block:
-    runtime patterns need SDK + MCP, `custom-templates` also needs AEM 6.5,
-    `legacy-ui`/`cdw` need none. Show the detected roles once and let the user
-    correct them with `--sdk <url>` / `--quickstart <url>`.
-    Fix each ✗ item, then rerun until it prints `setup ready`:
-    - SDK not found: ask for the absolute SDK directory and rerun with
-      `--search "<dir>"` (the JAR may sit outside the workspace; do not scan the
-      machine). Confirm before booting an external JAR; give download guidance
-      only after the user confirms no local SDK exists.
-    - MCP package missing on the SDK: offer to install
-      `com.adobe.aem:com.adobe.aem.mcp-server-contribs-content` from Maven Central
-      via Package Manager (`/crx/packmgr`), only after approval, picking the release
-      the [supported-versions table](https://github.com/adobe/cq-quickstart-mcp-server#supported-versions)
-      lists for this SDK (ask if none is listed) and verifying its `.sha1` first.
-    - MCP not in the editor: with approval, rerun with `--setup-mcp`; it adds
-      `<sdk>/bin/mcp` to the VS Code user `mcp.json` with a prompted password input
-      (no credential stored). Other assistants: ask the user to add it. Then
-      confirm your own session lists `diagnose-osgi-bundle`.
-    For a pattern with a reference, also run that reference's readiness checks.
-    Never skip deployment or diagnosis when setup fails.
+    **Setup (scoped).** `legacy-ui`/`cdw` are offline: do not request or start AEM
+    instances or require diagnosis MCP for them. Bundle-runtime patterns need the
+    Cloud SDK (default `http://localhost:4602`) and its AEM Quickstart MCP server.
+    Side-by-side `custom-templates` validation also needs source AEM 6.5 (default
+    `http://localhost:4502`). Honor explicit URLs before saved setup and defaults;
+    port numbers and HTTP reachability do not establish product identity.
+    Run `node "$VALIDATOR/init.js" --search <workspace>` from the project root,
+    retaining any explicit `--sdk`/`--quickstart` URLs and `--pattern` scope
+    (comma-separated for multiple patterns). Without `--pattern`, setup uses the
+    changed patterns versus main. It verifies only the required instances through
+    their About pages (SDK `20xx.*`, source `6.5.*`), boots missing required instances
+    from jars under `--search`, and saves verified URLs. Rerun scoped setup before
+    deployment; saved URLs are not proof of the currently running product.
+    Deployment still uses the project's Maven profile credentials.
+    Stop until it prints `setup ready`. Fix each required ✗ item, then rerun:
+    - **Missing instances: search, ask paths, start.** Search the workspace for the
+      missing Quickstart JARs first, including ignored local installation folders.
+      Start required instances found there through scoped `init.js --search "<dir>"`; leave any
+      already-running instance alone. Do not scan the machine.
+      If a missing instance's JAR is not found, ask once in a single form with
+      only the missing path fields (at most two):
+      1. **AEM 6.5 Quickstart path** — absolute JAR or installation folder; port 4502.
+      2. **AEM Cloud SDK Quickstart path** — absolute JAR or installation folder; port 4602.
+      State that the supplied installations will be started on those ports.
+      Supplying a path in response authorizes startup there, including outside
+      the workspace; do not ask for another startup confirmation. Use each supplied
+      JAR's containing folder with `--search` and rerun readiness checks.
+      If the user says they do not have a required JAR, provide download guidance
+      for that distribution and request its path after download. Do not download it.
+      Keep CAM identity, deployment safety, and MCP readiness questions out of
+      this path form.
+    - **Identity check blocked.** Do not request logins up front. If the About page
+      requires login or rejects existing credentials, ask the developer to set
+      `AEM_TARGET_AUTH` (SDK) or `AEM_SOURCE_AUTH` (source), as `user:password`, in
+      their terminal and rerun. Browser sign-in alone does not authenticate this
+      script. Never ask for the values in chat or persist them.
+    - **MCP (runtime scope only).** Ready when your own tools include
+      `diagnose-osgi-bundle` against the selected SDK. If not, ask the
+      user to add `<selected-sdk-url>/bin/mcp` to their coding assistant's MCP
+      config themselves, following
+      [AEM Quickstart MCP server setup](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/ai-in-aem/local-development-with-ai-tools#aem-quickstart-mcp-server),
+      then restart the server. Never edit their MCP config or ask for credentials in chat.
+    Handle MCP setup and any missing reporting identity after instance startup,
+    rather than adding them to the path form. For a pattern with a reference,
+    also run that reference's readiness checks.
+
+    **Reporting.** Confirm `submit-migration-validation-result` is in your tools.
+    Never test it with a fabricated outcome. Load the CAM project ID from the nearest
+    `migration-runbook.json` (`project.id`) or an explicit project flag (explicit wins);
+    if absent, ask once for the CAM project name and never guess. Skip submission only
+    when the user explicitly asks for local-only validation, and state that end-to-end
+    reporting remains incomplete.
 
 2. **Prepare.** Run `node "$VALIDATOR/check.js" --stage prepare` with the selected
   scope/project/SDK flags. It builds, discovers, deploys bundle-runtime patterns
   through the project's Maven install profile, and saves `.validate-migration/state.json`.
    A pattern reference may add steps between prepare and verify; follow it.
    The build uses `-DskipTests`; do not claim customer unit tests passed.
-3. **Diagnose.** For each emitted BSN, call MCP `diagnose-osgi-bundle` with
+3. **Diagnose (bundle-runtime scope only).** Skip this step for offline
+  `legacy-ui`/`cdw` checks. For each emitted BSN, call MCP `diagnose-osgi-bundle` with
    `{ "bundleSymbolicName": "<BSN>" }` against the SAME SDK. Save the exact returned report in
    `.validate-migration/diagnosis-map.json` as `{ "<BSN>": "<raw report>" }`.
   If unavailable, stop recovery and follow the missing-diagnosis path below.
@@ -226,7 +246,7 @@ any extra revalidation for their pattern.
   directly to adoption-service. Updating generated reports is allowed.
 - Never invent projects, runtime evidence, receipts, or failure classes; use
   [the frozen taxonomy](../../validate-migration/failure-classes.js).
-- Only boot workspace SDK JARs or user-confirmed local SDK JARs outside the
+- Only boot workspace AEM JARs (SDK or 6.5) or user-confirmed local JARs outside the
   workspace. Never download an SDK or persist credentials in reports, receipts,
   or the user's HOME. Credentials a pattern needs come only from environment
   variables the user sets (see the pattern reference); never assume a default.

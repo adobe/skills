@@ -4,7 +4,7 @@
 const fs = require('fs');
 const path = require('path');
 const { FAILURE_CLASSES } = require('./failure-classes.js');
-const { ensureSdk, findRunningSdk } = require('./sdk.js');
+const { ensureSdk, SDK_URL } = require('./sdk.js');
 const { readSetup } = require('./setup.js');
 
 function writeLocalReport(record, cwd) {
@@ -97,24 +97,15 @@ function finalizeReporting(record, receipt) {
 }
 
 // ---- SDK config (never persisted to disk) ----
-// URL: honors --sdk / AEM_SDK_URL; otherwise probes common local ports so a
-// developer never has to configure anything when the SDK is on 4502/4602/4503.
+// URL: honors --sdk / AEM_SDK_URL, then the saved setup, then the fixed SDK port 4602.
 async function resolveSdkUrl(args) {
   const explicit = args.sdk || process.env.AEM_SDK_URL;
-  if (explicit) return explicit.replace(/\/$/, '');
-  const saved = readSetup(args.project || process.cwd()).sdk_url;
-  if (saved) {
-    console.log(`(setup) SDK      = ${saved}`);
-    return saved;
-  }
-  const runningUrl = await findRunningSdk();
-  if (runningUrl) {
-    console.log(`(auto) SDK       = ${runningUrl}`);
-    return runningUrl;
-  }
-  const defaultUrl = 'http://localhost:4502';
-  const booted = await ensureSdk(defaultUrl, { search: args.search });
-  return booted ? defaultUrl : null;
+  // init.js may have run from the reactor root while check.js targets a module.
+  const saved = readSetup(args.project || process.cwd()).sdk_url || readSetup(process.cwd()).sdk_url;
+  const url = (explicit || saved || SDK_URL).replace(/\/$/, '');
+  const ready = await ensureSdk(url, { search: args.search });
+  if (ready) console.log(`(${explicit ? 'explicit' : saved ? 'setup' : 'default'}) SDK = ${url}`);
+  return ready ? url : null;
 }
 
 function camReportingNote(args) {

@@ -17,12 +17,12 @@ drives the scripts via plugin-relative paths — there is no `npm link` and no
 global bin.
 
 ```bash
-# Once, from your project root — setup. Logins come from your shell only:
-#   export AEM_TARGET_AUTH=<sdk user:password> AEM_SOURCE_AUTH=<aem 6.5 user:password>
-# Detects which port is the Cloud SDK and which is AEM 6.5, checks the SDK, its MCP
-# server, your editor MCP config (--setup-mcp adds it) and saves
-# .validate-migration/setup.json (URLs only).
-node ../../validate-migration/init.js
+# From your project root — scoped setup (or pass --pattern scheduler, etc.).
+# Offline dialog checks need no instances. Runtime checks need the Cloud SDK;
+# template comparison also needs AEM 6.5. Reuses verified running instances or
+# boots required jars under --search, then saves URLs. Credentials are requested
+# only if the read-only About-page identity check needs authentication.
+node ../../validate-migration/init.js --search <dir-with-aem-jars>
 
 # Per branch, from your project root:
 #   1. build + deploy, list the Bundle-SymbolicNames to diagnose
@@ -111,9 +111,9 @@ and reporting are separate: a restricted local pass is not end-to-end completion
 Passing verification exits `3` while awaiting reporting; failed validation exits
 `1` but its outcome must still be submitted.
 
-Before building, confirm the diagnosis/reporting tools are configured and check
-the reporting server's `cam.apiBaseUrl` and selected environment when accessible.
-Availability of the MCP tool alone does not establish configuration readiness.
+Before building, confirm `submit-migration-validation-result` is in the coding
+assistant's tools; runtime scope also requires `diagnose-osgi-bundle` against the
+selected SDK. Offline `legacy-ui`/`cdw` checks need no diagnosis MCP.
 Never test reporting with a fabricated payload. Load `project.id` (and optional
 `project.name`) from the nearest `migration-runbook.json`, or use an explicit
 flag, which takes precedence. If none is linked, ask for the actual CAM project
@@ -143,23 +143,33 @@ code failure, and must not be silently retried or presented as recorded.
 
 ## Prerequisites
 
-- AEM Cloud SDK: mandatory for runtime patterns. Reuse a running SDK on
-  4502 / 4602 / 4503, or explicitly check the user's URL with `--sdk <url>`.
-  An `aem-sdk-quickstart*.jar` may be stored anywhere locally, not just in the
-  workspace. If workspace discovery fails, ask for its absolute directory
-  before declaring the SDK missing. Pass that user-confirmed directory with
-  `--search "<absolute-sdk-directory>"` to `init.js` / `check.js`; retain
-  `--sdk <url>` if supplied. These scripts boot the selected JAR if needed.
+- Offline `legacy-ui`/`cdw` checks require no running instances or diagnosis MCP.
+- Bundle-runtime checks require AEM Cloud SDK (default `http://localhost:4602`).
+  Side-by-side `custom-templates` validation additionally requires source AEM 6.5
+  Quickstart (default `http://localhost:4502`). Override with `--quickstart <url>` /
+  `--sdk <url>`; scoped `init.js --pattern <a,b>` checks only required instances,
+  or infers the changed patterns versus main when no scope is supplied.
+  It verifies product identity through each About page, not port numbers alone:
+  SDK versions start with `20xx.`, source versions with `6.5.`. If the check needs
+  authentication, set `AEM_TARGET_AUTH` / `AEM_SOURCE_AUTH` in your terminal as
+  `user:password`; never share credentials in chat. Existing browser logins do not
+  authenticate the script. No credentials are saved, and deployment still uses
+  the Maven profile. A wrong or unverifiable product blocks setup and deployment.
+  If a required instance is down, setup looks for its jar (`aem-sdk-quickstart*.jar`;
+  `cq-quickstart-6.5*.jar` or `AEM_6.5_Quickstart.jar`) under `--search` and boots it
+  on the selected port.
+  Jars may be stored anywhere locally; if none is found, ask for the absolute
+  directory and pass it with `--search "<absolute-directory>"`.
   Search the directory containing the JAR, not the whole machine: discovery
   descends at most four directory levels and skips `node_modules`, `.git`,
-  `target`, `dist`, and `build`. If several JARs match, narrow `--search`.
+  `target`, `dist`, `build`, and `crx-quickstart`. If several JARs match, narrow `--search`.
   Only offer [SDK download guidance](https://experience.adobe.com/#/downloads/content/software-distribution/en/aemcloud.html)
   after the user confirms no local SDK exists, or provide setup guidance if
-  the selected SDK fails to start. Never skip runtime validation.
+  the selected instance fails to start. Never skip runtime validation.
 - [AEM Quickstart MCP server](https://github.com/adobe/cq-quickstart-mcp-server/)
   (`com.adobe.aem:com.adobe.aem.mcp-server-contribs-content`, on Maven Central) installed
-  on the SDK and configured in the coding assistant. `init.js` checks the SDK side with
-  `AEM_TARGET_AUTH`. See the
+  on the SDK for runtime checks and added by you to the coding assistant's MCP config. Ready when the
+  assistant lists `diagnose-osgi-bundle`; `init.js` does not probe it. See the
   [Adobe setup docs](https://experienceleague.adobe.com/en/docs/experience-manager-cloud-service/content/ai-in-aem/local-development-with-ai-tools#aem-quickstart-mcp-server).
 - `mvn` and `unzip` on `PATH`.
 - Node 18+.
@@ -170,8 +180,11 @@ Zero config for standard local dev. Overrides via env or CLI:
 
 | Env | CLI | Default | Notes |
 |---|---|---|---|
-| `AEM_SDK_URL` | `--sdk <url>` | auto-discover on 4502 / 4602 / 4503 | first SDK to answer wins |
-| - | `--search <dir>` | current working directory | absolute SDK directory anywhere locally; confirm external JAR location before booting |
+| `AEM_SDK_URL` | `--sdk <url>` | saved setup, else `http://localhost:4602` | never falls back to AEM 6.5 on 4502 |
+| — | `--quickstart <url>` | saved setup, else `http://localhost:4502` | source URL for scoped `init.js` template comparison setup |
+| — | `--pattern <a,b>` | changed patterns versus main | scope for `init.js`; `check.js` accepts one explicit pattern |
+| `AEM_TARGET_AUTH` / `AEM_SOURCE_AUTH` | — | unset | optional existing SDK/source credentials for About-page identity checks; only request when authentication blocks verification |
+| - | `--search <dir>` | current working directory | absolute directory with the SDK / AEM 6.5 jar; a path supplied in response to a startup request authorizes booting there |
 | — | `--project-id <id>` | auto-loaded from nearest `migration-runbook.json` | explicit selection overrides inherited identity |
 | — | `--project-name <name>` | user-confirmed CAM project name | reporting MCP resolves the name; payload can be emitted without an ID |
 | — | `--diagnosis-map <file>` | `<project>/.validate-migration/diagnosis-map.json` | agent-supplied BSN → raw MCP text output |
@@ -183,12 +196,30 @@ Zero config for standard local dev. Overrides via env or CLI:
 No global validator configuration or credentials are persisted to `$HOME`.
 No `~/.validate-migration/*`; SDK boot logs stay next to the selected JAR.
 
+### Missing local instances
+
+Check only instances required by the selected patterns, using saved/explicit URLs
+or the defaults (4502 for AEM 6.5, 4602 for Cloud SDK). Search the workspace,
+including ignored installation folders, for any missing required Quickstart JAR.
+Start found installations through scoped `init.js --pattern <a,b> --search <dir>`
+without restarting instances that already respond. Do not scan unrelated folders.
+
+If a JAR is not found, use one form containing only the missing paths, at most
+two fields: **AEM 6.5 Quickstart path** and **AEM Cloud SDK Quickstart path**.
+Accept an absolute JAR or installation folder and explain the corresponding
+startup port. The supplied path authorizes startup; no second confirmation is
+needed. Give download guidance only when the user says they lack that package.
+Handle MCP setup and CAM identity after startup, separately from the path form.
+Do not ask a generic SDK-isolation question during startup; before deployment,
+raise specific risks found in project configuration in plain language.
+
 ## Deploy strategy
 
 Uses only the customer project's `-PautoInstallBundle` (or `-PautoInstallPackage`)
 Maven profile — the AEM archetype standard. The project's own pom and Maven
-settings own the install endpoint and credentials; the validator holds no SDK
-credentials and never calls the SDK console. Only `-Daem.host`/`-Daem.port` are
+settings own the install endpoint and credentials; the validator never persists
+credentials or calls the SDK console. Optional environment credentials are used
+only for read-only About-page identity checks. Only `-Daem.host`/`-Daem.port` are
 passed so the deployment targets the selected local SDK. If the project has no
 such profile, prepare reports `deploy.failed` and the developer deploys the
 bundle with their usual workflow before re-running.
@@ -269,14 +300,15 @@ directory's dependencies before use. Package-only checks remain independent of i
 
 ## Files that ship with this plugin
 
-- `init.js` — setup: detects the Cloud SDK and AEM 6.5 from their About pages, boots a
-  workspace SDK if none is running, checks the MCP server on the SDK and in the editor,
-  and saves the URLs to `.validate-migration/setup.json`.
-- `setup.js` — role detection, per-pattern required checks, and the saved setup file.
-- `mcp.js` — probes `<sdk>/bin/mcp` (`initialize` + `tools/list`) for `diagnose-osgi-bundle`,
-  detects the editor, and adds the server to VS Code `mcp.json` with a prompted
-  password input; never outputs or stores credentials.
-- `sdk.js` — shared SDK detect / search / boot logic used by `init.js` and `check.js`.
+- `init.js` — scoped setup: verifies required instance roles or boots their jars,
+  saves verified URLs to `.validate-migration/setup.json`, and reminds the coding
+  assistant to check diagnosis MCP separately for runtime scope.
+- `setup.js` — per-pattern prerequisites and the saved setup file.
+- `mcp.js` — MCP package, documentation and required-tool constants. It does not
+  probe the SDK or edit the IDE configuration; the user configures the server
+  and the coding assistant confirms `diagnose-osgi-bundle`.
+- `sdk.js` — shared About-page identity verification, jar search and boot logic
+  for the SDK and AEM 6.5, used by `init.js` and `check.js`.
 - `check.js` — orchestrator CLI: prepare = build/discover/deploy; verify = consume
   diagnosis and run each pattern's check; finalize = persist the reporting
   acknowledgement or error.

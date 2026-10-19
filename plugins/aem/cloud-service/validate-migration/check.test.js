@@ -13,12 +13,11 @@ const { parseBundleDiagnosticReport, parseComponentsFromReport, normalizeState, 
 const { classifyDialog } = require('./check/lib/dialogs.js');
 const { manifestImportsPackage, referencesClassName } = require('./check/lib/jar.js');
 const { topicFromDescriptor, rclFlagsFromDescriptor } = require('./check/lib/descriptor.js');
-const { buildMcpPayload, renderLocalReport, writeLocalReport, finalizeReporting, toClassEntry, stripEmpty, truncate, camReportingNote } = require('./reporting.js');
+const { buildMcpPayload, renderLocalReport, writeLocalReport, finalizeReporting, toClassEntry, stripEmpty, truncate, camReportingNote, resolveSdkUrl } = require('./reporting.js');
 const { ALL_FAILURE_CLASSES, FAILURE_CLASSES, isFailureClass } = require('./failure-classes.js');
 const { changedFiles, RULES, SOURCE_ONLY_PATTERNS } = require('./plan.js');
 const { selectArtifact } = require('./build.js');
 const { readBundleSymbolicName } = require('./deploy.js');
-const { findRunningSdk } = require('./sdk.js');
 
 test('scheduler rejects a built component without scheduler.runOn before runtime diagnosis', async (context) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'scheduler-contract-'));
@@ -853,29 +852,75 @@ test('finalize stage persists reporting status and exits according to the acknow
   }
 });
 
-test('findRunningSdk discovers an existing SDK on 4602 before considering startup', async (context) => {
+test('resolveSdkUrl uses the fixed SDK port 4602, never AEM 6.5 on 4502', async (context) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-sdkurl-'));
+  const cwd = process.cwd();
+  const env = process.env.AEM_SDK_URL;
+  delete process.env.AEM_SDK_URL;
   const probes = [];
   context.mock.method(globalThis, 'fetch', async (url) => {
     probes.push(url);
-    return { status: url.includes(':4602/') ? 401 : 503 };
+    return { status: 200, text: async () => 'Adobe Experience Manager 2026.8.123' };
   });
-  assert.strictEqual(await findRunningSdk(), 'http://localhost:4602');
-  assert.deepStrictEqual(probes, [
-    'http://localhost:4502/', 'http://localhost:4602/',
-  ]);
+  try {
+    process.chdir(dir);
+    assert.strictEqual(await resolveSdkUrl({}), 'http://localhost:4602');
+    assert.deepStrictEqual(probes, [
+      'http://localhost:4602/',
+      'http://localhost:4602/mnt/overlay/granite/ui/content/shell/about.html',
+    ]);
+  } finally {
+    process.chdir(cwd);
+    if (env !== undefined) process.env.AEM_SDK_URL = env;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
-test('findRunningSdk checks 4503 and returns null when no SDK answers', async (context) => {
-  const probes = [];
-  context.mock.method(globalThis, 'fetch', async (url) => {
-    probes.push(url);
-    throw new Error('connection refused');
-  });
-  assert.strictEqual(await findRunningSdk(), null);
-  assert.strictEqual(probes.length, 3);
-  assert.match(probes[2], /:4503\/$/);
+test('resolveSdkUrl reads setup saved at the reactor root when --project points at a module', async (context) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-sdkurl-'));
+  const cwd = process.cwd();
+  const env = process.env.AEM_SDK_URL;
+  delete process.env.AEM_SDK_URL;
+  context.mock.method(globalThis, 'fetch', async () => ({
+    status: 200, text: async () => 'Adobe Experience Manager 2026.8.123',
+  }));
+  try {
+    fs.mkdirSync(path.join(dir, '.validate-migration'));
+    fs.mkdirSync(path.join(dir, 'core'));
+    fs.writeFileSync(path.join(dir, '.validate-migration', 'setup.json'), JSON.stringify({ sdk_url: 'http://localhost:4999' }));
+    process.chdir(dir);
+    assert.strictEqual(await resolveSdkUrl({ project: path.join(dir, 'core') }), 'http://localhost:4999');
+  } finally {
+    process.chdir(cwd);
+    if (env !== undefined) process.env.AEM_SDK_URL = env;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
+test('resolveSdkUrl rejects a saved SDK URL that now points at AEM 6.5', async (context) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'vm-sdkurl-'));
+  const env = process.env.AEM_SDK_URL;
+  delete process.env.AEM_SDK_URL;
+  context.after(() => {
+    if (env !== undefined) process.env.AEM_SDK_URL = env;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+  fs.mkdirSync(path.join(dir, '.validate-migration'));
+  fs.writeFileSync(path.join(dir, '.validate-migration', 'setup.json'), JSON.stringify({
+    sdk_url: 'http://localhost:4999',
+  }));
+  context.mock.method(globalThis, 'fetch', async () => ({
+    status: 200, text: async () => 'Adobe Experience Manager 6.5.0',
+  }));
+  assert.strictEqual(await resolveSdkUrl({ project: dir }), null);
+});
+
+test('resolveSdkUrl rejects an explicit SDK URL pointing at an unrelated service', async (context) => {
+  context.mock.method(globalThis, 'fetch', async () => ({
+    status: 200, text: async () => '<html>Unrelated service</html>',
+  }));
+  assert.strictEqual(await resolveSdkUrl({ sdk: 'http://localhost:4999' }), null);
+});
 
 test('custom-templates verifies template definition, structure and initial content offline', async () => {
   const TEMPLATE = '/conf/wknd/settings/wcm/templates/content-page-template';
