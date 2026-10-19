@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x — the unit ends with its sidecar, deploy-batch knows its site, and the tail re-gates only what changed (#NNN)
+
+A recorded hands-off run that finished `ready` in 8 h 58 min spent its last minutes on work the tail should have
+avoided: `deploy-batch` was invoked without its coordinates and token four times across two sessions, eight
+subagent-run units left their pages' eds-schema sidecars unwritten until done-check found them at the very end,
+verify failed and re-deployed pages over out-of-plan links the link-audit phase was about to repoint, and two
+`fix-later` header requests queued early were applied only at the final gate, 40 min on the critical path.
+
+- **deploy-batch reads its coordinates and token from the config.** `deploy-batch.mjs` defaults `--org`/`--repo`/
+  `--branch` from `stardust/rollout/rollout.json` `site.da` (org / site / ref, ref's schema default `main`) and,
+  with no token flag, reads the token from the file named by `$ADOBE_IMS_TOKEN_FILE`, else `DA_TOKEN`. An explicit
+  flag wins; the usage error names the config file and the `site.da` fields, or the file and the variable, it read;
+  a first stderr line records the resolved sources (never the token value).
+- **The unit ends with its sidecar.** `unit-commit.mjs <unit>` pre-checks, before staging, that every delivered
+  page has its `stardust/eds-schema/<slug>.json`, refusing a missing one (exit 2, nothing staged) with the exact
+  `section-schema.mjs … --out …` command per page. `--no-sidecar-check` overrides and records the override in the
+  commit message. The fix-round brief and the handoff contract's unit briefs say "sidecar before commit".
+- **The tail re-gates only what changed, and reports source traits.** `verify.mjs` judges the `<h1>` count against
+  the source capture — 0 or more than one is a `trait` (verified) when the capture shares it, a failure otherwise —
+  and reports an out-of-plan internal href as `e2_pending` (the link-audit phase repoints it), never a page failure.
+  The rollout `§ D/E/E2` order runs the link audit + repoints BEFORE verify, and re-gates with
+  `gate-all --changed-only` (content/CSS fingerprint) after href-only edits, never the full roster.
+- **A `fix-later` header request is applied in-wave.** The foundation-chrome owner applies it as soon as the first
+  wave is running (parallel to the archetype units, with a home re-gate), not at the final gate, which only verifies
+  header parity.
+
 ## 0.36.x (stardust/r16-export-fresh) — the migration export tells the truth about what it was built from, who encoded, and what the owner must still name (#156)
 
 Two recorded hands-off runs wrote their migration export in-run and shipped it stale or misleading. A gap-closure
