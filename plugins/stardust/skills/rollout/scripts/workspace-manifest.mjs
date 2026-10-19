@@ -21,7 +21,9 @@
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
  * in the content files, no update-coverage.mjs --block record), a `templateGroups` {total, archetypes, siblings} count
- * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `selectorQuality` block derived from mapping.json
+ * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `variantsSummary`
+ * {total, singleUse, blocks} recomputed from blocks.json's module rows (the variants, those a single instance uses —
+ * each a catalog block for an adopter — and the blocks with any), a `selectorQuality` block derived from mapping.json
  * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
  * the same split per template, each row with the template's encode decision `encode {decision, reason, vocabulary,
  * recordedAt}` read from migrate's record <project>/stardust/migrate/encode/<template>.json — never written here —
@@ -83,7 +85,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   readJSON, sha256, byStr, kebab, edsName, kindOf, DEFAULT_CONTENT, contentFileFor, identityTokens, scrubIdentity,
-  COVERAGE_FORMAT_VERSION, classifyExportDrift, urlToDeliveredPath,
+  COVERAGE_FORMAT_VERSION, classifyExportDrift, urlToDeliveredPath, variantsSummaryOf,
 } from './lib.mjs';
 // countsOf derives the selector-quality figures from mapping.json; importing it runs nothing (its CLI is isMain-guarded).
 import { countsOf } from './block-origin.mjs';
@@ -692,6 +694,9 @@ function main(argv) {
   };
   const placeholders = placeholdersOf(coverage);
   const templateGroups = templateGroupsOf(coverage.templates.templates);
+  // blocks.mjs writes the same figures at the top of blocks.json (lib.variantsSummaryOf, so the two agree); derived
+  // from coverage, so a re-hash recomputes it and --check never counts it as drift
+  const variantsSummary = variantsSummaryOf(coverage.blocks.blocks);
   // the planned URLs that never became a page: the coverage's excluded[] rows, the crawl log, the state roster, the plan
   const stardustDir = dirname(OUT);
   const excluded = excludedOf({
@@ -710,6 +715,7 @@ function main(argv) {
     pages: coverage.pages.pages.length,
     blocks: mods.length,
     variants: variants.length,
+    singleUseVariants: variantsSummary.singleUse,
     instances: variants.reduce((n, v) => n + (typeof v.instances === 'number' ? v.instances : 0), 0),
     excluded: excluded.length,
   };
@@ -725,7 +731,7 @@ function main(argv) {
       const tpl = counts.siblingGroups > 0 ? `${counts.templates} templates (${counts.archetypes} archetypes + ${counts.siblingGroups} sibling groups)` : `${counts.templates} templates`;
       console.log(`rollout workspace-manifest → ${shown}`);
       console.log('='.repeat(60));
-      console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
+      console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.singleUseVariants} single-use, ${counts.instances} instances)`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
       if (excluded.length) console.log(`Excluded      ${excluded.length} planned URL(s) never became a page (manifest.json excluded[])`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
@@ -852,6 +858,7 @@ function main(argv) {
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
     templateGroups,
+    variantsSummary,
     excluded,
     ...(selectorQuality ? { selectorQuality } : {}),
     ...(sectionGaps ? { sectionGaps } : {}),

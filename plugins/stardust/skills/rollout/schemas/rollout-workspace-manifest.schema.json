@@ -43,6 +43,17 @@
         "siblings": { "type": "integer", "minimum": 0, "description": "Cloned sibling groups beyond one archetype per type (total − archetypes)." }
       }
     },
+    "variantsSummary": {
+      "type": "object",
+      "description": "The variant explosion from coverage/blocks.json, recomputed at manifest time over its module rows (one per EDS name): total = their variants, singleUse = those used by exactly one instance, blocks = the rows with at least one variant. An adopter emits one catalog block per variant, so a high singleUse count means many one-off option-class combinations to review or fold, not reuse; done-check.mjs surfaces singleUse as the export_quality:single_use_variants info line. Optional (older manifests omit it). Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["total", "singleUse", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Variants over the module rows of coverage/blocks.json." },
+        "singleUse": { "type": "integer", "minimum": 0, "description": "Variants with exactly one instance across all pages." },
+        "blocks": { "type": "integer", "minimum": 0, "description": "Module rows with at least one variant (the blocks the delivered documents show)." }
+      }
+    },
     "excluded": {
       "type": "array",
       "description": "Planned URLs that never became a page, derived at manifest time from what the coverage and the plan know: the coverage pages.json excluded[] rows (state.mjs exclude; the reason as recorded), the crawl's failed URLs (stardust/current/_crawl-log.json crawl.failures[]; reason `crawl: <message>`, e.g. `crawl: HTTP 404`), and the state.json pages[] and plan.json steps with no pages[] row (reason `unrecorded` when nothing says why). A planned entry is a page when a pages[] row shares its URL, its delivered path or its slug. [] when every planned URL is a page. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",

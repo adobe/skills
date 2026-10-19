@@ -98,6 +98,9 @@
  * projecting per selector drops) when N>0, informational, never a gap;
  * export_quality:judgement_to_fill:N — the manifest's judgement.toFill (judgement.json fields still empty: block
  * purpose / reuseGuidance / a default-fallback baseType) when N>0, informational, never a gap;
+ * export_quality:single_use_variants:N — the manifest's variantsSummary.singleUse (block variants used by exactly one
+ * instance; an adopter emits one catalog block per variant, so each is a one-off catalog entry to review or fold)
+ * when N>0, informational, never a gap;
  * export_quality:encode_unrecorded:N — the manifest's selectorQuality.encode.unrecorded (multi-page templates with
  * no encoder-map selector and no migrate encode record, so a reviewer cannot tell whether the encoder was tried,
  * skipped or never applicable; else counted from byTemplate[].encode.decision) when N>0, informational, never a
@@ -110,7 +113,7 @@
  * client's validator does; a `skipped:` line names the schemas dir when none is found beside the scripts (plugin
  * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
  * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each
- * with its recorded reason — workspace-manifest.mjs --help) when N>0; all six hidden once the export is handed over.
+ * with its recorded reason — workspace-manifest.mjs --help) when N>0; all seven hidden once the export is handed over.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -479,7 +482,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -507,7 +510,8 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
   // the migration export's zero-confidence selector count (manifest selectorQuality), null-selector section count
-  // (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), multi-page templates without an
+  // (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), single-use variant count
+  // (manifest variantsSummary.singleUse — one catalog block each for an adopter), multi-page templates without an
   // encode decision (manifest selectorQuality.encode.unrecorded), export files failing their schema (schemaErrorsOf) and
   // planned URLs that never became a page (manifest excluded[]): informational, never a gap
   const failing = (Array.isArray(schemaErrors) ? schemaErrors : []).filter((s) => s && typeof s.file === 'string' && Array.isArray(s.errors) && s.errors.length);
@@ -516,6 +520,7 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
     ...(zeroConfidence != null && zeroConfidence > zeroConfidenceThreshold ? [`export_quality:zero_confidence:${zeroConfidence}`] : []),
     ...(nullSelectorSections != null && nullSelectorSections > 0 ? [`export_quality:null_selector_sections:${nullSelectorSections}`] : []),
     ...(judgementToFill != null && judgementToFill > 0 ? [`export_quality:judgement_to_fill:${judgementToFill}`] : []),
+    ...(singleUseVariants != null && singleUseVariants > 0 ? [`export_quality:single_use_variants:${singleUseVariants}`] : []),
     ...(encodeUnrecorded != null && encodeUnrecorded > 0 ? [`export_quality:encode_unrecorded:${encodeUnrecorded}`] : []),
     ...failing.map((s) => `export_quality:schema:${s.file}:${s.errors.length}: ${s.errors.slice(0, SCHEMA_ERRORS_SHOWN).join('; ')}${s.errors.length > SCHEMA_ERRORS_SHOWN ? `, … (+${s.errors.length - SCHEMA_ERRORS_SHOWN})` : ''}`),
     ...(planned.length ? [`export_quality:excluded:${planned.length}: ${listed(planned.map((e) => `${e.url} (${typeof e.reason === 'string' && e.reason ? e.reason : 'unrecorded'})`))}`] : []),
@@ -591,9 +596,9 @@ async function exportState({ out, config, pagesDoc, wm }) {
     handedOver,
     dir: ws,
   });
-  // the shipped manifest's zero-confidence figure, null-selector section count, judgement debt, encode decisions and
-  // excluded planned URLs, and the export files' schema verdicts, for the info lines; none surfaced once a client owns
-  // the export
+  // the shipped manifest's zero-confidence figure, null-selector section count, judgement debt, single-use variant
+  // count, encode decisions and excluded planned URLs, and the export files' schema verdicts, for the info lines;
+  // none surfaced once a client owns the export
   const sq = !handedOver && isMap(manifest) && isMap(manifest.selectorQuality) ? manifest.selectorQuality : null;
   const gaps = !handedOver && isMap(manifest) && Array.isArray(manifest.sectionGaps) ? manifest.sectionGaps : null;
   const judgement = !handedOver && isMap(manifest) && isMap(manifest.judgement) ? manifest.judgement : null;
@@ -603,6 +608,7 @@ async function exportState({ out, config, pagesDoc, wm }) {
   const rows = sq && Array.isArray(sq.byTemplate) ? sq.byTemplate.filter((r) => isMap(r) && isMap(r.encode)) : [];
   const encodeUnrecorded = sq && isMap(sq.encode) && typeof sq.encode.unrecorded === 'number' ? sq.encode.unrecorded
     : rows.length ? rows.filter((r) => r.encode.decision === 'unrecorded').length : null;
+  const variants = !handedOver && isMap(manifest) && isMap(manifest.variantsSummary) ? manifest.variantsSummary : null;
   return {
     ...gap,
     skipped: [...gap.skipped, ...schemas.skipped],
@@ -612,6 +618,7 @@ async function exportState({ out, config, pagesDoc, wm }) {
     schemaErrors: schemas.errors,
     plannedExcluded: !handedOver && isMap(manifest) && Array.isArray(manifest.excluded) ? manifest.excluded : [],
     encodeUnrecorded,
+    singleUseVariants: variants && typeof variants.singleUse === 'number' ? variants.singleUse : null,
   };
 }
 
@@ -705,6 +712,7 @@ async function main() {
     schemaErrors: exported.schemaErrors,
     plannedExcluded: exported.plannedExcluded,
     encodeUnrecorded: exported.encodeUnrecorded,
+    singleUseVariants: exported.singleUseVariants,
     skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped, ...(pendingKnown ? [] : ['blocks_pending: workspace-manifest.mjs not found beside done-check.mjs'])],
   });
 

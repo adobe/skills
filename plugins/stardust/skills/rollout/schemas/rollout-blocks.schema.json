@@ -10,6 +10,17 @@
     "_provenance": { "$ref": "#/$defs/provenance" },
     "formatVersion": { "$ref": "#/$defs/formatVersion" },
     "generatedAt": { "type": "string", "format": "date-time" },
+    "variantsSummary": {
+      "type": "object",
+      "description": "The variant explosion over the module rows (one per EDS name): total = their variants, singleUse = those used by exactly one instance, blocks = the rows with at least one variant (the blocks the delivered documents show). An adopter emits one catalog block per variant, so a high singleUse count means many one-off option-class combinations, not reuse. Optional: written since stardust 0.36.x; the workspace manifest recomputes the same figures.",
+      "required": ["total", "singleUse", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Variants over the module rows." },
+        "singleUse": { "type": "integer", "minimum": 0, "description": "Variants with exactly one instance across all pages." },
+        "blocks": { "type": "integer", "minimum": 0, "description": "Module rows with at least one variant." }
+      }
+    },
     "blocks": { "type": "array", "items": { "$ref": "#/$defs/block" } }
   },
   "$defs": {
@@ -56,11 +67,11 @@
         },
         "source": {
           "type": ["string", "null"],
-          "description": "Canon definition path when the block is canonized, e.g. stardust/canon/modules/<id>.html; `blocks-dir` for a block blocks.mjs registered from blocks/<name>/ (holding <name>.js or <name>.css) that no page lists — no pages, 0 instances."
+          "description": "Canon definition path when the block is canonized, e.g. stardust/canon/modules/<id>.html; `blocks-dir` for a block blocks.mjs registered from blocks/<name>/ (holding <name>.js or <name>.css) that no page's sidecar lists — its usage is counted from the delivered documents like any module row's."
         },
-        "usedByTemplates": { "type": "array", "items": { "type": "string" } },
-        "usedByPages": { "type": "array", "items": { "type": "string" } },
-        "instanceCount": { "type": "integer", "minimum": 0, "description": "How many page instances deploy this block." },
+        "usedByTemplates": { "type": "array", "items": { "type": "string" }, "description": "Template ids of the pages in usedByPages, sorted." },
+        "usedByPages": { "type": "array", "items": { "type": "string" }, "description": "Slugs of the pages that use the block, sorted. A module row with an EDS block: the pages whose delivered document holds a record of that block (pages.json delivered.blocks, kind block — the records block-origin.mjs maps); a chrome row: every page with a delivered document (chrome is site-wide — the fragments ship on every page, no sidecar need declare them); a default-content row: the pages whose sidecar modules[] declare it. Written this way since stardust 0.36.x; earlier files carried the sidecars' plan for every row and [] for blocks-dir rows." },
+        "instanceCount": { "type": "integer", "minimum": 0, "description": "Block instances across usedByPages, counted the same way (a module row with an EDS block: its delivered.blocks records, the sum of variants[].instances; 0 when no document shows it, whatever the sidecars planned; a chrome row: the number of pages with a delivered document)." },
         "delivery": {
           "type": "object",
           "required": ["status"],
@@ -96,6 +107,16 @@
           "type": "array",
           "description": "Distinct class combinations of the block in the pages' delivered records, sorted by their joined classes.",
           "items": { "$ref": "#/$defs/variant" }
+        },
+        "variantsSummary": {
+          "type": "object",
+          "description": "Summary of variants[]: total = its length, singleUse = the variants with exactly one instance. An adopter emits one catalog block per variant, so singleUse close to total means one-off option-class combinations an adopter may fold, not reuse. Optional: written beside variants since stardust 0.36.x.",
+          "required": ["total", "singleUse"],
+          "additionalProperties": false,
+          "properties": {
+            "total": { "type": "integer", "minimum": 0 },
+            "singleUse": { "type": "integer", "minimum": 0 }
+          }
         },
         "description": { "type": ["string", "null"], "description": "First sentence of the doc comment in the block's JavaScript, or null." },
         "contract": { "type": ["string", "null"], "description": "The block's content contract from the conversion log, or null." },

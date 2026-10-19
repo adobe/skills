@@ -17,10 +17,18 @@
  * gets a ledger row even when no page's modules[] names it (otherwise the workspace manifest
  * carries "no block" unmatched variants). A row already planned (its id, edsName(id) or
  * delivery.edsBlockName equals <name>; header and nav are one chrome, the canon header, so either
- * covers the other) is left alone; any other is registered with `source: blocks-dir`, no pages, 0
- * instances and its prior delivery (by id) — else `converted` (a chrome name: a fragment,
+ * covers the other) is left alone; any other is registered with `source: blocks-dir`, its usage counted
+ * like any module row's, and its prior delivery (by id) — else `converted` (a chrome name: a fragment,
  * fragments/<name>.html). A block deliberately left undelivered is recorded with
  * `update-coverage.mjs --block <name> --status not-delivered --reason "<text>"`; a re-run keeps it.
+ *
+ * Usage (`usedByTemplates`, `usedByPages`, `instanceCount`): a module row with an EDS block is counted from the
+ * delivered documents — pages.json `delivered.blocks` records of kind `block` with its EDS name, the records
+ * block-origin.mjs maps, so on a fresh export (the manifest refuses a stale one) the ledger and the mapping agree
+ * instance for instance; a block no document shows reads 0, truthfully, whatever the sidecars planned. A chrome
+ * row counts every page with a delivered document (chrome is site-wide: the fragments ship on every page, and no
+ * sidecar need declare them); a default-content row the pages whose sidecar `modules[]` declare it (default
+ * content leaves no block record).
  *
  * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
  * that needs no block) keeps its name whatever its status. A second run writes the same bytes
@@ -29,14 +37,18 @@
  * Delivered structure (coverage formatVersion 0.1.0): every module row whose EDS name is not
  * `default-content` (a blocks-dir row too) also records what the delivered site made of it —
  * `optionClasses` (classes authored on its instances plus those its CSS chains to `.<name>`), `variants`
- * (one per class set in pages.json `delivered.blocks`: id, classes, pages, instances), `description`
+ * (one per class set in pages.json `delivered.blocks`: id, classes, pages, instances), `variantsSummary`
+ * ({total, singleUse}: the variants, and those a single instance uses — an adopter emits one catalog block
+ * per variant, so a high single-use count is an option-class explosion, not reuse), `description`
  * (first sentence of the doc comment in <blocks>/<name>/<name>.js), `contract` (its bullet under a
  * "Content contract" heading of stardust/eds-conversion-log.md), `baseType`, and once judged in
  * <out>/workspace/judgement.json `purpose`, `reuseGuidance`, `colorScheme`. Free text is scrubbed of
  * project identity (tokens from rollout.json + state.json). Judged template names and descriptions are
  * refreshed in templates.json too, so a late judgement lands without re-running inventory. Chrome and
  * default-content rows are unchanged; a delivered block name with no module row from the pages (a
- * blocks-dir row does not count) is named on stdout.
+ * blocks-dir row does not count) is named on stdout. The top-level `variantsSummary` {total, singleUse, blocks}
+ * sums the module rows (one per EDS name), so a reviewer sees the explosion at a glance; the workspace manifest
+ * recomputes the same figures.
  * `_provenance.inputs` maps each judgement, conversion-log and block-code file read (keyed by its path
  * relative to the project root, the dir holding stardust/, with / separators) to its sha256, so a reader
  * can tell when the ledger is stale. A coverage file whose content did not change is not rewritten.
@@ -56,7 +68,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
   readJSON, writeJSON, edsName, kindOf, blockCounts, DEFAULT_CONTENT, COVERAGE_FORMAT_VERSION, byStr, sha256, variantIdentity,
   cssOptionClasses, blockDescription, contractFor, baseTypeOf, identityTokens, scrubIdentity, judgedText, judgedGuidance,
-  applyTemplateJudgement, writeCoverage,
+  applyTemplateJudgement, writeCoverage, variantsSummary, variantsSummaryOf,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -85,14 +97,15 @@ const pages = pagesDoc.pages || [];
 const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const prior = new Map(((readJSON(blocksPath, { blocks: [] }) || {}).blocks || []).map((b) => [b.id, b]));
 
-// Aggregate block instances across pages.
-const agg = new Map(); // id -> { templates:Set, pages:[], count }
+// The blocks the sidecars plan (pages.json `blocks[]`, the sidecar modules[]): the row set, and the usage of the
+// default-content rows (the delivered documents cannot count them).
+const agg = new Map(); // id -> { templates:Set, pages:Set, count }
 for (const p of pages) {
   for (const id of p.blocks || []) {
-    if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: [], count: 0 });
+    if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: new Set(), count: 0 });
     const a = agg.get(id);
     a.count += 1;
-    a.pages.push(p.slug);
+    a.pages.add(p.slug);
     if (p.templateId) a.templates.add(p.templateId);
   }
 }
@@ -120,11 +133,18 @@ const judgementText = readInput(judgementPath);
 let judgement = null;
 try { judgement = judgementText === null ? null : JSON.parse(judgementText); } catch { judgement = null; }
 
-// Delivered instances (pages.json `delivered.blocks`, kind 'block') by block name, then by variant identity.
+// Delivered instances (pages.json `delivered.blocks`, kind 'block' — the records block-origin.mjs maps) by block
+// name: the usage of every module row with an EDS block (usedBy), then by variant identity (variants[]).
 const delivered = new Map();
+const usedBy = new Map(); // EDS name -> { templates:Set, pages:Set, count }
 for (const p of pages) {
   for (const r of (p.delivered && p.delivered.blocks) || []) {
     if (!r || r.kind !== 'block') continue;
+    if (!usedBy.has(r.block)) usedBy.set(r.block, { templates: new Set(), pages: new Set(), count: 0 });
+    const u = usedBy.get(r.block);
+    u.count += 1;
+    u.pages.add(p.slug);
+    if (p.templateId) u.templates.add(p.templateId);
     if (!delivered.has(r.block)) delivered.set(r.block, new Map());
     const byIdentity = delivered.get(r.block);
     const identity = variantIdentity(r.block, r.classes || []);
@@ -133,6 +153,30 @@ for (const p of pages) {
     v.pages.add(p.slug);
     v.instances += 1;
   }
+}
+
+// Chrome is site-wide (the header/footer fragments ship on every page): every page with a delivered document.
+const siteWide = { templates: new Set(), pages: new Set(), count: 0 };
+for (const p of pages) {
+  if (!p || !p.delivered || typeof p.delivered !== 'object') continue;
+  siteWide.pages.add(p.slug);
+  siteWide.count += 1;
+  if (p.templateId) siteWide.templates.add(p.templateId);
+}
+
+/**
+ * A row's usage, in contract order. A module row with an EDS block: counted from the delivered documents by its EDS
+ * name (a block no document shows reads 0, whatever the sidecars planned); a chrome row: every page with a delivered
+ * document (site-wide; no sidecar need declare it); a default-content row: the pages whose sidecar modules[] declare
+ * it — default content leaves no block record to count.
+ */
+function usageOf(id, kind, edsBlockName) {
+  const u = kind === 'chrome' ? siteWide : edsBlockName === DEFAULT_CONTENT ? agg.get(id) : usedBy.get(edsBlockName);
+  return {
+    usedByTemplates: [...(u ? u.templates : [])].sort(),
+    usedByPages: [...(u ? u.pages : [])].sort(),
+    instanceCount: u ? u.count : 0,
+  };
 }
 
 /** The delivered-structure fields of a module row (DESIGN: coverage 0.1.0), in contract order. */
@@ -146,6 +190,7 @@ function deliveredFields(name) {
   const fields = {
     optionClasses: [...new Set([...variants.flatMap((v) => v.classes), ...cssOptionClasses(name, css)])].sort(byStr),
     variants,
+    variantsSummary: variantsSummary(variants),
     description: scrub(blockDescription(js)),
     contract: scrub(contractFor(conversionLog, name)),
     baseType: scrub(judgedText(judged.baseType)) || baseTypeOf(name),
@@ -164,7 +209,7 @@ const withDelivered = (row, name) => (row.kind === 'module' && row.delivery.edsB
   ? { ...row, ...deliveredFields(name) }
   : row);
 
-const planned = [...agg.entries()].map(([id, a]) => {
+const planned = [...agg.keys()].map((id) => {
   const kind = kindOf(id);
   const p = prior.get(id);
   const delivery = (p && p.delivery) || {
@@ -185,9 +230,7 @@ const planned = [...agg.entries()].map(([id, a]) => {
     kind,
     signature: `${kind}:${id}`,
     source: null,
-    usedByTemplates: [...a.templates].sort(),
-    usedByPages: [...new Set(a.pages)].sort(),
-    instanceCount: a.count,
+    ...usageOf(id, kind, delivery.edsBlockName || edsName(id)),
     delivery,
   };
   return withDelivered(row, delivery.edsBlockName || edsName(id));
@@ -224,9 +267,7 @@ const registered = dirNames.filter((name) => {
     kind,
     signature: `${kind}:${name}`,
     source: 'blocks-dir',
-    usedByTemplates: [],
-    usedByPages: [],
-    instanceCount: 0,
+    ...usageOf(name, kind, delivery.edsBlockName || name),
     delivery,
   }, delivery.edsBlockName || name);
 });
@@ -243,6 +284,7 @@ const written = writeCoverage(blocksPath, {
   },
   formatVersion: COVERAGE_FORMAT_VERSION,
   generatedAt: now,
+  variantsSummary: variantsSummaryOf(blocks),
   blocks,
 });
 
@@ -267,12 +309,12 @@ const chrome = blocks.filter((b) => b.kind === 'chrome');
 console.log(`rollout blocks → ${blocksPath}${written ? '' : ' (unchanged)'}`);
 console.log('='.repeat(60));
 console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment)`);
-console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} instances → ${planned.length} conversions`);
+console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} planned listings → ${planned.length} conversions`);
 const top = modules.filter((b) => b.instanceCount > 0).sort((a, b) => b.instanceCount - a.instanceCount).slice(0, 6);
 if (top.length) console.log(`Most reused      ${top.map((b) => `${b.id}×${b.instanceCount}`).join(', ')}`);
 if (chrome.length) console.log(`Fragments        ${chrome.map((b) => b.id).join(', ')}`);
-const variantCount = modules.reduce((n, b) => n + (b.variants ? b.variants.length : 0), 0);
-if (variantCount) console.log(`Delivered        ${variantCount} variant(s) of ${modules.filter((b) => b.variants && b.variants.length).length} block(s)`);
+const summary = variantsSummaryOf(blocks);
+if (summary.total) console.log(`Delivered        ${summary.total} variant(s) of ${summary.blocks} block(s), ${summary.singleUse} single-use (one catalog block per variant for an adopter)`);
 const named = new Set(planned.filter((b) => b.variants).map((b) => b.delivery.edsBlockName || edsName(b.id)));
 const unmatched = [...delivered.keys()].filter((n) => !named.has(n)).sort(byStr);
 if (unmatched.length) console.log(`Unmatched        ${unmatched.length} delivered block name(s) with no module row: ${unmatched.join(', ')} — record the conversion (update-coverage.mjs --block <id> --eds-name <name>)`);

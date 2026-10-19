@@ -100,9 +100,13 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
   the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
-  reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`; module rows also carry option classes, variants, description,
-  contract and base type. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
+  reserved-class-guarded per deploy #15), and counts `usedByPages` /
+  `instanceCount` from the delivered documents (chrome: every delivered page, it is
+  site-wide; default content: the sidecars' plan); module rows also carry option
+  classes, variants, a
+  `variantsSummary` (`singleUse` variants are one-off catalog entries for an
+  adopter), description, contract and base type. Chrome (`header`/`nav`/`footer`)
+  is `kind: chrome` → site-wide
   authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
   archetypes-only mode the archetype sidecars fully determine the
   block set; `content-pending` pages add none. A module that maps to EDS **default
@@ -773,7 +777,10 @@ blocks lost). The latter models the adopter's per-selector merge — each varian
 emitted section — so it can under- or over-count a given adopter's real losses. `done-check.mjs`
 surfaces the no-selector count as the `export_quality:null_selector_sections` info line, and the
 manifest's `judgement` `{toFill, byKind}` (the judgement fields still empty, distinct from the coverage
-placeholders) as `export_quality:judgement_to_fill`. Every export file validates against its schema
+placeholders) as `export_quality:judgement_to_fill`, and its `variantsSummary`
+`{total, singleUse, blocks}` (recomputed from blocks.json; an adopter emits one catalog block per
+variant, so a high single-use count is an option-class explosion to review, not reuse) as
+`export_quality:single_use_variants`. Every export file validates against its schema
 (`export_quality:schema:<file>:<n>` names one that does not) and a planned URL that never became a
 page is accounted for in the manifest's `excluded[]` (`export_quality:excluded:<n>`; the reason as
 the coverage or the crawl recorded it) — all informational, all hidden after handover.

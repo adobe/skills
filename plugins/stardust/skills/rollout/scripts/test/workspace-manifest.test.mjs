@@ -13,7 +13,8 @@
 // captures exist: without workspace/mapping.json the manifest is written without handover, the
 // missing line is printed and the exit is 2 (--allow-no-mapping and a project without captures keep
 // handover null, exit 0). A block is pending only with delivered instances and no conversion record
-// (pendingBlocks; one placeholders line). Also the
+// (pendingBlocks; one placeholders line). variantsSummary {total, singleUse, blocks} is recomputed from
+// blocks.json's module rows (the same figure blocks.mjs writes), never a drift input. Also the
 // identity helpers in lib.mjs (patterns, tokens, linear time). Every run works on a copy in a temp
 // dir, never inside a repository unless a check makes one.
 // Run: node plugins/stardust/skills/rollout/scripts/test/workspace-manifest.test.mjs
@@ -125,7 +126,7 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   const mf = doc(dir, 'manifest.json');
   assert.equal(mf.formatVersion, '0.1.0');
   // the fixture's teaser has no judged base type, so the manifest carries handoverNotes (unknown is not judged)
-  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'excluded', 'handover', 'handoverNotes']);
+  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'variantsSummary', 'excluded', 'handover', 'handoverNotes']);
   assert.deepEqual(mf.handoverNotes, ['1 delivered block(s) have no judged base type; the owner names them (teaser)']);
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
@@ -490,6 +491,46 @@ check('excluded: planned URLs that never became a page — the coverage excluded
   rebuild(dir);
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').excluded, []);
+});
+
+check('variantsSummary: {total, singleUse, blocks} recomputed from blocks.json\'s module rows — the figure blocks.mjs wrote at its top; the printed line and --json name the single-use count; derived, so --rehash-only recomputes it and --check never counts it as drift; validates; the helper counts one row per EDS name and skips chrome and default content', () => {
+  // the pure helpers
+  assert.deepEqual(lib.variantsSummary([{ instances: 1 }, { instances: 3 }, { instances: 1 }]), { total: 3, singleUse: 2 });
+  assert.deepEqual(lib.variantsSummary(undefined), { total: 0, singleUse: 0 });
+  const rows = [
+    { id: 'hero-banner', kind: 'module', delivery: { edsBlockName: 'hero' }, variants: [{ instances: 1 }, { instances: 2 }] },
+    { id: 'big-hero', kind: 'module', delivery: { edsBlockName: 'hero' }, variants: [{ instances: 1 }, { instances: 2 }] },
+    { id: 'heading', kind: 'module', delivery: { edsBlockName: 'default-content' }, variants: [{ instances: 1 }] },
+    { id: 'header', kind: 'chrome', delivery: { edsBlockName: null }, variants: [{ instances: 1 }] },
+    { id: 'teaser', kind: 'module', delivery: { edsBlockName: 'teaser' }, variants: [] },
+    { id: 'promo', delivery: { status: 'converted' }, variants: [{ instances: 1 }] },
+  ];
+  assert.deepEqual(lib.variantsSummaryOf(rows), { total: 3, singleUse: 2, blocks: 2 }, 'two ids on hero count once; default content and chrome skipped; a row without variants is no block; kind defaults by id');
+  assert.deepEqual(lib.variantsSummaryOf(null), { total: 0, singleUse: 0, blocks: 0 });
+  // in a manifest: the fixture's hero (2 variants, 2 instances), teaser (3, 5) and columns (2, 2) — six of the seven
+  // variants used once; the blocks-dir breadcrumb row has no variant, so it is a block in the Coverage line, not here
+  const dir = copy('variants-summary');
+  const r = run(dir);
+  ok(r);
+  const blocksDoc = JSON.parse(readFileSync(join(dir, COV[0]), 'utf8'));
+  assert.deepEqual(blocksDoc.variantsSummary, { total: 7, singleUse: 6, blocks: 3 }, 'what blocks.mjs wrote');
+  assert.deepEqual(doc(dir, 'manifest.json').variantsSummary, blocksDoc.variantsSummary, 'the manifest recomputes the same figure');
+  assert.ok(/Coverage\s+2 templates · 3 pages \(0 without a content file\) · 4 blocks \(7 variants, 6 single-use, 9 instances\)/.test(r.stdout), r.stdout);
+  assert.equal(jsonOut(run(dir, '--json')).counts.singleUseVariants, 6);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // --check compares inputs/outputs only; the derived summary is never a drift
+  const c = run(dir, '--check', '--json');
+  ok(c, 0);
+  assert.equal(jsonOut(c).status, 'fresh');
+  // --rehash-only recomputes it (not a carry-over): corrupt the field, re-hash, it comes back right
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.variantsSummary = { total: 1, singleUse: 999, blocks: 0 }; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.deepEqual(doc(dir, 'manifest.json').variantsSummary, { total: 7, singleUse: 6, blocks: 3 });
+  // an older blocks.json without the field still yields the summary (recomputed from variants[], not copied)
+  editJSON(join(dir, COV[0]), (d) => { delete d.variantsSummary; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.deepEqual(doc(dir, 'manifest.json').variantsSummary, { total: 7, singleUse: 6, blocks: 3 });
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
 });
 
 check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
