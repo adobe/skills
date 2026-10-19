@@ -48,6 +48,9 @@ jobs:
       - name: Stardust skill docs never show an inline interpreter writing a tracked file
         run: node plugins/stardust/evals/lint/inline-writes.mjs
 
+      - name: Stardust skill docs never show a shell snippet waiting with a bare sleep
+        run: node plugins/stardust/evals/lint/inline-sleeps.mjs
+
       - name: Stardust skill prose delta against main (advisory — printed, never fails)
         run: |
           git fetch --no-tags --depth=1 origin main
