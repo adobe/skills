@@ -25,7 +25,10 @@
  * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
  * the same split per template), a `sectionGaps` list derived from mapping.json the same way (sections an adopter
  * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
- * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field) — none a
+ * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field), an
+ * `excluded` [{url, reason}] list of the planned URLs that never became a page (the coverage's excluded[] rows, the
+ * crawl's failed URLs in <stardust>/current/_crawl-log.json, state.json pages[] and plan.json steps with no pages[]
+ * row; `unrecorded` when nothing says why; [] when every planned URL is a page) — none a
  * rewrite of its source, so a re-hash recomputes them and --check never counts them as drift, the handover state and
  * `handoverNotes` (owner
  * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
@@ -77,7 +80,7 @@ import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import {
   readJSON, sha256, byStr, kebab, edsName, kindOf, DEFAULT_CONTENT, contentFileFor, identityTokens, scrubIdentity,
-  COVERAGE_FORMAT_VERSION, classifyExportDrift,
+  COVERAGE_FORMAT_VERSION, classifyExportDrift, urlToDeliveredPath,
 } from './lib.mjs';
 // countsOf derives the selector-quality figures from mapping.json; importing it runs nothing (its CLI is isMain-guarded).
 import { countsOf } from './block-origin.mjs';
@@ -109,6 +112,7 @@ export const REBUILD_CMD = 're-run inventory.mjs + blocks.mjs, then block-origin
 const serialize = (obj) => `${JSON.stringify(obj, null, 2)}\n`;
 const fail = (code, msg) => { console.error(`rollout workspace-manifest: ${msg}`); return code; };
 const isFile = (p) => { try { return statSync(p).isFile(); } catch { return false; } };
+const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
 
 function parseArgs(argv) {
   const opts = { flags: new Set() };
@@ -419,6 +423,46 @@ export function templateGroupsOf(templates) {
   return { total: list.length, archetypes: list.length - siblings, siblings };
 }
 
+/**
+ * Planned URLs that never became a page — [{url, reason}] sorted by url — derived at manifest time from what the
+ * coverage and the plan know (never a drift input: --rehash-only recomputes it, --check never counts it). Sources in
+ * order, the first record of a URL winning (one planned page whatever its trailing slash, .html or /index):
+ *   - the coverage's own excluded[] rows (state.mjs exclude, through inventory.mjs): url = sourceUrl, else path, else
+ *     /<slug>; the recorded reason, `unrecorded` when it has none;
+ *   - the crawl's failed URLs (<stardust>/current/_crawl-log.json crawl.failures[], written by the extract crawl):
+ *     `crawl: <message>` (e.g. `crawl: HTTP 404`; `crawl: failed` without a message);
+ *   - state.json pages[] (a page's own excluded.reason when it carries one, else `unrecorded`) and its top-level
+ *     excluded[] (the recorded reason);
+ *   - plan.json steps, url = the step's delivered path: `unrecorded`.
+ * A planned entry IS a page — and is left out — when a pages[] row shares its URL (urlToDeliveredPath of both), its
+ * delivered path or its slug. [] when every planned URL is a page. Pure.
+ */
+export function excludedOf({ pages = [], excluded = [], state = null, crawlLog = null, plan = null } = {}) {
+  const known = new Set();
+  for (const p of (Array.isArray(pages) ? pages : []).filter(isMap)) {
+    if (typeof p.slug === 'string') known.add(`slug:${p.slug}`);
+    if (typeof p.path === 'string') known.add(`path:${p.path}`);
+    const u = p.source && p.source.sourceUrl;
+    if (typeof u === 'string' && u) known.add(`path:${urlToDeliveredPath(u)}`);
+  }
+  const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const out = new Map(); // delivered path → { url, reason }
+  const add = ({ url, slug, path, reason }) => {
+    const where = str(url) || str(path) || (str(slug) ? `/${str(slug)}` : null);
+    if (!where) return;
+    const key = urlToDeliveredPath(where);
+    if ((str(slug) && known.has(`slug:${str(slug)}`)) || known.has(`path:${key}`) || (str(path) && known.has(`path:${str(path)}`))) return;
+    if (!out.has(key)) out.set(key, { url: where, reason: str(reason) || 'unrecorded' });
+  };
+  const rows = (v) => (Array.isArray(v) ? v.filter(isMap) : []);
+  for (const e of rows(excluded)) add({ url: e.sourceUrl, slug: e.slug, path: e.path, reason: e.reason });
+  for (const f of rows(isMap(crawlLog) && isMap(crawlLog.crawl) ? crawlLog.crawl.failures : [])) add({ url: f.url, slug: f.slug, reason: `crawl: ${str(f.message) || 'failed'}` });
+  for (const p of rows(isMap(state) ? state.pages : [])) add({ url: p.url, slug: p.slug, reason: isMap(p.excluded) ? p.excluded.reason : null });
+  for (const e of rows(isMap(state) ? state.excluded : [])) add({ url: e.url, slug: e.slug, reason: e.reason });
+  for (const s of rows(isMap(plan) ? plan.steps : [])) add({ slug: s.slug, path: s.path, reason: null });
+  return [...out.values()].sort((a, b) => byStr(a.url, b.url));
+}
+
 /** The delivered module blocks whose base type is not judged (`unknown` or missing — `unknown` is not a judged value), by EDS name, sorted. done-check.mjs reads this too. */
 export function unjudgedBaseTypes(blocksDoc) {
   return [...moduleBlocks(blocksDoc)].filter(([, b]) => !b.baseType || b.baseType === 'unknown').map(([name]) => name).sort(byStr);
@@ -566,6 +610,15 @@ function main(argv) {
   };
   const placeholders = placeholdersOf(coverage);
   const templateGroups = templateGroupsOf(coverage.templates.templates);
+  // the planned URLs that never became a page: the coverage's excluded[] rows, the crawl log, the state roster, the plan
+  const stardustDir = dirname(OUT);
+  const excluded = excludedOf({
+    pages: coverage.pages.pages,
+    excluded: coverage.pages.excluded,
+    state: readJSON(join(stardustDir, 'state.json')),
+    crawlLog: readJSON(join(stardustDir, 'current', '_crawl-log.json')),
+    plan: readJSON(join(OUT, 'plan.json')),
+  });
   const mods = [...moduleBlocks(coverage.blocks).values()];
   const variants = mods.flatMap((b) => (Array.isArray(b.variants) ? b.variants : []));
   const counts = {
@@ -576,6 +629,7 @@ function main(argv) {
     blocks: mods.length,
     variants: variants.length,
     instances: variants.reduce((n, v) => n + (typeof v.instances === 'number' ? v.instances : 0), 0),
+    excluded: excluded.length,
   };
 
   const report = (status, hashes, extra = {}) => {
@@ -591,6 +645,7 @@ function main(argv) {
       console.log('='.repeat(60));
       console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
+      if (excluded.length) console.log(`Excluded      ${excluded.length} planned URL(s) never became a page (manifest.json excluded[])`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
       console.log(`Status        ${extra.line}`);
     }
@@ -715,6 +770,7 @@ function main(argv) {
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
     templateGroups,
+    excluded,
     ...(selectorQuality ? { selectorQuality } : {}),
     ...(sectionGaps ? { sectionGaps } : {}),
     ...(judgement ? { judgement } : {}),

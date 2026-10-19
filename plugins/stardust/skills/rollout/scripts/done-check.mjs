@@ -97,15 +97,23 @@
  * export_quality:null_selector_sections:N — the manifest's sectionGaps with reason no-selector (sections an adopter
  * projecting per selector drops) when N>0, informational, never a gap;
  * export_quality:judgement_to_fill:N — the manifest's judgement.toFill (judgement.json fields still empty: block
- * purpose / reuseGuidance / a default-fallback baseType) when N>0, informational, never a gap; all three hidden once
- * the export is handed over.
+ * purpose / reuseGuidance / a default-fallback baseType) when N>0, informational, never a gap;
+ * export_quality:schema:<file>:N: <errors> — an export file (coverage/{pages,templates,blocks}.json, rollout.json,
+ * workspace/{manifest,mapping,judgement}.json, those present) that fails its published schema under
+ * skills/rollout/schemas/ — undeclared or missing required keys, a wrong type, an enum or pattern miss (lib.mjs's
+ * structural check, no dependency; `format` and `if`/`then` are not checked) — N errors, the first three named, so a
+ * run surfaces schema drift before a
+ * client's validator does; a `skipped:` line names the schemas dir when none is found beside the scripts (plugin
+ * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
+ * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each
+ * with its recorded reason — workspace-manifest.mjs --help) when N>0; all five hidden once the export is handed over.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
 import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift, gateProof } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift, gateProof, validateSchema } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
@@ -371,6 +379,45 @@ export function ledgerGap(unpaired) {
   return open.length ? `ledger_unpaired:${open.length}: ${listed(open.map((u) => [u.skill, u.phase, u.ts].map((v) => v ?? '-').join(' ')))}` : null;
 }
 
+/** The export files and the schema each validates against: rollout-dir-relative file → skills/rollout/schemas/<schema>. */
+export const EXPORT_SCHEMAS = [
+  ['coverage/pages.json', 'rollout-pages.schema.json'],
+  ['coverage/templates.json', 'rollout-templates.schema.json'],
+  ['coverage/blocks.json', 'rollout-blocks.schema.json'],
+  ['rollout.json', 'rollout-config.schema.json'],
+  ['workspace/manifest.json', 'rollout-workspace-manifest.schema.json'],
+  ['workspace/mapping.json', 'rollout-workspace-mapping.schema.json'],
+  ['workspace/judgement.json', 'rollout-workspace-judgement.schema.json'],
+];
+export const SCHEMAS_SKIP = 'export_quality:schema: no rollout schemas dir beside the scripts (skills/rollout/schemas/, or schemas/ in the copied rollout scripts dir)';
+const isDir = (p) => { try { return statSync(p).isDirectory(); } catch { return false; } };
+/** The rollout schemas dir in either layout: skills/rollout/schemas beside scripts/, or schemas/ inside a copied scripts dir; null when neither exists. */
+export const schemasDir = () => [join(HERE, '..', 'schemas'), join(HERE, 'schemas')].find(isDir) || null;
+const SCHEMA_ERRORS_SHOWN = 3;
+
+/**
+ * The export files under `out` that fail their published schema: [{ file, errors[] }] in EXPORT_SCHEMAS order — lib.mjs
+ * validateSchema over each file present (declared properties, required keys, additionalProperties, types, enums,
+ * patterns; a file that does not parse is one error). `schemas` = the schemas dir; null → nothing judged, one skipped
+ * line (SCHEMAS_SKIP); a schema file missing or unreadable → its own skipped line. Pure but for the reads.
+ */
+export function schemaErrorsOf(out, schemas) {
+  if (!schemas) return { errors: [], skipped: [SCHEMAS_SKIP] };
+  const parse = (text) => { try { return { doc: JSON.parse(text) }; } catch (e) { return { error: e.message }; } };
+  const errors = [];
+  const skipped = [];
+  for (const [rel, schemaFile] of EXPORT_SCHEMAS) {
+    const file = join(out, rel);
+    if (!existsSync(file) || !statSync(file).isFile()) continue;
+    const schema = readJSON(join(schemas, schemaFile));
+    if (!isMap(schema)) { skipped.push(`export_quality:schema: ${join(schemas, schemaFile)} missing or not JSON`); continue; }
+    const { doc, error } = parse(readFileSync(file, 'utf8'));
+    const errs = error ? [`${rel}: does not parse as JSON (${error})`] : validateSchema(schema, doc);
+    if (errs.length) errors.push({ file: rel, errors: errs });
+  }
+  return { errors, skipped };
+}
+
 export const EXPORT_REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
 export const EXPORT_REHASH = 'workspace-manifest.mjs --rehash-only';
 
@@ -428,7 +475,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -456,11 +503,16 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
   // the migration export's zero-confidence selector count (manifest selectorQuality), null-selector section count
-  // (manifest sectionGaps) and judgement documentation debt (manifest judgement.toFill): informational, never a gap
+  // (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), export files failing their
+  // schema (schemaErrorsOf) and planned URLs that never became a page (manifest excluded[]): informational, never a gap
+  const failing = (Array.isArray(schemaErrors) ? schemaErrors : []).filter((s) => s && typeof s.file === 'string' && Array.isArray(s.errors) && s.errors.length);
+  const planned = (Array.isArray(plannedExcluded) ? plannedExcluded : []).filter((e) => e && typeof e.url === 'string');
   const info = [
     ...(zeroConfidence != null && zeroConfidence > zeroConfidenceThreshold ? [`export_quality:zero_confidence:${zeroConfidence}`] : []),
     ...(nullSelectorSections != null && nullSelectorSections > 0 ? [`export_quality:null_selector_sections:${nullSelectorSections}`] : []),
     ...(judgementToFill != null && judgementToFill > 0 ? [`export_quality:judgement_to_fill:${judgementToFill}`] : []),
+    ...failing.map((s) => `export_quality:schema:${s.file}:${s.errors.length}: ${s.errors.slice(0, SCHEMA_ERRORS_SHOWN).join('; ')}${s.errors.length > SCHEMA_ERRORS_SHOWN ? `, … (+${s.errors.length - SCHEMA_ERRORS_SHOWN})` : ''}`),
+    ...(planned.length ? [`export_quality:excluded:${planned.length}: ${listed(planned.map((e) => `${e.url} (${typeof e.reason === 'string' && e.reason ? e.reason : 'unrecorded'})`))}`] : []),
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
     ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
     ...(headerAgent ? [headerAgent] : []),
@@ -533,16 +585,20 @@ async function exportState({ out, config, pagesDoc, wm }) {
     handedOver,
     dir: ws,
   });
-  // the shipped manifest's zero-confidence figure, null-selector section count and judgement debt, for the info lines;
-  // none surfaced once a client owns the export
+  // the shipped manifest's zero-confidence figure, null-selector section count, judgement debt and excluded planned
+  // URLs, and the export files' schema verdicts, for the info lines; none surfaced once a client owns the export
   const sq = !handedOver && isMap(manifest) && isMap(manifest.selectorQuality) ? manifest.selectorQuality : null;
   const gaps = !handedOver && isMap(manifest) && Array.isArray(manifest.sectionGaps) ? manifest.sectionGaps : null;
   const judgement = !handedOver && isMap(manifest) && isMap(manifest.judgement) ? manifest.judgement : null;
+  const schemas = handedOver ? { errors: [], skipped: [] } : schemaErrorsOf(out, schemasDir());
   return {
     ...gap,
+    skipped: [...gap.skipped, ...schemas.skipped],
     zeroConfidence: sq && typeof sq.zeroConfidence === 'number' ? sq.zeroConfidence : null,
     nullSelectorSections: gaps ? gaps.filter((g) => g && g.reason === 'no-selector').length : null,
     judgementToFill: judgement && typeof judgement.toFill === 'number' ? judgement.toFill : null,
+    schemaErrors: schemas.errors,
+    plannedExcluded: !handedOver && isMap(manifest) && Array.isArray(manifest.excluded) ? manifest.excluded : [],
   };
 }
 
@@ -633,6 +689,8 @@ async function main() {
     zeroConfidence: exported.zeroConfidence,
     nullSelectorSections: exported.nullSelectorSections,
     judgementToFill: exported.judgementToFill,
+    schemaErrors: exported.schemaErrors,
+    plannedExcluded: exported.plannedExcluded,
     skipped: [...sidecars.skipped, ...units.skipped, ...exported.skipped, ...(pendingKnown ? [] : ['blocks_pending: workspace-manifest.mjs not found beside done-check.mjs'])],
   });
 

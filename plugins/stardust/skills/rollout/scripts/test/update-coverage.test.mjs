@@ -28,6 +28,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import { blockCounts } from '../lib.mjs';
+import { loadSchema, validate } from './schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'update-coverage.mjs');
@@ -230,6 +231,8 @@ await check('--new adds a schema-shaped row (origin in source.migratedHtml), cre
   assert.equal(row.path, '/search', 'trailing slash normalized'); assert.equal(row.title, 'Search results'); assert.equal(row.templateId, 'search');
   assert.equal(row.source.migratedHtml, 'dynamics:search'); assert.equal(row.source.metaJson, null); assert.match(row.source.sourceHash, /^sha256:[0-9a-f]{64}$/);
   assert.deepEqual(row.blocks, []); assert.equal(row.delivery.status, 'pending'); assert.equal(row.delivery.error, null);
+  const pagesSchema = loadSchema('rollout-pages.schema.json');
+  assert.deepEqual(validate(pagesSchema.$defs.page, row, { root: pagesSchema }), [], 'the --new row validates as a page');
   assert.deepEqual(readPages(out).map((p) => p.slug).slice(0, 2), ['page-0', 'page-1'], 'existing rows keep their order');
   const t = readTemplates(out).find((x) => x.id === 'search');
   assert.deepEqual(t.pages, ['search']); assert.equal(t.pageCount, 1); assert.equal(t.representativeSlug, 'search'); assert.deepEqual(t.blocks, []);
@@ -313,6 +316,10 @@ await check('--gate writes delivery.gate from a gate-all summary; a failing veri
   assert.equal(by['page-1'].gate.at, null, 'a table without _provenance has no row time'); assert.equal(by['page-1'].gate.width, null); assert.deepEqual(by['page-1'].gate.atByWidth, {});
   assert.deepEqual(by['page-1'].gate.rounds, {}, 'a round without a width has no map entry');
   assert.deepEqual(by['page-1'].gate.passByWidth, {}, 'a table without a width records no per-width verdict');
+  // what --gate writes is what the pages schema declares: the six per-width keys, the override object, a null row time
+  const pagesSchema = loadSchema('rollout-pages.schema.json');
+  for (const slug of ['page-0', 'page-1', 'page-2', 'page-3']) assert.deepEqual(validate(pagesSchema.$defs.gate, by[slug].gate, { root: pagesSchema }), [], `${slug} delivery.gate validates`);
+  assert.deepEqual(validate(loadSchema('rollout-config.schema.json').properties.lastRun, readConfig(out).lastRun, { root: loadSchema('rollout-config.schema.json') }), [], 'lastRun (contentPending included) validates');
   const bad = await run(['--gate', join(out, 'rollout.json')], proj);
   assert.equal(bad.code, 1, 'a file without rows[] is refused');
 });

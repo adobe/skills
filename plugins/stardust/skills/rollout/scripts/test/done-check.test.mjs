@@ -30,7 +30,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as doneCheck from '../done-check.mjs';
-import { doneGaps, deliveredPaths, headerGap, headerParityErrors, inferredLiveHost, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
+import { doneGaps, deliveredPaths, EXPORT_SCHEMAS, headerGap, headerParityErrors, inferredLiveHost, ledgerGap, OFFLINE_SKIP, openP1, overrideGap, overrideRef, probeLive, registerEntries, rolloutEnded, schemaErrorsOf, schemasDir, SCHEMAS_SKIP, sidecarGap, unitGaps, widthsJudged, WIDTHS_SKIP } from '../done-check.mjs';
 import { SOURCE_PARITY_PREFIX, publicUrl } from '../lib.mjs';
 import { blockOriginInputDirs, inputHashes } from '../workspace-manifest.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
@@ -123,6 +123,50 @@ check('export_quality: the manifest judgement.toFill count is an info line when 
   // all three quality lines together, in order; completeness stays true
   const all3 = doneGaps({ ...base, zeroConfidence: 2, nullSelectorSections: 9, judgementToFill: 14 });
   assert.deepEqual([all3.complete, all3.gaps, all3.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:null_selector_sections:9', 'export_quality:judgement_to_fill:14']]);
+});
+check('export_quality: export files failing their schema are one info line each (file, count, the first three errors), after judgement_to_fill; the manifest\'s excluded[] one line (url and reason); never a gap; empty lists are silent', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  const errors = ['$.pages[0].delivery.gate.width: additional property not allowed', '$.pages[0].delivery.gate.host: additional property not allowed', '$.lastRun: missing required at', '$.x: not allowed'];
+  const v = doneGaps({ ...base, judgementToFill: 2, schemaErrors: [{ file: 'coverage/pages.json', errors }, { file: 'rollout.json', errors: errors.slice(2, 3) }, { file: 'workspace/mapping.json', errors: [] }], plannedExcluded: [{ url: 'https://example.com/faq.html', reason: 'crawl: HTTP 404' }, { url: '/gone' }], excluded: [{ slug: 'news', path: '/news' }] });
+  assert.deepEqual([v.complete, v.gaps], [true, []]);
+  assert.deepEqual(v.info, [
+    'export_quality:judgement_to_fill:2',
+    `export_quality:schema:coverage/pages.json:4: ${errors.slice(0, 3).join('; ')}, … (+1)`,
+    'export_quality:schema:rollout.json:1: $.lastRun: missing required at',
+    'export_quality:excluded:2: https://example.com/faq.html (crawl: HTTP 404), /gone (unrecorded)',
+    'pages_excluded:1: /news',
+  ]);
+  assert.deepEqual(doneGaps({ ...base, schemaErrors: [], plannedExcluded: [] }).info, []);
+  assert.deepEqual(doneGaps({ ...base, schemaErrors: null, plannedExcluded: 'x' }).info, [], 'malformed inputs are silent');
+});
+check('schemaErrorsOf: each export file present is validated against its schema from skills/rollout/schemas (lib validateSchema); a valid file is no entry, an undeclared key or a missing required key is, a file that does not parse is one error; absent files are skipped; no schemas dir → nothing judged and the skipped line', () => {
+  const dir = schemasDir();
+  assert.ok(dir && existsSync(join(dir, 'rollout-pages.schema.json')), 'the plugin tree resolves skills/rollout/schemas');
+  assert.deepEqual(EXPORT_SCHEMAS.map(([f]) => f), ['coverage/pages.json', 'coverage/templates.json', 'coverage/blocks.json', 'rollout.json', 'workspace/manifest.json', 'workspace/mapping.json', 'workspace/judgement.json']);
+  for (const [, s] of EXPORT_SCHEMAS) assert.ok(existsSync(join(dir, s)), s);
+  const out = mkdtempSync(join(tmpdir(), 'done-check-schemas-'));
+  const put = (f, body) => { mkdirSync(dirname(join(out, f)), { recursive: true }); writeFileSync(join(out, f), typeof body === 'string' ? body : JSON.stringify(body)); };
+  const prov = { writtenBy: 'stardust:rollout/inventory', writtenAt: AT[1440], stardustVersion: '0.0.0' };
+  const page = { slug: 'home', path: '/', source: { migratedHtml: 'stardust/migrated/index.html', sourceHash: 'sha256:x' }, delivery: { status: 'verified', gate: { pass: true, at: null, width: 1440, atByWidth: { 1440: AT[1440] }, passByWidth: { 1440: true }, rounds: {}, host: null, inconclusive: null, override: { verdict: 'v', reason: 'R-1', valid: true } } } };
+  put('coverage/pages.json', { _provenance: prov, formatVersion: '0.1.0', pages: [page] });
+  put('workspace/judgement.json', { templates: {}, blocks: {} });
+  assert.deepEqual(schemaErrorsOf(out, dir), { errors: [], skipped: [] }, 'valid files (the declared gate keys included), absent files skipped');
+  put('coverage/pages.json', { _provenance: prov, formatVersion: '0.1.0', pages: [{ ...page, delivery: { ...page.delivery, gate: { ...page.delivery.gate, extra: 1 } } }] });
+  put('rollout.json', { exports: ['migration-workspace'] });
+  put('workspace/mapping.json', '{ not json');
+  const r = schemaErrorsOf(out, dir);
+  assert.deepEqual(r.skipped, []);
+  assert.deepEqual(r.errors.map((e) => [e.file, e.errors.length]), [['coverage/pages.json', 1], ['rollout.json', 3], ['workspace/mapping.json', 1]]);
+  assert.deepEqual(r.errors[0].errors, ['$.pages[0].delivery.gate.extra: additional property not allowed']);
+  assert.ok(r.errors[1].errors.every((e) => /^\$: missing required (_provenance|target|site)$/.test(e)), r.errors[1].errors.join('\n'));
+  assert.match(r.errors[2].errors[0], /^workspace\/mapping\.json: does not parse as JSON/);
+  assert.deepEqual(schemaErrorsOf(out, null), { errors: [], skipped: [SCHEMAS_SKIP] });
+  const partial = mkdtempSync(join(tmpdir(), 'done-check-schemas-partial-'));
+  copyFileSync(join(dir, 'rollout-pages.schema.json'), join(partial, 'rollout-pages.schema.json'));
+  const p = schemaErrorsOf(out, partial);
+  assert.deepEqual(p.errors.map((e) => e.file), ['coverage/pages.json'], 'only the schema present judges');
+  assert.deepEqual(p.skipped, ['rollout.json', 'workspace/mapping.json', 'workspace/judgement.json'].map((f) => `export_quality:schema: ${join(partial, EXPORT_SCHEMAS.find(([x]) => x === f)[1])} missing or not JSON`));
+  rmSync(out, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true });
 });
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
   const blocks = { blocks: [
@@ -937,12 +981,22 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }] };
   const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
   const judgement = { toFill: 23, byKind: { baseType: 3, purpose: 10, reuseGuidance: 10 } };
-  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, judgement, handover: null }));
+  const excluded = [{ url: 'https://example.com/faq.html', reason: 'crawl: HTTP 404' }];
+  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, sectionGaps, judgement, excluded, handover: null }));
   const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.deepEqual(v.gaps.filter((g) => g.startsWith('export')), [], 'the export is fresh: no export_stale');
   assert.ok(v.info.includes('export_quality:zero_confidence:2'), JSON.stringify(v.info));
   assert.ok(v.info.includes('export_quality:null_selector_sections:1'), JSON.stringify(v.info));
   assert.ok(v.info.includes('export_quality:judgement_to_fill:23'), JSON.stringify(v.info));
+  // the fixture's coverage files, rollout.json and manifest are not schema-shaped (no _provenance, bare rows): each is
+  // named with its error count; the valid mapping.json is not; the manifest's excluded[] is one line with url and reason
+  const schemaLines = v.info.filter((i) => i.startsWith('export_quality:schema:'));
+  assert.deepEqual(schemaLines.map((l) => l.split(':')[2]), ['coverage/pages.json', 'coverage/templates.json', 'coverage/blocks.json', 'rollout.json', 'workspace/manifest.json'], JSON.stringify(schemaLines));
+  assert.ok(schemaLines.includes('export_quality:schema:rollout.json:3: $: missing required _provenance; $: missing required target; $: missing required site'), JSON.stringify(schemaLines));
+  assert.match(schemaLines[0], /^export_quality:schema:coverage\/pages\.json:\d+: .*, … \(\+\d+\)$/, 'more than three errors: the first three and a count');
+  assert.ok(v.info.includes('export_quality:excluded:1: https://example.com/faq.html (crawl: HTTP 404)'), JSON.stringify(v.info));
+  assert.ok(v.info.indexOf('export_quality:judgement_to_fill:23') < v.info.indexOf(schemaLines[0]) && v.info.indexOf(schemaLines[4]) < v.info.indexOf('export_quality:excluded:1: https://example.com/faq.html (crawl: HTTP 404)'), 'order: judgement_to_fill, schema lines, excluded');
+  assert.ok(!v.skipped.some((s) => s.startsWith('export_quality:schema')), 'the plugin tree has its schemas dir');
   assert.equal(v.complete, true, 'the info lines never flip completeness');
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);

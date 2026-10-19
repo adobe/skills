@@ -180,15 +180,18 @@ check('a sidecar\'s variance object lands verbatim in the row\'s source.variance
   assert.deepEqual(rows['tours-utah'].variance, differs); assert.deepEqual(rows['tours-alps'].variance, skipped);
   assert.deepEqual([rows['tours-utah'].variance.accepted, rows['tours-utah'].variance.acceptedAt], ['the card row is a page-level promo', '2026-01-03T00:00:00Z'], 'an accepted variance reaches coverage, so a re-render can honour it');
   assert.equal('variance' in rows['tours-bali'], false, 'variance null → no key'); assert.equal('variance' in rows.faq, false, 'no variance → no key');
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), JSON.parse(readFileSync(join(vOut, 'coverage', 'pages.json'), 'utf8'))), [], 'rows carrying source.variance validate');
 });
 
 // The opt-in `exports` key: inventory rebuilds rollout.json from named fields on every run, so the key
 // must be carried forward explicitly — it is always written (empty when nothing is opted in).
 const configPath = join(out, 'rollout.json');
 const seedConfig = (patch) => writeFileSync(configPath, JSON.stringify({ ...json('rollout.json'), ...patch }));
-check('rollout.json always carries exports, empty when nothing is opted in, between site and lastRun', () => {
+check('rollout.json always carries exports, empty when nothing is opted in, between site and lastRun; it validates against rollout-config.schema.json (lastRun.pages.contentPending declared)', () => {
   assert.deepEqual(json('rollout.json').exports, []);
   assert.deepEqual(Object.keys(json('rollout.json')), ['_provenance', 'target', 'site', 'exports', 'lastRun']);
+  assert.equal(typeof json('rollout.json').lastRun.pages.contentPending, 'number');
+  assert.deepEqual(validate(loadSchema('rollout-config.schema.json'), json('rollout.json')), []);
 });
 check('exports written into rollout.json survives a re-run, with the other site fields', () => {
   const site = { sourceUrl: 'https://example.com', da: { org: 'org', site: 'site', ref: 'main' }, liveHost: 'main--site--org.aem.live' };
@@ -468,6 +471,7 @@ check('an encoded page is listed once, from its sidecar: path and sourceHash fro
   assert.equal(e1.status, 0, e1.stderr);
   const pages = pjson('coverage/pages.json').pages;
   assert.deepEqual(pages.map((p) => p.slug), ['tours', 'tours-east', 'tours-except', 'tours-gone', 'tours-held', 'tours-north', 'tours-south', 'tours-west'], 'one row per page; a sidecar with neither HTML nor encode is not a page');
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), pjson('coverage/pages.json')), [], 'encoded rows (source.encodedHtml) validate');
   const r = rowsOf(POUT);
   assert.deepEqual(r['tours-north'].source, { migratedHtml: null, encodedHtml: join(proj, 'stardust/encoded/tours/north.html'), metaJson: join(PM, 'tours/north/_meta.json'), sourceHash: hash(DOC.north), sourceUrl: null });
   assert.equal(r['tours-north'].path, '/tours/north'); assert.equal(r['tours-north'].templateId, 'tours'); assert.equal(r['tours-north'].delivery.status, 'pending');

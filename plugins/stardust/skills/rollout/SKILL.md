@@ -769,7 +769,10 @@ blocks lost). The latter models the adopter's per-selector merge — each varian
 emitted section — so it can under- or over-count a given adopter's real losses. `done-check.mjs`
 surfaces the no-selector count as the `export_quality:null_selector_sections` info line, and the
 manifest's `judgement` `{toFill, byKind}` (the judgement fields still empty, distinct from the coverage
-placeholders) as `export_quality:judgement_to_fill` — all informational, all hidden after handover.
+placeholders) as `export_quality:judgement_to_fill`. Every export file validates against its schema
+(`export_quality:schema:<file>:<n>` names one that does not) and a planned URL that never became a
+page is accounted for in the manifest's `excluded[]` (`export_quality:excluded:<n>`; the reason as
+the coverage or the crawl recorded it) — all informational, all hidden after handover.
 
 Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in

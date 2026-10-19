@@ -43,6 +43,19 @@
         "siblings": { "type": "integer", "minimum": 0, "description": "Cloned sibling groups beyond one archetype per type (total − archetypes)." }
       }
     },
+    "excluded": {
+      "type": "array",
+      "description": "Planned URLs that never became a page, derived at manifest time from what the coverage and the plan know: the coverage pages.json excluded[] rows (state.mjs exclude; the reason as recorded), the crawl's failed URLs (stardust/current/_crawl-log.json crawl.failures[]; reason `crawl: <message>`, e.g. `crawl: HTTP 404`), and the state.json pages[] and plan.json steps with no pages[] row (reason `unrecorded` when nothing says why). A planned entry is a page when a pages[] row shares its URL, its delivered path or its slug. [] when every planned URL is a page. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "items": {
+        "type": "object",
+        "required": ["url", "reason"],
+        "additionalProperties": false,
+        "properties": {
+          "url": { "type": "string", "description": "The planned source URL; the planned delivered path when no URL was recorded." },
+          "reason": { "type": "string", "description": "Why it is no page, as recorded; `unrecorded` when nothing says." }
+        }
+      }
+    },
     "selectorQuality": {
       "type": "object",
       "description": "Derived from workspace/mapping.json at manifest time (block-origin countsOf; mapping.json is not rewritten). Present only when a readable mapping exists. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
