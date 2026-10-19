@@ -44,16 +44,17 @@
 //
 // wait: returns as soon as a unit that was running when the wait started is done or failed (--unit narrows the
 // set), re-reading the ledger every 5 s without the lock (writers rename atomically), for at most --max seconds
-// (default 300, ceiling 1500); the pause file ($STARDUST_PAUSE_FILE) ends it at once, and the runner's wake file
-// (stardust/.labs/wake) growing ends it with 77: the runner appends a line when a background agent finishes, so the
-// lead hears of it within one poll instead of at the end of the wait. Writes nothing.
+// (default 300, ceiling 1500); the stop file ($STARDUST_PAUSE_FILE, written by the runner on a `stop` reply) ends it at
+// once with 78, and the runner's wake file (stardust/.labs/wake) growing ends it with 77: the runner appends a line when
+// a background agent finishes, so the lead hears of it within one poll instead of at the end of the wait. Writes nothing.
 // Why: in recorded hands-off runs the lead handed each delivery unit to a subagent, then polled with foreground
 // sleeps of 9–23 minutes — one 93-minute session held 15 such sleeps totalling 99 minutes — and a finished unit
 // waited until the current sleep ended before the lead saw it. With a one-hour cache a five-minute poll costs
 // about three cents, so a longer wait buys nothing and costs up to twenty minutes per unit.
 // Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
-// file-lock.mjs missing, nothing to wait for · 75 wait: none ended within --max · 76 wait: the pause file is present
-// · 77 wait: the runner's wake file grew (a background agent finished).
+// file-lock.mjs missing, nothing to wait for · 75 wait: none ended within --max · 76 (retained) the former soft-pause
+// code · 77 wait: the runner's wake file grew (a background agent finished) · 78 wait: the runner asked to stop (the
+// pause file is present) — end the session now.
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { setTimeout as sleep } from 'node:timers/promises';
@@ -89,10 +90,13 @@ export const WAIT_NOTICE_SEC = 600;
 export const WAIT_CEILING_SEC = 1500;
 export const WAIT_POLL_MS = 5000;
 export const STILL_RUNNING_EXIT = 75;
-export const PAUSED_EXIT = 76;
+export const PAUSED_EXIT = 76; // retained: the former soft-pause code; the runner now writes the pause file to request a STOP → STOP_EXIT.
 // The runner appends one line here (from the cwd, the project root) when a background agent finishes; never written here.
 export const WAKE_FILE = 'stardust/.labs/wake';
 export const WAKE_EXIT = 77;
+// The pause file ($STARDUST_PAUSE_FILE) is now the runner's STOP signal: the runner writes it on every `stop` reply, so
+// its PRESENCE on any poll ends the wait with this distinct code — never confused with 0/75/76/77 — and the lead ends the session.
+export const STOP_EXIT = 78;
 // `unit done` delivery gate: the widths a delivered page is proven at (lib.gateProof's default), the coverage
 // statuses that make a row DELIVERED (unit-commit's set), and the kinds the gate (like done-check) does not judge.
 export const GATE_WIDTHS = ['1440', '360'];
@@ -173,9 +177,10 @@ wait: returns as soon as a watched unit ends — the lead's wait for its unit su
   --max <seconds> (default ${DEFAULT_WAIT_SEC}; 0 = one pass) passes with none ended → exit ${STILL_RUNNING_EXIT}:
     progress wait: none of <n> ended within <max>s — still running: <a, b> — wait again as the next call
   Over ${WAIT_NOTICE_SEC} s a stderr notice (a one-hour cache needs no longer wait); over ${WAIT_CEILING_SEC} s clamped to ${WAIT_CEILING_SEC}.
-  Pause: while $STARDUST_PAUSE_FILE (JSON {at, reason}; relative = from the cwd; unset or empty = no check) names
-  a file that exists — checked before the first read and on every poll — exit ${PAUSED_EXIT} at once:
-    progress wait: paused — <path> present (reason: <r>, at <at>) — start nothing new; still running: <a, b|none|unknown>
+  Stop: the runner writes $STARDUST_PAUSE_FILE (JSON {stopRequested, stopAt, reason}; relative = from the cwd; unset or
+  empty = no check) on every \`stop\` reply. Its PRESENCE is the signal (unparseable still counts) — checked before the
+  first read and on every poll, and wins over the wake file — exit ${STOP_EXIT} at once, the line on stderr and stdout:
+    wait: the runner asked to stop (<stopAt or "now">; <reason or "no reason given">) — end the session now
   Wake: the runner appends a line to ${WAKE_FILE} (from the cwd) when a background agent finishes; grown since
   the wait started (checked on every poll, after a watched unit's end — that wins with exit 0, and an exit 0 also
   prints a wake line that arrived with it, before its summary) → exit ${WAKE_EXIT}:
@@ -184,11 +189,11 @@ wait: returns as soon as a watched unit ends — the lead's wait for its unit su
   An absent file means nothing; a file that shrank (truncated, rotated) is the new baseline. Never written here.
   Exit 2 (one stderr line): no ledger; no unit running (or none of the --unit names); every watched unit gone
   (removed or pending again: "nothing left to wait for"); the ledger still unreadable at the bound; a shape refusal.
-  --json: one object {"ledger","ended":{<name>:<entry>},"running":[…],"paused":null|{path,reason,at},"wake":null|"<line>"}
+  --json: one object {"ledger","ended":{<name>:<entry>},"running":[…],"stop":null|{path,stopAt,reason},"wake":null|"<line>"}
   instead.
 Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
-  file-lock.mjs missing, nothing to wait for · ${STILL_RUNNING_EXIT} wait: none ended within --max · ${PAUSED_EXIT} wait: the pause file is present
-  · ${WAKE_EXIT} wait: the runner's wake file grew (a background agent finished).`;
+  file-lock.mjs missing, nothing to wait for · ${STILL_RUNNING_EXIT} wait: none ended within --max · ${PAUSED_EXIT} (retained) the former soft-pause code
+  · ${WAKE_EXIT} wait: the runner's wake file grew (a background agent finished) · ${STOP_EXIT} wait: the runner asked to stop (the pause file is present) — end the session now.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -484,28 +489,30 @@ export function waitState(doc, ledger, watched) {
 export function waitBound(max) {
   const notes = [];
   if (max > WAIT_NOTICE_SEC) notes.push(`progress: --max ${max} — a wait over ${WAIT_NOTICE_SEC} s buys nothing; a one-hour cache does not need it (a ${DEFAULT_WAIT_SEC} s step costs about three cents and sees an ended unit up to 20 minutes sooner)`);
-  if (max > WAIT_CEILING_SEC) notes.push(`progress: --max ${max} clamped to ${WAIT_CEILING_SEC} s — wait in steps; the pause file ends a wait early`);
+  if (max > WAIT_CEILING_SEC) notes.push(`progress: --max ${max} clamped to ${WAIT_CEILING_SEC} s — wait in steps; the stop file ends a wait early`);
   return { sec: Math.min(max, WAIT_CEILING_SEC), notes };
 }
 
-// The pause file: the runner that supervises a hands-off run writes it (JSON {at, reason}) when it wants the session to
-// stop. → { path, reason, at } while `file` (relative: from `cwd`, the project root) exists, else null; unset or empty =
-// no check. A file that is not JSON {at, reason} still counts: reason unreadable. (The same reading as replica's run-bg.)
-export function pauseState(file = process.env.STARDUST_PAUSE_FILE, { cwd = process.cwd() } = {}) {
+// The stop file: the runner that supervises a hands-off run writes $STARDUST_PAUSE_FILE on every `stop` reply (JSON
+// {stopRequested, stopAt, reason}) to ask the session to stop. Its PRESENCE is the signal; the JSON fields are optional
+// detail. → { path, stopAt, reason } while `file` (relative: from `cwd`, the project root) exists, else null; unset or
+// empty = no check. A file that is not readable JSON still counts: stopAt "now", reason "no reason given". (The same
+// reading as replica's run-bg.)
+export function stopState(file = process.env.STARDUST_PAUSE_FILE, { cwd = process.cwd() } = {}) {
   if (file == null || String(file).trim() === '') return null;
   const p = resolve(cwd, String(file));
   if (!existsSync(p)) return null;
-  let j = null; try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { /* present, unreadable */ }
+  let j = null; try { j = JSON.parse(readFileSync(p, 'utf8')); } catch { /* present, unreadable: still a stop */ }
   const ok = isMap(j);
   const field = (v, none) => { const s = v == null ? '' : String(v).replace(/\s+/g, ' ').trim().slice(0, 200); return s || none; };
-  return { path: String(file), reason: ok ? field(j.reason, 'unspecified') : 'unreadable', at: ok ? field(j.at, 'unknown') : 'unknown' };
+  return { path: String(file), stopAt: ok ? field(j.stopAt, 'now') : 'now', reason: ok ? field(j.reason, 'no reason given') : 'no reason given' };
 }
 
 const list = (names) => (names.length ? names.join(', ') : 'none');
 export const waitEndedLine = (k, n, running) => `progress wait: ${k} of ${n} ended — ${running.length ? `still running: ${running.join(', ')}` : 'none still running'}`;
 export const waitTimeoutLine = (n, sec, running) => `progress wait: none of ${n} ended within ${sec}s — still running: ${list(running)} — wait again as the next call`;
-/** `running` null = the ledger could not be read at that moment. */
-export const waitPausedLine = (p, running) => `progress wait: paused — ${p.path} present (reason: ${p.reason}, at ${p.at}) — start nothing new; still running: ${running == null ? 'unknown' : list(running)}`;
+/** The runner's stop line — on stderr and on stdout (as the wake exit's line is), so a lead parsing either sees it. */
+export const stopLine = (s) => `wait: the runner asked to stop (${s.stopAt}; ${s.reason}) — end the session now`;
 export const waitWokenLine = (n, running) => `progress wait: woken — none of ${n} ended; still running: ${list(running)}`;
 
 /** One poll of the wake file: `size` in bytes (0 when absent, null on another read error) → { baseline, grew }; shrunk = the new baseline. */
@@ -667,8 +674,8 @@ function readLedger(file, ledger, names = null) {
 async function waitCmd(o, file) {
   const { sec, notes } = waitBound(o.max);
   for (const n of notes) console.error(n);
-  const pauseFile = process.env.STARDUST_PAUSE_FILE;
-  const print = (ended, running, paused, lines, wake = null) => console.log(o.json ? JSON.stringify({ ledger: o.ledger, ended, running, paused, wake }) : lines.join('\n'));
+  const stopFile = process.env.STARDUST_PAUSE_FILE;
+  const print = (ended, running, stop, lines, wake = null) => console.log(o.json ? JSON.stringify({ ledger: o.ledger, ended, running, stop, wake }) : lines.join('\n'));
   // The wake file's size (0 when absent, null on another read error); read only once it has grown.
   const wakeSize = () => { try { return statSync(WAKE_FILE).size; } catch (e) { return e.code === 'ENOENT' ? 0 : null; } };
   let wakeBase = wakeSize() ?? 0;
@@ -680,16 +687,19 @@ async function waitCmd(o, file) {
     try { buf = readFileSync(WAKE_FILE); } catch { /* unreadable this poll: try again at the next */ }
     return buf && wakeLine(buf.toString('utf8'), buf.subarray(wakeBase).toString('utf8'));
   };
-  // On a pause the names come from a fresh best-effort read: the watched units still running, or unknown.
-  const paused = (p, watched) => {
+  // On a stop the names come from a fresh best-effort read (for --json): the watched units still running, or unknown.
+  // The stop line goes to stderr AND to stdout (the wake exit's stdout format), so a lead parsing either output sees it.
+  const stopped = (s, watched) => {
     const r = readLedger(file, o.ledger, watched);
     const running = !r.doc ? null : watched ? waitState(r.doc, o.ledger, watched).running : pickWatched(r.doc, o.ledger, o.units).watched;
-    print({}, running, p, [waitPausedLine(p, running)]);
-    return PAUSED_EXIT;
+    const line = stopLine(s);
+    console.error(line);
+    print({}, running, { path: s.path, stopAt: s.stopAt, reason: s.reason }, [line]);
+    return STOP_EXIT;
   };
   const t0 = Date.now();
-  let p = pauseState(pauseFile);
-  if (p) return paused(p, null);
+  let s = stopState(stopFile);
+  if (s) return stopped(s, null);
   const first = readLedger(file, o.ledger);
   if (first.io && first.io.code !== 'ENOENT') throw first.io;
   if (first.error) throw new UsageError(first.error);
@@ -727,8 +737,8 @@ async function waitCmd(o, file) {
       return STILL_RUNNING_EXIT;
     }
     await sleep(Math.min(WAIT_POLL_MS, deadline - Date.now()));
-    p = pauseState(pauseFile);
-    if (p) return paused(p, watched);
+    s = stopState(stopFile);
+    if (s) return stopped(s, watched);
     const r = readLedger(file, o.ledger, watched);
     if (r.error) {
       // a hand edit in progress: read again at the next poll
