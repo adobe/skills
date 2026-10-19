@@ -740,9 +740,11 @@ node skills/rollout/scripts/block-origin.mjs --verify  # 2. REQUIRED → workspa
 node skills/rollout/scripts/workspace-manifest.mjs  # 3. → workspace/manifest.json; exit 2 = no mapping.json
 ```
 
-The manifest's `selectorQuality` records how the source selectors were found — the sources, `encoderCoverage`
-and the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
-map) — which `done-check.mjs` surfaces as the `export_quality:zero_confidence` info line; pass
+The manifest's `selectorQuality` records how the source selectors were found — the sources, `encoderCoverage`,
+the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
+map) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
+which fell back) — the `zeroConfidence` of which `done-check.mjs` surfaces as the `export_quality:zero_confidence`
+info line; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
 Its `sectionGaps` (derived the same way) lists the sections an adopter projecting per selector
 drops: `no-selector` (no source selector — exact) and `blocks-unprojected` (a selector kept but its

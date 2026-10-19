@@ -64,6 +64,23 @@
               "instances": { "type": "integer", "minimum": 0 }
             }
           }
+        },
+        "byTemplate": {
+          "type": "array",
+          "description": "Per mapping template, most instances first: the instance count and its split across the three selector sources, so a reviewer sees which templates are encoder-backed and which fell back. Optional (older manifests omit it).",
+          "items": {
+            "type": "object",
+            "required": ["template", "instances", "encoderMap", "textAlignment", "position", "encoderCoverage"],
+            "additionalProperties": false,
+            "properties": {
+              "template": { "type": ["string", "null"], "description": "The mapping template id (templateId)." },
+              "instances": { "type": "integer", "minimum": 0 },
+              "encoderMap": { "type": "integer", "minimum": 0 },
+              "textAlignment": { "type": "integer", "minimum": 0 },
+              "position": { "type": "integer", "minimum": 0 },
+              "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances for this template, three decimals (0 when it has no instances)." }
+            }
+          }
         }
       }
     },

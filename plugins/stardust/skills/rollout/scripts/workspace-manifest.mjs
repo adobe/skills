@@ -218,9 +218,11 @@ const SELECTOR_QUALITY_TOP = 10;
  * The selectorQuality block derived from mapping.json at manifest time (block-origin's countsOf; mapping.json is NOT
  * rewritten): instances, the three selector sources ({encoderMap, textAlignment, position}), encoderCoverage
  * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — image-only repeating blocks
- * with no text to anchor) and the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted). null when there is no readable mapping (nothing shipped to measure). Derived, so --check keeps it out of the
- * drift classification (it hashes only inputs/outputs). Pure but for the one read.
+ * with no text to anchor), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
+ * sorted) and byTemplate ([{template, instances, encoderMap, textAlignment, position, encoderCoverage}], one row per
+ * mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell back).
+ * null when there is no readable mapping (nothing shipped to measure). Derived, so --check keeps it out of the drift
+ * classification (it hashes only inputs/outputs). Pure but for the one read.
  */
 export function selectorQualityOf(mappingFile) {
   if (!isFile(mappingFile)) return null;
@@ -229,12 +231,23 @@ export function selectorQualityOf(mappingFile) {
   if (!mapping || !Array.isArray(mapping.templates)) return null;
   const c = countsOf(mapping);
   const round3 = (x) => Math.round(x * 1000) / 1000;
+  const byTemplate = mapping.templates.map((t) => {
+    const insts = (Array.isArray(t.blocks) ? t.blocks : []).flatMap((b) => (Array.isArray(b.instances) ? b.instances : []));
+    const bySource = (s) => insts.filter((i) => i && i.source === s).length;
+    const encoderMap = bySource('encoder-map');
+    return {
+      template: t.templateId ?? t.id ?? null, instances: insts.length,
+      encoderMap, textAlignment: bySource('text-alignment'), position: bySource('position'),
+      encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
+    };
+  }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
     instances: c.instances,
     sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], position: c.sources.position },
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
+    byTemplate,
   };
 }
 

@@ -18,6 +18,11 @@ export, each the adopter reads once and none a hard gate:
   `STARDUST_VERSION` env, then the plugin-manifest walk. `--check` compares inputs/outputs only, so
   `_provenance` never counts as drift.
 
+- **Per-template encoder coverage.** `selectorQuality` gains `byTemplate[]` — one row per mapping template
+  (`{template, instances, encoderMap, textAlignment, position, encoderCoverage}`, most instances first) — so a
+  reviewer sees which templates are encoder-backed and which fell back to text-alignment or position, not just the
+  export-wide totals. Derived from mapping.json at manifest time, recomputed by `--rehash-only`, never a drift input.
+
 ## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
 
 On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the
