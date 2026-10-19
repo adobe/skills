@@ -76,7 +76,8 @@ Stdout: templates N · blocks N · instances N · verified P % (the share verifi
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
 position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; encode <dir> (the encoder-map directory
 read, as given or defaulted) or encode none (it is not a directory: no map is read); encoder-coverage
-F · zero-confidence N (F = encoder-map/instances to three decimals, N = the confidence-0 count);
+F · zero-confidence N · sections-without-selector N (F = encoder-map/instances to three decimals, the
+confidence-0 count, and the sections generalised to no selector — an adopter projecting per selector drops them);
 position fallback: <block> ×N, … and skipped: N (<reason> ×N, …) when any; one line per unreadable
 encoder map (ignored); last, → <out> (written|unchanged).
 
@@ -959,10 +960,13 @@ export function countsOf(mapping, verify) {
     if (i.source === 'position') position.set(i.block, (position.get(i.block) || 0) + 1);
   }
   const ok = all.filter((i) => i.verified === true).length;
+  // sections generalised to no selector (generalise → selector null): an adopter projecting per selector drops them.
+  const sectionsWithoutSelector = mapping.templates.reduce((n, t) => n + (Array.isArray(t.sections) ? t.sections.filter((s) => !s.selector).length : 0), 0);
   return {
     templates: mapping.templates.length,
     blocks: mapping.templates.reduce((n, t) => n + t.blocks.length, 0),
     instances: all.length,
+    sectionsWithoutSelector,
     verified: verify ? ok : null,
     verifiedPct: verify && all.length ? Math.round((ok / all.length) * 1000) / 10 : null,
     sources,
@@ -980,7 +984,7 @@ function statusLines(c, skipped, verify, encode) {
     `sources encoder-map ${c.sources['encoder-map']} · text-alignment ${c.sources['text-alignment']} · position ${c.sources.position}`,
     `confidence ≥0.9 ${c.confidence.high} · 0.5–<0.9 ${c.confidence.medium} · >0–<0.5 ${c.confidence.low} · 0 ${c.confidence.none}`,
     `encode ${encode ?? 'none'}`,
-    `encoder-coverage ${(c.instances ? c.sources['encoder-map'] / c.instances : 0).toFixed(3)} · zero-confidence ${c.confidence.none}`,
+    `encoder-coverage ${(c.instances ? c.sources['encoder-map'] / c.instances : 0).toFixed(3)} · zero-confidence ${c.confidence.none} · sections-without-selector ${c.sectionsWithoutSelector}`,
   ];
   const pos = Object.entries(c.positionBlocks);
   if (pos.length) out.push(`position fallback: ${pos.map(([b, n]) => `${b} ×${n}`).join(', ')}`);
