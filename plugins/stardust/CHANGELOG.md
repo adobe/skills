@@ -4,6 +4,20 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-export-polish) — export manifest: real version, per-template encoder coverage, judgement debt, sibling-group count (#168)
+
+Four small fixes an evaluation of three recorded hands-off runs surfaced in the migration-workspace
+export, each the adopter reads once and none a hard gate:
+
+- **`_provenance.stardustVersion` resolved export-local.** The manifest stamped `null` in-run while a
+  recompute by the released tool read the real version, so a re-hash reported `written`, not
+  `unchanged`, over that one field. The writer resolved the version from a `.<name>-plugin` dir found
+  by walking up from the script — absent in the image, where the skills run from a `stardust/scripts/…`
+  copy. It now reads rollout.json's `_provenance.stardustVersion` (what inventory.mjs recorded for this
+  export) first — export-local, so any build's recompute reads the same stamp — then the
+  `STARDUST_VERSION` env, then the plugin-manifest walk. `--check` compares inputs/outputs only, so
+  `_provenance` never counts as drift.
+
 ## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
 
 On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the

@@ -162,6 +162,25 @@ check('hashes: outputs are the three coverage files, inputs the content summary,
   assert.ok(j._provenance.readArtifacts.includes('stardust/rollout/workspace/judgement.json'));
 });
 
+check('version: _provenance.stardustVersion is the export-local rollout.json value (what inventory.mjs recorded), so a recompute by any build reads the same stamp — the field never drifts; STARDUST_VERSION env is the fallback when rollout.json carries none', () => {
+  const dir = copy('version');
+  // the fixture rollout.json carries the version inventory resolved (here the plugin's), and the manifest stamps it
+  ok(run(dir));
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, pluginVersion());
+  // an in-run / other-build copy records a different (even unknown 0.0.0) version in rollout.json; the manifest follows
+  // THAT, not the script location, so the committed manifest and a later recompute agree — no version-only drift
+  editJSON(join(OUT(dir), 'rollout.json'), (c) => { c._provenance = { ...(c._provenance || {}), stardustVersion: '0.0.0' }; });
+  ok(run(dir));
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, '0.0.0', 'export-local rollout.json wins over the script-location plugin walk');
+  // rollout.json is not a hashed input, so editing it leaves the export fresh (no drift)
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+  // env fallback: no version in rollout.json → STARDUST_VERSION
+  editJSON(join(OUT(dir), 'rollout.json'), (c) => { delete c._provenance; });
+  const rEnv = spawnSync(process.execPath, [join(SCRIPTS, 'workspace-manifest.mjs')], { cwd: dir, encoding: 'utf8', env: { ...ENV, STARDUST_VERSION: '7.7.7' } });
+  ok(rEnv);
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, '7.7.7', 'STARDUST_VERSION env when rollout.json carries no version');
+});
+
 check('mapping: a workspace/mapping.json file is hashed under outputs (and so in readArtifacts), nothing else changes; without it (or as a directory) outputs hold only the coverage; new bytes rewrite the manifest; it validates', () => {
   const MAP = 'stardust/rollout/workspace/mapping.json';
   const mapping = (generatedAt) => `${JSON.stringify({ formatVersion: '0.1.0', generatedAt, templates: [] }, null, 2)}\n`;

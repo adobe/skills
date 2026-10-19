@@ -127,7 +127,7 @@
         "readArtifacts": { "type": "array", "items": { "type": "string" } },
         "stardustVersion": {
           "type": ["string", "null"],
-          "description": "Version of the installed plugin; null when run from a project copy without a plugin manifest."
+          "description": "Version that built the export, from rollout.json's _provenance.stardustVersion (inventory.mjs) so it is export-local and a recompute matches; else the STARDUST_VERSION env or the installed plugin manifest; null when none resolves. Never part of the drift comparison."
         }
       }
     },

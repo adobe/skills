@@ -138,8 +138,23 @@ function contentTracked(project, contentRel) {
   return listed === null ? null : listed.trim() !== '';
 }
 
-/** The installed plugin's version: a hidden `<name>-plugin` dir holding stardust's plugin.json; null in a project copy. */
-function stardustVersion() {
+/**
+ * The version that built THIS export, from a source that exists wherever the script runs, tried in order:
+ *   1. rollout.json's _provenance.stardustVersion (what inventory.mjs recorded for this export) — export-local, so a
+ *      recompute by any build reads the same value and _provenance never drifts between the in-run write and a re-hash;
+ *   2. the STARDUST_VERSION env a runner may set;
+ *   3. the installed plugin's manifest (a hidden `.<name>-plugin` dir) — the plugin-tree fallback when there is no
+ *      rollout.json (a bare coverage dir, or a test).
+ * In the image the skills run from a `stardust/scripts/…` copy with no plugin manifest above them, so the dir walk
+ * alone returned null and a released-worktree recompute (which finds its own manifest) differed by exactly that field;
+ * rollout.json sits beside the coverage and carries the version inventory resolved. The recorded string is returned
+ * verbatim (0.0.0 included — the honest "unknown" inventory stamps when it too cannot resolve a manifest), else null.
+ */
+function stardustVersion(out) {
+  const recorded = (readJSON(join(out, 'rollout.json'), {})._provenance || {}).stardustVersion;
+  if (typeof recorded === 'string' && recorded) return recorded;
+  const env = process.env.STARDUST_VERSION;
+  if (typeof env === 'string' && env) return env;
   for (let dir = HERE, level = 0; level <= 5; dir = dirname(dir), level += 1) {
     let names = [];
     try { names = readdirSync(dir).filter((n) => /^\.[a-z]+-plugin$/.test(n)).sort(byStr); } catch { /* unreadable */ }
@@ -480,7 +495,7 @@ function main(argv) {
     writtenBy: WRITTEN_BY,
     writtenAt: coverage.pages.generatedAt || coverage.pages._provenance?.writtenAt || null,
     readArtifacts,
-    stardustVersion: stardustVersion(),
+    stardustVersion: stardustVersion(OUT),
   };
   const placeholders = placeholdersOf(coverage);
   const mods = [...moduleBlocks(coverage.blocks).values()];
@@ -521,6 +536,8 @@ function main(argv) {
     const norm = (k, v) => JSON.stringify(k === 'content' && v && typeof v === 'object' ? [v.files, v.sha256] : v ?? null);
     const diff = (was, now) => [...new Set([...Object.keys(was || {}), ...Object.keys(now || {})])]
       .filter((k) => norm(k, (was || {})[k]) !== norm(k, (now || {})[k])).sort(byStr);
+    // Drift is measured on inputs and outputs only; _provenance (writtenBy/writtenAt/stardustVersion) is never compared,
+    // so a version stamp can never read as drift — the export's freshness is its recorded input/output hashes.
     const inDrift = diff(priorManifest.inputs, sortedInputs);
     const outDrift = diff(priorManifest.outputs, sortedOutputs);
     const classification = classifyExportDrift(inDrift, outDrift);
