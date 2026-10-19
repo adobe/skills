@@ -21,10 +21,12 @@
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
  * in the content files, no update-coverage.mjs --block record), a `selectorQuality` block derived from mapping.json
- * when present (block-origin's countsOf: the selector sources, encoderCoverage and the zeroConfidence count), a
- * `sectionGaps` list derived from mapping.json the same way (sections an adopter projecting per selector drops: a null
- * selector, or a selector kept but the blocks lost to the projection) — neither a rewrite of mapping.json, so a re-hash
- * recomputes both and --check never counts them as drift, the handover state and `handoverNotes` (owner
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
+ * the same split per template), a `sectionGaps` list derived from mapping.json the same way (sections an adopter
+ * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
+ * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field) — none a
+ * rewrite of its source, so a re-hash recomputes them and --check never counts them as drift, the handover state and
+ * `handoverNotes` (owner
  * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
  * value, the owner names them; the section-gap counts). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
@@ -305,6 +307,37 @@ export function sectionGapNotes(gaps) {
   if (nulls) notes.push(`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`);
   if (unprojected) notes.push(`${unprojected} section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps`);
   return notes;
+}
+
+/** A judged field is still open when it is empty: null/'', an empty array, or an object all of whose values are empty (e.g. an untouched reuseGuidance {suitableFor:[], notSuitableFor:[]}). */
+const isEmptyJudged = (v) => v == null || v === ''
+  || (Array.isArray(v) && v.length === 0)
+  || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(isEmptyJudged));
+
+/**
+ * The judgement's documentation debt, derived from judgement.json at manifest time (not a rewrite): `toFill` counts the
+ * fields the judgement lists in its own `toFill[]` that are STILL empty, and `byKind` splits that count by field
+ * (name, description, purpose, reuseGuidance, baseType). null when there is no readable judgement.json with a toFill[].
+ * Distinct from `placeholders`, which counts unjudged values in COVERAGE: a client may carry filled coverage while the
+ * judgement still has open fields (block purpose / reuseGuidance / a default-fallback baseType). done-check.mjs surfaces
+ * `toFill` as the export_quality:judgement_to_fill info line. Derived, so --check keeps it out of the drift
+ * classification (it hashes only inputs/outputs; judgement.json is itself a hashed input). Pure but for the one read.
+ */
+export function judgementDebtOf(judgementFile) {
+  if (!isFile(judgementFile)) return null;
+  let j;
+  try { j = JSON.parse(readFileSync(judgementFile, 'utf8')); } catch { return null; }
+  if (!j || !Array.isArray(j.toFill)) return null;
+  const at = (path) => path.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), j);
+  const byKind = {};
+  let toFill = 0;
+  for (const path of j.toFill) {
+    if (typeof path !== 'string' || !isEmptyJudged(at(path))) continue;
+    toFill += 1;
+    const kind = path.split('.').pop();
+    byKind[kind] = (byKind[kind] || 0) + 1;
+  }
+  return { toFill, byKind: Object.fromEntries(Object.keys(byKind).sort(byStr).map((k) => [k, byKind[k]])) };
 }
 
 /** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
@@ -638,9 +671,11 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
-  // Derived from mapping.json (not a rewrite of it), so both are recomputed on a re-hash and never count as drift.
+  // Derived from mapping.json / judgement.json (not a rewrite of either), so all are recomputed on a re-hash and
+  // never count as drift (--check hashes only inputs/outputs).
   const selectorQuality = selectorQualityOf(mappingFile);
   const sectionGaps = sectionGapsOf(mappingFile);
+  const judgement = judgementDebtOf(judgementFile);
   // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.
   const unjudged = unjudgedBaseTypes(coverage.blocks);
   const handoverNotes = [
@@ -655,6 +690,7 @@ function main(argv) {
     placeholders,
     ...(selectorQuality ? { selectorQuality } : {}),
     ...(sectionGaps ? { sectionGaps } : {}),
+    ...(judgement ? { judgement } : {}),
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
     ...(handoverNotes.length ? { handoverNotes } : {}),

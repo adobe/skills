@@ -104,6 +104,20 @@
         }
       }
     },
+    "judgement": {
+      "type": "object",
+      "description": "Derived from workspace/judgement.json at manifest time (not a rewrite). Present only when a readable judgement.json with a toFill[] exists. The judgement's own documentation debt: toFill = the fields it lists in toFill[] that are still empty; byKind splits that by field (name, description, purpose, reuseGuidance, baseType). Distinct from placeholders (unjudged COVERAGE values). Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["toFill", "byKind"],
+      "additionalProperties": false,
+      "properties": {
+        "toFill": { "type": "integer", "minimum": 0, "description": "Judgement fields listed in toFill[] that are still empty." },
+        "byKind": {
+          "type": "object",
+          "description": "toFill split by field name (e.g. purpose, reuseGuidance, baseType, name, description); only fields with a non-zero count appear.",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "handover": {
       "type": ["object", "null"],
       "description": "null before handover; set only by a forced run after a client took the project over. Absent while the export is incomplete: captures exist and workspace/mapping.json does not (the writer exits 2) — not ready to hand over.",

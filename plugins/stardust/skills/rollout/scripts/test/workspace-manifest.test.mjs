@@ -276,6 +276,32 @@ check('selectorQuality.byTemplate: one row per mapping template with its instanc
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
 });
 
+check('judgement: manifest.judgement {toFill, byKind} counts the judgement.json toFill[] fields still empty, split by field; filling a field drops it (and its kind); derived — recomputed by --rehash-only, --check never a drift; validates', () => {
+  const dir = copy('judgement-debt');
+  ok(run(dir, '--draft-judgement'));
+  ok(node(dir, 'blocks.mjs')); // blocks.mjs reads the judgement so the manifest is fresh
+  ok(run(dir));
+  const all = doc(dir, 'manifest.json').judgement;
+  const jtoFill = JSON.parse(text(dir, 'judgement.json')).toFill;
+  assert.equal(all.toFill, jtoFill.length, 'a fresh draft lists every field empty → all open');
+  assert.equal(Object.values(all.byKind).reduce((a, b) => a + b, 0), all.toFill, 'byKind sums to toFill');
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // fill one block's purpose and reuseGuidance; re-read and re-manifest → toFill and those two kinds drop by one each
+  const name = jtoFill.find((f) => f.endsWith('.purpose')).split('.')[1];
+  editJSON(join(W(dir), 'judgement.json'), (j) => { j.blocks[name].purpose = 'does a thing'; j.blocks[name].reuseGuidance = { suitableFor: ['x'], notSuitableFor: [] }; });
+  ok(node(dir, 'blocks.mjs'));
+  ok(run(dir));
+  const after = doc(dir, 'manifest.json').judgement;
+  assert.equal(after.toFill, all.toFill - 2, 'a filled purpose and reuseGuidance drop out');
+  assert.equal(after.byKind.purpose, all.byKind.purpose - 1);
+  assert.equal(after.byKind.reuseGuidance, all.byKind.reuseGuidance - 1);
+  // derived: corrupt the field, --rehash-only recomputes it from judgement.json; --check never counts it as drift
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.judgement.toFill = 999; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.equal(doc(dir, 'manifest.json').judgement.toFill, after.toFill, 'recomputed from judgement.json');
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+});
+
 check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
   // s1 keeps hero+promo (both home to it); s2/s4 have no selector; s3 keeps its selector but promo homed to s1, so it is lost.
   const gapMapping = {

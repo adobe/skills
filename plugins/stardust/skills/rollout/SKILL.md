@@ -750,7 +750,9 @@ Its `sectionGaps` (derived the same way) lists the sections an adopter projectin
 drops: `no-selector` (no source selector — exact) and `blocks-unprojected` (a selector kept but its
 blocks lost). The latter models the adopter's per-selector merge — each variant homes to its first
 emitted section — so it can under- or over-count a given adopter's real losses. `done-check.mjs`
-surfaces the no-selector count as the `export_quality:null_selector_sections` info line.
+surfaces the no-selector count as the `export_quality:null_selector_sections` info line, and the
+manifest's `judgement` `{toFill, byKind}` (the judgement fields still empty, distinct from the coverage
+placeholders) as `export_quality:judgement_to_fill` — all informational, all hidden after handover.
 
 Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in

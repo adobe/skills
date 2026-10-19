@@ -23,6 +23,13 @@ export, each the adopter reads once and none a hard gate:
   reviewer sees which templates are encoder-backed and which fell back to text-alignment or position, not just the
   export-wide totals. Derived from mapping.json at manifest time, recomputed by `--rehash-only`, never a drift input.
 
+- **Judgement debt in the manifest.** A new `judgement` `{toFill, byKind}` counts the fields the judgement lists
+  in its own `toFill[]` that are still empty, split by field (block purpose / reuseGuidance / a default-fallback
+  baseType) — distinct from `placeholders`, which counts unjudged COVERAGE values, so an adopter sees open
+  documentation fields even when the coverage reads filled. `done-check.mjs` prints
+  `export_quality:judgement_to_fill:<n>` when n>0 — the same family and rules as the other export_quality info
+  lines (informational, hidden after handover).
+
 ## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
 
 On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the
