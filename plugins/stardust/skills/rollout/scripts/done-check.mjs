@@ -52,7 +52,9 @@
  *                                  `delivery.gate.pass === true` (the last width ingested); a row gated before
  *                                  passByWidth is proven on that pass alone and counted as skipped (pages
  *                                  matched by deploy's eds-path pathKey; a page excluded since — a pages.json
- *                                  excluded[] path — leaves its unit's count)
+ *                                  excluded[] path — leaves its unit's count). A unit flipped with
+ *                                  progress.mjs `unit done --unproven "<reason>"` (the escape hatch past that
+ *                                  tool's own pre-check) carries the reason on this line (`declared unproven:`)
  *   open_p1:N                      open or in-progress P1 findings in optimize/findings.json, source parity
  *                                  excluded — the optimize gate's own count
  *   header_parity:<why>            migration projects (state.json `flow`) only: the header contract
@@ -100,7 +102,7 @@
 import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift, gateProof } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
@@ -288,12 +290,9 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
   const legacy = new Set();
-  const rowProven = (p) => {
-    const g = gateOf(p);
-    if (!g || g.pass !== true || !gatedAt(g, widths)) return false;
-    if (g.passByWidth == null) { legacy.add(p); return true; }
-    return isMap(g.passByWidth) && widths.every((w) => g.passByWidth[String(w)] === true);
-  };
+  // THE shared proof predicate (lib.gateProof): progress.mjs's `unit done` pre-check reads it too, so a page
+  // it refuses to mark proven is exactly a page this gap would name — the two never disagree.
+  const rowProven = (p) => { const r = gateProof(p, widths); if (r.legacy) legacy.add(p); return r.proven; };
   // every coverage row behind the key must be proven: two rows on one key never let the passing one vouch for the other
   const proven = (key) => { const rows = rowsByKey.get(key) || []; const each = rows.map(rowProven); return rows.length > 0 && each.every(Boolean); };
   const gaps = [];
@@ -312,7 +311,9 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
     }
     if (!byKey.size) { if (!left) gaps.push(`unit_unproven:${name}: no pages in ${file}`); continue; }
     const unproven = [...byKey].filter(([k]) => !proven(k)).map(([, l]) => l);
-    if (unproven.length) gaps.push(`unit_unproven:${name}: ${unproven.length}/${byKey.size} pages without a passing gate at ${widths.join(' and ')}: ${listed(unproven)}`);
+    // the escape hatch progress.mjs `unit done --unproven "<reason>"` records on the entry travels into the gap
+    const declared = typeof u.unproven === 'string' && u.unproven.trim() ? ` — declared unproven: ${u.unproven.trim()}` : '';
+    if (unproven.length) gaps.push(`unit_unproven:${name}: ${unproven.length}/${byKey.size} pages without a passing gate at ${widths.join(' and ')}: ${listed(unproven)}${declared}`);
   }
   return { gaps, skipped: legacy.size ? [`unit_unproven: ${legacy.size} row(s) without per-width verdicts — proven on the last width's pass`] : [] };
 }

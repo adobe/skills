@@ -162,6 +162,32 @@ export function publicUrl(page) {
   return p;
 }
 
+// The published-origin gate widths a delivered page is proven at (done-check's --widths default).
+export const DEFAULT_GATE_WIDTHS = ['1440', '360'];
+const gateObjOf = (p) => (p && p.delivery && p.delivery.gate) || null;
+const isGateObj = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/**
+ * Is a coverage row's published-origin gate proven at EVERY width? THE single predicate done-check's
+ * unit_unproven gap and progress.mjs's `unit done` pre-check share, so the two never disagree about which
+ * delivered page is ungated: the gate verdict (delivery.gate.pass) is true, a gate time is recorded at
+ * every width (atByWidth), and — when per-width verdicts exist (passByWidth) — each width passed; a row
+ * gated before passByWidth was recorded is proven on `pass` alone (legacy). → { proven, legacy, missing[] }:
+ * `missing` names the widths a refusal cites — the widths with no recorded gate time or a non-passing
+ * per-width verdict, and the whole set when the final verdict is false or passByWidth is the wrong shape;
+ * empty on a proven (legacy included) row. Pure.
+ */
+export function gateProof(page, widths = DEFAULT_GATE_WIDTHS) {
+  const ws = widths.map(String);
+  const g = gateObjOf(page);
+  const noTime = ws.filter((w) => !(g && g.atByWidth && g.atByWidth[w]));
+  if (!g || g.pass !== true || noTime.length) return { proven: false, legacy: false, missing: noTime.length ? noTime : ws };
+  if (g.passByWidth == null) return { proven: true, legacy: true, missing: [] };
+  if (!isGateObj(g.passByWidth)) return { proven: false, legacy: false, missing: ws };
+  const bad = ws.filter((w) => g.passByWidth[w] !== true);
+  return { proven: bad.length === 0, legacy: false, missing: bad };
+}
+
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
 
