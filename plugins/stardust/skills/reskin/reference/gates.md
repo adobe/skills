@@ -156,6 +156,26 @@ Defenses, in order:
   broken *now*, in the gated artifact (see § Failure modes,
   Hotlinked source images).
 
+### figma-text-gate.mjs — content gate for Figma-sourced pages
+
+A Figma-sourced page has no source DOM, so `dom-equality` cannot run. The Figma text gate replaces it:
+
+```bash
+node stardust/scripts/reskin/figma-text-gate.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/prototypes/<slug>-proposed.html
+```
+
+The reference is every effectively-visible TEXT node of the frame's body sections, in reading order and
+rendered case, re-read from the cached nodes response — never from the model it checks. Each string must
+appear exactly once, in order, in `<main>` innerText; drawn-field placeholders must appear as
+`placeholder` attributes. Findings: missing, order, case (TITLE is caseless: CSS `capitalize` is not
+Figma TITLE), duplicate, extra. `text-ops.json` beside the model declares what not to expect. PASS only
+with zero findings; exit 0 / 1 / 2 (setup). Run `slot-coverage.mjs --deltas reskin/deltas/<slug>.json`
+beside it: `figma-donor.mjs content` seeds that file (the deployed leg's schema, `deployed/deltas.mjs`)
+with `metadata.absent: [description, canonical]`, asserted not carried; the model's empty OG/Twitter
+maps and JSON-LD list make the gate expect none, and images keep the host+path comparison.
+
 ## (b) Design-adoption gate
 
 ### donor-probe.mjs — computed-style token assertions
@@ -323,7 +343,7 @@ fetches `.plain.html` without a browser.
 
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
-| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
+| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas`; a Figma-sourced model runs `figma-text-gate` in place of `dom-equality` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a token the preview refuses is exit 2, any other page answering HTTP 400 or more no verdict (exit 124), never a pass |

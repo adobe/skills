@@ -46,7 +46,10 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
 4. **`deployed-gate preview`** polls until the preview answers, checks isolation and writes `preview.json`.
 5. **The delta file.** Run `deployed-gate content` with none, then write `reskin/deltas/<slug>.json` from what fails,
    one entry per real difference with its why, starting with `"blocking": false`: the text check stays advisory until
-   the page's differences are measured.
+   the page's differences are measured. A Figma-only page starts from the file `figma-donor.mjs content` seeded
+   (`metadata.absent`); its `content` step runs `figma-text-gate` in place of `dom-equality` (no live source),
+   with `text-ops.json` beside the model. On the preview EDS may emit a description or canonical the design has
+   none of: move such a key from `metadata.absent` to `metadata.ignore`, with the why in `mapping.md`.
 6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. On a protected preview
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the

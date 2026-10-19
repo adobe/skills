@@ -62,6 +62,11 @@ or two new blocks).
 - **Redesign / restyle an existing EDS site**, or convert arbitrary generated
   static HTML (Mobirise, Relume, v0, exported Figma HTML). Use **snowflake**.
 - **Universal Editor or AEM Cloud Service (Java/OSGi/JCR).** Out of scope.
+- **A whole Figma-only site onto a Figma design system, content gated byte-level
+  against the frames.** No live site, several page frames, and the design system
+  (tokens, modules) comes from the same Figma file: use **stardust reskin**
+  (`figma-donor.mjs init` → `content` → render → Figma text gate). This skill
+  builds one page against the project's existing blocks.
 
 ## Related skills — orchestrated by this one
 

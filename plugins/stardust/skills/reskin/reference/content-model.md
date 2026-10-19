@@ -411,3 +411,37 @@ against which URL, plus the two reskin-specific fields — the verbatim
 `scope` string and the resolved `normalize` source. The gate reports
 cite both, so any capture↔gate mismatch is visible in the report
 header.
+
+## Figma-sourced models
+
+A Figma-only project (no live site; `state.json` `flowSource: "figma-only"`, written by
+`figma-donor.mjs init`) takes its content from the page frames: `figma-donor.mjs content <url>
+--frame <id> --slug <slug>` writes `content-model/<slug>/content-model.json` with the shape above, so
+mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. What differs:
+
+- `_provenance.source` is `{ kind: "figma", figma: { fileKey, fileKeyHash, node, version, name } }`
+  (`fileKey` is `"redacted"` under `--confidential`; the overwrite guard compares `fileKeyHash`). It
+  also records the rules applied: `visibility` (effective: a hidden ancestor hides), `readingOrder`
+  (auto-layout child order, else geometric rows by ≥ 50 % vertical overlap then x; overlapping text is
+  listed as ambiguous), `segmentation` (top-level children by y; chrome by name; content-less layers
+  fold; one wrapper with ≥ 2 bands is descended), `responsive` and `decorative`.
+- Text is the rendered case (`textCase` applied); `characters` and `textCase` stay beside it so the
+  renderer sets the CSS (`text-transform`, `font-variant-caps`) on the raw characters. A truncated
+  layer keeps the full string with `truncation: { maxLines }`; the renderer clamps it in CSS.
+- Headings come from the donor's type roles (`donor-tokens.json` `type.display|h1…h6`); the first is
+  the page h1. Links come from per-run hyperlinks and prototype interactions and pass the allowlist
+  (http(s), mailto, tel, root-relative); a NODE link resolves to a slug via `--pages <id>=<slug>` or
+  `reskin/content-rules.json` `pages`. Drawn fields become `formControls` with the drawn placeholder.
+- `metadata` holds only the title derived from the frame name; `declaredAbsent` lists description,
+  canonical, OG, Twitter and JSON-LD. Nothing is invented: SEO, alt text and link targets are flags.
+- Side files: `text-ops.json` (per-node text ops `caseless | attr | omit | replace`, chrome outside
+  the gate; read only by the Figma text gate), `flags.json` (every finding with severity `block | review | info`; open
+  block and review items are the deploy blocklist, cleared by fixing the design and re-running
+  `content` or by `figma-donor.mjs ack <slug> --flag <key> --why "…"`) and `assets/` (image bytes,
+  magic-byte sniffed; SVGs refused when they carry script, handlers or external references).
+- Shared header/footer layers go to `content-model/_chrome/` once (kept unless the same frame re-runs
+  or `--force`).
+- Placeholder copy (lorem, kit words such as "Button", `XX-XXXX` patterns, a string repeated ≥ 3 times)
+  is a block flag; a page whose body is all placeholder is `placeholderOnly` and `content` exits 1.
+- Design strings are untrusted: the model keeps them raw, every renderer escapes them, and layer names
+  become class tokens only when they pass block-name validation.

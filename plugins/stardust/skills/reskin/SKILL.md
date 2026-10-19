@@ -1,6 +1,6 @@
 ---
 name: reskin
-description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
+description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", "build my site from these Figma pages" (Figma-only: the frames hold the content, no live site), or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
@@ -34,7 +34,11 @@ regression check instead of a debugging tool.
 
 ## Inputs
 
-- `<content-url>` — required. The site whose content is preserved.
+- `<content-url>` — the site whose content is preserved. Required unless
+  the project is **Figma-only** (no live site: the content is in the
+  page frames of a Figma file). Then run `figma-donor.mjs init <url>`
+  instead (writes `state.json` with `flowSource: "figma-only"`) and take
+  the content in Phase 2′.
 - Donor, exactly one of:
   - `--donor <url>` — a live site whose design system is adopted.
   - `--donor-dir <path>` — a directory of local static HTML
@@ -191,6 +195,35 @@ experiment's top two failure modes:
    capture declared. The ledger is code, not prose. Format in
    `reference/content-model.md` § Normalization ledger.
 
+### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
+
+No live site, so no `capture-content`. Per page frame:
+
+```bash
+node stardust/scripts/reskin/figma-donor.mjs content <figma-url> \
+  --frame <page-frame-id> --slug <slug> [--responsive <id>] \
+  [--pages <id>=<slug>,...] [--confidential]
+```
+
+It writes `reskin/content-model/<slug>/` — `content-model.json`
+(`source.kind: "figma"`, same shape as a live capture), `text-ops.json`,
+`flags.json`, `assets/` — plus the shared `_chrome` model and, unless one
+exists, the page's delta file `reskin/deltas/<slug>.json` — and adds the
+page to `state.json`. Image bytes come from the REST image endpoints
+when `FIGMA_TOKEN` is set, else from a supplied file; a missing image is
+a block flag. Rules (visibility, reading order, segmentation, casing,
+headings, links, placeholders) and file shapes:
+`reference/content-model.md` § Figma-sourced models. A placeholder-only
+page exits 1: the design holds no content to reskin.
+
+Review `figma-donor.mjs blocklist` before deploy: every open `block` or
+`review` flag (missing alt, unresolved links, derived title, kit copy)
+is fixed in Figma and `content` re-run, or acknowledged with
+`figma-donor.mjs ack <slug> --flag <key> --why "…"`. Phases 3–5 run
+unchanged except the content gate (Phase 5). Deploy goes to an isolated
+preview, never over an existing DA document; there is no origin, so
+`migrate` is skipped.
+
 ### Phase 3 — MAPPING BRIEF
 
 Author `stardust/reskin/mapping.md` — the cross-origin mapping brief.
@@ -292,7 +325,10 @@ deployed page; commands,
 pass bars, tolerances, and failure modes in `reference/gates.md`. Serve or `file://`-address the
 rendered page and run:
 
-**(a) CONTENT GATE** — all three must pass:
+**(a) CONTENT GATE** — all three must pass (a Figma-sourced page has no
+source DOM: run `figma-text-gate.mjs` in place of `dom-equality` and
+`slot-coverage --deltas reskin/deltas/<slug>.json`; see
+`reference/gates.md` § figma-text-gate.mjs):
 
 ```bash
 node stardust/scripts/reskin/dom-equality.mjs \
@@ -526,6 +562,7 @@ sibling gate — is `reference/handoff.md`.
 | `stardust/reskin/ledger.json` | Per-page status, gate results, eyeball, residuals, handoff record (`reskin-ledger.mjs`) |
 | `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
 | `stardust/.work/reskin/{figma,gates/<slug>/{figma,figma-preview,deployed}}/` | Git-ignored evidence: the Figma REST cache and frame PNGs; each leg's checks, `summary.json`, divergence register and preview record |
+| `stardust/reskin/content-model/<slug>/{text-ops,flags}.json`, `assets/` | Figma-only projects: figma-text-gate's text ops, the flags (deploy blocklist) and image bytes beside the Figma-sourced model; the page's `reskin/deltas/<slug>.json` is seeded with `metadata.absent` |
 
 ## References
 

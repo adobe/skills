@@ -76,7 +76,8 @@ content  A1. Checks the preview's content against the live source, through two g
          decoration settled first (--wait-eds): dom-equality (the text and images of the preview's main against the
          source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
          <dir>/reskin/normalize/<slug>.mjs when that file exists) and slot-coverage (the content model slot by slot,
-         with the metadata). Reads preview.json (no record, or one with problems, is exit 2; a skipped leg prints
+         with the metadata). A Figma-sourced model (a Figma-only page, no live source) runs figma-text-gate in place
+         of dom-equality (content-figma-text.json; content.json records figmaText). Reads preview.json (no record, or one with problems, is exit 2; a skipped leg prints
          "not run: skipped", exit 0; a protected preview given no token is exit 2, before the live source is
          captured), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
          when it exists, the page's declared differences <dir>/reskin/deltas/<slug>.json, handed to both gates as

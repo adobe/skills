@@ -4,6 +4,41 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.37.0 — reskin takes content from Figma (Figma-only sites)
+
+A site with no live origin, whose pages exist only as Figma frames, can now be reskinned: content comes
+from the page frames, the design system from the same file, and content fidelity is gated against the
+Figma tree. Every rule is generic; per-file choices live in `reskin/content-rules.json` and flags.
+
+- **`figma-donor.mjs init | content | blocklist | ack`.** `init` writes a Figma-only `state.json`
+  (`flowSource: "figma-only"`, no origin) and refuses a live-site state. `content` builds
+  `content-model/<slug>/content-model.json` (`source.kind: "figma"`, the live model's shape) from one
+  page frame (`figma/content.mjs`, pure): effective visibility, auto-layout or geometric reading order,
+  segmentation with chrome to a shared `_chrome` model, rendered-case text with `characters`/`textCase`
+  kept for CSS, truncation kept whole, headings from the donor type roles, allowlisted links (NODE links
+  resolve via `--pages`), drawn fields as form controls, image bytes sniffed (unsafe SVG refused).
+  Nothing is invented: missing alt, link targets and SEO are flags. `text-ops.json` declares what the
+  Figma text gate must not expect; the page's `reskin/deltas/<slug>.json` (the deployed leg's delta file,
+  version 1) is seeded with `metadata.absent` unless one exists; `flags.json` is the deploy blocklist
+  (`blocklist` lists it, `ack --why` records
+  an acknowledgement). Placeholder-only pages exit 1. `--confidential` redacts the file key (the
+  overwrite guard compares its hash).
+- **`figma-text-gate.mjs`**, the content gate where `dom-equality` has no source DOM: every visible TEXT
+  node of the frame body, re-read from the cached tree, appears once and in order in `<main>`; findings
+  missing / order / case / duplicate / extra, and drawn placeholders as attributes.
+- **On M2's delta file and deployed leg.** M4 no longer has a delta schema of its own: `slot-coverage --deltas`
+  is M2's (`deployed/deltas.mjs`, version 1) unchanged, except that a Figma-sourced model's CTA also matches the
+  raw href (`#` or page-relative). `stream-render` leaves out a meta tag the model declares absent (no empty
+  description). `deployed-gate content` runs `figma-text-gate` in place of `dom-equality` for a Figma-sourced
+  model (`content.json` records `figmaText`); the text gate reads an aem.page preview: `--wait-eds`,
+  `--token-env` / `--auth-header` on the rendered origin only, never printed.
+- **`stream-render`** renders Figma models: CSS casing on the raw characters, a line-clamp span for
+  truncated text, and model-relative assets copied beside the page.
+- Docs: `reference/content-model.md` § Figma-sourced models, `reference/gates.md` § figma-text-gate.mjs,
+  SKILL.md Phase 2′; a routing note in figma-to-content; evals `reskin-figma-only` and
+  `figma-to-content-vs-reskin-routing`.
+- Prose delta (`prose-delta.mjs` vs 0.36.0): +91 lines, +835 words across skill docs, almost all the new
+  § Figma-sourced models and Phase 2′; the rules live once in content-model.md and SKILL.md points there.
 ## 0.36.1 — renderer fidelity fixes measured on a 52-page school site
 
 Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a

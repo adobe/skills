@@ -72,14 +72,15 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
 - `reskin/canon-from-reskin.mjs` — reskin → migrate bridge — `<archetype-slug> [--force] [--visual-threshold 10]`
 - `reskin/capture-content.mjs` — source content model — `--url <u> --out <dir> [--scope 'a,b']`
-- `reskin/deployed-gate.mjs` — deployed preview checks — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
+- `reskin/deployed-gate.mjs` — deployed preview checks — `preview --org --repo --branch --path | all` `--page <slug>`; exit 124 = no verdict
 - `reskin/dom-equality.mjs` — content gate — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <f> --rendered <u|f> [--spec] [--viewport] [--no-sanity] [--json]`
-- `reskin/figma-donor.mjs` — Figma donor — `capture <url> [--list] [--frames] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
+- `reskin/figma-donor.mjs` — Figma donor/content — `capture|curate|stamp|init|content|blocklist|ack`; exit 3 = blocked
+- `reskin/figma-text-gate.mjs` — Figma text gate — `--model <f> --rendered <u|f>`
 - `reskin/figma-gate.mjs` — Figma checks — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
-- `reskin/reskin-ledger.mjs` — ledger from gate evidence — `record <slug> [--stage] | eyeball | residual | show`
-- `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes — `[--dir] [--root] [--json]`
-- `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
+- `reskin/reskin-ledger.mjs` — ledger from gates — `record <slug> [--stage] | eyeball | residual | show`
+- `reskin/reskin-preflight.mjs` — ready to migrate? 0 = yes — `[--dir] [--root] [--json]`
+- `reskin/slot-coverage.mjs` — slot coverage gate — `--model <f> --rendered <u|f> [--deltas]`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`

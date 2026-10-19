@@ -7,6 +7,9 @@
 //            reskin/donor-modules.md and canon-source/DESIGN.{md,json} + _brand-extraction.json
 //            (figma/rules.mjs documents the rules, figma/curate.mjs and figma/design.mjs the outputs).
 //   stamp    state.json designSource only, through the master skill's state.mjs (figma/stamp.mjs).
+//   init     Figma-only project: a minimal state.json (flow reskin, no pages) through state.mjs.
+//   content  Phase 2′: one page frame → reskin/content-model/<slug>/ (figma/content.mjs core,
+//            figma/content-run.mjs I/O); blocklist / ack: the deploy blocklist of flagged items.
 // The token comes from FIGMA_TOKEN only (never a flag, never logged), sent as X-Figma-Token to the
 // Figma API base (FIGMA_API_BASE overrides it for tests); image bytes come from signed storage URLs
 // fetched without it, and no signed URL is ever written to disk.
@@ -27,6 +30,11 @@ export const HELP = `Usage:
                        [--max-wait 60] [--confidential] [--dir stardust]
   node figma-donor.mjs curate [--confidential] [--dir stardust]
   node figma-donor.mjs stamp [--confidential] [--dir stardust]
+  node figma-donor.mjs init <figma-url> [--confidential] [--dir stardust]
+  node figma-donor.mjs content <figma-url> --frame <id> --slug <slug> [--responsive <id>]
+                       [--pages <id=slug,…>] [--no-chrome] [--force] [--confidential] [--dir stardust]
+  node figma-donor.mjs blocklist [<slug,…>] [--dir stardust]
+  node figma-donor.mjs ack <slug> (--flag <key|id>[,…] | --all) --why "<reason>" [--by <who>] [--dir stardust]
 
 Figma as a reskin design donor. Token: FIGMA_TOKEN, a Figma personal access token with the
 file_content:read scope (file_variables:read is optional; without it variables are recorded as
@@ -106,13 +114,40 @@ curation-rules.json:
   params.paths scope; weightMap / familyEquivalence take params.map { from: to }; fontSmoothing
   takes params.value. Without radii.* or shadows.* roles every captured radius / shadow is listed,
   except paths marked absent.
-Exit codes: 0 ok · 1 validation or curate assertion failed · 2 usage, setup or not found (404)
+Figma as the CONTENT source (Figma-only sites, no live URL; reference/content-model.md
+§ Figma-sourced models):
+init     writes <dir>/state.json when there is none: _provenance, site.contentSource {kind figma},
+         flow reskin (flowSource figma-only), pages []. Refuses an existing live-site state.json.
+content  reads one page frame (--frame; a COMPONENT_SET variant, not the set) from the capture cache,
+         or fetches it once with FIGMA_TOKEN, and writes reskin/content-model/<slug>/:
+           content-model.json  source.kind figma: sections in reading order, rendered-case text
+                               (characters + textCase kept), headings from donor type roles
+           text-ops.json       figma-text-gate's text ops: TITLE caseless, drawn-field placeholders
+           flags.json          every flagged item (alt, link targets, inferred fields, placeholder copy,
+                               ambiguous order, legibility, derived title); block|review = blocklist
+           assets/             image bytes, magic-byte sniffed. Without FIGMA_TOKEN supply them as
+                               assets/<node-id-dashed>.<ext> (any channel) and re-run.
+         and reskin/deltas/<slug>.json (the shared delta file, version 1: metadata.absent) unless one
+         exists, and reskin/content-model/_chrome/content-model.json (header/footer slots) unless --no-chrome.
+         Adds the page row (status extracted, source figma). --responsive <id>: the mobile variant;
+         differing text is flagged. --pages maps NODE-link targets to slugs (12:34=about,…).
+         Refuses to overwrite a live-sourced model or another frame's (--force replaces it).
+         Optional rules: reskin/content-rules.json { chrome:{header,footer}, kinds:[{match,kind}],
+         pages:{id:slug} } (kind: button|check|select|field|icon|logo|interactive).
+blocklist exits 1 while any block|review item of the slugs (default: every figma page) is open.
+ack      records an acknowledgement for open items (key "<flag id>@<node>", or a flag id), with --why.
+         A placeholder-only page cannot be acknowledged.
+Exit codes: 0 ok · 1 validation or curate assertion failed, open blocklist · 2 usage, setup or not found (404)
             · 3 blocked (401/403, a 429 wait over --max-wait, 5xx after retries).`;
 
 const SPEC = {
   capture: { values: ['--frames', '--max-frames', '--max-wait', '--dir'], bools: ['--refresh', '--confidential', '--list'], positional: ['<figma-url>'] },
   curate: { values: ['--dir'], bools: ['--confidential'], positional: [] },
   stamp: { values: ['--dir'], bools: ['--confidential'], positional: [] },
+  init: { values: ['--dir'], bools: ['--confidential'], positional: ['<figma-url>'] },
+  content: { values: ['--frame', '--slug', '--responsive', '--pages', '--max-wait', '--dir'], bools: ['--no-chrome', '--force', '--confidential'], positional: ['<figma-url>'] },
+  blocklist: { values: ['--dir'], bools: [], positional: [], optional: ['<slug,…>'] },
+  ack: { values: ['--flag', '--why', '--by', '--dir'], bools: ['--all'], positional: ['<slug>'] },
 };
 
 export function parseArgs(argv, UsageError) {
@@ -134,7 +169,7 @@ export function parseArgs(argv, UsageError) {
     else positional.push(a);
   }
   if (positional.length < spec.positional.length) throw new UsageError(`${cmd} needs ${spec.positional.join(' ')}`);
-  if (positional.length > spec.positional.length) throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
+  if (positional.length > spec.positional.length + (spec.optional?.length || 0)) throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
   return { cmd, positional, opts };
 }
 
@@ -237,6 +272,74 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
     const lib = await stateLib();
     const { designSource } = stampDesignSource({ dir, donorUrl: canonicalFigmaUrl({ fileKey: manifest.fileKey, nodeId: manifest.nodeId }), capturedAt: manifest.capturedAt, confidential: await confidentialMode(dir, opts, log), stateLib: lib });
     log(`stamp: ${dir}/state.json designSource → ${designSource.url} (captured ${designSource.capturedAt}, path ${designSource.path})`);
+    return 0;
+  }
+
+  const at = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+  const nodeFlag = (name) => {
+    const id = String(opts[name] || '').trim().replace(/-/g, ':');
+    if (!/^I?\d+:\d+(?:;\d+:\d+)*$/.test(id)) throw new UsageError(`--${name} takes a node id like 12:34 or 12-34, got "${opts[name] ?? ''}"`);
+    return id;
+  };
+
+  if (cmd === 'init') {
+    const { runInit } = await helper('content-run');
+    const { state, created } = runInit({ dir, url: positional[0], confidential: Boolean(opts.confidential), stateLib: await stateLib(), at });
+    log(created ? `init: ${dir}/state.json → flow reskin, content source ${state.site.contentSource.url}, 0 pages` : `init: ${dir}/state.json is already a Figma-only reskin project (nothing written)`);
+    log('next: capture + curate the donor, then content <figma-url> --frame <id> --slug <slug> per page frame');
+    return 0;
+  }
+
+  if (cmd === 'content') {
+    const [{ runContent }, { createClient }] = await Promise.all([helper('content-run'), helper('client')]);
+    if (!opts.slug) throw new UsageError('content needs --slug <slug>');
+    const frameId = nodeFlag('frame');
+    const responsiveId = opts.responsive ? nodeFlag('responsive') : null;
+    const pages = {};
+    for (const pair of String(opts.pages || '').split(',').map((x) => x.trim()).filter(Boolean)) {
+      const m = pair.match(/^(I?\d+[:-]\d+)=([a-z0-9][a-z0-9-/]*)$/);
+      if (!m) throw new UsageError(`--pages takes id=slug pairs (12:34=about), got "${pair}"`);
+      pages[m[1].replace(/-/g, ':')] = m[2];
+    }
+    const confidential = await confidentialMode(dir, opts, log);
+    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.contentOutputs(opts.slug), { dir }); }
+    const client = env.FIGMA_TOKEN ? Object.assign(createClient({ token: env.FIGMA_TOKEN, base: env.FIGMA_API_BASE || undefined, maxWaitSec: intFlag(opts, 'max-wait', 60, UsageError) }), { hasToken: true }) : null;
+    const r = await runContent({ dir, url: positional[0], frameId, slug: opts.slug, responsiveId, pages, noChrome: Boolean(opts['no-chrome']), force: Boolean(opts.force), confidential, client, stateLib: await stateLib(), at, warn });
+    const c = r.report.counts;
+    log(`content: ${opts.slug} ← ${frameId} · ${r.model.sections.length} section(s), ${r.model.visibleTextNormalized.length} chars, ${r.images.got} image(s)${r.images.missing ? `, ${r.images.missing} missing bytes` : ''}${r.chrome ? ` · chrome header ${r.chrome.header.join(',') || '-'} footer ${r.chrome.footer.join(',') || '-'}` : ''} → ${r.out}/`);
+    log(`flags: ${c.block} block, ${c.review} review, ${c.info} info · ${c.open} open on the deploy blocklist (figma-donor.mjs blocklist ${opts.slug})`);
+    for (const f of r.report.open.slice(0, 12)) log(`  ${f.severity} ${f.key}: ${f.detail}`);
+    if (r.report.open.length > 12) log(`  … ${r.report.open.length - 12} more in ${r.out}/flags.json`);
+    if (r.placeholderOnly) { warn(`content: ${opts.slug} is placeholder copy only — stop: there is no real content to reskin (#310 real-content rule)`); return 1; }
+    log('next: confirm the sections, reading order and canonical variant; map the slots (Phase 3), render, then the Phase 5 gates incl. figma-text-gate.mjs');
+    return 0;
+  }
+
+  if (cmd === 'blocklist') {
+    const { blocklist } = await helper('content-run');
+    let slugs = positional[0] ? positional[0].split(',').map((x) => x.trim()).filter(Boolean) : null;
+    if (!slugs) {
+      const { readState } = await stateLib();
+      slugs = readState(dir).state.pages.filter((p) => p.source === 'figma').map((p) => p.slug);
+      if (!slugs.length) throw new UsageError(`no Figma-sourced page in ${dir}/state.json`);
+    }
+    const rows = blocklist(dir, slugs);
+    let open = 0;
+    for (const r of rows) {
+      open += r.open.length;
+      log(`${r.slug}: ${r.placeholderOnly ? 'PLACEHOLDER-ONLY · ' : ''}${r.open.length} open (${r.counts.block} block, ${r.counts.review} review, ${r.counts.info} info)`);
+      for (const f of r.open) log(`  ${f.severity} ${f.key}: ${f.detail}`);
+    }
+    if (open || rows.some((r) => r.placeholderOnly)) { log(`blocklist: ${open} open item(s) — fix them in Figma and re-run content, or acknowledge them (figma-donor.mjs ack <slug> --flag <key> --why "…") before deploy`); return 1; }
+    log('blocklist: clear — deploy may proceed (isolated preview, never over an existing DA document)');
+    return 0;
+  }
+
+  if (cmd === 'ack') {
+    const { acknowledge } = await helper('content-run');
+    if (!opts.all && !opts.flag) throw new UsageError('ack needs --flag <key|id>[,…] or --all');
+    const done = acknowledge(dir, positional[0], { keys: String(opts.flag || '').split(',').map((x) => x.trim()).filter(Boolean), all: Boolean(opts.all), why: opts.why, by: opts.by, at });
+    log(`ack: ${positional[0]} · ${done.length} item(s) acknowledged: ${done.map((f) => f.key).join(', ')}`);
     return 0;
   }
   return 2;
