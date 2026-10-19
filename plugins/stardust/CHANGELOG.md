@@ -18,8 +18,9 @@ This wave makes `unit done` prove it, with the SAME predicate the final done-che
   refuses (exit 2, nothing written) when any DELIVERED page the unit's `.paths` lists (a
   `deployed`/`verified` coverage row) has no passing published-origin gate at BOTH widths. The proof
   predicate is the new shared `lib.gateProof`, the one done-check's `unit_unproven` reads — the two
-  never disagree. The refusal names each page, the widths it owes and the exact
-  `gate-all.mjs --only … --skip-existing` command per width.
+  never disagree. The refusal names each page, the widths it owes and, per width, BOTH remedy commands:
+  `gate-all.mjs --only … --skip-existing` AND the `update-coverage.mjs --gate stardust/replica/gates/all-<w>/`
+  that ingests its table — gate-all writes no coverage, so gating without ingesting proves nothing.
 - **Escape hatch, no silent bypass:** `unit done --unproven "<reason>"` records the reason on the unit
   entry and skips the gate; done-check then carries it as `unit_unproven: … declared unproven:
   <reason>`.
