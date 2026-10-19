@@ -102,7 +102,7 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import {
   COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileFor, variantIdentity, variantId, priorVariantIds,
-  identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock,
+  identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock, urlToDeliveredPath,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -196,17 +196,6 @@ function deliveredPath(relHtml) {
   if (noExt === 'index') return '/';
   if (noExt.endsWith('/index')) return `/${noExt.slice(0, -'/index'.length)}`;
   return `/${noExt}`;
-}
-
-/** Delivered (extensionless) path for an absolute page URL (archetypes-only roster): `/a/`, `/a/index`, `/a.html` → `/a`. */
-function urlToDeliveredPath(url) {
-  let p;
-  try { p = new URL(url).pathname; } catch { p = String(url); }
-  p = p.replace(/\.html$/, '');
-  if (p.length > 1) p = p.replace(/\/+$/, '');
-  if (p === '' || p === '/' || p === '/index') return '/';
-  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
-  return p;
 }
 
 /** Stable slug from a delivered path (de/x/y -> de-x-y; '/' -> home). */

@@ -714,6 +714,100 @@ export function applyTemplateJudgement(templates, judgement, tokens) {
   return changed;
 }
 
+// --- schema parity: a structural JSON Schema check with no dependency --------------------------------
+// The export files (coverage/*.json, rollout.json, workspace/*.json) each validate against a schema under
+// skills/rollout/schemas/; done-check.mjs runs this check at the end of a run so an undeclared or missing key
+// surfaces as an export_quality:schema line before a client's validator does. The writers' tests use the same
+// functions through scripts/test/schema-validate.mjs.
+const SCHEMA_KEYWORDS = new Set(['type', 'required', 'properties', 'additionalProperties', 'items', 'enum', 'const', 'pattern', 'minimum', 'maximum',
+  'minLength', 'uniqueItems', '$ref', '$defs', 'title', 'description', '$schema', '$id', 'default', 'examples', 'format']);
+const schemaTypeOf = (v) => (v === null ? 'null' : Array.isArray(v) ? 'array' : Number.isInteger(v) ? 'integer' : typeof v);
+const isSchemaType = (t, v) => {
+  if (t === 'number') return typeof v === 'number' && Number.isFinite(v);
+  if (t === 'integer') return Number.isInteger(v);
+  if (t === 'object') return v !== null && typeof v === 'object' && !Array.isArray(v);
+  return schemaTypeOf(v) === t;
+};
+const schemaRegExp = (p) => { try { return new RegExp(p, 'u'); } catch { return new RegExp(p); } };
+const schemaKey = (k) => (/^[A-Za-z_$][\w$]*$/.test(k) ? `.${k}` : `[${JSON.stringify(k)}]`);
+const resolveSchemaRef = (root, ref) => (ref.startsWith('#/')
+  ? ref.slice(2).split('/').map((p) => p.replace(/~1/g, '/').replace(/~0/g, '~')).reduce((n, k) => (n == null ? undefined : n[k]), root)
+  : undefined);
+const sameJSON = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+function walkSchema(schema, value, root, path, errors) {
+  if (schema === true) return errors;
+  if (schema === false) { errors.push(`${path}: not allowed`); return errors; }
+  if (!schema || typeof schema !== 'object') { errors.push(`${path}: invalid schema`); return errors; }
+  if (schema.$ref !== undefined) {
+    const target = resolveSchemaRef(root, schema.$ref);
+    if (target === undefined) errors.push(`${path}: unresolved $ref ${schema.$ref}`);
+    else walkSchema(target, value, root, path, errors);
+  }
+  if (schema.type !== undefined) {
+    const types = [].concat(schema.type);
+    if (!types.some((t) => isSchemaType(t, value))) { errors.push(`${path}: expected ${types.join('|')}, got ${schemaTypeOf(value)}`); return errors; }
+  }
+  if ('const' in schema && !sameJSON(value, schema.const)) errors.push(`${path}: expected const ${JSON.stringify(schema.const)}`);
+  if (schema.enum && !schema.enum.some((e) => sameJSON(e, value))) errors.push(`${path}: ${JSON.stringify(value)} not in ${JSON.stringify(schema.enum)}`);
+  if (typeof value === 'string') {
+    if (schema.pattern !== undefined && !schemaRegExp(schema.pattern).test(value)) errors.push(`${path}: ${JSON.stringify(value)} does not match ${schema.pattern}`);
+    if (schema.minLength !== undefined && value.length < schema.minLength) errors.push(`${path}: shorter than the minimum length ${schema.minLength}`);
+  }
+  if (typeof value === 'number') {
+    if (schema.minimum !== undefined && value < schema.minimum) errors.push(`${path}: ${value} is below the minimum ${schema.minimum}`);
+    if (schema.maximum !== undefined && value > schema.maximum) errors.push(`${path}: ${value} is above the maximum ${schema.maximum}`);
+  }
+  if (Array.isArray(value)) {
+    if (schema.items !== undefined) value.forEach((v, i) => walkSchema(schema.items, v, root, `${path}[${i}]`, errors));
+    if (schema.uniqueItems && value.some((v, i) => value.findIndex((w) => sameJSON(v, w)) !== i)) errors.push(`${path}: items are not unique`);
+  }
+  if (isSchemaType('object', value)) {
+    for (const k of schema.required || []) if (!Object.hasOwn(value, k)) errors.push(`${path}: missing required ${k}`);
+    const props = schema.properties || {};
+    for (const [k, v] of Object.entries(value)) {
+      if (Object.hasOwn(props, k)) walkSchema(props[k], v, root, `${path}${schemaKey(k)}`, errors);
+      else if (schema.additionalProperties === false) errors.push(`${path}${schemaKey(k)}: additional property not allowed`);
+      else if (schema.additionalProperties !== undefined) walkSchema(schema.additionalProperties, v, root, `${path}${schemaKey(k)}`, errors);
+    }
+  }
+  return errors;
+}
+
+/**
+ * validateSchema(schema, value, { root }) → '<json path>: <problem>' lines, [] when `value` is valid. The keyword
+ * subset the rollout schemas use: type (string or array; integer = Number.isInteger), required and properties
+ * (objects only), additionalProperties (boolean or schema, applied to keys not in properties), items, enum, const,
+ * pattern, minLength, minimum, maximum, uniqueItems, and a local $ref '#/$defs/…' resolved against `root || schema`
+ * (pass `{ root }` to validate against a sub-schema such as `schema.$defs.gate`). Annotations ($schema, $id, $defs,
+ * title, description, default, examples, format) are not checked. Pure.
+ */
+export function validateSchema(schema, value, { root } = {}) {
+  return walkSchema(schema, value, root || schema, '$', []);
+}
+
+/** The keywords of `schema` outside validateSchema's subset ('<pointer>: <keyword>'): a schema using one is silently under-checked. Pure. */
+export function schemaUnsupported(schema, at = '#', out = []) {
+  if (!schema || typeof schema !== 'object') return out;
+  for (const k of Object.keys(schema)) if (!SCHEMA_KEYWORDS.has(k)) out.push(`${at}: ${k}`);
+  for (const [k, v] of Object.entries(schema.properties || {})) schemaUnsupported(v, `${at}/properties/${k}`, out);
+  for (const [k, v] of Object.entries(schema.$defs || {})) schemaUnsupported(v, `${at}/$defs/${k}`, out);
+  if (schema.items) schemaUnsupported(schema.items, `${at}/items`, out);
+  if (schema.additionalProperties && typeof schema.additionalProperties === 'object') schemaUnsupported(schema.additionalProperties, `${at}/additionalProperties`, out);
+  return out;
+}
+
+/** Delivered (extensionless) path for an absolute page URL or a path: `/a/`, `/a/index`, `/a.html` → `/a`; `/`, `/index` → `/`. Pure. */
+export function urlToDeliveredPath(url) {
+  let p;
+  try { p = new URL(url).pathname; } catch { p = String(url); }
+  p = p.replace(/\.html$/, '');
+  if (p.length > 1) p = p.replace(/\/+$/, '');
+  if (p === '' || p === '/' || p === '/index') return '/';
+  if (p.endsWith('/index')) return p.slice(0, -'/index'.length);
+  return p;
+}
+
 /** writeJSON unless the file already holds `doc` apart from `_provenance.writtenAt` and `generatedAt`; true when written. */
 export function writeCoverage(path, doc) {
   const stable = (d) => JSON.stringify(d && typeof d === 'object'
