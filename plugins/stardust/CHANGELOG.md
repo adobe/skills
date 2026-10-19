@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
+
+On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the
+previous image. Three causes, all in the read-side tail: the style census ran serially (the
+recorded command carried no `--concurrency`, where the earlier run measured both breakpoints at
+`--concurrency 2` — 261 s grew to 501 s); the assets, media and dynamics probes were pulled into
+the extract window; and after the probes the lead launched a classify / design-record subagent and
+waited for it serially, a ~10-minute idle gap the earlier run did not have (it had interleaved that
+work with the probes). Docs-only, no script change:
+
+- **`extract/SKILL.md`** (Phase 3 census) — the census recipe now covers both breakpoints in one
+  pass (`--width 1440,360`) and names its concurrency: its slice of the run's browser budget, the
+  gate's live-origin pool share (2 at the default `STARDUST_BROWSER_BUDGET`), passed as
+  `--concurrency 2` and raised above 1 only on an origin with no bot management.
+- **`replica/SKILL.md`** (Phase 1) — orders the extract read-side for wall time: start the crawl,
+  run the census and live probes as background jobs, and classify / detect archetypes / write
+  design records in parallel rather than waiting for the probes; the `--dynamics` detector stays in
+  Phase 2 and `media-harvest` stays a background job; poll with `run-bg.mjs wait --max 300` and the
+  wake file in steps of at most five minutes, a wait only for a job whose result the next step
+  needs.
+
 ## 0.36.x (stardust/r17-null-sections) — null-selector sections surfaced in the migration export (#164)
 
 A recorded hands-off run ended READY with a fresh, Tier-2-adoptable export, yet when the adopter
