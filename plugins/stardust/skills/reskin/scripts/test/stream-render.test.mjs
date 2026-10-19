@@ -76,6 +76,23 @@ check('footer keeps headings and text runs in order; header keeps a Figma-only c
   assert.match(html, /<p>Contact us<\/p><p>Email: a@b\.test<\/p><\/div>/);
   assert.match(html, /<nav><a href="https:\/\/example\.test\/c">Contact Us<\/a><span class="nav-text">DE<\/span><\/nav>/);
 });
+check('branded header row: brand | menu | actions zones; navAlign centres the menu, default end', () => {
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [{ currentSrc: 'https://example.test/logo.svg', alt: 'Logo' }], ctas: [{ text: 'Login', absHref: 'https://example.test/login' }],
+    ordered: [
+      { kind: 'cta', text: '', absHref: 'https://example.test/', children: [{ kind: 'image', currentSrc: 'https://example.test/logo.svg' }] },
+      { kind: 'listItem', text: 'Our medicines' },
+      { kind: 'listItem', text: 'Contact us', children: [{ kind: 'cta', text: 'Contact us', absHref: 'https://example.test/contact' }] },
+      { kind: 'cta', text: 'Login', absHref: 'https://example.test/login', buttonLike: true },
+    ],
+  }] };
+  const run = (chrome) => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], ...chrome } } }).html;
+  const centred = run({ navAlign: 'center' });
+  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<img class="logo"[^>]*>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><\/div>/);
+  assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
+  assert.match(run({}), /<div class="chrome-row nav-align-end">/);
+  assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
+});
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
   assert.equal(slots, 1);

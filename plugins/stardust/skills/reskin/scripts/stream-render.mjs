@@ -21,11 +21,14 @@
  * file) keeps the remote src and is listed.
  *
  * mapping.json (the only per-site input):
- *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent" },
+ *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
+ *       "navAlign": "start|center|end" },
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
  *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr" } } } } }
+ *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
+ *   actions, read off the donor's header frame (default end).
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, e.g. image+h3+p per team member) as a grid of
@@ -264,18 +267,41 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   // parent) as labelled triggers — dropping them loses visible source text.
   function navItems(s) {
     if (!Array.isArray(s.ordered) || !s.ordered.length) return s.ctas.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
-    const ctasIn = (n) => (n.kind === 'cta' ? [n] : (n.children || []).flatMap(ctasIn));
-    return s.ordered.flatMap((n) => {
-      const links = ctasIn(n).filter((c) => (c.text || '').trim());
-      if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
-      const text = (n.text || '').trim();
-      if (!text || n.kind === 'image') return [];
-      // a Figma-only capture lists its links as ctas and their text as plain stream nodes
-      const cta = s.ctas.find((c) => (c.text || '').trim() === text);
-      if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
-      if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
-      return [`<span class="nav-text">${esc(text)}</span>`];
-    });
+    return s.ordered.flatMap((n) => navItem(s, n));
+  }
+
+  function navItem(s, n) {
+    const ctasIn = (x) => (x.kind === 'cta' ? [x] : (x.children || []).flatMap(ctasIn));
+    const links = ctasIn(n).filter((c) => (c.text || '').trim());
+    if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    const text = (n.text || '').trim();
+    if (!text || n.kind === 'image') return [];
+    // a Figma-only capture lists its links as ctas and their text as plain stream nodes
+    const cta = s.ctas.find((c) => (c.text || '').trim() === text);
+    if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
+    if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
+    return [`<span class="nav-text">${esc(text)}</span>`];
+  }
+
+  // A branded row (logo + a menu list) is three zones in source order: brand, the menu (its list items)
+  // and the actions (the links outside it, e.g. a Login button). Other rows stay one link run.
+  function headerRow(s) {
+    const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
+    const ordered = Array.isArray(s.ordered) ? s.ordered : [];
+    if (!logos || !ordered.some((n) => n.kind === 'listItem')) {
+      return `<div class="chrome-row"><div class="container">
+      ${logos}
+      <nav>${navItems(s).join('')}</nav>
+    </div></div>`;
+    }
+    const menu = ordered.filter((n) => n.kind === 'listItem').flatMap((n) => navItem(s, n));
+    const actions = ordered.filter((n) => n.kind !== 'listItem').flatMap((n) => navItem(s, n));
+    const align = ['start', 'center', 'end'].includes(mapping.chrome?.navAlign) ? mapping.chrome.navAlign : 'end';
+    return `<div class="chrome-row nav-align-${align}"><div class="container">
+      ${logos}
+      <nav>${menu.join('')}</nav>${actions.length ? `
+      <div class="nav-actions">${actions.join('')}</div>` : ''}
+    </div></div>`;
   }
 
   // Footer prose in source order: every non-link text leaf (headings, text runs, list items), so a
@@ -311,10 +337,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
     const checked = (s, html) => { assertChromeText(s, html); return html; };
     if (role === 'header') {
-      return slots.map((s) => checked(s, `<div class="chrome-row"><div class="container">
-      ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
-      <nav>${navItems(s).join('')}</nav>
-    </div></div>`)).join('\n  ');
+      return slots.map((s) => checked(s, headerRow(s))).join('\n  ');
     }
     return slots.map((s) => checked(s, (() => {
       const texts = footerTexts(s);
@@ -391,6 +414,15 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-header nav { align-items: center; }
   .site-header .nav-menu { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
   .site-header .nav-menu::after { content: ""; width: 6px; height: 6px; border: solid currentcolor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+  .site-header .nav-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .site-header .nav-align-start nav { margin-left: 0; }
+  .site-header .nav-align-start .nav-actions { margin-left: auto; }
+  @media (min-width: 900px) {
+    .site-header .nav-align-center .container { display: grid; grid-template-columns: 1fr auto 1fr; }
+    .site-header .nav-align-center .logo { grid-column: 1; justify-self: start; }
+    .site-header .nav-align-center nav { grid-column: 2; margin-left: 0; justify-content: center; }
+    .site-header .nav-align-center .nav-actions { grid-column: 3; justify-self: end; }
+  }
   .logo { height: 32px; width: auto; }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .layout-media-band { background: ${v('--palette-light-band-bg', 'transparent')}; overflow: hidden; }
