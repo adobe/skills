@@ -191,7 +191,7 @@ Each round: fix, npm run lint, then
   # per width; after a shared change, instead:
   node skills/replica/scripts/run-bg.mjs start --name <unit>-changed-<w> -- \
     node skills/replica/scripts/gate-all.mjs --changed-only --eds-host <host> --width <w>
-  node skills/replica/scripts/run-bg.mjs wait   # exit 75: wait again
+  node skills/replica/scripts/run-bg.mjs wait   # exit 75: wait again, 77: a unit returned
   node skills/rollout/scripts/update-coverage.mjs --gate <each width's "run →" file>
 Stop: <the stop rule above>; at the cap the decision is not yours, never --round-reset. Then:
   write your report to stardust/rollout/units/<unit>.md (never git add it by hand)

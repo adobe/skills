@@ -242,9 +242,9 @@ containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe). Its probes run against the preview URL, never a
-harness (step 1). The same gate runs `qa.mjs --checks metadata`
+harness (step 1). A wrong runtime assumption (block wrapper class, button classes) is silent and sitewide — typography still looks fine while every grid stacks. The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
-(deploy Step 3 § Favicon). **Foundation sub-units (C0):** in C-deliver
+(deploy Step 3 § Favicon) — recorded first passes served the boilerplate icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
 the foundation is three recorded units, each its own `progress.json` entry, a
 subagent that returns one verdict line, a checkpoint commit and a boundary ask:
 `foundation-chrome` (header + footer blocks, the chrome documents) and
@@ -269,7 +269,7 @@ template's archetype is deployed and passes its full gate row on the preview URL
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 An encoded template's C-archetype — every template with two or more siblings is one — drafts the map
 (`stardust/import/<template>/`) once the archetype gates, round-trips it and records the attempt
-(`encode-attempt.mjs record --template <t>`, `skills/migrate/SKILL.md` § Encoder first; an exception follows the
+(`encode-attempt.mjs record --template <t>`; `not-attempted` is refused for it without a `--reason`, and `migrate.mjs plan` lists the maps still due — `skills/migrate/SKILL.md` § Encoder first; an exception follows the
 same SKILL.md, § When the encoder cannot: a differing sibling, one or under 20 %, takes a variant class, never its
 own archetype; hand-authored last, recorded first). Its cluster unit is then the map plus the exceptions, and the
 main agent alone re-runs `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged
@@ -277,7 +277,7 @@ main agent alone re-runs `inventory.mjs` and `plan.mjs` once the wave's clusters
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry, checkpoint commit and
+with its own `stardust/rollout/progress.json` entry (`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint commit and
 boundary ask; fix rounds (cap 3, stop at PASS — `reference/delivery-gates.md`
 § Iteration discipline) and the `gate-all.mjs --only` scope are per sub-unit.
 Target: no C-deliver unit runs longer than 90 minutes
