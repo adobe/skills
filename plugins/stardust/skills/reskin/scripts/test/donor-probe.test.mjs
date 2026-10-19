@@ -214,6 +214,22 @@ h1 { font-size: 56px } @media (max-width: 600px) { h1 { font-size: 32px } }
       assert.match(r.stderr, /spec entry "rhythm": match must be "all" \(every match\) or "first" \(the default\), got "every"/);
     });
 
+    await check('--model whose content has no button SKIPs a needs:"button" entry; with a button it is asserted', () => {
+      const page2 = sections('needs-button', '64px');
+      const model = (ordered) => {
+        const f = join(dir, `model-${Math.random().toString(36).slice(2)}.json`);
+        writeFileSync(f, JSON.stringify({ sections: [{ slot: 's01', ordered }] }));
+        return f;
+      };
+      const btn = { label: 'button', selector: 'main .btn', property: 'paddingTop', value: '10px', needs: 'button' };
+      const none = probe(page2, [entry(), btn], '--model', model([{ kind: 'p', text: 'Hi' }]));
+      assert.equal(none.status, 0, none.stderr);
+      assert.match(none.stdout, /SKIP button .*has no button/);
+      const withBtn = probe(page2, [entry(), btn], '--model', model([{ kind: 'cta', buttonLike: true, text: 'Go' }]));
+      assert.equal(withBtn.status, 1, withBtn.stderr);
+      assert.match(withBtn.stdout, /FAIL button/);
+    });
+
     await check('--help names the spec key', () => {
       assert.match(run('--help').stdout, /"match": "all"/);
     });
