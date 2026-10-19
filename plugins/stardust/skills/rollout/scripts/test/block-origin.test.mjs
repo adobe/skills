@@ -556,9 +556,29 @@ check('mapping: status lines — counts, verified skipped, sources, confidence b
     'sources encoder-map 0 · text-alignment 3 · position 2',
     'confidence ≥0.9 2 · 0.5–<0.9 1 · >0–<0.5 0 · 0 2',
     'encode none',
+    'encoder-coverage 0.000 · zero-confidence 2',
     'position fallback: hero ×1, media ×1',
     `→ ${MAPPING} (written)`,
   ]);
+});
+
+check('mapping: --max-zero-confidence gates the confidence-0 count — exit 0 at or under, exit 3 over it naming the blocks (mapping still written), unlimited by default, a bad value is usage', () => {
+  // the hub run has confidence.none 2 (hero + media, position fallback)
+  const under = runMap(hubProject('max-zero-under'), ['--max-zero-confidence', '2']);
+  ok(under, 0);
+  assert.ok(lines(under).includes('encoder-coverage 0.000 · zero-confidence 2'), under.stdout);
+  const overDir = hubProject('max-zero-over');
+  const over = runMap(overDir, ['--max-zero-confidence', '1']);
+  ok(over, 3);
+  assert.match(over.stderr, /2 zero-confidence selector\(s\) over --max-zero-confidence 1: hero ×1, media ×1/);
+  assert.ok(existsSync(join(overDir, MAPPING)), 'the mapping is still written when the gate trips');
+  const zero = runMap(hubProject('max-zero-zero'), ['--max-zero-confidence', '0']);
+  ok(zero, 3);
+  const dflt = runMap(hubProject('max-zero-default'));
+  ok(dflt, 0);
+  const bad = runMap(hubProject('max-zero-bad'), ['--max-zero-confidence', 'abc']);
+  ok(bad, 2);
+  assert.match(bad.stderr, /--max-zero-confidence takes a non-negative integer/);
 });
 
 check('mapping: determinism — a second run is unchanged, bytes identical; keys sorted; generatedAt from coverage', () => {

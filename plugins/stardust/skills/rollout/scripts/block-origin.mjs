@@ -33,7 +33,7 @@ const HELP = `block-origin — the source side of every delivered block: the CSS
 page's captured source DOM, written to stardust/rollout/workspace/mapping.json (formatVersion 0.1.0).
 
 Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>]
-         [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--verify] [--json]
+         [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--max-zero-confidence <n>] [--verify] [--json]
   (paths are relative to the cwd, the project root)
   --coverage <file>   rollout coverage pages, formatVersion 0.1.0 (default stardust/rollout/coverage/pages.json)
   --content <dir>     the delivered documents, one content file per page path (default content)
@@ -46,6 +46,9 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
                       stardust/import when it is a directory — where the encoder writes its maps — else
                       stardust/migrate/encode; an explicit --encode wins; optional)
   --out <file>        default stardust/rollout/workspace/mapping.json
+  --max-zero-confidence <n>  exit 3 when more than n instances land at confidence 0 (the position
+                      fallback: image-only repeating blocks with no text to anchor), the message listing
+                      them by block; default unlimited (no gate), so no existing caller changes
   --verify            re-read and re-index every capture and count each selector's hits: an instance is
                       verified true (exactly one element) or false; a section's pages are re-checked (a
                       page may drop, none is added)
@@ -72,9 +75,10 @@ null (skipped).
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
 position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; encode <dir> (the encoder-map directory
-read, as given or defaulted) or encode none (it is not a directory: no map is read); position fallback:
-<block> ×N, … and skipped: N (<reason> ×N, …) when any; one line per unreadable encoder map (ignored);
-last, → <out> (written|unchanged).
+read, as given or defaulted) or encode none (it is not a directory: no map is read); encoder-coverage
+F · zero-confidence N (F = encoder-map/instances to three decimals, N = the confidence-0 count);
+position fallback: <block> ×N, … and skipped: N (<reason> ×N, …) when any; one line per unreadable
+encoder map (ignored); last, → <out> (written|unchanged).
 
 Outputs: <out>, keys sorted, generatedAt copied from the coverage (no clock); rewritten only when the bytes
 differ. Under skipped: pages without a delivered structure, a content file or a capture, or whose capture
@@ -83,7 +87,9 @@ cannot be indexed, and coverage blocks the delivered document no longer has.
 Exit: 0 written or unchanged, whatever verification found; 1 a missing input, nothing written (coverage
 missing, unreadable, without formatVersion or pages[], or of another formatVersion; --content or
 --captures missing; unit-geometry.mjs in neither skills/diff/scripts/ nor stardust/scripts/diff/);
-2 usage (unknown flag, missing value), nothing read or written.
+2 usage (unknown flag, missing value, a --max-zero-confidence that is not a non-negative integer),
+nothing read or written; 3 the mapping is written but more than --max-zero-confidence instances landed
+at confidence 0 (only when the flag is given).
 `;
 
 const safeRealpath = (p) => { try { return realpathSync(p); } catch { return p; } };
@@ -974,6 +980,7 @@ function statusLines(c, skipped, verify, encode) {
     `sources encoder-map ${c.sources['encoder-map']} · text-alignment ${c.sources['text-alignment']} · position ${c.sources.position}`,
     `confidence ≥0.9 ${c.confidence.high} · 0.5–<0.9 ${c.confidence.medium} · >0–<0.5 ${c.confidence.low} · 0 ${c.confidence.none}`,
     `encode ${encode ?? 'none'}`,
+    `encoder-coverage ${(c.instances ? c.sources['encoder-map'] / c.instances : 0).toFixed(3)} · zero-confidence ${c.confidence.none}`,
   ];
   const pos = Object.entries(c.positionBlocks);
   if (pos.length) out.push(`position fallback: ${pos.map(([b, n]) => `${b} ×${n}`).join(', ')}`);
@@ -984,6 +991,8 @@ function statusLines(c, skipped, verify, encode) {
 const DEFAULTS = {
   coverage: 'stardust/rollout/coverage/pages.json', content: 'content', captures: 'stardust/current/pages',
   'eds-schema': 'stardust/eds-schema', encode: null, out: 'stardust/rollout/workspace/mapping.json',
+  // null = unlimited (no gate): the historic behaviour, so an existing caller never changes.
+  'max-zero-confidence': null,
 };
 // --encode's default: the first that is a directory (the encoder writes its maps under stardust/import), else the last.
 const ENCODE_DEFAULTS = ['stardust/import', 'stardust/migrate/encode'];
@@ -993,7 +1002,7 @@ function encodeDirOf(given) {
   return isDir(resolve(dir)) ? dir : null;
 }
 const BOOL_FLAGS = ['verify', 'json'];
-const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--verify] [--json] (--help for details)';
+const USAGE = 'usage: block-origin.mjs [--coverage <pages.json>] [--content <dir>] [--captures <dir>] [--eds-schema <dir>] [--encode <dir>] [--out <file>] [--max-zero-confidence <n>] [--verify] [--json] (--help for details)';
 const fail = (code, msg) => { process.stderr.write(`block-origin: ${msg}\n`); return code; };
 
 function parseArgs(argv) {
@@ -1008,6 +1017,10 @@ function parseArgs(argv) {
     } else if (BOOL_FLAGS.includes(name)) opts[name] = true;
     else return { error: `unknown argument "${argv[i]}"` };
   }
+  if (opts['max-zero-confidence'] !== null) {
+    if (!/^\d+$/.test(opts['max-zero-confidence'])) return { error: '--max-zero-confidence takes a non-negative integer' };
+    opts['max-zero-confidence'] = Number(opts['max-zero-confidence']);
+  }
   return opts;
 }
 
@@ -1017,7 +1030,7 @@ function writeAtomic(path, text) {
   try { writeFileSync(tmp, text); renameSync(tmp, path); } catch (e) { rmSync(tmp, { force: true }); throw e; }
 }
 
-/** The CLI: → exit code (0 written or unchanged, 1 a missing input, 2 usage). */
+/** The CLI: → exit code (0 written or unchanged, 1 a missing input, 2 usage, 3 over --max-zero-confidence). */
 export function main(argv) {
   const opts = parseArgs(argv);
   if (opts.error) return fail(2, `${opts.error}\n${USAGE}`);
@@ -1056,6 +1069,11 @@ export function main(argv) {
     notes.forEach((n) => process.stderr.write(`block-origin: ${n}\n`));
     process.stdout.write(`${JSON.stringify({ status, out: opts.out, encode, counts, skipped: mapping.skipped })}\n`);
   } else process.stdout.write(`${[...statusLines(counts, mapping.skipped, verify, encode), ...notes, `→ ${opts.out} (${status})`].join('\n')}\n`);
+  const maxZero = opts['max-zero-confidence'];
+  if (maxZero !== null && counts.confidence.none > maxZero) {
+    const blocks = Object.entries(counts.positionBlocks).map(([b, n]) => `${b} ×${n}`).join(', ') || 'no block breakdown';
+    return fail(3, `${counts.confidence.none} zero-confidence selector(s) over --max-zero-confidence ${maxZero}: ${blocks} — image-only repeating blocks with no text to anchor; draft an encoder map (stardust/import/<archetype>/vocabulary.json) or raise the threshold`);
+  }
   return 0;
 }
 
