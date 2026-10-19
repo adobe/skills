@@ -15,7 +15,8 @@
  *
  * Inputs per gate dir: summary.json + runs/*.json (newest row per page, each row's source recorded),
  * per-page pixel / clip / content / units / origin / eds JSON; optional coverage blocks.json +
- * pages.json (share map, templates), state.json, replica units.json (families), capture pages, the
+ * pages.json (share map — delivered usage, so empty before the content files exist — plus the pages'
+ * planned block listings and templates), state.json, replica units.json (families), capture pages, the
  * foundation-freeze manifest (frozen paths; DEFAULT_PATHS when absent), the gate's presence.json, else the site-wide
  * stardust/replica/presence.json when the gate dir has none (passed to chrome-parity as --presence --slug <rep>, with
  * the rep row's `hide` list as --hide; a stored parity result is reused only while the merged entries — "*" and <rep>,
@@ -361,7 +362,12 @@ function groupFindings(g, result, { region, items = [], docH = 0, names = [], cl
   return { total: matched.length, deltas: all.slice(0, 12), kinds, all, ...(note ? { note } : {}) };
 }
 
-/** The slugs a group's fix can move — rows ∪ share map ∪ template siblings ∪ observed DOM (∪ roster for chrome/tokens). */
+/**
+ * The slugs a group's fix can move — rows ∪ share map ∪ planned listings ∪ template siblings ∪ observed DOM (∪ roster
+ * for chrome/tokens). The share map (blocks.json usedByPages / usedByTemplates) is delivered usage, 0 / [] on every
+ * module row until the content files exist, so a block group mid-run also takes the pages whose coverage `blocks[]`
+ * (the sidecar plan) lists the block by its id or EDS name.
+ */
 function scopeOf(g, ctx) {
   const { blocks = [], covPages = [], tableRows = [], roster = [], names = [], itemsOf = () => [], mapSlug = (s) => s, templateOf = () => null } = ctx;
   const set = new Set(g.rows.map((r) => r.slug)); const sources = {};
@@ -370,6 +376,8 @@ function scopeOf(g, ctx) {
   else if (g.kind === 'block') {
     const own = blocks.filter((b) => b && (b.id === g.name || (b.delivery && b.delivery.edsBlockName === g.name)));
     addAll('usedByPages', own.flatMap((b) => b.usedByPages || []).map(mapSlug));
+    const ids = new Set([g.name, ...own.map((b) => b.id)]);
+    addAll('planned', covPages.filter((p) => (p.blocks || []).some((id) => ids.has(id))).map((p) => mapSlug(p.slug)));
     const tpls = new Set(own.flatMap((b) => b.usedByTemplates || []));
     addAll('templates', covPages.filter((p) => tpls.has(p.templateId)).map((p) => mapSlug(p.slug)));
     addAll('observed', tableRows.filter((r) => itemsOf(r.slug).some((it) => blockOf(it.path, names) === g.name)).map((r) => r.slug));

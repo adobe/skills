@@ -116,13 +116,27 @@ const calls = (root) => (existsSync(join(root, 'parity-calls.jsonl')) ? readFile
 const treeHash = (root) => { const out = []; (function walk(d) { for (const n of readdirSync(d).sort()) { const p = join(d, n); if (statSync(p).isDirectory()) { out.push(`d ${relative(root, p)}`); walk(p); } else out.push(`f ${relative(root, p)} ${createHash('sha256').update(readFileSync(p)).digest('hex')}`); } }(root)); return out.join('\n'); };
 const causes = (t) => t.groups.map((g) => g.cause);
 
-check('(a) block share: two clipped card pages → one block:cards group, scope = rows ∪ usedByPages ∪ template siblings', () => withProject(A, {}, (root) => {
+check('(a\') block share before delivery: a Phase-B share map (usedByPages [] / usedByTemplates [] on every row — delivered usage, no content files yet) contributes nothing, so the scope takes the pages whose coverage blocks[] list the block (source planned); never smaller than its rows', () => withProject(A, {}, (root) => {
+  put(root, 'stardust/rollout/coverage/blocks.json', { blocks: [{ id: 'cards', label: 'Cards', kind: 'module', usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'pending', edsBlockName: 'cards' } }] });
+  const pagesDoc = JSON.parse(readFileSync(join(root, 'stardust/rollout/coverage/pages.json'), 'utf8'));
+  for (const pg of pagesDoc.pages) pg.blocks = pg.slug === 'p3' ? ['cards'] : pg.slug === 'p4' ? ['hero'] : [];
+  put(root, 'stardust/rollout/coverage/pages.json', pagesDoc);
+  ok(run(root, ['--no-parity']));
+  const g = readT(root).groups[0];
+  assert.equal(g.cause, 'block:cards');
+  assert.deepEqual(g.scope.pages, ['p1', 'p2', 'p3'], 'rows ∪ the planned listing on p3; p4 lists another block');
+  assert.deepEqual([g.scope.sources.usedByPages, g.scope.sources.planned, g.scope.sources.templates], [0, 1, 0]);
+  assert.match(g.scope.commands[0], /--only p1,p2,p3 --width 1440$/);
+}));
+
+check('(a) block share: two clipped card pages → one block:cards group, scope = rows ∪ usedByPages ∪ template siblings; the delivered share map covers the planned listings (planned adds nothing)', () => withProject(A, {}, (root) => {
   ok(run(root, ['--no-parity']));
   const t = readT(root);
   assert.deepEqual(causes(t), ['block:cards']);
   const g = t.groups[0];
   assert.deepEqual(g.rows.map((r) => r.row), ['p1@1440', 'p2@1440']);
   assert.deepEqual(g.scope.pages, ['p1', 'p2', 'p3', 'p4']);
+  assert.deepEqual([g.scope.sources.usedByPages, g.scope.sources.planned, g.scope.sources.templates], [3, 0, 4]);
   assert.equal(g.route, 'cluster'); assert.equal(g.requestLine, null); assert.equal(g.frozen, false);
   assert.equal(g.rows[0].source, `${GATE}/summary.json`); assert.deepEqual(g.templates, ['t1']);
   assert.match(g.scope.commands[0], /^node stardust\/scripts\/replica\/gate-all\.mjs --only p1,p2,p3,p4 --width 1440$/);
