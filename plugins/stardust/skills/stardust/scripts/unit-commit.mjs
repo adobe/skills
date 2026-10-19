@@ -15,11 +15,13 @@
 //   node stardust/scripts/stardust/unit-commit.mjs <unit> [--code blocks/<name>]… [--also <path>]…
 //                                                   [--push] [--no-sidecar-check] [--message <m>] [--wait-s 120]
 //
-// Sidecar before commit: before staging, every delivered page (a coverage row matched to the unit's .paths)
-// must have its stardust/eds-schema/<slug>.json — the run refuses (exit 2, nothing staged) and names the exact
-// section-schema.mjs command per missing page. --no-sidecar-check overrides and records the override in the
-// commit message. On a recorded hands-off run subagent units left their sidecars unwritten and done-check
-// found them missing at the very end.
+// Sidecar before commit: before staging, every DELIVERED page (a coverage row matched to the unit's .paths
+// whose delivery.status is deployed|verified) must have its stardust/eds-schema/<slug>.json — the run refuses
+// (exit 2, nothing staged) and names the exact section-schema.mjs command per missing page. A pending /
+// content-pending row (the whole roster until it is converted) needs none, so a mid-unit commit and the
+// Code-stage push are never blocked. --no-sidecar-check overrides and records the override in the commit
+// message. On a recorded hands-off run subagent units left their sidecars unwritten and done-check found
+// them missing at the very end.
 //
 // Run from the project root, inside its git work tree. The stage set — only files that exist and are
 // not git-ignored (`git check-ignore`), deduped, sorted; committed by pathspec, so a hand `git add` of
@@ -220,9 +222,11 @@ Lock: ${LOCK_REL} (one JSON line: pid, host, ISO time, unit), created atomically
   running on this host, or untouched for ${STALE_MS / 1000} s (the holder touches it every ${HEARTBEAT_MS / 1000} s), is reaped
   (a lock another process just took is never removed). Held from staging to the last push;
   released on every exit.
-Sidecar before commit: before staging, every delivered page (a coverage row matched to the unit's
-  .paths with a one-name slug) must have its ${EDS_SCHEMA_DIR}/<slug>.json. A missing one → exit 2,
-  nothing staged, the exact command on stderr:
+Sidecar before commit: before staging, every DELIVERED page (a coverage row matched to the unit's
+  .paths, delivery.status deployed|verified, with a one-name slug) must have its
+  ${EDS_SCHEMA_DIR}/<slug>.json. A pending / content-pending row needs none (so a mid-unit commit and
+  the Code-stage --code push are never blocked). A missing one → exit 2, nothing staged, the exact
+  command on stderr:
     node stardust/scripts/deploy/section-schema.mjs <protoURL> --out ${EDS_SCHEMA_DIR}/<slug>.json
   --no-sidecar-check commits anyway and records the override in the commit message.
 Steps: git add -- <set>; nothing in the set differs from HEAD → exit 2 "nothing to commit" (with
@@ -443,18 +447,26 @@ export function unitTemplates(unit, templates = []) {
 // as this script runs from the project root). <protoURL> is the page's render source.
 export const sidecarCommand = (slug) => `node stardust/scripts/deploy/section-schema.mjs <protoURL> --out ${EDS_SCHEMA_DIR}/${slug}.json`;
 
+// A row is DELIVERED — a page with a schema to carry — only when its delivery.status is deployed or verified
+// (done-check.mjs's DELIVERED). The whole roster sits `pending` / `content-pending` from Phase A, and a unit's
+// .paths lists every page before the first is converted, so a pending row needs no sidecar: requiring one would
+// refuse a mid-unit commit of page 1 while page 16 is pending, and the Code-stage push before any page deploys.
+export const DELIVERED_STATUSES = new Set(['deployed', 'verified']);
+const isDeliveredRow = (row) => DELIVERED_STATUSES.has((row && row.delivery && row.delivery.status) || 'pending');
+
 /**
- * The slugs of the unit's delivered pages — coverage rows matched to its .paths by pathKey, with a one-name
- * slug (the rows whose stardust/eds-schema/<slug>.json the stage set carries) — whose sidecar does not exist;
- * deduped, sorted by code point. Pure: `exists(rel)` is injected. unit-commit refuses to commit while this is
- * non-empty unless --no-sidecar-check (then the override is recorded in the commit message).
+ * The slugs of the unit's DELIVERED pages — coverage rows matched to its .paths by pathKey whose
+ * delivery.status is deployed|verified, with a one-name slug — whose stardust/eds-schema/<slug>.json does not
+ * exist; deduped, sorted by code point. Pure: `exists(rel)` is injected. A pending / content-pending row is not
+ * yet a delivered page and needs none. unit-commit refuses to commit while this is non-empty unless
+ * --no-sidecar-check (then the override is recorded in the commit message).
  */
 export function missingSidecars({ lines = [], rows = [], pathKey, exists = () => false, dir = EDS_SCHEMA_DIR }) {
   const keys = new Set(lines.map((l) => pathKey(l)));
   const slugs = new Set();
   for (const row of rows) {
     if (!row || typeof row !== 'object' || typeof row.path !== 'string' || !keys.has(pathKey(row.path))) continue;
-    if (oneName(row.slug)) slugs.add(row.slug);
+    if (isDeliveredRow(row) && oneName(row.slug)) slugs.add(row.slug);
   }
   return [...slugs].filter((s) => !exists(`${dir}/${s}.json`)).sort(byCodePoint);
 }

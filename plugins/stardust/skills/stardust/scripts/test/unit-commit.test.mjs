@@ -93,7 +93,7 @@ const C1_SET = [
   'stardust/rollout/units/c1.md', 'stardust/rollout/units/c1.paths', ...SHARED_SET,
 ].sort();
 const C2_SET = [
-  'content/c.html', 'stardust/deploy/ledger-c2.json', 'stardust/eds-schema/c.json', 'stardust/encoded/c.html', 'stardust/import/c/map.json',
+  'content/c.html', 'stardust/deploy/ledger-c2.json', 'stardust/encoded/c.html', 'stardust/import/c/map.json',
   'stardust/migrated/c/_meta.json', 'stardust/migrated/c/index.html', `${G}/all-360/c/pixel.json`, RUN_C,
   `${G}/all-1440/triage.json`, `${G}/all-1440/triage.md`, `${G}/all-360/triage.json`,
   'stardust/rollout/units/c2.md', 'stardust/rollout/units/c2.paths', ...SHARED_SET,
@@ -111,16 +111,23 @@ check('sidecarFor: index.html → _meta.json, <name>.html → <name>._meta.json,
   assert.equal(sidecarFor('search:results'), null);
   assert.equal(sidecarFor(null), null);
 });
-check('missingSidecars: the matched rows (by pathKey, one-name slug) whose eds-schema/<slug>.json is absent, sorted; sidecarCommand names the exact section-schema.mjs run', () => {
+check('missingSidecars: only the unit\'s DELIVERED rows (delivery.status deployed|verified, one-name slug) whose eds-schema/<slug>.json is absent, sorted; pending/content-pending rows need none; sidecarCommand names the exact section-schema.mjs run', () => {
   const rows = [
-    { slug: 'home', path: '/' }, { slug: 'about', path: '/about' }, { slug: 'news', path: '/news.html' },
-    { slug: 'other', path: '/not-in-unit' }, // a row the unit does not deliver → never required
-    { slug: '', path: '/blank' }, { path: '/no-slug' }, // no usable slug → not required
+    { slug: 'home', path: '/', delivery: { status: 'deployed' } }, // delivered, sidecar exists → not missing
+    { slug: 'about', path: '/about', delivery: { status: 'verified' } }, // delivered, no sidecar → missing
+    { slug: 'news', path: '/news.html', delivery: { status: 'deployed' } }, // delivered, no sidecar → missing
+    { slug: 'later', path: '/later', delivery: { status: 'pending' } }, // not delivered → never required
+    { slug: 'soon', path: '/soon', delivery: { status: 'content-pending' } }, // not delivered → never required
+    { slug: 'nostat', path: '/nostat' }, // no delivery.status (defaults pending) → never required
+    { slug: 'other', path: '/not-in-unit', delivery: { status: 'deployed' } }, // delivered but not in this unit → not required
+    { slug: '', path: '/blank', delivery: { status: 'deployed' } }, { path: '/no-slug', delivery: { status: 'deployed' } }, // no usable slug → not required
   ];
-  const lines = ['/', '/about', '/news', '/blank', '/no-slug'];
+  const lines = ['/', '/about', '/news', '/later', '/soon', '/nostat', '/blank', '/no-slug'];
   const have = new Set(['stardust/eds-schema/home.json']); // only home's sidecar exists
   assert.deepEqual(missingSidecars({ lines, rows, pathKey, exists: (r) => have.has(r) }), ['about', 'news']);
   assert.deepEqual(missingSidecars({ lines, rows, pathKey, exists: () => true }), []);
+  // the whole roster pending (the Code-stage / pre-conversion state): nothing required even with no sidecars
+  assert.deepEqual(missingSidecars({ lines, rows: rows.map((r) => ({ ...r, delivery: { status: 'pending' } })), pathKey, exists: () => false }), []);
   assert.equal(sidecarCommand('about'), 'node stardust/scripts/deploy/section-schema.mjs <protoURL> --out stardust/eds-schema/about.json');
   assert.equal(EDS_SCHEMA_DIR, 'stardust/eds-schema');
 });
@@ -311,7 +318,6 @@ try {
   for (const f of [RUN_A, RUN_C, `${G}/all-360/c/pixel.json`, `${G}/all-360/triage.json`, `${G}/prototypes-1440/a/pixel.json`]) put(clone, f, '{}\n');
   put(clone, 'stardust/eds-schema/a.json', '{}\n');
   put(clone, 'stardust/eds-schema/b.json', '{}\n'); // git-ignored: never staged
-  put(clone, 'stardust/eds-schema/c.json', '{}\n'); // c2's delivered page sidecar (the sidecar-before-commit pre-check)
   for (const f of ['a.html', 'a._meta.json', 'b.html', 'b._meta.json', 'b-meta.json', 'c/index.html', 'c/_meta.json']) put(clone, `stardust/migrated/${f}`, '{}\n');
   put(clone, 'stardust/rollout/units/c1.paths', '# cluster c1\n/a\n\n/b\n');
   put(clone, 'stardust/rollout/units/c2.paths', '/c\n');
@@ -428,7 +434,7 @@ try {
     configure(sc);
     put(sc, 'README.md', 'x\n'); git(sc, 'add', '--', 'README.md'); git(sc, 'commit', '-q', '-m', 'init');
     put(sc, 'content/sx.html', '<main><h1>sx</h1></main>\n');
-    put(sc, 'stardust/rollout/coverage/pages.json', `${JSON.stringify({ pages: [{ slug: 'sx', path: '/sx' }] })}\n`);
+    put(sc, 'stardust/rollout/coverage/pages.json', `${JSON.stringify({ pages: [{ slug: 'sx', path: '/sx', delivery: { status: 'deployed' } }] })}\n`);
     put(sc, 'stardust/rollout/units/sx.paths', '/sx\n');
     put(sc, 'stardust/rollout/units/sx.md', '# sx\n');
     const refused = run(sc, 'sx');
@@ -449,6 +455,37 @@ try {
     const ok = run(sc, 'sx');
     assert.equal(ok.code, 0, ok.out + ok.err);
     assert.match(git(sc, 'log', '-1', '--format=%s'), /^C-deliver unit sx: 1 pages, \d+ files$/);
+  });
+  check('pending/content-pending rows need no sidecar: the Code-stage --code push with nothing deployed commits; a deployed page with its sidecar commits while the unit\'s other pages are still pending', () => {
+    // an isolated repo whose whole roster is pending — a unit's .paths lists every page before any is converted
+    const cp = join(root, 'codepush'); mkdirSync(cp);
+    git(root, '-c', 'init.defaultBranch=main', 'init', '-q', cp);
+    configure(cp);
+    put(cp, 'README.md', 'x\n'); git(cp, 'add', '--', 'README.md'); git(cp, 'commit', '-q', '-m', 'init');
+    const pages = join(cp, 'stardust', 'rollout', 'coverage', 'pages.json');
+    put(cp, 'stardust/rollout/coverage/pages.json', `${JSON.stringify({ pages: [
+      { slug: 'p1', path: '/p1', delivery: { status: 'pending' } },
+      { slug: 'p2', path: '/p2', delivery: { status: 'content-pending' } },
+      { slug: 'p3', path: '/p3' }, // no delivery.status → pending
+    ] })}\n`);
+    put(cp, 'stardust/rollout/units/cp.paths', '/p1\n/p2\n/p3\n');
+    put(cp, 'stardust/rollout/units/cp.md', '# cp\n');
+    // the Code-stage push before any preview: nothing deployed, no sidecars yet — must commit, not refuse
+    put(cp, 'blocks/foo/foo.js', '// foo\n');
+    const code = run(cp, 'cp', '--code', 'blocks/foo');
+    assert.equal(code.code, 0, code.out + code.err);
+    assert.match(code.out, /^unit-commit cp: committed [0-9a-f]{7} \(\d+ files\)\n$/);
+    assert.doesNotMatch(code.err, /sidecar/);
+    // p1 deploys with its sidecar; p2/p3 are still pending → the mid-unit commit of p1 is not refused
+    const doc = JSON.parse(readFileSync(pages, 'utf8'));
+    doc.pages.find((p) => p.slug === 'p1').delivery.status = 'deployed';
+    writeFileSync(pages, JSON.stringify(doc));
+    put(cp, 'content/p1.html', '<main><h1>p1</h1></main>\n');
+    put(cp, 'stardust/eds-schema/p1.json', '{}\n');
+    const mid = run(cp, 'cp');
+    assert.equal(mid.code, 0, mid.out + mid.err);
+    assert.match(mid.out, /^unit-commit cp: committed [0-9a-f]{7} \(\d+ files\)\n$/);
+    assert.doesNotMatch(mid.err, /sidecar/);
   });
   check('--also refused — absolute, a .. segment, content/, blocks/, styles/, head.html, .git, the root, a missing path, a link resolving outside the work tree or into content/, a directory under stardust/, another unit\'s report, ledger, map, encoded doc or gate run → exit 2, one line naming the rule, nothing staged or committed', () => {
     put(clone, 'stardust/rollout/units/c3.md', '# c3 report v2\n'); // what c3 would commit
@@ -489,7 +526,6 @@ try {
   check('coverage source paths outside their roots (content/other.html, styles/x.html, blocks/header/x.html) are left out with one stderr note naming the row; the unit still commits its own', () => {
     for (const f of ['content/other.html', 'styles/x.html', 'blocks/header/x.html']) put(clone, f, '<main>not this unit\'s</main>\n');
     put(clone, 'content/e.html', '<main><h1>e</h1></main>\n');
-    put(clone, 'stardust/eds-schema/e.json', '{}\n'); // the delivered page's sidecar (sidecar before commit)
     put(clone, 'stardust/rollout/units/c4.paths', '/e\n');
     const pagesFile = join(clone, 'stardust', 'rollout', 'coverage', 'pages.json');
     const doc = JSON.parse(readFileSync(pagesFile, 'utf8'));
@@ -497,7 +533,7 @@ try {
     writeFileSync(pagesFile, `${JSON.stringify(doc, null, 2)}\n`);
     const r = run(clone, 'c4');
     assert.equal(r.code, 0, r.out + r.err); oneLine(r);
-    assert.deepEqual(filesOf(clone, 'HEAD'), ['content/e.html', 'stardust/eds-schema/e.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/units/c4.paths']);
+    assert.deepEqual(filesOf(clone, 'HEAD'), ['content/e.html', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/units/c4.paths']);
     const rowNotes = r.err.split('\n').filter((l) => l.includes('coverage row'));
     assert.equal(rowNotes.length, 1, r.err);
     assert.match(rowNotes[0], /^unit-commit c4: note: coverage row e \(\/e\): left out source\.metaJson blocks\/header\/x\.html .*source\.migratedHtml content\/other\.html .*source\.encodedHtml styles\/x\.html \(not under stardust\/encoded\/\)$/);
