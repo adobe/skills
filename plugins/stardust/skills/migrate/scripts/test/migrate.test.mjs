@@ -682,6 +682,7 @@ check('verdict differs → strict variance refusal (nothing written) until --acc
   const r = run(['render', 'guide-beta']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused guide-beta: strict variance — the variance probe \(stardust\/rollout\/variance\/guides\.json\) found guide-beta differs from archetype guides: missing \[hero\], extra \[card\], 2 delta\(s\) — 1 of 3 current clone\(s\) differ: a variant class on the template, not a new archetype — give the delta a variant class on the archetype's block, re-run with --accept-variance "<the delta and its variant class>", then node stardust\/scripts\/migrate\/migrate\.mjs variant guide-beta <variant-class>$/m);
   assert.doesNotMatch(r.err, /re-type|--representative/, 'a single differing sibling is never re-typed');
+  assert.doesNotMatch(r.err, /retype-plan/, 'a single differing sibling gets no retype-plan hand-off line');
   assert.equal(read(`${OUT}/guides/beta/_meta.json`), before);
   const a = run(['render', 'guide-beta', '--accept-variance', 'the hero is a page-level promo']); assert.equal(a.status, 0, a.err); assert.match(a.out, /^A' guide-beta → /m);
   assert.deepEqual(json(`${OUT}/guides/beta/_meta.json`).variance, { verdict: 'differs', file: VAR, at: '2026-10-01T00:00:00Z', archetype: 'guides', missing: ['hero'], extra: ['card'], deltas: 2, deltaKinds: ['extra(card): card extra', 'missing(hero): hero absent'], accepted: 'the hero is a page-level promo' });
@@ -693,6 +694,7 @@ check('more than half of the current clones differ → strict variance refusal e
   const r = run(['render', 'guide-beta', '--accept-variance', 'looks fine', '--variance-dir', 'stardust/alt-variance']); assert.equal(r.status, 2);
   assert.match(r.err, /^refused guide-beta: strict variance — 2 of 3 current clone\(s\) of archetype guides differ in stardust\/alt-variance\/guides\.json, so the template does not hold for this group — re-type the template: sub-archetypes by locale family or composition \(state\.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica\/sibling-variance\.mjs\); the re-typing is recorded as a deviation \(migrate\.mjs decision <slug> --kind re-type …, or deviation\), never a mechanical clone; --accept-variance does not unlock a majority$/m);
   assert.ok(!/a recorded deviation/.test(r.err), 'a recorded deviation is never offered as a way to unlock the page');
+  assert.match(r.err, /^next: node stardust\/scripts\/migrate\/migrate\.mjs retype-plan guides --write$/m, 'the majority refusal points at retype-plan (the Refusal text itself is unchanged)');
   assert.equal(json(`${OUT}/guides/beta/_meta.json`).variance.accepted, 'the hero is a page-level promo', 'nothing written');
   const missingDir = run(['render', 'guide-beta', '--variance-dir', 'nope']); assert.equal(missingDir.status, 1); assert.match(missingDir.err, /^usage error: --variance-dir nope does not exist/);
 });
