@@ -291,6 +291,22 @@ sub-archetypes and records the re-type deviation in
 returns that plan in its hand-back — no prose note, no re-plan by hand. The main
 agent alone starts one unit per proposed group (fan-out discipline keeps
 `unit start`/spawn with the lead; handoff contract § Fan-out discipline).
+**Gate the siblings before `done` (#165).** A sibling clone is gated like any
+page: the step after the cluster renders and deploys its siblings runs
+`gate-all.mjs --only <its siblings> --eds-host <preview host> --skip-existing`
+at BOTH widths (add `--width 360`; `--skip-existing` so an already-gated page is
+not re-shot) on the preview URLs, then `update-coverage.mjs --gate
+stardust/replica/gates/all-<w>/` per width to ingest each table into coverage —
+gate-all writes none, so gating without ingesting proves nothing — BEFORE the
+unit is marked `done`; a failing sibling takes its fix round inside the unit
+(cap 3, stop at PASS — `reference/delivery-gates.md` § Iteration discipline).
+`progress.mjs unit done <unit>` REFUSES (exit 2) while any delivered sibling has
+no passing gate at both widths — the same predicate done-check's `unit_unproven`
+reads — naming each page, the widths it owes and BOTH commands (gate-all, then
+update-coverage --gate); the escape hatch is `unit done --unproven "<reason>"`,
+recorded for done-check. A recorded hands-off run delivered 18 siblings as clones
+never unit-gated and 7 pixel-failed only at the C-final roster gate (collapsing
+360 margins, utility-text variants).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each

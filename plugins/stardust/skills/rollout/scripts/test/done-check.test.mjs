@@ -330,6 +330,16 @@ check('unit_unproven: a unit page excluded since (coverage excluded[] by path, n
     ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], 'an excluded path never hides a row still in pages[]');
 });
 
+check('unit_unproven: a unit flipped with progress.mjs unit done --unproven "<reason>" carries the reason on its gap', () => {
+  const reason = 'preview host 500 during the gate window; re-gate next session';
+  const progress = { units: { ...PROGRESS.units, 'cluster-news': { ...PROGRESS.units['cluster-news'], unproven: reason } } };
+  const short = UNIT_PAGES.map(withGate('news-b', { atByWidth: { 1440: AT[1440] } }));
+  assert.deepEqual(units({ progress, pages: short }).gaps,
+    [`unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/b/ — declared unproven: ${reason}`]);
+  // the reason shows only beside a real gap: once every page is proven the unit is proven, reason or not
+  assert.deepEqual(units({ progress }).gaps, []);
+});
+
 const LEGACY_SKIP = (n) => `unit_unproven: ${n} row(s) without per-width verdicts — proven on the last width's pass`;
 const withGate = (slug, gate) => (p) => (p.slug === slug ? { ...p, delivery: { ...p.delivery, gate: { ...p.delivery.gate, ...gate } } } : p);
 const legacy = (p) => { const gate = { ...p.delivery.gate }; delete gate.passByWidth; return { ...p, delivery: { ...p.delivery, gate } }; };

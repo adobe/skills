@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-unit-proof) — unit done proves its delivered pages before it flips (#165)
+
+A recorded hands-off run delivered all 21 pages about 2.7 h sooner than the day before, but the 18
+sibling pages shipped as clones of their archetypes were never gated at unit level — done-check later
+read `unit_unproven` for 2 units, and the C-final roster gate found 7 of them failing on pixel at 360
+(collapsing margins summed, a section style hiding utility-text variants, one mis-resolved link), a
+two-hour gap-closure tail the previous run never had. The docs already required a sibling to carry a
+passing gate before `done`; nothing enforced it, so a fast parallel clone-and-deploy outran the gates.
+This wave makes `unit done` prove it, with the SAME predicate the final done-check uses:
+
+- **`progress.mjs unit done <unit>`** (a rollout delivery unit — kind not `foundation`/`final`) now
+  refuses (exit 2, nothing written) when any DELIVERED page the unit's `.paths` lists (a
+  `deployed`/`verified` coverage row) has no passing published-origin gate at BOTH widths. The proof
+  predicate is the new shared `lib.gateProof`, the one done-check's `unit_unproven` reads — the two
+  never disagree. The refusal names each page, the widths it owes and, per width, BOTH remedy commands:
+  `gate-all.mjs --only … --skip-existing` AND the `update-coverage.mjs --gate stardust/replica/gates/all-<w>/`
+  that ingests its table — gate-all writes no coverage, so gating without ingesting proves nothing.
+- **Escape hatch, no silent bypass:** `unit done --unproven "<reason>"` records the reason on the unit
+  entry and skips the gate; done-check then carries it as `unit_unproven: … declared unproven:
+  <reason>`.
+- **`done-check.mjs`** `unit_unproven` now reads the shared `lib.gateProof` predicate and surfaces a
+  unit's recorded `--unproven` reason on its gap line.
+- **`rollout/SKILL.md`** cluster flow and the handoff contract's unit row now state the sibling gate
+  runs at both widths with `--skip-existing` before `done`, a failing sibling fixes inside the unit
+  (cap 3 rounds), and `unit done` refuses without that evidence.
+
 ## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
 
 On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the

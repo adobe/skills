@@ -4,7 +4,7 @@
 //
 //   node stardust/scripts/stardust/progress.mjs unit <start|done|failed> <name> [--ledger rollout|migrate|replica]
 //        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
-//        [--set <key>=<value>]… [--again] [--json]
+//        [--set <key>=<value>]… [--unproven "<reason>"] [--again] [--json]
 //   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
 //   node stardust/scripts/stardust/progress.mjs show --waves [--file …] [--json]      (rollout: what can start now)
 //   node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
@@ -31,6 +31,16 @@
 // dotted key inside the entry (value parsed as JSON when it parses, else kept as a string).
 // Shape refusals write nothing: a file that is not JSON or not an object, a map or entry that is not an
 // object, an unknown status, a replica file holding one archetype's bare record at the top level.
+// Delivery gate (rollout `unit done` of a delivery unit — kind not foundation/final): before the flip, every
+// DELIVERED page of the unit (a coverage row matched to the unit's .paths by pathKey whose delivery.status is
+// deployed|verified — unit-commit's "delivered") must have a passing published-origin gate at BOTH widths. The
+// proof predicate is lib.gateProof, the SAME done-check's unit_unproven reads, so a page this refuses is exactly
+// a page done-check would name. A page short of it → exit 2, nothing written; the refusal names each page and,
+// per width, the gate-all.mjs --only command AND the update-coverage.mjs --gate line that ingests its table into
+// delivery.gate — gate-all writes NO coverage, so gating without ingesting proves nothing. --unproven "<reason>"
+// records the reason on the entry and skips the gate (done-check then carries it as `unit_unproven: … declared
+// unproven: <reason>`); no silent bypass. The gate is skipped when there is no rollout coverage (silent) or no
+// units/<unit>.paths (one stderr note — done-check still reads unit_unproven for a done unit with no .paths).
 //
 // wait: returns as soon as a unit that was running when the wait started is done or failed (--unit narrows the
 // set), re-reading the ledger every 5 s without the lock (writers rename atomically), for at most --max seconds
@@ -54,6 +64,9 @@ const SELF = fileURLToPath(import.meta.url);
 // deploy's lock, in both layouts: plugin tree (skills/stardust/scripts → ../../deploy/scripts) and project
 // copy (stardust/scripts/stardust → ../deploy). Imported after --help and argument checks.
 const FILE_LOCK = [join(HERE, '..', '..', 'deploy', 'scripts', 'file-lock.mjs'), join(HERE, '..', 'deploy', 'file-lock.mjs')];
+// deploy's eds-path pathKey and rollout's gateProof, in both layouts — the `unit done` delivery-gate deps.
+const EDS_PATH = [join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')];
+const ROLLOUT_LIB = [join(HERE, '..', '..', 'rollout', 'scripts', 'lib.mjs'), join(HERE, '..', 'rollout', 'lib.mjs')];
 
 export const LEDGERS = {
   rollout: { file: 'stardust/rollout/progress.json', map: 'units', kinds: ['foundation', 'archetype', 'cluster', 'final'] },
@@ -68,7 +81,7 @@ export const UNSAFE_KEYS = ['__proto__', 'constructor', 'prototype'];
 export const FIELD_ORDER = ['status', 'kind', 'templates', 'pages', 'blocks', 'gates', 'startedAt', 'endedAt', 'verdict'];
 const COMMAND_FIELDS = ['status', 'startedAt', 'endedAt'];
 const FLAG_FIELDS = { kind: '--kind', templates: '--templates', pages: '--pages', blocks: '--blocks', verdict: '--verdict' };
-const UNIT_ONLY = ['--kind', '--pages', '--blocks', '--templates', '--verdict', '--set', '--again'];
+const UNIT_ONLY = ['--kind', '--pages', '--blocks', '--templates', '--verdict', '--set', '--unproven', '--again'];
 const WAIT_ONLY = ['--unit', '--max'];
 // wait: the default bound, the notice above which a longer bound is pointless, the hard ceiling, the poll period.
 export const DEFAULT_WAIT_SEC = 300;
@@ -80,6 +93,11 @@ export const PAUSED_EXIT = 76;
 // The runner appends one line here (from the cwd, the project root) when a background agent finishes; never written here.
 export const WAKE_FILE = 'stardust/.labs/wake';
 export const WAKE_EXIT = 77;
+// `unit done` delivery gate: the widths a delivered page is proven at (lib.gateProof's default), the coverage
+// statuses that make a row DELIVERED (unit-commit's set), and the kinds the gate (like done-check) does not judge.
+export const GATE_WIDTHS = ['1440', '360'];
+export const DELIVERED_STATUSES = new Set(['deployed', 'verified']);
+export const NOT_GATED_KINDS = new Set(['foundation', 'final']);
 // show --waves: a cluster's pages per unit (more siblings → sub-units), and the can-start entry for C0's archetype.
 export const CLUSTER_MAX_PAGES = 16;
 export const C0_ARCHETYPE = "C0's archetype (archetype-<shell template>)";
@@ -87,7 +105,7 @@ export const C0_ARCHETYPE = "C0's archetype (archetype-<shell template>)";
 const HELP = `Usage:
   node stardust/scripts/stardust/progress.mjs unit <start|done|failed> <name> [--ledger rollout|migrate|replica]
        [--file <path>] [--kind <k>] [--pages <n>] [--blocks <n>] [--templates a,b] [--verdict "<line>"]
-       [--set <key>=<value>]… [--again] [--json]
+       [--set <key>=<value>]… [--unproven "<reason>"] [--again] [--json]
   node stardust/scripts/stardust/progress.mjs show [<name>] [--ledger …] [--file …] [--json]
   node stardust/scripts/stardust/progress.mjs show --waves [--file …] [--json]
   node stardust/scripts/stardust/progress.mjs wait [--ledger …] [--file …] [--unit <name>]… [--max <seconds>] [--json]
@@ -106,6 +124,14 @@ unit start:   absent / pending / failed → running, startedAt = now (UTC, secon
 unit done|failed: the unit must exist (else exit 2 "no unit <name> in <file> — progress.mjs unit start
               <name> first"); status set, endedAt = now — kept when the entry already has that status:
               a re-record completes the fields (done → done keeps endedAt; failed → done sets it anew)
+Delivery gate (rollout unit done, kind not foundation/final): every DELIVERED page of the unit (a
+  coverage row matched to the unit's .paths by pathKey, delivery.status deployed|verified) must have a
+  passing published-origin gate at both ${GATE_WIDTHS.join(' and ')} — the same predicate (gateProof)
+  done-check's unit_unproven reads. A page short → exit 2, nothing written; the refusal names each page
+  and, per width, the gate-all.mjs --only … --skip-existing command AND the update-coverage.mjs --gate
+  line that ingests its table (gate-all writes no coverage). --unproven "<reason>" records the reason on
+  the entry and skips the gate (done-check carries it as unit_unproven); no silent bypass. Skipped when
+  there is no rollout coverage (silent) or no units/<unit>.paths (one stderr note).
 Fields: --kind (the ledger's vocabulary), --pages / --blocks (integer ≥ 0), --templates a,b (an array),
   --verdict (one line; line breaks folded to spaces). --set <key>=<value> (repeatable): a dotted key
   inside the entry (gates.1440={"archetype":1.3}); the value is JSON when it parses, else the string.
@@ -214,7 +240,7 @@ const seconds = (flag, v) => {
 };
 
 export function parseArgs(argv) {
-  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false, units: [], max: null, waves: false };
+  const o = { cmd: null, event: null, name: null, ledger: 'rollout', file: null, fields: {}, sets: [], again: false, json: false, units: [], max: null, waves: false, unproven: null };
   const pos = [];
   const seen = new Set();
   const given = [];
@@ -240,6 +266,10 @@ export function parseArgs(argv) {
       once();
       o.fields.verdict = oneLine(need());
       if (!o.fields.verdict) throw new UsageError('--verdict needs a non-empty line');
+    } else if (a === '--unproven') {
+      once();
+      o.unproven = oneLine(need());
+      if (!o.unproven) throw new UsageError('--unproven needs a non-empty reason');
     } else if (a === '--set') { given.push(a); o.sets.push(parseSet(need())); }
     else if (a === '--unit') { given.push(a); o.units.push(need()); }
     else if (a === '--max') { once(); o.max = seconds(a, need()); }
@@ -286,6 +316,8 @@ export function parseArgs(argv) {
   if (waitOnly) throw new UsageError(`${waitOnly} applies to wait only`);
   if (o.waves) throw new UsageError('--waves applies to show only');
   if (o.again && event !== 'start') throw new UsageError('--again applies to unit start only');
+  if (o.unproven != null && event !== 'done') throw new UsageError('--unproven applies to unit done only');
+  if (o.unproven != null && o.ledger !== 'rollout') throw new UsageError('--unproven applies to the rollout ledger only (its delivery gate runs there)');
   const { kinds } = LEDGERS[o.ledger];
   if (hasOwn(o.fields, 'kind')) {
     if (!kinds) throw new UsageError('replica records take no --kind — use --set pageType=<type>');
@@ -339,8 +371,65 @@ export function applyUnit(doc, o, now) {
   }
   for (const [k, v] of Object.entries(o.fields || {})) entry[k] = v;
   for (const { path, value } of o.sets || []) setPath(entry, path, value);
+  // --unproven records the escape-hatch reason on the entry so done-check's unit_unproven carries it
+  if (typeof o.unproven === 'string' && o.unproven) entry.unproven = o.unproven;
   map[o.name] = orderEntry(entry);
   return { entry: map[o.name], resumed };
+}
+
+// ---- unit done delivery gate (pure helpers exported for tests) ---------------------------------
+// The path lines of a units/<unit>.paths file: trimmed, blank and `#` lines skipped (unit-commit's reader).
+export const pathLines = (text) => String(text || '').split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+const isDeliveredRow = (row) => DELIVERED_STATUSES.has((row && row.delivery && row.delivery.status) || 'pending');
+// gate-all's `--only` id for a page — its slug when it has one, else its clean path.
+const gateId = (p) => p.slug || p.path;
+
+/**
+ * The unit's DELIVERED coverage pages that are not gate-proven at every width — the hard pre-check `unit done`
+ * enforces on a rollout delivery unit, with the SAME predicate (`gateProof`) done-check's unit_unproven reads,
+ * so the two never disagree. `lines` = the unit's .paths lines; `rows` = coverage pages[]; a row counts when its
+ * pathKey matches a .paths line and its delivery.status is deployed|verified (unit-commit's "delivered").
+ * → [{ slug, path, missing[] }] per unproven page, sorted by path; `missing` names the widths it still owes.
+ * Pure: `pathKey` and `gateProof` injected, a pending/content-pending row needs no gate.
+ */
+export function unprovenDelivered({ lines = [], rows = [], widths = GATE_WIDTHS, pathKey, gateProof }) {
+  const keys = new Set(lines.map((l) => pathKey(l)));
+  const out = [];
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || typeof row.path !== 'string' || !keys.has(pathKey(row.path))) continue;
+    if (!isDeliveredRow(row)) continue;
+    const { proven, missing } = gateProof(row, widths);
+    if (!proven) out.push({ slug: typeof row.slug === 'string' && row.slug ? row.slug : null, path: row.path, missing });
+  }
+  return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+}
+
+// gate-all writes NO coverage — an --only run writes stardust/replica/gates/all-<w>/runs/<ts>-<slug>.json;
+// update-coverage.mjs --gate <that dir> ingests it into delivery.gate, which is what gateProof reads. So the
+// remedy is TWO steps per width: gate, then ingest. (`--gate <dir>` reads summary.json then runs/*.json.)
+const gateCmd = (ids, w, first) => `node stardust/scripts/replica/gate-all.mjs --only ${ids.join(',')}${w === first ? '' : ` --width ${w}`} --eds-host <preview host> --skip-existing`;
+const ingestCmd = (w) => `node stardust/scripts/rollout/update-coverage.mjs --gate stardust/replica/gates/all-${w}/`;
+
+/**
+ * The refusal for `unit done` when a rollout delivery unit has unproven delivered pages → { lines, summary }:
+ * `lines` (printed to stderr) name each page and the widths it owes, then PER WIDTH the two-step remedy — the
+ * roster gate command (`gate-all.mjs --only <slugs> [--width <w>] --skip-existing`, the flags the cluster's own
+ * gate uses) AND the `update-coverage.mjs --gate <all-<w> dir>` that ingests the table gateProof reads (gate-all
+ * writes no coverage). `summary` is the one-line refusal (both steps, the escape hatch named). Pure.
+ */
+export function unprovenRefusal(unit, unproven, { widths = GATE_WIDTHS } = {}) {
+  const first = String(widths[0]);
+  const lines = [`unit-done ${unit}: ${unproven.length} delivered page(s) have no passing published-origin gate at ${widths.join(' and ')} — unit done refuses (done-check would read unit_unproven). gate-all writes no coverage, so per width gate the pages AND ingest the table it writes:`];
+  for (const u of unproven) lines.push(`  ${gateId(u)} (${u.path}) — missing ${u.missing.join(', ')}`);
+  for (const w of widths.map(String)) {
+    const ids = unproven.filter((u) => u.missing.includes(w)).map(gateId);
+    if (!ids.length) continue;
+    lines.push(`  ${gateCmd(ids, w, first)}`);
+    lines.push(`  ${ingestCmd(w)}`);
+  }
+  const named = unproven.map(gateId).slice(0, 5).join(', ');
+  const summary = `unit ${unit}: ${unproven.length} delivered page(s) without a passing gate at ${widths.join(' and ')} (${named}${unproven.length > 5 ? ', …' : ''}) — run the gate-all command(s) AND the update-coverage --gate line shown on stderr, then re-run unit done, or pass --unproven "<reason>" to record the gap (done-check carries it as unit_unproven); nothing written`;
+  return { lines, summary };
 }
 
 const text = (v) => oneLine(typeof v === 'object' && v !== null ? JSON.stringify(v) : String(v));
@@ -661,6 +750,42 @@ async function loadLock() {
   return lib;
 }
 
+/** The `unit done` delivery-gate deps — deploy's pathKey and rollout's gateProof, in both layouts — or null
+ * when either is absent (the gate is skipped; done-check stays the authoritative unit_unproven check). */
+async function loadGateDeps() {
+  const edsFile = EDS_PATH.find((p) => existsSync(p));
+  const libFile = ROLLOUT_LIB.find((p) => existsSync(p));
+  if (!edsFile || !libFile) return null;
+  try {
+    const { pathKey } = await import(pathToFileURL(edsFile).href);
+    const { gateProof } = await import(pathToFileURL(libFile).href);
+    return typeof pathKey === 'function' && typeof gateProof === 'function' ? { pathKey, gateProof } : null;
+  } catch { return null; }
+}
+
+/**
+ * The `unit done` delivery gate for a rollout delivery unit: read the unit's .paths and the rollout coverage
+ * (both beside the ledger `file`) and return the unproven DELIVERED pages — []. when there is nothing to check
+ * (no coverage, no .paths, an unreadable/short coverage: done-check still owns those gaps, never silently here).
+ */
+function unitDoneGate(unit, file, deps) {
+  const dir = dirname(file);
+  let rows = null;
+  try {
+    const doc = JSON.parse(readFileSync(join(dir, 'coverage', 'pages.json'), 'utf8'));
+    rows = Array.isArray(doc) ? doc : doc && Array.isArray(doc.pages) ? doc.pages : null;
+  } catch { return []; }
+  if (!Array.isArray(rows)) return [];
+  const pathsFile = join(dir, 'units', `${unit}.paths`);
+  let pathsText;
+  // coverage present but no .paths: the gate cannot map the unit's pages — skip, but say so (done-check still
+  // reads unit_unproven for a done unit with no .paths). A fully absent coverage above stays silent.
+  try { pathsText = readFileSync(pathsFile, 'utf8'); } catch { console.error(`progress: unit ${unit}: delivery gate skipped — no ${pathsFile} (done-check will read unit_unproven)`); return []; }
+  const lines = pathLines(pathsText);
+  if (!lines.length) return [];
+  return unprovenDelivered({ lines, rows, pathKey: deps.pathKey, gateProof: deps.gateProof });
+}
+
 // ---- main --------------------------------------------------------------------------------------
 /** An optional JSON input of show --waves: → the parsed object, or null when absent; unreadable → one stderr note, null. */
 function readOptional(path, what) {
@@ -719,9 +844,25 @@ export async function main(argv) {
   // done / failed need an entry: an absent ledger cannot hold one, so refuse before the lock creates a directory.
   if (o.event !== 'start' && !existsSync(file)) throw new UsageError(`no unit ${o.name} in ${file} — progress.mjs unit start ${o.name} first`);
   const { withLock, writeJSONAtomic } = await loadLock();
+  // A rollout delivery unit (kind not foundation/final) flipped to `done` is gated: every DELIVERED page must
+  // have a passing published-origin gate at both widths (done-check's unit_unproven predicate). --unproven skips
+  // it (the reason is recorded, below); deps absent → no gate (done-check still catches it).
+  const gateDeps = o.cmd === 'unit' && o.event === 'done' && o.ledger === 'rollout' && !o.unproven ? await loadGateDeps() : null;
   const result = withLock(file, () => {
     // re-read INSIDE the lock: another unit's write since this process started must survive
     const doc = existsSync(file) ? readDoc(file) : { [L.map]: {} };
+    if (gateDeps) {
+      const entry = isMap(doc.units) && isMap(doc.units[o.name]) ? doc.units[o.name] : {};
+      const kind = hasOwn(o.fields, 'kind') ? o.fields.kind : entry.kind;
+      if (!NOT_GATED_KINDS.has(kind)) {
+        const unproven = unitDoneGate(o.name, file, gateDeps);
+        if (unproven.length) {
+          const { lines, summary } = unprovenRefusal(o.name, unproven);
+          for (const l of lines) console.error(l);
+          throw new UsageError(summary);
+        }
+      }
+    }
     const r = applyUnit(doc, { ...o, file }, nowIso());
     writeJSONAtomic(file, doc);
     return r;
