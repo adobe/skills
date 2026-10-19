@@ -666,7 +666,7 @@ await check('--help: wait\'s default --max 300 or --until, the five-minute rule,
   assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=300 \| --until <ISO>\]/);
   assert.ok(h.stdout.includes('wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait'), 'the rule, verbatim');
   assert.match(h.stdout, /timeout longer than the wait/);
-  assert.match(h.stdout, /76 \(retained\) the former soft-pause code — `status` still shows the pause line at exit 0/);
+  assert.match(h.stdout, /76 no longer emitted \(the former soft-pause code\) — `status` still shows the pause line at exit 0/);
   assert.ok(h.stdout.includes("77 (wait) the runner's wake file grew — a background agent finished: act on it, then wait again"), 'exit 77');
   assert.match(h.stdout, /78 \(wait\) the runner asked to stop \(the pause file is present\) — let jobs finish, ask \/boundary, write the note, end/);
 });

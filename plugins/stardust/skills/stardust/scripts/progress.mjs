@@ -52,8 +52,8 @@
 // waited until the current sleep ended before the lead saw it. With a one-hour cache a five-minute poll costs
 // about three cents, so a longer wait buys nothing and costs up to twenty minutes per unit.
 // Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
-// file-lock.mjs missing, nothing to wait for · 75 wait: none ended within --max · 76 (retained) the former soft-pause
-// code · 77 wait: the runner's wake file grew (a background agent finished) · 78 wait: the runner asked to stop (the
+// file-lock.mjs missing, nothing to wait for · 75 wait: none ended within --max · 76 no longer emitted (the former
+// soft-pause code) · 77 wait: the runner's wake file grew (a background agent finished) · 78 wait: the runner asked to stop (the
 // pause file is present) — end the session now.
 import { existsSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -192,7 +192,7 @@ wait: returns as soon as a watched unit ends — the lead's wait for its unit su
   --json: one object {"ledger","ended":{<name>:<entry>},"running":[…],"stop":null|{path,stopAt,reason},"wake":null|"<line>"}
   instead.
 Exit codes: 0 written / printed / a watched unit ended · 1 I/O error · 2 usage, refusal, lock timeout,
-  file-lock.mjs missing, nothing to wait for · ${STILL_RUNNING_EXIT} wait: none ended within --max · ${PAUSED_EXIT} (retained) the former soft-pause code
+  file-lock.mjs missing, nothing to wait for · ${STILL_RUNNING_EXIT} wait: none ended within --max · ${PAUSED_EXIT} no longer emitted (the former soft-pause code)
   · ${WAKE_EXIT} wait: the runner's wake file grew (a background agent finished) · ${STOP_EXIT} wait: the runner asked to stop (the pause file is present) — end the session now.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }

@@ -363,7 +363,7 @@ check('--help: exit 0, usage on stdout, nothing written (also before a bad flag)
   assert.match(h.out, /progress\.mjs show --waves \[--file …\] \[--json\]/);
   assert.match(h.out, /^show --waves /m);
   assert.match(h.out, /^wait: /m);
-  assert.match(h.out, /75 wait: none ended within --max · 76 \(retained\) the former soft-pause code\n  · 77 wait: the runner's wake file grew \(a background agent finished\) · 78 wait: the runner asked to stop \(the pause file is present\) — end the session now/);
+  assert.match(h.out, /75 wait: none ended within --max · 76 no longer emitted \(the former soft-pause code\)\n  · 77 wait: the runner's wake file grew \(a background agent finished\) · 78 wait: the runner asked to stop \(the pause file is present\) — end the session now/);
   assert.equal(runIn(d, 'unit', 'start', 'c1', '--frob', '-h').code, 0);
   assert.equal(runIn(d, 'wait', '--max', '-1', '--help').code, 0);
   assert.deepEqual(readdirSync(d), []);

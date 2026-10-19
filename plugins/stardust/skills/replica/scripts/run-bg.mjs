@@ -418,7 +418,7 @@ const HELP = `Usage:
   Why: in a recorded hands-off run a 26-second measure queued 615 s behind a static file server, and a bare wait blocked
   600 s on the unit's own servers.
   Exit: 0 ok · ${STILL_RUNNING_EXIT} (wait) a selected job still queued/running — run wait again as the next step
-  · ${PAUSED_EXIT} (retained) the former soft-pause code — \`status\` still shows the pause line at exit 0
+  · ${PAUSED_EXIT} no longer emitted (the former soft-pause code) — \`status\` still shows the pause line at exit 0
   · ${WAKE_EXIT} (wait) the runner's wake file grew — a background agent finished: act on it, then wait again
   · ${STOP_EXIT} (wait) the runner asked to stop (the pause file is present) — let jobs finish, ask /boundary, write the note, end
   · 2 (start) the name is still queued/running, (log) no log, (stop) no such job — nothing signalled · 125 usage
