@@ -291,9 +291,10 @@ otherwise):
   `skills/stardust/scripts/progress.mjs wait`, which returns the moment a
   watched unit of the progress ledger (every `running` one, or `--unit
   <name>`) is `done` or `failed`. Exit 75 = still going: wait again as the
-  NEXT call, never in a shell loop; exit 76 = the pause file below exists;
-  exit 77 = the runner's wake line (`stardust/.labs/wake` grew: a
-  background agent finished). The numbers are not taste: the prompt cache
+  NEXT call, never in a shell loop; exit 77 = the runner's wake line
+  (`stardust/.labs/wake` grew: a background agent finished); exit 78 =
+  the runner asked to stop (the pause file below appeared) — end the
+  session. The numbers are not taste: the prompt cache
   expires after 5 idle minutes, and at the 500–900k-token contexts a
   migration reaches every expiry re-writes the whole prefix at write price
   (12× a cached read). Field data, 48 sessions: a foreground wait of ≤ 4
@@ -310,14 +311,15 @@ otherwise):
   `promptCacheTtl: "1h"` in settings.json stretches the window to an hour
   at 1.6× write price — an owner setting, worth it for any multi-hour
   session.)
-- **Pause on request.** A supervising process may request a pause by
-  creating the file named by the environment variable `STARDUST_PAUSE_FILE`
-  (JSON `{at, reason}`); when the variable is set, every fan-out subagent
-  checks the file at each batch or iteration boundary and, if present,
-  finishes the current iteration, writes its report and returns; the main
-  agent then records the unit (sub-unit) and asks its boundary before
-  starting anything new. Unset variable = no check. With several
-  subagents in flight, the main agent asks once the last has returned.
+- **Stop on request.** The runner writes the file named by the
+  environment variable `STARDUST_PAUSE_FILE` (JSON `{stopRequested,
+  stopAt, reason}`) on every `stop` reply; its presence is the signal.
+  When the variable is set, every fan-out subagent checks the file at
+  each batch or iteration boundary and, if present, finishes the current
+  iteration, writes its report and returns. The lead stops launching,
+  lets running units finish on their own (they survive the session),
+  asks /boundary once so the runner checkpoints, writes the two-line
+  note and ends. Unset variable = no check.
   The file belongs to the supervising process — the run never writes or
   deletes it; asking the boundary lets that process end or continue the
   session. Where C-deliver applies it:
