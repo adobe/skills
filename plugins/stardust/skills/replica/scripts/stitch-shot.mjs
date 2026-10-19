@@ -246,7 +246,8 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, rmSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync, rmSync } from 'fs';
+import { createHash } from 'node:crypto';
 import { basename, dirname, extname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -305,6 +306,13 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
                     nAtCapture = the match count right before the capture), hideMiss ({ sels, candidates } when a
                     selector matched nothing at both counts — candidates = the in-flow blocks above the header,
                     { tag, id, classes, top, height, selector }; null when none), height, overflow
+  --freeze-baseline capture one frozen origin baseline into <out.png>'s dir (opt-in; default OFF): writes
+                    baseline.png (the capture, atomic) + baseline.json (provenance: capturedAt, url, width,
+                    height, conditions, fontsFailed, contentHash) — refuses if a baseline exists (pass
+                    --force) or the capture's fonts failed; reuses --settle / consent / --inventory above
+  --check-baseline  capture a fresh shot and print its contentHash / Δheight vs the frozen baseline in
+                    <out.png>'s dir — no verdict (the drift verdict is a later wave)
+  --force           re-freeze over an existing baseline (with --freeze-baseline)
   --help            this text
 
 Prints \`browser: <build>, client hints: <hints>\` once the page exists: the full Chromium build when installed, else the
@@ -370,7 +378,7 @@ export function parseArgs(argv, nav = {}) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], pin: [], allowDialog: [], slug: null, presence: null, headed: false, hints: null, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, hide: [], pin: [], allowDialog: [], slug: null, presence: null, headed: false, hints: null, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: null, json: null, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -402,6 +410,9 @@ export function parseArgs(argv, nav = {}) {
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
     else if (a === '--inventory') { opts.inventory = rest[i += 1]; }
+    else if (a === '--freeze-baseline') { opts.freezeBaseline = true; }
+    else if (a === '--check-baseline') { opts.checkBaseline = true; }
+    else if (a === '--force') { opts.force = true; }
     else if (a === '--json') {
       const v = rest[i += 1];
       if (v === undefined || v === '' || v.startsWith('--')) { console.error(`--json needs a file path\n\n${HELP}`); process.exit(1); }
@@ -486,6 +497,104 @@ const overflowOf = ({ scrollWidth, innerWidth, clientWidth }) => ({ scrollWidth,
 export function overflowLine(root) {
   const { scrollWidth, viewport, delta } = overflowOf(root);
   return `overflow: scrollWidth=${scrollWidth} viewport=${viewport} delta=${delta}`;
+}
+
+// ── Origin baseline (opt-in, default OFF) ────────────────────────────────────────────────────────
+// --freeze-baseline / --check-baseline freeze one provenance-stamped origin capture per page × width
+// into the gate dir, so a gate round can compare against it instead of a fresh live shot — a moving
+// live origin (personalisation, an intermittent live font-load failure, a blank-top capture) then no
+// longer makes the pixel gate non-deterministic. The capture itself is the existing stitch flow in
+// main(); only the pure freeze / check / compare logic lives here (no browser — unit-tested with
+// fixtures). Without the flags stitch-shot behaves exactly as before.
+export const BASELINE_PNG = 'baseline.png';
+export const BASELINE_JSON = 'baseline.json';
+export const BASELINE_SCHEMA = 1;
+// Inventory fields that move between two captures of the same page (timestamps, the browser tier, the
+// capture url / side) — dropped before hashing so the content hash is stable across captures.
+const VOLATILE_INVENTORY_KEYS = new Set(['at', 'capturedAt', 'generatedAt', 'timestamp', 'tier', 'writtenBy', 'url', 'side']);
+
+// A value with object keys sorted and the volatile keys dropped at any depth — one stable string for
+// the same content whatever the key order or the capture time.
+export function canonicalInventory(value) {
+  if (Array.isArray(value)) return value.map(canonicalInventory);
+  if (value && typeof value === 'object') {
+    const out = {};
+    for (const k of Object.keys(value).sort()) if (!VOLATILE_INVENTORY_KEYS.has(k)) out[k] = canonicalInventory(value[k]);
+    return out;
+  }
+  return value;
+}
+
+// sha256 of a settled page's inventory (object or its JSON text), volatile fields dropped — the content
+// signal a baseline freezes and a check compares. null for a missing / unreadable / errored inventory
+// (an inventory failure never blocks the capture; the hash is then simply unknown).
+export function contentHash(inventory) {
+  let obj = inventory;
+  if (typeof inventory === 'string') { try { obj = JSON.parse(inventory); } catch { return null; } }
+  if (!obj || typeof obj !== 'object' || obj.error) return null;
+  return `sha256:${createHash('sha256').update(JSON.stringify(canonicalInventory(obj))).digest('hex')}`;
+}
+export function contentHashFromFile(file) {
+  if (!file || !existsSync(file)) return null;
+  try { return contentHash(readFileSync(file, 'utf8')); } catch { return null; }
+}
+
+// Both the PNG and the provenance must exist — a lone baseline.png (a refused freeze) is not a baseline.
+export function baselineExists(dir) {
+  return Boolean(dir) && existsSync(join(dir, BASELINE_PNG)) && existsSync(join(dir, BASELINE_JSON));
+}
+export function readBaselineProvenance(dir) {
+  try { return JSON.parse(readFileSync(join(dir, BASELINE_JSON), 'utf8')); } catch { return null; }
+}
+
+// The baseline.json provenance: capturedAt, the page identity (url, width), the deterministic conditions
+// it was captured under, the font-load outcome, the content hash and the captured height.
+export function baselineProvenance({ url, width, height, conditions = {}, fontsFailed, contentHash: hash, capturedAt = new Date().toISOString() }) {
+  return {
+    writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline',
+    schema: BASELINE_SCHEMA,
+    capturedAt,
+    url,
+    width,
+    height,
+    conditions: {
+      consent: Boolean(conditions.consent),
+      fonts: conditions.fonts ?? 'ready',
+      blockedCategories: Array.isArray(conditions.blockedCategories) ? conditions.blockedCategories : [],
+      settle: Boolean(conditions.settle),
+    },
+    fontsFailed: Array.isArray(fontsFailed) ? fontsFailed : [],
+    contentHash: hash ?? null,
+  };
+}
+
+// baseline.json written atomically (temp + rename), so a crash mid-write never leaves a half-written
+// provenance beside baseline.png. The PNG itself is written atomically by the capture in main().
+export function writeBaselineJsonAtomic(dir, provenance) {
+  mkdirSync(dir, { recursive: true });
+  const out = join(dir, BASELINE_JSON);
+  const tmp = `${out}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(provenance, null, 2)}\n`);
+  renameSync(tmp, out);
+  return out;
+}
+
+// --check-baseline deltas: a fresh shot's content hash and height against the frozen baseline. No
+// verdict — the drift verdict is a later wave; this only reports whether the origin moved.
+export function compareBaseline(baseline, fresh) {
+  const bh = typeof baseline?.height === 'number' ? baseline.height : null;
+  const fh = typeof fresh?.height === 'number' ? fresh.height : null;
+  const hashChanged = baseline?.contentHash == null || fresh?.contentHash == null
+    ? null
+    : baseline.contentHash !== fresh.contentHash;
+  return {
+    hashChanged,
+    baselineHeight: bh,
+    freshHeight: fh,
+    dHeight: bh != null && fh != null ? fh - bh : null,
+    baselineContentHash: baseline?.contentHash ?? null,
+    freshContentHash: fresh?.contentHash ?? null,
+  };
 }
 
 /** The families of declared faces that failed to load, as the --json record carries them: surrounding quotes
@@ -642,6 +751,17 @@ async function dialogHiders(page, names, hideSels) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  // --freeze-baseline / --check-baseline resolve the gate dir from <out.png>'s directory and reuse the
+  // existing capture flow below; only the pure freeze / check logic runs after it. A re-freeze over an
+  // existing baseline refuses without --force, before any capture.
+  const baselineDir = (opts.freezeBaseline || opts.checkBaseline) ? dirname(out) : null;
+  if (opts.freezeBaseline && baselineExists(baselineDir) && !opts.force) {
+    const prev = readBaselineProvenance(baselineDir);
+    console.error(`stitch-shot: a frozen baseline already exists in ${baselineDir} (captured ${prev?.capturedAt ?? 'unknown'}) — pass --force to re-freeze`);
+    process.exit(2);
+  }
+  // The content hash needs the settled page's inventory — default it into the gate dir when no --inventory.
+  if (baselineDir && !opts.inventory) opts.inventory = join(baselineDir, 'baseline-inventory.json');
   // Before anything can fail: a failed capture never leaves a stale sidecar beside an older PNG.
   const sidecar = captureSidecarPath(out);
   rmSync(sidecar, { force: true });
@@ -851,6 +971,14 @@ async function main() {
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
+    // --freeze-baseline refuses a capture whose fonts failed to load: a baseline in fallback type would
+    // bake the wrong wraps and heights into every future gate round (don't freeze a broken capture). No
+    // PNG is written — fix the capture, then re-freeze.
+    if (opts.freezeBaseline && failedFonts.length) {
+      console.error(`stitch-shot: not freezing a baseline — the capture's font load failed (${failedFonts.join(', ')}); fix the capture, then re-freeze`);
+      process.exitCode = 2;
+      return;
+    }
 
     // Hide misses (header): right before the capture, every --hide selector counted again (nAtCapture; a block injected
     // after the hide pass is hidden by the persistent rule and counted here). A selector that matched nothing at both
@@ -958,12 +1086,42 @@ async function main() {
       }
     }
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, PNG.sync.write(outPng));
+    const pngBuf = PNG.sync.write(outPng);
+    // --freeze-baseline writes baseline.png atomically (temp + rename): a crash mid-write never leaves a
+    // torn PNG a gate round would read as the origin. A normal capture keeps the plain write.
+    if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
+    else writeFileSync(out, pngBuf);
     writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, headerMorph, overflow: overflowOf(root), browserBuild, hints, denialCheck, dismissed: opts.noDismiss ? null : mergeDismissed(sweeps), at: new Date().toISOString() }, null, 2)}\n`);
     // --json: the capture record, only once the PNG is written (a failed capture leaves none).
     if (opts.json) {
       mkdirSync(dirname(opts.json), { recursive: true });
       writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, dismissed, overlayLeft, dialogLeft: dialogs.dialogLeft, ...(dialogs.allowed.length ? { dialogsAllowed: dialogs.allowed } : {}), ...(pinned.length ? { pinned } : {}), ...fonts, hidden: hides, hideMiss, height: totalH, overflow: overflowOf(root) }, null, 2)}\n`);
+    }
+    // --freeze-baseline: baseline.png is on disk (atomic, above); persist baseline.json (provenance,
+    // atomic temp + rename). --check-baseline: compare this fresh shot to the frozen baseline and print
+    // the content-hash / height deltas — no verdict (the drift verdict is a later wave).
+    if (opts.freezeBaseline || opts.checkBaseline) {
+      const freshHash = contentHashFromFile(opts.inventory);
+      if (opts.freezeBaseline) {
+        const prov = baselineProvenance({
+          url, width: opts.width, height: totalH,
+          conditions: { consent: !opts.noDismiss, fonts: fonts.fontCheck ? 'not-checked' : 'ready', blockedCategories: [], settle: Boolean(opts.settle) },
+          fontsFailed: Array.isArray(fonts.fontsFailed) ? fonts.fontsFailed : [], contentHash: freshHash,
+        });
+        writeBaselineJsonAtomic(baselineDir, prov);
+        console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px, contentHash ${freshHash || 'unknown'})`);
+      }
+      if (opts.checkBaseline) {
+        const base = readBaselineProvenance(baselineDir);
+        if (!base) {
+          console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);
+        } else {
+          const d = compareBaseline(base, { contentHash: freshHash, height: totalH });
+          const hashState = d.hashChanged === null ? 'unknown (an inventory is missing)' : d.hashChanged ? 'CHANGED' : 'unchanged';
+          const dh = d.dHeight === null ? 'unknown' : `${d.dHeight >= 0 ? '+' : ''}${d.dHeight}px`;
+          console.log(`check-baseline ${baselineDir}: contentHash ${hashState}, Δheight ${dh} (baseline ${d.baselineHeight ?? '?'} → fresh ${d.freshHeight ?? '?'})`);
+        }
+      }
     }
     console.log(overflowLine(root));
     // Last stdout line, no line after it: gate-all keeps the last two (overflow + stitched) in origin.json's log.
