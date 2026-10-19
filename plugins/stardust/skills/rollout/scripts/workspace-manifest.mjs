@@ -150,8 +150,9 @@ function contentTracked(project, contentRel) {
  *      rollout.json (a bare coverage dir, or a test).
  * In the image the skills run from a `stardust/scripts/…` copy with no plugin manifest above them, so the dir walk
  * alone returned null and a released-worktree recompute (which finds its own manifest) differed by exactly that field;
- * rollout.json sits beside the coverage and carries the version inventory resolved. The recorded string is returned
- * verbatim (0.0.0 included — the honest "unknown" inventory stamps when it too cannot resolve a manifest), else null.
+ * rollout.json sits beside the coverage and carries the version inventory resolved — from the plugin manifest, else
+ * the same STARDUST_VERSION env, else 0.0.0 — so (1) and (2) agree within a run. The recorded string is returned
+ * verbatim (0.0.0 included — the honest "unknown" inventory stamps when neither its manifest nor the env resolves), else null.
  */
 function stardustVersion(out) {
   const recorded = (readJSON(join(out, 'rollout.json'), {})._provenance || {}).stardustVersion;

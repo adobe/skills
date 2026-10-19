@@ -190,8 +190,14 @@ export function normaliseSkill(raw) {
   return `stardust:${name}`;
 }
 
+// The plugin manifest, else the STARDUST_VERSION env (set where a copied scripts tree has no
+// manifest), else null — the order rollout's inventory.mjs uses, so one run's stamps agree.
 export function pluginVersion() {
-  try { return JSON.parse(readFileSync(PLUGIN_MANIFEST, 'utf8')).version || null; } catch { return null; }
+  try {
+    const v = JSON.parse(readFileSync(PLUGIN_MANIFEST, 'utf8')).version;
+    if (v) return v;
+  } catch { /* no manifest above this copy */ }
+  return (process.env.STARDUST_VERSION || '').trim() || null;
 }
 
 export function readState(dir) {
