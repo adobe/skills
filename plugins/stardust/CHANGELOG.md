@@ -4,6 +4,39 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-block-usage) — blocks.json usage counted from the delivered documents; the variant explosion surfaced (#171)
+
+In a recorded hands-off run the export's `coverage/blocks.json` disagreed with the delivered content
+on 14 of its 22 rows: `instanceCount` / `usedByPages` were aggregated from the sidecars' planned
+`modules[]` (3 modules declared on a page that delivers 25) and hard-coded to 0 / `[]` on every row
+registered from `blocks/`, so 83 of the 112 delivered instances sat on rows reading 0 and a client
+could not rank blocks by real use. The same run delivered 90 block variants over 17 blocks, 75 of
+them used by exactly one instance — each a Tier-2 catalog block for the adopter — and nothing in the
+export said so.
+
+- **`blocks.mjs`** counts `usedByTemplates`, `usedByPages` and `instanceCount` for every module row
+  with an EDS block from the delivered documents — pages.json `delivered.blocks` records of kind
+  `block`, the same records `block-origin.mjs` maps, so the ledger and the mapping agree instance
+  for instance and `instanceCount` is the sum of `variants[].instances`. A block no document shows
+  reads 0, truthfully, whatever the sidecars planned; `blocks-dir` rows are counted like any other.
+  Chrome and default-content rows keep counting the pages whose sidecars declare them (a fragment or
+  default content leaves no block record). The blocks-directory discovery stays the row source.
+- **Variant explosion in blocks.json.** Each enriched row gains `variantsSummary {total, singleUse}`
+  beside `variants[]`, and the file a top-level `variantsSummary {total, singleUse, blocks}` (one
+  row per EDS name); the summary line reads `N variant(s) of M block(s), S single-use`. Both
+  optional in `rollout-blocks.schema.json`, whose `usedByPages` / `instanceCount` / `source`
+  descriptions now say what is counted.
+- **`workspace-manifest.mjs`** writes the same `variantsSummary` beside `templateGroups`, recomputed
+  from blocks.json's module rows through the shared `lib.variantsSummaryOf` (so the two never
+  disagree, and an older blocks.json without the field still yields it); the Coverage line names the
+  single-use count and `--json` carries `counts.singleUseVariants`. Derived at manifest time,
+  recomputed by `--rehash-only`, never a drift input — a fresh export stays `fresh`. Optional in the
+  manifest schema.
+- **`done-check.mjs`** prints `export_quality:single_use_variants:<n>` when n>0 — the same family
+  and rules as the other export_quality info lines (informational, hidden after handover).
+- Docs: the coverage contract's blocks.json and manifest tables and rollout/SKILL.md carry the
+  fields and what a high single-use count means for an adopter.
+
 ## 0.36.x (stardust/r17-stop-aware-wait) — the wait instruments stop on the runner's stop file (#169)
 
 In a recorded hands-off run three sessions were killed at the end of the runner's stop grace: the lead
