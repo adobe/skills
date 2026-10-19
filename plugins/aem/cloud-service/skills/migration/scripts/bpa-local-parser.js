@@ -56,6 +56,24 @@ const CONTENT_SUBTYPES = [
   'unsupported.runmode',
 ];
 
+// Every subtype this parser extracts, recorded in the collection's
+// `meta.parsedSubtypes`. A collection written by an older parser lacks newer
+// subtypes even when its CSV has them, so readers re-parse the CSV instead of
+// trusting such a collection (see bpa-findings-helper.js).
+const PARSED_SUBTYPES = [
+  'sling.commons.scheduler',
+  'unsupported.asset.api',
+  'javax.jcr.observation.EventListener',
+  'org.apache.sling.api.resource.observation.ResourceChangeListener',
+  'org.osgi.service.event.EventHandler',
+  'custom.guava.cache',
+  'java.io.inputstream',
+  ...CONTENT_SUBTYPES,
+];
+// What collections written before `meta.parsedSubtypes` existed can be trusted
+// for: every subtype above except those added since.
+const LEGACY_PARSED_SUBTYPES = PARSED_SUBTYPES.filter(subtype => subtype !== 'java.io.inputstream');
+
 /**
  * Parse command line arguments
  */
@@ -731,6 +749,7 @@ function createUnifiedCollection(bpaData, outputDir) {
       source: 'local-bpa-parser',
       totalFindings: totalFindings,
       subtypeCount: subtypeKeys.length,
+      parsedSubtypes: PARSED_SUBTYPES,
       // API → class → BPA bundles (java.io.inputstream only); lets the reader
       // emit one target per bundle so rows can be grouped per bundle downstream.
       ...(inputStreamBundles ? { inputStreamBundles } : {})
@@ -806,5 +825,7 @@ module.exports = {
   validateBpaFile,
   parseBpaFile,
   createUnifiedCollection,
-  extractFindings
+  extractFindings,
+  PARSED_SUBTYPES,
+  LEGACY_PARSED_SUBTYPES
 };

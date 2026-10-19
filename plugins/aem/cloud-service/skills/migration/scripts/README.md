@@ -188,7 +188,7 @@ DG,development.guideline,unsupported.asset.api,MAJOR,com.example.MyClass,Uses de
 
 ### Output: Unified Collection (`unified-collection.json`)
 
-Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display:
+Matches the cloud-adoption-service format with MongoDB-safe field names (dots → underscores). Includes metadata (timestamp, totalFindings) for display, and `parsedSubtypes`: every subtype the parser extracts. `bpa-findings-helper.js` uses it to rebuild, from the CSV, a collection written before a requested pattern was supported (collections without the field count as covering the subtypes parsers handled before it was added):
 
 ```json
 {
@@ -203,7 +203,8 @@ Matches the cloud-adoption-service format with MongoDB-safe field names (dots �
     "timestamp": "2026-03-18T06:16:37.755Z",
     "source": "local-bpa-parser",
     "totalFindings": 1,
-    "subtypeCount": 1
+    "subtypeCount": 1,
+    "parsedSubtypes": ["sling.commons.scheduler", "unsupported.asset.api", "…", "java.io.inputstream"]
   }
 }
 ```

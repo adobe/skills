@@ -81,10 +81,13 @@ const KNOWN_SIZE_SOURCES = new Set(['dam-binary', 'repo-binary', 'request-upload
 const NOT_OWNED_SOURCES = new Set(['request-body', 'byte-array', 'wrapper']);
 
 const BUFFER_CALL_RE = /\b(?:IOUtils|ByteStreams|StreamUtils|CharStreams|FileCopyUtils)\s*\.\s*(?:toByteArray|toString|readLines|copyToByteArray|copyToString|readFully|toCharArray)\s*\(|\.\s*readAllBytes\s*\(/;
-// A read limited at the stream level. Content-Length is client-supplied and is
-// -1 for chunked requests, so checking it does not bound the read.
-const READ_LIMIT_RE = /\bBoundedInputStream\b|\breadNBytes\s*\(|\bByteStreams\s*\.\s*limit\s*\(|\bsetSizeMax\s*\(|\bsetFileSizeMax\s*\(/;
-const KNOWN_SIZE_RE = /\.\s*getSize\s*\(\s*\)|\bFiles\s*\.\s*size\s*\(/;
+// Read limits. Only a limit applied to the stream being read counts: wrapping it
+// (in the same statement, or wrapping its variable), `readNBytes` on it, or the
+// upload parser's size limits for uploaded parts. Content-Length is
+// client-supplied and is -1 for chunked requests, so checking it does not bound
+// the read; neither does a limit on some other stream in the same method.
+const STATEMENT_LIMIT_RE = /\bBoundedInputStream\b|\breadNBytes\s*\(|\bByteStreams\s*\.\s*limit\s*\(/;
+const UPLOAD_LIMIT_RE = /\bsetSizeMax\s*\(|\bsetFileSizeMax\s*\(/;
 const RESPONSE_OUT_RE = /\b\w*(?:resp|response)\w*\s*\.\s*getOutputStream\s*\(/i;
 const REPO_WRITE_RE = /\bcreateAsset\w*\s*\(|\bcreateRendition\s*\(|\baddRendition\s*\(|\bcreateBinary\s*\(|\bputFile\s*\(|\bsetBinary\s*\(/;
 const UNTRUSTED_RE = /\.\s*getInputStream\s*\(|getParameter|getRequestParameter|getCookie|getHeader|Base64|\bdecode\s*\(/;
@@ -283,14 +286,19 @@ function declaredType(name, text) {
 
 // ── Java source index ───────────────────────────────────────────────────────
 
-/** Recursively collect `src/main/java/**.java` files, skipping build/vendor dirs and tests. */
+/**
+ * Recursively collect `src/main/java/**.java` files. Build and vendor directories
+ * are skipped only outside source roots: inside `src/main/java` a package may well
+ * be named `build`, `out`, `dist` or `target`.
+ */
 function collectJavaFiles(dir, acc = []) {
   let entries;
   try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  const inSourceRoot = `${dir}${path.sep}`.includes(MAIN_JAVA_SEGMENT);
   for (const e of entries) {
     const full = path.join(dir, e.name);
     if (e.isDirectory()) {
-      if (SKIP_DIRS.has(e.name)) continue;
+      if (!inSourceRoot && SKIP_DIRS.has(e.name)) continue;
       collectJavaFiles(full, acc);
     } else if (e.isFile() && e.name.endsWith('.java') && full.includes(MAIN_JAVA_SEGMENT)) {
       acc.push(full);
@@ -334,6 +342,37 @@ function receiverInfo(code, dotIndex) {
   return { name: tail ? tail[1] : '', chain };
 }
 
+/**
+ * The member-access expression a call is made on, whitespace removed: for the
+ * `.` before `getStream()` in `IOUtils.toByteArray(asset.getOriginal().getStream())`
+ * it is `asset.getOriginal()`. Walks back over identifiers, dots and argument
+ * lists; returns '' when the receiver isn't a plain chain.
+ */
+function receiverExpression(code, dotIndex) {
+  let i = dotIndex - 1;
+  const skipWs = () => { while (i >= 0 && /\s/.test(code[i])) i--; };
+  skipWs();
+  const end = i + 1;
+  let start = end;
+  for (;;) {
+    if (code[i] === ')') {
+      const open = matchingOpenParen(code, i);
+      if (open < 0) break;
+      i = open - 1;
+      skipWs();
+    }
+    const idEnd = i;
+    while (i >= 0 && /[\w$]/.test(code[i])) i--;
+    if (i === idEnd) break;
+    start = i + 1;
+    skipWs();
+    if (code[i] !== '.') break;
+    i--;
+    skipWs();
+  }
+  return code.slice(start, end).replace(/\s+/g, '');
+}
+
 function classifyGetInputStream({ name, chain }, hasArgs) {
   if (hasArgs) return 'archive'; // ZipFile/JarFile.getInputStream(entry)
   if (/getRequestParameter|RequestParameter|getPart\b|multipart|upload|attachment/i.test(chain) || /param|part|upload|file|attachment/i.test(name)) return 'request-upload';
@@ -351,6 +390,11 @@ function findAcquisitions(code, visible) {
   const hits = [];
   const isVisible = (fq, name) => !!fq || visible.has(name);
   const push = (index, api, kind, extra = {}) => hits.push({ index, api, kind, ...extra });
+  // What the stream reads from — a receiver (`bin`, `asset.getOriginal()`) or a
+  // constructor/factory argument (`file`) — so size checks and read limits can
+  // be matched to this stream rather than to anything else in the method.
+  const fromReceiver = (dotIndex) => ({ source: receiverExpression(code, dotIndex) });
+  const fromArgument = (openParenEnd) => ({ source: expressionAt(code, openParenEnd).trim() });
   let m;
 
   const newRe = new RegExp(`\\bnew\\s+(java\\.io\\.)?(${TYPE_ALT})\\s*\\(`, 'g');
@@ -361,7 +405,7 @@ function findAcquisitions(code, visible) {
       : (type === 'ByteArrayInputStream' || type === 'StringBufferInputStream') ? 'byte-array'
         : type === 'PipedInputStream' ? 'pipe'
           : 'wrapper';
-    push(m.index, type, kind, type === 'ObjectInputStream' ? { deser: true } : {});
+    push(m.index, type, kind, { ...fromArgument(m.index + m[0].length), ...(type === 'ObjectInputStream' ? { deser: true } : {}) });
   }
 
   // ObjectInputStream subclasses (DynamicObjectInputStream, ClassLoaderObjectInputStream,
@@ -377,19 +421,20 @@ function findAcquisitions(code, visible) {
     [/\bgetResourceAsStream\s*\(/g, 'getResourceAsStream', 'bundle-resource'],
   ];
   for (const [re, api, kind] of simple) {
-    while ((m = re.exec(code))) push(m.index, api, kind);
+    while ((m = re.exec(code))) push(m.index, api, kind, fromArgument(m.index + m[0].length));
   }
 
   const adaptTo = /\.\s*adaptTo\s*\(\s*(?:java\s*\.\s*io\s*\.\s*)?InputStream\s*\.\s*class\s*\)/g;
   while ((m = adaptTo.exec(code))) {
     const r = receiverInfo(code, m.index);
-    push(m.index, 'adaptTo(InputStream.class)', DAM_CHAIN_RE.test(r.chain) ? 'dam-binary' : 'repo-binary', { recv: r.name });
+    push(m.index, 'adaptTo(InputStream.class)', DAM_CHAIN_RE.test(r.chain) ? 'dam-binary' : 'repo-binary', { recv: r.name, ...fromReceiver(m.index) });
   }
 
   const getIs = /\.\s*getInputStream\s*\(/g;
   while ((m = getIs.exec(code))) {
     const next = code.slice(m.index + m[0].length).match(/^\s*(\S)/);
-    push(m.index, 'getInputStream()', classifyGetInputStream(receiverInfo(code, m.index), !!(next && next[1] !== ')')));
+    const r = receiverInfo(code, m.index);
+    push(m.index, 'getInputStream()', classifyGetInputStream(r, !!(next && next[1] !== ')')), fromReceiver(m.index));
   }
 
   const getStream = /\.\s*getStream\s*\(\s*\)/g;
@@ -399,6 +444,7 @@ function findAcquisitions(code, visible) {
       push(m.index, 'getStream()', DAM_CHAIN_RE.test(r.chain) ? 'dam-binary' : 'repo-binary', {
         recv: r.name,
         inlineBinary: /\bgetBinary\s*\(\s*\)\s*$/.test(r.chain),
+        ...fromReceiver(m.index),
       });
     }
   }
@@ -406,7 +452,7 @@ function findAcquisitions(code, visible) {
   const openStream = /\.\s*openStream\s*\(\s*\)/g;
   while ((m = openStream.exec(code))) {
     const r = receiverInfo(code, m.index);
-    push(m.index, 'openStream()', /getEntry|getResource|bundle|classLoader/i.test(r.chain) ? 'bundle-resource' : 'remote');
+    push(m.index, 'openStream()', /getEntry|getResource|bundle|classLoader/i.test(r.chain) ? 'bundle-resource' : 'remote', fromReceiver(m.index));
   }
 
   // Remote responses whose stream is often consumed inline, with no stream
@@ -414,10 +460,11 @@ function findAcquisitions(code, visible) {
   // an inline read doesn't own it.
   const entityContent = /\.\s*getContent\s*\(\s*\)/g;
   while ((m = entityContent.exec(code))) {
-    if (/entity|getEntity\s*\(/i.test(receiverInfo(code, m.index).chain)) push(m.index, 'HttpEntity.getContent()', 'remote', { owned: false });
+    const r = receiverInfo(code, m.index);
+    if (/entity|getEntity\s*\(/i.test(r.chain)) push(m.index, 'HttpEntity.getContent()', 'remote', { owned: false, ...fromReceiver(m.index) });
   }
   const errorStream = /\.\s*getErrorStream\s*\(\s*\)/g;
-  while ((m = errorStream.exec(code))) push(m.index, 'getErrorStream()', 'remote');
+  while ((m = errorStream.exec(code))) push(m.index, 'getErrorStream()', 'remote', fromReceiver(m.index));
 
   // Declared stream locals/fields with an initializer from an arbitrary call
   // (`InputStream in = service.load();`) — owned here, so closable. Indexed at
@@ -449,6 +496,43 @@ function expressionAt(code, start) {
     else if ((c === ';' || c === ',') && depth === 0) return code.slice(start, i);
   }
   return code.slice(start);
+}
+
+/**
+ * The read limit that applies to this stream, or null: a limit in the same
+ * statement (`new BoundedInputStream(req.getInputStream(), n)`,
+ * `in.readNBytes(n)`), a limit wrapping or reading its variable elsewhere in
+ * the method, or — for uploaded parts — the upload parser's size limits.
+ * Returns the kind of limit (`BoundedInputStream` or `limit`).
+ */
+function readLimitOf(hits, stmt, bound, scopeCode, source) {
+  if (STATEMENT_LIMIT_RE.test(stmt)) return /\bBoundedInputStream\b/.test(stmt) ? 'BoundedInputStream' : 'limit';
+  if (bound) {
+    const v = escapeRe(bound.name);
+    if (new RegExp(`\\bBoundedInputStream\\s*\\(\\s*${v}\\b|\\bsetInputStream\\s*\\(\\s*${v}\\b`).test(scopeCode)) return 'BoundedInputStream';
+    if (new RegExp(`\\bByteStreams\\s*\\.\\s*limit\\s*\\(\\s*${v}\\b|\\b${v}\\s*\\.\\s*readNBytes\\s*\\(|\\btoByteArray\\s*\\(\\s*${v}\\s*,`).test(scopeCode)) return 'limit';
+  }
+  if (source === 'request-upload' && UPLOAD_LIMIT_RE.test(scopeCode)) return 'limit';
+  return null;
+}
+
+/**
+ * True when the method checks the size of this stream's own source before
+ * reading: `<source>.getSize()` (a JCR Binary, rendition or uploaded part),
+ * `Files.size(<source>)`, or `<source>.length()` on a `File`. A size check on
+ * some other object doesn't count.
+ */
+function sizeKnownFor(hits, scopeCode, declText) {
+  const compact = s => s.replace(/\s+/g, '');
+  const body = compact(scopeCode);
+  return hits.some(h => {
+    if (!h.source) return false;
+    const src = compact(h.source);
+    if (!src) return false;
+    const s = escapeRe(src);
+    const isFile = /^[A-Za-z_$][\w$]*$/.test(src) && declaredType(src, declText) === 'File';
+    return new RegExp(`(?<![\\w$.])${s}\\.getSize\\(\\)|\\bFiles\\.size\\(${s}\\)${isFile ? `|(?<![\\w$.])${s}\\.length\\(\\)` : ''}`).test(body);
+  });
 }
 
 /** Identifier assigned by the statement prefix (`Type var =` / `var =`), else null. */
@@ -536,6 +620,39 @@ function closedLater(scopeCode, regions, scope, name, hops = 1) {
 }
 
 /**
+ * The statement segment holding `index`: from the previous `;`, `{` or `}` (or
+ * the try-with-resources header start) to the next `;` (or header end), narrowed
+ * to one declarator by top-level commas — commas outside parentheses, brackets
+ * and generic type arguments, which in a statement only separate declarators
+ * (`InputStream a = x(), b = y();`). Returns `{ start, end, stmtStart }`;
+ * `stmtStart` is where the whole statement begins.
+ */
+function declaratorSegment(code, index, region) {
+  let stmtStart = Math.max(code.lastIndexOf(';', index - 1), code.lastIndexOf('{', index - 1), code.lastIndexOf('}', index - 1));
+  if (region && region.open > stmtStart) stmtStart = region.open;
+  let stmtEnd = code.indexOf(';', index);
+  if (stmtEnd === -1) stmtEnd = code.length;
+  if (region && region.close < stmtEnd) stmtEnd = region.close;
+
+  let start = stmtStart;
+  let end = stmtEnd;
+  let depth = 0;
+  let angle = 0;
+  for (let i = stmtStart + 1; i < stmtEnd; i++) {
+    const c = code[i];
+    if (c === '(' || c === '[' || c === '{') depth++;
+    else if (c === ')' || c === ']' || c === '}') depth--;
+    else if (c === '<' && /[\w$]/.test(code[i - 1] || '') && /[A-Z?]/.test(code[i + 1] || '')) angle++;
+    else if (c === '>' && angle > 0) angle--;
+    else if (c === ',' && depth === 0 && angle === 0) {
+      if (i < index) start = i;
+      else { end = i; break; }
+    }
+  }
+  return { start, end, stmtStart };
+}
+
+/**
  * Scan one Java source. Returns `{ sites, typeRefLine }` where each site is a
  * statement that acquires a stream, pre-classified (categories A–F + fix kind).
  */
@@ -555,18 +672,16 @@ function scanJavaSource(src) {
     writeLines: [...new Set([...code.matchAll(FS_WRITE_RE)].map(m => lineOf(starts, m.index)))],
   };
 
-  // Group acquisitions into statements.
+  // Group acquisitions into statements — one per declarator, so `T a = …, b = …`
+  // gives `a` and `b` their own sites.
   const statements = new Map();
   for (const hit of findAcquisitions(code, visible)) {
     const region = regions.find(r => r.open < hit.index && hit.index < r.close) || null;
-    let segStart = Math.max(code.lastIndexOf(';', hit.index - 1), code.lastIndexOf('{', hit.index - 1), code.lastIndexOf('}', hit.index - 1));
-    if (region && region.open > segStart) segStart = region.open;
-    let segEnd = code.indexOf(';', hit.index);
-    if (segEnd === -1) segEnd = code.length;
-    if (region && region.close < segEnd) segEnd = region.close;
-    const key = segStart;
-    if (!statements.has(key)) statements.set(key, { segStart, segEnd, region, hits: [] });
-    statements.get(key).hits.push(hit);
+    const seg = declaratorSegment(code, hit.index, region);
+    if (!statements.has(seg.start)) {
+      statements.set(seg.start, { segStart: seg.start, segEnd: seg.end, stmtStart: seg.stmtStart, region, hits: [] });
+    }
+    statements.get(seg.start).hits.push(hit);
   }
 
   const sites = [];
@@ -597,8 +712,11 @@ function scanJavaSource(src) {
     // stream is an argument (inline). Wrapper constructors pass ownership through.
     const enclosing = openCalls(bound ? prefix.slice(bound.rhsStart) : prefix);
     if (bound && enclosing.some(c => !isWrapperCall(c))) bound = null;
-    // A bare `name = …` with no declaration in the method assigns a field.
-    const fieldOwned = !!bound && (bound.field || !declaredType(bound.name, declText));
+    // A bare `name = …` with no declaration in the method assigns a field — but a
+    // later declarator of `T a = …, b = …` is a local declared by the statement head.
+    const laterDeclarator = st.segStart !== st.stmtStart
+      && new RegExp(`^\\s*(?:final\\s+)?${NOT_A_TYPE}[A-Za-z_$][\\w$.]*(?:<[^;{}()]*>)?(?:\\[\\])*\\s+[A-Za-z_$][\\w$]*\\s*=`).test(code.slice(st.stmtStart + 1, st.segStart));
+    const fieldOwned = !!bound && !laterDeclarator && (bound.field || !declaredType(bound.name, declText));
     // Returned directly (only wrapper constructors between `return` and the
     // acquisition), or as a lambda's expression body (`rm -> rm.adaptTo(…)`).
     // `return IOUtils.toString(r.getStream())` returns data — still a leak.
@@ -639,9 +757,10 @@ function scanJavaSource(src) {
       || (h.recv && declaredType(h.recv, declText) === 'Binary'
         && !new RegExp(`\\b${escapeRe(h.recv)}\\s*\\.\\s*dispose\\s*\\(`).test(scopeCode)));
 
-    // C — whole stream read into memory, unknown size, no read limit.
+    // C — whole stream read into memory, unknown size, no read limit on this stream.
     let buffered = false;
-    const bounded = READ_LIMIT_RE.test(scopeCode) || (KNOWN_SIZE_SOURCES.has(source) && KNOWN_SIZE_RE.test(scopeCode));
+    const limitedBy = readLimitOf(st.hits, stmt, bound, scopeCode, source);
+    const bounded = !!limitedBy || (KNOWN_SIZE_SOURCES.has(source) && sizeKnownFor(st.hits, scopeCode, declText));
     if (UNBOUNDED_SOURCES.has(source) && !bounded) {
       if (BUFFER_CALL_RE.test(stmt)) buffered = true;
       else if (bound) {
@@ -719,7 +838,7 @@ function scanJavaSource(src) {
           : returned ? `${source} stream returned to the caller`
             : `${source} stream — no change needed`);
     }
-    if (/\bBoundedInputStream\b/.test(scopeCode)) {
+    if (limitedBy === 'BoundedInputStream') {
       notes.push('BoundedInputStream stops at the limit without an error — make sure oversized input is rejected, not silently truncated');
     }
     categories.sort((a, b) => CATEGORY[a].rank - CATEGORY[b].rank);

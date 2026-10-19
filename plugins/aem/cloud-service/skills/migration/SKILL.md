@@ -214,7 +214,7 @@ skill workflow itself **never** does this.
 
 ### Collection caching
 
-Collections live under **`./unified-collections/`**. If a collection exists and the user supplies a **new** CSV, ask whether to reuse or re-process.
+Collections live under **`./unified-collections/`**. If a collection exists and the user supplies a **new** CSV, ask whether to reuse or re-process. A collection written before the requested pattern was supported is rebuilt from the CSV automatically (the parser records the subtypes it extracts in `meta.parsedSubtypes`); without a CSV, such a collection returns an error for that pattern rather than reporting it absent.
 
 ### Reading a BPA CSV
 

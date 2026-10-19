@@ -198,6 +198,26 @@ test('C: BoundedInputStream limits the read, but the note warns that it truncate
   assert.ok(/silently truncated/.test(s.note));
 });
 
+test('C: a read limit or size check on another stream does not bound this one', () => {
+  const sites = sitesOf([
+    'String a(SlingHttpServletRequest request, InputStream other) throws Exception { try (InputStream lim = new org.apache.commons.io.input.BoundedInputStream(other, 10)) { use(lim); } return IOUtils.toString(request.getInputStream(), "UTF-8"); }',
+    'byte[] b(Resource res, Rendition other) throws Exception { long n = other.getSize(); try (InputStream in = res.adaptTo(InputStream.class)) { return IOUtils.toByteArray(in); } }',
+    'void use(InputStream i) {}',
+  ].join('\n'));
+  assert.deepStrictEqual(sites.map(s => `${s.variable || '-'}:${s.categories}`), ['lim:A', '-:C', 'in:C']);
+  assert.ok(!/silently truncated/.test(sites[1].note), 'the BoundedInputStream note belongs to the bounded stream only');
+});
+
+test('C: a size check or limit on the stream\'s own source counts', () => {
+  const sites = sitesOf([
+    'byte[] a(Property p) throws Exception { Binary bin = p.getBinary(); try (InputStream in = bin.getStream()) { if (bin.getSize() > 1024) throw new IOException(); return IOUtils.toByteArray(in); } finally { bin.dispose(); } }',
+    'byte[] b(Resource res) throws Exception { try (InputStream in = res.adaptTo(InputStream.class)) { return in.readNBytes(1025); } }',
+    'String c(File f) throws Exception { File t = File.createTempFile("x", "y"); if (f.length() > 10) throw new IOException(); try (InputStream in = new FileInputStream(f)) { return IOUtils.toString(in, "UTF-8"); } }',
+    'String d(String path) throws Exception { File t = File.createTempFile("x", "y"); if (path.length() > 10) throw new IOException(); try (InputStream in = new FileInputStream(path)) { return IOUtils.toString(in, "UTF-8"); } }',
+  ].join('\n'));
+  assert.deepStrictEqual(cats(sites), ['A', 'A', 'A', 'C'], 'String.length() is not a size check');
+});
+
 test('C: an inline HttpEntity.getContent() read is detected (no stream type named in source); the response owns the stream', () => {
   const s = only(sitesOf('String a(org.apache.http.HttpResponse response) throws Exception { return IOUtils.toString(response.getEntity().getContent(), "UTF-8"); }', ['org.apache.commons.io.IOUtils']));
   assert.deepStrictEqual(s.categories, ['C']);
@@ -278,6 +298,23 @@ test('closing a wrapper counts as closing the stream it wraps', () => {
 test('multiple try-with-resources resources are separate sites, each closed', () => {
   const sites = sitesOf('void a(Resource x, Resource y) throws Exception { try (InputStream a = x.adaptTo(InputStream.class); InputStream b = y.adaptTo(InputStream.class)) { use(a); } }\nvoid use(InputStream in) {}');
   assert.deepStrictEqual(sites.map(s => `${s.variable}:${s.categories}`), ['a:A', 'b:A']);
+});
+
+test('each declarator in `T a = …, b = …` is its own site: a leak of b is not hidden by closing a', () => {
+  const sites = sitesOf([
+    'void a(Resource x, Resource y) throws Exception { InputStream a = x.adaptTo(InputStream.class), b = y.adaptTo(InputStream.class); use(a, b); a.close(); }',
+    'void use(InputStream i, InputStream j) {}',
+  ].join('\n'));
+  assert.deepStrictEqual(sites.map(s => `${s.variable}:${s.categories}`), ['a:A', 'b:B']);
+});
+
+test('commas inside generics, calls and constructors do not split a statement', () => {
+  const sites = sitesOf([
+    'void a(Resource x) { Map<String, InputStream> m = Collections.singletonMap("k", x.adaptTo(InputStream.class)); }',
+    'int b(Resource x) throws Exception { try (InputStream s = new BufferedInputStream(x.adaptTo(InputStream.class), 8192)) { return s.read(); } }',
+  ].join('\n'), ['java.io.*', 'java.util.*']);
+  assert.strictEqual(sites.length, 2, JSON.stringify(sites.map(s => s.snippet)));
+  assert.strictEqual(sites[1].variable, 's');
 });
 
 test('a stream passed straight into a consumer is inline: the result variable is not the stream', () => {
@@ -550,4 +587,39 @@ test('CLI --json emits workspace-relative findings and stats', () => {
   const json = JSON.parse(out);
   assert.strictEqual(json.stats.actionableFiles, 2);
   assert.ok(json.findings.every(f => !f.file || !path.isAbsolute(f.file)));
+});
+
+test('packages named build, target, out or dist inside src/main/java are scanned; module-level target/ is not', () => {
+  const root = fixtureWorkspace();
+  for (const pkg of ['build', 'target', 'out', 'dist']) {
+    write(root, `core/src/main/java/com/acme/${pkg}/Tool.java`, `package com.acme.${pkg};\nimport java.io.InputStream;\npublic class Tool { void a(Resource r) { InputStream in = r.adaptTo(InputStream.class); use(in); } void use(InputStream i) {} }\n`);
+  }
+  const local = runInputStreamScan(root);
+  const files = local.rawFindings.filter(f => f.kind === 'source').map(f => path.relative(root, f.file));
+  for (const pkg of ['build', 'target', 'out', 'dist']) {
+    assert.ok(files.includes(`core/src/main/java/com/acme/${pkg}/Tool.java`), `${pkg} package scanned`);
+  }
+  assert.ok(!files.some(f => f.startsWith('core/target/')), 'core/target/ is still skipped');
+
+  const bpa = runInputStreamScan(root, { bpaTargets: [{ className: 'com.acme.build.Tool', identifier: 'java.io.InputStream' }] });
+  assert.deepStrictEqual(bpa.rawFindings.map(f => f.kind), ['source'], 'the BPA class resolves to its file, not to "outside the workspace"');
+});
+
+test('CLI: --csv rebuilds a cached collection that predates inputStream instead of falling back to the local scan', () => {
+  const root = fixtureWorkspace();
+  const runner = path.join(__dirname, 'input-stream-runner.js');
+  const csv = write(root, 'bpa.csv', [
+    'code,type,subtype,importance,identifier,other,message,moreInfo,context',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.core.Leaky,java.io.InputStream,The com.acme.core.Leaky class in the com.acme.core bundle uses java.io.InputStream.,x,ctx',
+    'DG,development.guideline,sling.commons.scheduler,MAJOR,com.acme.core.Job,\\N,The com.acme.core.Job class uses the scheduler.,x,ctx',
+  ].join('\n') + '\n');
+  const collections = path.join(root, 'uc');
+  // A cache written by a parser from before inputStream support: no inputStream data, no parsedSubtypes.
+  write(root, 'uc/unified-collection.json', JSON.stringify({
+    subtypes: { sling_commons_scheduler: { org_apache_sling_commons_scheduler: ['com.acme.core.Job'] } },
+    meta: { timestamp: '2026-01-01T00:00:00.000Z', source: 'local-bpa-parser', totalFindings: 1, subtypeCount: 1 },
+  }));
+  const out = JSON.parse(execFileSync(process.execPath, [runner, root, '--csv', csv, '--collections', collections, '--json'], { encoding: 'utf8' }));
+  assert.strictEqual(out.source, 'csv');
+  assert.deepStrictEqual(out.findings.filter(f => f.kind === 'source').map(f => path.basename(f.file)), ['Leaky.java']);
 });

@@ -28,10 +28,12 @@ const {
   fetchUnifiedBpaFindings,
   getAvailablePatterns,
   getUnifiedCollectionSummary,
+  readUnifiedCollection,
   paginate,
-  DEFAULT_BATCH_SIZE
+  DEFAULT_BATCH_SIZE,
+  PATTERN_TO_SUBTYPES
 } = require('./unified-collection-reader.js');
-const { validateBpaFile, parseBpaFile, createUnifiedCollection } = require('./bpa-local-parser.js');
+const { validateBpaFile, parseBpaFile, createUnifiedCollection, LEGACY_PARSED_SUBTYPES } = require('./bpa-local-parser.js');
 
 const DEFAULT_COLLECTIONS_DIR = './unified-collections';
 
@@ -161,12 +163,39 @@ async function getFromMcp({ pattern, projectId, environment, mcpFetcher, collect
 }
 
 /**
+ * True when the cached collection was written by a parser that extracts every
+ * subtype `pattern` needs (`meta.parsedSubtypes`; collections written before
+ * that field existed cover the subtypes parsers handled then). A collection
+ * written before a pattern was supported lacks it even when its CSV has rows.
+ */
+function cacheCoversPattern(collectionsDir, pattern) {
+  const recorded = readUnifiedCollection(collectionsDir)?.meta?.parsedSubtypes;
+  const parsed = Array.isArray(recorded) ? recorded : LEGACY_PARSED_SUBTYPES;
+  const needed = pattern === 'all'
+    ? Object.values(PATTERN_TO_SUBTYPES).flat()
+    : (PATTERN_TO_SUBTYPES[pattern] || []);
+  return needed.every(subtype => parsed.includes(subtype));
+}
+
+/**
  * CSV / cached-collection path: first call parses CSV and writes the unified
  * collection; subsequent calls read it. Every call returns exactly one batch.
+ * A cached collection that predates the requested pattern is rebuilt from the
+ * CSV when one is given; without a CSV that is an error, not "pattern absent".
  */
 function getFromCsvOrCache({ pattern, bpaFilePath, collectionsDir, offset, limit }) {
-  // Create the cache on first invocation if it doesn't exist yet.
-  if (!hasUnifiedCollection(collectionsDir)) {
+  const cached = hasUnifiedCollection(collectionsDir);
+  const stale = cached && !cacheCoversPattern(collectionsDir, pattern);
+  if (stale && !bpaFilePath) {
+    return {
+      success: false,
+      source: 'bpa-file',
+      error: `The cached collection at ${collectionsDir} was created before '${pattern}' was supported`,
+      message: `The cached collection at ${collectionsDir} can't answer '${pattern}'; provide the BPA CSV (bpaFilePath) to rebuild it.`
+    };
+  }
+  // Create the cache on first invocation, or rebuild a stale one from the CSV.
+  if (!cached || stale) {
     if (!bpaFilePath) {
       return {
         success: false,

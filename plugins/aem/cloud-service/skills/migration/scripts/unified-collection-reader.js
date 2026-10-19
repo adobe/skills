@@ -681,6 +681,7 @@ module.exports = {
   readUnifiedCollection,
   paginate,
   DEFAULT_BATCH_SIZE,
+  PATTERN_TO_SUBTYPES,
   BpaTarget,
   BpaResult
 };
