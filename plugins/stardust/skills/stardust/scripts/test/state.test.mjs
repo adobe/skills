@@ -8,10 +8,11 @@
 // record index, provenance refusals, exists / --force, captureGaps), set (--representative /
 // --type, --clear-representative, refusals including representative cycles), the crawl's pre-cap
 // totalDiscovered and the summary representative lines; exclude (the on-page record, the top-level
-// excluded[] for a page init never had, idempotence, refusals, the summary count). Run: node <this file>.
+// excluded[] for a page init never had, idempotence, refusals, the summary count); the stardustVersion
+// stamp order (plugin manifest, else STARDUST_VERSION, else the stamp carried). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -227,6 +228,26 @@ const project = (records = RECORDS) => {
 };
 const runIn = (d, args, input) => { const r = spawnSync(process.execPath, [SCRIPT, ...args, '--dir', d], { encoding: 'utf8', input }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 const readIn = (d) => JSON.parse(readFileSync(join(d, 'state.json'), 'utf8'));
+
+check('stardustVersion stamp: the plugin manifest, else STARDUST_VERSION (a copied state.mjs with no manifest above it), else the stamp already carried — none when nothing resolves', () => {
+  const manifest = JSON.parse(readFileSync(join(HERE, '..', '..', '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  const base = { ...process.env }; delete base.STARDUST_VERSION;
+  const copyRoot = mkdtempSync(join(tmpdir(), 'state-version-'));
+  // the script copied three levels below an empty root (no plugin manifest above it); it has no relative imports
+  const COPY = join(copyRoot, 'skills', 'stardust', 'scripts', 'state.mjs'); mkdirSync(dirname(COPY), { recursive: true }); copyFileSync(SCRIPT, COPY);
+  const init = (script, env) => {
+    const p = project();
+    const r = spawnSync(process.execPath, [script, 'init', '--pages', p.list('pages.txt', ['', 'about-us', 'blog'].map((x) => `https://www.example.com/${x}`).join('\n')), '--dir', p.d], { encoding: 'utf8', env });
+    assert.equal(r.status, 0, r.stderr); return p;
+  };
+  assert.equal(readIn(init(SCRIPT, { ...base, STARDUST_VERSION: '9.9.9' }).d)._provenance.stardustVersion, manifest, 'the plugin manifest wins over the env');
+  const p = init(COPY, { ...base, STARDUST_VERSION: ' 1.2.3-test ' });
+  assert.equal(readIn(p.d)._provenance.stardustVersion, '1.2.3-test', 'no manifest: the env, trimmed');
+  const ex = spawnSync(process.execPath, [COPY, 'exclude', 'blog', '--reason', 'the source answers 404', '--dir', p.d], { encoding: 'utf8', env: base });
+  assert.equal(ex.status, 0, ex.stderr); assert.equal(readIn(p.d)._provenance.stardustVersion, '1.2.3-test', 'a later write without the env keeps the stamp already carried');
+  assert.ok(!('stardustVersion' in readIn(init(COPY, base).d)._provenance), 'nothing resolves: no stamp (never 0.0.0 over a real one)');
+  rmSync(copyRoot, { recursive: true, force: true });
+});
 
 check('crawlSlug mirrors the crawl slug rule; urlKey folds www, trailing slash and fragment, keeps the query', () => {
   assert.equal(crawlSlug('https://example.com/'), 'index'); assert.equal(crawlSlug('https://example.com/About/Team/'), 'about-team'); assert.equal(crawlSlug('https://example.com/a__b//c.html?x=1'), 'a-b-c-html');

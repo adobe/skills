@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// skills/qa/scripts/test/from-knowledge.test.mjs — qa inputs from spec knowledge: the template map by layout variant at served URLs (delivered pages only when coverage exists), source-inherited 404 allowlist entries without duplicates; the CLI writes both and keeps existing entries.
+// skills/qa/scripts/test/from-knowledge.test.mjs — qa inputs from spec knowledge: the template map by layout variant at served URLs (delivered pages only when coverage exists), source-inherited 404 allowlist entries without duplicates; the CLI writes both and keeps existing entries; lib.mjs's version stamp order (plugin manifest, else STARDUST_VERSION, else 0.0.0).
 // Run: node plugins/stardust/skills/qa/scripts/test/from-knowledge.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inheritedEntries, templateMap } from '../from-knowledge.mjs';
-import { buildInventory, plainUrl } from '../lib.mjs';
+import { STARDUST_VERSION, buildInventory, plainUrl, provenance } from '../lib.mjs';
 import { expectedRedirectFindings } from '../checks/routing.mjs';
 import { deliveredUrl } from '../../../deploy/scripts/eds-path.mjs';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -62,6 +62,23 @@ await check('qa keeps a folder index\'s served URL (/x/) next to its key, and fe
 await check('routing: an expected redirect missing from the live sheet is an error, a different destination a warning', () => {
   const f = expectedRedirectFindings([['/about', '/about/'], ['/old', '/new'], ['/x', '/y']], [{ Source: '/about', Destination: '/about/' }, { Source: '/old', Destination: '/elsewhere' }]);
   assert.deepEqual(f.map((x) => [x.id, x.severity, x.path]), [['redirect-dest-differs', 'warn', '/old'], ['redirect-missing', 'error', '/x']]);
+});
+await check('provenance.stardustVersion: the plugin manifest, else STARDUST_VERSION (a copied lib with no manifest above it), else 0.0.0', () => {
+  const manifest = JSON.parse(readFileSync(join(HERE, '..', '..', '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  assert.equal(STARDUST_VERSION, manifest); assert.equal(provenance('x', 'in').stardustVersion, manifest);
+  const tmp = mkdtempSync(join(tmpdir(), 'qa-lib-version-'));
+  // the lib copied three levels below an empty root (no plugin manifest above it)
+  const copy = join(tmp, 'skills', 'qa', 'scripts', 'lib.mjs'); mkdirSync(dirname(copy), { recursive: true }); copyFileSync(join(HERE, '..', 'lib.mjs'), copy);
+  const base = { ...process.env }; delete base.STARDUST_VERSION;
+  const ask = (file, env) => {
+    const probe = `import { STARDUST_VERSION, provenance } from ${JSON.stringify(pathToFileURL(file).href)}; console.log(JSON.stringify([STARDUST_VERSION, provenance('x', 'in').stardustVersion]));`;
+    const r = spawnSync(process.execPath, ['--input-type=module', '-e', probe], { encoding: 'utf8', cwd: tmp, env }); assert.equal(r.status, 0, r.stderr); return JSON.parse(r.stdout);
+  };
+  assert.deepEqual(ask(join(HERE, '..', 'lib.mjs'), { ...base, STARDUST_VERSION: '9.9.9' }), [manifest, manifest], 'the plugin manifest wins over the env');
+  assert.deepEqual(ask(copy, { ...base, STARDUST_VERSION: ' 1.2.3-test ' }), ['1.2.3-test', '1.2.3-test'], 'no manifest: the env, trimmed');
+  assert.deepEqual(ask(copy, { ...base, STARDUST_VERSION: '  ' }), ['0.0.0', '0.0.0'], 'a blank env is unset');
+  assert.deepEqual(ask(copy, base), ['0.0.0', '0.0.0'], 'neither: the honest unknown');
+  rmSync(tmp, { recursive: true });
 });
 await check('--help prints usage; a missing knowledge folder exits 1', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'qa-fk-help-'));
