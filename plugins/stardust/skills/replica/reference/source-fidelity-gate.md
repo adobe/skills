@@ -509,6 +509,22 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `unitsReused`, and `_run.log` names each; every probe prints the cache it
   read and records it (`liveCache` / `originCache`), and replayed rows and
   probes say `reused`.
+- **Origin baseline (opt-in): gate every round against ONE frozen origin, not a fresh live shot.**
+  When the live origin moves under a run — server-side personalisation, an intermittent live
+  font-load failure, a blank-top capture — the pixel gate is non-deterministic through no fault of
+  the build (a recorded hands-off run: home rendered 189 px shorter desktop / 432 px shorter mobile
+  than the morning capture; three pages ended pixel-only FAIL). Freeze one provenance-stamped
+  baseline per page/width with `stitch-shot.mjs <live> <gate-dir>/baseline.png --freeze-baseline
+  --settle` (consent dismissed, `document.fonts.ready` awaited and `fontsFailed` recorded empty,
+  animations settled, a content hash over the `--inventory`): it writes `baseline.png` +
+  `baseline.json` { capturedAt, url, width, height, conditions, fontsFailed, contentHash }
+  atomically, and refuses to re-freeze without `--force` or to freeze a capture whose fonts failed.
+  Then pass `gate.sh --gate-against-baseline`: when a baseline exists it is the origin side of the
+  SAME pixel-compare (`live.png` is the baseline; `live.json` records `originBaseline { capturedAt,
+  contentHash, height }`), so the gate is stable across rounds; with no baseline it says so and
+  takes a fresh shot. **Default OFF — a run without the flag is byte-for-byte unchanged.**
+  `--check-baseline` reports a fresh shot's contentHash / Δheight vs the baseline (no verdict yet;
+  the drift verdict that labels origin movement "origin drift (external)" is a later wave).
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's

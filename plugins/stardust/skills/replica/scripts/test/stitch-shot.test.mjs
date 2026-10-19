@@ -70,7 +70,7 @@ import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { captureHintRecord, deadFontFaces, dialogOutcome, fontCheckOutcome, fontFamilies, hideMissOutcome, isHeaderMorph, launchCaptureBrowser, mergeDismissed, overflowLine, parseArgs, recheckDenial, sessionNavTimeout, withPresence } from '../stitch-shot.mjs';
+import { BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, baselineExists, baselineProvenance, canonicalInventory, captureHintRecord, compareBaseline, contentHash, contentHashFromFile, deadFontFaces, dialogOutcome, fontCheckOutcome, fontFamilies, hideMissOutcome, isHeaderMorph, launchCaptureBrowser, mergeDismissed, overflowLine, parseArgs, readBaselineProvenance, recheckDenial, sessionNavTimeout, withPresence, writeBaselineJsonAtomic } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -916,6 +916,72 @@ await check('--inventory: --help names it; with an unreadable spec the stitch st
     const warnings = r.stderr.split('\n').filter((l) => /WARNING/.test(l));
     assert.equal(warnings.length, 1, r.stderr); assert.match(warnings[0], /missing-spec\.json/);
   } finally { srv.close(); rmSync(cwd, { recursive: true, force: true }); }
+});
+
+// ---- Origin baseline (opt-in): the pure freeze / check / compare logic, no browser ------------------------------
+// --freeze-baseline / --check-baseline are named in --help (exit 0); parseArgs takes them and --force; the content
+// hash is stable across captures (key order, volatile timestamp/tier/url fields dropped); the provenance has the
+// documented shape; baseline.json is written atomically; a lone baseline.png is not a baseline; compareBaseline
+// reports the content-hash and height deltas with no verdict.
+await check('--help names --freeze-baseline / --check-baseline / --force; parseArgs takes them (default OFF) and sets the gate-dir defaults', () => {
+  const help = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd: mkdtempSync(join(tmpdir(), 'stitch-bl-help-')), encoding: 'utf8', timeout: 15000 });
+  assert.equal(help.status, 0, help.stderr);
+  for (const f of ['--freeze-baseline', '--check-baseline', '--force']) assert.ok(help.stdout.includes(f), `--help names ${f}`);
+  const opts = (extra) => parseArgs(['node', 'stitch-shot.mjs', 'https://origin.test/', 'g/baseline.png', ...extra], { env: {}, crawlLog: null }).opts;
+  assert.deepEqual([opts([]).freezeBaseline, opts([]).checkBaseline, opts([]).force], [false, false, false], 'default OFF');
+  const f = opts(['--freeze-baseline', '--force']);
+  assert.deepEqual([f.freezeBaseline, f.force], [true, true]);
+  assert.equal(opts(['--check-baseline']).checkBaseline, true);
+});
+await check('contentHash is stable across two captures of the same page: object key order and the volatile at / tier / url / side fields do not change it; a string parses to the same hash; an errored or unparseable inventory is null', () => {
+  const a = { at: '2026-01-01T00:00:00.000Z', url: 'https://origin.test/', side: 'origin', tier: 'chromium', docH: 3093, items: [{ tag: 'h1', text: 'Hi' }] };
+  const b = { tier: 'chrome', items: [{ text: 'Hi', tag: 'h1' }], docH: 3093, at: '2026-09-09T09:09:09.000Z', url: 'https://origin.test/', side: 'origin' };
+  assert.equal(contentHash(a), contentHash(b), 'order + volatile fields dropped');
+  assert.match(contentHash(a), /^sha256:[0-9a-f]{64}$/);
+  assert.equal(contentHash(JSON.stringify(a)), contentHash(a), 'JSON text == object');
+  assert.notEqual(contentHash({ ...a, items: [{ tag: 'h1', text: 'Changed' }] }), contentHash(a), 'a real content change moves the hash');
+  assert.equal(contentHash({ error: 'inventory failed' }), null, 'an errored inventory → null');
+  assert.equal(contentHash('{ not json'), null, 'unparseable → null');
+  assert.deepEqual(canonicalInventory({ b: 1, a: { at: 'x', keep: 2 } }), { a: { keep: 2 }, b: 1 }, 'canonical drops `at` at depth, sorts keys');
+});
+await check('baselineProvenance has the documented shape (capturedAt, url, width, height, conditions, fontsFailed, contentHash, schema); a non-array fontsFailed becomes []', () => {
+  const p = baselineProvenance({ url: 'https://origin.test/', width: 1440, height: 3093, conditions: { consent: true, fonts: 'ready', settle: true }, fontsFailed: [], contentHash: 'sha256:abc', capturedAt: '2026-10-19T00:00:00.000Z' });
+  assert.deepEqual(Object.keys(p), ['writtenBy', 'schema', 'capturedAt', 'url', 'width', 'height', 'conditions', 'fontsFailed', 'contentHash']);
+  assert.equal(p.schema, BASELINE_SCHEMA);
+  assert.deepEqual(p.conditions, { consent: true, fonts: 'ready', blockedCategories: [], settle: true });
+  assert.deepEqual([p.capturedAt, p.url, p.width, p.height, p.fontsFailed, p.contentHash], ['2026-10-19T00:00:00.000Z', 'https://origin.test/', 1440, 3093, [], 'sha256:abc']);
+  assert.deepEqual(baselineProvenance({ url: 'u', width: 1, height: 1, fontsFailed: null }).fontsFailed, [], 'null fontsFailed → []');
+});
+await check('writeBaselineJsonAtomic writes baseline.json (temp + rename, pretty, trailing newline); baselineExists needs BOTH the PNG and the JSON; readBaselineProvenance round-trips', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'stitch-bl-'));
+  try {
+    const prov = baselineProvenance({ url: 'https://origin.test/', width: 360, height: 5200, conditions: { consent: true, fonts: 'ready', settle: true }, fontsFailed: [], contentHash: 'sha256:deadbeef' });
+    assert.equal(baselineExists(dir), false, 'nothing yet');
+    writeBaselineJsonAtomic(dir, prov);
+    assert.equal(baselineExists(dir), false, 'baseline.json alone is not a baseline');
+    writeFileSync(join(dir, BASELINE_PNG), 'png-bytes');
+    assert.equal(baselineExists(dir), true, 'PNG + JSON');
+    const text = readFileSync(join(dir, BASELINE_JSON), 'utf8');
+    assert.ok(text.endsWith('}\n'), 'pretty JSON + trailing newline');
+    assert.deepEqual(readBaselineProvenance(dir), prov, 'round-trips');
+    assert.equal(readdirSync(dir).some((n) => n.endsWith('.tmp')), false, 'no temp file left behind');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+await check('contentHashFromFile reads an inventory file (null when absent); compareBaseline reports hashChanged and Δheight with no verdict (the 189 / 432 px home shifts from a recorded hands-off run read as drift candidates, a same-origin re-shot as unchanged)', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'stitch-bl-cmp-'));
+  try {
+    assert.equal(contentHashFromFile(join(dir, 'nope.json')), null, 'absent → null');
+    const inv = { at: 'now', url: 'https://origin.test/', docH: 3093, items: [{ tag: 'h1', text: 'Hi' }] };
+    writeFileSync(join(dir, 'inv.json'), JSON.stringify(inv));
+    assert.equal(contentHashFromFile(join(dir, 'inv.json')), contentHash(inv), 'file == object hash');
+    const base = baselineProvenance({ url: 'https://origin.test/', width: 1440, height: 3093, fontsFailed: [], contentHash: contentHash(inv) });
+    const same = compareBaseline(base, { contentHash: contentHash(inv), height: 3093 });
+    assert.deepEqual([same.hashChanged, same.dHeight], [false, 0], 'a steady origin: no hash change, no height delta');
+    const moved = compareBaseline(base, { contentHash: contentHash({ ...inv, items: [] }), height: 2661 });
+    assert.deepEqual([moved.hashChanged, moved.dHeight], [true, -432], 'personalisation: hash changed, home 432 px shorter');
+    const noHash = compareBaseline({ ...base, contentHash: null }, { contentHash: contentHash(inv), height: 2904 });
+    assert.deepEqual([noHash.hashChanged, noHash.dHeight], [null, -189], 'a missing hash → hashChanged null, the height delta still reported');
+  } finally { rmSync(dir, { recursive: true, force: true }); }
 });
 
 console.log(failed ? `\n${failed} check(s) failing` : '\nstitch-shot: all checks passed');

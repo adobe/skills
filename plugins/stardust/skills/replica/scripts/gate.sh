@@ -16,7 +16,7 @@
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
 #       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
-#       [--no-dismiss] [--hide <sel,…>] [--help]
+#       [--no-dismiss] [--hide <sel,…>] [--gate-against-baseline] [--help]
 #
 # Horizontal-overflow assert (every round, build side only — no live hit, no
 #   extra page load): the build capture prints one root line,
@@ -168,6 +168,15 @@
 #                       On the build capture a selector that matched nothing is expected (no per-visitor region
 #                       there): one stdout info line, `gate.sh: info: hide matched nothing on the build (expected — it
 #                       has no per-visitor region to hide): <sel>, …`.
+#   --gate-against-baseline  Origin baseline (opt-in, default OFF): when a frozen origin baseline exists for
+#                       this page/width (baseline.png + baseline.json in the gate dir, written by
+#                       `stitch-shot.mjs --freeze-baseline`), use it as the origin side of the SAME downstream
+#                       pixel-compare instead of a fresh live shot — so a moving live origin (personalisation,
+#                       an intermittent live font-load failure, a blank-top capture) cannot make the pixel gate
+#                       non-deterministic. live.png is the baseline; live.json records `originBaseline
+#                       { capturedAt, contentHash, height }`; one stdout line names the baseline's capture time.
+#                       Flag OFF: nothing changes. Flag ON but no baseline present: one stderr line and a fresh
+#                       live shot, as usual. (Freeze a baseline with stitch-shot.mjs --freeze-baseline.)
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -228,6 +237,7 @@ DISMISS=1
 CONSENT=""
 DISMISS_EXTRA=""
 HIDE=""
+BASELINE=0
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -239,6 +249,7 @@ while [ $# -gt 0 ]; do
     --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
     --no-dismiss) DISMISS=0; shift ;;
     --hide) case "${2:-}" in ''|--*) echo "gate.sh: --hide needs a selector list (see --help)" >&2; exit 125 ;; esac; HIDE="${HIDE:+$HIDE,}$2"; shift 2 ;;
+    --gate-against-baseline) BASELINE=1; shift ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
@@ -431,8 +442,19 @@ fi
 # (no live.json + hides: nothing says the bar was hidden on that capture), else the overlay one (no live.json or no
 # overlayLeft: it predates the check).
 # One node call reads both: the hide list, a newline, then checked | unchecked | left <descriptor>.
+# --gate-against-baseline (default OFF, --help § Origin baseline): when a frozen origin baseline exists
+# for this page/width, use baseline.png / baseline.json as the origin side of the SAME downstream compare
+# (pixel-compare on live.png) instead of a fresh live shot, so a moving live origin (personalisation, an
+# intermittent live font-load failure, a blank-top capture) cannot make the pixel gate non-deterministic.
+# Flag OFF: nothing changes. Flag ON but no baseline: one line says so and a fresh live shot is taken.
+ORIGIN_BASELINE=0
+if [ "$BASELINE" = 1 ]; then
+  if [ -f "$DIR/baseline.png" ] && [ -f "$DIR/baseline.json" ]; then ORIGIN_BASELINE=1
+  else echo "gate.sh: --gate-against-baseline set but no frozen baseline for $SLUG@$W ($DIR/baseline.png) — taking a fresh live shot" >&2
+  fi
+fi
 RETAKE=0
-if [ -f "$DIR/live.png" ]; then
+if [ "$ORIGIN_BASELINE" != 1 ] && [ -f "$DIR/live.png" ]; then
   OLD_HIDE=""; OLD_CAP=""; OLD_DLG=unchecked; OLD_OVL=unchecked
   if [ -f "$DIR/live.json" ]; then
     OLD=$(node -e "$HIDE_JS"'let j = null;
@@ -505,7 +527,28 @@ hide_miss_warn() {
     const line = `hide matched nothing on live — candidates: ${cands} (${sels.join(", ")})`;
     fs.writeSync(2, `gate.sh: WARNING ${line.replace(/[\r\n]+/g, " ")}\n`);' -- "$DIR/live-shot.json"
 }
-if [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
+if [ "$ORIGIN_BASELINE" = 1 ]; then
+  # The origin side is the frozen baseline: copy it to live.png (the pixel-compare origin) and write live.json
+  # from baseline.json with this round's dismissal / hide state (so nothing downstream retakes it) plus
+  # originBaseline { capturedAt, contentHash, height } for the ledger. No live capture runs. The --full probe
+  # live caches are dropped so a probe never reuses a stale live inventory against the frozen origin.
+  cp -f "$DIR/baseline.png" "$DIR/live.png"
+  rm -f "$DIR/live-shot.json" "$DIR/content-live.json" "$DIR/visual-live.json" "$DIR/presence-live.json"
+  node -e 'const fs = require("fs"); const [livej, basej, url, w, dismiss, consent, extra, hide, pinJson, allowDialog] = process.argv.slice(1);
+    let base = {}; try { base = JSON.parse(fs.readFileSync(basej, "utf8")); } catch (e) { base = {}; }
+    const pin = JSON.parse(pinJson || "[]"); const allow = allowDialog ? allowDialog.split(",") : [];
+    const rec = { writtenBy: "gate.sh --gate-against-baseline", url, width: Number(w), locale: "en-US", settle: true,
+      dismiss: { off: dismiss === "0", consent: consent || null, extra: extra || null }, hide: hide ? hide.split(",") : [],
+      ...(pin.length ? { pin } : {}), ...(allow.length ? { allowDialog: allow } : {}),
+      overlayLeft: null, dialogLeft: null, fontsFailed: Array.isArray(base.fontsFailed) ? base.fontsFailed : null, headed: false,
+      at: base.capturedAt || null,
+      originBaseline: { capturedAt: base.capturedAt ?? null, contentHash: base.contentHash ?? null, height: typeof base.height === "number" ? base.height : null } };
+    fs.writeFileSync(livej, JSON.stringify(rec, null, 2) + "\n");' \
+    -- "$DIR/live.json" "$DIR/baseline.json" "$LIVE_URL" "$W" "$DISMISS" "$CONSENT" "$DISMISS_ALL" "$EFF_HIDE" "$PIN_JSON" "$ALLOW_DIALOG" \
+    || echo "gate.sh: could not write $DIR/live.json from the baseline — gate-all will not reuse this origin" >&2
+  BASE_AT=$(node -e 'try { process.stdout.write(String(JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).capturedAt || "unknown")); } catch (e) { process.stdout.write("unknown"); }' -- "$DIR/baseline.json")
+  echo "gate.sh: gating against the frozen origin baseline (captured $BASE_AT) — origin side from baseline.png, no fresh live shot"
+elif [ "$RETAKE" = 1 ] || [ ! -f "$DIR/live.png" ]; then
   # Its stdout goes to live-capture.txt, then to ours (each attempt rewrites it — the last one decides); its record to
   # live-shot.json (deleted first, so a stale one is never read).
   LIVE_OUT="$DIR/live-capture.txt"

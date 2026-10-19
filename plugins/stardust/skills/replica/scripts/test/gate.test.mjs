@@ -850,6 +850,41 @@ check('a stitch-shot.mjs that predates --json: exit 1 before any capture, one st
   && !existsSync(join(root, gdir('stale1'), 'live.png')), `status ${r.status} ${r.stderr} ${attempts().join(',')}`);
 writeFileSync(stitchShot, currentStitch);
 
+// --gate-against-baseline (opt-in origin baseline): flag OFF is identical to today; flag ON with a frozen baseline
+// present uses baseline.png / baseline.json as the origin side (no live capture), records originBaseline in live.json
+// and names the capture time; flag ON with no baseline falls back to a fresh live shot and says so.
+const freezeBaseline = (slug, prov) => {
+  const d = join(root, gdir(slug));
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'baseline.png'), 'baseline-png-bytes');
+  writeFileSync(join(d, 'baseline.json'), `${JSON.stringify(prov, null, 2)}\n`);
+};
+const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, height: 2000, conditions: { consent: true, fonts: 'ready', blockedCategories: [], settle: true }, fontsFailed: [], contentHash: 'sha256:abc123' };
+
+resetCount();
+freezeBaseline('blon', PROV);
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl1', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('--gate-against-baseline with a frozen baseline: no live capture runs (only the build side stitches)', r.status === 0 && attempts().filter((s) => s === 'LIVE').length === 0 && attempts().includes('BUILD'), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr.slice(0, 200)}`);
+check('the baseline is the pixel-compare origin: live.png is a copy of baseline.png', existsSync(join(root, gdir('blon'), 'live.png')) && readFileSync(join(root, gdir('blon'), 'live.png'), 'utf8') === 'baseline-png-bytes');
+check('live.json records originBaseline { capturedAt, contentHash, height } and names gate.sh --gate-against-baseline as the writer', (() => {
+  const lj = JSON.parse(liveJson('blon'));
+  return lj.writtenBy === 'gate.sh --gate-against-baseline'
+    && JSON.stringify(lj.originBaseline) === JSON.stringify({ capturedAt: PROV.capturedAt, contentHash: PROV.contentHash, height: PROV.height })
+    && lj.overlayLeft === null && JSON.stringify(lj.fontsFailed) === '[]';
+})(), liveJson('blon'));
+check('one stdout line names the frozen baseline and its capture time (no fresh live shot)', /^gate\.sh: gating against the frozen origin baseline \(captured 2026-10-19T08:00:00\.000Z\) — origin side from baseline\.png, no fresh live shot$/m.test(r.stdout), r.stdout);
+
+resetCount();
+r = await gate(['blmiss', 'https://live.example/', buildUrl, '1440', 'bl2', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('--gate-against-baseline with no baseline present: one stderr line, then a fresh live shot as usual (the flag is inert)', r.status === 0 && attempts().filter((s) => s === 'LIVE').length === 1
+  && /^gate\.sh: --gate-against-baseline set but no frozen baseline for blmiss@1440 \(stardust\/replica\/gates\/blmiss-1440\/baseline\.png\) — taking a fresh live shot$/m.test(r.stderr), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr.slice(0, 200)}`);
+
+resetCount();
+freezeBaseline('bloff', PROV);
+r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl3', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('default (no flag) is unchanged even when a baseline exists: a fresh live shot is taken, no originBaseline, no baseline line', r.status === 0 && attempts().filter((s) => s === 'LIVE').length === 1
+  && !/gating against the frozen origin baseline/.test(r.stdout) && !/originBaseline/.test(liveJson('bloff') || ''), `status ${r.status} attempts ${attempts().join(',')}`);
+
 server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
 else rmSync(root, { recursive: true, force: true });

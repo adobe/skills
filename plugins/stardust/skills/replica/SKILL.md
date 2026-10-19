@@ -329,6 +329,9 @@ node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --
 # grew: a background agent finished) → `wait` again; --max 240 under a five-minute cache (default 300)
 # (gate doc § Iteration discipline). A propagation wait is deploy's `fresh-check.mjs <url> --grep
 # '<marker>'` (checks ≤ 5 s apart, capped; exit 3 stale), never a fixed sleep.
+# Origin baseline (opt-in, default OFF): when the live origin moves under the run (personalisation, a
+# live font-load failure), freeze one origin per page/width — stitch-shot.mjs <live> $G/baseline.png
+# --freeze-baseline --settle — and gate every round against it with gate.sh --gate-against-baseline.
 # wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter2 -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter2
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter2  -- stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360  iter2

@@ -216,6 +216,13 @@ criteria and the cap of 3 rounds per page (handoff contract § 1 row 5) stay.
   measures them`); `--round-reset` follows only a recorded re-prototype decision.
 - **Resume, never restart:** a killed `gate-all.mjs` run re-runs the same
   command plus `--skip-existing`.
+- **Origin baseline (opt-in, default OFF):** on a site whose live origin moves
+  under the run (server-side personalisation, an intermittent live font-load
+  failure), freeze one origin per page/width with `stitch-shot.mjs …
+  --freeze-baseline` and gate every round against it with `gate.sh
+  --gate-against-baseline`, so a moving origin does not burn fix rounds on
+  false pixel FAILs (source-fidelity-gate.md § Iteration discipline). Without
+  the flags nothing changes.
 
 **The fix-round brief** the lead fills in and pastes for a fix-round subagent
 after C0 (project copy: `stardust/scripts/<skill>/` for `skills/<skill>/scripts/`):
