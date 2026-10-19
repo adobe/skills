@@ -514,6 +514,10 @@ check('inferredLiveHost: the most common delivered deployedUrl host; a non-URL o
   assert.equal(inferredLiveHost([row('p', '/p', 'pending')]), null, 'pending rows are not delivered');
   assert.equal(inferredLiveHost([{ slug: 'x', delivery: { status: 'verified', deployedUrl: '/x' } }]), null, 'a path, not a host');
   assert.equal(inferredLiveHost([]), null);
+  // delivery.gate.host (the host the published gates ran on) is the live host, not the preview deployedUrl.
+  const gp = (slug, dep, gateHost) => ({ slug, delivery: { status: 'verified', deployedUrl: `https://${dep}/${slug}`, gate: { pass: true, host: `https://${gateHost}` } } });
+  assert.equal(inferredLiveHost([gp('a', 'main--site--org.aem.page', 'main--site--org.aem.live'), gp('b', 'main--site--org.aem.page', 'main--site--org.aem.live')]), 'main--site--org.aem.live');
+  assert.equal(inferredLiveHost([{ slug: 'a', delivery: { status: 'verified', deployedUrl: 'https://main--site--org.aem.page/a' } }], { previewHost: 'main--site--org.aem.page' }), null, 'the preview host is not inferred as the live host');
 });
 
 check('CLI: --offline infers the live host from the coverage — header parity measured on the preview host while the gates ran on the live host is a gap (the rule applies by default, no --live-host)', () => {
@@ -532,6 +536,23 @@ check('CLI: --offline infers the live host from the coverage — header parity m
   const r = run(proj, ['--offline', '--json']);
   const header = JSON.parse(r.stdout).gaps.filter((g) => g.startsWith('header_parity'));
   assert.deepEqual(header, [`header_parity:measured on main--site--org.aem.page, not the live host the gates ran on (${live})`], r.stdout);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: --offline infers the live host from the gates (delivery.gate.host), not the preview deployedUrl — header parity on the preview host is a gap even when the pages were deployed to preview (the run-16 case)', () => {
+  const live = 'main--site--org.aem.live', prev = 'main--site--org.aem.page';
+  const mk = (slug, path) => { const p = proven(row(slug, path, 'verified'), { host: `https://${live}` }); return { ...p, delivery: { ...p.delivery, deployedUrl: `https://${prev}${path}` } }; };
+  const pages = [mk('home', '/'), mk('about', '/about')];
+  const contract = { url: 'https://example.com/', at: '2026-10-09T10:00:00Z', widths: { 1440: {}, 360: {} } };
+  const parity = { source: 'https://example.com/', build: `https://${prev}/`, at: '2026-10-09T12:00:00Z', profile: 'replica', widths: [1440, 360], findings: [] };
+  const proj = project({ pages, files: {
+    'stardust/state.json': { flow: 'replica' },
+    'stardust/chrome/header-contract.json': contract,
+    'stardust/chrome/header-parity.json': parity,
+  } });
+  const r = run(proj, ['--offline', '--json']);
+  const header = JSON.parse(r.stdout).gaps.filter((x) => x.startsWith('header_parity'));
+  assert.deepEqual(header, [`header_parity:measured on ${prev}, not the live host the gates ran on (${live})`], r.stdout);
   rmSync(proj, { recursive: true, force: true });
 });
 

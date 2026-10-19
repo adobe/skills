@@ -143,15 +143,22 @@ const hostOf = (u) => { try { return new URL(/^https?:/.test(u) ? u : `https://$
  * (--live-host inferred): a recorded run measured header parity on the preview host while its gates ran on the
  * live host, and the rule never fired because --live-host was not passed. Pure.
  */
-export function inferredLiveHost(pages = []) {
-  const counts = new Map();
-  for (const p of (Array.isArray(pages) ? pages : []).filter(isDelivered)) {
-    const u = p.delivery && p.delivery.deployedUrl;
-    const h = typeof u === 'string' && /^https?:\/\//.test(u) ? hostOf(u) : '';
-    if (h) counts.set(h, (counts.get(h) || 0) + 1);
-  }
-  if (!counts.size) return null;
-  return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))[0][0];
+export function inferredLiveHost(pages = [], { previewHost = null } = {}) {
+  const pv = previewHost ? hostOf(previewHost) : null;
+  const tally = (get) => {
+    const counts = new Map();
+    for (const p of (Array.isArray(pages) ? pages : []).filter(isDelivered)) {
+      const u = get(p);
+      const h = typeof u === 'string' && /^https?:\/\//.test(u) ? hostOf(u) : '';
+      if (h && h !== pv) counts.set(h, (counts.get(h) || 0) + 1);
+    }
+    if (!counts.size) return null;
+    return [...counts].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))[0][0];
+  };
+  // The live host the published gates ran on (delivery.gate.host) is the live host; the preview host is excluded; fall
+  // back to the deployed URL's host, which update-coverage records as the PREVIEW host by default — so the header-parity
+  // rule still fires when parity was measured on preview while the gates ran on the live host.
+  return tally((p) => p.delivery && p.delivery.gate && p.delivery.gate.host) || tally((p) => p.delivery && p.delivery.deployedUrl);
 }
 
 /** The header's gap, or null: a migration is not done while its header's behaviour is unproven (header-parity). */
@@ -522,7 +529,7 @@ async function main() {
   // The live host: --live-host, else rollout.json site.liveHost, else the host the coverage records the pages were
   // deployed/gated on (inferredLiveHost) — so the live-host header-parity rule applies by default. --offline keeps
   // this host for the rule but skips the network probe.
-  const host = arg('live-host', (config.site && config.site.liveHost) || inferredLiveHost(pages));
+  const host = arg('live-host', (config.site && config.site.liveHost) || inferredLiveHost(pages, { previewHost: config.site && config.site.previewHost }));
   if (!OFFLINE && !host) { console.error('rollout done-check: need --live-host <host> (or rollout.json site.liveHost or a deployed live host in coverage), or --offline.'); process.exit(2); }
 
   // sibling skills resolve in both layouts: plugin tree (skills/<b>/scripts/) and project copy (stardust/scripts/<b>/)
