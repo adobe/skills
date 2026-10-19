@@ -78,7 +78,16 @@
               "description": "Archetypes-only roster sibling: the state.json currentStatePath its source hash was taken from, when that file exists."
             },
             "sourceUrl": { "type": ["string", "null"], "description": "The page's URL on the source site (sidecar, else state.json by slug): the join key with a spec's knowledge." },
-            "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." }
+            "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." },
+            "encodedHtml": {
+              "type": ["string", "null"],
+              "description": "An encoded page (migrate's encoder): the encoded document deploy stages, stardust/encoded/<da-path>.html (`migratedHtml` is then null); absent on every other row."
+            },
+            "variance": {
+              "type": "object",
+              "additionalProperties": true,
+              "description": "A cloned sibling's sibling-variance record, copied verbatim from its sidecar (migrate owns the shape: the verdict with its deltas and acceptance, or why the check was skipped); absent when the sidecar has none."
+            }
           }
         },
         "blocks": {
@@ -195,9 +204,40 @@
         "clipped": { "type": ["number", "null"] },
         "content": { "type": ["object", "null"], "description": "Content-presence totals, when probed." },
         "reasons": { "type": "array", "items": { "type": "string" } },
-        "override": { "type": ["string", "null"], "description": "The override's verdict, when one applies." },
+        "inconclusive": {
+          "type": ["string", "null"],
+          "description": "A row without a verdict (a polluted capture): its reasons joined by '; ' (`no verdict` when none) — recorded pass false, the status never flipped; null for a row that has a verdict."
+        },
+        "override": {
+          "type": ["object", "string", "null"],
+          "description": "gate-all's validated override when the row carries one — {verdict, reason, valid}; only valid true passes a failing row — else null. A plain string is the older verdict-only form.",
+          "required": ["verdict", "reason", "valid"],
+          "additionalProperties": false,
+          "properties": {
+            "verdict": { "type": ["string", "null"] },
+            "reason": { "type": ["string", "null"], "description": "Cites the inconsistency-register entry (R-<nn>) that documents the deviation." },
+            "valid": { "type": "boolean" }
+          }
+        },
         "table": { "type": "string", "description": "Path of the gate summary the verdict came from." },
-        "at": { "type": "string", "format": "date-time" }
+        "at": { "type": ["string", "null"], "format": "date-time", "description": "Row time: a whole-row reuse's time, else the table's writtenAt; null when the table records neither (such a row is never skipped as older)." },
+        "width": { "type": ["integer", "null"], "description": "The table's breakpoint in px (_provenance.breakpoint); null when the table records none." },
+        "atByWidth": {
+          "type": "object",
+          "description": "The newest applied row time per width ({\"<width>\": ISO time}); a row older than its width's time is skipped, so an older table never reverts a newer verdict.",
+          "additionalProperties": { "type": "string", "format": "date-time" }
+        },
+        "passByWidth": {
+          "type": "object",
+          "description": "Each width's own verdict ({\"<width>\": true | false | null}); null = an inconclusive row at that width (no verdict). done-check proves a page only when every width is true.",
+          "additionalProperties": { "type": ["boolean", "null"] }
+        },
+        "rounds": {
+          "type": "object",
+          "description": "The fix-round count per width ({\"<width>\": n}), the newest applied row of a width setting it.",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
+        },
+        "host": { "type": ["string", "null"], "description": "The EDS origin (scheme + host) the row was measured against: the row's own, else its table's _provenance.eds; null when neither records one." }
       }
     }
   }
