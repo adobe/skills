@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-origin-baseline) — a frozen, provenance-stamped origin baseline for the source-fidelity pixel gate (#161)
+
+The replica source-fidelity pixel gate compares the build against a FRESH capture of the live origin every round. In a
+recorded hands-off run of a multilingual site the origin moved underneath the run — server-side personalisation made the
+home render 189 px shorter desktop / 432 px shorter mobile than the morning capture, live font loads intermittently
+failed, one live capture came back blank at the top — so three pages ended the run failing on pixel only (content,
+height and clip all passed), and each moving-origin event burned a fix round on a false FAIL. This adds the first,
+opt-in slice of a frozen origin baseline: capture one provenance-stamped origin per page/width, then gate against it
+instead of a fresh shot so the origin cannot move under the run. Default OFF — a run that does not ask for it is
+byte-for-byte unchanged. (First slice; the drift verdict that LABELS origin movement "origin drift (external)" and the
+category request-routing data file are a later wave.)
+
+- **`stitch-shot.mjs --freeze-baseline [--force]`.** Reuses the existing capture (consent dismissed, `document.fonts.ready`
+  awaited with `fontsFailed` recorded, animations settled via `--settle`, a content hash over the `--inventory`) and
+  writes `baseline.png` (atomic) + `baseline.json` { capturedAt, url, width, height, conditions, fontsFailed,
+  contentHash } atomically (temp + rename) into the gate dir. It refuses to re-freeze over an existing baseline without
+  `--force`, and refuses to freeze a capture whose fonts failed (a baseline in fallback type would bake the wrong wraps
+  into every future round). `--check-baseline` captures a fresh shot and prints its contentHash / Δheight vs the
+  baseline — no verdict yet.
+- **`gate.sh --gate-against-baseline`.** When a frozen baseline exists for the page/width it becomes the origin side of
+  the SAME downstream pixel-compare (`live.png` is the baseline; `live.json` records `originBaseline { capturedAt,
+  contentHash, height }`) instead of a fresh live shot, and one line names the baseline's capture time. With the flag
+  set but no baseline present it says so and takes a fresh shot as usual. Default OFF: nothing changes for a run that
+  does not pass the flag.
+- **Docs.** `source-fidelity-gate.md` § Iteration discipline gains an "Origin baseline (opt-in)" note;
+  `rollout/reference/delivery-gates.md` and `replica/SKILL.md` point at the flags. No new script file (the flags live on
+  the existing capture and gate instruments); the scripts index is unchanged.
+
 ## 0.36.x (stardust/r17-retype-plan) — a majority-variance refusal hands off a re-type plan, no prose-note bounce (#159)
 
 In a recorded hands-off run of a multilingual site the three longest cluster units (146, 132 and 58 minutes) were all
