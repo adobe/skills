@@ -225,7 +225,9 @@ export function selectorQualityOf(mappingFile) {
 
 /**
  * The sections an adopter projecting mapping.json per selector would drop, derived from mapping.json (NOT a rewrite of it,
- * like selectorQuality). Two reasons, from block-origin's section/block model:
+ * like selectorQuality). Two reasons, from block-origin's section/block model. `no-selector` is exact (a property of the
+ * export); `blocks-unprojected` is a PREDICTION of the adopter's current per-selector merge (each variant homes to its
+ * first emitted section), so it can under- or over-count a given adopter's real losses.
  *   - 'no-selector'       a template section whose `selector` is null/absent (generalise found no selector resolving to
  *                         its element on any page): the adopter does not emit it — its blocks go with it.
  *   - 'blocks-unprojected' a section that HAS a selector (so it is emitted) and declares blocks (`blocks[]` non-empty), yet
