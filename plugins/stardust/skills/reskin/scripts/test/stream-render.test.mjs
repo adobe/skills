@@ -47,6 +47,18 @@ check('tokenVars: every string leaf, path-named in kebab case; metadata keys ski
   assert.equal(v['--buttons-primary-background'], 'rgb(0, 80, 160)');
   for (const k of Object.keys(v)) assert.ok(!/provenance|donor|node-refs|family-note/.test(k), k);
 });
+check('header nav keeps link-less menu triggers in source order (never drops chrome text)', () => {
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [], ctas: [{ text: 'Contact us', absHref: 'https://example.test/contact' }],
+    ordered: [
+      { kind: 'cta', text: '', absHref: 'https://example.test/', children: [{ kind: 'image', currentSrc: 'https://example.test/logo.svg' }] },
+      { kind: 'listItem', text: 'Our medicines' },
+      { kind: 'listItem', text: 'Contact us', children: [{ kind: 'cta', text: 'Contact us', absHref: 'https://example.test/contact' }] },
+    ],
+  }] };
+  const { html } = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } });
+  assert.match(html, /<nav><button class="nav-menu" type="button" aria-expanded="false">Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>/);
+});
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
   assert.equal(slots, 1);

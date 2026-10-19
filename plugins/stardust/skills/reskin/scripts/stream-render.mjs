@@ -245,13 +245,28 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   }
 
   // ---- chrome (donor shell carrying the source's links: a declared delta, outside the content gate) -----
+  // Header nav in source order: links, plus link-less list items (menu triggers such as a mega-menu
+  // parent) as labelled triggers — dropping them loses visible source text.
+  function navItems(s) {
+    if (!Array.isArray(s.ordered) || !s.ordered.length) return s.ctas.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    const ctasIn = (n) => (n.kind === 'cta' ? [n] : (n.children || []).flatMap(ctasIn));
+    return s.ordered.flatMap((n) => {
+      const links = ctasIn(n).filter((c) => (c.text || '').trim());
+      if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+      if (n.kind === 'listItem' && (n.text || '').trim()) {
+        return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(n.text.trim())}</button>`];
+      }
+      return [];
+    });
+  }
+
   function chromeHtml(ids, role) {
     if (!chromeModel) return '';
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
     if (role === 'header') {
       return slots.map((s) => `<div class="chrome-row"><div class="container">
       ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
-      <nav>${s.ctas.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`).join('')}</nav>
+      <nav>${navItems(s).join('')}</nav>
     </div></div>`).join('\n  ');
     }
     return slots.map((s) => {
@@ -326,6 +341,9 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-header .chrome-row .container { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 56px; flex-wrap: wrap; }
   .site-header nav { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; }
   .site-header nav a { text-decoration: none; }
+  .site-header nav { align-items: center; }
+  .site-header .nav-menu { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .site-header .nav-menu::after { content: ""; width: 6px; height: 6px; border: solid currentcolor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
   .logo { height: 32px; width: auto; }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .layout-media-band { background: ${v('--palette-light-band-bg', 'transparent')}; overflow: hidden; }
