@@ -401,6 +401,18 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       flag('image.alt', 'info', n.id, 'logo: alt text from the brand name is the author\'s call');
       return [...out, link ? ctaNode('', link.href, n, { children: [img] }) : img];
     }
+    const art = kind === 'button' || fill ? null : artOf(n);
+    if (art === 'backdrop') {
+      decorative.push(n.id);
+      flag('image.decorative', 'info', n.id, `"${cleanName(n.name)}" sits behind text or bleeds past the frame: a backdrop motif, left to the band's CSS`);
+      return out;
+    }
+    if (art === 'media' || art === 'placeholder') {
+      const img = imageNode(n, { svg: true });
+      if (art === 'placeholder') flag('image.placeholder', 'review', n.id, `"${cleanName(n.name)}" is an empty fill frame standing in for media: supply the real image`);
+      flag('image.alt', where === 'chrome' ? 'info' : 'review', n.id, 'no alt text in Figma: write it or mark the image decorative');
+      return [...out, link ? ctaNode('', link.href, n, { children: [img] }) : img];
+    }
     const nestedButtons = kind === 'button' && orderedChildren(n).filter((c) => hasText(c) && kindOf(c, rules, lookup) === 'button').length > 1;
     if (kind === 'button' && !nestedButtons) {
       const label = norm(textsIn(n).map(caseText).join(' '));
@@ -421,6 +433,38 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
       return [...out, ctaNode(text, link.href, n, { buttonLike: Boolean(solidFill(n) || (n.strokes || []).length), children: kids.map((k) => ({ ...k })) })];
     }
     return [...out, ...kids];
+  }
+  // A text-less vector/fill composition larger than an icon is artwork the stream would otherwise drop
+  // silently: content media (an illustration, or an empty fill frame standing in for media), unless it sits
+  // behind the band's text or bleeds past the frame (a backdrop motif). An auto-layout row of two or more
+  // such items (a logo strip) recurses so each item is its own image. Thin rules (lines, dividers) stay out.
+  let bandTexts = [];
+  const textBoxesIn = (nodes) => {
+    const out = [];
+    (function walk(x) { if (!visible(x)) return; if (isText(x)) out.push(box(x)); (x.children || []).forEach(walk); }({ children: nodes }));
+    return out;
+  };
+  const overlaps = (a, b) => Math.min(a.x + a.width, b.x + b.width) > Math.max(a.x, b.x) && Math.min(a.y + a.height, b.y + b.height) > Math.max(a.y, b.y);
+  function artOf(n) {
+    if (hasText(n)) return null;
+    const b = box(n);
+    if (Math.max(b.width, b.height) <= 64 || Math.min(b.width, b.height) < 32) return null;
+    let vectors = false;
+    let fills = false;
+    const ok = (function walk(x) {
+      if (!visible(x)) return true;
+      if (isText(x) || imageFill(x)) return false;
+      if (VECTORISH.has(x.type)) { vectors = true; return true; }
+      const kids = (x.children || []).filter(visible);
+      if (!kids.length && solidFill(x)) { fills = true; return true; }
+      return kids.every(walk);
+    }(n));
+    if (!ok || (!vectors && !fills)) return null;
+    const kids = (n.children || []).filter(visible);
+    if (n.layoutMode && n.layoutMode !== 'NONE' && kids.length >= 2) return null;
+    const fb = box(frame);
+    if (b.x < fb.x - 1 || b.x + b.width > fb.x + fb.width + 1 || bandTexts.some((t) => overlaps(t, b))) return 'backdrop';
+    return vectors ? 'media' : 'placeholder';
   }
   function isVectorOnly(n) {
     let any = false;
@@ -443,6 +487,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     const bg = band.nodes.filter((n) => imageFill(n) && !hasText(n) && area(n) >= 0.9 * bandArea);
     const ordered = [...bg, ...geometric(band.nodes.filter((n) => !bg.includes(n)))];
     const before = flags.length;
+    bandTexts = textBoxesIn(band.nodes);
     const stream = ordered.flatMap((n) => emit(n, 'body', null));
     for (const f of flags.slice(before)) f.slot = slot;
     return finishSection(slot, stream, band.nodes.map((n) => n.id));
@@ -470,6 +515,7 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     for (const c of seg.chrome[role]) {
       const rows = (c.layoutMode === 'VERTICAL' ? orderedChildren(c, log).filter(hasContent) : [c]);
       for (const r of rows.length > 1 ? rows : [c]) {
+        bandTexts = textBoxesIn([r]);
         const stream = emit(r, 'chrome', null);
         const flat = stream.flatMap((x) => (x.children ? [x, ...x.children] : [x]));
         const texts = flat.filter((x) => x.kind !== 'image' && x.kind !== 'formControl' && x.text);

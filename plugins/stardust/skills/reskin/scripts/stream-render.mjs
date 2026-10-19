@@ -21,19 +21,28 @@
  * file) keeps the remote src and is listed.
  *
  * mapping.json (the only per-site input):
- *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent" },
+ *   { "chrome": { "model": "<dir holding a content-model.json>", "header": ["s01"], "footer": ["s03"], "footerTone": "dark|light|accent",
+ *       "navAlign": "start|center|end" },
  *     "pages": { "<slug>": { "template": "<archetype slug>",
  *       "slots": { "s01": { "module": "M2", "layout": "stack|grid-2|media-band|split|cards (space-separated)",
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
- *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr" } } } } }
+ *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr", "bleed": true,
+ *         "align": "center" } } } } }
+ *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
+ *   actions; an override of the donor's layout.navAlign (a Figma donor's curate measures it), default end.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
- *   run (findRepeat — same node-kind sequence back to back, e.g. image+h3+p per team member) as a grid of
+ *   run (findRepeat — same node-kind sequence back to back, heading levels ignored when that covers more,
+ *   e.g. image+h3+p per team member) as a grid of
  *   cards, `columns` wide (default 3 when the count divides by 3, else 2), intro above and tail below.
- *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent. Content-driven, never per
+ *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent ("bleed": true paints the
+ *   whole full-width band instead, for frames whose tone band spans the viewport); align: center centres
+ *   the stream (cards keep start alignment); a split whose image precedes its heading puts it first.
+ *   Sub-headings take their donor type role (role-h4/h5) when the donor has it. Content-driven, never per
  *   site: 3+ consecutive images render as one logo row; h2–h4 take type.h2–h4 sizes when the donor has
  *   them; a slot's leading heading in the h2 role (an h2 with no heading option, or heading: h2) sits on an
- *   accent label when the donor has radii.label. heading picks the
+ *   accent label when the donor has radii.label; a label's required marker takes type.required's weight when the
+ *   donor has that role (else the label's). heading picks the
  *   type role of the slot's .heading (default display) when the frame sets the title smaller; inset
  *   replaces the centred container with a full-width one and that side gutter (a frame padded from the
  *   viewport edge, not centred); split sets the split layout's two column tracks (px | fr | %) where the
@@ -105,8 +114,16 @@ export const modelHasButton = (model) => (model?.sections || []).some((s) => (s.
 // signature is its kind (+ heading level, + parent class for bare text); the run is the start/period whose
 // signature sequence repeats back to back, covering the most nodes (ties: the later start, then the smaller period).
 // Nodes before it are the intro, nodes after it the tail. Null when nothing repeats twice. Pure; exported.
-export function findRepeat(ordered, { maxStart = 6, maxPeriod = 12 } = {}) {
-  const sig = ordered.map((n) => [n.kind, n.level || '', n.kind === 'text' ? n.parentClass || n.parentTag || '' : ''].join(':'));
+// Card titles often carry drifting heading levels in a design file (h3/h4/h5 for visually equal titles), so a
+// level-blind run wins when it covers more of the stream than the level-exact one.
+export function findRepeat(ordered, opts = {}) {
+  const exact = repeatRun(ordered, opts, true);
+  const loose = repeatRun(ordered, opts, false);
+  if (!loose || (exact && exact.covered >= loose.covered)) return exact && { start: exact.start, period: exact.period, count: exact.count };
+  return { start: loose.start, period: loose.period, count: loose.count };
+}
+function repeatRun(ordered, { maxStart = 6, maxPeriod = 12 } = {}, levels = true) {
+  const sig = ordered.map((n) => [n.kind, levels ? n.level || '' : '', n.kind === 'text' ? n.parentClass || n.parentTag || '' : ''].join(':'));
   let best = null;
   for (let start = 0; start <= Math.min(maxStart, sig.length - 4); start++) {
     for (let period = 2; period <= maxPeriod && start + 2 * period <= sig.length; period++) {
@@ -122,7 +139,7 @@ export function findRepeat(ordered, { maxStart = 6, maxPeriod = 12 } = {}) {
       if (better) best = { start, period, count, covered };
     }
   }
-  return best && { start: best.start, period: best.period, count: best.count };
+  return best;
 }
 
 // WCAG contrast of two CSS colours (#rgb, #rrggbb, rgb()/rgba()); null when either is unparseable.
@@ -148,6 +165,21 @@ export function contrast(a, b) {
 }
 
 // Pure: one page's HTML. resolveImg(url) → { src, source? } lets the CLI localize; the default hot-links.
+// Visible text leaves of a chrome section (punctuation-only fragments aside) absent from its rendered HTML.
+// The content gates measure <main> only, so render() throws on any: a chrome drop never ships silently.
+export function chromeTextMissing(section, html) {
+  const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const rendered = norm(String(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+  const leaves = [];
+  const walk = (n) => {
+    const kids = (n.children || []).filter((c) => norm(c.text));
+    if (kids.length) kids.forEach(walk);
+    else if (n.kind !== 'image' && /[\p{L}\p{N}]/u.test(norm(n.text))) leaves.push(norm(n.text));
+  };
+  (section.ordered || []).forEach(walk);
+  return leaves.filter((t) => !rendered.includes(t));
+}
+
 export function render({ slug, model, tokens, mapping, chromeModel = null, now = new Date().toISOString(), resolveImg = (u) => ({ src: u }) }) {
   const pageMap = mapping?.pages?.[slug];
   if (!pageMap) throw new SetupError(`mapping.json has no pages.${slug}`);
@@ -212,7 +244,12 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     for (let i = 0; i < ordered.length; i++) {
       const n = ordered[i]; const next = ordered[i + 1];
       switch (n.kind) {
-        case 'heading': out.push(`<${n.level || 'h2'} class="heading">${txt(n)}</${n.level || 'h2'}>`); break;
+        case 'heading': {
+          // A sub-heading whose donor type role differs from display is sized by that role, so drifting DOM
+          // levels (h3/h4/h5 on visually equal card titles) render alike.
+          const r = /^h[2-6]$/.test(n.role || '') && has(`--type-${n.role}-font-size`) ? ` role-${n.role}` : '';
+          out.push(`<${n.level || 'h2'} class="heading${r}">${txt(n)}</${n.level || 'h2'}>`); break;
+        }
         case 'paragraph': out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
         case 'listItem': {
           const items = [n]; while (ordered[i + 1]?.kind === 'listItem') items.push(ordered[++i]);
@@ -253,22 +290,103 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   }
 
   // ---- chrome (donor shell carrying the source's links: a declared delta, outside the content gate) -----
+  // Header nav in source order: links, plus link-less list items (menu triggers such as a mega-menu
+  // parent) as labelled triggers — dropping them loses visible source text.
+  function navItems(s) {
+    if (!Array.isArray(s.ordered) || !s.ordered.length) return s.ctas.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    return s.ordered.flatMap((n) => navItem(s, n));
+  }
+
+  function navItem(s, n) {
+    const ctasIn = (x) => (x.kind === 'cta' ? [x] : (x.children || []).flatMap(ctasIn));
+    const links = ctasIn(n).filter((c) => (c.text || '').trim());
+    if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    const text = (n.text || '').trim();
+    if (!text || n.kind === 'image') return [];
+    // a Figma-only capture lists its links as ctas and their text as plain stream nodes
+    const cta = s.ctas.find((c) => (c.text || '').trim() === text);
+    if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
+    if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
+    return [`<span class="nav-text">${esc(text)}</span>`];
+  }
+
+  // A branded row (logo + a menu list) is three zones in source order: brand, the menu (its list items)
+  // and the actions (the links outside it, e.g. a Login button). Other rows stay one link run.
+  function headerRow(s) {
+    const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
+    const ordered = Array.isArray(s.ordered) ? s.ordered : [];
+    const hasList = ordered.some((n) => n.kind === 'listItem');
+    const isAction = (n) => n.inButton || n.parentTag === 'button';
+    if (!logos || (!hasList && !ordered.some(isAction))) {
+      return `<div class="chrome-row"><div class="container">
+      ${logos}
+      <nav>${navItems(s).join('')}</nav>
+    </div></div>`;
+    }
+    // Without a menu list the menu is the row's plain entries and the actions its buttons (a Figma frame).
+    const inMenu = (n) => (hasList ? n.kind === 'listItem' : !isAction(n));
+    const menu = ordered.filter(inMenu).flatMap((n) => navItem(s, n));
+    let btn = 0;
+    // A source button stays a button: its link (or, without one, a <button>) takes the donor's button paint.
+    const actions = ordered.filter((n) => !inMenu(n)).flatMap((n) => {
+      const items = navItem(s, n);
+      if (!isAction(n)) return items;
+      const cls = () => (btn++ === 0 ? 'btn btn-secondary' : 'btn');
+      if (!items.length) return [];
+      return items.map((h) => (h.startsWith('<a ') ? h.replace('<a ', `<a class="${cls()}" `)
+        : `<button class="${cls()}" type="button">${esc((n.text || '').trim())}</button>`));
+    });
+    const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
+    const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
+    return `<div class="chrome-row nav-align-${align}"><div class="container">
+      ${logos}
+      <nav>${menu.join('')}</nav>${actions.length ? `
+      <div class="nav-actions">${actions.join('')}</div>` : ''}
+    </div></div>`;
+  }
+
+  // Footer prose in source order: every non-link text leaf (headings, text runs, list items), so a
+  // contact block or a credit line is never dropped; links go to the link list.
+  function footerTexts(s) {
+    const ctaTexts = new Set(s.ctas.map((c) => (c.text || '').trim()));
+    if (!Array.isArray(s.ordered) || !s.ordered.length) {
+      return [...s.paragraphs, ...(s.listItems || [])].map((p) => (typeof p === 'string' ? p : p.text)).filter((t) => !ctaTexts.has(t));
+    }
+    const out = [];
+    const walk = (n) => {
+      if (n.kind === 'cta' || n.kind === 'image' || n.kind === 'formControl') return;
+      const kids = (n.children || []).filter((c) => (c.text || '').trim());
+      if (kids.length) { kids.forEach(walk); return; }
+      const t = (n.text || '').trim();
+      if (t && /[\p{L}\p{N}]/u.test(t) && !ctaTexts.has(t) && !out.includes(t)) out.push(t);
+    };
+    s.ordered.forEach(walk);
+    return out;
+  }
+
+  // Every visible text leaf of a chrome section must survive the render: the content gates measure
+  // <main> only, so a silent drop here would ship unnoticed.
+  function assertChromeText(s, html) {
+    const missing = chromeTextMissing(s, html);
+    if (missing.length) {
+      throw new Error(`chrome ${s.slot} dropped visible text ${JSON.stringify(missing)} in ${slug} — extend stream-render, never drop content`);
+    }
+  }
+
   function chromeHtml(ids, role) {
     if (!chromeModel) return '';
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
+    const checked = (s, html) => { assertChromeText(s, html); return html; };
     if (role === 'header') {
-      return slots.map((s) => `<div class="chrome-row"><div class="container">
-      ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
-      <nav>${s.ctas.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`).join('')}</nav>
-    </div></div>`).join('\n  ');
+      return slots.map((s) => checked(s, headerRow(s))).join('\n  ');
     }
-    return slots.map((s) => {
-      const texts = s.paragraphs.map((p) => (typeof p === 'string' ? p : p.text)).filter((t) => !s.ctas.some((c) => c.text === t));
+    return slots.map((s) => checked(s, (() => {
+      const texts = footerTexts(s);
       return `<div class="container chrome-footer">
       <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
       <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>
     </div>`;
-    }).join('\n  ');
+    })())).join('\n  ');
   }
 
   // ---- page -------------------------------------------------------------------------------------------
@@ -291,6 +409,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       if (layout.includes('cards')) warnings.push(`${s.slot}: layout "cards" but no repeating run in the stream — rendered as a stack`);
       inner = streamHtml(s.ordered, ctx);
     }
+    if (m.align && m.align !== 'center') warnings.push(`${s.slot}: unknown align "${m.align}" (center) — ignored`);
+    // A split whose stream opens with its image (before any heading) keeps the image on the leading side.
+    const firstImg = s.ordered.findIndex((n) => n.kind === 'image');
+    const firstHead = s.ordered.findIndex((n) => n.kind === 'heading');
+    const mediaFirst = ctx.split && ctx.bandImage && firstImg > -1 && (firstHead === -1 || firstImg < firstHead);
     const tone = ['dark', 'light', 'accent'].includes(m.tone) ? m.tone : null;
     if (m.tone && !tone) warnings.push(`${s.slot}: unknown tone "${m.tone}" (dark | light | accent) — ignored`);
     const role = ['display', 'h2', 'h3', 'h4'].includes(m.heading) ? m.heading : null;
@@ -301,7 +424,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
     if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
     const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : [])].join(' ');
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
     const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
     return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
       ${ctx.split ? '' : media}
@@ -337,6 +460,18 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-header .chrome-row .container { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-height: 56px; flex-wrap: wrap; }
   .site-header nav { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; }
   .site-header nav a { text-decoration: none; }
+  .site-header nav { align-items: center; }
+  .site-header .nav-menu { display: inline-flex; align-items: center; gap: 8px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+  .site-header .nav-menu::after { content: ""; width: 6px; height: 6px; border: solid currentcolor; border-width: 0 1.5px 1.5px 0; transform: translateY(-2px) rotate(45deg); }
+  .site-header .nav-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .site-header .nav-align-start nav { margin-left: 0; }
+  .site-header .nav-align-start .nav-actions { margin-left: auto; }
+  @media (min-width: 900px) {
+    .site-header .nav-align-center .container { display: grid; grid-template-columns: 1fr auto 1fr; }
+    .site-header .nav-align-center .logo { grid-column: 1; justify-self: start; }
+    .site-header .nav-align-center nav { grid-column: 2; margin-left: 0; justify-content: center; }
+    .site-header .nav-align-center .nav-actions { grid-column: 3; justify-self: end; }
+  }
   .logo { height: 32px; width: auto; }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .layout-media-band { background: ${v('--palette-light-band-bg', 'transparent')}; overflow: hidden; }
@@ -349,6 +484,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main h1, .site-main h2, .site-main h3, .site-main h4 { font-family: ${v('--type-display-font-family', 'inherit')}; font-weight: ${v('--type-display-font-weight', '700')}; color: ${v('--palette-heading-fg', 'inherit')}; margin: 0 0 24px; }
   .site-main .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; text-align: ${v('--type-display-text-align', 'left')}; }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .heading-${h} .heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; }`).join('\n  ')}
+  ${['h2', 'h3', 'h4', 'h5', 'h6'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main .band .flow .heading.role-${h} { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.3')}; }`).join('\n  ')}
   .site-main .heading-display .heading { font-size: ${v('--type-display-font-size', '2em')}; line-height: ${v('--type-display-line-height', '1.2')}; }
   .site-main .inset > .container { max-width: none; padding: 0 var(--band-inset); }
   ${['h2', 'h3', 'h4'].filter((h) => has(`--type-${h}-font-size`)).map((h) => `.site-main ${h}.heading { font-size: var(--type-${h}-font-size); line-height: ${v(`--type-${h}-line-height`, '1.2')}; font-weight: ${v(`--type-${h}-font-weight`, 'inherit')}; }`).join('\n  ')}
@@ -357,13 +493,13 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main p { margin: 0 0 16px; }
   .site-main .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
   .site-main .field label { font-weight: ${v('--type-label-font-weight', '600')}; }
-  .site-main .req { color: ${accentText ? v('--palette-accent', 'inherit') : 'inherit'}; }
+  .site-main .req { color: ${accentText ? v('--palette-accent', 'inherit') : 'inherit'}; font-weight: ${v('--type-required-font-weight', 'inherit')}; }
   .site-main input:not([type=checkbox]):not([type=radio]), .site-main select, .site-main textarea { font: inherit; min-height: 48px; padding: 0 16px; width: 100%; border: 1px solid ${v('--palette-light-band-bg', '#ccc')}; border-radius: ${v('--radii-control', '4px')}; color: inherit; background: ${v('--palette-page-bg', '#fff')}; }
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }
   .site-main .actions { margin: 24px 0 0; }
-  .site-main .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
-  .site-main .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
+  :is(.site-main, .site-header) .btn { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; background: ${v('--buttons-primary-background', 'currentColor')}; color: ${v('--buttons-primary-color', '#fff')}; border: ${v('--buttons-primary-border', '0')}; border-radius: ${v('--buttons-primary-border-radius', '4px')}; padding: ${v('--buttons-primary-padding', '8px 16px')}; font-family: inherit; font-size: ${v('--buttons-primary-font-size', 'inherit')}; font-weight: ${v('--buttons-primary-font-weight', '700')}; line-height: ${v('--buttons-primary-line-height', v('--type-body-line-height', 'inherit'))}; text-decoration: none; cursor: pointer; }
+  :is(.site-main, .site-header) .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
   .site-main .list { padding-left: 1.2em; }
@@ -373,10 +509,20 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .logos img { height: 48px; width: auto; }
   .site-main .layout-split .panel { display: grid; grid-template-columns: var(--split-columns, 1fr 1fr); gap: ${v('--layout-column-gap', '40px')}; align-items: center; }
   .site-main .split-img { max-width: 100%; max-height: 520px; justify-self: end; }
+  .site-main .media-first .split-img { order: -1; justify-self: start; }
+  .site-main .align-center .flow { text-align: center; justify-items: center; }
+  .site-main .align-center .flow > :is(.actions, .logos) { justify-content: center; }
+  .site-main .align-center .card { text-align: start; }
+  .site-main .band.align-center .flow > .heading:first-child { justify-self: center; }
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
   .site-main .card > :last-child { margin-bottom: 0; }
   .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { border-radius: ${v('--radii-card', '0')}; padding: 50px 60px; }
+  .site-main .bleed.tone-dark, .site-main .bleed.tone-light, .site-main .bleed.tone-accent { padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
+  .site-main .bleed.tone-dark { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .bleed.tone-light { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
+  .site-main .bleed.tone-accent { background: ${v('--palette-accent', 'transparent')}; }
+  .site-main .bleed .panel { background: none !important; border-radius: 0; padding: 0; }
   .site-main .tone-dark .panel { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
   .site-main .tone-dark :is(h1, h2, h3, h4) { color: inherit; }
   .site-main .tone-dark .card { background: transparent; box-shadow: none; }

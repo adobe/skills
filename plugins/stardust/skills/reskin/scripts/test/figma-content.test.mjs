@@ -166,6 +166,23 @@ await test('image fill with crop → image entry, image.crop + image.alt flags; 
   assert.ok(Array.isArray(m._provenance.decorative));
 });
 
+await test('artwork: a text-less vector composition is media, an empty fill frame a placeholder, a backdrop decorative, a thin rule ignored', () => {
+  const V = (id, x, y, w, h) => ({ id, type: 'VECTOR', name: 'Vector', ...bb(x, y, w, h) });
+  const solid = [{ type: 'SOLID', color: { r: 0.8, g: 0.9, b: 1, a: 1 } }];
+  const illo = { id: 'il', type: 'GROUP', name: 'Illustration', children: [V('il1', 800, 120, 200, 200), V('il2', 1000, 200, 100, 100)], ...bb(800, 120, 300, 300) };
+  const empty = { id: 'ph', type: 'FRAME', name: 'Media', fills: solid, children: [], ...bb(800, 500, 400, 300) };
+  const backdrop = { id: 'bd', type: 'GROUP', name: 'Waves', children: [V('bd1', -50, 120, 600, 200)], ...bb(-50, 120, 600, 200) };
+  const rule = { id: 'rl', type: 'RECTANGLE', name: 'Line', fills: solid, ...bb(0, 900, 1200, 2) };
+  const m = build(page([F('ab', 'Body', 0, 100, 1440, 900, [T('at', 'Plan your work together', 0, 150, 500, 40), illo, empty, backdrop, rule])]), { assets: (n) => ({ path: `assets/${n.id}.svg` }) });
+  const ids = m.sections.flatMap((s) => s.ordered).filter((o) => o.kind === 'image').map((o) => o.node);
+  assert.ok(ids.includes('il'), `illustration kept: ${ids}`);
+  assert.ok(ids.includes('ph'), `placeholder kept: ${ids}`);
+  assert.ok(!ids.includes('bd') && !ids.includes('rl'), `backdrop/rule not media: ${ids}`);
+  assert.ok(m._provenance.decorative.includes('bd'));
+  assert.ok(m.flags.some((f) => f.id === 'image.placeholder' && f.node === 'ph' && f.severity === 'review'), JSON.stringify(m.flags));
+  assert.ok(m.flags.some((f) => f.id === 'image.decorative' && f.node === 'bd'));
+});
+
 await test('placeholders: lorem/kit-word/pattern block; all-placeholder page is placeholder-only', () => {
   const m = build(page([F('pb', 'Body', 0, 100, 1440, 400, [T('p1', 'Lorem ipsum dolor sit amet', 0, 100, 300, 24), T('p2', 'Button', 0, 140, 300, 24), T('p3', 'XX-XXXX-01', 0, 180, 300, 24)])]));
   for (const id of ['placeholder.lorem', 'placeholder.kit-word', 'placeholder.pattern', 'placeholder.only']) assert.ok(flagIds(m).includes(id), `${id} in ${flagIds(m)}`);
