@@ -219,6 +219,11 @@ criteria and the cap of 3 rounds per page (handoff contract § 1 row 5) stay.
   without one is always re-gated) changed since its PASS, and leaves out and
   names each page at the cap (`at the cap: <slug>, … — C-final's roster gate
   measures them`); `--round-reset` follows only a recorded re-prototype decision.
+- **The full roster gate confirms ONCE, at the end of gap-closure:** `gate-all.mjs
+  --skip-existing` over the whole coverage at both widths — a page already PASSing
+  under the current gate key keeps its capture — is the final word, never a per-fix
+  step; widen to it only after (a) `--only` and (b) `--changed-only` have cleared the
+  fix (the re-gate ladder: `SKILL.md` § Gap-closure re-gate ladder).
 - **Resume, never restart:** a killed `gate-all.mjs` run re-runs the same
   command plus `--skip-existing`.
 - **Origin baseline (opt-in, default OFF):** on a site whose live origin moves

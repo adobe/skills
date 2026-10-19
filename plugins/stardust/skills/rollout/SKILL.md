@@ -526,6 +526,32 @@ the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); o
 template run, and what fails after it is reported as residuals, never looped again (handoff
 contract § 3).
 
+**Gap-closure re-gate ladder — the narrowest gate that proves each fix (#166).** Widen the
+re-gate only as far as the fix reaches, and never idle on a roster:
+
+- **(a) A page fix → re-gate only the pages that failed:** `gate-all.mjs --only <failing slugs>`
+  at both widths (`--width 1440` then `--width 360`) — minutes, not a roster.
+- **(b) A shared block or style fix → re-gate the pages that render it:** `gate-all.mjs
+  --changed-only` at both widths. It keys on each page's delivered fingerprint — the sha256 of the
+  delivered parts (the frozen foundation, `icons/` + `plugins/`, the shared blocks, the page's
+  block closure CSS/JS, its content and the chrome documents; not the host, criteria, sidecars or
+  instruments) — so a shared edit moves the fingerprint of exactly the pages that use it: those
+  re-gate, the rest keep their cached PASS rows (a page at the fix-round cap is left out and named,
+  `at the cap: <slug>, … — C-final's roster gate measures them`). A change in no fingerprinted
+  input → `--only` with the block's pages from the coverage ledger instead.
+- **(c) ONE full-roster gate to confirm, at the END of gap-closure:** `gate-all.mjs
+  --skip-existing` (the roster is the coverage) at both widths, so a page already PASSing under the
+  current gate key is not re-shot. A full roster of N pages runs about N minutes across both widths
+  (~25 s per page per width); a failing-pages `--only` re-gate takes minutes. It is the final word,
+  never a per-fix step.
+- **Never idle on a roster.** Launch every gate in the background (`run-bg.mjs start`) and do the
+  next fix while it runs; wait in bounded slices (`run-bg.mjs wait`, which wakes early on the wake
+  file), never block the lead on a full roster with nothing else to do. A recorded hands-off run
+  re-gated the full 21-page roster about five times (18–23 min each, `--skip-existing`, never
+  `--changed-only`) while only 7, then 2, pages were failing — the lead idle most of those minutes.
+  Fix-round brief and `--changed-only` mechanics: `reference/delivery-gates.md`
+  § Iteration discipline.
+
 ### Phase E2 — Link-audit completeness (runs BEFORE Phase E)
 
 This phase runs BEFORE the full-site verify (Phase E): it audits and **repoints** the link

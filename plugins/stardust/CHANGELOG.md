@@ -4,6 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-regate-discipline) — gap-closure re-gates at the width of the fix (#166)
+
+In a recorded hands-off run the lead re-gated the full 21-page roster about five times during
+gap-closure (18–23 min each, `gate-all.mjs --skip-existing`, never `--changed-only`) while only 7,
+then 2, pages were failing — and sat idle for most of those minutes. This documents the re-gate
+ladder so each fix re-gates the narrowest scope that proves it:
+
+- **`skills/rollout/SKILL.md`** gains the gap-closure re-gate ladder: (a) a page fix → `gate-all.mjs
+  --only <failing slugs>` at both widths; (b) a shared block/style fix → `--changed-only`, which
+  re-gates exactly the pages whose delivered fingerprint moved; (c) ONE full-roster gate
+  (`--skip-existing`) to confirm at the END — about N minutes for N pages across both widths,
+  never a per-fix step. Launch every gate in the background and do the next fix while it runs;
+  never idle the lead on a full roster with nothing else to do.
+- **`skills/replica/reference/source-fidelity-gate.md`** § Iteration discipline cross-references the
+  ladder; **`skills/rollout/reference/delivery-gates.md`** names the confirming full-roster gate.
+
+Docs only; no script, contract or version-manifest change.
+
 ## 0.36.x (stardust/r17-null-sections) — null-selector sections surfaced in the migration export (#164)
 
 A recorded hands-off run ended READY with a fresh, Tier-2-adoptable export, yet when the adopter

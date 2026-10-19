@@ -563,6 +563,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   read body font-size/line-height per block on both sides (a computed-style
   probe — build-side runs are free) and re-fit rhythm at the true metric.
   Compensating spacing is the tell.
+- **Re-gate at the width of the fix, not the roster.** In gap-closure after the
+  all-pages gate, widen the re-gate only as far as a fix reaches: a page fix →
+  `gate-all.mjs --only <failing slugs>` (minutes); a shared block/style fix →
+  `--changed-only`, which re-gates exactly the pages whose delivered fingerprint
+  moved; ONE full-roster gate (`--skip-existing`) confirms at the END. Launch it
+  in the background and do the next fix while it runs — never idle on a roster
+  (a recorded hands-off run re-gated the full 21-page roster ~5× at 18–23 min
+  each while 7, then 2, pages were failing). The ladder, with costs:
+  `../../rollout/SKILL.md` § Gap-closure re-gate ladder.
 
 ## Hardening rules (false-measurement traps)
 
