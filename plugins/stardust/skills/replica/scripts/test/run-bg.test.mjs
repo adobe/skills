@@ -25,7 +25,7 @@ import { appendFileSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readF
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, describe, gateAllTimeout, isBrowserJob, lockWaitS, mayLaunch, pickNames, procInfo, report, settled, stallNotices, startKind, status, stop as stopJobs, wait } from '../run-bg.mjs';
+import { BROWSER_SCRIPTS, DEFAULT_MAX_SEC, DEFAULT_SLOTS, MAX_CEILING_SEC, PAUSED_EXIT, STILL_RUNNING_EXIT, STOP_EXIT, VERDICT_RE, WAIT_NOTICE_SEC, WAKE_EXIT, WAKE_FILE, browsersPerSlot, callerOwner, derivedBrowserSlots, describe, gateAllTimeout, isBrowserJob, lockWaitS, mayLaunch, pickNames, procInfo, report, settled, stallNotices, startKind, status, stopLine, stop as stopJobs, wait } from '../run-bg.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'run-bg.mjs');
@@ -565,54 +565,65 @@ await check('two owners in one dir: a bare wait/status covers the caller\'s own 
   assert.equal(firstLine(named.out), 'run-bg: status — named: 1 job(s)'); assert.match(named.out, /^legacy {2}done exit=0/m);
 });
 
-// ---- the pause file ($STARDUST_PAUSE_FILE) and --until ------------------------------------------------------------
-// The runner that supervises a hands-off run writes the pause file when it wants the session to stop: a wait ends on it
-// at once (exit 76), status shows it, and no job is signalled. p1 runs through the whole section and ends on its own.
+// ---- the stop file ($STARDUST_PAUSE_FILE) and --until ------------------------------------------------------------
+// The runner writes the pause file on every `stop` reply: a wait ends on its PRESENCE at once (exit 78, the stop line on
+// stderr and stdout), status still shows the retained pause line (exit 0), and no job is signalled. p1 runs through the
+// whole section and ends on its own.
 const pd = join(lockRoot, 'pz', 'bg'); mkdirSync(pd, { recursive: true });
 const PAUSE = join(lockRoot, 'pz', 'pause.json');
 const pauseLine = (path, reason, at) => `run-bg: paused — ${path} present (reason: ${reason}, at ${at}) — jobs keep running; finish the iteration, record it and return`;
+const stopLineAt = (stopAt, reason) => `wait: the runner asked to stop (${stopAt}; ${reason}) — end the session now`;
 const bgAt = (cwd, d, extra, sub, ...args) => new Promise((res) => { const c = spawn(process.execPath, [SCRIPT, sub, '--dir', d, ...args], { cwd, env: { ...env, ...extra } }); let out = ''; let err = ''; c.stdout.on('data', (b) => { out += b; }); c.stderr.on('data', (b) => { err += b; }); c.on('close', (code) => res({ code, out, err, at: Date.now() })); });
 const bgAsync = (d, extra, sub, ...args) => bgAt(lockRoot, d, extra, sub, ...args);
 
-await check(`wait exits ${PAUSED_EXIT} at once when the pause file is present — the pause line, then the one-pass report without "wait again"; the job is not signalled`, async () => {
-  assert.equal(PAUSED_EXIT, 76);
+await check(`wait exits ${STOP_EXIT} at once when the stop file is present — the stop line on stderr and stdout, then the one-pass report without "wait again"; the job is not signalled`, async () => {
+  assert.equal(STOP_EXIT, 78); assert.ok(STOP_EXIT !== PAUSED_EXIT && STOP_EXIT !== WAKE_EXIT && STOP_EXIT !== STILL_RUNNING_EXIT, '78 is distinct from 75/76/77');
   assert.equal(bgIn(pd, {}, 'start', '--name', 'p1', '--slots', '9', '--', process.execPath, '-e', 'setTimeout(()=>{},12000)').code, 0);
   for (let i = 0; i < 50 && !stateIn(pd, 'p1').wrapperPid; i += 1) await sleep(100); // eslint-disable-line no-await-in-loop
-  writeFileSync(PAUSE, JSON.stringify({ at: '2026-10-18T09:00:00Z', reason: 'push-stop' }));
+  writeFileSync(PAUSE, JSON.stringify({ stopRequested: true, stopAt: '2026-10-18T09:00:00Z', reason: 'push-stop' }));
   const t0 = Date.now(); const r = bgIn(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'wait', '--max', '30', 'p1');
-  assert.equal(r.code, PAUSED_EXIT, r.out); assert.ok(Date.now() - t0 < 3000, `returned at once (${Date.now() - t0} ms)`);
+  assert.equal(r.code, STOP_EXIT, r.out); assert.ok(Date.now() - t0 < 3000, `returned at once (${Date.now() - t0} ms)`);
+  assert.equal(r.err.trim(), stopLineAt('2026-10-18T09:00:00Z', 'push-stop'), 'the stop line is on stderr too');
   const lines = r.out.trim().split('\n');
-  assert.equal(lines[0], pauseLine(PAUSE, 'push-stop', '2026-10-18T09:00:00Z'));
+  assert.equal(lines[0], stopLineAt('2026-10-18T09:00:00Z', 'push-stop'));
   assert.equal(lines[1], 'run-bg: wait — named: 1 job(s)'); assert.match(lines[2], /^p1 {2}(?:queued|running)/);
-  assert.match(lines.at(-1), /^run-bg: 0\/1 ended, 1 still going — paused: /); assert.doesNotMatch(r.out, /run `wait` again/);
+  assert.match(lines.at(-1), /^run-bg: 0\/1 ended, 1 still going — the runner asked to stop: /); assert.doesNotMatch(r.out, /run `wait` again/);
   const st = stateIn(pd, 'p1'); assert.equal(st.endedAt, null, 'the job keeps running'); assert.ok(pidAlive(st.wrapperPid), 'its wrapper was not signalled');
-  const inproc = await wait(pd, ['p1'], { maxSec: 30, pauseFile: PAUSE }); // the export takes the pause file as an option
-  assert.equal(inproc.paused, true); assert.equal(inproc.text.split('\n')[0], pauseLine(PAUSE, 'push-stop', '2026-10-18T09:00:00Z'));
+  const inproc = await wait(pd, ['p1'], { maxSec: 30, pauseFile: PAUSE }); // the export takes the stop file as an option
+  assert.ok(inproc.stopped, 'stopped is the stop object'); assert.equal(inproc.text.split('\n')[0], stopLineAt('2026-10-18T09:00:00Z', 'push-stop'));
   rmSync(PAUSE);
 });
-await check('a pause file that appears mid-wait ends the wait within one poll interval; a file that is not JSON still counts (reason unreadable)', async () => {
+await check('a stop file that appears mid-wait ends the wait within one poll interval; a file that is not JSON still counts (stopAt now, reason no reason given)', async () => {
   rmSync(PAUSE, { force: true });
   const waiting = bgAsync(pd, { STARDUST_PAUSE_FILE: PAUSE }, 'wait', '--max', '30', 'p1');
   await sleep(1000);
   writeFileSync(PAUSE, 'stop'); const wrote = Date.now();
   const r = await waiting;
-  assert.equal(r.code, PAUSED_EXIT, r.out + r.err); assert.ok(r.at - wrote < 1500, `ended ${r.at - wrote} ms after the pause file appeared`);
-  assert.equal(firstLine(r.out), pauseLine(PAUSE, 'unreadable', 'unknown'));
+  assert.equal(r.code, STOP_EXIT, r.out + r.err); assert.ok(r.at - wrote < 1500, `ended ${r.at - wrote} ms after the stop file appeared`);
+  assert.equal(firstLine(r.out), stopLineAt('now', 'no reason given')); assert.equal(r.err.trim(), stopLineAt('now', 'no reason given'));
   assert.equal(stateIn(pd, 'p1').endedAt, null, 'the job keeps running');
   rmSync(PAUSE);
 });
-await check('STARDUST_PAUSE_FILE: a relative path is read from the cwd (the project root); unset, empty or a missing file = no pause', () => {
-  writeFileSync(join(lockRoot, 'pz', 'rel-pause.json'), JSON.stringify({ at: '2026-10-18T09:05:00Z', reason: 'push-stop' }));
+await check('STARDUST_PAUSE_FILE: a relative path is read from the cwd (the project root); unset, empty or a missing file = no stop', () => {
+  writeFileSync(join(lockRoot, 'pz', 'rel-pause.json'), JSON.stringify({ stopRequested: true, stopAt: '2026-10-18T09:05:00Z', reason: 'push-stop' }));
   const inCwd = (cwd, extra, ...args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8', env: { ...env, ...extra } }); return { code: r.status, out: r.stdout, err: r.stderr }; };
   const rel = { STARDUST_PAUSE_FILE: 'rel-pause.json' };
   const w = inCwd(join(lockRoot, 'pz'), rel, 'wait', '--dir', pd, '--max', '30', 'p1');
-  assert.equal(w.code, PAUSED_EXIT, w.out); assert.equal(firstLine(w.out), pauseLine('rel-pause.json', 'push-stop', '2026-10-18T09:05:00Z'));
+  assert.equal(w.code, STOP_EXIT, w.out); assert.equal(firstLine(w.out), stopLineAt('2026-10-18T09:05:00Z', 'push-stop'));
   const elsewhere = inCwd(lockRoot, rel, 'wait', '--dir', pd, '--max', '0', 'p1');
-  assert.equal(elsewhere.code, STILL_RUNNING_EXIT, elsewhere.out); assert.doesNotMatch(elsewhere.out, /paused/, 'not in this cwd: no pause');
+  assert.equal(elsewhere.code, STILL_RUNNING_EXIT, elsewhere.out); assert.doesNotMatch(elsewhere.out, /asked to stop/, 'not in this cwd: no stop');
   for (const extra of [{}, { STARDUST_PAUSE_FILE: '' }, { STARDUST_PAUSE_FILE: join(lockRoot, 'pz', 'absent.json') }]) {
-    const k = bgIn(pd, extra, 'wait', '--max', '0', 'p1'); assert.equal(k.code, STILL_RUNNING_EXIT, JSON.stringify(extra)); assert.doesNotMatch(k.out, /paused/, JSON.stringify(extra));
+    const k = bgIn(pd, extra, 'wait', '--max', '0', 'p1'); assert.equal(k.code, STILL_RUNNING_EXIT, JSON.stringify(extra)); assert.doesNotMatch(k.out, /asked to stop/, JSON.stringify(extra));
   }
   rmSync(join(lockRoot, 'pz', 'rel-pause.json'));
+});
+await check('the stop file wins over the wake file when both are present → STOP_EXIT (stopped), not a wake (the stop is checked first each poll)', async () => {
+  const wf = join(lockRoot, 'pz', 'wake-both'); writeFileSync(wf, 'agent q finished\n');
+  writeFileSync(PAUSE, JSON.stringify({ stopAt: '2026-10-18T09:20:00Z', reason: 'both present' }));
+  const r = await wait(pd, ['p1'], { maxSec: 30, pauseFile: PAUSE, wakeFile: wf });
+  assert.ok(r.stopped, 'stopped'); assert.equal(r.woken, null, 'no wake reported'); assert.equal(r.paused, false);
+  assert.equal(r.text.split('\n')[0], stopLineAt('2026-10-18T09:20:00Z', 'both present'));
+  rmSync(PAUSE); rmSync(wf);
 });
 await check('status shows the pause line first when the pause file is present (exit 0, the report below it unchanged); set but missing adds nothing', () => {
   writeFileSync(PAUSE, JSON.stringify({ at: '2026-10-18T09:10:00Z', reason: 'push-stop' }));
@@ -649,14 +660,15 @@ await check('--until that is not an ISO-8601 instant with an offset or Z, --unti
   }
   assert.equal(existsSync(join(pd, 'ux.json')), false, 'no job was created by the rejected start');
 });
-await check('--help: wait\'s default --max 300 or --until, the five-minute rule, the tool-call timeout to declare, and exit 76 for the pause file', () => {
+await check('--help: wait\'s default --max 300 or --until, the five-minute rule, the tool-call timeout to declare, and exit 78 for the stop file (76 retained)', () => {
   assert.equal(DEFAULT_MAX_SEC, 300, 'recorded leads polled with 9–23 minute waits while ended units sat unseen: five minutes, lead and subagents alike');
   const h = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8', env });
   assert.equal(h.status, 0); assert.match(h.stdout, /wait +\[--max <s>=300 \| --until <ISO>\]/);
   assert.ok(h.stdout.includes('wait in steps of at most five minutes, lead and subagents alike — `run-bg.mjs wait` for jobs, `progress.mjs wait` for units; a `sleep` is never a wait'), 'the rule, verbatim');
   assert.match(h.stdout, /timeout longer than the wait/);
-  assert.match(h.stdout, /76 \(wait\) the pause file is present — stop waiting, finish the iteration and return/);
+  assert.match(h.stdout, /76 \(retained\) the former soft-pause code — `status` still shows the pause line at exit 0/);
   assert.ok(h.stdout.includes("77 (wait) the runner's wake file grew — a background agent finished: act on it, then wait again"), 'exit 77');
+  assert.match(h.stdout, /78 \(wait\) the runner asked to stop \(the pause file is present\) — let jobs finish, ask \/boundary, write the note, end/);
 });
 await check('the paused-on job ends on its own, unsignalled (exit 0)', () => {
   const w = bgIn(pd, {}, 'wait', '--max', '30', 'p1'); assert.equal(w.code, 0, w.out); assert.match(w.out, /^p1 {2}done exit=0/m);
