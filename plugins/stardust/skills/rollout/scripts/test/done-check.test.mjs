@@ -93,6 +93,19 @@ check('blocks_pending: blocks delivered without a conversion record are info nam
   assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name|id> --status converted']);
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [] }).info, []);
 });
+check('export_quality: the manifest zero-confidence count is an info line above the threshold (default 0), never a gap; at/below it nothing; null is silent; completeness never flips', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  const some = doneGaps({ ...base, zeroConfidence: 48 });
+  assert.deepEqual([some.complete, some.gaps, some.info], [true, [], ['export_quality:zero_confidence:48']]);
+  assert.deepEqual(doneGaps({ ...base, zeroConfidence: 0 }).info, [], 'at the default threshold 0: no line');
+  assert.deepEqual(doneGaps({ ...base }).info, [], 'null (no manifest / not listed): no line');
+  assert.deepEqual(doneGaps({ ...base, zeroConfidence: 3, zeroConfidenceThreshold: 3 }).info, [], 'at the threshold: no line');
+  assert.deepEqual(doneGaps({ ...base, zeroConfidence: 4, zeroConfidenceThreshold: 3 }).info, ['export_quality:zero_confidence:4'], 'above a raised threshold: a line');
+  // it leads the info lines and never flips completeness, even beside a real gap
+  const withGap = doneGaps({ ...base, ledgerLines: [], excluded: [{ slug: 'news', path: '/news' }], zeroConfidence: 5 });
+  assert.ok(withGap.gaps.includes('rollout_incomplete') && !withGap.complete);
+  assert.deepEqual(withGap.info, ['export_quality:zero_confidence:5', 'pages_excluded:1: /news']);
+});
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
   const blocks = { blocks: [
     { id: 'hero-banner', kind: 'module', delivery: { status: 'pending', edsBlockName: 'hero' }, variants: [{ id: 'v_1', classes: [], pages: 1, instances: 2 }] },
@@ -873,6 +886,39 @@ check('CLI: export_stale on block-origin\'s own inputs — an eds-schema sidecar
   assert.deepEqual(stale(), []);
   writeFileSync(join(proj, 'stardust/current/pages/home.html'), '<main><h1>Home v2</h1></main>');
   assert.deepEqual(stale(), [gap('manifest hashes differ from the tree: stardust/current/pages/home.html', 'rebuild')]);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: export_quality — a fresh migration-workspace manifest carrying selectorQuality.zeroConfidence>0 prints the info line and stays complete (exit 0); handed over, it is silent', () => {
+  const pagesDoc = { generatedAt: '2026-10-09T10:00:00Z', pages: CLEAN_PAGES };
+  const files = {
+    'stardust/rollout/rollout.json': { exports: ['migration-workspace'] },
+    'stardust/rollout/coverage/pages.json': pagesDoc,
+    'stardust/rollout/coverage/templates.json': { templates: [] },
+    'stardust/rollout/coverage/blocks.json': { blocks: [] },
+    'stardust/current/pages/home.html': '<main><h1>Home</h1></main>',
+    'content/index.html': '<main><div><h1>Home</h1></div></main>',
+    'blocks/hero/hero.css': '.hero { margin: 0; }',
+    'blocks/hero/hero.js': 'export default function decorate() {}',
+    [`${WS}/mapping.json`]: { formatVersion: '0.1.0', generatedAt: pagesDoc.generatedAt, skipped: [], templates: [] },
+  };
+  const proj = project({ files });
+  const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
+  const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
+  const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
+  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }] };
+  writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality, handover: null }));
+  const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.deepEqual(v.gaps.filter((g) => g.startsWith('export')), [], 'the export is fresh: no export_stale');
+  assert.ok(v.info.includes('export_quality:zero_confidence:2'), JSON.stringify(v.info));
+  assert.equal(v.complete, true, 'the info line never flips completeness');
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: export_quality:zero_confidence:2'), r.stdout);
+  // once handed over, the export is the client's: the figure is not surfaced
+  writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
+  const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);
+  assert.ok(!handed.info.some((i) => i.startsWith('export_quality')), JSON.stringify(handed.info));
   rmSync(proj, { recursive: true, force: true });
 });
 
