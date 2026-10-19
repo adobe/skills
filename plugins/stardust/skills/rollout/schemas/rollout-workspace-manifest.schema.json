@@ -32,6 +32,17 @@
       "description": "One line per value that is still a default: template names and descriptions, blocks with base type unknown or without purpose, reuse guidance or colour scheme (not judged), pages without a delivered structure.",
       "items": { "type": "string" }
     },
+    "templateGroups": {
+      "type": "object",
+      "description": "The template count split from coverage/templates.json: archetypes = the distinct page types (each untyped template its own archetype), siblings = the templates beyond the first of each type — cloned siblings the export emits as their own group, so total = archetypes + siblings. No coverage field records a sibling's parent archetype, so the split is by type, not a parent link. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["total", "archetypes", "siblings"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Template groups in coverage/templates.json." },
+        "archetypes": { "type": "integer", "minimum": 0, "description": "Distinct page types (plus any untyped template)." },
+        "siblings": { "type": "integer", "minimum": 0, "description": "Cloned sibling groups beyond one archetype per type (total − archetypes)." }
+      }
+    },
     "selectorQuality": {
       "type": "object",
       "description": "Derived from workspace/mapping.json at manifest time (block-origin countsOf; mapping.json is not rewritten). Present only when a readable mapping exists. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",

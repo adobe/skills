@@ -123,7 +123,7 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   const mf = doc(dir, 'manifest.json');
   assert.equal(mf.formatVersion, '0.1.0');
   // the fixture's teaser has no judged base type, so the manifest carries handoverNotes (unknown is not judged)
-  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'handover', 'handoverNotes']);
+  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'handover', 'handoverNotes']);
   assert.deepEqual(mf.handoverNotes, ['1 delivered block(s) have no judged base type; the owner names them (teaser)']);
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
@@ -299,6 +299,29 @@ check('judgement: manifest.judgement {toFill, byKind} counts the judgement.json 
   editJSON(join(W(dir), 'manifest.json'), (m) => { m.judgement.toFill = 999; });
   ok(run(dir, '--rehash-only'), 0);
   assert.equal(doc(dir, 'manifest.json').judgement.toFill, after.toFill, 'recomputed from judgement.json');
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+});
+
+check('templateGroups: {total, archetypes, siblings} splits the template count by page type (untyped each its own archetype, siblings = the rest); the manifest field and the printed line name the split only when siblings>0; --json carries it in counts; --check never a drift; validates', () => {
+  // the pure helper
+  assert.deepEqual(wm.templateGroupsOf([{ type: 'article' }, { type: 'event' }, { type: 'event' }, { type: 'story' }, { type: 'story' }]), { total: 5, archetypes: 3, siblings: 2 });
+  assert.deepEqual(wm.templateGroupsOf([{ type: 'home' }, {}, { type: null }]), { total: 3, archetypes: 3, siblings: 0 }, 'untyped templates are each their own archetype');
+  assert.deepEqual(wm.templateGroupsOf([]), { total: 0, archetypes: 0, siblings: 0 });
+  // in a manifest: the fixture's two templates are two archetypes, no siblings → the printed line stays plain
+  const dir = copy('template-groups');
+  const noSib = run(dir);
+  ok(noSib);
+  assert.deepEqual(doc(dir, 'manifest.json').templateGroups, { total: 2, archetypes: 2, siblings: 0 });
+  assert.ok(/Coverage\s+2 templates ·/.test(noSib.stdout), noSib.stdout);
+  // add a sibling (a second template of an existing type) → split surfaces in the field and the printed line
+  editJSON(join(dir, 'stardust', 'rollout', 'coverage', 'templates.json'), (d) => { d.templates.push({ ...d.templates[0], id: `${d.templates[0].id}-sibling` }); });
+  const withSib = run(dir);
+  ok(withSib);
+  assert.deepEqual(doc(dir, 'manifest.json').templateGroups, { total: 3, archetypes: 2, siblings: 1 });
+  assert.ok(/Coverage\s+3 templates \(2 archetypes \+ 1 sibling groups\) ·/.test(withSib.stdout), withSib.stdout);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  const j = jsonOut(run(dir, '--json'));
+  assert.deepEqual([j.counts.templates, j.counts.archetypes, j.counts.siblingGroups], [3, 2, 1]);
   assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
 });
 

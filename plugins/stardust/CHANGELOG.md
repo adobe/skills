@@ -30,6 +30,14 @@ export, each the adopter reads once and none a hard gate:
   `export_quality:judgement_to_fill:<n>` when n>0 — the same family and rules as the other export_quality info
   lines (informational, hidden after handover).
 
+- **Cloned-sibling template count split.** The manifest gains `templateGroups` `{total, archetypes, siblings}`
+  and the writer's printed line reads `N templates (M archetypes + K sibling groups)` when siblings exist, so the
+  cloned siblings the export emits as their own group no longer silently inflate the template count against the
+  archetype count. The split is by page type (archetypes = distinct types; siblings = the rest): block-origin groups
+  the mapping by templateId (the page slug) and no coverage field — nor the migrated `_meta.json` sidecars, which
+  record siblings as `fidelityTier: archetype` — carries a sibling's parent archetype, so a `sameTemplateAs` link was
+  not added; the count split is what the export can know cheaply and truthfully.
+
 ## 0.36.x (stardust/r17-extract-pipeline) — extract pipelined; census concurrency restored (#167)
 
 On the same site, a recorded hands-off run's extract phase took 32 min against 15 min on the

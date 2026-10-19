@@ -20,7 +20,8 @@
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
- * in the content files, no update-coverage.mjs --block record), a `selectorQuality` block derived from mapping.json
+ * in the content files, no update-coverage.mjs --block record), a `templateGroups` {total, archetypes, siblings} count
+ * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `selectorQuality` block derived from mapping.json
  * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
  * the same split per template), a `sectionGaps` list derived from mapping.json the same way (sections an adopter
  * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
@@ -398,6 +399,25 @@ export function pendingBlocks(blocksDoc) {
     .map(([name]) => name).sort(byStr);
 }
 
+/**
+ * The template count split from coverage/templates.json: `archetypes` = the distinct page `type`s (each untyped
+ * template its own archetype), `siblings` = the templates beyond the first of each type — the cloned siblings the
+ * export emits as their own group (so the template count exceeds the archetype count). block-origin groups the mapping
+ * by templateId (the page slug) and no coverage field records a sibling's parent archetype, so the split is by type,
+ * not a parent link. Derived from coverage, so --check never counts it as drift. Pure.
+ */
+export function templateGroupsOf(templates) {
+  const list = Array.isArray(templates) ? templates : [];
+  const types = new Set();
+  let siblings = 0;
+  for (const t of list) {
+    const type = t && typeof t.type === 'string' && t.type ? t.type : null;
+    if (type === null) continue; // an untyped template is its own archetype
+    if (types.has(type)) siblings += 1; else types.add(type);
+  }
+  return { total: list.length, archetypes: list.length - siblings, siblings };
+}
+
 /** The delivered module blocks whose base type is not judged (`unknown` or missing — `unknown` is not a judged value), by EDS name, sorted. done-check.mjs reads this too. */
 export function unjudgedBaseTypes(blocksDoc) {
   return [...moduleBlocks(blocksDoc)].filter(([, b]) => !b.baseType || b.baseType === 'unknown').map(([name]) => name).sort(byStr);
@@ -544,10 +564,13 @@ function main(argv) {
     stardustVersion: stardustVersion(OUT),
   };
   const placeholders = placeholdersOf(coverage);
+  const templateGroups = templateGroupsOf(coverage.templates.templates);
   const mods = [...moduleBlocks(coverage.blocks).values()];
   const variants = mods.flatMap((b) => (Array.isArray(b.variants) ? b.variants : []));
   const counts = {
     templates: coverage.templates.templates.length,
+    archetypes: templateGroups.archetypes,
+    siblingGroups: templateGroups.siblings,
     pages: coverage.pages.pages.length,
     blocks: mods.length,
     variants: variants.length,
@@ -561,9 +584,11 @@ function main(argv) {
       console.log(JSON.stringify({ status, dir: shown, hashes, counts, placeholders: placeholders.length, handover, degraded, missing: lacking }));
     } else {
       const withoutContent = coverage.pages.pages.filter((p) => p && p.delivered == null).length;
+      // when cloned siblings add their own template group the count exceeds the archetype count — name the split
+      const tpl = counts.siblingGroups > 0 ? `${counts.templates} templates (${counts.archetypes} archetypes + ${counts.siblingGroups} sibling groups)` : `${counts.templates} templates`;
       console.log(`rollout workspace-manifest → ${shown}`);
       console.log('='.repeat(60));
-      console.log(`Coverage      ${counts.templates} templates · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
+      console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
       console.log(`Status        ${extra.line}`);
@@ -688,6 +713,7 @@ function main(argv) {
     inputs: sortedInputs,
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
+    templateGroups,
     ...(selectorQuality ? { selectorQuality } : {}),
     ...(sectionGaps ? { sectionGaps } : {}),
     ...(judgement ? { judgement } : {}),
