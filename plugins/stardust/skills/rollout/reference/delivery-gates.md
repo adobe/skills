@@ -120,6 +120,11 @@ all three into the manifest's `inputs`, and `done-check.mjs` re-hashes the same
 tree and raises `export_stale` naming any file whose hash differs — a sidecar,
 capture or map rewritten after the mapping is a stale export, not a fresh one.
 
+The export is therefore built only once the roster is frozen — no unit running,
+no fix round open, gap-closure finished — and any later edit under `content/`,
+`blocks/`, `styles/` or a judgement re-runs the whole sequence before
+`done-check.mjs`.
+
 **Run the steps in this order, never the other way round.** A gap-closure fix
 (`done-check.mjs` → a `sidecars_missing` or similar gap → the fix) rewrites
 sidecars/captures/content; it MUST land **before** the export is regenerated:
