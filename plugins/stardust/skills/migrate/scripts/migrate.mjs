@@ -1248,7 +1248,7 @@ export function planRun(o) {
       const sibs = [...new Set([...siblingsOf(state, t, sidecars), ...planned])];
       // --force on a template whose record is a decision (a reason, hand-authored) keeps it when nothing new can run
       try {
-        rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs, keepDecision: true, derive: planDerive(run, bySlug.get(t), sibs, planned) });
+        rec = recordAttempt(PROJECT_ROOT, t, { ...(o.encoder ? { encoder: o.encoder } : {}), siblings: sibs, keepDecision: true, siblingMin: 1, derive: planDerive(run, bySlug.get(t), sibs, planned) });
         if (prior && rec.at === prior.at && rec.verdict === prior.verdict) kept = rec;
       } catch (e) {
         if (e instanceof AttemptRefusal) { console.error(e.message); due.push(`${t} (${sibs.length} siblings)`); }

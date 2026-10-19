@@ -403,7 +403,7 @@ check('summary counts a sibling listed in forked as slot-rendered (its own-file 
   dput('stardust/migrated/parks/a/_meta.json', { slug: 'park-a', renderBranch: "A'", slotSource: null });
   dput('stardust/migrated/parks/c/_meta.json', { slug: 'park-c', renderBranch: "A'", slotSource: 'derived' });
   const r = run(['summary', '--root', DP]); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 siblings · 0 encoded · 3 A′ · no map at stardust/import/parks/vocabulary.json — the encoder needs the template\'s map');
+  assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 siblings · 0 encoded · 3 A′ · the slot map derives from stardust/prototypes/parks-proposed.html (2 derived slot(s); 2/2 located in stardust/current/pages/parks.html)');
   const j = JSON.parse(run(['summary', '--root', DP, '--json']).out);
   assert.deepEqual(j.templates, [{ template: 'parks', verdict: 'not-attempted', reason: djson('parks').reason, source: 'forked' }]);
   assert.deepEqual(j.perTemplate[0].unrecorded, []);

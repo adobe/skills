@@ -1022,13 +1022,14 @@ check('a re-run keeps an existing record (the encoder is not run again); --force
   const f = run([...PLAN, '--force']); assert.equal(f.status, 0, f.err);
   assert.doesNotMatch(f.out, /kept from/); assert.equal(encRuns().length, 8);
 });
-check('the production default encoder (encode.mjs beside encode-attempt.mjs): a template without a map is recorded not-attempted, nothing run', () => {
-  const r = run(['plan', 'show-one']); assert.equal(r.status, 0, r.err);
-  assert.match(r.out, /^encode-attempt shows: not-attempted — (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json — the encoder needs the template's map)$/m);
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
-  assert.equal(json(ENC('shows')).verdict, 'not-attempted');
+check('the encoder engages for a one-sibling template too (siblingMin 1): plan treats shows (1 sibling, no map) as a map due — refused, nothing recorded, exit 2', () => {
+  const r = run(['plan', 'show-one']); assert.equal(r.status, 2, r.err);
+  assert.match(r.err, /^encode-attempt shows: refused not-attempted — 1 sibling\(s\) \(show-one\) and (encode\.mjs not found beside this script|no map at stardust\/import\/shows\/vocabulary\.json)/m);
+  assert.match(r.out, /^maps due: 1 template\(s\) — shows \(1 siblings\)/m);
+  assert.equal(has(ENC('shows')), false, 'a map-due one-sibling template records nothing');
 });
 check('any recorded verdict opens the A′ path: encoded (events), no-roundtrip (venues), not-attempted (shows)', () => {
+  recordAttempt(tmp, 'shows', { notAttempted: 'fixture: siblings rendered from the archetype' });
   const r = run(['render', 'event-one', 'event-two', 'venue-one', 'show-one']); assert.equal(r.status, 0, r.err);
   assert.match(r.out, /^A' event-one → events\/one\/index\.html {2}\(event; fork of events; /m); assert.match(mainOf(read(`${OUT}/events/one/index.html`)), /<h1 data-slot="headline">Event one<\/h1>/);
   assert.match(r.out, /^A' event-two → events\/two\/index\.html {2}\(event; \d+ assets/m); assert.match(r.out, /^A' venue-one → venues\/one\/index\.html /m); assert.match(r.out, /^A' show-one → shows\/one\/index\.html /m);
@@ -1184,7 +1185,7 @@ check('a minor variance (differs without a missing or extra probe or a SECTIONS 
   assert.equal(r.out, `forked ferry-south → ${P}/ferry-south-proposed.html (archetype ferries; minor; 4 slot(s), slots derived)\n`);
   assert.deepEqual(json(ENC('ferries')).forked, ['ferry-north', 'ferry-south']);
   const sum = spawnSync(process.execPath, [join(dirname(SCRIPT), 'encode-attempt.mjs'), 'summary'], { cwd: tmp, encoding: 'utf8' });
-  assert.match(sum.stdout, /^encode-attempt ferries: 2 siblings · 0 encoded · 2 A′ · no map at stardust\/import\/ferries\/vocabulary\.json — the encoder needs the template's map$/m);
+  assert.match(sum.stdout, /^encode-attempt ferries: 2 siblings · 0 encoded · 2 A′ · the slot map derives from stardust\/prototypes\/ferries-proposed\.html \(4 derived slot\(s\); 4\/4 located in stardust\/current\/pages\/ferries\.html\)$/m);
 });
 check('a sibling with a new block (variance differs: an extra probe and a SECTIONS delta) is refused: strict variance names them and the hand-authored record; nothing written', () => {
   const s = json(STATE); s.pages.push(page('ferry-east', '/ferries/east/', 'directed', 'ferry'), page('ferry-west', '/ferries/west/', 'directed', 'ferry')); write(STATE, `${JSON.stringify(s, null, 2)}\n`);

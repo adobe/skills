@@ -406,7 +406,8 @@ export function siblingTally(state, record, sidecars, template) {
   }
   // A′ = every sibling not encoded; reason = the record's reason, else its verdict, else no record — the lead's roster line.
   t.aPrime = t.siblings - t.encoded;
-  t.reason = record ? (record.reason ?? record.verdict) : 'no record';
+  // A derived or forked source means the encoder engaged: quote its sourceReason, not the automatic 'no map' cause.
+  t.reason = record ? (((record.source === 'derived' || record.source === 'forked') && record.sourceReason) ? record.sourceReason : (record.reason ?? record.verdict)) : 'no record';
   return t;
 }
 // The lead's roster line: <template>: <n> siblings · <m> encoded · <k> A′ · <reason> (an A′ render with no record is flagged).
