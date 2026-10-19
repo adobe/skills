@@ -4,6 +4,44 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-rehash-only) — a stale migration export gets a cheap, safe re-hash and an adopter gate (#160)
+
+In a recorded hands-off run the migration export went stale after gap-closure edited block CSS and
+the inventory rewrote coverage, and two things were missing. `done-check.mjs` flagged `export_stale`
+but never said the downstream adopter does not degrade: it hard-rejects an export whose
+`coverage/pages.json` sha mismatches its manifest and produces nothing. And the remedy was always
+the full 10–20 minute re-run, even when the drift could not have moved the source selectors.
+`workspace-manifest.mjs --check` now classifies the drift `fresh` / `rehash-safe` / `rebuild` from
+the manifest's recorded inputs and outputs, and `done-check.mjs` puts the class, its command and —
+when `coverage/pages.json` drifted — the adopter-refusal note on the `export_stale` line. On an
+export this release's toolchain builds, CSS- or regenerated-coverage-only drift is `rehash-safe`:
+`--rehash-only` refreshes the manifest hashes and reconciles the mapping's generatedAt in seconds,
+no re-run (proven by the test fixture). Any content, capture, sidecar, encoder-map, block-JS,
+judgement or mapping change — and a manifest predating this release's capture/sidecar input hashing
+— is `rebuild`, the full sequence.
+
+In a recorded hands-off run of a multilingual site the three longest cluster units (146, 132 and 58 minutes) were all
+siblings that tripped the majority-variance guard: `migrate.mjs render` correctly refuses a mechanical clone when more
+than half an archetype's current clones differ, but the cluster subagent could then do nothing — it could not even
+record the deviation, because `decision --kind re-type` needs a rendered `_meta.json` sidecar the refusal prevents, so
+it wrote a prose note and bounced to the lead to re-plan the re-type by hand. This adds the machine hand-off; the
+guard, its condition and its strings are unchanged.
+
+- **`migrate.mjs retype-plan <archetype> [--write] [--json]`.** It reads the on-disk variance ledger
+  (`stardust/rollout/variance/<archetype>.json`), groups the differing siblings by a delta fingerprint — the sorted
+  `missing` probe set plus the cluster/count signature (the probes carrying a COUNT or CLUSTERS delta; magnitudes
+  dropped, so same-shape siblings group even when exact counts differ) — and proposes one sub-archetype per
+  fingerprint, each with a representative (the member with the fewest findings; ties by slug) and its members;
+  same-verdict siblings stay with the archetype. `--json` emits the machine plan; `--write` persists it to
+  `stardust/migrate/retype-plan/<archetype>.json` and records the re-type deviation there the way
+  `decision --kind re-type` does — one deduped row, no rendered sidecar required, idempotent on re-run. Exit 0 plan
+  produced, 2 no ledger / archetype unknown (naming the command that writes the ledger).
+- **The refusal points at it.** After the majority-variance refusal (its text unchanged), `render` prints one extra
+  stderr line: `next: … migrate.mjs retype-plan <archetype> --write`.
+- **The cluster flow records the re-type instead of bouncing.** On a majority refusal the cluster subagent runs
+  `retype-plan --write`, returns the plan in its hand-back, and the main agent starts one unit per proposed group —
+  `unit start`/spawn stays with the lead (migrate and rollout SKILLs, handoff contract § Fan-out discipline).
+
 ## 0.36.x (stardust/r17-sleep-lint) — the lint that catches a blind sleep in a skill doc (#162)
 
 In a recorded hands-off run the lead spent about 73% of wall time inside blind `sleep` calls while

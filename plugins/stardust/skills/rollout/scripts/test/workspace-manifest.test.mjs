@@ -239,11 +239,84 @@ check('round trip: the export as the skill runs it (block-origin.mjs --verify, t
   const exportGaps = () => { const r = node(dir, 'done-check.mjs', '--offline', '--json'); return JSON.parse(r.stdout).gaps.filter((g) => g.startsWith('export_stale')); };
   assert.deepEqual(exportGaps(), []);
   editText(join(dir, 'blocks', 'hero', 'hero.css'), '}', '}\n.hero { margin: 1px; }');
-  assert.deepEqual(exportGaps(), ['export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — re-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs']);
+  assert.deepEqual(exportGaps(), ['export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — rehash-safe: workspace-manifest.mjs --rehash-only']);
   rebuild(dir);
   ok(node(dir, 'block-origin.mjs', '--verify'));
   ok(run(dir));
   assert.deepEqual(exportGaps(), []);
+});
+
+check('--check / --rehash-only: fresh; a block CSS drift is rehash-safe and --rehash-only clears it (idempotent); coverage regenerated stays rehash-safe (adopter blocked, mapping generatedAt reconciled); a content drift is rebuild and --rehash-only refuses', () => {
+  const build = (label) => {
+    const dir = withCaptures(label);
+    editJSON(join(dir, 'stardust', 'rollout', 'rollout.json'), (c) => { c.exports = ['migration-workspace']; });
+    ok(node(dir, 'block-origin.mjs', '--verify'));
+    ok(run(dir));
+    return dir;
+  };
+  const exportGaps = (dir) => JSON.parse(node(dir, 'done-check.mjs', '--offline', '--json').stdout).gaps.filter((g) => g.startsWith('export_stale'));
+
+  // fresh
+  const fresh = build('check-fresh');
+  const c0 = run(fresh, '--check', '--json');
+  ok(c0, 0);
+  assert.equal(jsonOut(c0).status, 'fresh');
+  assert.deepEqual(jsonOut(c0).drifted, []);
+
+  // a block CSS drift → rehash-safe (exit 5), adopter not blocked; --rehash-only clears it, idempotent
+  const css = build('check-css');
+  editText(join(css, 'blocks', 'hero', 'hero.css'), '}', '}\n.hero { margin: 1px; }');
+  const c1 = run(css, '--check', '--json');
+  ok(c1, 5);
+  assert.equal(jsonOut(c1).status, 'rehash-safe');
+  assert.deepEqual(jsonOut(c1).drifted, ['blocks/hero/hero.css']);
+  assert.equal(jsonOut(c1).adopterBlocked, false);
+  assert.deepEqual(exportGaps(css), ['export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — rehash-safe: workspace-manifest.mjs --rehash-only']);
+  const r1 = run(css, '--rehash-only', '--json');
+  ok(r1, 0);
+  assert.equal(jsonOut(r1).status, 'rehashed');
+  assert.deepEqual(exportGaps(css), []);
+  ok(run(css, '--check'), 0);
+  const cssBytes = text(css, 'manifest.json');
+  const r1b = run(css, '--rehash-only', '--json');
+  ok(r1b, 0);
+  assert.equal(jsonOut(r1b).status, 'unchanged', 'a second re-hash is byte-identical');
+  assert.equal(text(css, 'manifest.json'), cssBytes);
+
+  // coverage regenerated after the manifest (inventory + blocks re-run on the CSS edit): still rehash-safe, the
+  // adopter is blocked (pages.json sha drifted), and --rehash-only reconciles the mapping generatedAt so done-check clears
+  const cov = build('check-cov');
+  editText(join(cov, 'blocks', 'hero', 'hero.css'), '}', '}\n.hero { padding: 2px; }');
+  rebuild(cov);
+  const c2 = run(cov, '--check', '--json');
+  ok(c2, 5);
+  assert.equal(jsonOut(c2).status, 'rehash-safe');
+  assert.equal(jsonOut(c2).adopterBlocked, true);
+  assert.ok(jsonOut(c2).drifted.includes('stardust/rollout/coverage/pages.json'), JSON.stringify(jsonOut(c2).drifted));
+  const pagesAt = JSON.parse(readFileSync(join(cov, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8')).generatedAt;
+  assert.notEqual(doc(cov, 'mapping.json').generatedAt, pagesAt, 'the regenerated coverage moved the generatedAt the mapping has not caught up to');
+  ok(run(cov, '--rehash-only'), 0);
+  assert.equal(doc(cov, 'mapping.json').generatedAt, pagesAt, 'the mapping generatedAt is reconciled to pages.json');
+  assert.deepEqual(exportGaps(cov), []);
+  ok(node(cov, 'block-origin.mjs', '--verify'));
+  assert.equal(doc(cov, 'mapping.json').generatedAt, pagesAt, 'block-origin --verify agrees: the reconciled mapping is what it would write');
+
+  // a content drift → rebuild (exit 4); --rehash-only refuses and writes nothing
+  const content = build('check-content');
+  const manifestBytes = text(content, 'manifest.json');
+  editText(join(content, 'content', 'index.html'), '</main>', '<p>new</p></main>');
+  const c3 = run(content, '--check', '--json');
+  ok(c3, 4);
+  assert.equal(jsonOut(c3).status, 'rebuild');
+  assert.ok(jsonOut(c3).drifted.includes('content'), JSON.stringify(jsonOut(c3).drifted));
+  const r3 = run(content, '--rehash-only');
+  ok(r3, 4);
+  assert.match(r3.stderr, /rebuild needed/);
+  assert.equal(text(content, 'manifest.json'), manifestBytes, 'a refused re-hash writes nothing');
+
+  // --check and --rehash-only cannot be combined, nor with --draft-judgement
+  ok(run(fresh, '--check', '--rehash-only'), 2);
+  ok(run(fresh, '--rehash-only', '--draft-judgement'), 2);
 });
 
 check('mapping required: --allow-no-mapping keeps the manifest written (handover null, exit 0) with captures present; the captures are hashed under inputs so a changed capture is export_stale', () => {
@@ -583,7 +656,7 @@ check('usage: exit 2 on an unknown flag, a positional argument or a value flag w
   for (const flag of ['--help', '-h']) {
     const h = node(empty, 'workspace-manifest.mjs', flag, '--bogus');
     ok(h);
-    assert.ok(h.stdout.includes('Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--draft-judgement] [--force] [--dry-run] [--json]'), h.stdout);
+    assert.ok(h.stdout.includes('Usage: node skills/rollout/scripts/workspace-manifest.mjs [--out <rolloutDir>] [--project <eds-root>] [--content <dir>] [--blocks <dir>] [--captures <dir>] [--allow-no-mapping] [--check] [--rehash-only] [--draft-judgement] [--force] [--dry-run] [--json]'), h.stdout);
   }
   assert.deepEqual(readdirSync(empty), [], '--help or a usage error wrote something');
 });

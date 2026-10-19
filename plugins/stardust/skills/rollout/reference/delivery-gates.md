@@ -140,6 +140,15 @@ the mapping is stale. A recorded run closed `sidecars_missing` five minutes afte
 its mapping was committed and the export went out stale — this ordering is the
 fix.
 
+When the only drift is block CSS or a regenerated coverage file — the source
+selectors are untouched — `workspace-manifest.mjs --check` classifies it
+`rehash-safe` and `--rehash-only` refreshes the manifest hashes (and reconciles
+the mapping's generatedAt) in seconds, no full re-run; drift that feeds selectors
+or templates (content, a capture, a sidecar, an encoder map, a block's JS, the
+judgement, or the mapping itself) is `rebuild`. The adopter hard-rejects an export
+whose `coverage/pages.json` sha mismatches its manifest, so `done-check.mjs` names
+that gate on the `export_stale` line until the re-hash lands.
+
 ## Batched delivery at scale (clusters of 6–20+ siblings)
 
 Separate the concerns so an agent crash or token blowout can't corrupt state, and

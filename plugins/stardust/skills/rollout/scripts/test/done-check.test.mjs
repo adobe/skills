@@ -743,6 +743,9 @@ check('CLI: a redesign flow with no gate on any row skips the sidecar gate width
 // --- export_stale -------------------------------------------------------------------------------
 const WS = 'stardust/rollout/workspace';
 const REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
+const REHASH = 'workspace-manifest.mjs --rehash-only';
+// The export_stale line carries the drift classification + its command, and the adopter sentence when pages.json drifted.
+const gap = (why, cls, adopter = false) => `export_stale:${why} — ${cls === 'rehash-safe' ? `rehash-safe: ${REHASH}` : `rebuild: ${REMEDY}`}${adopter ? '; the adopter refuses this export until coverage/pages.json is refreshed' : ''}`;
 const H = (c) => `sha256:${c.repeat(64)}`;
 const TREE = {
   inputs: { 'blocks/hero/hero.css': H('a'), 'blocks/hero/hero.js': H('b'), content: { files: 3, sha256: H('c') } },
@@ -760,20 +763,27 @@ check('export_stale: judged only when rollout.json exports lists migration-works
   assert.deepEqual(exportGap({ ...FRESH, captures: false, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }), { gap: null, skipped: [] }, 'no captures: no mapping needed');
 });
 
-check('export_stale: names each cause — no manifest, hashes that differ from the tree (content, block code, coverage, mapping), mapping.json missing while captures exist, unreadable, or with another generatedAt — with the three commands as the remedy', () => {
+check('export_stale: names each cause — no manifest, hashes that differ from the tree (content, block code, coverage, mapping), mapping.json missing while captures exist, unreadable, or with another generatedAt — each with its classification + command, and the adopter sentence when pages.json drifted', () => {
   const { exportGap } = doneCheck;
-  assert.equal(exportGap({ ...FRESH, manifest: null }).gap, `export_stale:no ${WS}/manifest.json — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, manifest: null }).gap, gap(`no ${WS}/manifest.json`, 'rebuild'));
+  // content + a block's JS feed selectors/templates → rebuild; pages.json drifted too → the adopter line
   const tree = { inputs: { ...TREE.inputs, 'blocks/hero/hero.css': H('9'), 'blocks/new/new.js': H('8'), content: { files: 4, sha256: H('7') } }, outputs: { ...TREE.outputs, 'stardust/rollout/coverage/pages.json': H('6') } };
-  assert.equal(exportGap({ ...FRESH, tree }).gap, `export_stale:manifest hashes differ from the tree: blocks/hero/hero.css, blocks/new/new.js, content, stardust/rollout/coverage/pages.json — ${REMEDY}`);
+  assert.equal(exportGap({ ...FRESH, tree }).gap, gap('manifest hashes differ from the tree: blocks/hero/hero.css, blocks/new/new.js, content, stardust/rollout/coverage/pages.json', 'rebuild', true));
   const tracked = { ...TREE, inputs: { ...TREE.inputs, content: { ...TREE.inputs.content, tracked: false } } };
   assert.equal(exportGap({ ...FRESH, tree: tracked }).gap, null, 'git tracking is not a hash');
+  // only a block's CSS drifted → rehash-safe; no coverage drift → no adopter line
+  const cssOnly = { ...TREE, inputs: { ...TREE.inputs, 'blocks/hero/hero.css': H('9') } };
+  assert.equal(exportGap({ ...FRESH, tree: cssOnly }).gap, gap('manifest hashes differ from the tree: blocks/hero/hero.css', 'rehash-safe'));
+  // only a regenerated coverage file drifted → rehash-safe, and pages.json among them → the adopter line
+  const covOnly = { ...TREE, outputs: { ...TREE.outputs, 'stardust/rollout/coverage/pages.json': H('6'), 'stardust/rollout/coverage/templates.json': H('5') } };
+  assert.equal(exportGap({ ...FRESH, tree: covOnly }).gap, gap('manifest hashes differ from the tree: stardust/rollout/coverage/pages.json, stardust/rollout/coverage/templates.json', 'rehash-safe', true));
   const noMap = { ...TREE, outputs: withoutMapping(TREE.outputs) };
-  assert.equal(exportGap({ ...FRESH, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }).gap, `export_stale:no ${WS}/mapping.json while captures exist — ${REMEDY}`);
-  assert.equal(exportGap({ ...FRESH, mapping: 'not json' }).gap, `export_stale:${WS}/mapping.json unreadable — ${REMEDY}`);
-  assert.equal(exportGap({ ...FRESH, mapping: { generatedAt: 'T0' } }).gap, `export_stale:${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`);
-  assert.equal(exportGap({ ...FRESH, tree: null }).gap, `export_stale:unchecked (workspace-manifest.mjs not found beside done-check.mjs) — ${REMEDY}`);
-  assert.equal(exportGap({ ...FRESH, tree: null, treeError: 'EACCES: permission denied, open \'content/index.html\'' }).gap, `export_stale:unchecked (EACCES: permission denied, open 'content/index.html') — ${REMEDY}`);
-  assert.equal(exportGap({ ...FRESH, manifest: null, mapping: { generatedAt: 'T0' } }).gap, `export_stale:no ${WS}/manifest.json; ${WS}/mapping.json generatedAt T0 ≠ pages.json T1 — ${REMEDY}`, 'causes joined in one line');
+  assert.equal(exportGap({ ...FRESH, mapping: null, tree: noMap, manifest: { ...MANIFEST, outputs: noMap.outputs } }).gap, gap(`no ${WS}/mapping.json while captures exist`, 'rebuild'));
+  assert.equal(exportGap({ ...FRESH, mapping: 'not json' }).gap, gap(`${WS}/mapping.json unreadable`, 'rebuild'));
+  assert.equal(exportGap({ ...FRESH, mapping: { generatedAt: 'T0' } }).gap, gap(`${WS}/mapping.json generatedAt T0 ≠ pages.json T1`, 'rehash-safe'), 'a lone generatedAt drift is reconciled by a re-hash');
+  assert.equal(exportGap({ ...FRESH, tree: null }).gap, gap('unchecked (workspace-manifest.mjs not found beside done-check.mjs)', 'rebuild'));
+  assert.equal(exportGap({ ...FRESH, tree: null, treeError: 'EACCES: permission denied, open \'content/index.html\'' }).gap, gap("unchecked (EACCES: permission denied, open 'content/index.html')", 'rebuild'));
+  assert.equal(exportGap({ ...FRESH, manifest: null, mapping: { generatedAt: 'T0' } }).gap, gap(`no ${WS}/manifest.json; ${WS}/mapping.json generatedAt T0 ≠ pages.json T1`, 'rebuild'), 'causes joined in one line');
 });
 
 check('export_stale: a handed-over export is not judged — stardust no longer writes it — and the skipped line says so', () => {
@@ -810,11 +820,18 @@ check('CLI: export_stale reads the project — fresh after the three commands, s
   writeManifest();
   assert.deepEqual(stale(), []);
   writeFileSync(join(proj, 'blocks/hero/hero.css'), '.hero { margin: 1px; }');
-  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: blocks/hero/hero.css — ${REMEDY}`]);
+  assert.deepEqual(stale(), [gap('manifest hashes differ from the tree: blocks/hero/hero.css', 'rehash-safe')]);
+  writeManifest();
+  assert.deepEqual(stale(), []);
+  // coverage/pages.json regenerated after the manifest (the evidence case): rehash-safe, and because the adopter
+  // hard-rejects a pages.json sha mismatch the line names it; the mapping's generatedAt drifts with the coverage
+  writeFileSync(join(proj, 'stardust/rollout/coverage/pages.json'), JSON.stringify({ ...pagesDoc, generatedAt: '2026-10-09T11:00:00Z' }));
+  assert.deepEqual(stale(), [gap(`manifest hashes differ from the tree: stardust/rollout/coverage/pages.json; ${WS}/mapping.json generatedAt 2026-10-09T10:00:00Z ≠ pages.json 2026-10-09T11:00:00Z`, 'rehash-safe', true)]);
+  writeFileSync(join(proj, 'stardust/rollout/coverage/pages.json'), JSON.stringify(pagesDoc));
   writeManifest();
   assert.deepEqual(stale(), []);
   rmSync(join(proj, WS, 'mapping.json'));
-  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: ${WS}/mapping.json; no ${WS}/mapping.json while captures exist — ${REMEDY}`]);
+  assert.deepEqual(stale(), [gap(`manifest hashes differ from the tree: ${WS}/mapping.json; no ${WS}/mapping.json while captures exist`, 'rebuild')]);
   writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
   const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.deepEqual(handed.gaps.filter((g) => g.startsWith('export_stale')), []);
@@ -851,11 +868,11 @@ check('CLI: export_stale on block-origin\'s own inputs — an eds-schema sidecar
   assert.deepEqual(stale(), [], 'the sidecar and capture are hashed into the manifest; a fresh export is no gap');
   // a gap-closure that rewrites a sidecar AFTER the mapping is the stale case the export must catch
   writeFileSync(join(proj, 'stardust/eds-schema/home.json'), JSON.stringify({ slug: 'home', sections: [{ items: [{ role: 'eyebrow', text: 'Welcome' }] }] }));
-  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/eds-schema/home.json — ${REMEDY}`]);
+  assert.deepEqual(stale(), [gap('manifest hashes differ from the tree: stardust/eds-schema/home.json', 'rebuild')]);
   writeManifest();
   assert.deepEqual(stale(), []);
   writeFileSync(join(proj, 'stardust/current/pages/home.html'), '<main><h1>Home v2</h1></main>');
-  assert.deepEqual(stale(), [`export_stale:manifest hashes differ from the tree: stardust/current/pages/home.html — ${REMEDY}`]);
+  assert.deepEqual(stale(), [gap('manifest hashes differ from the tree: stardust/current/pages/home.html', 'rebuild')]);
   rmSync(proj, { recursive: true, force: true });
 });
 

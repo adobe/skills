@@ -95,7 +95,7 @@
 import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readJSON, isSourceParity, publicUrl, sha256 } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
@@ -360,6 +360,7 @@ export function ledgerGap(unpaired) {
 }
 
 export const EXPORT_REMEDY = 're-run inventory.mjs + blocks.mjs, then block-origin.mjs --verify, then workspace-manifest.mjs';
+export const EXPORT_REHASH = 'workspace-manifest.mjs --rehash-only';
 
 /**
  * export_stale, as `{ gap, skipped[] }`; judged only when `listed` (rollout.json `exports` lists migration-workspace).
@@ -370,25 +371,40 @@ export const EXPORT_REMEDY = 're-run inventory.mjs + blocks.mjs, then block-orig
  * export now (handover.json, or a manifest recording one), else null — then nothing is judged and a skipped line
  * says so. `treeError` names why the tree could not be read (an unreadable file), shown in the unchecked cause. Causes, joined by `; `: no manifest; manifest hashes that differ from the tree (content by files and
  * sha256 — git tracking is not a hash); mapping.json missing while captures exist, unreadable, or with a generatedAt
- * other than pages.json's. Pure.
+ * other than pages.json's. The remedy carries the drift classification (classifyExportDrift) and its command —
+ * `rehash-safe: workspace-manifest.mjs --rehash-only` when only block CSS or a regenerated coverage file drifted,
+ * else `rebuild: <the full sequence>` (a missing manifest, missing/unreadable mapping or an unchecked tree is always a
+ * rebuild). When coverage/pages.json's recorded hash drifted the line also states the adopter refuses the export until
+ * it is refreshed (it hard-rejects a coverage/pages.json sha mismatch). Pure.
  */
 export function exportGap({ listed: judged = false, manifest = null, tree = null, treeError = null, mapping = null, pagesGeneratedAt = null, captures = false, handedOver = null, dir = 'stardust/rollout/workspace' } = {}) {
   if (!judged) return { gap: null, skipped: [] };
   if (handedOver) return { gap: null, skipped: [`export_stale: handed over (${handedOver}) — stardust no longer writes the export`] };
   const why = [];
-  if (!isMap(manifest)) why.push(`no ${dir}/manifest.json`);
-  if (!tree) why.push(`unchecked (${treeError || 'workspace-manifest.mjs not found beside done-check.mjs'})`);
+  let inOff = [];
+  let outOff = [];
+  // structural causes can never be re-hashed away: no manifest, an unchecked tree, or a missing/unreadable mapping
+  let structural = false;
+  if (!isMap(manifest)) { why.push(`no ${dir}/manifest.json`); structural = true; }
+  if (!tree) { why.push(`unchecked (${treeError || 'workspace-manifest.mjs not found beside done-check.mjs'})`); structural = true; }
   else if (isMap(manifest)) {
     const norm = (k, v) => JSON.stringify(k === 'content' && isMap(v) ? [v.files, v.sha256] : v ?? null);
     const differ = (was = {}, now = {}) => [...new Set([...Object.keys(isMap(was) ? was : {}), ...Object.keys(now)])]
       .filter((k) => norm(k, (isMap(was) ? was : {})[k]) !== norm(k, now[k]));
-    const off = [...differ(manifest.inputs, tree.inputs), ...differ(manifest.outputs, tree.outputs)].sort();
+    inOff = differ(manifest.inputs, tree.inputs);
+    outOff = differ(manifest.outputs, tree.outputs);
+    const off = [...inOff, ...outOff].sort();
     if (off.length) why.push(`manifest hashes differ from the tree: ${listed(off)}`);
   }
-  if (mapping == null) { if (captures) why.push(`no ${dir}/mapping.json while captures exist`); }
-  else if (!isMap(mapping)) why.push(`${dir}/mapping.json unreadable`);
+  if (mapping == null) { if (captures) { why.push(`no ${dir}/mapping.json while captures exist`); structural = true; } }
+  else if (!isMap(mapping)) { why.push(`${dir}/mapping.json unreadable`); structural = true; }
   else if (mapping.generatedAt !== pagesGeneratedAt) why.push(`${dir}/mapping.json generatedAt ${mapping.generatedAt ?? 'none'} ≠ pages.json ${pagesGeneratedAt ?? 'none'}`);
-  return { gap: why.length ? `export_stale:${why.join('; ')} — ${EXPORT_REMEDY}` : null, skipped: [] };
+  if (!why.length) return { gap: null, skipped: [] };
+  const cls = structural || classifyExportDrift(inOff, outOff) === 'rebuild' ? 'rebuild' : 'rehash-safe';
+  const remedy = cls === 'rehash-safe' ? `rehash-safe: ${EXPORT_REHASH}` : `rebuild: ${EXPORT_REMEDY}`;
+  const adopter = outOff.some((k) => /(?:^|\/)coverage\/pages\.json$/.test(k))
+    ? '; the adopter refuses this export until coverage/pages.json is refreshed' : '';
+  return { gap: `export_stale:${why.join('; ')} — ${remedy}${adopter}`, skipped: [] };
 }
 
 /**
