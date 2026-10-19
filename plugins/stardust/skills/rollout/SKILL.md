@@ -262,7 +262,11 @@ archetype page (a failing check reopens the sub-unit owning its files:
 `progress.mjs unit start <sub-unit> --again`), and
 `foundation-freeze.mjs freeze` runs once it passes, before any sibling page is
 authored or any post-C0 unit starts (handoff contract § Fan-out discipline,
-Foundation first). **Archetype first, per template (#126):** the
+Foundation first). A `fix-later` header request raised during the wave is applied by the
+`foundation-chrome` owner as soon as the first wave is running — in parallel with the archetype
+units, with a home re-gate — not deferred to C-final, where header parity is only verified (a
+recorded run queued two at 19:44 and applied them only at C-final 22:01–22:41, 40 min on the
+critical path). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds, stop at PASS — `reference/delivery-gates.md`
 § Iteration discipline) before any of its siblings is rendered
@@ -463,6 +467,12 @@ See `reference/multilingual.md`.
 
 ### Phase E — Full-site verify
 
+**Order: E2 before E.** Phase E2 (link audit + repoints, below) runs BEFORE this verify, so a verify
+failure is never a link E2 was about to repoint. After E2's href-only edits the roster re-gate is
+`gate-all.mjs --changed-only` (it re-gates only pages whose content/CSS fingerprint moved), never the
+full roster — a recorded run re-gated all 9 pages (8.2 min) over 136 href-only edits, and the same
+class cost an earlier run 61 minutes.
+
 ```bash
 node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveHost
 # or: --base <url>   (explicit host)   |   --root <dir>   (offline, against a local export)
@@ -470,10 +480,12 @@ node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveH
 
 For every delivered page — fetched where it was deployed (`delivery.deployedUrl`,
 else its path: the delivered-path contract) — `verify` confirms HTTP 200, no
-`about:error` (deploy #75), and that every internal `href="/…"` resolves to a known
-delivered path (media and text-track links — `.vtt`, `.mp3`, … — are assets, not
-broken links) — then flips each page to `verified` or `failed`. Exits non-zero if
-any page failed.
+`about:error` (deploy #75), and an `<h1>` count that matches the source capture — then
+flips each page to `verified` or `failed`. Exits non-zero if any page failed. Two things
+are NOT failures: an `<h1>` count the capture shares (0 or more than one, a recorded
+source **`trait`** — content is never edited to satisfy a verifier), and an out-of-plan
+internal `href="/…"` (reported **`e2_pending`** for E2 to repoint, since E2 already ran).
+Media and text-track links — `.vtt`, `.mp3`, … — are assets, neither a link nor a trait.
 
 **Headless render check (per template).** A 200 `.plain.html` can still render
 blank — decoration failures (missing script, wrong block wrapper class, 404
@@ -506,11 +518,14 @@ the roster run is the recorded unit `gate-all` (handoff contract § 3, row C); o
 template run, and what fails after it is reported as residuals, never looped again (handoff
 contract § 3).
 
-### Phase E2 — Link-audit completeness
+### Phase E2 — Link-audit completeness (runs BEFORE Phase E)
 
-`verify.mjs` checks the links on delivered pages; this phase closes the set of
-link **targets** a roster-driven batch misses
-(`reference/operational-learnings.md` § Two verify checks):
+This phase runs BEFORE the full-site verify (Phase E): it audits and **repoints** the link
+**targets** a roster-driven batch misses, so the links already resolve when `verify` runs — a href
+`verify` still finds out of plan is `e2_pending`, not a failure
+(`reference/operational-learnings.md` § Two verify checks). After E2's href-only edits, re-gate with
+`gate-all.mjs --changed-only` (it re-gates only pages whose content/CSS fingerprint moved), never the
+full roster:
 
 - **Nav/footer/landing targets are NOT archetype siblings.** Enumerate every
   `href` in the `/nav` + `/footer` documents plus each section's index/landing

@@ -224,6 +224,9 @@ Each round: fix, npm run lint, then
   node skills/rollout/scripts/update-coverage.mjs --gate <each width's "run →" file>
 Stop: <the stop rule above>; at the cap the decision is not yours, never --round-reset. Then:
   write your report to stardust/rollout/units/<unit>.md (never git add it by hand)
+  sidecar before commit: every delivered page has stardust/eds-schema/<slug>.json
+    (node skills/deploy/scripts/section-schema.mjs <protoURL> --out stardust/eds-schema/<slug>.json);
+    unit-commit refuses a missing one (--no-sidecar-check overrides, recorded in the message)
   node skills/stardust/scripts/unit-commit.mjs <unit>   # carries the report, pages and bookkeeping
   node skills/replica/scripts/run-bg.mjs stop --servers
   node skills/stardust/scripts/progress.mjs unit done|failed <unit> --verdict "<one verdict line>"   # last
