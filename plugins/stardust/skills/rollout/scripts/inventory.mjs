@@ -138,12 +138,14 @@ for (const name of EXPORTS) {
   process.exit(2);
 }
 
+// Order: the plugin manifest, else the STARDUST_VERSION env (set where a copied scripts tree has no manifest), else 0.0.0.
 const STARDUST_VERSION = (() => {
   try {
     const here = dirname(fileURLToPath(import.meta.url));
     const pj = JSON.parse(readFileSync(join(here, '..', '..', '..', '.claude-plugin', 'plugin.json'), 'utf8'));
-    return pj.version || '0.0.0';
-  } catch { return '0.0.0'; }
+    if (pj.version) return pj.version;
+  } catch { /* no manifest above this scripts tree */ }
+  return (process.env.STARDUST_VERSION || '').trim() || '0.0.0';
 })();
 
 /** Recursively collect *.html under dir, skipping the assets/ bundle. */

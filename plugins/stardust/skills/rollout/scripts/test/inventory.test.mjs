@@ -24,13 +24,14 @@
 // the row keeps its status and the report names it as not compared.
 // Exclusions (state.mjs exclude): a page's excluded record or the state's top-level excluded[] moves it out of
 // pages[] and the templates into pages.json excluded[] (the key only when there is one), --state roster included.
+// _provenance.stardustVersion: the plugin manifest, else STARDUST_VERSION (a copied scripts tree), else 0.0.0.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { IDENTITY_PATTERNS, findIdentity, identityTokens, publicUrl } from '../lib.mjs';
 import { loadSchema, unsupported, validate } from './schema-validate.mjs';
@@ -70,6 +71,24 @@ check('--help names the --export opt-in and still wins over a bad --export value
   const r = spawnSync(process.execPath, [SCRIPT, '--export', 'nope', '--help'], { encoding: 'utf8', cwd: root });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /\[--export <name>\]/); assert.match(r.stdout, /--export migration-workspace opts/);
   assert.deepEqual(readdirSync(root).sort(), ['migrated']);
+});
+
+check('_provenance.stardustVersion: the plugin manifest, else STARDUST_VERSION (a copied scripts tree with no manifest above it), else 0.0.0', () => {
+  const manifest = JSON.parse(readFileSync(join(HERE, '..', '..', '..', '..', '.claude-plugin', 'plugin.json'), 'utf8')).version;
+  const base = { ...process.env }; delete base.STARDUST_VERSION;
+  const tmp = mkdtempSync(join(tmpdir(), 'rollout-inventory-version-'));
+  // the scripts dir copied three levels below an empty root (no plugin manifest above it), relative imports intact
+  const copy = join(tmp, 'skills', 'rollout', 'scripts');
+  cpSync(join(HERE, '..'), copy, { recursive: true, filter: (src) => basename(src) !== 'test' });
+  const inv = (script, env, out) => {
+    const r = spawnSync(process.execPath, [script, '--migrated', migrated, '--out', join(tmp, out)], { encoding: 'utf8', cwd: tmp, env });
+    assert.equal(r.status, 0, r.stderr); return JSON.parse(readFileSync(join(tmp, out, 'rollout.json'), 'utf8'))._provenance.stardustVersion;
+  };
+  assert.equal(inv(SCRIPT, { ...base, STARDUST_VERSION: '9.9.9' }, 'real'), manifest, 'the plugin manifest wins over the env');
+  assert.equal(inv(join(copy, 'inventory.mjs'), { ...base, STARDUST_VERSION: ' 1.2.3-test ' }, 'env'), '1.2.3-test', 'no manifest: the env, trimmed');
+  assert.equal(inv(join(copy, 'inventory.mjs'), { ...base, STARDUST_VERSION: '  ' }, 'blank'), '0.0.0', 'a blank env is unset');
+  assert.equal(inv(join(copy, 'inventory.mjs'), base, 'none'), '0.0.0', 'neither: the honest unknown');
+  rmSync(tmp, { recursive: true, force: true });
 });
 
 const first = run('--site-url', 'https://example.test');
