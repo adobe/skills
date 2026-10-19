@@ -402,8 +402,20 @@ extracted pages** to avoid the home-page bias documented in
 probe.** `node <plugin>/skills/extract/scripts/style-census.mjs`
 (copied into the project like `crawl.mjs`, § Setup) measures every
 captured page at 1440 and writes
-`stardust/current/_computed-styles.json`; add `--width 360` when the
-breakpoints include it; a stuck page is dropped at `--page-timeout` (default 120 s) and `--resume` continues a killed pass. One more live pass over every page — run it
+`stardust/current/_computed-styles.json`; cover both breakpoints in
+one pass with `--width 1440,360` (repeatable or comma-separated) when
+the run includes 360. Set `--concurrency` to the census's slice of the
+run's browser budget: it is a live-origin pass, so — like the gate's
+origin captures — it takes the origin pool's share, **2** at the
+default budget (`STARDUST_BROWSER_BUDGET` 3; the per-slot share is
+max(1, floor(`STARDUST_BROWSER_BUDGET` / `STARDUST_BROWSER_SLOTS`)),
+the origin pool its half). Pass
+`--concurrency 2` rather than accept the serial default of 1 — but
+raise it above 1 ONLY on an origin known to have no bot management, since each pass
+spends the origin's bot budget (a measurement that times out above 1
+drops the rest of the roster back to 1). A stuck page is dropped at
+`--page-timeout` (default 120 s) and `--resume` continues a killed
+pass. One more live pass over every page — run it
 ONCE, after the crawl, in the background; it opens the live side
 through `live-session.mjs` like every other live instrument. The crawl
 records each page's goto time (`navMs`, in its page record) and
