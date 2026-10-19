@@ -705,17 +705,14 @@ node skills/rollout/scripts/block-origin.mjs --verify  # 2. REQUIRED → workspa
 node skills/rollout/scripts/workspace-manifest.mjs  # 3. → workspace/manifest.json; exit 2 = no mapping.json
 ```
 
-Re-run all three, in order, whenever an input changed after the manifest (a gap-closure or G-aem fix to
-`content/` or `blocks/`, a judgement edit): `done-check.mjs` lists `export_stale:<why>` until the export is fresh.
-A failing command names what to re-run — fix it and re-run, never `blocked`.
-
-**The export is built on a frozen roster, and refreshed before `done-check.mjs`.** Build it once the
-roster is frozen — no unit running, no fix round open, gap-closure finished — so the manifest, mapping
-and judgement describe the final content. If anything under `content/`, `blocks/`, `styles/` or a
-judgement changes afterwards, re-run the export sequence (`inventory.mjs` → `blocks.mjs` →
-`block-origin.mjs --verify` → `workspace-manifest.mjs`) BEFORE `done-check.mjs`; the `export_stale`
-line is the proof it was not. When a session's deadline will cut it short, refresh the export only if
-it takes under five minutes; otherwise leave `export_stale` standing for the resumed run.
+Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
+finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in
+order, whenever an input changed after the manifest (a gap-closure or G-aem fix to `content/`,
+`blocks/` or `styles/`, a judgement edit), and always BEFORE `done-check.mjs`, which lists
+`export_stale:<why>` until the export is fresh — the proof it was not. Under a session deadline that
+will cut it short, refresh the export only if it takes under five minutes; otherwise leave
+`export_stale` standing for the resumed run. A failing command names what to re-run — fix it and
+re-run, never `blocked`.
 
 **Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
 exits 0; otherwise it prints one gap per line.
