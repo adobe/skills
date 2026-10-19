@@ -469,9 +469,8 @@ See `reference/multilingual.md`.
 
 **Order: E2 before E.** Phase E2 (link audit + repoints, below) runs BEFORE this verify, so a verify
 failure is never a link E2 was about to repoint. After E2's href-only edits the roster re-gate is
-`gate-all.mjs --changed-only` (it re-gates only pages whose content/CSS fingerprint moved), never the
-full roster — a recorded run re-gated all 9 pages (8.2 min) over 136 href-only edits, and the same
-class cost an earlier run 61 minutes.
+`gate-all.mjs --changed-only` (Phase E2), never the full roster — a recorded run re-gated all 9 pages
+(8.2 min) over 136 href-only edits, and the same class cost an earlier run 61 minutes.
 
 ```bash
 node skills/rollout/scripts/verify.mjs            # uses rollout.json site.liveHost

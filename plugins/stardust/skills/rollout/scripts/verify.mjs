@@ -22,12 +22,12 @@
  * `.css` or `.pdf`): neither a link nor a trait.
  *
  * The <h1> count is judged against the source capture (<current>/pages/<slug>.json, extract's
- * crawl), because content is never edited to satisfy a verifier. One <h1> verifies. No <h1>, or
- * more than one, is a FAILURE unless the capture carries the same trait — a capture with no h1
- * (none rendered) or a capture with more than one h1 (more than one rendered): then it is a
- * recorded source trait, the page verifies, and a stdout line reads
- * `trait: <slug>: source has <n> h1 (recorded source trait)`. A missing capture, or a capture
- * whose h1 count the render does not match, fails as before.
+ * crawl), because content is never edited to satisfy a verifier. One <h1> verifies. Otherwise it
+ * FAILS when the render and the capture disagree on whether an h1 exists: 0 rendered while the
+ * capture has ≥ 1, or ≥ 2 rendered while the capture has ≤ 1 (or there is no capture). When the
+ * capture shares the trait — 0 rendered and 0 in the capture, or ≥ 2 rendered and ≥ 2 in the
+ * capture — it is a recorded source trait, the page verifies, and a stdout line reads
+ * `trait: <slug>: source has <n> h1 (recorded source trait)`.
  *
  * Out-of-plan links are E2's, not a verify failure. Phase E2 (link audit + repoints) runs BEFORE
  * Phase E (this verify); an internal `href="/…"` that still resolves to no page in coverage is
