@@ -15,8 +15,10 @@ gaps below. Every fix is generic; per-site choices stay in config.
   source order (links, `.nav-menu` triggers for link-less list items, `.nav-text` otherwise); footer prose takes every
   non-link text leaf. `chromeTextMissing` checks each chrome section after render and `render()` throws on a drop.
 - **Header zones.** A branded header row (logo + a menu list) renders brand | menu | actions (links outside the
-  list, e.g. Login) instead of one right-aligned link run; `chrome.navAlign` (`start|center|end`, default `end`)
-  places the menu as the donor's header frame does.
+  list, e.g. Login) instead of one right-aligned link run. The menu's placement is measured from the Figma donor:
+  capture records each desktop screen's header row (`headerRows`, footers skipped) and curate writes the majority
+  as `layout.navAlign` (`start|center|end`) with its evidence. `chrome.navAlign` in the mapping overrides it; a
+  URL-only donor has no geometry and defaults to `end`.
 
 - **Renders gated by figma-gate (0.34.0).** All three runs (two Figma donors, one URL donor) re-gated on M2b's checks:
   join, geometry and ramp pass on every Figma-donor page, with one accepted `figma.ramp` residual (a hero intro style

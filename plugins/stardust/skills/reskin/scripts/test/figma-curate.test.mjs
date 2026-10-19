@@ -138,6 +138,16 @@ check('type.display.textAlign: majority textAlignHorizontal (by characters) of t
   const t3 = curate({ ...inputs(rules((r) => { r.roles['type.display.textAlign'] = { absent: 'kit sets no alignment' }; return r; })), foundation: f2.foundation, moduleCandidates: f2.moduleCandidates }).donorTokens;
   assert.equal(t3.type.display.textAlign, undefined);
 });
+check('layout.navAlign: majority of the frames\' measured header rows, with evidence; none without rows; absent wins', () => {
+  const withRows = (aligns) => ({ ...moduleCandidates, frames: moduleCandidates.frames.map((f, i) => ({ ...f, headerRows: aligns[i] ? [{ node: `H${i}`, menu: `M${i}`, align: aligns[i], offset: 0, width: 1180 }] : [] })) });
+  const t1 = curate({ ...inputs(), moduleCandidates: withRows(['center', 'center']) }).donorTokens;
+  assert.equal(t1.layout.navAlign, 'center');
+  assert.equal(t1.nodeRefs['layout.navAlign'].node, 'H0');
+  assert.equal(t1.nodeRefs['layout.navAlign'].derived, 'majority of desktop header rows');
+  assert.equal(curate({ ...inputs(), moduleCandidates: withRows([null, null]) }).donorTokens.layout.navAlign, undefined);
+  const t3 = curate({ ...inputs(rules((r) => { r.roles['layout.navAlign'] = { absent: 'no header in the kit' }; return r; })), moduleCandidates: withRows(['end', 'end']) }).donorTokens;
+  assert.equal(t3.layout.navAlign, undefined);
+});
 check('nodeRefs cite the node that paints each value', () => {
   assert.deepEqual(t.nodeRefs['palette.pageBg'], { node: '1:2', figma: { color: { r: 1, g: 1, b: 1, a: 1 }, opacity: 1 }, via: 'rest' });
   assert.equal(t.nodeRefs['buttons.primary.color'].node, 'I1:20;3:5');

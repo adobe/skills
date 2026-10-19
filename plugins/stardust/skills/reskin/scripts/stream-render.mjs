@@ -28,7 +28,7 @@
  *         "width": "narrow|wide", "tone": "dark|light|accent", "columns": 3,
  *         "heading": "display|h2|h3|h4", "inset": "80px", "split": "531px 1fr" } } } } }
  *   chrome.navAlign: where a branded header row (logo + menu list) puts its menu between the logo and the
- *   actions, read off the donor's header frame (default end).
+ *   actions; an override of the donor's layout.navAlign (a Figma donor's curate measures it), default end.
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, e.g. image+h3+p per team member) as a grid of
@@ -296,7 +296,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     }
     const menu = ordered.filter((n) => n.kind === 'listItem').flatMap((n) => navItem(s, n));
     const actions = ordered.filter((n) => n.kind !== 'listItem').flatMap((n) => navItem(s, n));
-    const align = ['start', 'center', 'end'].includes(mapping.chrome?.navAlign) ? mapping.chrome.navAlign : 'end';
+    const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
+    const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
     return `<div class="chrome-row nav-align-${align}"><div class="container">
       ${logos}
       <nav>${menu.join('')}</nav>${actions.length ? `

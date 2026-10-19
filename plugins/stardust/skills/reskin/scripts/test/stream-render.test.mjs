@@ -92,6 +92,10 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
   assert.match(run({}), /<div class="chrome-row nav-align-end">/);
   assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
+  const fromDonor = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } }).html;
+  assert.match(fromDonor, /<div class="chrome-row nav-align-center">/);
+  const overridden = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'start' } } }).html;
+  assert.match(overridden, /<div class="chrome-row nav-align-start">/);
 });
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
