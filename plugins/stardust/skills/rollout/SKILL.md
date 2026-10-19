@@ -718,6 +718,9 @@ The manifest's `selectorQuality` records how the source selectors were found —
 and the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
 map) — which `done-check.mjs` surfaces as the `export_quality:zero_confidence` info line; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
+Its `sectionGaps` (derived the same way) lists the sections an adopter projecting per selector drops — a null source
+selector, or a selector kept but the blocks lost to the projection — and `done-check.mjs` surfaces the null count as
+the `export_quality:null_selector_sections` info line.
 
 Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in
