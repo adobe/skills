@@ -3,8 +3,8 @@
 // The delivered-site fixture (inventory → blocks → conversions recorded with update-coverage → blocks):
 // module rows carry variants (ids, classes, pages, instances) from pages.json `delivered`, a variantsSummary
 // ({total, singleUse}; the top-level one adds blocks), usage (usedByTemplates, usedByPages, instanceCount)
-// counted from the same delivered records — not the sidecars' plan; chrome and default-content rows count
-// their declaring sidecars — optionClasses (authored plus CSS-only), description, contract (identity
+// counted from the same delivered records — not the sidecars' plan; chrome rows count every delivered
+// page (site-wide), default-content rows their declaring sidecars — optionClasses (authored plus CSS-only), description, contract (identity
 // scrubbed) and baseType (standard, alias, unknown); a judgement lands on the blocks and on template names without re-running inventory;
 // formatVersion and the schema; a re-run leaves blocks.json and templates.json byte-identical; no identity
 // strings; chrome and default-content rows unchanged; _provenance.inputs hashes every judgement,
@@ -158,15 +158,19 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
     for (const id of ['hero-banner', 'three-up', 'breadcrumb', 'link-list']) assert.deepEqual(Object.keys(row(id)), ENRICHED_KEYS, id);
   });
 
-  check('chrome and default-content rows: base keys only; chrome unchanged by the enrichment (same values as recorded); both count the pages whose sidecars declare them — a fragment or default content leaves no block record', () => {
+  check('chrome and default-content rows: base keys only; chrome unchanged by the enrichment (same values as recorded); a chrome row counts every page with a delivered document (site-wide, whatever the sidecars declare), a default-content row the pages whose sidecars declare it', () => {
     const before = new Map(JSON.parse(recorded).blocks.map((b) => [b.id, b]));
     const base = (b) => Object.fromEntries(BASE_KEYS.map((k) => [k, b[k]]));
     for (const id of ['header', 'footer', 'heading']) assert.deepEqual(Object.keys(row(id)), BASE_KEYS, id);
     for (const id of ['header', 'footer']) assert.deepEqual(row(id), base(before.get(id)), id);
     assert.deepEqual([row('header').kind, row('footer').kind, row('heading').delivery.edsBlockName], ['chrome', 'chrome', 'default-content']);
-    // all three are declared on the home sidecar only
-    const tpl = json('pages.json').pages.find((p) => p.slug === 'home').templateId;
-    for (const id of ['header', 'footer', 'heading']) assert.deepEqual([row(id).instanceCount, row(id).usedByPages, row(id).usedByTemplates], [1, ['home'], [tpl]], id);
+    // all three are declared on the home sidecar only; all three pages have a delivered document
+    const pagesDoc = json('pages.json');
+    const tplOf = Object.fromEntries(pagesDoc.pages.map((p) => [p.slug, p.templateId]));
+    const delivered = pagesDoc.pages.filter((p) => p.delivered).map((p) => p.slug).sort();
+    assert.deepEqual(delivered, ['about-us', 'de-ueber-uns', 'home']);
+    for (const id of ['header', 'footer']) assert.deepEqual([row(id).instanceCount, row(id).usedByPages, row(id).usedByTemplates], [3, delivered, [...new Set(delivered.map((s) => tplOf[s]))].sort()], id);
+    assert.deepEqual([row('heading').instanceCount, row('heading').usedByPages, row('heading').usedByTemplates], [1, ['home'], [tplOf.home]]);
     // before its default-content mapping, heading was a module row with EDS name `heading`: no document shows such a block, so it read 0
     assert.deepEqual([before.get('heading').instanceCount, before.get('heading').usedByPages], [0, []]);
   });
@@ -354,6 +358,7 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
     const footer = byId(out).footer;
     assert.equal(footer.kind, 'chrome'); assert.equal(footer.signature, 'chrome:footer');
     assert.deepEqual(footer.delivery, { status: 'converted', edsBlockName: null, blockPath: 'fragments/footer.html', convertedAt: null });
+    assert.deepEqual([footer.instanceCount, footer.usedByPages], [0, []], 'site-wide, yet no page has a delivered document');
   });
 
   check('a directory equal to a planned block\'s id or edsBlockName is not duplicated; a planned row counts its delivered records, not its sidecar listings', () => {
@@ -369,15 +374,16 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
     const usage = (b) => [b.instanceCount, b.usedByPages, b.usedByTemplates];
     assert.deepEqual(usage(byId(out).cards), [2, ['home'], ['detail']], 'two cards records on home; about lists cards but has no delivered document');
     assert.deepEqual(usage(byId(out)['Hero Banner']), [0, [], []], 'planned, yet no document shows a hero-banner block');
-    assert.deepEqual(usage(byId(out).header), [1, ['home'], ['detail']], 'chrome: the pages whose sidecars declare it');
+    assert.deepEqual(usage(byId(out).header), [1, ['home'], ['detail']], 'chrome: every page with a delivered document — about has none yet');
     assert.doesNotMatch(r.stdout, /^Registered/m, r.stdout);
   });
 
-  check('usage and variantsSummary from the delivered records: a repeated and a single-use variant on a planned row, a single-use one on a blocks-dir row, a planned block no document shows at 0, chrome by its sidecars; the top-level summary and the summary line agree', () => {
+  check('usage and variantsSummary from the delivered records: a repeated and a single-use variant on a planned row, a single-use one on a blocks-dir row, a planned block no document shows at 0; chrome site-wide (a blocks-dir footer no sidecar lists reads every delivered page), default content by its sidecars; the top-level summary and the summary line agree', () => {
     const rec = (pos, block, classes) => ({ pos, block, kind: 'block', classes, variantId: vid(`${block}|${classes.join(' ')}`) });
-    const home = { ...page('home', ['promo', 'header', 'hero']), delivered: { blocks: [rec(0, 'promo', ['dark']), rec(1, 'promo', ['dark']), rec(2, 'promo', []), rec(3, 'teaser', [])] } };
+    const home = { ...page('home', ['promo', 'header', 'hero', 'heading']), delivered: { blocks: [rec(0, 'promo', ['dark']), rec(1, 'promo', ['dark']), rec(2, 'promo', []), rec(3, 'teaser', [])] } };
     const about = { ...page('about', ['promo', 'header'], 'about'), delivered: { blocks: [rec(0, 'promo', ['dark'])] } };
-    const { proj, out } = project({ pages: [home, about], dirBlocks: { promo: ['promo.js'], teaser: ['teaser.js'] } });
+    const heading = { id: 'heading', label: 'heading', kind: 'module', signature: 'module:heading', source: null, usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'converted', edsBlockName: 'default-content', blockPath: null, convertedAt: null } };
+    const { proj, out } = project({ pages: [home, about], dirBlocks: { promo: ['promo.js'], teaser: ['teaser.js'], footer: ['footer.js'] }, priorBlocks: [heading] });
     const r = run(proj);
     assert.equal(r.status, 0, r.stderr);
     const b = byId(out);
@@ -387,11 +393,13 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
     assert.deepEqual(b.promo.variantsSummary, { total: 2, singleUse: 1 });
     assert.deepEqual([b.teaser.source, ...usage(b.teaser), b.teaser.variantsSummary], ['blocks-dir', 1, ['home'], ['detail'], { total: 1, singleUse: 1 }]);
     assert.deepEqual([...usage(b.hero), b.hero.variants, b.hero.variantsSummary], [0, [], [], [], { total: 0, singleUse: 0 }], 'planned on home, no record: 0');
-    assert.deepEqual(usage(b.header), [2, ['about', 'home'], ['about', 'detail']]);
+    assert.deepEqual(usage(b.header), [2, ['about', 'home'], ['about', 'detail']], 'planned chrome: every delivered page');
+    assert.deepEqual([b.footer.source, b.footer.kind, ...usage(b.footer)], ['blocks-dir', 'chrome', 2, ['about', 'home'], ['about', 'detail']], 'chrome no sidecar lists: every delivered page all the same');
+    assert.deepEqual([b.heading.delivery.edsBlockName, ...usage(b.heading)], ['default-content', 1, ['home'], ['detail']], 'default content: the sidecar that declares it, not every delivered page');
     const doc = JSON.parse(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8'));
     assert.deepEqual(doc.variantsSummary, { total: 3, singleUse: 2, blocks: 2 });
     assert.match(r.stdout, /^Delivered\s+3 variant\(s\) of 2 block\(s\), 2 single-use/m, r.stdout);
-    assert.match(r.stdout, /^Most reused\s+promo×4, teaser×1$/m, r.stdout);
+    assert.match(r.stdout, /^Most reused\s+promo×4, heading×1, teaser×1$/m, r.stdout);
     assert.deepEqual(validate(loadSchema('rollout-blocks.schema.json'), doc), []);
   });
 

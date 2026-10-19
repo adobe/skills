@@ -101,8 +101,9 @@ node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion
 - `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
   the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
   reserved-class-guarded per deploy #15), and counts `usedByPages` /
-  `instanceCount` from the delivered documents (the sidecars' plan only for chrome
-  and default content); module rows also carry option classes, variants, a
+  `instanceCount` from the delivered documents (chrome: every delivered page, it is
+  site-wide; default content: the sidecars' plan); module rows also carry option
+  classes, variants, a
   `variantsSummary` (`singleUse` variants are one-off catalog entries for an
   adopter), description, contract and base type. Chrome (`header`/`nav`/`footer`)
   is `kind: chrome` → site-wide

@@ -24,9 +24,11 @@
  *
  * Usage (`usedByTemplates`, `usedByPages`, `instanceCount`): a module row with an EDS block is counted from the
  * delivered documents — pages.json `delivered.blocks` records of kind `block` with its EDS name, the records
- * block-origin.mjs maps, so the ledger and the mapping agree instance for instance; a block no document shows
- * reads 0, truthfully, whatever the sidecars planned. Chrome and default-content rows count the pages whose
- * sidecar `modules[]` declare them (a fragment or default content leaves no block record).
+ * block-origin.mjs maps, so on a fresh export (the manifest refuses a stale one) the ledger and the mapping agree
+ * instance for instance; a block no document shows reads 0, truthfully, whatever the sidecars planned. A chrome
+ * row counts every page with a delivered document (chrome is site-wide: the fragments ship on every page, and no
+ * sidecar need declare them); a default-content row the pages whose sidecar `modules[]` declare it (default
+ * content leaves no block record).
  *
  * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
  * that needs no block) keeps its name whatever its status. A second run writes the same bytes
@@ -95,8 +97,8 @@ const pages = pagesDoc.pages || [];
 const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const prior = new Map(((readJSON(blocksPath, { blocks: [] }) || {}).blocks || []).map((b) => [b.id, b]));
 
-// The blocks the sidecars plan (pages.json `blocks[]`, the sidecar modules[]): the row set, and the usage of the rows
-// the delivered documents cannot count (chrome, default content).
+// The blocks the sidecars plan (pages.json `blocks[]`, the sidecar modules[]): the row set, and the usage of the
+// default-content rows (the delivered documents cannot count them).
 const agg = new Map(); // id -> { templates:Set, pages:Set, count }
 for (const p of pages) {
   for (const id of p.blocks || []) {
@@ -153,13 +155,23 @@ for (const p of pages) {
   }
 }
 
+// Chrome is site-wide (the header/footer fragments ship on every page): every page with a delivered document.
+const siteWide = { templates: new Set(), pages: new Set(), count: 0 };
+for (const p of pages) {
+  if (!p || !p.delivered || typeof p.delivered !== 'object') continue;
+  siteWide.pages.add(p.slug);
+  siteWide.count += 1;
+  if (p.templateId) siteWide.templates.add(p.templateId);
+}
+
 /**
  * A row's usage, in contract order. A module row with an EDS block: counted from the delivered documents by its EDS
- * name (a block no document shows reads 0, whatever the sidecars planned); chrome and default-content rows: the pages
- * whose sidecar modules[] declare them — a fragment or default content leaves no block record to count.
+ * name (a block no document shows reads 0, whatever the sidecars planned); a chrome row: every page with a delivered
+ * document (site-wide; no sidecar need declare it); a default-content row: the pages whose sidecar modules[] declare
+ * it — default content leaves no block record to count.
  */
 function usageOf(id, kind, edsBlockName) {
-  const u = kind === 'module' && edsBlockName !== DEFAULT_CONTENT ? usedBy.get(edsBlockName) : agg.get(id);
+  const u = kind === 'chrome' ? siteWide : edsBlockName === DEFAULT_CONTENT ? agg.get(id) : usedBy.get(edsBlockName);
   return {
     usedByTemplates: [...(u ? u.templates : [])].sort(),
     usedByPages: [...(u ? u.pages : [])].sort(),
@@ -297,7 +309,7 @@ const chrome = blocks.filter((b) => b.kind === 'chrome');
 console.log(`rollout blocks → ${blocksPath}${written ? '' : ' (unchanged)'}`);
 console.log('='.repeat(60));
 console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment)`);
-console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} instances → ${planned.length} conversions`);
+console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} planned listings → ${planned.length} conversions`);
 const top = modules.filter((b) => b.instanceCount > 0).sort((a, b) => b.instanceCount - a.instanceCount).slice(0, 6);
 if (top.length) console.log(`Most reused      ${top.map((b) => `${b.id}×${b.instanceCount}`).join(', ')}`);
 if (chrome.length) console.log(`Fragments        ${chrome.map((b) => b.id).join(', ')}`);
