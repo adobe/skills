@@ -4,6 +4,41 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-schema-parity) — every export file validates against its schema; `excluded[]` accounts for a dropped planned URL (#172)
+
+In every recorded hands-off run the migration export failed its own published schemas:
+`coverage/pages.json` on the six `delivery.gate` keys `update-coverage.mjs --gate` writes per page
+(`inconclusive`, `width`, `atByWidth`, `passByWidth`, `rounds`, `host` — 54 to 342 errors per
+export), on `source.encodedHtml` (encoded pages) and `source.variance`, and `rollout.json` on
+`lastRun.pages.contentPending`. The adopter's tolerant reader did not mind; a client validating the
+export rejected a correct one. And a planned URL whose source answered 404 left the roster with its
+decision in `report.md` prose only — nothing machine-readable said a planned page was excluded, or
+why.
+
+- **Schema/writer parity.** Each key a writer emits on purpose is declared with its type: the gate's
+  six per-width keys, `override` as gate-all's `{verdict, reason, valid}` object (a string stays the
+  older form), `at` nullable; `source.encodedHtml` and `source.variance`; the config's
+  `contentPending`. No writer key was found to be accidental; nothing was dropped. All four recorded
+  exports now validate (Ajv, strict clients included).
+- **In-tool validation.** `lib.mjs` carries the structural JSON Schema check the tests used
+  (declared properties, required keys, `additionalProperties`, types, enums, patterns — no
+  dependency); `done-check.mjs` validates every export file present against
+  `skills/rollout/schemas/` and prints `export_quality:schema:<file>:<n>: <first errors>` for one
+  that fails (informational, hidden after handover; a `skipped:` line when no schemas dir is beside
+  the scripts — a copied scripts tree needs its `schemas/`). The writers' tests assert that a
+  written pages.json (gate rows, `--new` rows, encoded and variance rows), rollout.json,
+  blocks.json, manifest, mapping and judgement validate.
+- **`excluded[]` in the manifest** (beside `templateGroups`; optional in the schema, derived —
+  recomputed by `--rehash-only`, never a drift input, a fresh export stays `fresh` under `--check`):
+  the planned URLs that never became a page as `[{url, reason}]`, read from what the coverage and
+  the plan already record — the coverage's `excluded[]` rows (`state.mjs exclude`, the roster-freeze
+  record, reason as recorded), the crawl's failed URLs (`stardust/current/_crawl-log.json`
+  `crawl.failures[]`: `crawl: HTTP 404`), and `state.json` pages or `plan.json` steps with no row
+  (`unrecorded`). `done-check.mjs` prints `export_quality:excluded:<n>`. In the recorded run the
+  dropped tenth URL now reads `crawl: HTTP 404`; the other three exports read `[]`.
+- Docs: `reference/coverage-contract.md` (manifest table, the validity sentence) and `SKILL.md` §
+  Phase I.
+
 ## 0.36.x (stardust/r17-stop-aware-wait) — the wait instruments stop on the runner's stop file (#169)
 
 In a recorded hands-off run three sessions were killed at the end of the runner's stop grace: the lead
