@@ -362,6 +362,17 @@ express, a reasoned `not-attempted`), in this order:
    recorded runs generated siblings with per-template scripts because no
    map existed — and nothing recorded it.
 
+**When the template is re-typed (the majority case).** `render` refuses a
+mechanical clone when more than half a template's current clones differ and
+points at `migrate.mjs retype-plan <template> --write`. That reads the same
+`stardust/rollout/variance/<template>.json` ledger, groups the differing
+siblings by a delta fingerprint (`missing=[…]; shape=[…]` — the missing probe
+set plus the COUNT/CLUSTERS probes, magnitudes dropped) into proposed
+sub-archetypes with a representative each, writes the plan to
+`stardust/migrate/retype-plan/<template>.json` and records the re-type
+deviation there — no rendered `_meta.json` needed, so the deviation is recorded
+even though the refusal wrote nothing. The lead then starts one unit per group.
+
 **Recorded units.** A whole-site render is bookkept as units in
 `stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
 ledger (`../replica/reference/handoff-contract.md` § 3 row C):
