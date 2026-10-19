@@ -149,6 +149,21 @@ export function contrast(a, b) {
 }
 
 // Pure: one page's HTML. resolveImg(url) → { src, source? } lets the CLI localize; the default hot-links.
+// Visible text leaves of a chrome section (punctuation-only fragments aside) absent from its rendered HTML.
+// The content gates measure <main> only, so render() throws on any: a chrome drop never ships silently.
+export function chromeTextMissing(section, html) {
+  const norm = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const rendered = norm(String(html).replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'"));
+  const leaves = [];
+  const walk = (n) => {
+    const kids = (n.children || []).filter((c) => norm(c.text));
+    if (kids.length) kids.forEach(walk);
+    else if (n.kind !== 'image' && /[\p{L}\p{N}]/u.test(norm(n.text))) leaves.push(norm(n.text));
+  };
+  (section.ordered || []).forEach(walk);
+  return leaves.filter((t) => !rendered.includes(t));
+}
+
 export function render({ slug, model, tokens, mapping, chromeModel = null, now = new Date().toISOString(), resolveImg = (u) => ({ src: u }) }) {
   const pageMap = mapping?.pages?.[slug];
   if (!pageMap) throw new SetupError(`mapping.json has no pages.${slug}`);
@@ -253,29 +268,61 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     return s.ordered.flatMap((n) => {
       const links = ctasIn(n).filter((c) => (c.text || '').trim());
       if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
-      if (n.kind === 'listItem' && (n.text || '').trim()) {
-        return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(n.text.trim())}</button>`];
-      }
-      return [];
+      const text = (n.text || '').trim();
+      if (!text || n.kind === 'image') return [];
+      // a Figma-only capture lists its links as ctas and their text as plain stream nodes
+      const cta = s.ctas.find((c) => (c.text || '').trim() === text);
+      if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
+      if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
+      return [`<span class="nav-text">${esc(text)}</span>`];
     });
+  }
+
+  // Footer prose in source order: every non-link text leaf (headings, text runs, list items), so a
+  // contact block or a credit line is never dropped; links go to the link list.
+  function footerTexts(s) {
+    const ctaTexts = new Set(s.ctas.map((c) => (c.text || '').trim()));
+    if (!Array.isArray(s.ordered) || !s.ordered.length) {
+      return [...s.paragraphs, ...(s.listItems || [])].map((p) => (typeof p === 'string' ? p : p.text)).filter((t) => !ctaTexts.has(t));
+    }
+    const out = [];
+    const walk = (n) => {
+      if (n.kind === 'cta' || n.kind === 'image' || n.kind === 'formControl') return;
+      const kids = (n.children || []).filter((c) => (c.text || '').trim());
+      if (kids.length) { kids.forEach(walk); return; }
+      const t = (n.text || '').trim();
+      if (t && /[\p{L}\p{N}]/u.test(t) && !ctaTexts.has(t) && !out.includes(t)) out.push(t);
+    };
+    s.ordered.forEach(walk);
+    return out;
+  }
+
+  // Every visible text leaf of a chrome section must survive the render: the content gates measure
+  // <main> only, so a silent drop here would ship unnoticed.
+  function assertChromeText(s, html) {
+    const missing = chromeTextMissing(s, html);
+    if (missing.length) {
+      throw new Error(`chrome ${s.slot} dropped visible text ${JSON.stringify(missing)} in ${slug} — extend stream-render, never drop content`);
+    }
   }
 
   function chromeHtml(ids, role) {
     if (!chromeModel) return '';
     const slots = ids.map((id) => chromeModel.sections.find((s) => s.slot === id)).filter(Boolean);
+    const checked = (s, html) => { assertChromeText(s, html); return html; };
     if (role === 'header') {
-      return slots.map((s) => `<div class="chrome-row"><div class="container">
+      return slots.map((s) => checked(s, `<div class="chrome-row"><div class="container">
       ${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}
       <nav>${navItems(s).join('')}</nav>
-    </div></div>`).join('\n  ');
+    </div></div>`)).join('\n  ');
     }
-    return slots.map((s) => {
-      const texts = s.paragraphs.map((p) => (typeof p === 'string' ? p : p.text)).filter((t) => !s.ctas.some((c) => c.text === t));
+    return slots.map((s) => checked(s, (() => {
+      const texts = footerTexts(s);
       return `<div class="container chrome-footer">
       <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
       <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>
     </div>`;
-    }).join('\n  ');
+    })())).join('\n  ');
   }
 
   // ---- page -------------------------------------------------------------------------------------------

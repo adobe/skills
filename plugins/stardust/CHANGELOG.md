@@ -9,6 +9,12 @@ git history only (plus the branch-scoped notes in
 Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
 gaps below. Every fix is generic; per-site choices stay in config.
 
+- **Chrome never drops visible text.** `stream-render` built the header from the section's links only and the footer
+  from paragraphs and links, so link-less mega-menu parents, a Figma-only header's language codes and a footer's
+  contact heading and text runs vanished — unseen, as the content gates measure `<main>`. Header items now render in
+  source order (links, `.nav-menu` triggers for link-less list items, `.nav-text` otherwise); footer prose takes every
+  non-link text leaf. `chromeTextMissing` checks each chrome section after render and `render()` throws on a drop.
+
 - **Renders gated by figma-gate (0.34.0).** All three runs (two Figma donors, one URL donor) re-gated on M2b's checks:
   join, geometry and ramp pass on every Figma-donor page, with one accepted `figma.ramp` residual (a hero intro style
   the donor tokens have no role for). What it took, generic throughout:

@@ -10,7 +10,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureSmells, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { captureSmells, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
 let failed = 0;
@@ -58,6 +58,23 @@ check('header nav keeps link-less menu triggers in source order (never drops chr
   }] };
   const { html } = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } });
   assert.match(html, /<nav><button class="nav-menu" type="button" aria-expanded="false">Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>/);
+});
+check('chrome guard: chromeTextMissing lists dropped text leaves; punctuation fragments and images aside', () => {
+  const s = { ordered: [
+    { kind: 'listItem', text: 'Menu', children: [{ kind: 'cta', text: 'Menu' }] },
+    { kind: 'text', text: 'Stray span' }, { kind: 'text', text: ',' }, { kind: 'image', text: 'alt only' },
+  ] };
+  assert.deepEqual(chromeTextMissing(s, '<nav><a>Menu</a></nav>'), ['Stray span']);
+  assert.deepEqual(chromeTextMissing(s, '<a>Menu</a><p>Stray span</p>'), []);
+});
+check('footer keeps headings and text runs in order; header keeps a Figma-only capture (text nodes + ctas)', () => {
+  const footer = { slot: 'f1', images: [], paragraphs: [], ctas: [{ text: 'Licence', absHref: 'https://example.test/l' }],
+    ordered: [{ kind: 'heading', level: 'h3', text: 'Contact us' }, { kind: 'text', text: 'Email: a@b.test' }, { kind: 'text', text: ')' }, { kind: 'cta', text: 'Licence', absHref: 'https://example.test/l' }] };
+  const header = { slot: 'h1', images: [], ctas: [{ text: 'Contact Us', absHref: 'https://example.test/c' }],
+    ordered: [{ kind: 'paragraph', text: 'Contact Us' }, { kind: 'paragraph', text: 'DE' }] };
+  const { html } = render({ ...base, chromeModel: { sections: [footer, header] }, mapping: { ...mapping, chrome: { header: ['h1'], footer: ['f1'] } } });
+  assert.match(html, /<p>Contact us<\/p><p>Email: a@b\.test<\/p><\/div>/);
+  assert.match(html, /<nav><a href="https:\/\/example\.test\/c">Contact Us<\/a><span class="nav-text">DE<\/span><\/nav>/);
 });
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
