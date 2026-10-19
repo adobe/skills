@@ -4,6 +4,17 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-export-order) — the migration export is built on a frozen roster, and refreshed before the done-check (#158)
+
+In a recorded hands-off run the migration export (workspace manifest, mapping and judgement) was built at the
+dashboard step while the roster was still open; gap-closure then kept editing pages, so the export shipped stale —
+`done-check.mjs` correctly raised `export_stale`, but the run reached its deadline without re-running it. The
+freshness check already existed; the order did not. The rollout and migration-export docs now state it: the export
+is built once the roster is frozen — no unit running, no fix round open, gap-closure finished — and any later change
+under `content/`, `blocks/`, `styles/` or a judgement re-runs the export sequence (`inventory` → `blocks` →
+`block-origin --verify` → `workspace-manifest`) before `done-check.mjs`, with a same-session refresh only when it
+takes under five minutes.
+
 ## 0.36.x (stardust/r16-tail-and-defaults) — the unit ends with its sidecar, deploy-batch knows its site, and the tail re-gates only what changed (#157)
 
 A recorded hands-off run that finished `ready` in 8 h 58 min spent its last minutes on work the tail should have
