@@ -97,6 +97,19 @@ check('CLI: refuses without reports, then record → eyeball → residual → sh
   assert.equal(L.handoff.form.archetype, 'login');
   assert.match(run(['show', 'login'], root).stdout, /"eyeball"/);
 });
+check('CLI: a Figma-sourced page records figma-text.json as its content gate', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
+  for (const f of ['slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  assert.match(run(['record', 'login'], root).stderr, /figma-text\.json/);
+  w('stardust/reskin/gates/login/figma-text.json', JSON.stringify({ gate: 'figma-text', verdict: 'FAIL' }));
+  run(['record', 'login'], root);
+  assert.equal(JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8')).pages.login.gates['reskin-dom-equality'].verdict, 'FAIL');
+  w('stardust/reskin/gates/login/figma-text.json', JSON.stringify({ gate: 'figma-text', verdict: 'PASS' }));
+  assert.equal(run(['record', 'login'], root).status, 0);
+  assert.match(JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8')).pages.login.gates['reskin-dom-equality'].report, /figma-text\.json$/);
+});
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');

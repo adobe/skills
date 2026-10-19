@@ -200,7 +200,7 @@ const DEFAULT_SPEC = [
   { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family' },
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
   { label: 'display weight', selector: 'main :is(h1, h2, h3)', property: 'fontWeight', token: 'type.display.fontWeight' },
-  { label: 'heading color', selector: 'main :is(h1, h2, h3, h4, h5, h6)', property: 'color', token: 'palette.headingFg' },
+  { label: 'heading color', selector: 'main :is(h1, h2, h3, h4, h5, h6)', exclude: '.tone-dark *', property: 'color', token: 'palette.headingFg' },
   { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background', needs: 'button' },
   { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color', needs: 'button' },
   { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius', needs: 'button' },

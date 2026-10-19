@@ -173,7 +173,15 @@ function findReports(dir, slug, stage) {
   }
   for (const [g, [file, suffix]] of Object.entries(GATE_FILES)) {
     const f = [join(dir, 'reskin', 'gates', slug, file), join(dir, 'reskin', 'reports', `${slug}${suffix}`)].find(existsSync);
-    if (f) out[g] = { verdict: overall(readFileSync(f, 'utf8')) || 'UNKNOWN', report: f }; else missing.push(`${join(dir, 'reskin', 'gates', slug, file)} (or reports/${slug}${suffix})`);
+    if (f) { out[g] = { verdict: overall(readFileSync(f, 'utf8')) || 'UNKNOWN', report: f }; continue; }
+    // A Figma-sourced page has no source DOM: figma-text-gate stands in for dom-equality (SKILL.md Phase 5).
+    const ft = g === 'reskin-dom-equality' && join(dir, 'reskin', 'gates', slug, 'figma-text.json');
+    if (ft && existsSync(ft)) {
+      let v; try { v = JSON.parse(readFileSync(ft, 'utf8')).verdict; } catch { v = null; }
+      out[g] = { verdict: ['PASS', 'FAIL'].includes(v) ? v : 'UNKNOWN', report: ft };
+      continue;
+    }
+    missing.push(`${join(dir, 'reskin', 'gates', slug, file)} (or reports/${slug}${suffix}${g === 'reskin-dom-equality' ? `, or figma-text.json for a Figma-sourced page` : ''})`);
   }
   return { out, missing };
 }

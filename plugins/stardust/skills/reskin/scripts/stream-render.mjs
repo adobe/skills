@@ -514,6 +514,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .align-center .flow > :is(.actions, .logos) { justify-content: center; }
   .site-main .align-center .card { text-align: start; }
   .site-main .band.align-center .flow > .heading:first-child { justify-self: center; }
+  .site-main .align-center .flow > .heading { text-align: center; }
+  .site-main .align-center.width-narrow .panel { margin-inline: auto; }
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
   .site-main .card > :last-child { margin-bottom: 0; }
@@ -540,8 +542,10 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-footer.tone-accent { background: ${v('--palette-accent', 'transparent')}; }
   @media (max-width: 900px) {
     .site-main .layout-grid-2 .flow { grid-template-columns: 1fr; }
-    .site-main .layout-split .panel { grid-template-columns: 1fr; }
-    .site-main .cards { grid-template-columns: 1fr; }
+    .site-main .layout-split .panel { grid-template-columns: minmax(0, 1fr); }
+    .site-main .layout-split .panel > * { min-width: 0; }
+    .site-main .split-img { justify-self: center; }
+    .site-main .cards { grid-template-columns: minmax(0, 1fr); }
     .site-footer .chrome-footer { grid-template-columns: 1fr; }
   }
   @media (max-width: 640px) {
@@ -550,6 +554,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-main .inset > .container { padding: 0 20px; }
     .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { padding: 32px 20px; }
     .site-footer ul { columns: 1; }
+    .site-main :is(.heading, .heading-display .heading) { font-size: min(${v('--type-display-font-size', '2em')}, 11vw); }
+    .site-main .heading { overflow-wrap: break-word; }
   }`;
 
   const html = `<!doctype html>
