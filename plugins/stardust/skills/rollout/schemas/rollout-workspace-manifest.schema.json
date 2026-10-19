@@ -32,6 +32,17 @@
       "description": "One line per value that is still a default: template names and descriptions, blocks with base type unknown or without purpose, reuse guidance or colour scheme (not judged), pages without a delivered structure.",
       "items": { "type": "string" }
     },
+    "templateGroups": {
+      "type": "object",
+      "description": "The template count split from coverage/templates.json: archetypes = the distinct page types (each untyped template its own archetype), siblings = the templates beyond the first of each type — cloned siblings the export emits as their own group, so total = archetypes + siblings. No coverage field records a sibling's parent archetype, so the split is by type, not a parent link. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["total", "archetypes", "siblings"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Template groups in coverage/templates.json." },
+        "archetypes": { "type": "integer", "minimum": 0, "description": "Distinct page types (plus any untyped template)." },
+        "siblings": { "type": "integer", "minimum": 0, "description": "Cloned sibling groups beyond one archetype per type (total − archetypes)." }
+      }
+    },
     "selectorQuality": {
       "type": "object",
       "description": "Derived from workspace/mapping.json at manifest time (block-origin countsOf; mapping.json is not rewritten). Present only when a readable mapping exists. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
@@ -64,6 +75,23 @@
               "instances": { "type": "integer", "minimum": 0 }
             }
           }
+        },
+        "byTemplate": {
+          "type": "array",
+          "description": "Per mapping template, most instances first: the instance count and its split across the three selector sources, so a reviewer sees which templates are encoder-backed and which fell back. Optional (older manifests omit it).",
+          "items": {
+            "type": "object",
+            "required": ["template", "instances", "encoderMap", "textAlignment", "position", "encoderCoverage"],
+            "additionalProperties": false,
+            "properties": {
+              "template": { "type": ["string", "null"], "description": "The mapping template id (templateId)." },
+              "instances": { "type": "integer", "minimum": 0 },
+              "encoderMap": { "type": "integer", "minimum": 0 },
+              "textAlignment": { "type": "integer", "minimum": 0 },
+              "position": { "type": "integer", "minimum": 0 },
+              "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances for this template, three decimals (0 when it has no instances)." }
+            }
+          }
         }
       }
     },
@@ -84,6 +112,20 @@
             "description": "no-selector = the section has no source selector, so the adopter does not emit it; blocks-unprojected = the section keeps its selector but its blocks are lost to the per-selector projection."
           },
           "blocks": { "type": "array", "description": "The declared block names dropped with the section.", "items": { "type": "string" } }
+        }
+      }
+    },
+    "judgement": {
+      "type": "object",
+      "description": "Derived from workspace/judgement.json at manifest time (not a rewrite). Present only when a readable judgement.json with a toFill[] exists. The judgement's own documentation debt: toFill = the fields it lists in toFill[] that are still empty; byKind splits that by field (name, description, purpose, reuseGuidance, baseType). Distinct from placeholders (unjudged COVERAGE values). Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["toFill", "byKind"],
+      "additionalProperties": false,
+      "properties": {
+        "toFill": { "type": "integer", "minimum": 0, "description": "Judgement fields listed in toFill[] that are still empty." },
+        "byKind": {
+          "type": "object",
+          "description": "toFill split by field name (e.g. purpose, reuseGuidance, baseType, name, description); only fields with a non-zero count appear.",
+          "additionalProperties": { "type": "integer", "minimum": 0 }
         }
       }
     },
@@ -127,7 +169,7 @@
         "readArtifacts": { "type": "array", "items": { "type": "string" } },
         "stardustVersion": {
           "type": ["string", "null"],
-          "description": "Version of the installed plugin; null when run from a project copy without a plugin manifest."
+          "description": "Version that built the export, from rollout.json's _provenance.stardustVersion (inventory.mjs) so it is export-local and a recompute matches; else the STARDUST_VERSION env or the installed plugin manifest; null when none resolves. Never part of the drift comparison."
         }
       }
     },

@@ -20,11 +20,14 @@
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
- * in the content files, no update-coverage.mjs --block record), a `selectorQuality` block derived from mapping.json
- * when present (block-origin's countsOf: the selector sources, encoderCoverage and the zeroConfidence count), a
- * `sectionGaps` list derived from mapping.json the same way (sections an adopter projecting per selector drops: a null
- * selector, or a selector kept but the blocks lost to the projection) — neither a rewrite of mapping.json, so a re-hash
- * recomputes both and --check never counts them as drift, the handover state and `handoverNotes` (owner
+ * in the content files, no update-coverage.mjs --block record), a `templateGroups` {total, archetypes, siblings} count
+ * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `selectorQuality` block derived from mapping.json
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
+ * the same split per template), a `sectionGaps` list derived from mapping.json the same way (sections an adopter
+ * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
+ * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field) — none a
+ * rewrite of its source, so a re-hash recomputes them and --check never counts them as drift, the handover state and
+ * `handoverNotes` (owner
  * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
  * value, the owner names them; the section-gap counts). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
@@ -138,8 +141,23 @@ function contentTracked(project, contentRel) {
   return listed === null ? null : listed.trim() !== '';
 }
 
-/** The installed plugin's version: a hidden `<name>-plugin` dir holding stardust's plugin.json; null in a project copy. */
-function stardustVersion() {
+/**
+ * The version that built THIS export, from a source that exists wherever the script runs, tried in order:
+ *   1. rollout.json's _provenance.stardustVersion (what inventory.mjs recorded for this export) — export-local, so a
+ *      recompute by any build reads the same value and _provenance never drifts between the in-run write and a re-hash;
+ *   2. the STARDUST_VERSION env a runner may set;
+ *   3. the installed plugin's manifest (a hidden `.<name>-plugin` dir) — the plugin-tree fallback when there is no
+ *      rollout.json (a bare coverage dir, or a test).
+ * In the image the skills run from a `stardust/scripts/…` copy with no plugin manifest above them, so the dir walk
+ * alone returned null and a released-worktree recompute (which finds its own manifest) differed by exactly that field;
+ * rollout.json sits beside the coverage and carries the version inventory resolved. The recorded string is returned
+ * verbatim (0.0.0 included — the honest "unknown" inventory stamps when it too cannot resolve a manifest), else null.
+ */
+function stardustVersion(out) {
+  const recorded = (readJSON(join(out, 'rollout.json'), {})._provenance || {}).stardustVersion;
+  if (typeof recorded === 'string' && recorded) return recorded;
+  const env = process.env.STARDUST_VERSION;
+  if (typeof env === 'string' && env) return env;
   for (let dir = HERE, level = 0; level <= 5; dir = dirname(dir), level += 1) {
     let names = [];
     try { names = readdirSync(dir).filter((n) => /^\.[a-z]+-plugin$/.test(n)).sort(byStr); } catch { /* unreadable */ }
@@ -203,9 +221,11 @@ const SELECTOR_QUALITY_TOP = 10;
  * The selectorQuality block derived from mapping.json at manifest time (block-origin's countsOf; mapping.json is NOT
  * rewritten): instances, the three selector sources ({encoderMap, textAlignment, position}), encoderCoverage
  * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — image-only repeating blocks
- * with no text to anchor) and the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted). null when there is no readable mapping (nothing shipped to measure). Derived, so --check keeps it out of the
- * drift classification (it hashes only inputs/outputs). Pure but for the one read.
+ * with no text to anchor), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
+ * sorted) and byTemplate ([{template, instances, encoderMap, textAlignment, position, encoderCoverage}], one row per
+ * mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell back).
+ * null when there is no readable mapping (nothing shipped to measure). Derived, so --check keeps it out of the drift
+ * classification (it hashes only inputs/outputs). Pure but for the one read.
  */
 export function selectorQualityOf(mappingFile) {
   if (!isFile(mappingFile)) return null;
@@ -214,12 +234,23 @@ export function selectorQualityOf(mappingFile) {
   if (!mapping || !Array.isArray(mapping.templates)) return null;
   const c = countsOf(mapping);
   const round3 = (x) => Math.round(x * 1000) / 1000;
+  const byTemplate = mapping.templates.map((t) => {
+    const insts = (Array.isArray(t.blocks) ? t.blocks : []).flatMap((b) => (Array.isArray(b.instances) ? b.instances : []));
+    const bySource = (s) => insts.filter((i) => i && i.source === s).length;
+    const encoderMap = bySource('encoder-map');
+    return {
+      template: t.templateId ?? t.id ?? null, instances: insts.length,
+      encoderMap, textAlignment: bySource('text-alignment'), position: bySource('position'),
+      encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
+    };
+  }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
     instances: c.instances,
     sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], position: c.sources.position },
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
+    byTemplate,
   };
 }
 
@@ -279,6 +310,37 @@ export function sectionGapNotes(gaps) {
   return notes;
 }
 
+/** A judged field is still open when it is empty: null/'', an empty array, or an object all of whose values are empty (e.g. an untouched reuseGuidance {suitableFor:[], notSuitableFor:[]}). */
+const isEmptyJudged = (v) => v == null || v === ''
+  || (Array.isArray(v) && v.length === 0)
+  || (typeof v === 'object' && !Array.isArray(v) && Object.values(v).every(isEmptyJudged));
+
+/**
+ * The judgement's documentation debt, derived from judgement.json at manifest time (not a rewrite): `toFill` counts the
+ * fields the judgement lists in its own `toFill[]` that are STILL empty, and `byKind` splits that count by field
+ * (name, description, purpose, reuseGuidance, baseType). null when there is no readable judgement.json with a toFill[].
+ * Distinct from `placeholders`, which counts unjudged values in COVERAGE: a client may carry filled coverage while the
+ * judgement still has open fields (block purpose / reuseGuidance / a default-fallback baseType). done-check.mjs surfaces
+ * `toFill` as the export_quality:judgement_to_fill info line. Derived, so --check keeps it out of the drift
+ * classification (it hashes only inputs/outputs; judgement.json is itself a hashed input). Pure but for the one read.
+ */
+export function judgementDebtOf(judgementFile) {
+  if (!isFile(judgementFile)) return null;
+  let j;
+  try { j = JSON.parse(readFileSync(judgementFile, 'utf8')); } catch { return null; }
+  if (!j || !Array.isArray(j.toFill)) return null;
+  const at = (path) => path.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), j);
+  const byKind = {};
+  let toFill = 0;
+  for (const path of j.toFill) {
+    if (typeof path !== 'string' || !isEmptyJudged(at(path))) continue;
+    toFill += 1;
+    const kind = path.split('.').pop();
+    byKind[kind] = (byKind[kind] || 0) + 1;
+  }
+  return { toFill, byKind: Object.fromEntries(Object.keys(byKind).sort(byStr).map((k) => [k, byKind[k]])) };
+}
+
 /** Whether a capture dir holds a capture (a <slug>.html or <slug>.json file): the export then needs mapping.json. */
 export function hasCaptures(dir) {
   try { return readdirSync(dir, { withFileTypes: true }).some((e) => e.isFile() && !e.name.startsWith('.') && /\.(html|json)$/.test(e.name)); } catch { return false; }
@@ -335,6 +397,25 @@ export function pendingBlocks(blocksDoc) {
   const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
   return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !RECORDED.has(b.delivery && b.delivery.status))
     .map(([name]) => name).sort(byStr);
+}
+
+/**
+ * The template count split from coverage/templates.json: `archetypes` = the distinct page `type`s (each untyped
+ * template its own archetype), `siblings` = the templates beyond the first of each type — the cloned siblings the
+ * export emits as their own group (so the template count exceeds the archetype count). block-origin groups the mapping
+ * by templateId (the page slug) and no coverage field records a sibling's parent archetype, so the split is by type,
+ * not a parent link. Derived from coverage, so --check never counts it as drift. Pure.
+ */
+export function templateGroupsOf(templates) {
+  const list = Array.isArray(templates) ? templates : [];
+  const types = new Set();
+  let siblings = 0;
+  for (const t of list) {
+    const type = t && typeof t.type === 'string' && t.type ? t.type : null;
+    if (type === null) continue; // an untyped template is its own archetype
+    if (types.has(type)) siblings += 1; else types.add(type);
+  }
+  return { total: list.length, archetypes: list.length - siblings, siblings };
 }
 
 /** The delivered module blocks whose base type is not judged (`unknown` or missing — `unknown` is not a judged value), by EDS name, sorted. done-check.mjs reads this too. */
@@ -480,13 +561,16 @@ function main(argv) {
     writtenBy: WRITTEN_BY,
     writtenAt: coverage.pages.generatedAt || coverage.pages._provenance?.writtenAt || null,
     readArtifacts,
-    stardustVersion: stardustVersion(),
+    stardustVersion: stardustVersion(OUT),
   };
   const placeholders = placeholdersOf(coverage);
+  const templateGroups = templateGroupsOf(coverage.templates.templates);
   const mods = [...moduleBlocks(coverage.blocks).values()];
   const variants = mods.flatMap((b) => (Array.isArray(b.variants) ? b.variants : []));
   const counts = {
     templates: coverage.templates.templates.length,
+    archetypes: templateGroups.archetypes,
+    siblingGroups: templateGroups.siblings,
     pages: coverage.pages.pages.length,
     blocks: mods.length,
     variants: variants.length,
@@ -500,9 +584,11 @@ function main(argv) {
       console.log(JSON.stringify({ status, dir: shown, hashes, counts, placeholders: placeholders.length, handover, degraded, missing: lacking }));
     } else {
       const withoutContent = coverage.pages.pages.filter((p) => p && p.delivered == null).length;
+      // when cloned siblings add their own template group the count exceeds the archetype count — name the split
+      const tpl = counts.siblingGroups > 0 ? `${counts.templates} templates (${counts.archetypes} archetypes + ${counts.siblingGroups} sibling groups)` : `${counts.templates} templates`;
       console.log(`rollout workspace-manifest → ${shown}`);
       console.log('='.repeat(60));
-      console.log(`Coverage      ${counts.templates} templates · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
+      console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.instances} instances)`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
       console.log(`Status        ${extra.line}`);
@@ -521,6 +607,8 @@ function main(argv) {
     const norm = (k, v) => JSON.stringify(k === 'content' && v && typeof v === 'object' ? [v.files, v.sha256] : v ?? null);
     const diff = (was, now) => [...new Set([...Object.keys(was || {}), ...Object.keys(now || {})])]
       .filter((k) => norm(k, (was || {})[k]) !== norm(k, (now || {})[k])).sort(byStr);
+    // Drift is measured on inputs and outputs only; _provenance (writtenBy/writtenAt/stardustVersion) is never compared,
+    // so a version stamp can never read as drift — the export's freshness is its recorded input/output hashes.
     const inDrift = diff(priorManifest.inputs, sortedInputs);
     const outDrift = diff(priorManifest.outputs, sortedOutputs);
     const classification = classifyExportDrift(inDrift, outDrift);
@@ -608,9 +696,11 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
-  // Derived from mapping.json (not a rewrite of it), so both are recomputed on a re-hash and never count as drift.
+  // Derived from mapping.json / judgement.json (not a rewrite of either), so all are recomputed on a re-hash and
+  // never count as drift (--check hashes only inputs/outputs).
   const selectorQuality = selectorQualityOf(mappingFile);
   const sectionGaps = sectionGapsOf(mappingFile);
+  const judgement = judgementDebtOf(judgementFile);
   // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.
   const unjudged = unjudgedBaseTypes(coverage.blocks);
   const handoverNotes = [
@@ -623,8 +713,10 @@ function main(argv) {
     inputs: sortedInputs,
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
+    templateGroups,
     ...(selectorQuality ? { selectorQuality } : {}),
     ...(sectionGaps ? { sectionGaps } : {}),
+    ...(judgement ? { judgement } : {}),
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
     ...(handoverNotes.length ? { handoverNotes } : {}),

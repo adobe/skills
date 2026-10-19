@@ -4,6 +4,40 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-export-polish) — export manifest: real version, per-template encoder coverage, judgement debt, sibling-group count (#168)
+
+Four small fixes an evaluation of three recorded hands-off runs surfaced in the migration-workspace
+export, each the adopter reads once and none a hard gate:
+
+- **`_provenance.stardustVersion` resolved export-local.** The manifest stamped `null` in-run while a
+  recompute by the released tool read the real version, so a re-hash reported `written`, not
+  `unchanged`, over that one field. The writer resolved the version from a `.<name>-plugin` dir found
+  by walking up from the script — absent in the image, where the skills run from a `stardust/scripts/…`
+  copy. It now reads rollout.json's `_provenance.stardustVersion` (what inventory.mjs recorded for this
+  export) first — export-local, so any build's recompute reads the same stamp — then the
+  `STARDUST_VERSION` env, then the plugin-manifest walk. `--check` compares inputs/outputs only, so
+  `_provenance` never counts as drift.
+
+- **Per-template encoder coverage.** `selectorQuality` gains `byTemplate[]` — one row per mapping template
+  (`{template, instances, encoderMap, textAlignment, position, encoderCoverage}`, most instances first) — so a
+  reviewer sees which templates are encoder-backed and which fell back to text-alignment or position, not just the
+  export-wide totals. Derived from mapping.json at manifest time, recomputed by `--rehash-only`, never a drift input.
+
+- **Judgement debt in the manifest.** A new `judgement` `{toFill, byKind}` counts the fields the judgement lists
+  in its own `toFill[]` that are still empty, split by field (block purpose / reuseGuidance / a default-fallback
+  baseType) — distinct from `placeholders`, which counts unjudged COVERAGE values, so an adopter sees open
+  documentation fields even when the coverage reads filled. `done-check.mjs` prints
+  `export_quality:judgement_to_fill:<n>` when n>0 — the same family and rules as the other export_quality info
+  lines (informational, hidden after handover).
+
+- **Cloned-sibling template count split.** The manifest gains `templateGroups` `{total, archetypes, siblings}`
+  and the writer's printed line reads `N templates (M archetypes + K sibling groups)` when siblings exist, so the
+  cloned siblings the export emits as their own group no longer silently inflate the template count against the
+  archetype count. The split is by page type (archetypes = distinct types; siblings = the rest): block-origin groups
+  the mapping by templateId (the page slug) and no coverage field — nor the migrated `_meta.json` sidecars, which
+  record siblings as `fidelityTier: archetype` — carries a sibling's parent archetype, so a `sameTemplateAs` link was
+  not added; the count split is what the export can know cheaply and truthfully.
+
 ## 0.36.x (stardust/r17-unit-proof) — unit done proves its delivered pages before it flips (#165)
 
 A recorded hands-off run delivered all 21 pages about 2.7 h sooner than the day before, but the 18

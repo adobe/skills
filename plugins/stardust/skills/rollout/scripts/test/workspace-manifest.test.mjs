@@ -123,7 +123,7 @@ check('schema: manifest.json validates against rollout-workspace-manifest.schema
   const mf = doc(dir, 'manifest.json');
   assert.equal(mf.formatVersion, '0.1.0');
   // the fixture's teaser has no judged base type, so the manifest carries handoverNotes (unknown is not judged)
-  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'handover', 'handoverNotes']);
+  assert.deepEqual(Object.keys(mf), ['_provenance', 'formatVersion', 'inputs', 'outputs', 'placeholders', 'templateGroups', 'handover', 'handoverNotes']);
   assert.deepEqual(mf.handoverNotes, ['1 delivered block(s) have no judged base type; the owner names them (teaser)']);
   assert.deepEqual(validate(schema, mf), []);
   const broken = JSON.parse(JSON.stringify(mf));
@@ -162,6 +162,25 @@ check('hashes: outputs are the three coverage files, inputs the content summary,
   assert.ok(j._provenance.readArtifacts.includes('stardust/rollout/workspace/judgement.json'));
 });
 
+check('version: _provenance.stardustVersion is the export-local rollout.json value (what inventory.mjs recorded), so a recompute by any build reads the same stamp — the field never drifts; STARDUST_VERSION env is the fallback when rollout.json carries none', () => {
+  const dir = copy('version');
+  // the fixture rollout.json carries the version inventory resolved (here the plugin's), and the manifest stamps it
+  ok(run(dir));
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, pluginVersion());
+  // an in-run / other-build copy records a different (even unknown 0.0.0) version in rollout.json; the manifest follows
+  // THAT, not the script location, so the committed manifest and a later recompute agree — no version-only drift
+  editJSON(join(OUT(dir), 'rollout.json'), (c) => { c._provenance = { ...(c._provenance || {}), stardustVersion: '0.0.0' }; });
+  ok(run(dir));
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, '0.0.0', 'export-local rollout.json wins over the script-location plugin walk');
+  // rollout.json is not a hashed input, so editing it leaves the export fresh (no drift)
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+  // env fallback: no version in rollout.json → STARDUST_VERSION
+  editJSON(join(OUT(dir), 'rollout.json'), (c) => { delete c._provenance; });
+  const rEnv = spawnSync(process.execPath, [join(SCRIPTS, 'workspace-manifest.mjs')], { cwd: dir, encoding: 'utf8', env: { ...ENV, STARDUST_VERSION: '7.7.7' } });
+  ok(rEnv);
+  assert.equal(doc(dir, 'manifest.json')._provenance.stardustVersion, '7.7.7', 'STARDUST_VERSION env when rollout.json carries no version');
+});
+
 check('mapping: a workspace/mapping.json file is hashed under outputs (and so in readArtifacts), nothing else changes; without it (or as a directory) outputs hold only the coverage; new bytes rewrite the manifest; it validates', () => {
   const MAP = 'stardust/rollout/workspace/mapping.json';
   const mapping = (generatedAt) => `${JSON.stringify({ formatVersion: '0.1.0', generatedAt, templates: [] }, null, 2)}\n`;
@@ -183,7 +202,7 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   expected.outputs[MAP] = mf.outputs[MAP];
   expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
   // an empty-templates mapping now adds a zeroed selectorQuality block and an empty sectionGaps (derived from mapping.json, not drift inputs)
-  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] };
+  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [] };
   expected.sectionGaps = [];
   assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality and sectionGaps');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
@@ -208,7 +227,7 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
       ],
     }],
   };
-  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }] };
+  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, position: 3, encoderCoverage: 0.167 }] };
   const dir = withCaptures('selector-quality');
   mkdirSync(W(dir), { recursive: true });
   writeFileSync(join(dir, MAP), `${JSON.stringify(mixedMapping, null, 2)}\n`);
@@ -227,7 +246,83 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
   // an empty mapping → all zeros
   writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
   ok(run(dir));
-  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] });
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [] });
+});
+
+check('selectorQuality.byTemplate: one row per mapping template with its instance count split across the three sources and its own encoderCoverage, most instances first; validates', () => {
+  const twoTemplates = {
+    formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
+    templates: [
+      { templateId: 'small', sections: [], blocks: [
+        { block: 'hero', instances: [{ slug: 'a', pos: 0, selector: 'h', source: 'position', confidence: 0, verified: null }] },
+      ] },
+      { templateId: 'big', sections: [], blocks: [
+        { block: 'cards', instances: [
+          { slug: 'a', pos: 0, selector: 'c1', source: 'encoder-map', confidence: 1, verified: null },
+          { slug: 'b', pos: 1, selector: 'c2', source: 'encoder-map', confidence: 1, verified: null },
+          { slug: 'c', pos: 2, selector: 'c3', source: 'text-alignment', confidence: 0.6, verified: null },
+        ] },
+      ] },
+    ],
+  };
+  const dir = withCaptures('by-template');
+  mkdirSync(W(dir), { recursive: true });
+  writeFileSync(join(dir, MAP), `${JSON.stringify(twoTemplates, null, 2)}\n`);
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.byTemplate, [
+    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, position: 0, encoderCoverage: 0.667 },
+    { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, position: 1, encoderCoverage: 0 },
+  ], 'most instances first; per-template source split and encoderCoverage');
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+});
+
+check('judgement: manifest.judgement {toFill, byKind} counts the judgement.json toFill[] fields still empty, split by field; filling a field drops it (and its kind); derived — recomputed by --rehash-only, --check never a drift; validates', () => {
+  const dir = copy('judgement-debt');
+  ok(run(dir, '--draft-judgement'));
+  ok(node(dir, 'blocks.mjs')); // blocks.mjs reads the judgement so the manifest is fresh
+  ok(run(dir));
+  const all = doc(dir, 'manifest.json').judgement;
+  const jtoFill = JSON.parse(text(dir, 'judgement.json')).toFill;
+  assert.equal(all.toFill, jtoFill.length, 'a fresh draft lists every field empty → all open');
+  assert.equal(Object.values(all.byKind).reduce((a, b) => a + b, 0), all.toFill, 'byKind sums to toFill');
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // fill one block's purpose and reuseGuidance; re-read and re-manifest → toFill and those two kinds drop by one each
+  const name = jtoFill.find((f) => f.endsWith('.purpose')).split('.')[1];
+  editJSON(join(W(dir), 'judgement.json'), (j) => { j.blocks[name].purpose = 'does a thing'; j.blocks[name].reuseGuidance = { suitableFor: ['x'], notSuitableFor: [] }; });
+  ok(node(dir, 'blocks.mjs'));
+  ok(run(dir));
+  const after = doc(dir, 'manifest.json').judgement;
+  assert.equal(after.toFill, all.toFill - 2, 'a filled purpose and reuseGuidance drop out');
+  assert.equal(after.byKind.purpose, all.byKind.purpose - 1);
+  assert.equal(after.byKind.reuseGuidance, all.byKind.reuseGuidance - 1);
+  // derived: corrupt the field, --rehash-only recomputes it from judgement.json; --check never counts it as drift
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.judgement.toFill = 999; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.equal(doc(dir, 'manifest.json').judgement.toFill, after.toFill, 'recomputed from judgement.json');
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+});
+
+check('templateGroups: {total, archetypes, siblings} splits the template count by page type (untyped each its own archetype, siblings = the rest); the manifest field and the printed line name the split only when siblings>0; --json carries it in counts; --check never a drift; validates', () => {
+  // the pure helper
+  assert.deepEqual(wm.templateGroupsOf([{ type: 'article' }, { type: 'event' }, { type: 'event' }, { type: 'story' }, { type: 'story' }]), { total: 5, archetypes: 3, siblings: 2 });
+  assert.deepEqual(wm.templateGroupsOf([{ type: 'home' }, {}, { type: null }]), { total: 3, archetypes: 3, siblings: 0 }, 'untyped templates are each their own archetype');
+  assert.deepEqual(wm.templateGroupsOf([]), { total: 0, archetypes: 0, siblings: 0 });
+  // in a manifest: the fixture's two templates are two archetypes, no siblings → the printed line stays plain
+  const dir = copy('template-groups');
+  const noSib = run(dir);
+  ok(noSib);
+  assert.deepEqual(doc(dir, 'manifest.json').templateGroups, { total: 2, archetypes: 2, siblings: 0 });
+  assert.ok(/Coverage\s+2 templates ·/.test(noSib.stdout), noSib.stdout);
+  // add a sibling (a second template of an existing type) → split surfaces in the field and the printed line
+  editJSON(join(dir, 'stardust', 'rollout', 'coverage', 'templates.json'), (d) => { d.templates.push({ ...d.templates[0], id: `${d.templates[0].id}-sibling` }); });
+  const withSib = run(dir);
+  ok(withSib);
+  assert.deepEqual(doc(dir, 'manifest.json').templateGroups, { total: 3, archetypes: 2, siblings: 1 });
+  assert.ok(/Coverage\s+3 templates \(2 archetypes \+ 1 sibling groups\) ·/.test(withSib.stdout), withSib.stdout);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  const j = jsonOut(run(dir, '--json'));
+  assert.deepEqual([j.counts.templates, j.counts.archetypes, j.counts.siblingGroups], [3, 2, 1]);
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
 });
 
 check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
