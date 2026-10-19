@@ -35,6 +35,8 @@ gaps below. Every fix is generic; per-site choices stay in config.
   a module missing from the canon, or composes layout/width/tone inconsistently.
 - **donor-probe `--model`.** Probe entries marked `needs: 'button'` SKIP when the content has no button, so a page
   with no buttons passes.
+- **Required marker weight.** A label's `*` keeps the label's weight unless the donor's curation rules give it a
+  `type.required` role (a donor whose asterisk is regular after bold labels); figma-gate's coverage floor asks for it.
 - **Confidential hint.** Under `--confidential`, capture warns which `.gitignore` lines curate will need too, instead
   of letting curate refuse later.
 - **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is

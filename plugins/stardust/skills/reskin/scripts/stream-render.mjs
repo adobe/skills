@@ -33,7 +33,8 @@
  *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent. Content-driven, never per
  *   site: 3+ consecutive images render as one logo row; h2–h4 take type.h2–h4 sizes when the donor has
  *   them; a slot's leading heading in the h2 role (an h2 with no heading option, or heading: h2) sits on an
- *   accent label when the donor has radii.label. heading picks the
+ *   accent label when the donor has radii.label; a label's required marker takes type.required's weight when the
+ *   donor has that role (else the label's). heading picks the
  *   type role of the slot's .heading (default display) when the frame sets the title smaller; inset
  *   replaces the centred container with a full-width one and that side gutter (a frame padded from the
  *   viewport edge, not centred); split sets the split layout's two column tracks (px | fr | %) where the
@@ -345,7 +346,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main p { margin: 0 0 16px; }
   .site-main .field { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
   .site-main .field label { font-weight: ${v('--type-label-font-weight', '600')}; }
-  .site-main .req { color: ${accentText ? v('--palette-accent', 'inherit') : 'inherit'}; }
+  .site-main .req { color: ${accentText ? v('--palette-accent', 'inherit') : 'inherit'}; font-weight: ${v('--type-required-font-weight', 'inherit')}; }
   .site-main input:not([type=checkbox]):not([type=radio]), .site-main select, .site-main textarea { font: inherit; min-height: 48px; padding: 0 16px; width: 100%; border: 1px solid ${v('--palette-light-band-bg', '#ccc')}; border-radius: ${v('--radii-control', '4px')}; color: inherit; background: ${v('--palette-page-bg', '#fff')}; }
   .site-main .check { display: flex; gap: 12px; align-items: center; margin-bottom: 12px; }
   .site-main .check input { flex: none; width: 20px; height: 20px; accent-color: ${v('--palette-accent', 'auto')}; }

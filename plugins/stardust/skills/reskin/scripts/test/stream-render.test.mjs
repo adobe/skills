@@ -160,6 +160,11 @@ check('donor-conditional CSS: h2-h4 sizes and the label pill only when the token
   assert.match(html, /border-radius: var\(--radii-label\)/);
   assert.match(html, /<footer class="site-footer tone-dark" data-canon="footer">/);
 });
+check('required marker: inherits the label weight unless the donor has a type.required role', () => {
+  assert.match(render(base).html, /\.site-main \.req \{[^}]*font-weight: inherit;/);
+  const t2 = structuredClone(tokens); t2.type.required = { fontWeight: '400' };
+  assert.match(render({ ...base, tokens: t2 }).html, /\.site-main \.req \{[^}]*font-weight: var\(--type-required-font-weight\);/);
+});
 check('an image inside a link is kept inline (icon), alongside the link text', () => {
   const ordered = [{ kind: 'cta', text: 'More', absHref: 'https://example.test/m', children: [
     { kind: 'image', currentSrc: 'https://cdn.example.test/arrow.svg', alt: 'arrow' }, { kind: 'text', text: 'More', sep: '' }] }];
@@ -224,7 +229,7 @@ check('contrast: WCAG ratio; a low-contrast accent stays an underline, never lin
   const sheet = (accent) => ({ palette: { pageBg: '#ffffff', bodyFg: '#000000', accent } });
   const mk = (accent) => render({ slug: 'p', tokens: sheet(accent), mapping: { pages: { p: { sections: {} } } }, model: { sections: [{ slot: 's01', ordered: [{ kind: 'paragraph', text: 'x' }] }] } }).html;
   assert.match(mk('#b9ff66'), /\.link \{ color: inherit;[^}]*text-decoration-color: var\(--palette-accent\)/);
-  assert.match(mk('#b9ff66'), /\.req \{ color: inherit; \}/);
+  assert.match(mk('#b9ff66'), /\.req \{ color: inherit; font-weight: inherit; \}/);
   assert.match(mk('#1a4d8f'), /\.link \{ color: var\(--palette-accent\)/);
 });
 
