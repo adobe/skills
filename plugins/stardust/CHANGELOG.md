@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-sleep-lint) — the lint that catches a blind sleep in a skill doc (#162)
+
+In a recorded hands-off run the lead spent about 73% of wall time inside blind `sleep` calls while
+waiting on background units — it wrote `sleep 595`, `sleep 1200`, `sleep 1380`, and the tool cap
+truncated the long ones to 600 s, so neither the intended wait nor an early wake happened. The wait
+instruments already exist (`run-bg.mjs wait`, `progress.mjs wait`, both returning early via a wake
+file) and the docs already say a sleep is never a wait; nothing scanned the docs for the habit.
+inline-writes' sibling now does.
+
+- **`evals/lint/inline-sleeps.mjs`** (chained in `lint:stardust`; test in `evals/lint/test/`; a CI
+  step in the validate workflow beside inline-writes): fails when a SKILL.md or a reference doc shows
+  a shell snippet — a shell-language fenced block or an inline backtick span, the same file set and
+  snippet detection inline-writes uses — holding a bare `sleep <n>` over the threshold (default 60 s,
+  `--max-seconds <n>`) or a `while`/`until` poll loop with a sleep in it. Prose that merely names
+  sleep, a non-shell block and a bounded `for` poll stay clean; `<!-- lint: allow-sleep -->` on the
+  line above the sleep (or above the opening fence) allows a genuinely short, legitimate wait. It
+  reports `file:line` and the snippet, exits 1 on findings, and the advice names the instruments. The
+  tree is clean as it stands — the one bounded asset-liveness poll in the deploy protocol is a capped
+  `for` loop at `sleep 3`, not a blind wait.
+
 ## 0.36.x (stardust/r17-retype-plan) — a majority-variance refusal hands off a re-type plan, no prose-note bounce (#159)
 
 In a recorded hands-off run of a multilingual site the three longest cluster units (146, 132 and 58 minutes) were all
