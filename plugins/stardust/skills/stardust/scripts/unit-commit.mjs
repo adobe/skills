@@ -13,7 +13,13 @@
 // verdicts, state.json and migrate's progress.json uncommitted, and the lead added four commits.
 //
 //   node stardust/scripts/stardust/unit-commit.mjs <unit> [--code blocks/<name>]… [--also <path>]…
-//                                                   [--push] [--message <m>] [--wait-s 120]
+//                                                   [--push] [--no-sidecar-check] [--message <m>] [--wait-s 120]
+//
+// Sidecar before commit: before staging, every delivered page (a coverage row matched to the unit's .paths)
+// must have its stardust/eds-schema/<slug>.json — the run refuses (exit 2, nothing staged) and names the exact
+// section-schema.mjs command per missing page. --no-sidecar-check overrides and records the override in the
+// commit message. On a recorded hands-off run subagent units left their sidecars unwritten and done-check
+// found them missing at the very end.
 //
 // Run from the project root, inside its git work tree. The stage set — only files that exist and are
 // not git-ignored (`git check-ignore`), deduped, sorted; committed by pathspec, so a hand `git add` of
@@ -141,6 +147,7 @@ const GATES_DIR = 'stardust/replica/gates';
 // the roots a coverage row's source paths must stay in
 export const MIGRATED_DIR = 'stardust/migrated';
 export const ENCODED_DIR = 'stardust/encoded';
+export const EDS_SCHEMA_DIR = 'stardust/eds-schema';
 export const GATE_DIR_RE = /^all-\d+$/; // gate-all's published-stage out dirs, all-<w>
 export const RUN_RE = /^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-(.+)\.json$/; // an --only run: runs/<ts>-<first slug>.json
 export const CODE_RE = /^blocks\/[a-z0-9][a-z0-9-]*\/?$/;
@@ -160,7 +167,7 @@ const SHARED_HELP = [...SHARED_JSON_DIRS.map((d) => `${d}/*.json`), ...SHARED];
 
 const HELP = `Usage:
   node stardust/scripts/stardust/unit-commit.mjs <unit> [--code blocks/<name>]… [--also <path>]…
-                                                  [--push] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}]
+                                                  [--push] [--no-sidecar-check] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}]
   (run from the project root, inside its git work tree; <unit> matches ${UNIT_RE})
 
 Commits ONE unit's delivered pages, what the unit wrote beside them and the shared rollout
@@ -213,11 +220,17 @@ Lock: ${LOCK_REL} (one JSON line: pid, host, ISO time, unit), created atomically
   running on this host, or untouched for ${STALE_MS / 1000} s (the holder touches it every ${HEARTBEAT_MS / 1000} s), is reaped
   (a lock another process just took is never removed). Held from staging to the last push;
   released on every exit.
+Sidecar before commit: before staging, every delivered page (a coverage row matched to the unit's
+  .paths with a one-name slug) must have its ${EDS_SCHEMA_DIR}/<slug>.json. A missing one → exit 2,
+  nothing staged, the exact command on stderr:
+    node stardust/scripts/deploy/section-schema.mjs <protoURL> --out ${EDS_SCHEMA_DIR}/<slug>.json
+  --no-sidecar-check commits anyway and records the override in the commit message.
 Steps: git add -- <set>; nothing in the set differs from HEAD → exit 2 "nothing to commit" (with
   --push and the branch ahead of its upstream: push only, "nothing new; pushed"). Otherwise
   git commit -q -m <msg> -- <changed files of the set>: anything else staged stays staged and out
   of the commit; a failed commit (hook, identity) unstages the set. Default message
-  "C-deliver unit <unit>: <p> pages, <f> files" (p = path lines, f = files committed).
+  "C-deliver unit <unit>: <p> pages, <f> files" (p = path lines, f = files committed);
+  a --no-sidecar-check that skipped a real gap appends "[--no-sidecar-check: <n> page(s) …]".
   --push: git fetch; git pull --rebase --autostash only when the upstream has commits HEAD lacks
   (nothing moved → no stash round trip for other processes' edits); then git push. On failure up
   to ${PUSH_RETRIES} retries, each after a backoff and a fresh fetch. A rebase conflict is aborted (no rebase
@@ -245,7 +258,8 @@ Output: exactly one status line on stdout, e.g.
 Writes: a git commit (and a push with --push); the lock file under stardust/.work/ while it runs.
 Exit codes: 0 committed (and pushed with --push), or nothing new but pushed · 2 usage (a refused
   --code or --also included), not a git work tree, missing units/<unit>.paths, --code directory
-  or --also path, unreadable coverage, lock timeout,
+  or --also path, unreadable coverage, a delivered page without its eds-schema sidecar (unless
+  --no-sidecar-check), lock timeout,
   nothing to commit, a merge or rebase in progress or unmerged files, commit failure, no
   upstream, rebase conflict, an autostash that did not re-apply, push failure, the push deadline,
   a timed-out step, a signal, deploy's eds-path.mjs not found beside this script — nothing
@@ -423,6 +437,26 @@ export function stageCandidates({ unit, lines, rows = [], sharedJson = [], templ
 export function unitTemplates(unit, templates = []) {
   const arch = /^archetype-(.+)$/.exec(unit);
   return [...new Set([...templates, ...(arch ? [arch[1]] : [])])].filter(oneName).sort(byCodePoint);
+}
+
+// The exact command that writes a page's sidecar (handoff-contract § sidecars_missing; the project-copy layout,
+// as this script runs from the project root). <protoURL> is the page's render source.
+export const sidecarCommand = (slug) => `node stardust/scripts/deploy/section-schema.mjs <protoURL> --out ${EDS_SCHEMA_DIR}/${slug}.json`;
+
+/**
+ * The slugs of the unit's delivered pages — coverage rows matched to its .paths by pathKey, with a one-name
+ * slug (the rows whose stardust/eds-schema/<slug>.json the stage set carries) — whose sidecar does not exist;
+ * deduped, sorted by code point. Pure: `exists(rel)` is injected. unit-commit refuses to commit while this is
+ * non-empty unless --no-sidecar-check (then the override is recorded in the commit message).
+ */
+export function missingSidecars({ lines = [], rows = [], pathKey, exists = () => false, dir = EDS_SCHEMA_DIR }) {
+  const keys = new Set(lines.map((l) => pathKey(l)));
+  const slugs = new Set();
+  for (const row of rows) {
+    if (!row || typeof row !== 'object' || typeof row.path !== 'string' || !keys.has(pathKey(row.path))) continue;
+    if (oneName(row.slug)) slugs.add(row.slug);
+  }
+  return [...slugs].filter((s) => !exists(`${dir}/${s}.json`)).sort(byCodePoint);
 }
 
 // the namespaces the default set manages per unit or per page: an --also file there must be the unit's own
@@ -668,7 +702,7 @@ async function pushOutcome(res, okLine) {
 
 // ---- argv --------------------------------------------------------------------------------------
 export function parseArgs(argv) {
-  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S, code: [], also: [], alsoReal: new Map() };
+  const opts = { unit: null, push: false, message: null, waitS: DEFAULT_WAIT_S, code: [], also: [], alsoReal: new Map(), noSidecarCheck: false };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -679,6 +713,7 @@ export function parseArgs(argv) {
       i += 1; return argv[i];
     };
     if (a === '--push') opts.push = true;
+    else if (a === '--no-sidecar-check') opts.noSidecarCheck = true;
     else if (a === '--message') { opts.message = need(); if (!opts.message.trim()) throw new UsageError('--message is empty'); }
     else if (a === '--code') { const d = codeDir(need()); if (!opts.code.includes(d)) opts.code.push(d); } else if (a === '--also') {
       const p = alsoPath(need());
@@ -735,6 +770,16 @@ async function underLock(opts, lines, stop, pathKey) {
   const sharedJson = SHARED_JSON_DIRS.flatMap(jsonIn);
   const { files, notes } = stageCandidates({ unit, lines, rows, sharedJson, templates, gateDirs, walk, root: cwd, pathKey });
   for (const n of notes) console.error(`unit-commit ${unit}: note: ${n}`);
+  // Sidecar before commit: every delivered page needs its stardust/eds-schema/<slug>.json. On a recorded
+  // hands-off run the subagent units left theirs unwritten and done-check found sidecars_missing at the very
+  // end. Refuse (nothing staged) and name the exact section-schema.mjs command per page, unless
+  // --no-sidecar-check (then the override is recorded in the commit message, below).
+  const miss = missingSidecars({ lines, rows, pathKey, exists: (rel) => { try { return statSync(rel).isFile(); } catch { return false; } } });
+  if (miss.length && !opts.noSidecarCheck) {
+    console.error(`unit-commit ${unit}: ${miss.length} delivered page(s) have no ${EDS_SCHEMA_DIR}/<slug>.json sidecar — write each before commit:`);
+    for (const slug of miss) console.error(`  ${sidecarCommand(slug)}`);
+    return [2, `${miss.length} page(s) without their ${EDS_SCHEMA_DIR}/<slug>.json sidecar (${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ', …' : ''}) — write it with the section-schema.mjs command on stderr, or pass --no-sidecar-check to commit anyway (recorded in the commit message); nothing staged`];
+  }
   // an --also path inside a namespace the default set manages per unit or per page must be this unit's own
   // file (already in its set): another unit's report, ledger, map or page files are never swept in
   const own = new Set(files.map((f) => safeRel(f, cwd)).filter(Boolean));
@@ -790,7 +835,10 @@ async function underLock(opts, lines, stop, pathKey) {
     return pushOutcome(await pullAndPush(stop), () => 'nothing new; pushed');
   }
 
-  const message = opts.message ?? `C-deliver unit ${unit}: ${lines.length} pages, ${changed.length} files`;
+  // --no-sidecar-check that skipped a real gap is recorded in the commit message (default or explicit), so the
+  // override is always auditable in the history.
+  const override = miss.length && opts.noSidecarCheck ? ` [--no-sidecar-check: ${miss.length} page(s) without an eds-schema sidecar: ${miss.slice(0, 5).join(', ')}${miss.length > 5 ? ', …' : ''}]` : '';
+  const message = (opts.message ?? `C-deliver unit ${unit}: ${lines.length} pages, ${changed.length} files`) + override;
   const why = stop();
   if (why) {
     await git([...L, 'reset', '-q', '--', ...set], { retryLocks: true });
@@ -814,7 +862,7 @@ export async function main(argv) {
   let opts;
   try { opts = parseArgs(argv); } catch (e) {
     if (!(e instanceof UsageError)) throw e;
-    emit(null, `${e.message} — usage: unit-commit.mjs <unit> [--code blocks/<name>]… [--also <path>]… [--push] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}] (--help)`);
+    emit(null, `${e.message} — usage: unit-commit.mjs <unit> [--code blocks/<name>]… [--also <path>]… [--push] [--no-sidecar-check] [--message <m>] [--wait-s ${DEFAULT_WAIT_S}] (--help)`);
     return 2;
   }
   const { unit } = opts;
