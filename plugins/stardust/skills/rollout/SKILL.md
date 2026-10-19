@@ -714,6 +714,11 @@ node skills/rollout/scripts/block-origin.mjs --verify  # 2. REQUIRED → workspa
 node skills/rollout/scripts/workspace-manifest.mjs  # 3. → workspace/manifest.json; exit 2 = no mapping.json
 ```
 
+The manifest's `selectorQuality` records how the source selectors were found — the sources, `encoderCoverage`
+and the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
+map) — which `done-check.mjs` surfaces as the `export_quality:zero_confidence` info line; pass
+`block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
+
 Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in
 order, whenever an input changed after the manifest (a gap-closure or G-aem fix to `content/`,

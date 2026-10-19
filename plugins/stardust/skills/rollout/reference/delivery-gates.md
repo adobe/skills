@@ -119,6 +119,11 @@ sidecars** (`stardust/eds-schema/<slug>.json`, the default-content roles) and th
 all three into the manifest's `inputs`, and `done-check.mjs` re-hashes the same
 tree and raises `export_stale` naming any file whose hash differs — a sidecar,
 capture or map rewritten after the mapping is a stale export, not a fresh one.
+The manifest also carries a derived `selectorQuality` block (sources,
+`encoderCoverage`, the `zeroConfidence` count of image-only blocks shipped without
+a map) that `done-check.mjs` surfaces as the `export_quality:zero_confidence` info
+line; `block-origin.mjs --max-zero-confidence <n>` turns that count into a hard
+gate (exit 3) for a hands-off run.
 
 The export is therefore built only once the roster is frozen — no unit running,
 no fix round open, gap-closure finished — and any later edit under `content/`,

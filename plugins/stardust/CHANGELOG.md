@@ -4,6 +4,32 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-encoder-figures) — selector-quality figures in the migration export, and a zero-confidence gate (#163)
+
+Across four recorded hands-off runs `block-origin.mjs` assigned its selector sources
+(encoder-map / text-alignment / position) as 0/69/3, 0/89/4, 75/51/0 and 0/158/48 — and in the last
+one the 48 position selectors (confidence 0: image-only repeating blocks, article-grid and carousel,
+that cannot anchor by text because an encoder map was never drafted) shipped into a client-facing
+export with nothing in the manifest saying so. `countsOf` computed the sources and confidence
+buckets and the status lines printed them, but the manifest stored only a hash of `mapping.json`.
+This wave makes the figures visible and gateable (the hand-drafted encoder vocabulary itself is a
+separate, next-wave problem):
+
+- **`workspace-manifest.mjs`** now adds a `selectorQuality` block to the manifest, derived from
+  `mapping.json` at manifest time (block-origin's `countsOf`; `mapping.json` is never rewritten):
+  `instances`, `sources {encoderMap, textAlignment, position}`, `encoderCoverage`
+  (encoder-map/instances, three decimals), `zeroConfidence` (the confidence-0 count) and the top
+  `zeroConfidenceBlocks[]`. It is derived, so a `--rehash-only` recomputes it and `--check` keeps it
+  out of the drift classification (only `inputs`/`outputs` are hashed). Schema + contract updated.
+- **`block-origin.mjs`** gains `--max-zero-confidence <n>` (default unlimited — no existing caller
+  changes): the run still writes the mapping but exits 3 when more than `n` instances land at
+  confidence 0, the message listing them by block. The status lines now also print
+  `encoder-coverage F · zero-confidence N`.
+- **`done-check.mjs`** surfaces the manifest's `selectorQuality.zeroConfidence` as an
+  `export_quality:zero_confidence:N` info line (migration-workspace export only, above a documented
+  threshold, default 0) — informational, it never flips completeness; the hard gate stays
+  `block-origin.mjs --max-zero-confidence`.
+
 ## 0.36.x (stardust/r17-origin-baseline) — a frozen, provenance-stamped origin baseline for the source-fidelity pixel gate (#161)
 
 The replica source-fidelity pixel gate compares the build against a FRESH capture of the live origin every round. In a

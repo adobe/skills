@@ -63,6 +63,7 @@ absent (sections live in `delivered.sections`, chrome in the blocks.json chrome 
 | `inputs` | `sha256:` hashes of what coverage was built from: `content {files, sha256, tracked}` and the files `blocks.mjs` read (`judgement.json`, `stardust/eds-conversion-log.md`, each `blocks/<n>/<n>.{js,css}`, when present) |
 | `outputs` | hashes of what a client reads: the three coverage files and `workspace/mapping.json` when present; a client trusts one only when its hash matches |
 | `placeholders[]` | "(not judged)" summary lines (template names, template descriptions, blocks with base type `unknown`, blocks without purpose or reuse guidance); pages with `delivered: null`; module blocks delivered without a conversion record (`update-coverage.mjs --block`) |
+| `selectorQuality` | present when `mapping.json` exists, derived from it (block-origin `countsOf`, not a rewrite): `instances`, `sources {encoderMap, textAlignment, position}`, `encoderCoverage` (encoder-map/instances, 3 dp), `zeroConfidence` (confidence-0 selectors — image-only repeating blocks with no text to anchor) and the top `zeroConfidenceBlocks[]`; a re-hash recomputes it and `--check` never counts it as drift |
 | `handover` | null, or `{at, detectedFrom}` (`marker` / `manifest` / `untracked-content`) from the first `--force` run; later forced runs keep it; absent while captures exist without `mapping.json` (exit 2): not ready to hand over |
 | `degraded` | only once a `--force` run found inputs differing from the manifest's: `{reason, inputs[]}`, accumulated across forced runs |
 

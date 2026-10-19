@@ -32,6 +32,41 @@
       "description": "One line per value that is still a default: template names and descriptions, blocks with base type unknown or without purpose, reuse guidance or colour scheme (not judged), pages without a delivered structure.",
       "items": { "type": "string" }
     },
+    "selectorQuality": {
+      "type": "object",
+      "description": "Derived from workspace/mapping.json at manifest time (block-origin countsOf; mapping.json is not rewritten). Present only when a readable mapping exists. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["instances", "sources", "encoderCoverage", "zeroConfidence", "zeroConfidenceBlocks"],
+      "additionalProperties": false,
+      "properties": {
+        "instances": { "type": "integer", "minimum": 0, "description": "Delivered block instances in the mapping." },
+        "sources": {
+          "type": "object",
+          "description": "How each instance's source selector was found.",
+          "required": ["encoderMap", "textAlignment", "position"],
+          "additionalProperties": false,
+          "properties": {
+            "encoderMap": { "type": "integer", "minimum": 0, "description": "Located by an encoder-map marker (confidence 1)." },
+            "textAlignment": { "type": "integer", "minimum": 0, "description": "Located by the text they cover." },
+            "position": { "type": "integer", "minimum": 0, "description": "Located by position among anchored neighbours (confidence 0)." }
+          }
+        },
+        "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances, 0 to 1, three decimals (0 when there are no instances)." },
+        "zeroConfidence": { "type": "integer", "minimum": 0, "description": "Instances at confidence 0 — image-only repeating blocks with no text to anchor, shipped without an encoder map." },
+        "zeroConfidenceBlocks": {
+          "type": "array",
+          "description": "The top blocks behind zeroConfidence (the whole count stays in zeroConfidence), most instances first.",
+          "items": {
+            "type": "object",
+            "required": ["block", "instances"],
+            "additionalProperties": false,
+            "properties": {
+              "block": { "type": "string" },
+              "instances": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
     "handover": {
       "type": ["object", "null"],
       "description": "null before handover; set only by a forced run after a client took the project over. Absent while the export is incomplete: captures exist and workspace/mapping.json does not (the writer exits 2) — not ready to hand over.",
