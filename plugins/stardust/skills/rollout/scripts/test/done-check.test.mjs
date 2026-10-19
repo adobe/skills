@@ -20,7 +20,9 @@
 // rollout.json exports lists migration-workspace, never after handover) names a missing manifest, manifest hashes
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
 // than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows and module
-// blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps.
+// blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps; so are
+// the export_quality figures the manifest carries (zero_confidence, null_selector_sections, judgement_to_fill,
+// encode_unrecorded), hidden after handover.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -167,6 +169,17 @@ check('schemaErrorsOf: each export file present is validated against its schema 
   assert.deepEqual(p.errors.map((e) => e.file), ['coverage/pages.json'], 'only the schema present judges');
   assert.deepEqual(p.skipped, ['rollout.json', 'workspace/mapping.json', 'workspace/judgement.json'].map((f) => `export_quality:schema: ${join(partial, EXPORT_SCHEMAS.find(([x]) => x === f)[1])} missing or not JSON`));
   rmSync(out, { recursive: true, force: true }); rmSync(partial, { recursive: true, force: true });
+});
+check('export_quality: the manifest selectorQuality.encode.unrecorded count (multi-page templates without an encode decision) is an info line when > 0, never a gap; 0 and null are silent; it rides last among the quality lines and completeness never flips', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, encodeUnrecorded: 2 }).info, ['export_quality:encode_unrecorded:2']);
+  assert.deepEqual(doneGaps({ ...base, encodeUnrecorded: 0 }).info, [], '0: no line');
+  assert.deepEqual(doneGaps({ ...base }).info, [], 'null (no manifest / not listed / a manifest from before the field): no line');
+  const all4 = doneGaps({ ...base, zeroConfidence: 2, nullSelectorSections: 9, judgementToFill: 14, encodeUnrecorded: 2, excluded: [{ slug: 'news', path: '/news' }] });
+  assert.deepEqual([all4.complete, all4.gaps, all4.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:null_selector_sections:9', 'export_quality:judgement_to_fill:14', 'export_quality:encode_unrecorded:2', 'pages_excluded:1: /news']]);
+  const withGap = doneGaps({ ...base, ledgerLines: [], encodeUnrecorded: 1 });
+  assert.ok(withGap.gaps.includes('rollout_incomplete') && !withGap.complete);
+  assert.deepEqual(withGap.info, ['export_quality:encode_unrecorded:1']);
 });
 check('CLI: coverage blocks.json rows delivered without a conversion record print the blocks_pending info line; exit 0', () => {
   const blocks = { blocks: [
@@ -978,7 +991,7 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
   const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
   const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
-  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }] };
+  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }], encode: { encoded: 0, noRoundtrip: 0, notAttempted: 0, handAuthored: 1, notApplicable: 1, unrecorded: 2 } };
   const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
   const judgement = { toFill: 23, byKind: { baseType: 3, purpose: 10, reuseGuidance: 10 } };
   const excluded = [{ url: 'https://example.com/faq.html', reason: 'crawl: HTTP 404' }];
@@ -997,12 +1010,23 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   assert.ok(v.info.includes('export_quality:excluded:1: https://example.com/faq.html (crawl: HTTP 404)'), JSON.stringify(v.info));
   assert.ok(v.info.indexOf('export_quality:judgement_to_fill:23') < v.info.indexOf(schemaLines[0]) && v.info.indexOf(schemaLines[4]) < v.info.indexOf('export_quality:excluded:1: https://example.com/faq.html (crawl: HTTP 404)'), 'order: judgement_to_fill, schema lines, excluded');
   assert.ok(!v.skipped.some((s) => s.startsWith('export_quality:schema')), 'the plugin tree has its schemas dir');
+  assert.ok(v.info.includes('export_quality:encode_unrecorded:2'), JSON.stringify(v.info));
   assert.equal(v.complete, true, 'the info lines never flip completeness');
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:zero_confidence:2'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:null_selector_sections:1'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:judgement_to_fill:23'), r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: export_quality:encode_unrecorded:2'), r.stdout);
+  // without the counts, the byTemplate rows that carry a decision are counted; a manifest from before the field is silent
+  const manifestWith = (sq) => writeFileSync(join(proj, WS, 'manifest.json'), JSON.stringify({ inputs: { ...inputs, content: { ...inputs.content, tracked: null } }, outputs, placeholders: [], selectorQuality: sq, sectionGaps, judgement, handover: null }));
+  const row = (template, decision) => ({ template, instances: 1, encoderMap: 0, textAlignment: 1, position: 0, encoderCoverage: 0, encode: { decision, reason: null, vocabulary: null, recordedAt: null } });
+  const { encode, ...noCounts } = selectorQuality;
+  manifestWith({ ...noCounts, byTemplate: [row('a', 'unrecorded'), row('b', 'hand-authored'), row('c', 'unrecorded'), row('d', 'unrecorded')] });
+  assert.ok(JSON.parse(run(proj, ['--offline', '--json']).stdout).info.includes('export_quality:encode_unrecorded:3'), 'counted from the rows');
+  manifestWith({ ...noCounts, byTemplate: [{ template: 'a', instances: 1, encoderMap: 0, textAlignment: 1, position: 0, encoderCoverage: 0 }] });
+  assert.ok(!JSON.parse(run(proj, ['--offline', '--json']).stdout).info.some((i) => i.startsWith('export_quality:encode')), 'rows without a decision: silent');
+  manifestWith(selectorQuality);
   // once handed over, the export is the client's: neither figure is surfaced
   writeFileSync(join(proj, WS, 'handover.json'), JSON.stringify({ at: '2026-10-10T00:00:00Z', by: 'a migration tool' }));
   const handed = JSON.parse(run(proj, ['--offline', '--json']).stdout);

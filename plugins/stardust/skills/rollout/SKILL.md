@@ -760,8 +760,12 @@ node skills/rollout/scripts/workspace-manifest.mjs  # 3. → workspace/manifest.
 The manifest's `selectorQuality` records how the source selectors were found — the sources, `encoderCoverage`,
 the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
 map) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
-which fell back) — the `zeroConfidence` of which `done-check.mjs` surfaces as the `export_quality:zero_confidence`
-info line; pass
+which fell back). A reviewer reads each row's `encoderCoverage` together with its `encode.decision`
+and `encode.reason` — `encoded`, `hand-authored`, `not-attempted`, `no-roundtrip`, `not-applicable`
+or `unrecorded`, with the owner's why from migrate's encode record — so a 0 reads as "tried and
+refused", "never applicable" or "never decided", not a guess. `done-check.mjs` surfaces the
+`unrecorded` count as the `export_quality:encode_unrecorded` info line and `zeroConfidence` as
+`export_quality:zero_confidence`; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
 Its `sectionGaps` (derived the same way) lists the sections an adopter projecting per selector
 drops: `no-selector` (no source selector — exact) and `blocks-unprojected` (a selector kept but its
