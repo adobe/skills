@@ -490,13 +490,19 @@ check('unprovenDelivered / unprovenRefusal: the unproven delivered pages and the
   const { lines, summary } = unprovenRefusal('cluster-news', un);
   assert.ok(lines.some((l) => /gate-all\.mjs --only news-b --width 360 --eds-host <preview host> --skip-existing/.test(l)), lines.join('\n'));
   assert.ok(!lines.some((l) => /gate-all\.mjs --only/.test(l) && !/--width 360/.test(l)), 'nothing owes 1440, so no 1440 command is printed');
+  // gate-all writes no coverage: the remedy must also print the update-coverage --gate ingest step per owed width
+  assert.ok(lines.some((l) => /update-coverage\.mjs --gate stardust\/replica\/gates\/all-360\//.test(l)), 'the 360 ingest step is printed');
+  assert.ok(!lines.some((l) => /update-coverage\.mjs --gate stardust\/replica\/gates\/all-1440\//.test(l)), 'nothing owes 1440, so no 1440 ingest line');
+  assert.match(summary, /run the gate-all command\(s\) AND the update-coverage --gate line/);
   assert.match(summary, /1 delivered page\(s\) without a passing gate at 1440 and 360 \(news-b\).*nothing written/);
-  // a page failing its whole verdict owes both widths → both commands
+  // a page failing its whole verdict owes both widths → both the gate and the ingest commands, per width
   const both = unprovenDelivered({ lines: ['/news/a'], rows: [covRow('news-a', '/news/a', 'verified', { ...GATE_OK, pass: false })], pathKey, gateProof });
   assert.deepEqual(both, [{ slug: 'news-a', path: '/news/a', missing: ['1440', '360'] }]);
   const r2 = unprovenRefusal('u', both);
   assert.ok(r2.lines.some((l) => /--only news-a --eds-host/.test(l)), '1440 command carries no --width');
   assert.ok(r2.lines.some((l) => /--only news-a --width 360 /.test(l)));
+  assert.ok(r2.lines.some((l) => /update-coverage\.mjs --gate stardust\/replica\/gates\/all-1440\//.test(l)));
+  assert.ok(r2.lines.some((l) => /update-coverage\.mjs --gate stardust\/replica\/gates\/all-360\//.test(l)));
   assert.deepEqual(GATE_WIDTHS, ['1440', '360']);
   assert.deepEqual(pathLines('# head\n/a\n\n/b\n'), ['/a', '/b']);
 });
@@ -517,6 +523,7 @@ check('unit done gate: a delivered page without the 360 evidence refuses (exit 2
   assert.equal(r.code, 2, r.err); assert.equal(r.out, '');
   assert.match(r.err, /news-b \(\/news\/b\) — missing 360/);
   assert.match(r.err, /gate-all\.mjs --only news-b --width 360 --eds-host <preview host> --skip-existing/);
+  assert.match(r.err, /update-coverage\.mjs --gate stardust\/replica\/gates\/all-360\//, 'the ingest step gate-all does not do is printed');
   assert.match(r.err, /^progress: unit cluster-news: 1 delivered page\(s\) without a passing gate at 1440 and 360 \(news-b\).*nothing written$/m);
   assert.equal(readFileSync(join(d, ROLLOUT), 'utf8'), before, 'the ledger is untouched');
   assert.ok(!('endedAt' in readJ(join(d, ROLLOUT)).units['cluster-news']), 'the unit stays running');
@@ -552,12 +559,22 @@ check('unit done gate: foundation and final units are not gated (done-check does
   assert.equal(runIn(g, 'unit', 'done', 'gate-all').code, 0);
 });
 
-check('unit done gate: with no rollout coverage/.paths beside the ledger the gate is skipped — the unit flips clean', () => {
+check('unit done gate: with no rollout coverage beside the ledger the gate is skipped silently — the unit flips clean', () => {
   const d = project();
   put(join(d, ROLLOUT), { units: { 'cluster-x': { status: 'running', kind: 'cluster', startedAt: T0 } } });
   const r = runIn(d, 'unit', 'done', 'cluster-x', '--verdict', 'no coverage present');
   assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
   assert.equal(readJ(join(d, ROLLOUT)).units['cluster-x'].status, 'done');
+});
+
+check('unit done gate: coverage present but no units/<unit>.paths — the gate is skipped with a stderr note; the unit still flips to done', () => {
+  const d = project();
+  put(join(d, ROLLOUT), { units: { 'cluster-news': { status: 'running', kind: 'cluster', startedAt: T0 } } });
+  put(join(d, 'stardust', 'rollout', 'coverage', 'pages.json'), { pages: [covRow('news-a', '/news/a', 'deployed', ONLY_1440)] });
+  const r = runIn(d, 'unit', 'done', 'cluster-news', '--verdict', 'no paths file');
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.err, /delivery gate skipped — no stardust\/rollout\/units\/cluster-news\.paths \(done-check will read unit_unproven\)/);
+  assert.equal(readJ(join(d, ROLLOUT)).units['cluster-news'].status, 'done');
 });
 
 check('--unproven: a non-empty reason, on unit done of the rollout ledger only', () => {

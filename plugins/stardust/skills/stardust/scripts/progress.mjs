@@ -35,10 +35,12 @@
 // DELIVERED page of the unit (a coverage row matched to the unit's .paths by pathKey whose delivery.status is
 // deployed|verified — unit-commit's "delivered") must have a passing published-origin gate at BOTH widths. The
 // proof predicate is lib.gateProof, the SAME done-check's unit_unproven reads, so a page this refuses is exactly
-// a page done-check would name. A page short of it → exit 2, nothing written; the refusal names each page, the
-// widths it owes and the exact gate-all.mjs --only command per width. --unproven "<reason>" records the reason on
-// the entry and skips the gate (done-check then carries it as `unit_unproven: … declared unproven: <reason>`); no
-// silent bypass. The gate is skipped (no refusal) only when there is no rollout coverage/.paths to check against.
+// a page done-check would name. A page short of it → exit 2, nothing written; the refusal names each page and,
+// per width, the gate-all.mjs --only command AND the update-coverage.mjs --gate line that ingests its table into
+// delivery.gate — gate-all writes NO coverage, so gating without ingesting proves nothing. --unproven "<reason>"
+// records the reason on the entry and skips the gate (done-check then carries it as `unit_unproven: … declared
+// unproven: <reason>`); no silent bypass. The gate is skipped when there is no rollout coverage (silent) or no
+// units/<unit>.paths (one stderr note — done-check still reads unit_unproven for a done unit with no .paths).
 //
 // wait: returns as soon as a unit that was running when the wait started is done or failed (--unit narrows the
 // set), re-reading the ledger every 5 s without the lock (writers rename atomically), for at most --max seconds
@@ -125,10 +127,11 @@ unit done|failed: the unit must exist (else exit 2 "no unit <name> in <file> —
 Delivery gate (rollout unit done, kind not foundation/final): every DELIVERED page of the unit (a
   coverage row matched to the unit's .paths by pathKey, delivery.status deployed|verified) must have a
   passing published-origin gate at both ${GATE_WIDTHS.join(' and ')} — the same predicate (gateProof)
-  done-check's unit_unproven reads. A page short → exit 2, nothing written; the refusal names each page,
-  the widths it owes and the exact gate-all.mjs --only … --skip-existing command per width. --unproven
-  "<reason>" records the reason on the entry and skips the gate (done-check carries it as unit_unproven);
-  no silent bypass. Skipped (no refusal) only when there is no rollout coverage/.paths to check against.
+  done-check's unit_unproven reads. A page short → exit 2, nothing written; the refusal names each page
+  and, per width, the gate-all.mjs --only … --skip-existing command AND the update-coverage.mjs --gate
+  line that ingests its table (gate-all writes no coverage). --unproven "<reason>" records the reason on
+  the entry and skips the gate (done-check carries it as unit_unproven); no silent bypass. Skipped when
+  there is no rollout coverage (silent) or no units/<unit>.paths (one stderr note).
 Fields: --kind (the ledger's vocabulary), --pages / --blocks (integer ≥ 0), --templates a,b (an array),
   --verdict (one line; line breaks folded to spaces). --set <key>=<value> (repeatable): a dotted key
   inside the entry (gates.1440={"archetype":1.3}); the value is JSON when it parses, else the string.
@@ -401,23 +404,31 @@ export function unprovenDelivered({ lines = [], rows = [], widths = GATE_WIDTHS,
   return out.sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
+// gate-all writes NO coverage — an --only run writes stardust/replica/gates/all-<w>/runs/<ts>-<slug>.json;
+// update-coverage.mjs --gate <that dir> ingests it into delivery.gate, which is what gateProof reads. So the
+// remedy is TWO steps per width: gate, then ingest. (`--gate <dir>` reads summary.json then runs/*.json.)
+const gateCmd = (ids, w, first) => `node stardust/scripts/replica/gate-all.mjs --only ${ids.join(',')}${w === first ? '' : ` --width ${w}`} --eds-host <preview host> --skip-existing`;
+const ingestCmd = (w) => `node stardust/scripts/rollout/update-coverage.mjs --gate stardust/replica/gates/all-${w}/`;
+
 /**
  * The refusal for `unit done` when a rollout delivery unit has unproven delivered pages → { lines, summary }:
- * `lines` (printed to stderr) name each page and the widths it owes, then the EXACT roster gate command per
- * width over the pages missing it (`gate-all.mjs --only <slugs> [--width <w>] --skip-existing`, the flags the
- * cluster's own gate uses); `summary` is the one-line refusal (the escape hatch named). Pure.
+ * `lines` (printed to stderr) name each page and the widths it owes, then PER WIDTH the two-step remedy — the
+ * roster gate command (`gate-all.mjs --only <slugs> [--width <w>] --skip-existing`, the flags the cluster's own
+ * gate uses) AND the `update-coverage.mjs --gate <all-<w> dir>` that ingests the table gateProof reads (gate-all
+ * writes no coverage). `summary` is the one-line refusal (both steps, the escape hatch named). Pure.
  */
 export function unprovenRefusal(unit, unproven, { widths = GATE_WIDTHS } = {}) {
-  const lines = [`unit-done ${unit}: ${unproven.length} delivered page(s) have no passing published-origin gate at ${widths.join(' and ')} — unit done refuses (done-check would read unit_unproven); gate them first:`];
+  const first = String(widths[0]);
+  const lines = [`unit-done ${unit}: ${unproven.length} delivered page(s) have no passing published-origin gate at ${widths.join(' and ')} — unit done refuses (done-check would read unit_unproven). gate-all writes no coverage, so per width gate the pages AND ingest the table it writes:`];
   for (const u of unproven) lines.push(`  ${gateId(u)} (${u.path}) — missing ${u.missing.join(', ')}`);
-  for (const w of widths) {
-    const ids = unproven.filter((u) => u.missing.includes(String(w))).map(gateId);
+  for (const w of widths.map(String)) {
+    const ids = unproven.filter((u) => u.missing.includes(w)).map(gateId);
     if (!ids.length) continue;
-    const widthFlag = String(w) === String(widths[0]) ? '' : ` --width ${w}`;
-    lines.push(`  node stardust/scripts/replica/gate-all.mjs --only ${ids.join(',')}${widthFlag} --eds-host <preview host> --skip-existing`);
+    lines.push(`  ${gateCmd(ids, w, first)}`);
+    lines.push(`  ${ingestCmd(w)}`);
   }
   const named = unproven.map(gateId).slice(0, 5).join(', ');
-  const summary = `unit ${unit}: ${unproven.length} delivered page(s) without a passing gate at ${widths.join(' and ')} (${named}${unproven.length > 5 ? ', …' : ''}) — run the gate-all command on stderr then re-run unit done, or pass --unproven "<reason>" to record the gap (done-check carries it as unit_unproven); nothing written`;
+  const summary = `unit ${unit}: ${unproven.length} delivered page(s) without a passing gate at ${widths.join(' and ')} (${named}${unproven.length > 5 ? ', …' : ''}) — run the gate-all command(s) AND the update-coverage --gate line shown on stderr, then re-run unit done, or pass --unproven "<reason>" to record the gap (done-check carries it as unit_unproven); nothing written`;
   return { lines, summary };
 }
 
@@ -765,8 +776,11 @@ function unitDoneGate(unit, file, deps) {
     rows = Array.isArray(doc) ? doc : doc && Array.isArray(doc.pages) ? doc.pages : null;
   } catch { return []; }
   if (!Array.isArray(rows)) return [];
+  const pathsFile = join(dir, 'units', `${unit}.paths`);
   let pathsText;
-  try { pathsText = readFileSync(join(dir, 'units', `${unit}.paths`), 'utf8'); } catch { return []; }
+  // coverage present but no .paths: the gate cannot map the unit's pages — skip, but say so (done-check still
+  // reads unit_unproven for a done unit with no .paths). A fully absent coverage above stays silent.
+  try { pathsText = readFileSync(pathsFile, 'utf8'); } catch { console.error(`progress: unit ${unit}: delivery gate skipped — no ${pathsFile} (done-check will read unit_unproven)`); return []; }
   const lines = pathLines(pathsText);
   if (!lines.length) return [];
   return unprovenDelivered({ lines, rows, pathKey: deps.pathKey, gateProof: deps.gateProof });
