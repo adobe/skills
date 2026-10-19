@@ -14,9 +14,12 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  applyUnit, C0_ARCHETYPE, formatLine, formatWaves, parseArgs, parseSetValue, pauseState, pickWatched, setPath, waitBound, waitEndedLine,
+  applyUnit, C0_ARCHETYPE, formatLine, formatWaves, GATE_WIDTHS, parseArgs, parseSetValue, pathLines, pauseState, pickWatched, setPath,
+  unprovenDelivered, unprovenRefusal, waitBound, waitEndedLine,
   waitPausedLine, waitState, waitTimeoutLine, waitWokenLine, wakeLine, wakeStep, wavesView,
 } from '../progress.mjs';
+import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
+import { gateProof } from '../../../rollout/scripts/lib.mjs';
 
 // A supervised session's pause file must not end these waits; the pause tests set their own.
 delete process.env.STARDUST_PAUSE_FILE;
@@ -470,6 +473,104 @@ check('done / failed on a unit that was never started: exit 2, one stderr line, 
   assert.equal(f.code, 2); assert.match(f.err, /^progress: no unit c1 in stardust\/rollout\/progress\.json — progress\.mjs unit start c1 first\n$/);
   assert.equal(readFileSync(join(d, ROLLOUT), 'utf8'), before);
 });
+// ---- unit done delivery gate (every delivered page gate-proven at both widths) -----------------
+const GATE_OK = { pass: true, reasons: [], atByWidth: { 1440: '2026-01-02T03:00:00Z', 360: '2026-01-02T03:05:00Z' }, passByWidth: { 1440: true, 360: true } };
+const ONLY_1440 = { ...GATE_OK, atByWidth: { 1440: GATE_OK.atByWidth[1440] } };
+const covRow = (slug, path, status, gate) => ({ slug, path, delivery: { status, ...(gate ? { gate } : {}) } });
+const seedUnit = (d, unit, paths, rows, entry = { status: 'running', kind: 'cluster', startedAt: T0 }) => {
+  put(join(d, ROLLOUT), { units: { [unit]: entry } });
+  put(join(d, 'stardust', 'rollout', 'units', `${unit}.paths`), `${paths.join('\n')}\n`);
+  put(join(d, 'stardust', 'rollout', 'coverage', 'pages.json'), { pages: rows });
+};
+
+check('unprovenDelivered / unprovenRefusal: the unproven delivered pages and the per-width gate-all command (pure)', () => {
+  const rows = [covRow('news-a', '/news/a', 'verified', GATE_OK), covRow('news-b', '/news/b', 'deployed', ONLY_1440), covRow('news-c', '/news/c', 'pending')];
+  const un = unprovenDelivered({ lines: ['/news/a', '/news/b', '/news/c'], rows, pathKey, gateProof });
+  assert.deepEqual(un, [{ slug: 'news-b', path: '/news/b', missing: ['360'] }], 'only the delivered page short of 360; the pending row is not required');
+  const { lines, summary } = unprovenRefusal('cluster-news', un);
+  assert.ok(lines.some((l) => /gate-all\.mjs --only news-b --width 360 --eds-host <preview host> --skip-existing/.test(l)), lines.join('\n'));
+  assert.ok(!lines.some((l) => /gate-all\.mjs --only/.test(l) && !/--width 360/.test(l)), 'nothing owes 1440, so no 1440 command is printed');
+  assert.match(summary, /1 delivered page\(s\) without a passing gate at 1440 and 360 \(news-b\).*nothing written/);
+  // a page failing its whole verdict owes both widths → both commands
+  const both = unprovenDelivered({ lines: ['/news/a'], rows: [covRow('news-a', '/news/a', 'verified', { ...GATE_OK, pass: false })], pathKey, gateProof });
+  assert.deepEqual(both, [{ slug: 'news-a', path: '/news/a', missing: ['1440', '360'] }]);
+  const r2 = unprovenRefusal('u', both);
+  assert.ok(r2.lines.some((l) => /--only news-a --eds-host/.test(l)), '1440 command carries no --width');
+  assert.ok(r2.lines.some((l) => /--only news-a --width 360 /.test(l)));
+  assert.deepEqual(GATE_WIDTHS, ['1440', '360']);
+  assert.deepEqual(pathLines('# head\n/a\n\n/b\n'), ['/a', '/b']);
+});
+
+check('unit done gate: a delivery unit whose delivered pages all pass at 1440 and 360 flips to done', () => {
+  const d = project();
+  seedUnit(d, 'cluster-news', ['/news/a', '/news/b'], [covRow('news-a', '/news/a', 'verified', GATE_OK), covRow('news-b', '/news/b', 'deployed', GATE_OK)]);
+  const r = runIn(d, 'unit', 'done', 'cluster-news', '--verdict', 'pages 2/2 live');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  assert.equal(readJ(join(d, ROLLOUT)).units['cluster-news'].status, 'done');
+});
+
+check('unit done gate: a delivered page without the 360 evidence refuses (exit 2), names the page, the width and the gate-all command; nothing written', () => {
+  const d = project();
+  seedUnit(d, 'cluster-news', ['/news/a', '/news/b'], [covRow('news-a', '/news/a', 'verified', GATE_OK), covRow('news-b', '/news/b', 'deployed', ONLY_1440)]);
+  const before = readFileSync(join(d, ROLLOUT), 'utf8');
+  const r = runIn(d, 'unit', 'done', 'cluster-news');
+  assert.equal(r.code, 2, r.err); assert.equal(r.out, '');
+  assert.match(r.err, /news-b \(\/news\/b\) — missing 360/);
+  assert.match(r.err, /gate-all\.mjs --only news-b --width 360 --eds-host <preview host> --skip-existing/);
+  assert.match(r.err, /^progress: unit cluster-news: 1 delivered page\(s\) without a passing gate at 1440 and 360 \(news-b\).*nothing written$/m);
+  assert.equal(readFileSync(join(d, ROLLOUT), 'utf8'), before, 'the ledger is untouched');
+  assert.ok(!('endedAt' in readJ(join(d, ROLLOUT)).units['cluster-news']), 'the unit stays running');
+  assert.deepEqual(readdirSync(join(d, 'stardust', 'rollout')).filter((n) => n.endsWith('.lock')), [], 'no lock dir left');
+});
+
+check('unit done gate: --unproven "<reason>" flips the unit to done despite the gap and records the reason on the entry', () => {
+  const d = project();
+  seedUnit(d, 'cluster-news', ['/news/a', '/news/b'], [covRow('news-a', '/news/a', 'verified', GATE_OK), covRow('news-b', '/news/b', 'deployed', ONLY_1440)]);
+  const reason = 'preview host 500 during the gate window; re-gate next session';
+  const r = runIn(d, 'unit', 'done', 'cluster-news', '--unproven', reason);
+  assert.equal(r.code, 0, r.err);
+  const u = readJ(join(d, ROLLOUT)).units['cluster-news'];
+  assert.equal(u.status, 'done'); assert.equal(u.unproven, reason);
+});
+
+check('unit done gate: a pending / content-pending row in the unit needs no gate — only delivered pages are proven', () => {
+  const d = project();
+  seedUnit(d, 'cluster-news', ['/news/a', '/news/b', '/news/c'], [
+    covRow('news-a', '/news/a', 'verified', GATE_OK), covRow('news-b', '/news/b', 'pending'), covRow('news-c', '/news/c', 'content-pending'),
+  ]);
+  const r = runIn(d, 'unit', 'done', 'cluster-news', '--verdict', 'page 1 live, 2 pending');
+  assert.equal(r.code, 0, r.err);
+  assert.equal(readJ(join(d, ROLLOUT)).units['cluster-news'].status, 'done');
+});
+
+check('unit done gate: foundation and final units are not gated (done-check does not judge them either)', () => {
+  const d = project();
+  seedUnit(d, 'foundation-chrome', ['/header'], [covRow('header', '/header', 'deployed', ONLY_1440)], { status: 'running', kind: 'foundation', startedAt: T0 });
+  assert.equal(runIn(d, 'unit', 'done', 'foundation-chrome').code, 0);
+  const g = project();
+  seedUnit(g, 'gate-all', ['/news/a'], [covRow('news-a', '/news/a', 'deployed', ONLY_1440)], { status: 'running', kind: 'final', startedAt: T0 });
+  assert.equal(runIn(g, 'unit', 'done', 'gate-all').code, 0);
+});
+
+check('unit done gate: with no rollout coverage/.paths beside the ledger the gate is skipped — the unit flips clean', () => {
+  const d = project();
+  put(join(d, ROLLOUT), { units: { 'cluster-x': { status: 'running', kind: 'cluster', startedAt: T0 } } });
+  const r = runIn(d, 'unit', 'done', 'cluster-x', '--verdict', 'no coverage present');
+  assert.equal(r.code, 0, r.err); assert.equal(r.err, '');
+  assert.equal(readJ(join(d, ROLLOUT)).units['cluster-x'].status, 'done');
+});
+
+check('--unproven: a non-empty reason, on unit done of the rollout ledger only', () => {
+  const bad = (argv, re) => assert.throws(() => parseArgs(argv), (e) => e.code === 2 && re.test(e.message), `${argv.join(' ')} → ${re}`);
+  assert.equal(parseArgs(['unit', 'done', 'c1', '--unproven', 'host was 500']).unproven, 'host was 500');
+  bad(['unit', 'start', 'c1', '--unproven', 'x'], /--unproven applies to unit done only/);
+  bad(['unit', 'done', 'c1', '--ledger', 'migrate', '--unproven', 'x'], /--unproven applies to the rollout ledger only/);
+  bad(['unit', 'done', 'c1', '--unproven', '   '], /--unproven needs a non-empty reason/);
+  bad(['unit', 'done', 'c1', '--unproven', '--json'], /--unproven needs a value/);
+  bad(['show', 'c1', '--unproven', 'x'], /--unproven applies to unit only/);
+  bad(['wait', '--unproven', 'x'], /--unproven applies to unit only/);
+});
+
 check('shape refusals on disk: a bare archetype record, a non-object map or entry, not JSON, an array — exit 2, one stderr line, file untouched', () => {
   const cases = [
     [REPLICA, { archetype: 'home', pageType: 'landing', breakpoints: { 1440: {} } }, ['--ledger', 'replica'], /^progress: stardust\/replica\/progress\.json is one archetype's record at the top level \(archetype, breakpoints\).*gate-evidence\.mjs.*source-fidelity-gate\.md § Residual logging format/],
