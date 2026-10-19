@@ -182,7 +182,9 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   const expected = JSON.parse(JSON.stringify(without));
   expected.outputs[MAP] = mf.outputs[MAP];
   expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
-  assert.deepEqual(mf, expected, 'the only change is the outputs entry and its readArtifacts line');
+  // an empty-templates mapping now adds a zeroed selectorQuality block (derived from mapping.json, not a drift input)
+  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] };
+  assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
   assert.equal(jsonOut(run(dir, '--json')).status, 'unchanged');
   writeFileSync(join(dir, MAP), mapping('2026-01-02T00:00:00.000Z'));
@@ -190,6 +192,41 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   ok(again);
   assert.equal(jsonOut(again).status, 'written', 'changed mapping.json bytes change the manifest');
   assert.equal(doc(dir, 'manifest.json').outputs[MAP], sha(readFileSync(join(dir, MAP))));
+});
+
+check('selectorQuality: derived from mapping.json (mixed sources) — sources, encoderCoverage (3 dp), zeroConfidence and the top blocks; zero on an empty mapping; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
+  const mixedMapping = {
+    formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
+    templates: [{
+      id: 't1', sections: [],
+      blocks: [
+        { block: 'hero', instances: [{ slug: 'a', pos: 0, selector: 'h', source: 'encoder-map', confidence: 1, verified: null }] },
+        { block: 'cards', instances: [{ slug: 'a', pos: 1, selector: 'c1', source: 'text-alignment', confidence: 0.6, verified: null }, { slug: 'b', pos: 2, selector: 'c2', source: 'text-alignment', confidence: 0.4, verified: null }] },
+        { block: 'media', instances: [{ slug: 'a', pos: 3, selector: 'm1', source: 'position', confidence: 0, verified: null }, { slug: 'b', pos: 4, selector: 'm2', source: 'position', confidence: 0, verified: null }] },
+        { block: 'gallery', instances: [{ slug: 'a', pos: 5, selector: 'g1', source: 'position', confidence: 0, verified: null }] },
+      ],
+    }],
+  };
+  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }] };
+  const dir = withCaptures('selector-quality');
+  mkdirSync(W(dir), { recursive: true });
+  writeFileSync(join(dir, MAP), `${JSON.stringify(mixedMapping, null, 2)}\n`);
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, MIXED);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // --check compares inputs/outputs only; the derived selectorQuality is never a drift
+  const c = run(dir, '--check', '--json');
+  ok(c, 0);
+  assert.equal(jsonOut(c).status, 'fresh');
+  assert.deepEqual(jsonOut(c).drifted, []);
+  // --rehash-only recomputes it (not a carry-over): corrupt the field, re-hash, it comes back right
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.selectorQuality.zeroConfidence = 999; });
+  ok(run(dir, '--rehash-only'), 0);
+  assert.equal(doc(dir, 'manifest.json').selectorQuality.zeroConfidence, 3, 'derived, recomputed from the mapping');
+  // an empty mapping → all zeros
+  writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
+  ok(run(dir));
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [] });
 });
 
 check('mapping required: captures present and no mapping.json → the manifest is written without handover, the missing line names block-origin.mjs --verify, exit 2; unchanged on a re-run, still 2; --dry-run writes nothing', () => {

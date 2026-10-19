@@ -20,7 +20,9 @@
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
  * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
- * in the content files, no update-coverage.mjs --block record), the handover state and `handoverNotes` (owner
+ * in the content files, no update-coverage.mjs --block record), a `selectorQuality` block derived from mapping.json
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage and the zeroConfidence count — not a
+ * rewrite of mapping.json, so a re-hash recomputes it and --check never counts it as drift), the handover state and `handoverNotes` (owner
  * actions: present only when non-empty, e.g. delivered blocks with no judged base type — unknown is not a judged
  * value, the owner names them). It refuses (exit 1,
  * nothing written, --force included) coverage without formatVersion and stale coverage: a content
@@ -72,6 +74,8 @@ import {
   readJSON, sha256, byStr, kebab, edsName, kindOf, DEFAULT_CONTENT, contentFileFor, identityTokens, scrubIdentity,
   COVERAGE_FORMAT_VERSION, classifyExportDrift,
 } from './lib.mjs';
+// countsOf derives the selector-quality figures from mapping.json; importing it runs nothing (its CLI is isMain-guarded).
+import { countsOf } from './block-origin.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.slice(2).includes('--help') || process.argv.slice(2).includes('-h')) {
@@ -187,6 +191,33 @@ export function blockOriginInputDirs(project, capturesDir = join(project, 'stard
     capturesDir,
     edsDir: join(project, 'stardust', 'eds-schema'),
     encodeDirs: [join(project, 'stardust', 'import'), join(project, 'stardust', 'migrate', 'encode')].filter(isDir),
+  };
+}
+
+// The top zero-confidence blocks named in the manifest; the whole count stays in `zeroConfidence`, this breakdown is capped.
+const SELECTOR_QUALITY_TOP = 10;
+
+/**
+ * The selectorQuality block derived from mapping.json at manifest time (block-origin's countsOf; mapping.json is NOT
+ * rewritten): instances, the three selector sources ({encoderMap, textAlignment, position}), encoderCoverage
+ * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — image-only repeating blocks
+ * with no text to anchor) and the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
+ * sorted). null when there is no readable mapping (nothing shipped to measure). Derived, so --check keeps it out of the
+ * drift classification (it hashes only inputs/outputs). Pure but for the one read.
+ */
+export function selectorQualityOf(mappingFile) {
+  if (!isFile(mappingFile)) return null;
+  let mapping;
+  try { mapping = JSON.parse(readFileSync(mappingFile, 'utf8')); } catch { return null; }
+  if (!mapping || !Array.isArray(mapping.templates)) return null;
+  const c = countsOf(mapping);
+  const round3 = (x) => Math.round(x * 1000) / 1000;
+  return {
+    instances: c.instances,
+    sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], position: c.sources.position },
+    encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
+    zeroConfidence: c.confidence.none,
+    zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
   };
 }
 
@@ -524,12 +555,15 @@ function main(argv) {
   const handoverNotes = unjudged.length
     ? [`${unjudged.length} delivered block(s) have no judged base type; the owner names them (${unjudged.join(', ')})`]
     : [];
+  // Derived from mapping.json (not a rewrite of it), so it is recomputed on a re-hash and never counts as drift.
+  const selectorQuality = selectorQualityOf(mappingFile);
   const manifest = {
     _provenance: provenance,
     formatVersion: FORMAT_VERSION,
     inputs: sortedInputs,
     outputs: Object.fromEntries(Object.keys(outputs).sort(byStr).map((k) => [k, outputs[k]])),
     placeholders,
+    ...(selectorQuality ? { selectorQuality } : {}),
     // an export without its mapping is not ready to hand over: no handover key (a recorded handover is kept)
     ...(missing.length && !handover ? {} : { handover }),
     ...(handoverNotes.length ? { handoverNotes } : {}),
