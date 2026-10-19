@@ -43,6 +43,17 @@
         "siblings": { "type": "integer", "minimum": 0, "description": "Cloned sibling groups beyond one archetype per type (total − archetypes)." }
       }
     },
+    "variantsSummary": {
+      "type": "object",
+      "description": "The variant explosion from coverage/blocks.json, recomputed at manifest time over its module rows (one per EDS name): total = their variants, singleUse = those used by exactly one instance, blocks = the rows with at least one variant. An adopter emits one catalog block per variant, so a high singleUse count means many one-off option-class combinations to review or fold, not reuse; done-check.mjs surfaces singleUse as the export_quality:single_use_variants info line. Optional (older manifests omit it). Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
+      "required": ["total", "singleUse", "blocks"],
+      "additionalProperties": false,
+      "properties": {
+        "total": { "type": "integer", "minimum": 0, "description": "Variants over the module rows of coverage/blocks.json." },
+        "singleUse": { "type": "integer", "minimum": 0, "description": "Variants with exactly one instance across all pages." },
+        "blocks": { "type": "integer", "minimum": 0, "description": "Module rows with at least one variant (the blocks the delivered documents show)." }
+      }
+    },
     "selectorQuality": {
       "type": "object",
       "description": "Derived from workspace/mapping.json at manifest time (block-origin countsOf; mapping.json is not rewritten). Present only when a readable mapping exists. Absent from the drift hashes: a re-hash recomputes it, it never counts as drift.",
