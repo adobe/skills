@@ -159,7 +159,8 @@ if (playwrightOk && pngOk) {
     assert.ok(s02.fonts.some((f) => f.family === 'Inter' && typeof f.served === 'boolean'), JSON.stringify(s02.fonts));
     const work = join(p.dir, '.work', 'reskin', 'gates', 'home', 'figma');
     for (const f of ['s02.figma.png', 's02.page.png', 's02.diff.png', 's02.text-boxes.json', 'pixel.json']) assert.ok(existsSync(join(work, f)), f);
-    assert.deepEqual(pixelOf(p), { results: r.results });
+    assert.deepEqual(pixelOf(p), { url: urlOf(p), regime: 'local', results: r.results });
+    assert.deepEqual(r.results.map((x) => [x.slot, x.root]), [['s01', '1:3'], ['s02', '1:7']]);
     assert.deepEqual(JSON.parse(readFileSync(join(work, 's02.text-boxes.json'), 'utf8')).boxes[0], { x: 120, y: 80, w: 1200, h: 48 });
   });
 

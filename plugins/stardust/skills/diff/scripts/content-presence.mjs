@@ -27,12 +27,14 @@
  * Usage: node skills/diff/scripts/content-presence.mjs <originUrl> <edsUrl> [--width 1440]
  *        [--main <sel>[=<selEds>]] [--variable <sel,…>] [--chrome] [--json [<file>]] [--min-cut 2]
  *        [--settle-passes 4] [--max-findings 40] [--count-words <w,…>] [--plain] [--warmup <url>]
+ *        [--token-env <NAME> | --auth-header <value>] [--auth-origin <url>]
  * `presenceInventoryInPage`, `alignHeadings`, `diffPresence`, `formatReport`, `norm` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clipInventoryInPage, inPage, morePrelude, summarize } from './clip-probe.mjs';
+import { AUTH_HELP, instrumentAuth } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `content-presence — origin vs served page: visible headings / links / buttons / images / text per band + control state (#125 D2)
@@ -53,7 +55,16 @@ Usage: node content-presence.mjs <originUrl> <edsUrl> [options]
   --warmup <url>           visit this URL first on the ORIGIN side (bot-managed sites)
   --locale <tag>           default en-US
   --help                   this text
-Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error, 3 bot challenge, 4 origin HTTP >= 400.`;
+Exit: 0 clean, 2 any MISSING/HIDDEN link or heading, 1 error (a usage error, a site-auth one included), 3 bot challenge, 4 origin HTTP >= 400.
+
+Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
+${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
+  The two URLs usually have two origins (the live origin and the served page): with a token, name the one that
+  gets it with --auth-origin; the other side's origin never receives it.`;
+
+// A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
+// undefined only when absent, and a missing value is its usage error.
+const flagValue = (rest, i) => (i + 1 < rest.length && !rest[i + 1].startsWith('--') ? rest[i + 1] : '');
 
 // ---- in-page inventory (needs IN_PAGE_LIB — run via inPage()) -----------------------------------------
 /** page.evaluate(inPage(presenceInventoryInPage, { rootSel, variableSels })) → { docH, pageW, root, items[] } */
@@ -319,6 +330,11 @@ export function parseArgs(argv) {
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
+    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
+      const v = flagValue(rest, i);
+      opts[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
+      if (v) i += 1;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.origin) opts.origin = a; else if (!opts.eds) opts.eds = a;
   }
@@ -327,8 +343,8 @@ export function parseArgs(argv) {
 }
 
 /** Inventory one side: visit + settle, presence inventory, clip inventory. */
-export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null }) {
-  const { ctx, page } = await openPage(browser, { width, locale });
+export async function inventorySide(browser, url, { width, locale, warmup, rootSel, variableSels, minCut, settlePasses = 4, httpError = 'measure', countWords = null, moreWords = null, auth = null }) {
+  const { ctx, page } = await openPage(browser, { width, locale, ...auth });
   try {
     const v = await visit(page, url, { warmup, settle: { passes: settlePasses }, httpError });
     const inv = await page.evaluate(inPage(presenceInventoryInPage, countWords ? { rootSel, variableSels, countWords } : { rootSel, variableSels }, morePrelude(moreWords)));
@@ -339,6 +355,12 @@ export async function inventorySide(browser, url, { width, locale, warmup, rootS
 
 async function main() {
   const opts = parseArgs(process.argv);
+  let auth;
+  try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [opts.origin, opts.eds, opts.warmup].filter(Boolean) }); } catch (e) {
+    if (e.code !== 2) throw e;
+    console.error(`content-presence error: ${e.message}\n\n${HELP}`);
+    process.exit(1);
+  }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let o; let e; let tier;
@@ -347,8 +369,8 @@ async function main() {
     // ORIGIN side fails loud on any HTTP ≥ 400 (a 403 page measured as the origin reads "100 EXTRA on the
     // build"); the SERVED side is measured with a warning (a 404 build before preview propagation is the
     // advisory contract).
-    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords });
-    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords });
+    o = await inventorySide(browser, opts.origin, { width: opts.width, locale: opts.locale, warmup: opts.warmup, rootSel: opts.main, variableSels: opts.variable, minCut: opts.minCut, settlePasses: opts.settlePasses, httpError: 'throw', countWords: opts.countWords, moreWords: opts.moreWords, auth });
+    e = await inventorySide(browser, opts.eds, { width: opts.width, locale: opts.locale, warmup: null, rootSel: opts.mainEds, variableSels: opts.variableEds, minCut: opts.minCut, settlePasses: opts.settlePasses, countWords: opts.countWords, moreWords: opts.moreWords, auth });
   } finally { await browser.close(); }
   const res = diffPresence(o, e, { chrome: opts.chrome });
   const strip = (side) => ({ url: side.url, at: side.at, status: side.status, settlePasses: side.settlePasses, docH: side.docH, root: side.root, items: side.items, clip: { counts: side.clip.counts, groups: side.clip.groups } });

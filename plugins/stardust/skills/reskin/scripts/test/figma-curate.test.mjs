@@ -159,6 +159,21 @@ check('no roles for radii or shadows → every foundation record by key', () => 
   assert.deepEqual(t2.radii, { 'radius-8': '8px', 'radius-12-12-0-0': '12px 12px 0px 0px', 'radius-4': '4px' });
   assert.deepEqual(t2.shadows, { 'elevation-card': 'rgba(0, 0, 0, 0.12) 0px 4px 12px 0px' });
 });
+check('radii or shadows marked absent are not resurrected by the every-record fallback: coverage, tokens and nodeRefs agree', () => {
+  const only = (group) => (r) => {
+    for (const k of Object.keys(r.roles)) if (k.startsWith(`${group}.`)) delete r.roles[k];
+    return r;
+  };
+  const radii = curate(inputs(rules((r) => { only('radii')(r); r.roles['radii.radius-8'] = { absent: 'intentionally excluded' }; return r; }))).donorTokens;
+  assert.deepEqual(radii.radii, { 'radius-12-12-0-0': '12px 12px 0px 0px', 'radius-4': '4px' });
+  assert.deepEqual(radii.coverage.absent, [{ path: 'radii.radius-8', why: 'intentionally excluded', probe: false }]);
+  assert.deepEqual(Object.keys(radii.nodeRefs).filter((k) => k.startsWith('radii.')), ['radii.radius-12-12-0-0', 'radii.radius-4']);
+  const shadows = curate(inputs(rules((r) => { only('shadows')(r); r.roles['shadows.elevation-card'] = { absent: 'flat design' }; return r; }))).donorTokens;
+  assert.deepEqual(shadows.shadows, {});
+  assert.deepEqual(shadows.coverage.absent, [{ path: 'shadows.elevation-card', why: 'flat design', probe: false }]);
+  assert.deepEqual(Object.keys(shadows.nodeRefs).filter((k) => k.startsWith('shadows.')), []);
+  assert.deepEqual(shadows.radii, { card: '12px 12px 0px 0px', button: '8px' }, 'the other group is untouched');
+});
 check('every value in palette/type/layout/buttons is a plain string', () => {
   for (const g of ['palette', 'type', 'layout', 'buttons']) for (const [k, v] of leaves(t[g])) assert.equal(typeof v, 'string', `${g}.${k}`);
 });

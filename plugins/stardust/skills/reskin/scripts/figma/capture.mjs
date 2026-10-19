@@ -2,13 +2,15 @@
 // one file version over REST (files depth=2 → nodes → variables/local → images, every call after the
 // first pinned with version=<v>), caches raw responses and image bytes, then writes the capture
 // outputs under <dir>/canon-source/. With a complete cache and no --refresh it rebuilds every output
-// from the cache: no request, no token. A run stopped part-way (a long 429) keeps what it fetched; the
-// next run for the same selection reuses the cached nodes response and image bytes.
-import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
-import { cacheFor, writeCurrent } from './cache.mjs';
+// from the cache: no request, no token. A capture is built in a staging dir and swapped in whole when
+// it is complete, so a run stopped part-way (a long 429) or failing keeps what it fetched for the next
+// run of the same selection and never touches the last complete capture, even of the same version.
+import { existsSync, readFileSync, rmSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import { cacheFor, cacheProblem, writeCurrent } from './cache.mjs';
 import { FigmaError, UsageError } from './errors.mjs';
 import { buildFoundation, FOUNDATION_FILES } from './foundation.mjs';
+import { assertIgnored } from './guard.mjs';
 import { readJsonIf, provenance, writeFileAtomic, writeJson } from './io.mjs';
 import { parseFigmaUrl } from './url.mjs';
 
@@ -39,6 +41,13 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const cache = cacheFor(dir, fileKey);
   const request = { nodeId, frames, maxFrames };
   const latest = cache.latest();
+  // --confidential: the CLI checks the fixed outputs before any request; every other destination — a
+  // capture parked or put back by a swap, and what depends on the file version, the frames and their
+  // names — is checked here, each set before its first write or move.
+  const guard = (entries) => { if (confidential) assertIgnored(entries, { dir }); };
+  const cachePath = (p) => [relative(dir, p), '.work/'];
+  guard(cache.moveTargets().map(cachePath));
+  cache.recover();
 
   if (latest && !refresh) {
     const v = cache.version(latest.version);
@@ -47,19 +56,22 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     if (JSON.stringify(manifest.request) !== JSON.stringify(request)) {
       throw new UsageError(`the cache at ${cache.root} holds a different selection (node ${manifest.request.nodeId ?? 'none'}, frames ${manifest.request.frames?.join(',') ?? 'default'}, max ${manifest.request.maxFrames}); re-run with --refresh to fetch this one`);
     }
-    const stalled = readdirSync(cache.root).filter((d) => d !== latest.version && existsSync(join(cache.root, d, 'selection.json')) && !existsSync(join(cache.root, d, 'manifest.json')));
-    if (stalled.length) warn(`figma-donor: a newer capture (version ${stalled.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
-    const written = writeOutputs({ dir, manifest, v, confidential });
+    const problem = cacheProblem(v, manifest);
+    if (problem) throw new UsageError(`the cache at ${v.dir} is inconsistent: ${problem}. Re-run with --refresh to rebuild it.`);
+    const stalled = cache.stalled();
+    const newer = stalled.filter((s) => s !== latest.version);
+    if (newer.length) warn(`figma-donor: a newer capture (version ${newer.join(', ')}) stopped part-way; using the complete cached version ${latest.version}. Re-run with --refresh to finish it.`);
+    if (stalled.includes(latest.version)) warn(`figma-donor: a refresh of version ${latest.version} stopped part-way; the complete cached capture is unchanged and is used. Re-run with --refresh to finish it.`);
+    const written = writeOutputs({ dir, manifest, v, confidential, guard });
     return { manifest, written, fromCache: true };
   }
 
+  guard([cachePath(join(cache.root, 'latest.json'))]);
   const endpoints = [];
   const file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
   const version = String(file.version ?? '');
   if (!version) throw new FigmaError(`Figma returned no version for file ${fileKey}`, { exitCode: 3 });
   endpoints.push({ name: 'files', status: 'ok' });
-  const v = cache.version(version);
-  v.write('file.json', file);
 
   const { all, discovered } = selectFrames(file, nodeId, frames);
   if (!all.length) throw new UsageError('no top-level frames to capture: pass --frames <id,id> or a URL with a node-id');
@@ -72,6 +84,12 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
   const selected = all.slice(0, maxFrames);
   const cut = all.slice(maxFrames);
   if (cut.length) warn(`figma-donor: ${discovered} top-level frames; capturing the first ${selected.length} (--max-frames ${maxFrames}). Cut: ${cut.join(', ')}`);
+  // Everything below lands in staging; the version's complete capture, if any, stays as it was until
+  // the manifest is written and the staging dir is promoted.
+  const v = cache.staging(version, selected);
+  const names = ['file.json', 'selection.json', 'nodes.json', 'variables.json', 'images.json', 'manifest.json', ...batches(selected).map((_, i) => `nodes.part-${i}.json`), ...selected.map((id) => v.imageFile(id))];
+  guard([...[v, cache.version(version)].flatMap((h) => names.map((n) => cachePath(h.path(n)))), ...cache.moveTargets(version).map(cachePath)]);
+  v.write('file.json', file);
   const resume = JSON.stringify(v.read('selection.json')) === JSON.stringify({ frames: selected });
   v.write('selection.json', { frames: selected });
 
@@ -139,23 +157,20 @@ export async function runCapture({ url, frames = null, maxFrames = 25, refresh =
     endpoints, planTier: client.planTier ?? null,
   };
   v.write('manifest.json', manifest);
-  cache.setLatest(version);
-  const written = writeOutputs({ dir, manifest, v, confidential });
+  cache.promote(version, v);
+  const written = writeOutputs({ dir, manifest, v: cache.version(version), confidential, guard });
   return { manifest, written, fromCache: false };
 }
 
 // capture --list: every page and its visible top-level nodes, from the cached file when there is one
-// (no request, no token), else one files depth=2 call cached like a capture's. Writes no output.
+// (no request, no token), else one files depth=2 call. Writes nothing.
 export async function listInventory({ url, refresh = false, dir = 'stardust', client }) {
   const { fileKey } = parseFigmaUrl(url);
   const cache = cacheFor(dir, fileKey);
   const latest = cache.latest();
   let file = latest && !refresh ? cache.version(latest.version).read('file.json') : null;
   const fromCache = Boolean(file);
-  if (!file) {
-    file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
-    if (file.version) cache.version(String(file.version)).write('file.json', file);
-  }
+  if (!file) file = await client.getJson(`/v1/files/${fileKey}`, { depth: 2 });
   const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
   const lines = [];
   let count = 0;
@@ -174,7 +189,7 @@ export async function listInventory({ url, refresh = false, dir = 'stardust', cl
 }
 
 // Every output is a pure function of the cache: a cached re-run writes the same bytes.
-function writeOutputs({ dir, manifest, v, confidential = false }) {
+function writeOutputs({ dir, manifest, v, confidential = false, guard = () => {} }) {
   const file = v.read('file.json');
   const nodes = v.read('nodes.json');
   const imageMap = v.read('images.json') || {};
@@ -182,6 +197,7 @@ function writeOutputs({ dir, manifest, v, confidential = false }) {
   const raw = (name) => `${dir}/.work/reskin/figma/${manifest.fileKey}/${manifest.version}/${name}`;
   const prov = (names, note) => provenance({ at: manifest.capturedAt, readArtifacts: names.map(raw), note });
   const { foundation, roleCandidates, moduleCandidates, specTables } = buildFoundation({ file, nodes, frameIds: manifest.frames });
+  guard(moduleCandidates.frames.filter((f) => imageMap[f.node]).map((f) => [`canon-source/assets/screenshots/${f.slug}.png`, 'canon-source/assets/screenshots/']));
   const written = [];
   const out = (rel, obj) => { writeJson(join(cs, rel), obj); written.push(`${dir}/canon-source/${rel}`); };
 

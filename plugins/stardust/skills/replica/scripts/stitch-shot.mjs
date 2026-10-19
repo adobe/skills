@@ -64,11 +64,22 @@
  *                         built-in candidates (OneTrust, "Accept all", …)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --hide <sel,...>    remove the matched elements from the capture
+ *                         (display:none, applied before the settle pass): no
+ *                         band at their place, no space they reserved, and a
+ *                         fixed bar is not repeated in every chunk. --dismiss
+ *                         CLICKS its selectors and leaves layout as it was;
+ *                         this one removes. Space reserved outside the
+ *                         element (a body or main offset) stays.
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --token-env <NAME> | --auth-header "<value>"  [--auth-origin <url>]
+ *                         opt-in site auth for a protected origin: the token rides requests to ONE
+ *                         origin (default: the URL's), never to another origin the page loads, and
+ *                         is never picked up from SITE_TOKEN unasked. A usage error exits 1, as the others do.
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
@@ -99,7 +110,7 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, AUTH_HELP, instrumentAuth, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -109,6 +120,9 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --hide <sel,…>    remove the matched elements from the capture (display:none, before the settle
+                    pass: no band, no reserved space, a fixed bar not repeated per chunk); --dismiss
+                    only clicks. Default none; selectors are comma-separated, so none holds a comma
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -116,14 +130,21 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --timeout <ms>    goto timeout (default 60000)
   --help            this text
 
+Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
+${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
+
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+Exit codes: 0 written, 1 error (a usage error, a site-auth one included), 3 bot challenge (live side blocked — fail loud).`;
+
+// A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
+// undefined only when absent, and a missing value is its usage error.
+const flagValue = (rest, i) => (i + 1 < rest.length && !rest[i + 1].startsWith('--') ? rest[i + 1] : '');
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], hide: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -131,11 +152,17 @@ function parseArgs(argv) {
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--hide') { opts.hide = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
+      const v = flagValue(rest, i);
+      opts[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
+      if (v) i += 1;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -161,12 +188,19 @@ async function dismissAndLog(page, url, opts) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  let auth;
+  try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [url] }); } catch (e) {
+    if (e.code !== 2) throw e;
+    console.error(`stitch-shot error: ${e.message}\n\n${HELP}`);
+    process.exit(1);
+  }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
     const ctx = await newLiveContext(browser, {
       ua: opts.ua, locale: opts.locale,
       viewport: { width: opts.width, height: opts.vh },
+      ...auth,
     });
     const page = await ctx.newPage();
     // Challenge/blocked interstitial → loud BotChallengeError (exit 3); a
@@ -174,6 +208,9 @@ async function main() {
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    // One rule per selector, so an invalid one drops only itself; a stylesheet rule also covers elements
+    // the page adds later.
+    if (opts.hide.length) await page.addStyleTag({ content: opts.hide.map((sel) => `${sel}{display:none!important}`).join('\n') });
     await page.waitForTimeout(opts.wait);
     await dismissAndLog(page, url, opts);
 

@@ -13,7 +13,9 @@
       ],
       "type": [
         { "id": "t1", "selector": "h1", "node": "1:5" },
-        { "id": "t2", "selector": ".btn", "node": "I1:20;3:5" }
+        { "id": "t2", "selector": ".btn", "node": "I1:20;3:5" },
+        { "id": "t3", "selector": ".lead", "node": "1:6" },
+        { "id": "t4", "selector": ".btn.secondary", "node": "I1:21;3:7" }
       ]
     },
     "s02": {
@@ -25,7 +27,9 @@
       ],
       "type": [
         { "id": "t1", "selector": "h2", "node": "I1:7;5:2" },
-        { "id": "t2", "selector": ".card-label", "node": "I1:7;5:8" }
+        { "id": "t2", "selector": ".card-label", "node": "I1:7;5:8" },
+        { "id": "t3", "selector": ".feature", "node": "I1:7;5:3" },
+        { "id": "t4", "selector": ".card-btn", "node": "I1:7;5:6;3:5" }
       ]
     }
   }

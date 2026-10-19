@@ -99,19 +99,17 @@ values.
 
 ### Screenshot trap: inner-scroll / fake-viewport donors
 
-Some donors scroll an **inner container**, not the body — app-shell
-sites, and at the extreme a whole "desktop OS" chrome where the page
-is a window inside a fake viewport (the smoke's donor did exactly
-this). `fullPage: true` sizes the shot from `body.scrollHeight`, so
-it silently collapses to one viewport and your module-evidence
-screenshots cover only the fold. Check before trusting any donor
-shot: if `document.body.scrollHeight` ≈ the viewport height while
-the page obviously continues, find the inner scroll container
-(`overflow-y: auto|scroll` with `scrollHeight > clientHeight`) and
-either scroll *it* while capturing stitched viewport slices, or
-expand its height to `scrollHeight` before a single shot. A
-fold-only screenshot poisons `donor-modules.md` — modules below the
-fold never enter the vocabulary and the mapping ratio starves.
+Some donors scroll an **inner container**, not the body (app shells,
+a whole "desktop OS" chrome). `fullPage: true` sizes the shot from
+`body.scrollHeight`, so it silently collapses to one viewport and the
+module-evidence screenshots cover only the fold, which poisons
+`donor-modules.md`: modules below it never enter the vocabulary. Check
+before trusting a donor shot: if `document.body.scrollHeight` ≈ the
+viewport height while the page obviously continues, find the inner
+scroll container (`overflow-y: auto|scroll` with `scrollHeight >
+clientHeight`) and either scroll *it* while capturing stitched
+viewport slices, or expand its height to `scrollHeight` before a single
+shot.
 
 ## 2. Local static prototypes (`--donor-dir <path>`)
 
@@ -159,7 +157,8 @@ environment only. Recipe:
    other donors (it creates `state.json`).
 2. `figma-donor.mjs capture <figma-url>` — one file version (every
    call pinned with `version=`), raw responses cached under
-   `.work/reskin/figma/`, then `canon-source/foundation/*.json`
+   `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the
+   last complete capture), then `canon-source/foundation/*.json`
    (normalized values, each citing its node), `role-candidates.json`
    (ranked sources for the 13 probe paths), `module-candidates.json`
    (frames with their page, sections by y, component sets, remote
@@ -171,12 +170,19 @@ environment only. Recipe:
    nodes; pass the foundation frames (colour, type, spacing, the button
    set) and one representative frame per module page with
    `--frames <id,…>`, raising `--max-frames` to fit. Without either,
-   a file larger than `--max-frames` stops and asks for this.
+   a file larger than `--max-frames` stops and asks for this. Look at
+   the source page for module markers (`data-component` names) before
+   picking frames: changing the selection of an existing capture needs
+   `--refresh`, a second full nodes fetch.
 3. Author `reskin/curation-rules.json`, the only non-mechanical
-   input: reference pins (one frame, variable mode and breakpoint per
-   module family; § Pin one reference page), roles, normalizations,
-   curations with their proving rule, suspects, section-level modules
-   and the DESIGN prose.
+   input, from `role-candidates.json`, `module-candidates.json` and the
+   frame screenshots: reference pins (one frame, variable mode and breakpoint per
+   module family; § Pin one reference page), roles (each of the 13 probe paths
+   mapped, or marked absent with a why), normalizations,
+   curations with their proving rule, suspects, section-level modules, not
+   atoms (an included module's `id` matches `^M\d+$`: a kit whose codes are not
+   M-numbers is renumbered, its own code kept in the `name`) and the DESIGN
+   prose.
 4. `figma-donor.mjs curate` — deterministic: `donor-tokens.json`,
    `donor-modules.md`, `canon-source/DESIGN.{md,json}` and
    `_brand-extraction.json`. Re-run after any rules change.
@@ -198,17 +204,17 @@ Provenance class: **`figma-rest`** — `_crawl-log.json#discovery`
 records `fetchTechnique: "figma-rest"` in place of a crawl, with the
 file version and the frames selected and cut; `notBrowserRendered`
 says per artifact that it was authored from REST node data. Every token
-cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). One
-gap the contract acknowledges: Figma has no computed styles, so
-`donor-tokens.json` values are authored from node data rather than
-sampled — the probe still works because the tokens are exact strings
-either way. Flags, schemas and exit codes: `figma-donor.mjs --help`.
+cites its node in `donor-tokens.json#nodeRefs` (`via: "rest"`). Figma has
+no computed styles, so `donor-tokens.json` values are authored from node
+data, not sampled; the probe still works because the tokens are exact
+strings. Flags, schemas and exit codes: `figma-donor.mjs --help`.
 `type.family` is the bare Figma family name; map it with a
 `familyEquivalence` normalization to the exact stack the renderer will
 emit (the probe compares the whole string). A design that must not reach
 git: pass `--confidential` to `capture` (sticky: `curate` and `stamp`
-inherit it; writes are refused unless git-ignored and the stamp redacts
-the URL). Color names come from styles or `design.colorNames` in the
+inherit it; every output and cache path must be git-ignored and
+untracked, else nothing is written; the stamp redacts the URL). Color
+names come from styles or `design.colorNames` in the
 rules; a Figma MCP server, where available, can help name them.
 
 ## Pin one reference page (hard rule)

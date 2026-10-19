@@ -29,6 +29,16 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
     for (const key of Object.keys(nodeRefs)) if (key === a.path || key.startsWith(`${a.path}.`)) delete nodeRefs[key];
     Object.assign(nodeRefs, structuredClone(a.refs));
   }
+  // Radii and shadows without authored roles: every foundation record under its own key. Defaults go
+  // in before absence so a path the rules declare absent is removed from tokens and nodeRefs alike.
+  const roleTargets = (group) => r.assignments.some((a) => a.path.startsWith(`${group}.`));
+  for (const [group, file] of [['radii', 'radii'], ['shadows', 'effects']]) {
+    if (roleTargets(group)) continue;
+    for (const [key, rec] of Object.entries(foundation[file] || {})) {
+      tokens[group][key] = rec.value;
+      nodeRefs[`${group}.${key}`] = { node: rec.node, figma: rec.figma, via: 'rest' };
+    }
+  }
   for (const a of r.absent) {
     deletePath(tokens, a.path);
     for (const key of Object.keys(nodeRefs)) if (key === a.path || key.startsWith(`${a.path}.`)) delete nodeRefs[key];
@@ -52,16 +62,6 @@ export function curate({ foundation, moduleCandidates, rules, manifest, screensh
   }
   const smoothing = r.norm.fontSmoothing.at(-1);
   if (smoothing) tokens.type.fontSmoothing = smoothing.params.value;
-
-  // Radii and shadows without authored roles: every foundation record under its own key.
-  const roleTargets = (group) => r.assignments.some((a) => a.path.startsWith(`${group}.`));
-  for (const [group, file] of [['radii', 'radii'], ['shadows', 'effects']]) {
-    if (roleTargets(group)) continue;
-    for (const [key, rec] of Object.entries(foundation[file] || {})) {
-      tokens[group][key] = rec.value;
-      nodeRefs[`${group}.${key}`] = { node: rec.node, figma: rec.figma, via: 'rest' };
-    }
-  }
 
   const families = r.norm.familyEquivalence.flatMap((n) => Object.entries(n.params.map).map(([from, to]) => `"${from}" → "${to}"`));
   const { family, ...typeRest } = tokens.type;

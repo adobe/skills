@@ -131,7 +131,7 @@ let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[capture-content] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
   process.exit(2);
 }
 
@@ -306,12 +306,14 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
 
   // Section slots: for each scope, descend single-child wrappers, then take
   // children as content blocks — unless the scope is marked whole ("!").
+  // Never content: a JSON-LD <script> (its text is its innerText) in the scope would be a slot of its own.
+  const contentKids = (el) => Array.from(el.children).filter((k) => !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(k.tagName));
   const sectionEls = [];
   scopes.forEach((scope, si) => {
     if (scopeDefs[si].whole) { sectionEls.push(scope); return; }
     let root = scope;
-    while (root.children.length === 1) root = root.children[0];
-    Array.from(root.children)
+    while (contentKids(root).length === 1) [root] = contentKids(root);
+    contentKids(root)
       .filter((el) => norm(el.innerText).length > 0 || el.querySelector('img'))
       .forEach((el) => sectionEls.push(el));
   });

@@ -16,10 +16,19 @@
  *              what a non-rendering crawler never reads — nav/footer fetch, fragments, index cards)
  *
  *   node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
- *        [--paths file | /path …] [--min 98] [--token-env SITE_TOKEN | --auth-header "token …"] \
+ *        [--paths file | /path …] [--min 98] [--token-env SITE_TOKEN | --auth-header "token …"] [--auth-origin <url>] \
  *        [--exclude-blocks client-app,widget,form] [--allowlist file.json] [--json out.json] [--verbose]
  *
- * Exit 1 when any page's code score is below --min; 2 on infrastructure failure.
+ * Site auth (a protected preview; opt-in — without a flag nothing is sent, whatever SITE_TOKEN holds): --token-env
+ * <NAME> sends the token held in the environment variable NAME (else the NAME= line of ./.env), --auth-header "<value>"
+ * this Authorization value (a bare value gets `token ` in front). It goes on every request to ONE origin — --auth-origin
+ * <url>, default --origin — the page's own, the served fetch and the fragment fetches alike, and to no other: not a
+ * font or image host, not the target of a redirect off the origin. The page's own requests fail on a redirect within
+ * the origin (measure the final URL): the token never crosses a redirect; the served and fragment fetches follow one
+ * hop by hop, the token on that origin's hops only. It is never printed. A flag with no value, or a variable that is
+ * not set, exits 2.
+ *
+ * Exit 1 when any page's code score is below --min; 2 on infrastructure failure or a usage error.
  * Writes: nothing unless --json <file> is given (the per-page results as JSON); the report is stdout.
  * Allowlist: [{ "block": "location-finder", "string": "N locations", "reason": "…" }] — a runtime
  * value the block is allowed to generate; its words are removed from that block's servedGap and
@@ -29,6 +38,7 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { attachSiteAuth, instrumentSiteAuth } from './site-auth.mjs';
 
 export const CHATGPT_UA = 'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; ChatGPT-User/1.0; +https://openai.com/bot';
 export const LANDMARKS = 'nav,header,footer,.nav,.navigation,.navbar,.nav-bar,.menu,.main-menu,.header,.site-header,.page-header,.footer,.site-footer,.page-footer,#nav,#navigation,#navbar,#header,#footer,#menu,[role="navigation"],[role="banner"],[role="contentinfo"]';
@@ -131,6 +141,24 @@ async function settle(page) {
   await page.waitForTimeout(1500);
 }
 
+/**
+ * GET through context.request, which no route sees and which keeps a request header across a redirect to another
+ * origin. With a site token (`headers`) the redirects are followed here and only a request to `origin` carries it;
+ * without one this is the plain request. `extra` goes on every hop.
+ */
+async function fetchOrigin(request, url, { origin, headers = {}, extra = {}, timeout }) {
+  if (!Object.keys(headers).length) return request.get(url, { headers: extra, timeout });
+  const home = new URL(origin).origin;
+  let target = url;
+  for (let hops = 0; hops <= 20; hops += 1) {
+    const res = await request.get(target, { headers: new URL(target).origin === home ? { ...headers, ...extra } : extra, timeout, maxRedirects: 0 });
+    const next = res.status() >= 300 && res.status() < 400 ? res.headers().location : null;
+    if (!next) return res;
+    target = new URL(next, target).href;
+  }
+  throw new Error('too many redirects');
+}
+
 /** Fragment documents the served page references (fragment links + fragment blocks), as plain HTML. */
 async function fetchFragments(request, origin, served, headers) {
   const paths = new Set();
@@ -138,18 +166,22 @@ async function fetchFragments(request, origin, served, headers) {
   const ok = []; const html = [];
   for (const p of paths) {
     try {
-      const r = await request.get(`${origin}${p}.plain.html`, { headers, timeout: 15000 });
+      const r = await fetchOrigin(request, `${origin}${p}.plain.html`, { origin, headers, timeout: 15000 });
       if (r.ok()) { ok.push(p); html.push(await r.text()); }
     } catch { /* uncredited */ }
   }
   return { paths: ok, html };
 }
 
+/**
+ * Scores one page. `headers` (the site token's `authorization`) is sent to `origin` only, on the served and fragment
+ * fetches; the page's own requests carry theirs through a route on `context` (attachSiteAuth), never extraHTTPHeaders.
+ */
 export async function scorePage(context, origin, path, { excludeBlocks = [], allow = [], headers = {} } = {}) {
   const url = `${origin}${path}`;
   const page = await context.newPage();
   try {
-    const servedRes = await context.request.get(url, { headers: { ...headers, 'user-agent': CHATGPT_UA, accept: 'text/html' }, timeout: 20000 });
+    const servedRes = await fetchOrigin(context.request, url, { origin, headers, extra: { 'user-agent': CHATGPT_UA, accept: 'text/html' }, timeout: 20000 });
     if (!servedRes.ok()) return { path, error: `served fetch HTTP ${servedRes.status()}` };
     const served = await servedRes.text();
     const frags = await fetchFragments(context.request, origin, served, headers);
@@ -188,8 +220,16 @@ if (isMain) {
   const has = (n) => { const i = args.indexOf(n); if (i >= 0) { args.splice(i, 1); return true; } return false; };
   const origin = (opt('--origin', '') || '').replace(/\/$/, '');
   const min = Number(opt('--min', '98'));
-  const tokenEnv = opt('--token-env', null);
-  const authHeader = opt('--auth-header', null) || (tokenEnv && process.env[tokenEnv] ? `token ${process.env[tokenEnv]}` : null);
+  // an auth flag: undefined when absent, '' when it has no value (instrumentSiteAuth's usage error)
+  const authOpt = (n) => {
+    const i = args.indexOf(n);
+    if (i < 0) return undefined;
+    const v = args[i + 1];
+    const given = v !== undefined && !v.startsWith('--');
+    args.splice(i, given ? 2 : 1);
+    return given ? v : '';
+  };
+  const authFlags = { tokenEnv: authOpt('--token-env'), authHeader: authOpt('--auth-header'), authOrigin: authOpt('--auth-origin') };
   const excludeBlocks = (opt('--exclude-blocks', 'client-app,widget') || '').split(',').map((s) => s.trim()).filter(Boolean);
   const allowFile = opt('--allowlist', null);
   const jsonOut = opt('--json', null);
@@ -197,13 +237,18 @@ if (isMain) {
   const verbose = has('--verbose');
   let paths = args.filter((a) => a.startsWith('/'));
   if (pathsFile && existsSync(pathsFile)) paths = paths.concat(readFileSync(pathsFile, 'utf8').split('\n').map((s) => s.trim()).filter((s) => s.startsWith('/')));
-  if (!origin || !paths.length) { console.error('usage: ai-readability.mjs --origin <published origin> [--paths file | /path …] [--min 98]'); process.exit(2); }
+  if (!origin || !paths.length) { console.error('usage: ai-readability.mjs --origin <published origin> [--paths file | /path …] [--min 98] [--token-env <NAME> | --auth-header "<value>"] [--auth-origin <url>]'); process.exit(2); }
+  let auth = null;
+  try { auth = instrumentSiteAuth({ ...authFlags, urls: [origin] }); } catch (e) { console.error(`ai-readability: ${e.message}`); process.exit(2); }
   const allow = allowFile && existsSync(allowFile) ? JSON.parse(readFileSync(allowFile, 'utf8')) : [];
 
   const { chromium } = await loadPlaywright();
   const browser = await chromium.launch();
-  const headers = authHeader ? { authorization: authHeader } : {};
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, extraHTTPHeaders: headers });
+  // The page's requests carry the token through a route on its one origin; context.request (the served and fragment
+  // fetches) sees no route, so scorePage sends the header itself, to --origin only and when that is the auth origin.
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  if (auth) await attachSiteAuth(context, auth.origin, auth.header);
+  const headers = auth && new URL(origin).origin === auth.origin ? { authorization: auth.header } : {};
   const results = [];
   let fail = false;
   for (const p of paths) {

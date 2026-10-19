@@ -21,13 +21,14 @@
  *
  * Usage: node skills/diff/scripts/clip-probe.mjs <url> [--width 1440] [--min-cut 2] [--main <sel>]
  *        [--json [<file>]] [--max-findings 400] [--advisory] [--more-words <regex>] [--plain]
- *        [--warmup <url>] [--locale en-US]
- * Exit: 0 nothing counted, 2 counted findings, 1 error, 3 bot challenge. Requires playwright.
+ *        [--warmup <url>] [--locale en-US] [--token-env <NAME> | --auth-header <value>] [--auth-origin <url>]
+ * Exit: 0 nothing counted, 2 counted findings, 1 error (a usage error, a site-auth one included), 3 bot challenge. Requires playwright.
  * `clipInventoryInPage`, `IN_PAGE_LIB`, `inPage`, `summarize`, `formatTable` are exported.
  */
 import { mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { AUTH_HELP, instrumentAuth } from './live-session.mjs';
 import { browserTier, openBrowser, openPage, visit } from './measure-live.mjs';
 
 const HELP = `clip-probe — text and controls cut or hidden by an overflow ancestor on a served page (#125 D1)
@@ -44,7 +45,15 @@ Usage: node clip-probe.mjs <url> [options]
   --warmup <url>      visit this URL first (bot-managed sites)
   --locale <tag>      default en-US
   --help              this text
-Counted (exit 2): TEXT CLIPPED, TEXT HIDDEN, CONTROL HIDDEN, CONTROL CLIPPED. Exit 3 = bot challenge.`;
+Counted (exit 2): TEXT CLIPPED, TEXT HIDDEN, CONTROL HIDDEN, CONTROL CLIPPED. Exit 3 = bot challenge.
+
+Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
+${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
+A site-auth usage error exits 1, like the other usage errors (stderr names it).`;
+
+// A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
+// undefined only when absent, and a missing value is its usage error.
+const flagValue = (rest, i) => (i + 1 < rest.length && !rest[i + 1].startsWith('--') ? rest[i + 1] : '');
 
 // ---- in-page library --------------------------------------------------------------------------------
 // Helper declarations injected in front of every in-page function of the gate probes (content-presence
@@ -327,6 +336,11 @@ export function parseArgs(argv) {
     else if (a === '--plain') opts.plain = true;
     else if (a === '--warmup') opts.warmup = rest[++i];
     else if (a === '--locale') opts.locale = rest[++i];
+    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
+      const v = flagValue(rest, i);
+      opts[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
+      if (v) i += 1;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else if (!opts.url) opts.url = a;
   }
@@ -343,11 +357,17 @@ export async function probe(page, url, opts) {
 
 async function main() {
   const opts = parseArgs(process.argv);
+  let auth;
+  try { auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [opts.url, opts.warmup].filter(Boolean) }); } catch (e) {
+    if (e.code !== 2) throw e;
+    console.error(`clip-probe error: ${e.message}\n\n${HELP}`);
+    process.exit(1);
+  }
   const { chromium } = await import('playwright');
   const browser = await openBrowser(chromium, { tier: opts.plain ? 'plain' : 'stealth' });
   let res;
   try {
-    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale });
+    const { ctx, page } = await openPage(browser, { width: opts.width, locale: opts.locale, ...auth });
     res = await probe(page, opts.url, opts);
     res.tier = browserTier(browser);
     await ctx.close();

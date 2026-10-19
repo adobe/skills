@@ -6,6 +6,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { findBox } from './boxes.mjs';
+import { scopeSelector, selectorFor } from './checks.mjs';
+import { stampsOf } from './stamp.mjs';
 import { loadChromium, loadMeasureLive } from './target.mjs';
 
 const PADDING = { paddingTop: 0, paddingRight: 1, paddingBottom: 2, paddingLeft: 3 };
@@ -39,11 +41,11 @@ export function expected(entry, root, tokens) {
 const padOf = (it, i) => Number(String(it.pad ?? '').split(' ')[i]);
 
 // The page side: one { id, value, why? } per entry, from measureInPage items (the section's own, then the
-// entries' `${sectionSel} ${selector}`), relative to the section's rect.
+// entries' scopeSelector), relative to the section's rect.
 export function observed(entries, items, sectionSel) {
   const section = items.find((it) => it.sel === sectionSel && !it.missing && !it.error);
   return entries.map((e) => {
-    const sel = e.selector === ':scope' ? sectionSel : `${sectionSel} ${e.selector}`;
+    const sel = scopeSelector(sectionSel, e.selector);
     if (!section) return { id: e.id, value: null, why: `section ${sectionSel} matched nothing` };
     const hits = items.filter((it) => it.sel === sel);
     if (hits.some((it) => it.error)) return { id: e.id, value: null, why: `${e.selector} is not a valid selector` };
@@ -77,8 +79,9 @@ export function judge(entry, want, got, why) {
   return { status: Math.abs(got - want) <= tol + 1e-9 ? 'PASS' : 'FAIL', detail };
 }
 
-// checks is validateChecks(...).sections; join is runJoin's result (its sections hold the selectors).
-// Writes <out>/geometry.json.
+// checks is validateChecks(...).sections; join is runJoin's result (its sections hold the selectors). On a preview an
+// entry is measured by its previewSelector (selectorFor). Each result carries root, the checks root it was measured
+// against. Writes <out>/geometry.json.
 export async function runGeometry({ target, join: joined, checks, boxes, tokens, out }) {
   const selectorOf = new Map(joined.sections.map((s) => [s.slot, s.selector]));
   const planned = [];
@@ -86,7 +89,7 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
     for (const entry of section.geometry) {
       const rootId = section.roots[entry.width];
       const rootBox = rootId ? boxes.roots[rootId]?.box : null;
-      const base = { slot, id: entry.id, measure: entry.measure, node: entry.token !== undefined ? null : (entry.nodes?.[0] ?? entry.node ?? null) };
+      const base = { slot, id: entry.id, measure: entry.measure, node: entry.token !== undefined ? null : (entry.nodes?.[0] ?? entry.node ?? null), root: rootId ?? null };
       let want = null;
       let source = null;
       try {
@@ -95,7 +98,7 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
         planned.push({ entry, slot, base, error: e.message });
         continue;
       }
-      planned.push({ entry, slot, base, want, source, sectionSel: selectorOf.get(slot) });
+      planned.push({ entry, slot, base, want, source, sectionSel: selectorOf.get(slot), selector: selectorFor(entry, target.regime) });
     }
   }
 
@@ -107,13 +110,13 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
     try {
       for (const width of widths) {
         const at = planned.filter((p) => !p.error && p.entry.width === width);
-        const sels = [...new Set(at.flatMap((p) => [p.sectionSel, p.entry.selector === ':scope' ? p.sectionSel : `${p.sectionSel} ${p.entry.selector}`]))];
+        const sels = [...new Set(at.flatMap((p) => [p.sectionSel, scopeSelector(p.sectionSel, p.selector)]))];
         const page = await target.open(browser, width);
         try {
           const { items } = await page.evaluate(measureInPage, { sels, all: true });
           for (const sectionSel of new Set(at.map((p) => p.sectionSel))) {
             const own = at.filter((p) => p.sectionSel === sectionSel);
-            observed(own.map((p) => p.entry), items, sectionSel).forEach((o, i) => measured.set(own[i], o));
+            observed(own.map((p) => ({ ...p.entry, selector: p.selector })), items, sectionSel).forEach((o, i) => measured.set(own[i], o));
           }
         } finally { await page.context().close(); }
       }
@@ -127,6 +130,6 @@ export async function runGeometry({ target, join: joined, checks, boxes, tokens,
   });
   const result = { pass: results.every((r) => r.status === 'PASS'), results };
   mkdirSync(out, { recursive: true });
-  writeFileSync(join(out, 'geometry.json'), `${JSON.stringify({ version: 1, url: target.url, regime: target.regime, ...result }, null, 2)}\n`);
+  writeFileSync(join(out, 'geometry.json'), `${JSON.stringify({ version: 1, url: target.url, regime: target.regime, checksStamp: stampsOf(checks), ...result }, null, 2)}\n`);
   return result;
 }

@@ -93,12 +93,23 @@ export function findBox(box, id) {
 
 const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 
+export const round1 = (n) => (typeof n === 'number' && Number.isFinite(n) ? Math.round(n * 10) / 10 : null);
+const RGB = /^rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*(?:,\s*([\d.]+)\s*)?\)$/i;
+
+// A box's colour (rgb()/rgba() css or hex) as lower-case hex; an alpha below 1 is a fourth byte.
+export function hexOf(css) {
+  const m = RGB.exec(String(css ?? '').trim());
+  if (!m) return String(css ?? '').trim().toLowerCase();
+  const byte = (n) => Math.min(255, Number(n)).toString(16).padStart(2, '0');
+  return `#${byte(m[1])}${byte(m[2])}${byte(m[3])}${m[4] !== undefined && Number(m[4]) < 1 ? byte(Math.round(Number(m[4]) * 255)) : ''}`;
+}
+
 export function outline(box, depth) {
   const lines = [];
   const walk = (b, level) => {
     let line = `${b.id} ${b.type} "${b.name}" ${b.x},${b.y} ${b.w}×${b.h}`;
     if (b.layout) line += ` ${b.layout.mode} pad ${b.layout.padding.join(',')}${b.layout.gap === null ? '' : ` gap ${b.layout.gap}`}`;
-    if (b.text) line += ` ${b.text.fontFamily} ${b.text.fontWeight} ${b.text.fontSize}/${b.text.lineHeightPx} "${clip(b.text.characters, 40)}"`;
+    if (b.text) line += ` ${b.text.fontFamily} ${b.text.fontWeight} ${b.text.fontSize}/${b.text.lineHeightPx}${round1(b.text.letterSpacing) === null ? '' : ` ls ${round1(b.text.letterSpacing)}`}${b.text.color ? ` ${hexOf(b.text.color)}` : ''} "${clip(b.text.characters, 40)}"`;
     lines.push(`${'  '.repeat(level)}${line}`);
     if (level < depth) for (const c of b.children) walk(c, level + 1);
   };

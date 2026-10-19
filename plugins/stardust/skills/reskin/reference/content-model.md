@@ -231,26 +231,12 @@ isn't a stream node) and never edit `visibleText` itself.
 ### Why this exists (the smoke-test history)
 
 The first field run of this skill (a university site × a SaaS donor) had only
-the per-type arrays, and reconstructing document order from
-`visibleText` as an oracle consumed the majority of the renderer's
-engineering time — three debug rounds on one page. The three traps
-that forced it, all captured structurally by the stream now:
-
-1. **Duplicate identical strings.** Two identical date leftovers,
-   the same eyebrow ×5 across `li`/`p`/`a`, a hero headline present
-   twice in the source — greedy text-matching nests a block inside
-   its own twin. The stream needs no matching: order is captured,
-   duplicates are just two nodes.
-2. **CTA/container overlap, both directions.** A hero `<a>` wraps
-   its `<h2>`; a news `<h3>` wraps its `<a>`; an `<li>`'s text
-   equals its nested link's text. Equal-text tie-breaking rules are
-   unwritable in general; the stream records the actual nesting as
-   `children`.
-3. **Zero-separator inline joins.** Inline category-tag `<li>`s
-   rendered with NO separator ("SUPERCOMPUTINGARTIFICIAL…") — the
-   exact byte-gate failure the smoke hit at char 3918. The stream's
-   `sep: ""` marks every tight join; the renderer emits those runs
-   inline.
+the per-type arrays; reconstructing document order from `visibleText` as an
+oracle took three debug rounds on one page, on duplicate identical strings
+(greedy matching nests a block inside its own twin), CTA/container nesting in
+both directions and zero-separator inline joins (the byte-gate failure at char
+3918). The stream captures each structurally: duplicates are two nodes,
+`children` records the nesting, `sep: ""` marks every tight join.
 
 A renderer may still parse a single node's text apart (a composite
 `li` row into kicker/date/title) — the SKILL.md Phase 4 fail-loudly

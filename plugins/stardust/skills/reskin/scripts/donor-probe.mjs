@@ -23,6 +23,10 @@
  *   - tolerancePx: componentwise numeric comparison (each px component of
  *     the computed value within ±tolerancePx of the token's component) —
  *     for paddings (±2), container width (±20), section rhythm (±16)
+ *   - match "all": the entry is asserted on EVERY element the selector
+ *     matches (default: the first match only). One result per entry; it
+ *     passes when all matches do, and a failure names each failing match
+ *     as "match <i> of <n>: <computed value>" (1-based, document order)
  *
  * The DEFAULT SPEC assumes the rendered-page conventions the reskin
  * renderer must follow (reference/gates.md § Rendered-page conventions):
@@ -43,7 +47,8 @@
  *              { "label": "...", "selector": "...", "property": "backgroundColor",
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
  *                "tolerancePx": 2,         (property in camelCase, or a --custom-property)
- *                "compare": "firstFamily", "needs": "button" }
+ *                "compare": "firstFamily", "needs": "button",
+ *                "match": "all" }          (every match of the selector, not the first)
  *       [--model <content-model.json>] the page's content model: button
  *                                    probes are SKIP when it has no button
  *       [--report <path>]            markdown report
@@ -65,48 +70,56 @@
  *       [--headed]                   headed stealth real Chrome (escalation
  *                                    for bot-managed sites)
  *       [--locale <tag>]             pin Accept-Language + locale
+ *       [--wait-eds]                 settle the rendered page's EDS decoration
+ *                                    (body.appear, every data-section-status /
+ *                                    data-block-status "loaded") before probing;
+ *                                    on by default when --rendered is an EDS host
+ *                                    (aem.page/live, hlx.page/live,
+ *                                    DEPLOY_VERIFY_ORIGIN). A stall exits 2
+ *                                    "stalled decoration: …", nothing probed
+ *       [--eds-timeout <ms>]         settle bound (default 20000)
+ *       [--auth-header <value>]      Authorization header for the rendered origin
+ *                                    only (a protected preview); never printed
+ *       [--token-env <NAME>]         the same, read from the variable NAME
  *
  * Live --rendered targets (a staged deploy, a served page on a real host)
  * navigate via the shared diff live-session module (F-G/F-R1): a bot
  * challenge FAILS LOUD (exit 3) — probing an interstitial's computed styles
  * is a false measurement. Local/file targets keep legacy networkidle.
  *
- * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error,
- *       3 bot challenge / blocked live target (fail loud, never probed).
+ * Exit: 0 all assertions + sanity pass, 1 fail, 2 setup error (incl. a stalled
+ *       decoration), 3 bot challenge / blocked live target (fail loud, never
+ *       probed).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-
-// live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
-// the plugin tree (skills/reskin/scripts ↔ skills/diff/scripts) and the
-// documented project copy (stardust/scripts/reskin ↔ stardust/scripts/diff).
-const HERE = dirname(fileURLToPath(import.meta.url));
-const LIVE_SESSION = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs']
-  .map((p) => resolve(HERE, p)).find((p) => existsSync(p));
-if (!LIVE_SESSION) {
-  console.error('[donor-probe] live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/).');
-  console.error('Copy the diff skill\'s live-session.mjs alongside the reskin scripts (SKILL.md § Setup).');
-  process.exit(2);
-}
-const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = await import(pathToFileURL(LIVE_SESSION).href);
+import { pathToFileURL } from 'node:url';
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'model', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'model', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json', 'eds-timeout', 'auth-header', 'token-env']);
+  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
+  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
     else if (a === '--headed') opts.headed = true;
     else if (a === '--no-sanity') opts.noSanity = true;
+    else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--')) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !v.trim())) { console.error(`[donor-probe] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else { console.error(`[donor-probe] unknown arg: ${a}`); process.exit(2); }
+    else {
+      // Never echo the whole element: `--auth-header=<token>`, `--auth-header:<token>` or the stray half of an unquoted value is a secret.
+      const name = a.match(/^--[\w-]+/)?.[0] ?? null;
+      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
+      console.error(`[donor-probe] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
+      process.exit(2);
+    }
   }
   return opts;
 }
@@ -117,9 +130,15 @@ if (args.help || !args.tokens || !args.rendered) {
   console.log('         [--spec <probe-spec.json>] [--model <content-model.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--viewport <w>] [--no-sanity] [--json <path>]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>]');
   console.log('Asserts donor token values (computed styles) on the rendered reskin + overflow sanity.');
   console.log('Default spec expects: content in <main>, main .container measure, main .btn primary button.');
+  console.log('A --spec entry takes "match": "all" to assert every element its selector matches (default: the first);');
+  console.log('a failure names each failing match as "match <i> of <n>: <computed value>".');
   console.log('Live --rendered targets get the shared live-session hardening; escalate with --headed.');
+  console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
+  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and probes nothing. --auth-header /');
+  console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never probed).');
   process.exit(args.help ? 0 : 2);
 }
@@ -128,16 +147,46 @@ if (Object.hasOwn(args, 'viewport') && !/^[1-9]\d*$/.test(args.viewport ?? '')) 
   process.exit(2);
 }
 const viewportWidth = args.viewport ? Number(args.viewport) : 1440;
+if (Object.hasOwn(args, 'eds-timeout') && !/^[1-9]\d*$/.test(args['eds-timeout'])) {
+  console.error(`[donor-probe] --eds-timeout needs a positive integer (milliseconds), got "${args['eds-timeout']}"`);
+  process.exit(2);
+}
+
+// Siblings are imported here, after the --help guard: --help answers from a directory holding only this script.
+// live-session.mjs lives in the diff skill's scripts dir (two layouts, resolved by eds.mjs: the plugin tree and
+// the documented project copy stardust/scripts/reskin ↔ stardust/scripts/diff).
+let eds; let live;
+try {
+  eds = await import('./deployed/eds.mjs');
+  live = await eds.loadLiveSession();
+} catch (e) {
+  if (e.name !== 'UsageError' && e.code !== 'ERR_MODULE_NOT_FOUND') throw e;
+  console.error(`[donor-probe] ${e.message.split('\n')[0]}`);
+  console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
+  process.exit(2);
+}
+const { edsSettle, isEdsHost, siteAuth, authContextOptions, redact } = eds;
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
   console.error('[donor-probe] playwright not importable from this script\'s directory.');
   console.error('Copy skills/reskin/scripts/* into the project (stardust/scripts/reskin/) and');
-  console.error('run: npm i -D playwright --no-save --legacy-peer-deps  (extract SKILL.md § Setup)');
+  console.error('run: npm i -D playwright pixelmatch pngjs --legacy-peer-deps  (reskin SKILL.md § Setup)');
   process.exit(2);
 }
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
+const renderedUrl = toUrl(args.rendered);
+// The preview's token: only when asked for (--auth-header / --token-env) and only for an http(s) rendered target.
+const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undefined || args['token-env'] !== undefined);
+const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
+// Anything printed passes through here, so the token cannot reach stderr by way of an error text.
+const die = (m, c = 2) => { console.error(`[donor-probe] ${redact(m, auth)}`); process.exit(c); };
+// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
+if (wantsAuth && !auth) die('no site token: the variable --token-env names is not set in the environment or .env');
+const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
+const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
@@ -159,6 +208,9 @@ const DEFAULT_SPEC = [
   { label: 'section rhythm (±16px)', selector: 'main section', property: 'paddingTop', token: 'layout.sectionPaddingY', tolerancePx: 16 },
 ];
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
+for (const entry of spec) {
+  if (entry.match !== undefined && entry.match !== 'all' && entry.match !== 'first') die(`spec entry "${entry.label}": match must be "all" (every match) or "first" (the default), got ${JSON.stringify(entry.match)}`);
+}
 let noButton = false;
 if (args.model) {
   const { modelHasButton } = await import(pathToFileURL(resolve(HERE, 'stream-render.mjs')).href);
@@ -204,9 +256,9 @@ const browser = args.headed ? await launchStealthHeaded(chromium) : await chromi
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: viewportWidth, height: 900 },
+  ...authContextOptions(renderedUrl, auth),
 });
 const page = await ctx.newPage();
-const renderedUrl = toUrl(args.rendered);
 if (isLiveHttpUrl(renderedUrl)) {
   // A challenge/blocked interstitial must fail loud — its computed styles
   // are not the rendered page's.
@@ -215,16 +267,21 @@ if (isLiveHttpUrl(renderedUrl)) {
   try {
     await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
   } catch (e) {
-    console.error(`[donor-probe] ${e.message}`);
+    console.error(`[donor-probe] ${redact(e.message, auth)}`);
     await browser.close();
     process.exit(e.name === 'BotChallengeError' ? 3 : 2);
   }
 } else {
   await page.goto(renderedUrl, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
 }
+if (waitEds) {
+  const { stalled } = await edsSettle(page, { timeoutMs: edsTimeoutMs });
+  if (stalled.length) { await browser.close(); die(`stalled decoration: ${stalled.join(', ')}`); }
+}
 await page.waitForTimeout(1500);
 
 const results = []; // { check, label, status: 'PASS'|'FAIL'|'SKIP', detail }
+const MAX_NAMED = 5; // failing matches an "all" entry names; the rest are counted
 for (const entry of spec) {
   const want = entry.value !== undefined ? entry.value : get(tokens, entry.token);
   if (want === undefined) {
@@ -232,29 +289,42 @@ for (const entry of spec) {
     continue;
   }
   if (entry.needs === 'button' && noButton) {
-    results.push({ check: entry.label, status: 'SKIP', detail: `the page's content (${args.model}) has no button` });
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `the page's content (${args.model}) has no button` });
     continue;
   }
-  const got = await page.evaluate(([sel, prop, exclude]) => {
-    const all = [...document.querySelectorAll(sel)];
-    const el = exclude ? all.find((e) => !e.matches(exclude)) : all[0];
-    if (!el) return all.length ? { excluded: all.length } : null;
-    return String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop];
-  }, [entry.selector, entry.property, entry.exclude]);
-  if (got && typeof got === 'object') {
+  const every = entry.match === 'all';
+  const gots = await page.evaluate(([sel, prop, all, exclude]) => {
+    const found = [...document.querySelectorAll(sel)];
+    const kept = exclude ? found.filter((e) => !e.matches(exclude)) : found;
+    if (!kept.length) return found.length ? { excluded: found.length } : null;
+    const els = all ? kept : [kept[0]];
+    return els.map((el) => (String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop]));
+  }, [entry.selector, entry.property, every, entry.exclude]);
+  if (gots && !Array.isArray(gots)) {
     // Every match carries a declared per-slot override (e.g. mapping.json `inset`), which
     // figma-gate geometry measures instead; the token has no undeclared surface to check.
-    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `all ${got.excluded} match(es) declare an override (${entry.exclude})` });
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `all ${gots.excluded} match(es) declare an override (${entry.exclude})` });
     continue;
   }
-  if (got === null) {
+  if (gots === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.
     results.push({ check: entry.label, label: entry.label, status: 'FAIL', detail: `selector "${entry.selector}" matched nothing` });
     continue;
   }
-  const ok = compare(entry, got, want);
-  results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: ok ? 'PASS' : 'FAIL', detail: got });
+  if (!every) {
+    results.push({ check: `${entry.label} = ${want}`, label: entry.label, status: compare(entry, gots[0], want) ? 'PASS' : 'FAIL', detail: gots[0] });
+    continue;
+  }
+  const off = gots.map((got, i) => ({ got, at: i + 1 })).filter(({ got }) => !compare(entry, got, want));
+  const shown = off.slice(0, MAX_NAMED).map(({ got, at }) => `match ${at} of ${gots.length}: ${got}`);
+  if (off.length > shown.length) shown.push(`… ${off.length - shown.length} more`);
+  results.push({
+    check: `${entry.label} = ${want}`,
+    label: entry.label,
+    status: off.length ? 'FAIL' : 'PASS',
+    detail: off.length ? shown.join('; ') : `all ${gots.length} matches: ${[...new Set(gots)].join(', ')}`,
+  });
 }
 
 // ---- overflow sanity ---------------------------------------------------------
@@ -287,13 +357,13 @@ md += `> Complete the gate with the side-by-side eyeball vs the donor screenshot
 md += `> (stardust/canon-source/assets/screenshots/) per reference/gates.md.\n`;
 if (args.report) {
   mkdirSync(dirname(resolve(args.report)), { recursive: true });
-  writeFileSync(args.report, md);
+  writeFileSync(args.report, redact(md, auth));
 }
 if (args.json) {
   mkdirSync(dirname(resolve(args.json)), { recursive: true });
-  writeFileSync(args.json, `${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`);
+  writeFileSync(args.json, redact(`${JSON.stringify({ pass, results: results.map(({ check, label, status, detail }) => ({ check, label, status, detail })) }, null, 2)}\n`, auth));
 }
-console.log(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`);
-for (const f of fails.slice(0, 15)) console.log(`  FAIL ${f.check} — ${f.detail}`);
-for (const s of skips) console.log(`  SKIP ${s.check} — ${s.detail}`);
+console.log(redact(`[donor-probe] ${pass ? 'PASS' : 'FAIL'} — ${results.length - fails.length - skips.length}/${results.length - skips.length} assertions${skips.length ? `, ${skips.length} skipped` : ''}${args.report ? ` — report: ${args.report}` : ''}`, auth));
+for (const f of fails.slice(0, 15)) console.log(redact(`  FAIL ${f.check} — ${f.detail}`, auth));
+for (const s of skips) console.log(redact(`  SKIP ${s.check} — ${s.detail}`, auth));
 process.exit(pass ? 0 : 1);

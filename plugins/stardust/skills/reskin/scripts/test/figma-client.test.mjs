@@ -185,6 +185,38 @@ await check('every FigmaError message is redacted, even when Figma echoes the to
   fake.behaviors[FILE] = { status: 401, body: { status: 401, err: `token ${TOKEN} expired` } };
   await rejects(client().getJson(FILE), (e) => assert.ok(!e.message.includes(TOKEN)));
 });
+// A reason is cut at 300 characters; redaction must see the whole reason first, or a token that straddles
+// the cut leaks all but its last character.
+const CAP = 300;
+const leaks = (out) => { for (let k = 8; k <= TOKEN.length; k += 1) if (out.includes(TOKEN.slice(0, k))) return TOKEN.slice(0, k); return null; };
+const surfaces = (e) => ({ message: e.message, info: JSON.stringify(e.info) });
+await check('a token straddling the 300-character reason cap is redacted in the message and in info, at every boundary position', async () => {
+  for (const [kind, body] of [['json', (reason) => ({ status: 401, err: reason })], ['text', (reason) => reason]]) {
+    for (let at = CAP - TOKEN.length - 2; at <= CAP + 2; at += 1) {
+      reset();
+      fake.behaviors[FILE] = { status: 401, body: body(`${'x'.repeat(at)}${TOKEN} and more`) };
+      await rejects(client().getJson(FILE), (e) => {
+        for (const [where, out] of Object.entries(surfaces(e))) assert.equal(leaks(out), null, `${kind}, token at ${at}, ${where}: ${out}`);
+      });
+    }
+  }
+});
+await check('a token prefix of 8+ characters left at the cap or at the end of the body is redacted too', async () => {
+  for (let m = 1; m < TOKEN.length; m += 1) {
+    for (const reason of [`${'y'.repeat(CAP - m)}${TOKEN.slice(0, m + 5)}`, `${'y'.repeat(40)}${TOKEN.slice(0, m)}`]) {
+      reset();
+      fake.behaviors[FILE] = { status: 401, body: { status: 401, err: reason } };
+      await rejects(client().getJson(FILE), (e) => {
+        for (const [where, out] of Object.entries(surfaces(e))) assert.equal(leaks(out), null, `prefix ${m}, ${where}: ${out}`);
+      });
+    }
+  }
+});
+await check('the cap still shortens a long reason that holds no token', async () => {
+  reset();
+  fake.behaviors[FILE] = { status: 400, body: { status: 400, err: 'z'.repeat(1000) } };
+  await rejects(client().getJson(FILE), (e) => { assert.equal(e.info.reason, 'z'.repeat(CAP)); assert.ok(e.message.includes('z'.repeat(CAP)) && !e.message.includes('z'.repeat(CAP + 1))); });
+});
 
 await fake.close();
 rmSync(fixtureDir, { recursive: true, force: true });

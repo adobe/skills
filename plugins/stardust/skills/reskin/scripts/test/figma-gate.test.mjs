@@ -3,9 +3,10 @@
 // (exit 0, usage, nothing written), usage errors (exit 2), the boxes subcommand (every included module,
 // one root's outline, served from the box cache once nodes.json is gone), a project without a capture
 // (exit 2 naming figma-donor.mjs capture), the --confidential guard, and `all` (evidence, summary.json and
-// the ledger fragment; the page parts need playwright, pngjs and pixelmatch). Run: node <this file>.
+// the ledger fragment; the page parts need playwright, pngjs and pixelmatch; those cases build their own
+// projects and run at most four at a time). Run: node <this file>.
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -19,10 +20,41 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'figma-gate.mjs');
 const scratch = mkdtempSync(join(tmpdir(), 'figma-gate-cli-'));
 let failed = 0;
-const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
-const acheck = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
+const report = (name, e) => {
+  if (!e) { console.log(`✓ ${name}`); return; }
+  failed += 1;
+  console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`);
+};
+const check = (name, fn) => { try { fn(); report(name); } catch (e) { report(name, e); } };
+const acheck = async (name, fn) => { try { await fn(); report(name); } catch (e) { report(name, e); } };
+// The page cases each build their own project, so they run at most CONCURRENCY at a time; their results
+// print in the order the cases are written.
+const CONCURRENCY = 4;
+const queued = [];
+const queue = (name, fn) => { queued.push({ name, fn, result: null }); };
+const runQueued = async () => {
+  let next = 0;
+  let printed = 0;
+  const flush = () => { while (printed < queued.length && queued[printed].result) { report(queued[printed].name, queued[printed].result.error); printed += 1; } };
+  const worker = async () => {
+    while (next < queued.length) {
+      const c = queued[next++];
+      c.result = await c.fn().then(() => ({}), (error) => ({ error: error ?? new Error('rejected without a reason') }));
+      flush();
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CONCURRENCY, queued.length) }, worker));
+};
 const walk = (dir) => (existsSync(dir) ? readdirSync(dir).flatMap((f) => { const p = join(dir, f); return statSync(p).isDirectory() ? walk(p) : [p]; }) : []);
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
+const runAsync = (args, cwd) => new Promise((resolve) => {
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd });
+  let stdout = '';
+  let stderr = '';
+  child.stdout.on('data', (d) => { stdout += d; });
+  child.stderr.on('data', (d) => { stderr += d; });
+  child.on('close', (status) => resolve({ status, stdout, stderr }));
+});
 let n = 0;
 const project = () => { n += 1; return makeProject(join(scratch, `p${n}`)); };
 
@@ -136,7 +168,7 @@ check('main with steps.boxes replaced returns its code and passes dir and opts',
 check('--help lists every subcommand with its flags and the run-bg launch hint', () => {
   const r = run(['--help'], join(scratch, 'empty'));
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['boxes', 'join', 'geometry', 'ramp', 'pixel', 'register', ' all ', '--page', '--url', '--dir', 'summary.json', 'ledgerFragment', 'waived', 'figma-preview', 'run-bg.mjs start --name figma-<slug> --dir stardust/.work/reskin/bg -- node']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
 });
 
 check('all without --page or --url exits 2', () => {
@@ -187,7 +219,7 @@ if (playwrightOk && pngOk) {
   const work = (p) => join(p.dir, '.work', 'reskin', 'gates', p.slug, 'figma');
   const summaryOf = (p) => JSON.parse(readFileSync(join(work(p), 'summary.json'), 'utf8'));
   const registerOf = (p) => JSON.parse(readFileSync(join(work(p), 'register.json'), 'utf8'));
-  const runAll = (p, cwd = p.root) => run(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], cwd);
+  const runAll = (p, cwd = p.root) => runAsync(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], cwd);
 
   // The frame image: figma-frame.html drawn at 1440×1840, as M1 would cache it for frame 1:2.
   const withFrameImage = async (p) => {
@@ -206,9 +238,9 @@ if (playwrightOk && pngOk) {
   const edit = (p, from, to) => writeFileSync(p.page, readFileSync(p.page, 'utf8').replace(from, to));
   const sectionsOf = (html) => [...html.matchAll(/ {2}<section[\s\S]*?<\/section>\n/g)].map((m) => m[0]);
 
-  await acheck('all on page.html: join, geometry, ramp PASS, pixel advisory, register written; exit 0', async () => {
+  queue('all on page.html: join, geometry, ramp PASS, pixel advisory, register written; exit 0', async () => {
     const p = await framed();
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     for (const re of [/^PASS join/m, /^geometry PASS \d+\/\d+$/m, /^ramp PASS \d+\/\d+/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, re);
     const s = summaryOf(p);
@@ -218,12 +250,13 @@ if (playwrightOk && pngOk) {
     assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);
     assert.ok(Array.isArray(s.steps.geometry.detail));
     const f = s.ledgerFragment;
-    assert.deepEqual(Object.keys(f), ['regime', 'figmaVersion', 'join', 'geometry', 'ramp', 'pixel', 'register', 'literals', 'invocation']);
+    assert.deepEqual(Object.keys(f), ['regime', 'figmaVersion', 'join', 'geometry', 'ramp', 'pixel', 'register', 'coverage', 'literals', 'invocation']);
     assert.deepEqual([f.regime, f.figmaVersion, f.join], ['local', VERSION, 'PASS']);
     assert.match(f.geometry, /^PASS (\d+)\/\1$/);
     assert.match(f.ramp, /^PASS (\d+)\/\1/);
     assert.match(f.pixel, /^s01 \d+\.\d\d%, s02 \d+\.\d\d%$/);
-    assert.match(f.register, /^mandated 2 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0$/);
+    assert.match(f.register, /^mandated 2 · waived 0 · unmandated 0 · out-of-kit 0 · conflict 0 · pre-existing 0$/);
+    assert.equal(f.coverage, 'text styles 8/8 · widths 1440 · waived 0');
     assert.ok(Number.isInteger(f.literals));
     assert.equal(f.invocation, `figma-gate.mjs all --page home --url ${p.page} --dir ${p.dir}`);
     assert.equal(s.invocation, f.invocation);
@@ -234,18 +267,18 @@ if (playwrightOk && pngOk) {
     assert.equal(r.stdout.split(lines.at(-1)).length, 2, 'the register path is printed once');
   });
 
-  await acheck('all twice, nodes.json deleted in between: the second run is served from the box cache, exit 0', async () => {
+  queue('all twice, nodes.json deleted in between: the second run is served from the box cache, exit 0', async () => {
     const p = await framed();
-    assert.equal(runAll(p).status, 0);
+    assert.equal((await runAll(p)).status, 0);
     rmSync(cacheFor(p.dir, KEY).version(VERSION).path('nodes.json'));
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
   });
 
-  await acheck('.card { width: 540px }: geometry FAIL, exit 1, the fragment and register carry it', async () => {
+  queue('.card { width: 540px }: geometry FAIL, exit 1, the fragment and register carry it', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^geometry FAIL 1\/\d+$/m);
     const s = summaryOf(p);
@@ -255,19 +288,19 @@ if (playwrightOk && pngOk) {
     assert.equal(registerOf(p).counts.unmandated, 1);
   });
 
-  await acheck('swapped sections: join FAIL, geometry/ramp/pixel not run: section drift, register shows nothing mandated, exit 1', async () => {
+  queue('swapped sections: join FAIL, geometry/ramp/pixel not run: section drift, register shows nothing mandated, exit 1', async () => {
     const p = await framed();
     const html = readFileSync(p.page, 'utf8');
     const [s1, s2] = sectionsOf(html);
     writeFileSync(p.page, html.replace(s1, '@@1@@').replace(s2, s1).replace('@@1@@', s2));
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     assert.match(r.stdout, /^FAIL join/m);
     assert.match(r.stdout, /section drift: s02 before s01/);
     for (const k of ['geometry', 'ramp', 'pixel']) assert.match(r.stdout, new RegExp(`^FAIL ${k} not run: section drift$`, 'm'));
     const s = summaryOf(p);
     assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.steps[k].verdict), Array(3).fill('not run: section drift'));
-    assert.deepEqual(['geometry', 'ramp', 'pixel'].map((k) => s.ledgerFragment[k]), Array(3).fill('not run: section drift'));
+    assert.deepEqual(['geometry', 'ramp', 'pixel', 'coverage'].map((k) => s.ledgerFragment[k]), Array(4).fill('not run: section drift'));
     assert.equal(s.ledgerFragment.join, 'FAIL');
     assert.equal(s.steps.register.verdict, 'written');
     const reg = registerOf(p);
@@ -276,19 +309,91 @@ if (playwrightOk && pngOk) {
     for (const f of ['geometry.json', 'ramp.json', 'pixel.json']) assert.ok(!existsSync(join(work(p), f)), f);
   });
 
-  await acheck('a drifted run after a passing one never reuses the earlier step files', async () => {
+  queue('all with a waiver in the checks file: the register has no mandated row for that section and a waived row with what it drops; the fragment counts the waiver', async () => {
     const p = await framed();
-    assert.equal(runAll(p).status, 0);
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checksFile = JSON.parse(readFileSync(file, 'utf8'));
+    checksFile.sections.s01.waive = [{ node: '1:6', why: 'lead copy is long-form' }];
+    writeFileSync(file, JSON.stringify(checksFile));
+    const r = await runAll(p);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const f = summaryOf(p).ledgerFragment;
+    assert.equal(f.coverage, 'text styles 8/8 · widths 1440 · waived 1');
+    assert.match(f.register, /^mandated 1 · waived 1 · unmandated 0 /);
+    const rows = registerOf(p).rows;
+    assert.deepEqual(rows.filter((x) => x.class === 'mandated').map((x) => x.slot), ['s02']);
+    const w = rows.find((x) => x.class === 'waived');
+    assert.deepEqual([w.slot, w.node, w.check], ['s01', '1:6', 'waive node "Lead" (1:6)']);
+    assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
+  });
+
+  queue('all with a checks file the floor refuses: exit 2, the whole problem list is in floor-problems.txt beside the evidence and the error ends with its path; a valid file removes it', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const valid = readFileSync(file, 'utf8');
+    const checksFile = JSON.parse(valid);
+    checksFile.sections.s01.type = checksFile.sections.s01.type.filter((e) => e.node !== '1:6');
+    writeFileSync(file, JSON.stringify(checksFile));
+    const list = join(work(p), 'floor-problems.txt');
+    const refused = await runAll(p);
+    assert.equal(refused.status, 2, refused.stdout + refused.stderr);
+    assert.ok(refused.stderr.trimEnd().endsWith(`\nfull list: ${list}`), refused.stderr);
+    assert.match(readFileSync(list, 'utf8'), /^s01 @1440: text style 18\/400\/28 #1a1a1a \("A calm, readable starti…", node 1:6\) has no type entry or waiver.*\n$/);
+    writeFileSync(file, valid);
+    const fixed = await runAll(p);
+    assert.equal(fixed.status, 0, fixed.stdout + fixed.stderr);
+    assert.ok(!existsSync(list), 'a stale list is removed');
+  });
+
+  queue('all removes the per-width ramp files of an earlier run, a width the checks file no longer has included', async () => {
+    const p = await framed();
+    assert.equal((await runAll(p)).status, 0);
+    const stale = ['ramp-spec.414.json', 'ramp.414.md', 'ramp.414.json'].map((f) => join(work(p), f));
+    for (const f of stale) writeFileSync(f, 'from an earlier run');
+    const other = join(work(p), 'ramp-tokens.json');
+    assert.equal((await runAll(p)).status, 0);
+    for (const f of stale) assert.ok(!existsSync(f), f);
+    for (const f of ['ramp-spec.1440.json', 'ramp.1440.md', 'ramp.1440.json']) assert.ok(existsSync(join(work(p), f)), `${f} is written by this run`);
+    assert.ok(existsSync(other));
+  });
+
+  queue('the checks file changes after an all run: register on its own gives that section a stale row and no mandated row; the next all mandates it', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const fixture = readFileSync(file, 'utf8');
+    const first = JSON.parse(fixture);
+    first.sections.s01.type = first.sections.s01.type.filter((t) => t.id !== 't2');
+    first.sections.s01.waive = [{ node: '1:20', why: 'documentation button' }];
+    writeFileSync(file, JSON.stringify(first));
+    assert.equal((await runAll(p)).status, 0);
+    assert.match(summaryOf(p).ledgerFragment.register, /^mandated 1 · waived 1 · unmandated 0 /);
+    // The waiver is removed and the entry it excused is written; the geometry and ramp files are still the first run's.
+    writeFileSync(file, fixture);
+    const alone = await runAsync(['register', '--page', p.slug, '--dir', p.dir], p.root);
+    assert.equal(alone.status, 0, alone.stdout + alone.stderr);
+    assert.match(alone.stdout, /mandated 1 · waived 0 · unmandated 1 /);
+    const rows = registerOf(p).rows;
+    assert.deepEqual(rows.filter((x) => x.class === 'mandated').map((x) => x.slot), ['s02']);
+    assert.deepEqual(rows.filter((x) => x.check === 'stale').map((x) => [x.slot, x.detail]), [['s01', '1 entry of the checks file has no result (t2): re-run figma-gate all']]);
+    const again = await runAll(p);
+    assert.equal(again.status, 0, again.stdout + again.stderr);
+    assert.match(summaryOf(p).ledgerFragment.register, /^mandated 2 · waived 0 · unmandated 0 /);
+    assert.equal(registerOf(p).rows.some((x) => x.check === 'stale'), false);
+  });
+
+  queue('a drifted run after a passing one never reuses the earlier step files', async () => {
+    const p = await framed();
+    assert.equal((await runAll(p)).status, 0);
     assert.ok(existsSync(join(work(p), 'pixel.json')));
     edit(p, 'data-slot="s02"', 'data-slot="s09"');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 1, r.stdout + r.stderr);
     for (const f of ['geometry.json', 'ramp.json', 'pixel.json']) assert.ok(!existsSync(join(work(p), f)), f);
     assert.equal(summaryOf(p).ledgerFragment.pixel, 'not run: section drift');
     assert.equal(registerOf(p).counts.mandated, 0);
   });
 
-  await acheck('a step that throws is CRASH: <message>, the other steps still run, the exit is 124', async () => {
+  queue('a step that throws is CRASH: <message>, the other steps still run, the exit is 124', async () => {
     const p = await framed();
     const out = [];
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: (m) => out.push(m), warn: () => {}, steps: { geometry: async () => { throw new Error('boom'); } } });
@@ -301,7 +406,7 @@ if (playwrightOk && pngOk) {
     assert.equal(s.steps.register.verdict, 'written');
   });
 
-  await acheck('a step that throws code 3 (bot challenge): the other steps still run, the exit is 3, over a 124 and a 1', async () => {
+  queue('a step that throws code 3 (bot challenge): the other steps still run, the exit is 3, over a 124 and a 1', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
     const challenge = async () => { const e = new Error('challenge'); e.code = 3; throw e; };
@@ -318,7 +423,7 @@ if (playwrightOk && pngOk) {
     assert.equal(crashOnly, 124);
   });
 
-  await acheck('an earlier 1 does not hide a later 124: the exit is the first present of 2, 3, 124, 1, 0', async () => {
+  queue('an earlier 1 does not hide a later 124: the exit is the first present of 2, 3, 124, 1, 0', async () => {
     const p = await framed();
     edit(p, '.card { width: 560px;', '.card { width: 540px;');
     const code = await main(['all', '--page', p.slug, '--url', p.page, '--dir', p.dir], { log: () => {}, warn: () => {}, steps: { pixel: async () => 124 } });
@@ -327,17 +432,19 @@ if (playwrightOk && pngOk) {
     assert.equal(summaryOf(p).ledgerFragment.geometry.slice(0, 4), 'FAIL');
   });
 
-  await acheck('all under --confidential with .work/ and reskin/figma-checks/ git-ignored runs, and no register row has a link', async () => {
+  queue('all under --confidential with .work/ and reskin/figma-checks/ git-ignored runs, and no register row has a link', async () => {
     const p = await framed();
     confidential(p);
     writeFileSync(join(p.dir, '.gitignore'), '.work/\nreskin/figma-checks/\n');
-    const r = runAll(p);
+    const r = await runAll(p);
     assert.equal(r.status, 0, r.stdout + r.stderr);
     const reg = registerOf(p);
     assert.ok(reg.rows.length > 0);
     assert.ok(reg.rows.every((x) => x.link === null));
     assert.ok(!JSON.stringify(summaryOf(p)).includes(KEY));
   });
+
+  await runQueued();
 }
 
 rmSync(scratch, { recursive: true, force: true });
