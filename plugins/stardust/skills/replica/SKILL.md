@@ -170,6 +170,25 @@ Extract's failure modes apply as-is (bot-management headed fallback, consent
 handling, no-synthesis rule). If extract had to fall back to headed Chrome,
 expect the gate captures to need the same treatment.
 
+**Order the Phase 1 read-side for wall time (a recorded hands-off run
+lost ~10 min here to a serial tail).** Start the crawl; as soon as the
+first captures land, run the census (extract Phase 3, at its
+`--concurrency`) and the live probes (chrome-explore) as BACKGROUND
+jobs through `run-bg.mjs start`, and in PARALLEL — a subagent or the
+lead itself — do the read-side classify / archetype detection /
+design-record writes off the captures already on disk. Never block on
+the probes before classifying: a wait is only for a job whose result
+the next step needs, and while they run there is independent read-side
+work to do. The `--dynamics` detector is Phase 2 step 5 (the stardust
+`dynamics` skill), NOT this phase — do not pull it forward;
+`media-harvest` and its `--assets` browser fallback are extract's own
+over the captured `pages/*.html` — leave them where extract runs them,
+but as background jobs, never a serial gate before the read-side. Poll
+with `run-bg.mjs wait --max 300` (`--max 240` under the five-minute
+cache) in steps of at most five minutes, lead and subagents alike;
+exit 77 — the wake line (`stardust/.labs/wake`) grew — means a
+background agent finished, so wait again.
+
 ### Phase 2 — PRESERVE DIRECTION (mechanical — never invoke the stardust `direct` skill)
 
 Full contract: `reference/preserve-direction.md`. Summary:
