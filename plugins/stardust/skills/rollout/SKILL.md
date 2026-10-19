@@ -282,6 +282,15 @@ with ≤ 2 pages or the new one would have ≤ 2 pages, unless `--owner-decision
 variant>"` is given (recorded on the page); hand-authored last, recorded first). Its cluster unit is then the map plus the exceptions, and the
 main agent alone re-runs `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged
 (handoff contract § 3, row C; `skills/migrate/reference/importer-recipe.md` § Encoder contract).
+On a strict-variance **majority** refusal (`render` prints
+`next: … retype-plan <template> --write`), the cluster subagent runs
+`migrate.mjs retype-plan <template> --write`: it groups the differing siblings in
+`stardust/rollout/variance/<template>.json` by delta fingerprint into proposed
+sub-archetypes and records the re-type deviation in
+`stardust/migrate/retype-plan/<template>.json` without a rendered sidecar, then
+returns that plan in its hand-back — no prose note, no re-plan by hand. The main
+agent alone starts one unit per proposed group (fan-out discipline keeps
+`unit start`/spawn with the lead; handoff contract § Fan-out discipline).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each

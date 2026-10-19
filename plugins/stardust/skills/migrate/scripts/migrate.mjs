@@ -32,6 +32,7 @@
  *   node migrate.mjs deviation <slug> --kind <k> [--source <s>] [--target <t>] --reason <r>
  *                                                                    → contentDeviations[]
  *   node migrate.mjs decision <slug> --kind <k> [--json '{…}']        → migrationDecisions[]
+ *   node migrate.mjs retype-plan <archetype> [--write] [--json]       → stardust/migrate/retype-plan/<a>.json
  *   node migrate.mjs variant <slug> <class…>                          → variants[] (one entry)
  *   node migrate.mjs modules <slug> <id…> | --clear                   → modules[]
  *   node migrate.mjs harness <slug> [--content content]               → the archetype's passedOn (C14)
@@ -250,6 +251,20 @@
  *   <variant-class>` (never a re-type for a few pages); 20 % up to half → --accept-variance with a variant class, or
  *   the re-type above.
  *
+ * retype-plan <archetype> — the hand-off a majority refusal points at (`next: … retype-plan <a> --write`). It
+ *   reads the same ledger the gate reads (<variance-dir>/<archetype>.json, --variance-dir honoured), groups the
+ *   DIFFERING siblings by a delta fingerprint — `missing=[…]; shape=[…]`: the row's missing[] probe set plus the
+ *   cluster/count signature (the probes carrying a COUNT or CLUSTERS delta; magnitudes dropped, so same-shape
+ *   siblings group even when the exact counts differ) — and proposes one sub-archetype per fingerprint. Each group's
+ *   representative is the member with the fewest findings (missing + extra + deltas; ties by slug); same-verdict
+ *   siblings stay with the archetype (unchanged[]). Prints a human summary, or with --json the plan
+ *   { archetype, groups: [{ fingerprint, representative, siblings, findings }], unchanged }. With --write it persists
+ *   the plan to stardust/migrate/retype-plan/<archetype>.json and records a re-type decision there the way
+ *   `decision --kind re-type` does (one deduped { kind: 're-type', … } row) — WITHOUT a rendered _meta.json, so the
+ *   cluster subagent records the deviation the refusal blocks. Idempotent: re-running --write leaves the file
+ *   byte-identical, one decision row. Exit 0 plan produced · 2 no ledger / archetype unknown (names the command that
+ *   writes it) · 1 usage.
+ *
  * Writes:
  *   <out>/<output-path>              the migrated HTML (URL-literal rule; default stardust/migrated/)
  *   <out>/<dir>/_meta.json           sidecar next to index.html; <name>._meta.json next to <name>.html
@@ -270,11 +285,13 @@
  *   gate/deviation/decision/variant/modules rewrite one sidecar (a malformed sidecar is a usage
  *   error naming the file, not overwritten); harness rewrites the archetype's sidecar (passedOn)
  *   only when the record changes; summary and pagemap write nothing.
+ *   stardust/migrate/retype-plan/<a>.json  retype-plan --write only: the sub-archetype plan plus a re-type
+ *                                    decision row (no rendered sidecar needed; re-write is byte-identical)
  *   stardust/migrate/encode/<t>.json  plan: the template's encode attempt record (encode-attempt.mjs --help);
  *                                    render --from-archetype … --capture …: its `forked` list (recordFork)
  *   <proto-dir>/<slug>-proposed.html render --from-archetype … --capture … only (or the page's prototypePath)
- * Exit: 0 clean · 2 any page refused, a template left without an encode attempt record (plan), the flow guard or a
- *   refused harness record · 1 usage error (message on stderr).
+ * Exit: 0 clean · 2 any page refused, a template left without an encode attempt record (plan), the flow guard, a
+ *   refused harness record, or retype-plan finding no variance ledger · 1 usage error (message on stderr).
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -1113,7 +1130,13 @@ export function varianceGate(run, page, archetype, old = null) {
   });
   const differ = clones.filter((s) => s.verdict === 'differs').length;
   const retype = `sub-archetypes by locale family or composition (state.mjs set <slug…> --representative <archetype-slug>, then probe the new template with replica/sibling-variance.mjs); the re-typing is recorded as a deviation (migrate.mjs decision <slug> --kind re-type …, or deviation), never a mechanical clone`;
-  if (differ > 1 && differ * 2 > clones.length) throw new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
+  if (differ > 1 && differ * 2 > clones.length) {
+    // Message unchanged (exact-string tests pin it); the archetype slug rides along so renderRun can
+    // print the retype-plan hand-off line without re-parsing the text.
+    const refusal = new Refusal(page.slug, 'variance', `${differ} of ${clones.length} current clone(s) of archetype ${archetype.slug} differ in ${rel}, so the template does not hold for this group`, `re-type the template: ${retype}; --accept-variance does not unlock a majority`);
+    refusal.retypeArchetype = archetype.slug;
+    throw refusal;
+  }
   if (run.acceptVariance) return { ...rec, accepted: run.acceptVariance };
   const prior = priorVariance(run, page.slug, old);
   const reason = prior && typeof prior.accepted === 'string' && prior.accepted.trim() ? prior.accepted : null;
@@ -1300,7 +1323,7 @@ export function renderRun(o) {
     const page = bySlug.get(slug); const entry = pageMap.bySlug.get(slug);
     if (entry.passthrough) { console.log(`passthrough ${slug}: ${entry.outputPath} (non-HTML leaf; no render, no sidecar)`); counts.passthrough.push(slug); continue; }
     let r;
-    try { r = renderPage(run, page, entry); } catch (e) { if (!(e instanceof Refusal)) throw e; console.error(e.message); counts.refused.push(slug); continue; }
+    try { r = renderPage(run, page, entry); } catch (e) { if (!(e instanceof Refusal)) throw e; console.error(e.message); if (e.retypeArchetype) console.error(`next: node stardust/scripts/migrate/migrate.mjs retype-plan ${e.retypeArchetype} --write`); counts.refused.push(slug); continue; }
     if (r.status === 'unchanged') { console.log(`unchanged ${slug} → ${r.outputPath}`); counts.unchanged.push(slug); continue; }
     counts.rendered.push(slug); rendered.set(slug, r);
     for (const m of r.missing) missing.push({ slug, ...m });
@@ -1427,6 +1450,92 @@ export function decisionCmd(o, slug) {
   sidecar.migrationDecisions = pushUnique((sidecar.migrationDecisions || []), { kind: o.kind, ...extra });
   saveSidecar(file, sidecar); console.log(`decision ${slug}: ${o.kind} (${sidecar.migrationDecisions.length} recorded)`); return 0;
 }
+// ---- retype-plan: group a differing-sibling variance ledger into proposed sub-archetypes --------
+// The delta fingerprint of one differing sibling row — the key that groups siblings deviating the
+// same way into one sub-archetype. Two order-free parts:
+//   missing — the row's missing[] probe set (probes the archetype has that this sibling lacks);
+//   shape   — the cluster/count signature: the set of probe names carrying a COUNT or CLUSTERS
+//             delta (the probes whose match-count or style-family-count moved). The magnitudes are
+//             dropped on purpose — two siblings that lose the same probes and reshape the same
+//             probes group together even when the exact counts differ (43 → 11 vs 43 → 12 is
+//             content noise, not a different template).
+// Serialised as `missing=[…]; shape=[…]`, both lists de-duplicated and sorted — the group key and
+// the human label at once.
+const uniqSortStr = (a) => [...new Set((Array.isArray(a) ? a : []).filter((x) => typeof x === 'string'))].sort(byStr);
+export function retypeFingerprint(row) {
+  const missing = uniqSortStr(row && row.missing);
+  const deltas = row && Array.isArray(row.deltas) ? row.deltas : [];
+  const shape = uniqSortStr(deltas.filter((d) => d && (d.kind === 'COUNT' || d.kind === 'CLUSTERS')).map((d) => d.probe));
+  return `missing=[${missing.join(',')}]; shape=[${shape.join(',')}]`;
+}
+// A sibling's deviation score: fewer findings = closer to the group's shared shape → representative.
+const retypeScore = (row) => (Array.isArray(row.missing) ? row.missing.length : 0)
+  + (Array.isArray(row.extra) ? row.extra.length : 0) + (Array.isArray(row.deltas) ? row.deltas.length : 0);
+// A variance ledger → { archetype, groups[], unchanged[] }. Rows whose verdict is not `differs`
+// stay with the original archetype (unchanged, slugs sorted). Differing rows are grouped by
+// retypeFingerprint; each group's representative is the member with the fewest findings
+// (retypeScore), ties broken by slug; groups are ordered by fingerprint. `findings` carries the
+// representative's missing/extra/deltas so the lead can see why the group differs.
+export function retypePlan(doc, archetype) {
+  const rows = doc && typeof doc === 'object' && Array.isArray(doc.siblings) ? doc.siblings.filter((s) => s && typeof s === 'object' && typeof s.slug === 'string') : [];
+  const unchanged = rows.filter((s) => s.verdict !== 'differs').map((s) => s.slug).sort(byStr);
+  const byFp = new Map();
+  for (const row of rows.filter((s) => s.verdict === 'differs')) { const fp = retypeFingerprint(row); if (!byFp.has(fp)) byFp.set(fp, []); byFp.get(fp).push(row); }
+  const groups = [...byFp.entries()].sort(([a], [b]) => byStr(a, b)).map(([fingerprint, members]) => {
+    const rep = members.slice().sort((a, b) => retypeScore(a) - retypeScore(b) || byStr(a.slug, b.slug))[0];
+    return { fingerprint, representative: rep.slug, siblings: members.map((m) => m.slug).sort(byStr),
+      findings: { missing: Array.isArray(rep.missing) ? rep.missing : [], extra: Array.isArray(rep.extra) ? rep.extra : [], deltas: Array.isArray(rep.deltas) ? rep.deltas : [] } };
+  });
+  return { archetype, groups, unchanged };
+}
+// retype-plan <archetype-slug> [--write] [--json]: read the on-disk variance ledger, group the
+// differing siblings into proposed sub-archetypes, and (with --write) persist the plan plus a
+// re-type decision row — no rendered _meta.json sidecar required, so the cluster subagent can
+// record the deviation the refusal otherwise blocks. Exit 0 plan produced, 2 no ledger / unknown.
+export function retypePlanCmd(o, slug) {
+  if (!slug) throw new UsageError('retype-plan <archetype-slug> [--write] [--json]');
+  if (!/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(slug)) throw new UsageError(`retype-plan: "${slug}" is not a file-safe archetype slug (letters, digits, . _ -; no leading dot)`);
+  const varianceDir = o.varianceDir || join(dirname(o.state), 'rollout', 'variance');
+  const file = join(varianceDir, `${slug}.json`); const rel = toPosix(file);
+  const produce = 'run: node stardust/scripts/replica/sibling-variance.mjs <archetypeURL> <siblingURL…> to write it';
+  if (!isFile(file)) { console.error(`retype-plan ${slug}: no variance ledger ${rel} (archetype unknown or not probed) — ${produce}`); return 2; }
+  const doc = readJson(file);
+  if (!doc || typeof doc !== 'object' || !Array.isArray(doc.siblings)) { console.error(`retype-plan ${slug}: ${rel} is not a variance ledger (no siblings[]) — re-${produce}`); return 2; }
+  const plan = retypePlan(doc, slug);
+  const { groups, unchanged } = plan;
+  const differing = groups.reduce((n, g) => n + g.siblings.length, 0);
+  let wrote = null;
+  if (o.write) {
+    const planFile = join(dirname(o.state), 'migrate', 'retype-plan', `${slug}.json`);
+    // Share decision --kind re-type's writer: one deduped re-type row, so re-running --write leaves
+    // the file byte-identical and never grows a duplicate decision.
+    const prior = isFile(planFile) ? readJson(planFile) : null;
+    const decisions = prior && Array.isArray(prior.migrationDecisions) ? prior.migrationDecisions.slice() : [];
+    const decision = { kind: 're-type', archetype: slug, groups: groups.map((g) => g.representative), unchanged };
+    pushUnique(decisions, decision);
+    mkdirSync(dirname(planFile), { recursive: true });
+    writeFileSync(planFile, `${JSON.stringify({ ...plan, migrationDecisions: decisions }, null, 2)}\n`);
+    wrote = { file: toPosix(planFile), rows: decisions.length };
+  }
+  if (o.json) {
+    console.log(JSON.stringify(plan, null, 2));
+    if (wrote) console.error(`retype-plan ${slug}: wrote ${wrote.file} (re-type decision: ${wrote.rows} row(s))`);
+    return 0;
+  }
+  console.log(`retype-plan ${slug}: ${groups.length} sub-archetype group(s) from ${differing} differing sibling(s), ${unchanged.length} unchanged`);
+  console.log(`  ledger: ${rel}`);
+  groups.forEach((g, i) => {
+    const kinds = [...new Set(g.findings.deltas.map((d) => `${d.kind}${d.probe ? `(${d.probe})` : ''}`))];
+    console.log(`\ngroup ${i + 1} — ${g.fingerprint}`);
+    console.log(`  representative: ${g.representative}`);
+    console.log(`  siblings: ${g.siblings.join(', ')}`);
+    console.log(`  why: missing [${g.findings.missing.join(', ')}], extra [${g.findings.extra.join(', ')}], ${g.findings.deltas.length} delta(s)${kinds.length ? `: ${kinds.join(', ')}` : ''}`);
+  });
+  if (!groups.length) console.log(`\nno differing siblings in ${rel} — nothing to re-type`);
+  if (unchanged.length) console.log(`\nunchanged (stay with ${slug}): ${unchanged.join(', ')}`);
+  if (wrote) console.log(`\nwrote ${wrote.file} (re-type decision: ${wrote.rows} row(s))`);
+  return 0;
+}
 export function variantCmd(o, slug, classes) {
   if (!slug || !classes.length) throw new UsageError('variant <slug> <class…>');
   const { file, sidecar } = sidecarPath(o, slug);
@@ -1503,10 +1612,10 @@ export function pagemapCmd(o) {
 }
 
 // ---- argv and entry point ----------------------------------------------------------------------
-const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype']);
+const BOOL = new Set(['all', 'force', 'inline-canon', 'json', 'clear', 'from-archetype', 'write']);
 const REPEAT = new Set(['source', 'archetype']); // slug=value pairs on render; --source is free text elsewhere
 export function parseArgs(argv) {
-  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null, encoder: null, capture: null };
+  const o = { ...DEFAULTS, slugs: [], sources: {}, archetypes: {}, branchB: new Set(), all: false, force: false, inlineCanon: false, fromArchetype: false, json: false, clear: false, write: false, evidence: null, content: null, kind: null, source: null, target: null, reason: null, stardustVersion: null, mediaMap: null, mediaLedger: null, acceptVariance: null, varianceDir: null, slotSource: null, encoder: null, capture: null };
   const positional = []; const raw = { source: [], archetype: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1542,6 +1651,7 @@ export function main(argv) {
     case 'gate': return gateCmd(o, rest[0], rest[1]);
     case 'deviation': return deviationCmd(o, rest[0]);
     case 'decision': return decisionCmd(o, rest[0]);
+    case 'retype-plan': return retypePlanCmd(o, rest[0]);
     case 'variant': return variantCmd(o, rest[0], rest.slice(1));
     case 'modules': return modulesCmd(o, rest[0], rest.slice(1));
     case 'harness': return harnessCmd(o, rest[0]);
