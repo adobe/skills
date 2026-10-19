@@ -718,7 +718,11 @@ Build the export once the roster is frozen — no unit running, no fix round ope
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in
 order, whenever an input changed after the manifest (a gap-closure or G-aem fix to `content/`,
 `blocks/` or `styles/`, a judgement edit), and always BEFORE `done-check.mjs`, which lists
-`export_stale:<why>` until the export is fresh — the proof it was not. Under a session deadline that
+`export_stale:<why>` until the export is fresh — the proof it was not. `workspace-manifest.mjs --check`
+first classifies the drift: `rehash-safe` (only block CSS or a regenerated coverage file drifted — the
+mapping's selectors are unchanged) takes `--rehash-only`, a seconds-long re-hash of the manifest (and the
+mapping's generatedAt) that skips the full re-run; anything feeding selectors or templates is `rebuild`,
+the whole sequence. Under a session deadline that
 will cut it short, refresh the export only if it takes under five minutes; otherwise leave
 `export_stale` standing for the resumed run. A failing command names what to re-run — fix it and
 re-run, never `blocked`.

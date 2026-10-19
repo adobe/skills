@@ -4,7 +4,19 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x (stardust/r17-retype-plan) — a majority-variance refusal hands off a re-type plan, no prose-note bounce (#159)
+## 0.36.x (stardust/r17-rehash-only) — a stale migration export gets a cheap, safe re-hash and an adopter gate (#160)
+
+In a recorded hands-off run the migration export went stale after gap-closure edited block CSS and
+the inventory rewrote coverage: `done-check.mjs` reported `export_stale`, but the drift was
+hash-only — the source selectors reproduced unchanged — so the full 10–20 minute re-run was
+overkill, and nothing said the downstream adopter does not degrade: it hard-rejects an export whose
+`coverage/pages.json` sha mismatches its manifest and produces nothing. `workspace-manifest.mjs
+--check` now classifies the drift `fresh` / `rehash-safe` / `rebuild` from the manifest's recorded
+inputs and outputs: `rehash-safe` means only presentation (block CSS) or a regenerated coverage file
+drifted, never the selectors, so `--rehash-only` refreshes the manifest hashes and reconciles the
+mapping's generatedAt in seconds; a content, capture, sidecar, encoder-map, block-JS, judgement or
+mapping change is `rebuild`. `done-check.mjs` carries the classification, its command and — when
+`coverage/pages.json` drifted — the adopter-refusal note on the `export_stale` line.
 
 In a recorded hands-off run of a multilingual site the three longest cluster units (146, 132 and 58 minutes) were all
 siblings that tripped the majority-variance guard: `migrate.mjs render` correctly refuses a mechanical clone when more
