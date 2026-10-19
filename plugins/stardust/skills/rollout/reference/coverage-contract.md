@@ -59,7 +59,7 @@ absent (sections live in `delivered.sections`, chrome in the blocks.json chrome 
 
 | Field | Meaning |
 |---|---|
-| `_provenance` | `writtenBy` `stardust:rollout/workspace-manifest`, `writtenAt` = pages.json `generatedAt`, `readArtifacts[]`, `stardustVersion` (null in a project copy) |
+| `_provenance` | `writtenBy` `stardust:rollout/workspace-manifest`, `writtenAt` = pages.json `generatedAt`, `readArtifacts[]`, `stardustVersion`: rollout.json's `_provenance.stardustVersion` as `inventory.mjs` stamped it — the plugin manifest's version, else the `STARDUST_VERSION` env (set by a runner whose scripts tree carries no manifest), else `0.0.0`; without rollout.json the env, then the installed plugin's manifest, else null |
 | `inputs` | `sha256:` hashes of what coverage was built from: `content {files, sha256, tracked}` and the files `blocks.mjs` read (`judgement.json`, `stardust/eds-conversion-log.md`, each `blocks/<n>/<n>.{js,css}`, when present) |
 | `outputs` | hashes of what a client reads: the three coverage files and `workspace/mapping.json` when present; a client trusts one only when its hash matches |
 | `placeholders[]` | "(not judged)" summary lines (template names, template descriptions, blocks with base type `unknown`, blocks without purpose or reuse guidance); pages with `delivered: null`; module blocks delivered without a conversion record (`update-coverage.mjs --block`) |

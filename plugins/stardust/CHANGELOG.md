@@ -4,6 +4,15 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r17-version-env) — version stamps honour STARDUST_VERSION (#170)
+
+Every place a skill stamps `_provenance.stardustVersion` from the plugin manifest — rollout's
+`inventory.mjs` (rollout.json and the coverage files; the export manifest copies it), qa's `lib.mjs`
+(the QA report) and `state.mjs` (state.json) — now falls back to the `STARDUST_VERSION` env before
+its last resort (`0.0.0`; state.json keeps the stamp it already carries). In the runner's image the
+skills run from a copied scripts tree with no manifest above it, so a recorded hands-off run stamped
+`0.0.0` everywhere — consistent but meaningless; the runner now exports the version and all agree.
+
 ## 0.36.x (stardust/r17-export-polish) — export manifest: real version, per-template encoder coverage, judgement debt, sibling-group count (#168)
 
 Four small fixes an evaluation of three recorded hands-off runs surfaced in the migration-workspace
