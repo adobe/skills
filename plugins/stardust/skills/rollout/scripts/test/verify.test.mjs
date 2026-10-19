@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // skills/rollout/scripts/test/verify.test.mjs — verify.mjs's <h1> rule against the source capture, offline (--root) in a
-// temp project: one <h1> verifies; none verifies only when <current>/pages/<slug>.json records headings without an h1
-// (a `note:` line and `· <n> note(s)` in the summary, never a failure); a capture with an h1, no capture, or more than
-// one <h1> fails as before; a failed delivery.gate is never rescued by the note; a gate failed at any recorded width
-// (delivery.gate.passByWidth) is never verified; --current is honoured. --help writes nothing.
+// temp project: one <h1> verifies; no <h1> or more than one verifies only when the capture shares the trait (0 or >1 h1
+// in <current>/pages/<slug>.json) — a `trait:` line and `· <n> trait(s)` in the summary, never a failure; a capture
+// whose h1 count the render does not match, or a missing capture, fails as before; a failed delivery.gate is never
+// rescued by a trait; a gate failed at any recorded width (delivery.gate.passByWidth) is never verified; --current is
+// honoured. An out-of-plan internal href is reported `e2_pending` (E2 repoints it), not a failure. --help writes nothing.
 // --base (a local server): a page is fetched where it was deployed (delivery.deployedUrl), else at its path. Media and
 // text-track links are assets, never broken page links.
 // Run: node plugins/stardust/skills/rollout/scripts/test/verify.test.mjs
@@ -63,12 +64,12 @@ check('one <h1> → verified, no note', () => {
   rmSync(proj, { recursive: true, force: true });
 });
 
-check('no <h1> and a capture without one → verified, with the note line and the summary count', () => {
+check('no <h1> and a capture without one → verified, with the trait line and the summary count', () => {
   const proj = project();
   const r = run(proj, ['--slug', 'plain']);
   assert.equal(r.status, 0, r.stdout + r.stderr);
   assert.equal(statusOf(proj).plain, 'verified');
-  assert.deepEqual(lines(r).slice(2), ['Checked 1 · 1 verified · 0 failed · 1 note(s) · types: page:1', 'note: plain: source has no h1 (recorded source trait)']);
+  assert.deepEqual(lines(r).slice(2), ['Checked 1 · 1 verified · 0 failed · 1 trait(s) · types: page:1', 'trait: plain: source has 0 h1 (recorded source trait)']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -84,7 +85,7 @@ check('no <h1> and a capture with one, or no capture → failed as before', () =
   rmSync(proj, { recursive: true, force: true });
 });
 
-check('the note never rescues a failed gate: no <h1>, a capture without one, delivery.gate.pass false → failed', () => {
+check('a trait never rescues a failed gate: no <h1>, a capture without one, delivery.gate.pass false → failed', () => {
   const proj = project();
   const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
   const doc = JSON.parse(readFileSync(file, 'utf8'));
@@ -123,21 +124,59 @@ check('more than one <h1> fails even when the source has none', () => {
   rmSync(proj, { recursive: true, force: true });
 });
 
+check('more than one <h1> is a trait when the capture shares it (verified), a failure when the capture has one', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.push({ slug: 'multi', path: '/multi', delivery: { status: 'deployed' } }, { slug: 'extra', path: '/extra', delivery: { status: 'deployed' } });
+  writeFileSync(file, JSON.stringify(doc));
+  writeFileSync(join(proj, 'site', 'multi.html'), '<main><h1>A</h1><h1>B</h1></main>');
+  writeFileSync(join(proj, 'site', 'extra.html'), '<main><h1>A</h1><h1>B</h1></main>');
+  capture(join(proj, 'stardust', 'current'), 'multi', ['h1', 'h1', 'h2']); // the source itself has two h1 → the render matches the trait
+  capture(join(proj, 'stardust', 'current'), 'extra', ['h1', 'h2']);       // the source has one h1 → the extra rendered h1 is a defect
+  const okr = run(proj, ['--slug', 'multi']);
+  assert.equal(okr.status, 0, okr.stdout);
+  assert.equal(statusOf(proj).multi, 'verified');
+  assert.match(okr.stdout, /^trait: multi: source has 2 h1 \(recorded source trait\)$/m);
+  assert.match(okr.stdout, /· 1 trait\(s\) ·/);
+  const badr = run(proj, ['--slug', 'extra']);
+  assert.equal(badr.status, 1, badr.stdout);
+  assert.equal(statusOf(proj).extra, 'failed');
+  assert.match(badr.stdout, /✗ extra \(page\): page should render exactly one <h1>, found 2/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('an out-of-plan internal href is e2_pending (the page still verifies), an in-plan one is fine', () => {
+  const proj = project();
+  const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
+  const doc = JSON.parse(readFileSync(file, 'utf8'));
+  doc.pages.push({ slug: 'linky', path: '/linky', delivery: { status: 'deployed' } });
+  writeFileSync(file, JSON.stringify(doc));
+  writeFileSync(join(proj, 'site', 'linky.html'), '<main><h1>Linky</h1><a href="/one">in</a><a href="/gone">out</a><a href="/missing">out2</a></main>');
+  const r = run(proj, ['--slug', 'linky']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.equal(statusOf(proj).linky, 'verified');
+  assert.match(r.stdout, /^e2_pending: linky: out-of-plan link\(s\) for E2 to repoint: \/gone, \/missing$/m);
+  assert.match(r.stdout, /· 1 e2_pending ·/);
+  assert.doesNotMatch(r.stdout, /✗ linky/);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 check('--all reports every page; --current points at another capture directory', () => {
   const proj = project();
   const all = run(proj, ['--all']);
   assert.equal(all.status, 1);
   assert.deepEqual(statusOf(proj), { one: 'verified', plain: 'verified', titled: 'failed', bare: 'failed', double: 'failed' });
-  assert.equal(lines(all)[2], 'Checked 5 · 2 verified · 3 failed · 1 note(s) · types: page:5');
+  assert.equal(lines(all)[2], 'Checked 5 · 2 verified · 3 failed · 1 trait(s) · types: page:5');
   capture(join(proj, 'elsewhere'), 'bare', ['h2']);
   const moved = run(proj, ['--slug', 'bare', '--current', 'elsewhere']);
   assert.equal(moved.status, 0, moved.stdout);
-  assert.match(moved.stdout, /^note: bare: source has no h1 \(recorded source trait\)$/m);
+  assert.match(moved.stdout, /^trait: bare: source has 0 h1 \(recorded source trait\)$/m);
   assert.equal(run(proj, ['--slug', 'plain', '--current', 'elsewhere']).status, 1);
   rmSync(proj, { recursive: true, force: true });
 });
 
-check('media and text-track links are assets, not pages; a link to an unknown page still fails', () => {
+check('media and text-track links are assets, not pages; a link to an unknown page is e2_pending, not a failure', () => {
   const proj = project();
   const file = join(proj, 'stardust', 'rollout', 'coverage', 'pages.json');
   const doc = JSON.parse(readFileSync(file, 'utf8'));
@@ -149,9 +188,11 @@ check('media and text-track links are assets, not pages; a link to an unknown pa
   const media = run(proj, ['--slug', 'media']);
   assert.equal(media.status, 0, media.stdout + media.stderr);
   assert.equal(statusOf(proj).media, 'verified');
+  assert.doesNotMatch(media.stdout, /e2_pending/); // every link is an asset or in plan
   const lost = run(proj, ['--slug', 'lost']);
-  assert.equal(lost.status, 1, lost.stdout);
-  assert.match(lost.stdout, /✗ lost \(page\): broken internal links: \/nowhere$/m);
+  assert.equal(lost.status, 0, lost.stdout); // the out-of-plan /nowhere is E2's repoint, not a verify failure
+  assert.equal(statusOf(proj).lost, 'verified');
+  assert.match(lost.stdout, /^e2_pending: lost: out-of-plan link\(s\) for E2 to repoint: \/nowhere$/m);
   rmSync(proj, { recursive: true, force: true });
 });
 

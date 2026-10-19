@@ -14,18 +14,25 @@
  *                    tree or a local export) — checks existence + content
  *
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
- * (#75 broken-image ingestion), a page renders exactly one <h1>, every internal href="/…"
- * resolves to a page in coverage, and `delivery.gate.pass` is not false (the pixel table's
- * verdict, written by `update-coverage.mjs --gate` — #125) nor any recorded width's verdict in
+ * (#75 broken-image ingestion), an <h1> count that matches its source capture (below), and
+ * `delivery.gate.pass` is not false (the pixel table's verdict, written by
+ * `update-coverage.mjs --gate` — #125) nor any recorded width's verdict in
  * `delivery.gate.passByWidth` (a failure at any width fails the page: `gate: FAIL at <width>`).
  * Media and text-track links are assets, not pages (`.vtt`, `.srt`, `.mp3`, `.m3u8`, … like
- * `.css` or `.pdf`): never a broken internal link.
+ * `.css` or `.pdf`): neither a link nor a trait.
  *
- * A page that renders no <h1> while its source capture (<current>/pages/<slug>.json, extract's
- * crawl) records headings without an h1 is NOT failed: the source's trait is kept — content is
- * never edited to satisfy a verifier — and the page is verified with a stdout line
- * `note: <slug>: source has no h1 (recorded source trait)`. More than one <h1>, a missing
- * capture, or a capture with an h1 → the page fails as before.
+ * The <h1> count is judged against the source capture (<current>/pages/<slug>.json, extract's
+ * crawl), because content is never edited to satisfy a verifier. One <h1> verifies. No <h1>, or
+ * more than one, is a FAILURE unless the capture carries the same trait — a capture with no h1
+ * (none rendered) or a capture with more than one h1 (more than one rendered): then it is a
+ * recorded source trait, the page verifies, and a stdout line reads
+ * `trait: <slug>: source has <n> h1 (recorded source trait)`. A missing capture, or a capture
+ * whose h1 count the render does not match, fails as before.
+ *
+ * Out-of-plan links are E2's, not a verify failure. Phase E2 (link audit + repoints) runs BEFORE
+ * Phase E (this verify); an internal `href="/…"` that still resolves to no page in coverage is
+ * reported `e2_pending: <slug>: <paths>` for E2 to repoint, never a page failure — a recorded run
+ * failed and re-deployed pages over links E2 was about to repoint.
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
  *        [--current <dir>]
@@ -33,7 +40,8 @@
  *
  * Writes (under <out>/): coverage/pages.json (each checked page flipped to verified | failed),
  * coverage/templates.json (roll-up) and rollout.json (lastRun) when they exist. The per-page
- * result lines go to stdout; the summary line gains `· <n> note(s)` when there are notes.
+ * result lines go to stdout; the summary line gains `· <t> trait(s)` and `· <p> e2_pending`
+ * when there are any.
  * Exit: 0 = no checked page failed, 1 = a page failed (or no pages.json), 2 = no --base/--root.
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -114,17 +122,20 @@ function artifactType(p) {
   return 'page';
 }
 
-// The source capture records the page's headings; one without an h1 is a source trait the page keeps.
-function sourceLacksH1(slug) {
+// The source capture records the page's headings; its h1 count (null when there is no capture) is the
+// trait the render must match — content is never edited to satisfy a verifier.
+function sourceH1Count(slug) {
   const cap = slug ? readJSON(join(CURRENT, 'pages', `${slug}.json`)) : null;
-  return !!cap && Array.isArray(cap.headings) && !cap.headings.some((h) => h && String(h.tag).toLowerCase() === 'h1');
+  if (!cap || !Array.isArray(cap.headings)) return null;
+  return cap.headings.filter((h) => h && String(h.tag).toLowerCase() === 'h1').length;
 }
 
-// Typed render-truth: returns a failure reason or null. Pages must render one
-// <h1> (none only when the source has none — a note) and carry no about:error;
-// fragments skip the <h1> rule; indexes must be valid JSON with rows. Link
-// integrity applies to pages and fragments.
-const notes = [];
+// Typed render-truth: returns a failure reason or null, pushing source traits to `traits` and out-of-plan
+// links to `pending` (neither fails the page). Pages render an <h1> count the capture shares (one, or a
+// recorded 0/>1 trait); fragments skip the <h1> rule; indexes must be valid JSON with rows. An out-of-plan
+// internal href is E2's repoint (Phase E2 runs before this), reported e2_pending, never a failure.
+const traits = [];
+const pending = [];
 function renderCheck(type, body, slug) {
   if (type === 'index') {
     // a valid index with zero rows is a legitimate state (nothing published yet),
@@ -136,11 +147,15 @@ function renderCheck(type, body, slug) {
   if (/about:error/.test(body)) return 'about:error in body (#75 broken image)';
   if (type === 'page') {
     const h1 = (body.match(/<h1[\s>]/gi) || []).length;
-    if (h1 === 0 && sourceLacksH1(slug)) notes.push(`note: ${slug}: source has no h1 (recorded source trait)`);
-    else if (h1 !== 1) return `page should render exactly one <h1>, found ${h1}`;
+    const capH1 = sourceH1Count(slug); // null when no capture
+    // one h1 verifies; no h1 or more than one is a FAIL unless the capture carries the same trait (0 or >1)
+    if (h1 !== 1) {
+      if ((h1 === 0 && capH1 === 0) || (h1 > 1 && capH1 !== null && capH1 > 1)) traits.push(`trait: ${slug}: source has ${capH1} h1 (recorded source trait)`);
+      else return `page should render exactly one <h1>, found ${h1}`;
+    }
   }
-  const broken = checkLinks(body);
-  if (broken.length) return `broken internal links: ${broken.slice(0, 5).join(', ')}`;
+  const outOfPlan = checkLinks(body);
+  if (outOfPlan.length) pending.push(`e2_pending: ${slug}: out-of-plan link(s) for E2 to repoint: ${outOfPlan.slice(0, 5).join(', ')}`);
   return null;
 }
 
@@ -183,10 +198,12 @@ if (config && config.lastRun !== undefined) { rollupConfig(config, pages, blocks
 const ok = results.filter((r) => r.status === 'verified').length;
 const bad = results.filter((r) => r.status === 'failed');
 const byType = results.reduce((a, r) => { a[r.type] = (a[r.type] || 0) + 1; return a; }, {});
+const extra = [...(traits.length ? [`${traits.length} trait(s)`] : []), ...(pending.length ? [`${pending.length} e2_pending`] : [])];
 console.log(`rollout verify (${ROOT ? `root:${ROOT}` : BASE})`);
 console.log('='.repeat(60));
-console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed${notes.length ? ` · ${notes.length} note(s)` : ''} · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
+console.log(`Checked ${results.length} · ${ok} verified · ${bad.length} failed${extra.length ? ` · ${extra.join(' · ')}` : ''} · types: ${Object.entries(byType).map(([k, v]) => `${k}:${v}`).join(' ')}`);
 for (const r of bad) console.log(`  ✗ ${r.slug} (${r.type}): ${r.reason}`);
-for (const n of notes) console.log(n);
+for (const n of traits) console.log(n);
+for (const n of pending) console.log(n);
 if (!target.length) console.log('Nothing to verify (no deployed pages). Deliver pages first, or pass --all.');
 process.exit(bad.length ? 1 : 0);
