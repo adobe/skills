@@ -546,7 +546,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   within `--max` (default and ceiling 1500 s, a lead whose cache holds an
   hour; `--max 240` under a five-minute cache, a fan-out subagent's);
   exit 75 means "still going — `wait` again as your NEXT step", never in a
-  shell loop; exit 76 means the pause file appeared — stop waiting. The full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
+  shell loop; exit 78 means the runner asked to stop — end the session. The full instrument output stays in `stardust/.work/replica/bg/<job>.log` —
   read it with `run-bg.mjs log <job> --grep <re>`, not with `cat`: a verdict
   is four lines of it.
 - **Media-density budget.** The ≤3-iteration convergence was validated on a

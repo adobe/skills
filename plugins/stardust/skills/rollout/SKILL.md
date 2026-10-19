@@ -369,10 +369,11 @@ $P wait          # --max 300 (240 under a five-minute cache); by exit code:
 #  75  nothing ended within --max → a unit `running` past its deadline whose agent returned
 #      (its line in `stardust/.labs/wake`, or the harness's agent status):
 #      $P unit failed <unit> --verdict "no end by its deadline: <reason>"; wait again
-#  76  the pause file → start nothing new, let running units return, ask the boundary
 #  77  a background agent finished (the wake line) → show --waves: its unit flipped → as 0; already
-#      handled → wait again; still `running`, no paused: report → it died:
+#      handled → wait again; still `running`, no stop line: report → it died:
 #      $P unit failed <unit> --verdict "<reason>"; then wait again
+#  78  the runner asked to stop (the pause file appeared) → stop launching, let running units finish
+#      on their own (they survive the session), ask /boundary once, write the two-line note and end
 $P show --waves  # before every wait (ends between waits go unprinted, a wake can be lost; the 75
                  # deadline check too); can start now: cluster-product
 $P unit start cluster-product --kind cluster --templates product

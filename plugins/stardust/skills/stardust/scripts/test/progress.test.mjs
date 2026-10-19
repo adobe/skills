@@ -14,14 +14,14 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  applyUnit, C0_ARCHETYPE, formatLine, formatWaves, GATE_WIDTHS, parseArgs, parseSetValue, pathLines, pauseState, pickWatched, setPath,
-  unprovenDelivered, unprovenRefusal, waitBound, waitEndedLine,
-  waitPausedLine, waitState, waitTimeoutLine, waitWokenLine, wakeLine, wakeStep, wavesView,
+  applyUnit, C0_ARCHETYPE, formatLine, formatWaves, GATE_WIDTHS, parseArgs, parseSetValue, pathLines, pickWatched, setPath,
+  stopLine, stopState, STOP_EXIT, unprovenDelivered, unprovenRefusal, waitBound, waitEndedLine,
+  waitState, waitTimeoutLine, waitWokenLine, wakeLine, wakeStep, wavesView,
 } from '../progress.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 import { gateProof } from '../../../rollout/scripts/lib.mjs';
 
-// A supervised session's pause file must not end these waits; the pause tests set their own.
+// A supervised session's stop file must not end these waits; the stop tests set their own.
 delete process.env.STARDUST_PAUSE_FILE;
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'progress.mjs');
@@ -209,29 +209,28 @@ check('wait helpers: waitBound (a notice over 600 s, clamped over 1500 s) and th
   assert.deepEqual(n.notes, ['progress: --max 700 — a wait over 600 s buys nothing; a one-hour cache does not need it (a 300 s step costs about three cents and sees an ended unit up to 20 minutes sooner)']);
   const c = waitBound(2000);
   assert.equal(c.sec, 1500); assert.equal(c.notes.length, 2);
-  assert.equal(c.notes[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the pause file ends a wait early');
+  assert.equal(c.notes[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the stop file ends a wait early');
   assert.equal(waitBound(1500).notes.length, 1);
   assert.equal(waitEndedLine(1, 2, ['b']), 'progress wait: 1 of 2 ended — still running: b');
   assert.equal(waitEndedLine(2, 2, []), 'progress wait: 2 of 2 ended — none still running');
   assert.equal(waitTimeoutLine(2, 300, ['a', 'b']), 'progress wait: none of 2 ended within 300s — still running: a, b — wait again as the next call');
-  const p = { path: 'p.json', reason: 'stop', at: T0 };
-  assert.equal(waitPausedLine(p, ['a', 'b']), `progress wait: paused — p.json present (reason: stop, at ${T0}) — start nothing new; still running: a, b`);
-  assert.match(waitPausedLine(p, []), /— start nothing new; still running: none$/);
-  assert.match(waitPausedLine(p, null), /— start nothing new; still running: unknown$/);
+  const s = { path: 'p.json', stopAt: T0, reason: 'budget spent' };
+  assert.equal(stopLine(s), `wait: the runner asked to stop (${T0}; budget spent) — end the session now`);
+  assert.equal(stopLine({ path: 'p.json', stopAt: 'now', reason: 'no reason given' }), 'wait: the runner asked to stop (now; no reason given) — end the session now');
 });
-check('pauseState: unset / empty / missing = no pause; JSON {at, reason}; anything else still counts (reason unreadable); relative = from the cwd', () => {
+check('stopState: unset / empty / missing = no stop; JSON {stopAt, reason}; anything else still counts (defaults now / no reason given); relative = from the cwd', () => {
   const d = project();
-  assert.equal(pauseState(undefined, { cwd: d }), null);
-  assert.equal(pauseState('', { cwd: d }), null);
-  assert.equal(pauseState('  ', { cwd: d }), null);
-  assert.equal(pauseState('p.json', { cwd: d }), null);
-  put(join(d, 'p.json'), { at: T0, reason: 'budget\n spent' });
-  assert.deepEqual(pauseState('p.json', { cwd: d }), { path: 'p.json', reason: 'budget spent', at: T0 });
+  assert.equal(stopState(undefined, { cwd: d }), null);
+  assert.equal(stopState('', { cwd: d }), null);
+  assert.equal(stopState('  ', { cwd: d }), null);
+  assert.equal(stopState('p.json', { cwd: d }), null);
+  put(join(d, 'p.json'), { stopRequested: true, stopAt: T0, reason: 'budget\n spent' });
+  assert.deepEqual(stopState('p.json', { cwd: d }), { path: 'p.json', stopAt: T0, reason: 'budget spent' });
   put(join(d, 'q.json'), {});
-  assert.deepEqual(pauseState(join(d, 'q.json')), { path: join(d, 'q.json'), reason: 'unspecified', at: 'unknown' });
+  assert.deepEqual(stopState(join(d, 'q.json')), { path: join(d, 'q.json'), stopAt: 'now', reason: 'no reason given' });
   for (const junk of ['not json', '[1]', 'null']) {
     put(join(d, 'r.json'), junk);
-    assert.deepEqual(pauseState('r.json', { cwd: d }), { path: 'r.json', reason: 'unreadable', at: 'unknown' }, junk);
+    assert.deepEqual(stopState('r.json', { cwd: d }), { path: 'r.json', stopAt: 'now', reason: 'no reason given' }, junk);
   }
 });
 
@@ -364,7 +363,7 @@ check('--help: exit 0, usage on stdout, nothing written (also before a bad flag)
   assert.match(h.out, /progress\.mjs show --waves \[--file …\] \[--json\]/);
   assert.match(h.out, /^show --waves /m);
   assert.match(h.out, /^wait: /m);
-  assert.match(h.out, /75 wait: none ended within --max · 76 wait: the pause file is present\n  · 77 wait: the runner's wake file grew \(a background agent finished\)/);
+  assert.match(h.out, /75 wait: none ended within --max · 76 no longer emitted \(the former soft-pause code\)\n  · 77 wait: the runner's wake file grew \(a background agent finished\) · 78 wait: the runner asked to stop \(the pause file is present\) — end the session now/);
   assert.equal(runIn(d, 'unit', 'start', 'c1', '--frob', '-h').code, 0);
   assert.equal(runIn(d, 'wait', '--max', '-1', '--help').code, 0);
   assert.deepEqual(readdirSync(d), []);
@@ -724,7 +723,7 @@ check('wait --max 0: one pass, exit 75 with the still-running line (and --json);
   assert.equal(r.code, 75, r.err); assert.equal(r.err, '');
   assert.equal(r.out, 'progress wait: none of 2 ended within 0s — still running: a, b — wait again as the next call\n');
   const j = runIn(d, 'wait', '--max', '0', '--json');
-  assert.equal(j.code, 75, j.err); assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: null, wake: null });
+  assert.equal(j.code, 75, j.err); assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], stop: null, wake: null });
   const u = runIn(d, 'wait', '--max', '0', '--unit', 'b', '--unit', 'c', '--unit', 'z');
   assert.equal(u.code, 75, u.err); assert.equal(u.out, 'progress wait: none of 1 ended within 0s — still running: b — wait again as the next call\n');
   assert.equal(u.err, 'progress wait: --unit c is done — not watched\nprogress wait: --unit z is absent — not watched\n');
@@ -736,23 +735,24 @@ check('wait --max 0: one pass, exit 75 with the still-running line (and --json);
   assert.equal(readFileSync(join(d, ROLLOUT), 'utf8'), before);
   assert.deepEqual(readdirSync(join(d, 'stardust', 'rollout')), ['progress.json'], 'no lock dir');
 });
-check('wait: the pause file at the start → exit 76 at once, before the ledger is read; not JSON still counts; empty = no check', () => {
+check('wait: the stop file at the start → exit 78 at once, before the ledger is read, the line on stderr and stdout; not JSON still counts; empty = no check', () => {
   const d = project();
   put(join(d, ROLLOUT), running(['b', 'a']));
   const P = join(d, 'pause.json');
-  put(P, { at: T0, reason: 'session budget' });
+  put(P, { stopRequested: true, stopAt: T0, reason: 'session budget' });
   const r = runWith(SCRIPT, d, ['wait', '--max', '30'], { STARDUST_PAUSE_FILE: P });
-  assert.equal(r.code, 76, r.err); assert.ok(r.ms < 1500, `returned after ${r.ms} ms`); assert.equal(r.err, '');
-  assert.equal(r.out, `progress wait: paused — ${P} present (reason: session budget, at ${T0}) — start nothing new; still running: a, b\n`);
+  const stopLineText = `wait: the runner asked to stop (${T0}; session budget) — end the session now`;
+  assert.equal(r.code, STOP_EXIT, r.err); assert.ok(r.ms < 1500, `returned after ${r.ms} ms`);
+  assert.equal(r.out, `${stopLineText}\n`); assert.equal(r.err, `${stopLineText}\n`, 'the stop line is on stderr too');
   const u = runWith(SCRIPT, d, ['wait', '--unit', 'b'], { STARDUST_PAUSE_FILE: 'pause.json' });
-  assert.equal(u.code, 76); assert.equal(u.out, `progress wait: paused — pause.json present (reason: session budget, at ${T0}) — start nothing new; still running: b\n`);
+  assert.equal(u.code, STOP_EXIT); assert.equal(u.out, `${stopLineText}\n`);
   put(P, 'half written');
   const j = runWith(SCRIPT, d, ['wait', '--json'], { STARDUST_PAUSE_FILE: 'pause.json' });
-  assert.equal(j.code, 76); assert.equal(j.err, '');
-  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], paused: { path: 'pause.json', reason: 'unreadable', at: 'unknown' }, wake: null });
+  assert.equal(j.code, STOP_EXIT);
+  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: {}, running: ['a', 'b'], stop: { path: 'pause.json', stopAt: 'now', reason: 'no reason given' }, wake: null });
   const empty = project();
   const n = runWith(SCRIPT, empty, ['wait'], { STARDUST_PAUSE_FILE: P });
-  assert.equal(n.code, 76, n.err); assert.match(n.out, /— start nothing new; still running: unknown\n$/, 'no ledger: the pause still wins');
+  assert.equal(n.code, STOP_EXIT, n.err); assert.match(n.out, /^wait: the runner asked to stop \(/, 'no ledger: the stop still wins');
   assert.deepEqual(readdirSync(empty), []);
   assert.equal(runWith(SCRIPT, d, ['wait', '--max', '0'], { STARDUST_PAUSE_FILE: '' }).code, 75);
   assert.equal(runWith(SCRIPT, d, ['wait', '--max', '0'], { STARDUST_PAUSE_FILE: join(d, 'absent.json') }).code, 75);
@@ -761,16 +761,17 @@ check('wait --max over 600: one stderr notice; over 1500: the notice and the cla
   const d = project();
   put(join(d, ROLLOUT), running(['a']));
   const env = { STARDUST_PAUSE_FILE: 'pause.json' };
-  put(join(d, 'pause.json'), { at: T0, reason: 'r' });
+  put(join(d, 'pause.json'), { stopAt: T0, reason: 'r' });
   const q = runWith(SCRIPT, d, ['wait', '--max', '600'], env);
-  assert.equal(q.code, 76); assert.equal(q.err, '');
+  assert.equal(q.code, STOP_EXIT); assert.equal(q.err, `wait: the runner asked to stop (${T0}; r) — end the session now\n`, 'no notice at 600, only the stop line');
   const n = runWith(SCRIPT, d, ['wait', '--max', '700'], env);
-  assert.equal(n.code, 76); assert.match(oneLine(n.err), /^progress: --max 700 — a wait over 600 s buys nothing; a one-hour cache does not need it/);
+  assert.equal(n.code, STOP_EXIT); assert.match(n.err, /progress: --max 700 — a wait over 600 s buys nothing; a one-hour cache does not need it/);
   const c = runWith(SCRIPT, d, ['wait', '--max', '2000'], env);
-  assert.equal(c.code, 76);
+  assert.equal(c.code, STOP_EXIT);
   const lines = c.err.trimEnd().split('\n');
-  assert.equal(lines.length, 2); assert.match(lines[0], /^progress: --max 2000 — a wait over 600 s/);
-  assert.equal(lines[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the pause file ends a wait early');
+  assert.match(lines[0], /^progress: --max 2000 — a wait over 600 s/);
+  assert.equal(lines[1], 'progress: --max 2000 clamped to 1500 s — wait in steps; the stop file ends a wait early');
+  assert.equal(lines[2], `wait: the runner asked to stop (${T0}; r) — end the session now`);
   for (const [args, re] of [[['wait', '--max', '-1'], /--max needs a number of seconds ≥ 0, got "-1"/], [['wait', '--max', 'x'], /got "x"/],
     [['show', '--max', '3'], /--max applies to wait only/], [['wait', '--kind', 'cluster'], /--kind applies to unit only/], [['wait', 'a'], /unexpected argument/]]) {
     const r = runIn(d, ...args);
@@ -834,7 +835,7 @@ const [W, fired] = await Promise.all([
   ]).then((rs) => Object.fromEntries(Object.keys(S).map((k, i) => [k, rs[i]]))),
   Promise.all([
     after(TRIGGER_MS, () => runAsync(S.ends, ['unit', 'done', 'a', '--verdict', 'pass'])),
-    after(TRIGGER_MS, () => put(join(S.pause, 'pause.json'), { at: T1, reason: 'runner stop' })),
+    after(TRIGGER_MS, () => put(join(S.pause, 'pause.json'), { stopRequested: true, stopAt: T1, reason: 'runner stop' })),
     after(TRIGGER_MS, () => runAsync(S.narrow, ['unit', 'done', 'a'])),
     after(TRIGGER_MS + 1000, () => runAsync(S.narrow, ['unit', 'failed', 'b', '--verdict', 'fail: 2 bands'])),
     after(TRIGGER_MS, () => runAsync(S.ignores, ['unit', 'done', 'a'])),
@@ -881,17 +882,18 @@ check('wait: a watched unit ending in the same poll as a wake → exit 0 (the en
   assert.equal(r.out, `${formatLine('rollout', 'a', readJ(join(S.wakeEnd, ROLLOUT)).units.a)}\nwake: agent a finished\nprogress wait: 1 of 2 ended — still running: b\n`);
   const j = W.wakeEndJson;
   assert.equal(j.code, 0, j.err);
-  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: { a: readJ(join(S.wakeEndJson, ROLLOUT)).units.a }, running: ['b'], paused: null, wake: 'agent a stopped' });
+  assert.deepEqual(JSON.parse(oneLine(j.out)), { ledger: 'rollout', ended: { a: readJ(join(S.wakeEndJson, ROLLOUT)).units.a }, running: ['b'], stop: null, wake: 'agent a stopped' });
 });
 check('wait --json on a wake: "wake" carries the line — "(no text)" when the new bytes hold none', () => {
   const r = W.wakeJson;
   assert.equal(r.code, 77, r.err);
-  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'rollout', ended: {}, running: ['a'], paused: null, wake: '(no text)' });
+  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'rollout', ended: {}, running: ['a'], stop: null, wake: '(no text)' });
 });
-check('wait: a pause file that appears during the wait (relative, from the cwd) ends it with 76 at the next poll', () => {
+check('wait: a stop file that appears during the wait (relative, from the cwd) ends it with 78 within one poll — the line on stderr and stdout', () => {
   const r = W.pause;
-  assert.equal(r.code, 76, r.err);
-  assert.equal(r.out, `progress wait: paused — pause.json present (reason: runner stop, at ${T1}) — start nothing new; still running: a\n`);
+  const stopLineText = `wait: the runner asked to stop (${T1}; runner stop) — end the session now`;
+  assert.equal(r.code, STOP_EXIT, r.err);
+  assert.equal(r.out, `${stopLineText}\n`); assert.equal(r.err, `${stopLineText}\n`);
   assert.ok(r.ms < 7000, `returned after ${r.ms} ms`);
 });
 check('wait --unit narrows: an unwatched unit ending is not reported; the watched one failing ends the wait; a named unit not running gets a note', () => {
@@ -908,12 +910,21 @@ check('wait --unit b: a ending mid-wait does not end it → exit 75 at --max', (
   assert.equal(readJ(join(S.ignores, ROLLOUT)).units.a.status, 'done');
   assert.ok(r.ms >= 6000, `returned after ${r.ms} ms`);
 });
-check('wait --json on the replica ledger: the ended record under its archetype name, nothing running, no pause', () => {
+check('wait --json on the replica ledger: the ended record under its archetype name, nothing running, no stop', () => {
   const r = W.json;
   assert.equal(r.code, 0, r.err);
   const home = readJ(join(S.json, REPLICA)).types.home;
   assert.equal(home.status, 'done'); assert.equal(home.pageType, 'landing');
-  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'replica', ended: { home }, running: [], paused: null, wake: null });
+  assert.deepEqual(JSON.parse(oneLine(r.out)), { ledger: 'replica', ended: { home }, running: [], stop: null, wake: null });
+});
+check('wait: the stop file wins over the wake file when both are present → exit 78, not 77 (the stop is checked first each poll)', () => {
+  const d = project();
+  put(join(d, ROLLOUT), running(['a']));
+  appendWake(d, 'agent a finished\n');
+  put(join(d, 'pause.json'), { stopAt: T0, reason: 'both present' });
+  const r = runWith(SCRIPT, d, ['wait', '--max', '30'], { STARDUST_PAUSE_FILE: 'pause.json' });
+  assert.equal(r.code, STOP_EXIT, r.err);
+  assert.equal(r.out, `wait: the runner asked to stop (${T0}; both present) — end the session now\n`);
 });
 check('wait: every watched unit gone (pending again, removed) → a note each, then exit 2 "nothing left to wait for"', () => {
   const r = W.gone;
