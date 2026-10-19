@@ -268,13 +268,18 @@ check('--reason with a recorded refusal reason → not-attempted, the reason fir
   rmSync(join(ROOT, REC('guides')));
 });
 const recNoEnc = (t, extra = []) => run(['record', '--template', t, '--root', ROOT, ...extra]);
-check('a --reason / --not-attempted that names a generator script (.mjs/.js/.py/.sh or a stardust/.work path) is refused: exit 2, nothing written', () => {
-  for (const extra of [['--reason', 'gen-content.mjs says so'], ['--reason', 'see stardust/.work/cluster-a/build-proposed.py'], ['--not-attempted', 'extract.mjs decided it']]) {
+check('a reason that names a generator script — a path, a stardust/.work reference, or a bare filename that exists in the project — is refused; a sentence that only mentions a script name passes', () => {
+  write(join('project', 'tools', 'made.mjs'), 'export {}\n');
+  for (const extra of [['--reason', 'no-repeatable-structure: built with scripts/gen-content.mjs'], ['--reason', 'no-repeatable-structure: see stardust/.work/cluster-a/build-proposed.py'], ['--not-attempted', 're-typed: made.mjs did it']]) {
     const r = recNoEnc('guides', extra);
     assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`);
     assert.match(r.err, /a generator script is not a decision; the owner's decision is a sentence/);
   }
   assert.ok(!has(P(REC('guides'))));
+  const ok = recNoEnc('guides', ['--reason', 'no-repeatable-structure: encode.mjs cannot express the nested grid; written by hand']);
+  assert.equal(ok.status, 0, `${ok.out}${ok.err}`);
+  assert.ok(has(P(REC('guides'))), 'a legitimate sentence that only names a script records');
+  rmSync(join(ROOT, REC('guides')));
 });
 check('--not-attempted on a template with siblings must name a recorded refusal reason; a defined tag records, with the siblings/encoded counts; 0 siblings takes any reason', () => {
   const bad = recNoEnc('guides', ['--not-attempted', 'sub-archetype (re-typed to adventure-detail)']);

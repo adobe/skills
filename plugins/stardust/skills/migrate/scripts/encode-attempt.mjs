@@ -181,10 +181,31 @@ export const REFUSAL_REASONS = {
 const REASON_TAGS = Object.keys(REFUSAL_REASONS);
 /** true when `r` begins with one of the defined recorded-refusal-reason tags (case-insensitive). */
 export const isRecordedRefusalReason = (r) => typeof r === 'string' && REASON_TAGS.some((t) => new RegExp(`^${t}\\b`, 'i').test(r.trim()));
-// A reason that names a generator script (a .mjs/.js/.py/.sh file, or a path under stardust/.work/) is not an owner decision.
-const SCRIPT_RE = /(^|[\s"'(/])[\w./-]*\.(mjs|js|py|sh)(\b|["')\s]|$)/i;
+// A reason that names a generator the agent wrote is not an owner decision: a script PATH (a .mjs/.js/.py/.sh token
+// carrying a directory separator), a stardust/.work reference, or a bare script filename that actually exists under
+// the project. A bare name in prose ("encode.mjs cannot express the nested grid; written by hand") is a legitimate
+// sentence and passes.
+const SCRIPT_PATH_RE = /(^|[\s"'(])[\w.-]*\/[\w./-]*\.(?:mjs|js|py|sh)(?=\b|["')\s]|$)/i;
+const SCRIPT_NAME_RE = /(?:^|[\s"'(/])([\w.-]+\.(?:mjs|js|py|sh))(?=\b|["')\s]|$)/ig;
 const WORK_RE = /stardust\/\.work(\/|\b)/i;
-export const namesScript = (r) => typeof r === 'string' && (SCRIPT_RE.test(r) || WORK_RE.test(r));
+const fileExistsUnder = (root, name) => {
+  const SKIP = new Set(['node_modules', '.git']); const stack = [resolve(root)]; let budget = 50000;
+  while (stack.length && budget-- > 0) {
+    const dir = stack.pop(); let entries;
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+    for (const e of entries) {
+      if (e.isDirectory()) { if (!SKIP.has(e.name)) stack.push(join(dir, e.name)); }
+      else if (e.name === name) return true;
+    }
+  }
+  return false;
+};
+export const namesScript = (r, root = '.') => {
+  if (typeof r !== 'string') return false;
+  if (WORK_RE.test(r) || SCRIPT_PATH_RE.test(r)) return true;
+  for (const m of r.matchAll(SCRIPT_NAME_RE)) if (fileExistsUnder(root, m[1])) return true;
+  return false;
+};
 
 /**
  * The state pages that clone `template` (sorted slugs): a page whose representative is the template, a page whose
@@ -246,7 +267,7 @@ export function recordAttempt(root, template, opts = {}) {
   if (named !== null && !handAuthored) throw new UsageError('--pages names hand-authored siblings — pass --hand-authored');
   // A generator script is not a decision; the owner's decision is a sentence (a recorded run named extract.mjs,
   // build-proposed.py and gen-content.mjs under stardust/.work/ as if that were an owner decision).
-  for (const r of [notAttempted, given]) if (namesScript(r)) throw new Refusal(`encode-attempt ${template}: a generator script is not a decision; the owner's decision is a sentence — "${String(r).trim()}" names a script or a stardust/.work path`);
+  for (const r of [notAttempted, given]) if (namesScript(r, root)) throw new Refusal(`encode-attempt ${template}: a generator script is not a decision; the owner's decision is a sentence — "${String(r).trim()}" names a script or a stardust/.work path`);
   const rootAbs = resolve(root);
   if (!isDir(rootAbs)) throw new UsageError(`--root ${root} is not a directory`);
   if (state && !isFile(state)) throw new UsageError(`--state ${state} does not exist`);
