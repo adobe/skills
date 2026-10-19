@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.x (stardust/r16-export-fresh) — the migration export tells the truth about what it was built from, who encoded, and what the owner must still name (#151)
+## 0.36.x (stardust/r16-export-fresh) — the migration export tells the truth about what it was built from, who encoded, and what the owner must still name (#156)
 
 Two recorded hands-off runs wrote their migration export in-run and shipped it stale or misleading. A gap-closure
 rewrote 43 schema sidecars five minutes after the mapping was committed, yet the manifest said fresh and done-check
@@ -468,14 +468,14 @@ stays 0.36.0). Batch 1, merged in this order, each under its own `0.36.x (<branc
 - `stardust/r16-proto-to-doc` — 0.36.x (#153 local).
 - `stardust/r16-census-and-clock` — 0.36.x (#154 local).
 - `stardust/r16-gates-and-jobs` — 0.36.x (#155 local).
+- `stardust/r16-export-fresh` — 0.36.x (#156 local).
 - Local-only commits: the new scripts-index rows trimmed and the lint cap raised to 20 KiB + 96 bytes for the
   four-branch union (a maintainer question); the extract SKILL and scripts-index name style-census's `--page-timeout`
   and `--resume`; the validate workflow runs the inline-writes lint beside the other stardust lints; a pre-existing
-  "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; the run-bg server/stall/stop machinery merged beside the wake/exit-77 machinery, and rollout restores four sentences the gates-and-jobs condensing dropped while delivery-gates names exit 77; this
+  "skipped skipped." typo in the migrate SKILL; proto-to-doc removes its temp file when the write fails; the run-bg server/stall/stop machinery merged beside the wake/exit-77 machinery, and rollout restores four sentences the gates-and-jobs condensing dropped while delivery-gates names exit 77; migrate plan engages the encoder for a one-sibling template and the roster line quotes the source, encode-attempt's script guard flags a generator path/existing file (not a sentence that names one), and done-check infers the live host from the gates (not the preview deployedUrl); this
   renumbering.
 
-Not in this image yet: `stardust/r16-export-fresh` (verification pending — the
-integration branch stays open for later batches).
+Not in this image: none — all six batch-1 branches are merged.
 
 ## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
 
