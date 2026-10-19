@@ -14,23 +14,27 @@ records reading `hand-authored`, with the owner's reasons. A reviewer of the exp
 "never decided"; across four recorded runs the same figure meant all three (none drafted; 18/18
 encoded; a mixed site with two vocabularies drafted mid-run).
 
-- **`selectorQuality.byTemplate[].encode` `{decision, vocabulary, recordedAt}`**
+- **`selectorQuality.byTemplate[].encode` `{decision, reason, vocabulary, recordedAt}`**
   (`workspace-manifest.mjs`, manifest schema, optional). `decision` is `encoded` when the mapping
   holds ≥ 1 encoder-map selector for the template (the export's own evidence, record or not), else
   the verdict migrate recorded (`hand-authored`, `not-attempted`, `no-roundtrip`, `encoded`), else
   `not-applicable` for a template of at most one page (no sibling to encode), else `unrecorded` —
-  the multi-page case a reviewer cannot interpret. `vocabulary` names the map where block-origin
-  reads it by default; `recordedAt` is the record's stamp (null without one). A new
-  `selectorQuality.encode` counts the decisions. The records are read tolerantly (`verdict`,
-  `template`, `at` / `writtenAt`; every other key ignored) and never written; the reader is in the
+  the multi-page case a reviewer cannot interpret. `reason` quotes the owner's why from the record
+  (trimmed, at most 300 characters) and `recordedAt` its stamp — both only when the decision is the
+  record's verdict, null otherwise — so `hand-authored` and `not-attempted` read with their reason
+  inside the export; `vocabulary` names the map where block-origin reads it by default. A new
+  `selectorQuality.encode` `{encoded, noRoundtrip, notAttempted, handAuthored, notApplicable,
+  unrecorded}` counts the decisions. The records are read tolerantly (`verdict`, `template`,
+  `reason`, `at` / `writtenAt`; every other key ignored) and never written; the reader is in the
   coverage contract. Derived at manifest time, recomputed by `--rehash-only`, never a drift input
   (`--check` hashes inputs and outputs only; a record is neither).
 - **`done-check.mjs` prints `export_quality:encode_unrecorded:<n>`** when multi-page templates carry
   no encode decision — the same family and rules as the other export_quality lines (informational,
   never a gap, hidden after handover; counted from the byTemplate rows when a manifest has the rows
   but not the counts).
-- rollout SKILL.md and the handoff contract name the pair a reviewer reads together:
-  `encoderCoverage` with `encode.decision`.
+- The coverage contract documents the fields and the record shape read; rollout SKILL.md and the
+  handoff contract's done-check row name the pair a reviewer reads together: `encoderCoverage` with
+  `encode.decision` and `encode.reason`.
 
 ## 0.36.x (stardust/r17-stop-aware-wait) — the wait instruments stop on the runner's stop file (#169)
 
