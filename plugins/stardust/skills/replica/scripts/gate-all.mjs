@@ -131,8 +131,11 @@
  * INCONCLUSIVE row); --skip-existing re-shoots a stitched capture of either side without that record (logged `not
  * reused (--skip-existing: no overlay-left record)`) and --compare-only reads one as `unchecked` (an INCONCLUSIVE row).
  *
- * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). Origin captures in the
- * page dir are reused as before — never a stitched one whose record predates the overlay-left check (re-shot); an EDS
+ * REUSE (--skip-existing only; every reuse is printed in the row as `reused`, never silent). A killed roster run is resumed
+ * with the same command plus --skip-existing, never restarted from scratch: the captures and probe sets it finished are
+ * reused by the rules below (each EDS capture's gate-key.json is written as the capture lands), and PASS rows of earlier
+ * tables while their key holds; a killed run writes no table, so its pages are compared and tabled again. Origin
+ * captures in the page dir are reused as before — never a stitched one whose record predates the overlay-left check (re-shot); an EDS
  * capture only while its <slug>/gate-key.json proves it current (below), with the same overlay-left record rule.
  * Probes are replayed from <slug>/probes.json while the capture pair they were taken against is the one on disk —
  * same inputs, every probe ok and its JSON the recorded one, origin.json and eds.json no newer than the probes, a
@@ -160,6 +163,31 @@
  * keeps the gate that took it, so a full-site C-final re-captures only the pages whose document or code changed. A
  * fresh row keeps the key of its evidence only while that key is current (unknown now: same build part, probes
  * not re-run).
+ * FINGERPRINT (published stage): beside `gateKey` every row carries `fingerprint` — sha256 of the canonical JSON of the
+ * key's delivered parts { v, foundation, runtime, shared, blocks, content } (`fingerprintOf`): the frozen foundation's
+ * snapshot, icons/ + plugins/, the shared blocks, the page's block closure (its CSS / JS), its content document and the
+ * chrome documents — not the build part (host, source, width, criteria, sidecars, instruments). Issued only with the key
+ * (`rowFingerprint`: of the parts gate-key.json records for that key), else null; a row reused whole keeps its own (one
+ * written before the field takes this run's — the equal key proves it). Prototype rows: null, like gateKey.
+ * CHANGED-ONLY (--changed-only, published stage; with --stage prototype a usage error, exit 2, before any I/O): the gate
+ * keys are computed before the deadline guard and the fix-round cap, and `changedOnly` leaves out every page whose latest
+ * row in <out> — the row of the newest table across summary.json and runs/*.json, newest by its _provenance.writtenAt
+ * (`latestRows`) — is a PASS (pass true: not INCONCLUSIVE, not lifted by an override alone, not on an asymmetric origin)
+ * from a table written under this run's criteria, measured on this run's build host (`host`), with a fingerprint equal to
+ * this run's. Every other page is gated: no row, a FAIL or INCONCLUSIVE latest row (an older matching PASS does not
+ * count), a null or missing fingerprint, other criteria or another host, a gate key unknown now (no content document, the
+ * host not proven to serve the tree, a frozen file edited since the freeze); with --only, of those. A page it would gate
+ * that is at the fix-round cap (roundsOf ≥ --max-rounds) is left out instead of refusing the run — unless --only names it:
+ * named, the cap refuses as for any --only run (--round-reset unchanged). One stdout line first (`changedOnlyLine`,
+ * sorted): `gate-all changed-only: <n> to gate (<slug>, …) · <m> unchanged since their PASS (<slug> <fingerprint, 12 hex>
+ * <PASS measured at>, …)[ · at the cap: <slug>, … — C-final's roster gate measures them]`; _run.log names why each page is
+ * gated or left out at the cap. The run is then an --only run over the gated pages (runs/<ts>-<slug>.json, summary.*
+ * untouched, fix rounds counted as for --only; the table's _provenance.changedOnly lists the pages left out — unchanged,
+ * atCap). Nothing to gate → `gate-all changed-only: nothing changed since the last PASS — <m> page(s) keep their rows`
+ * (after `gate-all changed-only: at the cap: <slug>, … — C-final's roster gate measures them` when any), nothing written,
+ * exit 0. It only selects — no verdict, row or reuse rule
+ * changes, and a full roster gate (no --changed-only) stays the final word. run-bg's deadline estimate (rosterEstimate)
+ * counts the roster without it (erring high).
  *
  * Roster source (published stage): --coverage <file> (default stardust/rollout/coverage/pages.json when it exists),
  * else --state (stardust/state.json: `deployed` pages with a liveUrl and a url) — --state keeps the prototype stage
@@ -241,7 +269,7 @@
  *        [--eds-concurrency 4] [--probe-concurrency 2] [--threshold 10] [--height-tol 0.05]
  *        [--clip-max 0] [--unit-tol 4] [--no-clip] [--no-content] [--no-probes] [--units <f>]
  *        [--compare-only] [--warmup <url>] [--vh <px>] [--one-load] [--max-rounds 3] [--round-reset "<reason>"]
- *        [--dismiss <sel,…>]
+ *        [--dismiss <sel,…>] [--changed-only]
  * --eds-host takes a bare host (https:// added) or an http(s) origin URL and is normalised to `<protocol>//<host>`
  * (`edsOrigin`; the summary's `edsHostOverride` records it); a path, query or hash → one stderr line and the usage
  * line, exit 2, before any I/O.
@@ -262,15 +290,15 @@
  * `(machine browser slot held; 1 browser(s) per slot — clamped from 2/4/2; capture pools sequential)`.
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs, pixel-compare.mjs
  * and foundation-freeze.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg deadline, a page
- * at the round cap, a round of the page in progress) or --eds-host or a value flag without its value, 1 error, a usage
- * error (an unknown flag or a bad value: --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset,
- * --dismiss) or an empty selection.
+ * (validated overrides count) or --changed-only with nothing changed, 2 any FAIL or INCONCLUSIVE row, or a refused start (no
+ * verdict: the run-bg deadline, a page at the round cap, a round of the page in progress) or --eds-host or a value flag
+ * without its value or --changed-only with --stage prototype, 1 error, a usage error (an unknown flag or a bad value:
+ * --stage, --origin-max-age, the pool flags, --max-rounds, --round-reset, --dismiss) or an empty selection.
  * `verdict`, `capturePollution`, `fontsNotLoaded`, `fontChecksSkipped`, `hideMissOf`, `hideMissText`, `checkOverride`, `registerIds`, `OVERRIDE_VERDICTS`, `REGISTER_FILE`, `formatSummary`, `parseArgs`, `edsOrigin`, `emptySelection`, the roster helpers for run-bg (`ESTIMATE_SEC_PER_PAGE`, `DEFAULT_COVERAGE`,
  * `coveragePages`, `selectPages`, `rosterEstimate`) and the reuse helpers
  * (`probeInputs`, `probeReuse`, `canon`, `gateKeyParts`, `gateKeyOf`, `foundationPart`, `sharedBlocks`,
  * `blockRefs`, `chromeDocs`, `instrumentFiles`, `edsHostOf`, `codeDeployed`, `hostServes`,
- * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`), `browserPools`, `estimateFactor`, `buildHost` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
+ * `deployedDocs`, `contentDeployed`, `keyChanged`, `skipCapture`, `rowKey`, `latestRows`, `rowReuse`, `fingerprintOf`, `rowFingerprint`, `changedOnly`, `changedOnlyLine`), `browserPools`, `estimateFactor`, `buildHost` and the fix-round helpers (`MAX_ROUNDS`, `countsAsRound`,
  * `roundSkip`, `gatedBefore`, `runTables`, `roundsOf` — gate-triage reads the count with it —, `capRefusal`, `nextRounds`) are exported.
  */
 import { execFileSync, spawn } from 'node:child_process';
@@ -298,12 +326,25 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --max-rounds <n>          3 — fix rounds per page per out dir; 1..3 only (it may only lower the cap). An --only run
                             with a selected page at the cap is refused (no verdict, exit 2, nothing written)
   --round-reset "<reason>"  with --only: the re-prototype decision — the selected pages at the cap start a new count
+  --changed-only            published stage: gate only what changed — a page whose latest row in <out> (the newest
+                            table across summary.json and runs/*.json, by its writtenAt) is a PASS (not INCONCLUSIVE,
+                            not an override) written under this run's criteria, on this run's build host, with this
+                            run's fingerprint is left out, and so is one at the fix-round cap unless --only names it
+                            (named: the cap refuses, as for --only); the rest (with --only: of those) run as an --only
+                            run (runs/, fix rounds). First line: gate-all changed-only: <n> to gate (<slug>, …) · <m>
+                            unchanged since their PASS (<slug> <fingerprint> <at>, …)[ · at the cap: <slug>, … —
+                            C-final's roster gate measures them]; nothing to gate → "… nothing changed since the last
+                            PASS — <m> page(s) keep their rows" (after "… at the cap: …" when any), nothing written,
+                            exit 0. With --stage prototype → exit 2
   --skip-existing           reuse captures (not a stitched one recorded before the overlay-left check:
                             re-shot, logged); probes while the capture pair is unchanged; PASS rows
                             while the gate key is unchanged (rows say reused). Published eds.png:
                             only while <slug>/gate-key.json proves it current (same key, or unknown
                             key with the same tree, reason, upstream, ledger rows); no local
-                            content/<page>.html → nothing to compare → re-shot every run (slower)
+                            content/<page>.html → nothing to compare → re-shot every run (slower).
+                            A killed roster run: re-run the same command plus --skip-existing — the
+                            captures and probe sets it finished are reused (PASS rows of earlier tables
+                            too), never restarted from scratch
   --reuse-across-hosts      EXPERIMENT, off by default; with --skip-existing: a key that differs only by
                             the build host, both known, keeps the other host's capture (the final roster
                             gate on the live host keeps the preview-host unit gate's capture of the same
@@ -386,6 +427,10 @@ Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, 
   side a ×0 is expected (nothing per-visitor to hide): one info line, "eds <slug> → info: hide matched nothing on the
   build (expected — it has no per-visitor region to hide): <sel>, …".
 Reuse sidecars per page: probes.json, gate-key.json (see the header).
+Published rows carry gateKey and beside it fingerprint: the sha256 of the key's delivered parts — the frozen foundation,
+  icons/ + plugins/, the shared blocks, the page's block closure (CSS / JS), its content and the chrome documents; not the
+  host, criteria, sidecars or instruments — null whenever gateKey is null (prototype rows: both null). --changed-only
+  compares it.
 Fix rounds per page: <out>/<slug>/rounds.json { rounds, max, at[], [resets], [seeded, seededFrom] } — without it the
   count is seeded from summary.json + runs/*.json: the page's measured verdict rows less one (its first gating); every
   row carries round (+ roundReset on a reset row). An --only
@@ -399,6 +444,9 @@ Self-triage: a published --only run where a selected page already had a row in <
   gate-triage's triageGate on <out> in-process (offline: no parity, nothing routed) — its triage.md head under the table,
   <out>/triage.{json,md}; a failure is one log line "triage: skipped — <why>", never a verdict or exit-code change. A
   page's first gating, full runs and the prototype stage do not triage.
+FAIL annotation: a failing row's reasons column also names the pin state (a pixel FAIL: "pinned: <sel>=<state>" or
+  "unpinned", so a re-gate of a rotating hero reads which) and the top (topmost) mismatch band ("top band
+  <y0>-<y1>:<pct>%", the section to fix first) — the facts a fix round would otherwise write a probe script to learn.
 Empty selection → one stderr line: published — the coverage and state paths (absolute) with their counts (rows
   deployed / verified / gate-failed with a deployedUrl; pages deployed with a liveUrl; how many lack a source url) and
   the roster's source; prototype — the state path, its pages with a prototypePath; what --only matched, the hint
@@ -413,9 +461,10 @@ First status line (stdout, _run.log): roster: <n> page(s) × 1 width @<w> (<stag
   pool flags). RUN_BG_DEADLINE_SEC
   (env, seconds: the job's --timeout, exported by run-bg; absent or ≤ 0 = none) below the estimate → refused before the
   out dir or any capture: one stderr line "no verdict" naming --timeout <estimate>; exit 2.
-Exit: 0 all PASS (validated overrides count), 2 any FAIL or INCONCLUSIVE row, or a refused start (no verdict: the run-bg
-  deadline, a page at the round cap, a round of the page in progress) or --eds-host or a value flag without its value,
-  1 error, a usage error (an unknown flag or a bad value) or an empty selection.`;
+Exit: 0 all PASS (validated overrides count) or --changed-only with nothing changed, 2 any FAIL or INCONCLUSIVE row, or a
+  refused start (no verdict: the run-bg deadline, a page at the round cap, a round of the page in progress) or --eds-host
+  or a value flag without its value or --changed-only with --stage prototype, 1 error, a usage error (an unknown flag or a
+  bad value) or an empty selection.`;
 const USAGE = HELP.split('\n').find((l) => l.startsWith('Usage: '));
 
 /**
@@ -463,7 +512,7 @@ function poolFlag(flag, raw) {
 export function parseArgs(argv, env = process.env) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
-  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, reuseAcrossHosts: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null, dismiss: [] };
+  const o = { stage: 'published', protoBase: null, coverage: null, state: 'stardust/state.json', out: null, width: 1440, only: null, skip: false, reuseAcrossHosts: false, recaptureEds: false, recaptureOrigin: false, edsHost: null, blocked: null, tryBlocked: false, crawlShots: 'stardust/current/assets/screenshots', oc: 2, ec: 4, pc: 2, originMaxAge: null, threshold: 10, heightTol: 0.05, clipMax: 0, unitTol: 4, clip: true, content: true, units: null, compareOnly: false, warmup: null, vh: null, maxRounds: MAX_ROUNDS, roundReset: null, dismiss: [], changedOnly: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     // a value flag's value: never missing, never another flag or a dash-led word — the usage line, exit 2, before any I/O
@@ -472,6 +521,7 @@ export function parseArgs(argv, env = process.env) {
     else if (a === '--proto-base') o.protoBase = v().replace(/\/$/, '');
     else if (a === '--coverage') o.coverage = v(); else if (a === '--state') o.state = v(); else if (a === '--out') o.out = v(); else if (a === '--width') o.width = Number(v());
     else if (a === '--only') o.only = v().split(',').map((s) => s.trim()).filter(Boolean);
+    else if (a === '--changed-only') o.changedOnly = true;
     else if (a === '--skip-existing') o.skip = true; else if (a === '--reuse-across-hosts') o.reuseAcrossHosts = true; else if (a === '--recapture-eds') o.recaptureEds = true; else if (a === '--recapture-origin') o.recaptureOrigin = true;
     else if (a === '--eds-host') { const e = edsOrigin(v()); if (e.error) { console.error(`gate-all: ${e.error}\n${USAGE}`); process.exit(2); } o.edsHost = e.origin; } else if (a === '--blocked') o.blocked = new RegExp(v()); else if (a === '--try-blocked') o.tryBlocked = true; else if (a === '--crawl-shots') o.crawlShots = v();
     else if (a === '--origin-max-age') { o.originMaxAge = Number(v()); if (!(o.originMaxAge >= 0)) { console.error(`--origin-max-age must be a number of hours >= 0\n\n${HELP}`); process.exit(1); } }
@@ -496,6 +546,8 @@ export function parseArgs(argv, env = process.env) {
     }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
   }
+  // --changed-only selects by the published rows' fingerprints: a prototype row has none — a usage error, before any I/O
+  if (o.changedOnly && o.stage === 'prototype') { console.error(`gate-all: --changed-only is published-stage only (it selects by the fingerprint beside each published verdict; prototype rows carry none) — drop it or --stage prototype\n${USAGE}`); process.exit(2); }
   o.browserSlot = Boolean(env.STARDUST_BROWSER_SLOT); // run-bg holds a machine-wide browser slot for this job (logged)
   o.pools = browserPools({ oc: o.oc, ec: o.ec, pc: o.pc }, env); o.oc = o.pools.oc; o.ec = o.pools.ec; o.pc = o.pools.pc;
   const deadline = Number(env.RUN_BG_DEADLINE_SEC); o.deadlineSec = deadline > 0 ? deadline : null; // run-bg exports the job's --timeout (s); absent / ≤ 0 = none
@@ -805,7 +857,8 @@ export function formatSummary(summary) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
     const units = r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
     const verdictCell = r.inconclusive ? 'INCONCLUSIVE' : r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
-    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}${r.override.valid === true ? '' : ' (rejected)'}` : ''} | ${r.reasons.join('; ') || '-'} | ${r.reused ? `${r.reused.what} ${r.reused.at}` : '-'} |`);
+    const reasonCell = [r.reasons.join('; '), failAnnotation(r)].filter(Boolean).join('; ') || '-';
+    rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}${r.override.valid === true ? '' : ' (rejected)'}` : ''} | ${reasonCell} | ${r.reused ? `${r.reused.what} ${r.reused.at}` : '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
 }
@@ -836,6 +889,24 @@ const sameDismiss = (recorded, list) => sameHide(recorded, list);
 const pinRecord = (list) => (Array.isArray(list) ? list.filter((x) => x && typeof x.sel === 'string').map((x) => ({ sel: x.sel, state: x.state ?? null })) : []);
 const pinField = (list) => (pinRecord(list).length ? { pin: pinRecord(list) } : {});
 const samePin = (recorded, list) => canon(pinRecord(recorded)) === canon(pinRecord(list));
+/**
+ * For a FAILING row, the one annotation a fix round would otherwise write a probe script to learn: the pin state (a
+ * pixel/height FAIL names whether the page was pinned to a state — `pinned: <sel>=<state>` — or `unpinned`, so a
+ * recorded re-gate of a rotating hero reads which) and the top (topmost) mismatch band from the per-band pixel diff
+ * (`top band <y0>-<y1>:<pct>%`, the section to fix first — every band below a hot one is contaminated). '' when the row
+ * passes or neither applies.
+ */
+export function failAnnotation(row) {
+  if (!row || row.pass) return '';
+  const parts = [];
+  if (row.pct != null && row.pixelPass === false) {
+    const pins = pinRecord(row.pin);
+    parts.push(pins.length ? `pinned: ${pins.map((x) => `${x.sel}${x.state ? `=${x.state}` : ''}`).join(', ')}` : 'unpinned');
+  }
+  const band = (row.hotBands || [])[0];
+  if (band) parts.push(`top band ${band}`);
+  return parts.join(', ');
+}
 /** The page's --dismiss list then presence.json's dismiss — one list, split on ',', trimmed, de-duplicated in order. */
 const unionList = (...lists) => hideRecord(lists.flatMap((l) => [].concat(l ?? [])));
 const DIALOG_UNCHECKED = 'unchecked (no dialog-left record — the capture or its stitch-shot.mjs predates the check)';
@@ -1149,9 +1220,10 @@ const sameCriteria = (prov, opts) => !!prov && prov.stage === 'published' && pro
  * the override it attaches (this run's overrides.json entry) is validated against `register` like a fresh row's — its
  * magnitude on the row's own pct / heightDelta / originH under this run's --threshold / --height-tol. `host` = this run's
  * build origin for the page: the reused row keeps its own `host`; one written before that field takes `host` (the equal
- * gate key hashes the build origin, so it proves the same host).
+ * gate key hashes the build origin, so it proves the same host). `fingerprint` = this run's for the page: the reused row
+ * keeps its own; one written before the field takes this one (the equal gate key proves the same delivered parts).
  */
-export function rowReuse({ prior, gateKey, edsPng, override = null, register = null, opts, host = null }) {
+export function rowReuse({ prior, gateKey, edsPng, override = null, register = null, opts, host = null, fingerprint = null }) {
   if (!opts.skip || opts.stage !== 'published' || opts.recaptureEds || opts.recaptureOrigin || !gateKey || !prior || !edsPng) return null;
   const { row } = prior;
   if (row.gateKey !== gateKey || row.pass !== true || row.inconclusive || row.originAsymmetric || !sameCriteria(prior.prov, opts)) return null;
@@ -1159,7 +1231,71 @@ export function rowReuse({ prior, gateKey, edsPng, override = null, register = n
   // the override is re-checked on the reused row's own measured numbers, like a fresh row's
   const ov = checkOverride(override, { inconclusive: false, compared: row.pct != null, clipPass: row.clipPass, contentPass: row.contentPass, stage: opts.stage, register, pct: row.pct, heightDelta: row.heightDelta, originH: row.originH, threshold: opts.threshold, heightTol: opts.heightTol });
   // a row from a table written before `host` takes this run's host only because its equal gate key (it hashes the build origin) proves it
-  return { ...row, host: 'host' in row ? row.host : row.gateKey === gateKey ? host : null, override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
+  return { ...row, host: 'host' in row ? row.host : row.gateKey === gateKey ? host : null, fingerprint: row.fingerprint || (row.gateKey === gateKey ? fingerprint : null), override: ov, passWithOverride: row.pass || !!(ov && ov.valid), reused: { what: 'row', from: prior.from, at, gateKey } };
+}
+
+// ---- the delivered fingerprint beside each verdict, and --changed-only's selection (pure) ------------------------------
+/**
+ * fingerprintOf(parts) → hex sha256 of the canonical JSON of a gate key's delivered parts { v, foundation, runtime,
+ * shared, blocks, content } (gateKeyParts: the frozen foundation's snapshot — styles, fonts, head, scripts —, the runtime
+ * dirs, the shared blocks, the page's block closure with its CSS / JS, its content document and the chrome documents),
+ * or null. The build part — host, source, width, criteria, sidecars, instruments — is left out: what the page delivers,
+ * wherever and under whatever criteria it is gated.
+ */
+export const fingerprintOf = (parts) => (parts ? sha256(canon({ v: parts.v, foundation: parts.foundation, runtime: parts.runtime, shared: parts.shared, blocks: parts.blocks, content: parts.content })) : null);
+/**
+ * rowFingerprint(stored, gateKey) → the fingerprint a fresh row carries beside its gate key (rowKey's): of the parts that
+ * key was issued for (`stored` = <slug>/gate-key.json) — only while the key is known and those parts hash to it; else null.
+ */
+export const rowFingerprint = (stored, gateKey) => (gateKey && stored && stored.parts && gateKeyOf(stored.parts) === gateKey ? fingerprintOf(stored.parts) : null);
+// Why a page is gated under --changed-only (null: left out — unchanged since its PASS).
+function changedWhy(k, prior, host, opts) {
+  const row = prior && prior.row;
+  if (!k || !k.fingerprint) return `gate key unknown now${k && k.why ? ` (${k.why})` : ''}`;
+  if (!row) return 'no row yet';
+  if (row.inconclusive) return 'latest row INCONCLUSIVE';
+  if (row.pass !== true) return row.pct == null ? 'latest row has no verdict' : row.passWithOverride ? 'latest row FAIL (an override does not count here)' : 'latest row FAIL';
+  if (row.originAsymmetric) return 'latest PASS on an asymmetric origin';
+  if (!sameCriteria(prior.prov, opts)) return 'latest PASS written under other criteria';
+  if (!row.fingerprint) return 'latest PASS has no fingerprint';
+  if (row.fingerprint !== k.fingerprint) return `changed since the PASS (${row.fingerprint.slice(0, 12)} → ${k.fingerprint.slice(0, 12)})`;
+  if (!host || row.host !== host) return `latest PASS measured on ${row.host || 'an unrecorded host'}, not ${host || 'this run\'s build host'}`;
+  return null;
+}
+/**
+ * changedOnly(slugs, { latest, keys, hosts, rounds, opts }) → { gate: [{ slug, why }], unchanged: [{ slug, fingerprint, at,
+ * from }], atCap: [{ slug, why, rounds }] }, each sorted by slug: --changed-only's selection over the roster's slugs (--only
+ * already applied). `latest` = latestRows(<out>, width), read before the run — per page the row of the newest table across
+ * summary.json and runs/*.json, newest by the table's _provenance.writtenAt (when that run wrote it; a row reused whole
+ * there was re-affirmed then); `keys` = slug → this run's { fingerprint, why } (fingerprint null while the gate key is
+ * unknown); `hosts` = slug → this run's build origin. A
+ * page is left out only when that row is a PASS (pass true: not INCONCLUSIVE, not lifted by an override alone, not on an
+ * asymmetric origin) from a table written under this run's criteria (sameCriteria), measured on this run's build host, with
+ * a fingerprint equal to this run's; `at` = when that PASS was measured (a row reused whole: its own measured time). A page
+ * it would gate that is at the fix-round cap (`rounds` = slug → roundsOf count, ≥ opts.maxRounds) goes to atCap instead —
+ * unless opts.only (the --only the user gave) names it: named, it is gated and the cap refuses the run as for --only. Pure.
+ */
+export function changedOnly(slugs, { latest = {}, keys = {}, hosts = {}, rounds = {}, opts }) {
+  const gate = []; const unchanged = []; const atCap = [];
+  const named = new Set(opts.only || []); const max = opts.maxRounds ?? MAX_ROUNDS;
+  for (const slug of [...new Set(slugs)].sort()) {
+    const prior = latest[slug]; const why = changedWhy(keys[slug], prior, hosts[slug], opts);
+    if (!why) unchanged.push({ slug, fingerprint: prior.row.fingerprint, at: prior.row.reused && prior.row.reused.what === 'row' ? prior.row.reused.at : prior.at, from: prior.from });
+    else if ((rounds[slug] ?? 0) >= max && !named.has(slug)) atCap.push({ slug, why, rounds: rounds[slug] });
+    else gate.push({ slug, why });
+  }
+  return { gate, unchanged, atCap };
+}
+/**
+ * changedOnlyLine({ gate, unchanged, atCap }) → what --changed-only prints before gating: one line, ending ` · at the cap:
+ * <slug>, … — C-final's roster gate measures them` when pages were left out at the cap. Nothing to gate: the line that
+ * ends the run (every page keeps its row), after a line `gate-all changed-only: at the cap: …` when any.
+ */
+export function changedOnlyLine({ gate, unchanged, atCap = [] }) {
+  const cap = atCap.length ? `at the cap: ${atCap.map((c) => c.slug).join(', ')} — C-final's roster gate measures them` : '';
+  if (!gate.length) return `${cap ? `gate-all changed-only: ${cap}\n` : ''}gate-all changed-only: nothing changed since the last PASS — ${unchanged.length + atCap.length} page(s) keep their rows`;
+  const kept = unchanged.map((u) => `${u.slug} ${u.fingerprint.slice(0, 12)} ${u.at}`).join(', ');
+  return `gate-all changed-only: ${gate.length} to gate (${gate.map((g) => g.slug).join(', ')}) · ${unchanged.length} unchanged since their PASS${kept ? ` (${kept})` : ''}${cap ? ` · ${cap}` : ''}`;
 }
 
 // ---- fix rounds: <out>/<slug>/rounds.json counts the measured --only verdicts of a page already gated — the cap is mechanical
@@ -1470,7 +1606,6 @@ async function selfTriage(out, log) {
 
 async function main() {
   const opts = parseArgs(process.argv);
-  const startedAt = new Date().toISOString(); // this process's start (gate-key.json); runStart below is the run anchor
   const { cov, st } = rosterSource(opts);
   if (cov && !cov.doc) { console.error(cov.missing ? `gate-all: ${cov.path} not found — run from the project root or pass --coverage` : `gate-all: ${cov.path} unreadable: ${cov.error}`); process.exit(1); }
   if (!cov && st.missing) { console.error(opts.stage === 'prototype' ? `gate-all: ${opts.state} not found — run from the project root or pass --state` : `gate-all: neither ${DEFAULT_COVERAGE} nor ${opts.state} found — run from the project root or pass --coverage / --state`); process.exit(1); }
@@ -1478,18 +1613,66 @@ async function main() {
   if (cov && st.error) console.error(`gate-all: ${opts.state} unreadable (${st.error}) — roster from coverage without state enrichment`);
   if ((opts.clip || opts.content) && !DIFF_DIR) { console.error('gate-all: the diff skill\'s scripts dir was not found next to this one (../../diff/scripts or ../diff) — copy it (replica SKILL.md § Setup) or pass --no-probes'); process.exit(1); }
   const state = st.doc || null; const covDoc = cov ? cov.doc : null;
-  const pages = selectPages(state, { ...opts, coverage: covDoc });
+  let pages = selectPages(state, { ...opts, coverage: covDoc });
   if (opts.stage === 'prototype' && !opts.protoBase) console.error('gate-all: --stage prototype without --proto-base — assuming http://localhost:8791 (serve the prototypes dir there, replica SKILL.md § Phase 4)');
   if (!pages.length) { console.error(emptySelection(state, { stage: opts.stage, only: opts.only, statePath: st.abs, coverage: covDoc, coveragePath: cov ? cov.abs : resolve(DEFAULT_COVERAGE), source: cov ? 'coverage' : 'state', stateError: st.error })); process.exit(1); }
   const qualified = selectPages(state, { ...opts, coverage: covDoc, only: null }).length;
   const sourceText = cov ? `coverage ${cov.path} (${qualified} of ${pagesOf(covDoc).length} row(s) qualified)` : `state ${opts.state} (${qualified} of ${pagesOf(state).length} page(s) qualified)`;
+  // presence: the site-wide file merged UNDER <out>/presence.json (read before any write: a malformed one names its file)
+  const PRES = presenceOf(opts.out);
+  // The pages' sidecars and capture settings, then their gate keys — reads only, before any write: --changed-only selects
+  // with the keys' fingerprints before the deadline guard and the fix-round cap see the pages
+  const MASKS = readJson(join(opts.out, 'masks.json'), {});
+  const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = PRES.presence;
+  const FAMILIES = readJson('stardust/replica/units.json', null);
+  const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
+  const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
+  // presence.json `hide` → the page's one list (live-session presenceHide: "*" then the slug's) for both stitches and the probes
+  const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
+  const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
+  // presence.json's capture settings per page (presence.mjs captureSettings, "*" then the slug's): the dismiss list after
+  // --dismiss, the pins, the allowances — clip (the verdict) and per-visitor-dialog (only a hidden container: --allow-dialog)
+  const CAPS = {}; const capOf = (p) => (CAPS[p.slug] ??= captureSettings(PRESENCE, p.slug));
+  const dismissOf = (p) => unionList(opts.dismiss, capOf(p).dismiss);
+  const pinOf = (p) => capOf(p).pin; const allowOf = (p) => capOf(p).allow;
+  const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
+  const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // this run's build origin
+  const readSafe = (f) => { try { return readJson(f); } catch { return null; } };
+  const probeCtx = { opts, edsUrl, presence: PRESENCE, unitsOf, hideOf, dismissOf };
+  // Gate keys (published stage), once per run before any capture; the deploy-state guard's code half is one git call set.
+  const KEYS = {};
+  if (opts.stage === 'published') {
+    let foundation; let shared; let chrome; let broken = null;
+    try { foundation = foundationPart('.'); } catch (e) { foundation = { paths: FOUNDATION_PATHS }; broken = `foundation: ${e.message}`; }
+    const codePaths = [...foundation.paths, ...RUNTIME_PATHS, 'blocks/'];
+    const code = codeDeployed(codePaths); const docs = deployedDocs('.');
+    const coverage = Object.fromEntries(((covDoc || readSafe(DEFAULT_COVERAGE) || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
+    try { shared = sharedBlocks('.', coverage); chrome = chromeDocs('.'); } catch (e) { broken = broken || `blocks / chrome documents: ${e.message}`; }
+    for (const p of pages) {
+      let k = { parts: null, why: broken };
+      if (!broken) try { k = gateKeyParts(p, { ...probeCtx, pinOf, allowOf, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared, chrome }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
+      const host = k.parts && new URL(k.parts.build.origin).host;
+      const why = k.why || code.why || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
+      const deployed = k.parts ? Object.fromEntries(Object.keys(k.parts.content).map((f) => { const web = f.replace(/^content/, '').replace(/\.html$/, ''); return [web, docs[web] || null]; })) : null;
+      // the fingerprint beside the key: known only with it (the host proven to serve the tree)
+      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), fingerprint: why ? null : fingerprintOf(k.parts), why, parts: k.parts, upstream: code.upstream || null, deployed };
+    }
+  }
+  // --changed-only: the pages whose fingerprint moved since their PASS (or that cannot show it), less those at the fix-round
+  // cap that --only does not name — then an --only run over them; nothing to gate → the line(s), nothing written, exit 0
+  let CHANGED = null;
+  if (opts.changedOnly) {
+    const tables = runTables(opts.out); const rounds = Object.fromEntries(pages.map((p) => [p.slug, roundsOf(opts.out, p.slug, tables).rounds]));
+    CHANGED = changedOnly(pages.map((p) => p.slug), { latest: latestRows(opts.out, opts.width), keys: KEYS, hosts: Object.fromEntries(pages.map((p) => [p.slug, hostOf(p)])), rounds, opts });
+    console.log(changedOnlyLine(CHANGED));
+    if (!CHANGED.gate.length) return;
+    const sel = CHANGED.gate.map((g) => g.slug); pages = pages.filter((p) => sel.includes(p.slug)); opts.only = sel;
+  }
   // Deadline guard: a run-bg deadline below the estimate would kill the job mid-roster — refuse before any write.
   const R = roster(pages.length, opts, estimateFactor(opts.pools));
   if (opts.deadlineSec && opts.deadlineSec < R.estimatedSeconds) { console.error(`gate-all: refused to start, no verdict — ${rosterText(R)} need an estimated ${R.estimatedSeconds} s (${estimateText(R)}), above this job's run-bg deadline of ${opts.deadlineSec} s (RUN_BG_DEADLINE_SEC); re-start the job with run-bg.mjs start --timeout ${R.estimatedSeconds} …, or omit --timeout: run-bg sizes a gate-all job's deadline to this estimate`); process.exit(2); }
   // Fix rounds (--only): reserve every selected page's round, then the cap — refused before the out dir and any write.
   const slugs = [...new Set(pages.map((p) => p.slug))].sort();
-  // presence: the site-wide file merged UNDER <out>/presence.json (read before any write: a malformed one names its file)
-  const PRES = presenceOf(opts.out);
   const lockNotes = opts.only ? reserveRounds(opts.out, slugs) : [];
   const TABLES = runTables(opts.out);
   const ROUNDS = Object.fromEntries(slugs.map((slug) => [slug, roundsOf(opts.out, slug, TABLES)]));
@@ -1501,15 +1684,12 @@ async function main() {
   const PRIOR_ROWS = opts.only && opts.stage === 'published' ? latestRows(opts.out, opts.width) : {};
   const TRIAGE = slugs.some((slug) => PRIOR_ROWS[slug]);
   mkdirSync(opts.out, { recursive: true });
-  const MASKS = readJson(join(opts.out, 'masks.json'), {}); const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
+  const OVERRIDES = readJson(join(opts.out, 'overrides.json'), {});
   // the inconsistency register an override must name an entry of (read once; cwd-relative like units.json)
   const REGISTER = (() => { try { return { file: REGISTER_FILE, found: true, ids: registerIds(readFileSync(REGISTER_FILE, 'utf8')) }; } catch { return { file: REGISTER_FILE, found: false, ids: [] }; } })();
-  const CLIP_ALLOW = readJson(join(opts.out, 'clip-allow.json'), {}); const PRESENCE = PRES.presence;
-  const FAMILIES = readJson('stardust/replica/units.json', null);
-  const UNITS = readJson(opts.units || join(opts.out, 'units.json'), {});
-  const unitsOf = (p) => (FAMILIES ? unitsFor(FAMILIES, p.slug, p.template) : ((UNITS[p.slug] || {}).units || []).map((x) => ({ origin: x.origin, eds: x.eds || x.origin, n: x.n || 1, required: x.required !== false })));
   const log = (s) => { const line = `${new Date().toISOString()} ${s}`; console.log(line); writeFileSync(join(opts.out, '_run.log'), `${line}\n`, { flag: 'a' }); };
   log(`roster: ${rosterText(R)} — estimated ${R.estimatedSeconds} s (${estimateText(R)})${opts.deadlineSec ? `; run-bg deadline ${opts.deadlineSec} s` : ''}; source: ${sourceText}; ${buildHostText(buildHost(pages, { edsHost: opts.edsHost, stage: opts.stage, protoBase: opts.protoBase, source: cov ? 'coverage' : 'state' }))}`);
+  if (CHANGED) log(`changed-only: gating ${CHANGED.gate.map((g) => `${g.slug} (${g.why})`).join(', ')}; unchanged since their PASS: ${CHANGED.unchanged.map((u) => `${u.slug} ${u.fingerprint.slice(0, 12)} ${u.at} (${u.from})`).join(', ') || 'none'}${CHANGED.atCap.length ? `; at the cap, left out (C-final's roster gate measures them): ${CHANGED.atCap.map((c) => `${c.slug} ${c.rounds}/${opts.maxRounds} (${c.why})`).join(', ')}` : ''}`);
   // One run anchor per process (every row of the run judged against it); --origin-max-age reaches the probes via the env.
   const ledger = join(dirname(opts.state), 'status.jsonl');
   const runStart = FRESH ? FRESH.runStartAt({ ledger }) : null;
@@ -1524,15 +1704,7 @@ async function main() {
     const capped = slugs.filter((slug) => ROUNDS[slug].rounds >= opts.maxRounds);
     log(capped.length ? `round-reset: ${capped.map((slug) => `${slug} ${ROUNDS[slug].rounds}/${opts.maxRounds} @${opts.width}`).join(', ')} → a new count (${opts.roundReset})` : 'round-reset: no --only slug at the cap — nothing reset');
   }
-  // presence.json `hide` → the page's one list (live-session presenceHide: "*" then the slug's) for both stitches and the probes
-  const HIDE_OK = !!FRESH && typeof FRESH.presenceHide === 'function';
-  const hideOf = (p) => (HIDE_OK ? FRESH.presenceHide(PRESENCE, p.slug) : []);
   const hideArgs = (p) => { const h = hideOf(p); return h.length ? ['--hide', h.join(',')] : []; };
-  // presence.json's capture settings per page (presence.mjs captureSettings, "*" then the slug's): the dismiss list after
-  // --dismiss, the pins, the allowances — clip (the verdict) and per-visitor-dialog (only a hidden container: --allow-dialog)
-  const CAPS = {}; const capOf = (p) => (CAPS[p.slug] ??= captureSettings(PRESENCE, p.slug));
-  const dismissOf = (p) => unionList(opts.dismiss, capOf(p).dismiss);
-  const pinOf = (p) => capOf(p).pin; const allowOf = (p) => capOf(p).allow;
   const capArgs = (p) => [...(pinOf(p).length ? ['--pin', pinOf(p).map((x) => x.sel).join(',')] : []), ...(capOf(p).allowDialog.length ? ['--allow-dialog', capOf(p).allowDialog.join(',')] : [])];
   // a stitch run with a list: its `hidden:` line → origin.json / eds.json `hidden`; ×0 / invalid selectors → one log line per
   // side, without a ×0 its capture record's recount found (nAtCapture > 0: a block injected after the hide pass, hidden)
@@ -1550,8 +1722,6 @@ async function main() {
   if (PRES.note) log(PRES.note);
   if (PRES.notHonoured) log(PRES.notHonoured);
   const dir = (p) => join(opts.out, p.slug);
-  const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
-  const hostOf = (p) => { try { return new URL(edsUrl(p)).origin; } catch { return null; } }; // this run's build origin
   // the row's `host`: the origin the EDS pixels came from — the capture record's url (eds.json), else this run's build URL
   const rowHost = (p, eds) => { try { if (eds && eds.url) return new URL(eds.url).origin; } catch { /* not a URL: this run's */ } return hostOf(p); };
   const results = {};
@@ -1689,27 +1859,13 @@ async function main() {
     const s = await stitch(p, 'eds', edsUrl(p), out, { hide, ...(OL ? { inventory: inventorySpec(p, 'eds') } : {}) }, OL ? ['--headed'] : []);
     const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotRecord(p, 'eds'), ...(OL ? { headed: true, ...inventoryMeta(p, 'eds', t0) } : {}), ...hideField(hide), ...capFields(p), ...stitchHidden(p, 'eds', s, hide) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
+    // gate-key.json = the key of this EDS capture (null while unknown or when it failed), written as the capture lands: a
+    // killed run's finished captures are proven current when it is resumed with --skip-existing
+    const k = KEYS[p.slug];
+    if (k) writeFileSync(join(d, 'gate-key.json'), JSON.stringify({ gateKey: r.error ? null : k.gateKey, why: r.error ? `EDS capture failed: ${r.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: r.at }, null, 1));
     log(`eds ${p.slug} → ${r.instrument}${r.overlayLeft ? ` WARN overlay left — ${r.overlayLeft}` : ''}${r.dialogLeft && r.dialogLeft.length ? ` WARN dialog left open (${r.dialogLeft.join(', ')})` : ''}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
-  const readSafe = (f) => { try { return readJson(f); } catch { return null; } };
-  const probeCtx = { opts, edsUrl, presence: PRESENCE, unitsOf, hideOf, dismissOf };
-  // Gate keys (published stage), once per run before any capture; the deploy-state guard's code half is one git call set.
-  const KEYS = {};
   if (opts.stage === 'published') {
-    let foundation; let shared; let chrome; let broken = null;
-    try { foundation = foundationPart('.'); } catch (e) { foundation = { paths: FOUNDATION_PATHS }; broken = `foundation: ${e.message}`; }
-    const codePaths = [...foundation.paths, ...RUNTIME_PATHS, 'blocks/'];
-    const code = codeDeployed(codePaths); const docs = deployedDocs('.');
-    const coverage = Object.fromEntries(((covDoc || readSafe(DEFAULT_COVERAGE) || {}).pages || []).filter((x) => x && x.slug && Array.isArray(x.blocks)).map((x) => [x.slug, x.blocks]));
-    try { shared = sharedBlocks('.', coverage); chrome = chromeDocs('.'); } catch (e) { broken = broken || `blocks / chrome documents: ${e.message}`; }
-    for (const p of pages) {
-      let k = { parts: null, why: broken };
-      if (!broken) try { k = gateKeyParts(p, { ...probeCtx, pinOf, allowOf, masks: MASKS, clipAllow: CLIP_ALLOW, foundation, coverage, shared, chrome }); } catch (e) { k = { parts: null, why: `gate key: ${e.message}` }; }
-      const host = k.parts && new URL(k.parts.build.origin).host;
-      const why = k.why || code.why || hostServes(host, code) || contentDeployed(k.parts.content, docs, host);
-      const deployed = k.parts ? Object.fromEntries(Object.keys(k.parts.content).map((f) => { const web = f.replace(/^content/, '').replace(/\.html$/, ''); return [web, docs[web] || null]; })) : null;
-      KEYS[p.slug] = { gateKey: why ? null : gateKeyOf(k.parts), why, parts: k.parts, upstream: code.upstream || null, deployed };
-    }
     const na = pages.filter((p) => !KEYS[p.slug].gateKey);
     if (na.length) log(`gate key n/a for ${na.length}/${pages.length} page(s) — ${[...new Set(na.map((p) => KEYS[p.slug].why))].slice(0, 3).join('; ')} (no row reuse; their EDS side is re-shot unless gate-key.json records the same tree, reason, upstream commit and ledger rows)`);
   }
@@ -1862,7 +2018,7 @@ async function main() {
   const REUSED = {};
   const prior = opts.skip && opts.stage === 'published' ? latestRows(opts.out, opts.width) : {};
   for (const p of pages) {
-    const row = rowReuse({ prior: prior[p.slug], gateKey: currentKey(p), edsPng: existsSync(join(dir(p), 'eds.png')), override: OVERRIDES[p.slug] ?? null, register: REGISTER, opts, host: hostOf(p) });
+    const row = rowReuse({ prior: prior[p.slug], gateKey: currentKey(p), edsPng: existsSync(join(dir(p), 'eds.png')), override: OVERRIDES[p.slug] ?? null, register: REGISTER, opts, host: hostOf(p), fingerprint: KEYS[p.slug] ? KEYS[p.slug].fingerprint : null });
     if (row) { REUSED[p.slug] = row; log(`row ${p.slug} → reused (gate key ${row.gateKey.slice(0, 12)} unchanged; measured ${row.reused.at}, ${row.reused.from})`); }
   }
   const todo = pages.filter((p) => !REUSED[p.slug]);
@@ -1870,11 +2026,6 @@ async function main() {
     // one browser per machine slot: the two capture pools run one after the other, never side by side
     if (opts.pools.sequential) { await pool(todo, opts.oc, captureOrigin); await pool(todo, opts.ec, captureEds); }
     else await Promise.all([pool(todo, opts.oc, captureOrigin), pool(todo, opts.ec, captureEds)]);
-    // gate-key.json = the key of the EDS capture taken in this run (null while unknown or when the capture failed).
-    for (const p of todo) {
-      const k = KEYS[p.slug]; const m = readSafe(join(dir(p), 'eds.json'));
-      if (k && m && m.at >= startedAt) writeFileSync(join(dir(p), 'gate-key.json'), JSON.stringify({ gateKey: m.error ? null : k.gateKey, why: m.error ? `EDS capture failed: ${m.error}` : k.why, parts: k.parts, upstream: k.upstream, deployed: k.deployed, at: m.at }, null, 1));
-    }
   } else {
     // --compare-only takes no capture: a stitched record from before the overlay-left check is read as unchecked (an
     // INCONCLUSIVE row), never clean; the record on disk and its fontsFailed stay as they are
@@ -1886,13 +2037,15 @@ async function main() {
   const rows = pages.map((p) => {
     if (REUSED[p.slug]) return REUSED[p.slug];
     const r = results[p.slug] || {}; const px = r.pixel || {};
+    // the row's key (its evidence's, while current) and beside it the fingerprint of the parts that key was issued for
+    const stored = opts.stage === 'published' ? storedKey(p) : null; const gateKey = opts.stage === 'published' ? rowKey(stored, KEYS[p.slug], !!r.probedAt) : null;
     // presence.json clip allowances: the counted findings under their selectors join clip-allow.json's allowance
     // the findings when recorded (clipper or whole path segments); groups alone by clipper — a group's path is its first finding's
     const ca = !(r.clip && r.clip.counts) ? { n: 0, by: [] } : Array.isArray(r.clip.findings) ? clipAllowed(r.clip.findings, allowOf(p)) : clipAllowed(r.clip.groups || [], allowOf(p), { byClipper: true });
     const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: ((CLIP_ALLOW[p.slug] || {}).max || 0) + ca.n, capture: { polluted: capturePollution(r.origin, r.eds, { hide: hideOf(p), dismiss: dismissOf(p), pin: pinOf(p), allowDialog: capOf(p).allowDialog }), fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) }, register: REGISTER }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content, stage: opts.stage });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument, host: rowHost(p, r.eds),
       originReused: r.origin && r.origin.reused ? { from: r.origin.from, at: r.origin.at, policy: r.origin.policy, stale: r.origin.stale || null } : null,
-      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(r.eds && r.eds.buildReused ? { buildReused: r.eds.buildReused } : {}), ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...missField(r.origin && r.origin.hideMiss),
+      presenceReused: r.presenceReused || null, unitsReused: r.unitsReused || null, ...(r.eds && r.eds.buildReused ? { buildReused: r.eds.buildReused } : {}), ...(opts.oneLoad ? { oneLoad: r.oneLoad || null } : {}), ...hideField(hideOf(p)), ...pinField(pinOf(p)), ...missField(r.origin && r.origin.hideMiss),
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null, ...(ca.n ? { clipAllowed: ca } : {}),
       content: r.content && r.content.totals ? { missing: r.content.totals.missing, hidden: r.content.totals.hidden, controlState: r.content.totals.controlState, missingButtons: r.content.totals.missingButtons, hiddenButtons: r.content.totals.hiddenButtons, findings: r.content.totals.findings, scope: r.content.scope, variable: r.content.variable } : null,
@@ -1900,7 +2053,7 @@ async function main() {
       browser: (r.content && r.content.tier) || (r.clip && r.clip.tier) || null,
       override: v.override, masked: !!px.maskedRows, maskedRows: px.maskedRows || 0, maskReason: px.maskReason || null,
       hotBands: (px.bands || []).filter((b) => b.pct > 15).map((b) => `${b.y0}-${b.y1}:${b.pct}%`), error: px.error || (r.origin && r.origin.error) || (r.eds && r.eds.error) || null,
-      gateKey: opts.stage === 'published' ? rowKey(storedKey(p), KEYS[p.slug], !!r.probedAt) : null, reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
+      gateKey, fingerprint: rowFingerprint(stored, gateKey), reused: r.probesReused ? { what: 'probes', at: r.probesReused } : null };
   });
   // a hide selector that matched nothing on the origin (live) capture — fresh, kept or a reused row's: never silent, never a verdict
   for (const row of rows) { const miss = hideMissOf(row.hideMiss); if (miss) log(`WARNING ${row.slug}: ${hideMissText(miss, FRESH && FRESH.hideMissLine)}`); }
@@ -1930,7 +2083,7 @@ async function main() {
   totals.originReused = n((r) => r.originReused);
   totals.hideMiss = n((r) => hideMissOf(r.hideMiss));
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
-  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, ...dismissField(opts.dismiss), only: opts.only, maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
+  const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt, stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, ...dismissField(opts.dismiss), only: opts.only, ...(CHANGED ? { changedOnly: { unchanged: CHANGED.unchanged.map(({ slug, fingerprint, at }) => ({ slug, fingerprint, at })), ...(CHANGED.atCap.length ? { atCap: CHANGED.atCap.map((c) => c.slug) } : {}) } } : {}), maxRounds: opts.maxRounds, reuse: { rows: totals.reusedRows, probes: totals.reusedProbes } }, totals, rows };
   const md = formatSummary(summary);
   if (opts.only) { mkdirSync(join(opts.out, 'runs'), { recursive: true }); const f = join(opts.out, 'runs', `${writtenAt.replace(/[:.]/g, '-')}-${opts.only[0]}.json`); writeFileSync(f, JSON.stringify(summary, null, 2)); console.log(md); console.log(`run → ${f}`); }
   else { writeFileSync(join(opts.out, 'summary.json'), JSON.stringify(summary, null, 2)); writeFileSync(join(opts.out, 'summary.md'), md); console.log(md.split('\n').slice(0, 7).join('\n')); console.log(`summary → ${join(opts.out, 'summary.md')}`); }

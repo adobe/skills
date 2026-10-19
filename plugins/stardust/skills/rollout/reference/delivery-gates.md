@@ -153,3 +153,50 @@ so the gates run uniformly:
 - **zsh gotcha:** `node`/`curl` inside a multi-line `while`/`for` can lose PATH
   ("command not found") — write the loop to a `bash` script file with absolute
   binaries and run it, rather than inlining.
+
+## Iteration discipline + the fix-round brief
+
+These rules set when fix rounds STOP, never what PASS means: the verdict
+criteria and the cap of 3 rounds per page (handoff contract § 1 row 5) stay.
+- **Stop at PASS at both widths, no "confirm" round:** a PASS with Δh ≠ 0 takes
+  another round only while rounds remain and a named cause exists; at the cap a
+  PASS is final (any Δh within the tolerance), a FAIL goes to the re-prototype
+  decision.
+- **Confirm once, only after a shared change** (`styles/`, `fonts/`,
+  `head.html`, `scripts/`, `blocks/header/`, `blocks/footer/`, the chrome
+  documents, a block other pages use): `gate-all.mjs --changed-only` at both
+  widths, never every archetype. It re-gates each page whose fingerprint
+  (delivered CSS/JS plus its own and the chrome documents, recorded beside a
+  verdict only when the gate key proves the host serves that tree — a row
+  without one is always re-gated) changed since its PASS, and leaves out and
+  names each page at the cap (`at the cap: <slug>, … — C-final's roster gate
+  measures them`); `--round-reset` follows only a recorded re-prototype decision.
+- **Resume, never restart:** a killed `gate-all.mjs` run re-runs the same
+  command plus `--skip-existing`.
+
+**The fix-round brief** the lead fills in and pastes for a fix-round subagent
+after C0 (project copy: `stardust/scripts/<skill>/` for `skills/<skill>/scripts/`):
+
+```text
+Fix round <n> of 3 — unit <unit>; pages <slug,…>; widths 1440 + 360; host <preview host>.
+FAIL lines, verbatim from gate-all with their numbers (and <out>/triage.json): <lines>
+Edit only blocks/<name>/; a frozen-file finding is ONE stardust/rollout/foundation-requests.md line:
+  - <unit> | <what> | <evidence: instrument + numbers> | <templates affected>
+A server: node skills/replica/scripts/run-bg.mjs start --kind server --name <unit>-srv -- <cmd> (never waited)
+Each round: fix, npm run lint, then
+  node skills/stardust/scripts/unit-commit.mjs <unit> --code blocks/<name> --push
+  node skills/deploy/scripts/fresh-check.mjs <css-or-js-url> --grep '<marker>'
+  node skills/replica/scripts/run-bg.mjs start --name <unit>-r<n>-<w> -- \
+    node skills/replica/scripts/gate-all.mjs --only <pages> --eds-host <host> --width <w>
+  # per width; after a shared change, instead:
+  node skills/replica/scripts/run-bg.mjs start --name <unit>-changed-<w> -- \
+    node skills/replica/scripts/gate-all.mjs --changed-only --eds-host <host> --width <w>
+  node skills/replica/scripts/run-bg.mjs wait   # exit 75: wait again
+  node skills/rollout/scripts/update-coverage.mjs --gate <each width's "run →" file>
+Stop: <the stop rule above>; at the cap the decision is not yours, never --round-reset. Then:
+  write your report to stardust/rollout/units/<unit>.md (never git add it by hand)
+  node skills/stardust/scripts/unit-commit.mjs <unit>   # carries the report, pages and bookkeeping
+  node skills/replica/scripts/run-bg.mjs stop --servers
+  node skills/stardust/scripts/progress.mjs unit done|failed <unit> --verdict "<one verdict line>"   # last
+STARDUST_PAUSE_FILE present → finish the round, stop your servers, return "paused: <report>" (no progress.mjs).
+```

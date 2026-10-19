@@ -4,6 +4,42 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r16-gates-and-jobs) — servers are not jobs, the unit commits its report, the source contract is cached, and gates stop at PASS (#NNN)
+
+The recorded hands-off runs: a 26-second measure queued 615 s behind a static file server because `run-bg.mjs`
+counted every running job toward its slots, and a bare `wait` blocked the full tool cap on a unit's own prototype and
+dev servers (deadline 3600 s) while its gates had ended seven minutes earlier; six unit subagents left their reports,
+the foundation requests, the variance verdicts, `state.json` and migrate's `progress.json` uncommitted because
+`unit-commit.mjs` committed a fixed pathspec, and the lead patched four extra commits; the header-contract loop
+re-explored the unchanged source four times after the one-hour cache lapsed (one run: eight explores, 57 minutes of
+browser); every archetype burned all three gate iterations at both widths even at 0.05 % pixel, and all seven
+archetypes were re-gated after each shared-CSS change; and the foundation-first rule made the delivery head single-file
+for 70 minutes with eight units waiting, though an earlier run overlapped the foundation with the first archetype and
+lost nothing.
+
+- **Servers are not jobs (`run-bg.mjs`).** `start --kind server` (implied by `--no-lock`) holds no slot, stays out of a
+  bare or `--all` wait, is listed under a `servers:` heading in `status`, and is ended by `stop`. `stop` now ends the
+  whole process group — SIGKILL pass after pass to every member a fresh census still finds, so a child that ignores
+  SIGTERM no longer outlives it — and records the deadline's no-verdict marker (exit 124) rather than a verdict; every
+  signal first takes a fresh look so a recycled pid is never signalled. The kind is stored as `runKind` to avoid a
+  collision with gate-evidence's own `kind`.
+- **The unit commits what it writes (`unit-commit.mjs`).** The default pathspec now carries the unit's report
+  (`stardust/rollout/units/<unit>.md`), `foundation-requests.md`, `variance/*.json`, `state.json`,
+  `migrate/progress.json`, `migrate/encode/*.json` and `eds-conversion-log.md` alongside the pages and coverage;
+  `--also <path>` commits anything else the unit wrote. The brief sentences that told agents to `git add` by hand are
+  gone.
+- **The source contract is cached (`chrome-explore.mjs`).** Each source URL + width is cached for the run at
+  `stardust/.work/chrome/source-<hash>.json`, reused unless `--fresh` (the hit printed, no page opened); both widths of
+  a page are explored in parallel inside the slot's browsers; `--build-only` re-explores the build alone.
+- **Gates stop at PASS (`delivery-gates.md`, `gate-all.mjs`).** A unit stops iterating at PASS on both widths with
+  Δh 0 — no confirmation round unless a shared file changed after the pass — and a killed roster is resumed with
+  `--skip-existing`, never restarted. `gate-all --changed-only` re-gates only the pages whose delivered CSS/JS
+  fingerprint changed since their last PASS (the fingerprint recorded beside each verdict).
+- **Foundation first, overlapped (`rollout/SKILL.md`, `handoff-contract.md`).** `foundation-chrome` and
+  `foundation-styles` may run in parallel (disjoint files); the shell template's archetype may convert its blocks and
+  write its document during C0 and deploys and gates only after styles ship; the freeze still happens before any
+  sibling page of that template.
+
 ## 0.36.x (stardust/r16-census-and-clock) — the style census survives a stuck page, presence suggests on a miss, and a unit brief carries a clock (#154)
 
 Recorded hands-off runs: on a site with a consent manager the style census (`--concurrency 2`) hung after its first

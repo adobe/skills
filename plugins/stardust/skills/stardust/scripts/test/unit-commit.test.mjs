@@ -2,11 +2,15 @@
 // skills/stardust/scripts/test/unit-commit.test.mjs — the unit-commit.mjs contract, with real git in
 // temp dirs (a bare remote + clones; children get HOME=<tmp>, GIT_CONFIG_NOSYSTEM=1 and a ceiling so
 // no user or system config leaks in): the pure helpers (paths parsing, sidecar naming, the candidate
-// set, lock judgement, the 170 s network deadline — every network step and backoff capped to the time
-// left, none started with none left, the worst-case --push schedule under 240 s); --help writes nothing
-// and states that bound, and answers in a copy without
+// set — the unit's report, ledger, encoder maps, encoded documents, gate JSON and the shared
+// bookkeeping —, the --also rules, lock judgement, the 170 s network deadline — every network step and
+// backoff capped to the time left, none started with none left, the worst-case --push schedule under
+// 240 s); --help writes nothing, lists the whole stage set and states that bound, and answers in a copy without
 // deploy's eds-path.mjs beside it (a run there exits 2); usage errors; a missing .paths stages nothing; a unit
-// commits exactly its set while an unrelated pre-staged file stays staged and out of the commit;
+// commits exactly its set — everything it wrote — while an unrelated pre-staged file stays staged and out
+// of the commit; a second unit commits only what changed since (a file staged by hand included);
+// --also adds a file and a directory's files, and each refusal (absolute, .., content/, blocks/, the
+// frozen foundation, .git, the root, missing, a link out of the tree or into content/) stages nothing;
 // --code blocks/<name> adds exactly that block directory's non-ignored files (header, footer and
 // anything outside blocks/<kebab-name> refused, a missing directory refused); nothing to commit; nothing new but ahead → push only; a live lock times out naming its owner; a
 // dead-pid or untouched lock is reaped; a failing commit unstages the set; two concurrent --push
@@ -19,11 +23,11 @@
 // kept; no upstream → committed, not pushed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { hostname, tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { codeDir, judgeLock, KILL_GRACE_MS, NET_DEADLINE_MS, NET_TIMEOUT_MS, netBudget, parseOwner, parsePaths, safeRel, sidecarFor, stageCandidates, STALE_MS, worstPushSchedule } from '../unit-commit.mjs';
+import { alsoPath, codeDir, ENCODED_DIR, judgeLock, KILL_GRACE_MS, NET_DEADLINE_MS, NET_TIMEOUT_MS, netBudget, parseOwner, parsePaths, perUnitArea, safeRel, SHARED, sidecarFor, sourceUnder, stageCandidates, STALE_MS, worstPushSchedule } from '../unit-commit.mjs';
 import { pathKey } from '../../../deploy/scripts/eds-path.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -71,18 +75,29 @@ const noLockLeft = () => {
   assert.deepEqual(left, [], 'no lock (nor a reaped lock set aside) left behind');
 };
 
+const G = 'stardust/replica/gates';
+const RUN_A = `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-a.json`;
+const RUN_C = `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-c.json`;
+// the shared bookkeeping files the fixture writes (SHARED + one *.json per shared dir)
+const SHARED_SET = [
+  'stardust/deploy/media-ledger.json', 'stardust/eds-conversion-log.md', 'stardust/migrate/encode/a.json',
+  'stardust/migrate/progress.json', 'stardust/redirects.tsv', 'stardust/rollout/coverage/blocks.json',
+  'stardust/rollout/coverage/pages.json', 'stardust/rollout/foundation-requests.md', 'stardust/rollout/progress.json',
+  'stardust/rollout/rollout.json', 'stardust/rollout/variance/a.json', 'stardust/state.json',
+];
 const C1_SET = [
   'content/a.html', 'content/a/index.html', 'content/b.html',
-  'stardust/deploy/media-ledger.json', 'stardust/eds-schema/a.json',
-  'stardust/migrated/a._meta.json', 'stardust/migrated/b-meta.json',
-  'stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json',
-  'stardust/rollout/progress.json', 'stardust/rollout/units/c1.paths',
-];
+  'stardust/deploy/ledger-c1.json', 'stardust/eds-schema/a.json', 'stardust/encoded/a.html', 'stardust/import/a/map.json',
+  'stardust/migrated/a._meta.json', 'stardust/migrated/a.html', 'stardust/migrated/b-meta.json', 'stardust/migrated/b.html',
+  'stardust/patches/a.json', `${G}/all-1440/a/pixel.json`, `${G}/all-1440/a/rounds.json`, RUN_A,
+  'stardust/rollout/units/c1.md', 'stardust/rollout/units/c1.paths', ...SHARED_SET,
+].sort();
 const C2_SET = [
-  'content/c.html', 'stardust/deploy/media-ledger.json', 'stardust/migrated/c/_meta.json',
-  'stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json',
-  'stardust/rollout/progress.json', 'stardust/rollout/units/c2.paths',
-];
+  'content/c.html', 'stardust/deploy/ledger-c2.json', 'stardust/encoded/c.html', 'stardust/import/c/map.json',
+  'stardust/migrated/c/_meta.json', 'stardust/migrated/c/index.html', `${G}/all-360/c/pixel.json`, RUN_C,
+  `${G}/all-1440/triage.json`, `${G}/all-1440/triage.md`, `${G}/all-360/triage.json`,
+  'stardust/rollout/units/c2.md', 'stardust/rollout/units/c2.paths', ...SHARED_SET,
+].sort();
 const subset = (files, set, label) => { const extra = files.filter((f) => !set.includes(f)); assert.deepEqual(extra, [], `${label}: files outside the unit's set`); };
 
 // ---- pure helpers -------------------------------------------------------------------------------
@@ -96,23 +111,103 @@ check('sidecarFor: index.html → _meta.json, <name>.html → <name>._meta.json,
   assert.equal(sidecarFor('search:results'), null);
   assert.equal(sidecarFor(null), null);
 });
-check('stageCandidates: content docs per pathKey, the matching row\'s schema + sidecar (metaJson first), shared bookkeeping', () => {
+check('stageCandidates: content and encoded docs per pathKey, the matching row\'s schema, sidecar (metaJson first), source HTML and patches, the unit\'s report and ledger, shared bookkeeping — complete, deduped, sorted', () => {
   const rows = [
     { slug: 'home', path: '/', source: { migratedHtml: 'stardust/migrated/index.html', metaJson: null } },
     { slug: 'a', path: '/a/', source: { migratedHtml: 'stardust/migrated/a.html', metaJson: null } },
+    { slug: 'a', path: '/a', source: { migratedHtml: './stardust/migrated/a.html', metaJson: null } }, // a duplicate row
     { slug: 'b', path: '/b', source: { migratedHtml: 'stardust/migrated/b.html', metaJson: 'stardust/migrated/b-meta.json' } },
     { slug: 'n', path: '/n', source: { migratedHtml: 'search:n', metaJson: null } },
     { slug: 'x', path: '/x', source: { migratedHtml: 'stardust/migrated/x.html' } },
   ];
-  const { files, notes } = stageCandidates({ unit: 'u1', lines: ['/', '/A.html', '/b/index', '/n', '/../etc'], rows, coverageFiles: ['stardust/rollout/coverage/pages.json'], pathKey });
+  const { files, notes } = stageCandidates({ unit: 'u1', lines: ['/', '/A.html', '/a/', '/b/index', '/n', '/../etc'], rows, sharedJson: ['stardust/rollout/coverage/pages.json'], pathKey });
   assert.deepEqual(files, [
-    'content/index.html', 'stardust/eds-schema/home.json', 'stardust/migrated/_meta.json',
-    'content/a.html', 'content/a/index.html', 'stardust/eds-schema/a.json', 'stardust/migrated/a._meta.json',
-    'content/b.html', 'content/b/index.html', 'stardust/eds-schema/b.json', 'stardust/migrated/b-meta.json',
-    'content/n.html', 'content/n/index.html', 'stardust/eds-schema/n.json',
-    'stardust/rollout/coverage/pages.json', 'stardust/rollout/progress.json', 'stardust/deploy/media-ledger.json', 'stardust/rollout/units/u1.paths',
+    'content/a.html', 'content/a/index.html', 'content/b.html', 'content/b/index.html', 'content/index.html', 'content/n.html', 'content/n/index.html',
+    'stardust/deploy/ledger-u1.json', 'stardust/deploy/media-ledger.json', 'stardust/eds-conversion-log.md',
+    'stardust/eds-schema/a.json', 'stardust/eds-schema/b.json', 'stardust/eds-schema/home.json', 'stardust/eds-schema/n.json',
+    'stardust/encoded/a.html', 'stardust/encoded/a/index.html', 'stardust/encoded/b.html', 'stardust/encoded/b/index.html', 'stardust/encoded/index.html',
+    'stardust/encoded/n.html', 'stardust/encoded/n/index.html', 'stardust/migrate/progress.json',
+    'stardust/migrated/_meta.json', 'stardust/migrated/a._meta.json', 'stardust/migrated/a.html', 'stardust/migrated/b-meta.json', 'stardust/migrated/b.html', 'stardust/migrated/index.html',
+    'stardust/patches/a.json', 'stardust/patches/b.json', 'stardust/patches/home.json', 'stardust/patches/n.json',
+    'stardust/redirects.tsv', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/foundation-requests.md', 'stardust/rollout/progress.json',
+    'stardust/rollout/rollout.json', 'stardust/rollout/units/u1.md', 'stardust/rollout/units/u1.paths', 'stardust/state.json',
   ]);
+  assert.deepEqual(SHARED, [...SHARED].sort(), 'the shared list is kept sorted');
   assert.equal(notes.length, 1); assert.match(notes[0], /\.\. segment/);
+});
+check('stageCandidates: the unit\'s templates (progress.json, plus <t> of archetype-<t>) add their encoder maps; the page\'s gate JSON, its own --only runs and the triage pair of each gate dir it was gated in — complete, deduped, sorted', () => {
+  const tree = {
+    'stardust/import/extra': ['stardust/import/extra/map.json'],
+    'stardust/import/post': ['stardust/import/post/encoder.mjs', 'stardust/import/post/map.json'],
+    'stardust/import/other': ['stardust/import/other/map.json'],
+    [`${G}/all-1440/p1`]: [`${G}/all-1440/p1/origin.png`, `${G}/all-1440/p1/pixel.json`, `${G}/all-1440/p1/rounds.json`, `${G}/all-1440/p1/rounds.lock`],
+    [`${G}/all-360/p1`]: [`${G}/all-360/p1/sub/units.json`],
+    [`${G}/all-1440/runs`]: [
+      `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-other.json`, `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-p1.json`,
+      `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-xp1.json`, `${G}/all-1440/runs/nested/2026-10-18T21-05-09-222Z-p1.json`, `${G}/all-1440/runs/notes-p1.json`,
+    ],
+    [`${G}/all-768/runs`]: [`${G}/all-768/runs/2026-10-18T21-05-09-222Z-other.json`], // gated others only: no triage of it
+  };
+  const rows = [{ slug: 'p1', path: '/p1', source: { migratedHtml: null, encodedHtml: 'stardust/encoded/p1.html', metaJson: 'stardust/migrated/p1._meta.json' } }];
+  const { files, notes } = stageCandidates({
+    unit: 'archetype-post', lines: ['/p1'], rows, templates: ['extra', 'post', '../x', '', 7], gateDirs: [`${G}/all-1440`, `${G}/all-360`, `${G}/all-768`], walk: (d) => tree[d] || [], pathKey,
+  });
+  assert.deepEqual(files, [
+    'content/p1.html', 'content/p1/index.html', 'stardust/deploy/ledger-archetype-post.json', 'stardust/deploy/media-ledger.json',
+    'stardust/eds-conversion-log.md', 'stardust/eds-schema/p1.json', 'stardust/encoded/p1.html', 'stardust/encoded/p1/index.html',
+    'stardust/import/extra/map.json', 'stardust/import/post/encoder.mjs', 'stardust/import/post/map.json', 'stardust/migrate/progress.json',
+    'stardust/migrated/p1._meta.json', 'stardust/patches/p1.json', 'stardust/redirects.tsv',
+    `${G}/all-1440/p1/pixel.json`, `${G}/all-1440/p1/rounds.json`, `${G}/all-1440/runs/2026-10-18T21-05-09-222Z-p1.json`,
+    `${G}/all-1440/triage.json`, `${G}/all-1440/triage.md`, `${G}/all-360/p1/sub/units.json`, `${G}/all-360/triage.json`, `${G}/all-360/triage.md`,
+    'stardust/rollout/foundation-requests.md', 'stardust/rollout/progress.json', 'stardust/rollout/rollout.json',
+    'stardust/rollout/units/archetype-post.md', 'stardust/rollout/units/archetype-post.paths', 'stardust/state.json',
+  ]);
+  assert.deepEqual(notes, []);
+});
+check('stageCandidates: a row\'s source paths stay inside their roots — content/, styles/, blocks/header/, a .. escape, a foreign absolute path and an unusable slug are left out, one note per row; an absolute path under the project is taken relative to it', () => {
+  const rows = [
+    { slug: 'e', path: '/e', source: { migratedHtml: 'content/other.html', encodedHtml: 'styles/x.html', metaJson: 'blocks/header/x.html' } },
+    { slug: 'f', path: '/f', source: { migratedHtml: 'stardust/migrated/../../content/f.html', encodedHtml: '/elsewhere/stardust/encoded/f.html', metaJson: null } },
+    { slug: 'g', path: '/g', source: { migratedHtml: null, encodedHtml: join(root, 'stardust', 'encoded', 'g.html'), metaJson: 'stardust/migrated/g._meta.json' } },
+    { slug: '../../styles/h', path: '/h', source: { migratedHtml: null, encodedHtml: null, metaJson: null } },
+  ];
+  const { files, notes } = stageCandidates({ unit: 'u2', lines: ['/e', '/f', '/g', '/h'], rows, root, pathKey });
+  assert.ok(!files.some((f) => /^(styles|blocks|fonts|scripts)\//.test(f) || f.includes('..') || f.startsWith('/')), files.join(' '));
+  assert.deepEqual(files.filter((f) => f.startsWith('content/')), ['content/e.html', 'content/e/index.html', 'content/f.html', 'content/f/index.html', 'content/g.html', 'content/g/index.html', 'content/h.html', 'content/h/index.html'], 'content: the unit\'s page docs only');
+  for (const f of ['stardust/encoded/g.html', 'stardust/migrated/g._meta.json', 'stardust/eds-schema/e.json', 'stardust/patches/f.json']) assert.ok(files.includes(f), f);
+  assert.ok(!files.some((f) => /styles\/h|other\.html|header\/x|elsewhere|f\._meta/.test(f)), files.join(' '));
+  assert.deepEqual(files, [...new Set(files)].sort(), 'deduped, sorted');
+  assert.equal(notes.length, 3, notes.join('\n'));
+  assert.match(notes[0], /^coverage row e \(\/e\): left out source\.metaJson blocks\/header\/x\.html \(not under stardust\/migrated\/\), source\.migratedHtml content\/other\.html \(not under stardust\/migrated\/\), source\.encodedHtml styles\/x\.html \(not under stardust\/encoded\/\)$/);
+  assert.match(notes[1], /^coverage row f \(\/f\): left out the sidecar stardust\/migrated\/\.\.\/\.\.\/content\/f\._meta\.json .*source\.migratedHtml stardust\/migrated\/\.\.\/\.\.\/content\/f\.html .*source\.encodedHtml \/elsewhere\/stardust\/encoded\/f\.html \(not under stardust\/encoded\/\)$/);
+  assert.match(notes[2], /^coverage row \.\.\/\.\.\/styles\/h \(\/h\): left out slug \.\.\/\.\.\/styles\/h \(not one name\)$/);
+  assert.equal(sourceUnder('stardust/encoded/a.html', ENCODED_DIR), 'stardust/encoded/a.html');
+  assert.equal(sourceUnder(join(root, 'stardust/encoded/a.html'), ENCODED_DIR), null, 'an absolute path without a root is left out');
+});
+check('perUnitArea: the namespaces the set manages per unit or per page; shared and other paths → null', () => {
+  for (const [p, area] of [
+    ['stardust/rollout/units/c2.md', 'stardust/rollout/units/'], ['Stardust/Rollout/Units/c2.md', 'stardust/rollout/units/'],
+    ['stardust/deploy/ledger-c2.json', 'stardust/deploy/ledger-<unit>.json'], ['stardust/import/c/map.json', 'stardust/import/'],
+    ['stardust/encoded/c.html', 'stardust/encoded/'], ['stardust/migrated/c/_meta.json', 'stardust/migrated/'],
+    ['stardust/patches/c.json', 'stardust/patches/'], ['stardust/eds-schema/c.json', 'stardust/eds-schema/'],
+    [`${G}/all-1440/c/pixel.json`, `${G}/all-1440/<page>/ and runs/`], [RUN_C, `${G}/all-1440/<page>/ and runs/`],
+  ]) assert.equal(perUnitArea(p), area, p);
+  for (const p of ['stardust/deploy/media-ledger.json', 'stardust/rollout/foundation-requests.md', `${G}/all-1440/triage.json`, `${G}/all-1440/overrides.json`, 'stardust/notes/x.md', 'docs/a.pdf']) assert.equal(perUnitArea(p), null, p);
+});
+check('alsoPath: a clean project-relative path; absolute, .., the root, .git, content/, blocks/ and the frozen foundation refused, naming the rule', () => {
+  assert.equal(alsoPath('stardust/rollout/notes.md'), 'stardust/rollout/notes.md');
+  assert.equal(alsoPath('./stardust/import/x/'), 'stardust/import/x');
+  assert.equal(alsoPath('stardust\\notes.md'), 'stardust/notes.md');
+  for (const ok of ['docs/guide.pdf', 'contentious/a.html', 'blocksy', 'stardust/content/a.html', 'stardust/styles.json']) assert.equal(alsoPath(ok), ok);
+  for (const [bad, re] of [
+    ['/etc/hosts', /an absolute path is refused/], ['../x', /a \.\. segment is refused/], ['stardust/../content/a.html', /a \.\. segment is refused/],
+    ['.', /the project root is refused/], ['./', /the project root is refused/], ['', /needs a path/],
+    ['.git/config', /\.git is refused/], ['stardust/x/.GIT/HEAD', /\.git is refused/],
+    ['content', /content\/ is refused — a unit's pages go through stardust\/rollout\/units\/<unit>\.paths/], ['Content/A.html', /content\/ is refused/],
+    ['blocks/cards', /blocks\/ is refused — block code goes through --code blocks\/<name>/], ['blocks/header/header.js', /blocks\/ is refused/],
+    ['styles/styles.css', /styles\/ is the frozen foundation/], ['fonts/a.woff2', /fonts\/ is the frozen foundation/],
+    ['scripts/aem.js', /scripts\/ is the frozen foundation/], ['head.html', /head\.html is the frozen foundation/],
+  ]) assert.throws(() => alsoPath(bad), re, JSON.stringify(bad));
 });
 check('netBudget: a network step or backoff gets min(its own limit, the time left until 170 s after the start); none is started with 0 left', () => {
   assert.equal(NET_DEADLINE_MS, 170_000);
@@ -189,8 +284,18 @@ try {
     { slug: 'c', path: '/c', source: { migratedHtml: 'stardust/migrated/c/index.html', metaJson: null } },
   ] }, null, 2)}\n`);
   put(clone, 'stardust/rollout/coverage/blocks.json', '{"blocks":[]}\n');
-  put(clone, 'stardust/rollout/progress.json', '{"units":{"c1":{"status":"running"},"c2":{"status":"running"}}}\n');
+  put(clone, 'stardust/rollout/progress.json', '{"units":{"c1":{"status":"running","templates":["a"]},"c2":{"status":"running","templates":["c"]}}}\n');
   put(clone, 'stardust/deploy/media-ledger.json', '{}\n');
+  // what a unit writes beside its pages (handoff contract § 3 row C, rollout § Phase C, migrate § Encoder first)
+  for (const f of ['rollout/rollout.json', 'rollout/variance/a.json', 'state.json', 'migrate/progress.json', 'migrate/encode/a.json']) put(clone, `stardust/${f}`, '{}\n');
+  put(clone, 'stardust/rollout/foundation-requests.md', '- c1 | body line-height | pixel 12 % | a\n');
+  put(clone, 'stardust/eds-conversion-log.md', '# conversion log\n');
+  put(clone, 'stardust/redirects.tsv', '/A.html\t/a\n');
+  for (const u of ['c1', 'c2']) { put(clone, `stardust/rollout/units/${u}.md`, `# ${u} report\n`); put(clone, `stardust/deploy/ledger-${u}.json`, '{}\n'); }
+  for (const t of ['a', 'c']) { put(clone, `stardust/import/${t}/map.json`, '{}\n'); put(clone, `stardust/encoded/${t}.html`, `<main><h1>${t} encoded</h1></main>\n`); }
+  put(clone, 'stardust/patches/a.json', '[]\n');
+  for (const f of ['a/pixel.json', 'a/rounds.json', 'a/origin.png', 'a/rounds.lock']) put(clone, `${G}/all-1440/${f}`, '{}\n');
+  for (const f of [RUN_A, RUN_C, `${G}/all-360/c/pixel.json`, `${G}/all-360/triage.json`, `${G}/prototypes-1440/a/pixel.json`]) put(clone, f, '{}\n');
   put(clone, 'stardust/eds-schema/a.json', '{}\n');
   put(clone, 'stardust/eds-schema/b.json', '{}\n'); // git-ignored: never staged
   for (const f of ['a.html', 'a._meta.json', 'b.html', 'b._meta.json', 'b-meta.json', 'c/index.html', 'c/_meta.json']) put(clone, `stardust/migrated/${f}`, '{}\n');
@@ -208,6 +313,9 @@ try {
     assert.match(r.out, /Usage:/); assert.match(r.out, /stardust\/\.work\/git\.lock/); assert.match(r.out, /Writes:/); assert.match(r.out, /Exit codes:/);
     assert.match(r.out, /170 s \+ 5 s = 175 s\b.*returns under 240 s/s, 'the --push bound and its arithmetic');
     assert.doesNotMatch(r.out, /245 s/);
+    for (const entry of ['per unit:', 'units/<unit>.md', 'ledger-<unit>.json', 'stardust/import/<t>/', 'stardust/encoded/<key>.html', 'per path', 'per coverage row',
+      'all-<w>/<slug>/**/*.json', 'all-<w>/triage.json', 'shared:', 'stardust/rollout/variance/*.json', 'stardust/migrate/encode/*.json', ...SHARED, '--code blocks/<name>', '--also <path>']) assert.ok(r.out.includes(entry), `--help names ${entry}`);
+    assert.match(r.out, /commits\s+it by pathspec: a hand git add of these paths is never needed/);
     assert.deepEqual(readdirSync(empty), []);
     assert.equal(run(empty, 'c1', '-h').code, 0);
     assert.deepEqual(readdirSync(empty), []);
@@ -223,7 +331,7 @@ try {
     assert.deepEqual(readdirSync(empty), []);
   });
   check('usage: no unit, a bad unit name, unknown flag, bad number, a value flag without value, outside a work tree → exit 2, one line', () => {
-    for (const args of [[], ['../x'], ['c1', 'c2'], ['c1', '--bogus'], ['c1', '--wait-s', 'abc'], ['c1', '--wait-s', '-1'], ['c1', '--message'], ['c1', '--message', '--push'], ['c1', '--code'], ['c1', '--code', 'styles'], ['c1', '--code', 'blocks/header']]) {
+    for (const args of [[], ['../x'], ['c1', 'c2'], ['c1', '--bogus'], ['c1', '--wait-s', 'abc'], ['c1', '--wait-s', '-1'], ['c1', '--message'], ['c1', '--message', '--push'], ['c1', '--code'], ['c1', '--code', 'styles'], ['c1', '--code', 'blocks/header'], ['c1', '--also'], ['c1', '--also', '--push'], ['c1', '--also', 'content/a.html']]) {
       const r = run(clone, ...args);
       assert.equal(r.code, 2, `args ${JSON.stringify(args)}: ${r.out}`); oneLine(r);
     }
@@ -238,12 +346,12 @@ try {
     assert.equal(r.out, "unit-commit c9: no stardust/rollout/units/c9.paths — write the unit's page list first; nothing staged\n");
     assert.equal(head(), before); assert.deepEqual(staged(), ['other.txt']);
   });
-  check('c1: commits exactly its set; another unit\'s pages, unrelated and ignored files stay out; the pre-staged file stays staged', () => {
+  check('c1: commits exactly its set — its pages, report, ledger, map, encoded docs, gate JSON and all shared bookkeeping; another unit\'s files, unrelated, ignored and non-JSON gate files stay out; the pre-staged file stays staged', () => {
     const r = run(clone, 'c1');
     assert.equal(r.code, 0, r.out + r.err); oneLine(r);
-    assert.match(r.out, /^unit-commit c1: committed [0-9a-f]{7} \(11 files\)\n$/);
+    assert.match(r.out, new RegExp(`^unit-commit c1: committed [0-9a-f]{7} \\(${C1_SET.length} files\\)\\n$`));
     assert.deepEqual(filesOf(clone, 'HEAD'), C1_SET);
-    assert.equal(subject(), 'C-deliver unit c1: 2 pages, 11 files');
+    assert.equal(subject(), `C-deliver unit c1: 2 pages, ${C1_SET.length} files`);
     assert.deepEqual(staged(), ['other.txt']);
     noLockLeft();
   });
@@ -252,6 +360,106 @@ try {
     const r = run(clone, 'c1');
     assert.equal(r.code, 2); assert.equal(r.out, 'unit-commit c1: nothing to commit\n');
     assert.equal(head(), before);
+  });
+  check('a second unit (c3) commits only what changed since: its page, .paths and report, the shared files it changed and a shared file staged by hand — no unchanged shared file, nothing of another unit', () => {
+    put(clone, 'content/d.html', '<main><h1>d</h1></main>\n');
+    put(clone, 'stardust/rollout/units/c3.paths', '/d\n');
+    put(clone, 'stardust/rollout/units/c3.md', '# c3 report\n');
+    put(clone, 'stardust/rollout/foundation-requests.md', '- c1 | body line-height | pixel 12 % | a\n- c3 | footer gap | crop 3 % | d\n');
+    put(clone, 'stardust/rollout/variance/d.json', '{}\n');
+    put(clone, 'stardust/state.json', '{"pages":{}}\n');
+    git(clone, 'add', '--', 'stardust/state.json'); // a hand git add (never needed): committed all the same
+    const r = run(clone, 'c3');
+    assert.equal(r.code, 0, r.out + r.err); oneLine(r);
+    assert.match(r.out, /^unit-commit c3: committed [0-9a-f]{7} \(6 files\)\n$/);
+    assert.deepEqual(filesOf(clone, 'HEAD'), ['content/d.html', 'stardust/rollout/foundation-requests.md', 'stardust/rollout/units/c3.md', 'stardust/rollout/units/c3.paths', 'stardust/rollout/variance/d.json', 'stardust/state.json']);
+    assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
+  });
+  check('a fix round: c1 commits its new --only run, its rounds.json and its gate dir\'s triage.json + triage.md — never an image, a lock, triage-parity/ or the triage of a gate dir it was not gated in', () => {
+    const run2 = `${G}/all-1440/runs/2026-10-18T22-00-00-000Z-a.json`;
+    put(clone, run2, '{"round":1}\n');
+    put(clone, `${G}/all-1440/a/rounds.json`, '{"rounds":1}\n');
+    put(clone, `${G}/all-1440/triage.json`, '{"causes":[]}\n');
+    put(clone, `${G}/all-1440/triage.md`, '# triage\n');
+    put(clone, `${G}/all-1440/a/diff.png`, 'png\n');
+    put(clone, `${G}/all-1440/a/rounds.lock`, '{"pid":1}\n');
+    put(clone, `${G}/all-1440/triage-parity/band.json`, '{}\n');
+    put(clone, `${G}/all-360/triage.json`, '{"causes":["c2"]}\n'); // c2's gate dir: c1's pages were not gated there
+    const r = run(clone, 'c1');
+    assert.equal(r.code, 0, r.out + r.err); oneLine(r);
+    assert.match(r.out, /^unit-commit c1: committed [0-9a-f]{7} \(4 files\)\n$/);
+    assert.deepEqual(filesOf(clone, 'HEAD'), [`${G}/all-1440/a/rounds.json`, run2, `${G}/all-1440/triage.json`, `${G}/all-1440/triage.md`].sort());
+    assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
+  });
+  check('--also: an extra file under stardust/, the unit\'s own report and, outside stardust/, a directory\'s files (recursively) join the commit; a git-ignored one is named on stderr, not staged', () => {
+    put(clone, 'stardust/notes/extra.md', 'extra\n');
+    put(clone, 'docs/guides/a.json', '{}\n');
+    put(clone, 'docs/guides/sub/b.txt', 'b\n');
+    put(clone, 'docs/guides/c.map', '{}\n'); // git-ignored (*.map)
+    const r = run(clone, 'c3', '--also', 'stardust/notes/extra.md', '--also', './docs/guides/', '--also', 'stardust/rollout/units/c3.md');
+    assert.equal(r.code, 0, r.out + r.err); oneLine(r);
+    assert.match(r.out, /^unit-commit c3: committed [0-9a-f]{7} \(3 files\)\n$/);
+    assert.deepEqual(filesOf(clone, 'HEAD'), ['docs/guides/a.json', 'docs/guides/sub/b.txt', 'stardust/notes/extra.md']);
+    assert.match(r.err, /note: --also: 1 git-ignored file\(s\) not staged: docs\/guides\/c\.map/);
+    assert.equal(git(clone, 'status', '--porcelain', '--', 'notes.txt', 'content/z.html'), '?? content/z.html\n?? notes.txt');
+    assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
+  });
+  check('--also refused — absolute, a .. segment, content/, blocks/, styles/, head.html, .git, the root, a missing path, a link resolving outside the work tree or into content/, a directory under stardust/, another unit\'s report, ledger, map, encoded doc or gate run → exit 2, one line naming the rule, nothing staged or committed', () => {
+    put(clone, 'stardust/rollout/units/c3.md', '# c3 report v2\n'); // what c3 would commit
+    put(clone, 'stardust/rollout/units/c2.md', '# c2 report, in progress\n'); // a second unit's dirty report
+    const sweep = /a directory under stardust\/ would sweep other units' files — name the file; nothing staged$/m;
+    const foreign = (area) => new RegExp(`not this unit's own file — ${area.replace(/[.*+?^${}()|[\]\\/]/g, '\\$&')} is managed per unit .*; nothing staged$`, 'm');
+    symlinkSync(join(root, 'empty'), join(clone, 'outside-link'));
+    symlinkSync('content', join(clone, 'pages-link'));
+    const before = head();
+    try {
+      for (const [p, re] of [
+        [join(clone, 'stardust', 'state.json'), /an absolute path is refused/],
+        ['stardust/../content/a.html', /a \.\. segment is refused/],
+        ['content/a.html', /content\/ is refused — a unit's pages go through stardust\/rollout\/units\/<unit>\.paths/],
+        ['blocks/cards', /blocks\/ is refused — block code goes through --code blocks\/<name>/],
+        ['styles/styles.css', /styles\/ is the frozen foundation/],
+        ['head.html', /head\.html is the frozen foundation/],
+        ['.git/config', /\.git is refused/],
+        ['.', /the project root is refused/],
+        ['stardust/nope.json', /^unit-commit c3: --also stardust\/nope\.json: no such file or directory — nothing staged$/m],
+        ['outside-link', /^unit-commit c3: --also outside-link: resolves outside the work tree — nothing staged$/m],
+        ['pages-link', /--also pages-link: resolves to content — content\/ is refused/],
+        ['stardust/rollout/units', sweep], ['stardust/rollout/units/', sweep], ['stardust', sweep], ['stardust/notes', sweep],
+        ['stardust/rollout/units/c2.md', foreign('stardust/rollout/units/')],
+        ['stardust/deploy/ledger-c2.json', foreign('stardust/deploy/ledger-<unit>.json')],
+        ['stardust/import/c/map.json', foreign('stardust/import/')],
+        ['stardust/encoded/c.html', foreign('stardust/encoded/')],
+        [RUN_C, foreign(`${G}/all-1440/<page>/ and runs/`)],
+      ]) {
+        const r = run(clone, 'c3', '--also', p);
+        assert.equal(r.code, 2, `${p}: ${r.out}${r.err}`); oneLine(r); assert.match(r.out, re, p);
+      }
+    } finally { unlinkSync(join(clone, 'outside-link')); unlinkSync(join(clone, 'pages-link')); }
+    assert.equal(head(), before); assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
+    git(clone, 'checkout', '--', 'stardust/rollout/units/c3.md');
+  });
+  check('coverage source paths outside their roots (content/other.html, styles/x.html, blocks/header/x.html) are left out with one stderr note naming the row; the unit still commits its own', () => {
+    for (const f of ['content/other.html', 'styles/x.html', 'blocks/header/x.html']) put(clone, f, '<main>not this unit\'s</main>\n');
+    put(clone, 'content/e.html', '<main><h1>e</h1></main>\n');
+    put(clone, 'stardust/rollout/units/c4.paths', '/e\n');
+    const pagesFile = join(clone, 'stardust', 'rollout', 'coverage', 'pages.json');
+    const doc = JSON.parse(readFileSync(pagesFile, 'utf8'));
+    doc.pages.push({ slug: 'e', path: '/e', source: { migratedHtml: 'content/other.html', encodedHtml: 'styles/x.html', metaJson: 'blocks/header/x.html' } });
+    writeFileSync(pagesFile, `${JSON.stringify(doc, null, 2)}\n`);
+    const r = run(clone, 'c4');
+    assert.equal(r.code, 0, r.out + r.err); oneLine(r);
+    assert.deepEqual(filesOf(clone, 'HEAD'), ['content/e.html', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/units/c4.paths']);
+    const rowNotes = r.err.split('\n').filter((l) => l.includes('coverage row'));
+    assert.equal(rowNotes.length, 1, r.err);
+    assert.match(rowNotes[0], /^unit-commit c4: note: coverage row e \(\/e\): left out source\.metaJson blocks\/header\/x\.html .*source\.migratedHtml content\/other\.html .*source\.encodedHtml styles\/x\.html \(not under stardust\/encoded\/\)$/);
+    assert.equal(git(clone, 'status', '--porcelain', '--', 'content/other.html', 'styles', 'blocks/header'), '?? blocks/header/\n?? content/other.html\n?? styles/');
+    assert.deepEqual(staged(), ['other.txt']);
+    noLockLeft();
   });
   check('--code blocks/cards: exactly that block directory\'s non-ignored files join the commit; header, footer, other dirs and a missing block → exit 2, nothing staged', () => {
     for (const f of ['cards.js', 'cards.css', 'lib/util.js']) put(clone, `blocks/cards/${f}`, `/* ${f} */\n`);
@@ -353,6 +561,7 @@ try {
     for (const [sha] of c1) subset(filesOf(remote, sha), C1_SET, `c1 ${sha}`);
     subset(filesOf(remote, c2[0][0]), C2_SET, 'c2');
     assert.ok(filesOf(remote, c2[0][0]).includes('content/c.html'));
+    for (const f of ['stardust/rollout/units/c2.md', 'stardust/deploy/ledger-c2.json', 'stardust/import/c/map.json', RUN_C, `${G}/all-360/triage.json`]) assert.ok(filesOf(remote, c2[0][0]).includes(f), `c2 commits its own ${f}`);
     assert.ok(filesOf(remote, c1[0][0]).includes('content/a.html'));
     assert.ok(!commits.some(([sha]) => filesOf(remote, sha).some((f) => ['content/z.html', 'notes.txt', 'other.txt'].includes(f))), 'unrelated files never pushed');
     assert.equal(readFileSync(join(clone, 'notes.txt'), 'utf8'), 'unrelated\n');

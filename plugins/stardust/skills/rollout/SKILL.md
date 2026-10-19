@@ -236,46 +236,51 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
 
 **Foundation-first gate (hard block, once per rollout).** When the FIRST
 archetype page flips to `deployed`, stop and prove the foundation before
-authoring any second page: run the stardust `diff` skill (both probes) against its
+authoring any sibling page of that template: run the stardust `diff` skill (both probes) against its
 prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
 § Runtime-detection probe). Its probes run against the preview URL, never a
-harness (step 1). A wrong runtime assumption (block wrapper class,
-button classes) is silent and sitewide — typography still looks fine while
-every grid stacks. The same gate runs `qa.mjs --checks metadata`
+harness (step 1). The same gate runs `qa.mjs --checks metadata`
 against the origin: `favicon-default` means the site's icon never shipped
-(deploy Step 3 § Favicon) — recorded first passes served the boilerplate
-icon while `/favicon.ico` answered 200. **Foundation sub-units (C0):** in C-deliver
-the foundation is three recorded units run one after another — `foundation-chrome`
-(header + footer blocks, the chrome documents), `foundation-styles` (styles, fonts,
-favicon, scripts, `stardust/runtime-contract.json`),
-then `archetype-<template>` of the shell template — each its own `progress.json`
-entry, a subagent that returns one verdict line, a checkpoint commit and a boundary
-ask; the foundation sub-units close on their own lint and `.plain.html` checks, this
-gate runs once, on that archetype page (a failing check reopens the sub-unit owning its files:
-`progress.mjs unit start <sub-unit> --again`), and `foundation-freeze.mjs freeze` runs once it
-passes (handoff contract § 3, row C). **Archetype first, per template (#126):** the
+(deploy Step 3 § Favicon). **Foundation sub-units (C0):** in C-deliver
+the foundation is three recorded units, each its own `progress.json` entry, a
+subagent that returns one verdict line, a checkpoint commit and a boundary ask:
+`foundation-chrome` (header + footer blocks, the chrome documents) and
+`foundation-styles` (styles, fonts, favicon, scripts,
+`stardust/runtime-contract.json`) may run in parallel (disjoint files);
+`archetype-<template>` of the shell template may convert its blocks and write its
+document meanwhile, but its first `unit-commit.mjs` (the Code-stage push) and its
+deploy wait for both foundation checkpoint commits, which the main agent makes
+itself, one at a time, staging by path the sub-unit's frozen-set paths, chrome
+documents, `stardust/runtime-contract.json`, `stardust/rollout/progress.json` and
+any file only it wrote (the favicon, `stardust/rollout/chrome-map.json`), never
+`git add -A`. The foundation sub-units
+close on their own lint and `.plain.html` checks, this gate runs once, on that
+archetype page (a failing check reopens the sub-unit owning its files:
+`progress.mjs unit start <sub-unit> --again`), and
+`foundation-freeze.mjs freeze` runs once it passes, before any sibling page is
+authored or any post-C0 unit starts (handoff contract § Fan-out discipline,
+Foundation first). **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
-(`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
+(`gate-all.mjs --only`, cap 3 fix rounds, stop at PASS — `reference/delivery-gates.md`
+§ Iteration discipline) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
-An encoded template's C-archetype also drafts and round-trips its map — and every template with two or more
-siblings is one: its C-archetype drafts the map (`stardust/import/<template>/`) once the archetype gates and
-records the attempt (`encode-attempt.mjs record --template <t>`; `not-attempted` is refused for it without a
-`--reason`, and `migrate.mjs plan` lists the maps still due — `skills/migrate/SKILL.md` § Encoder first). A
-sibling the variance probe finds differing, one or under 20 % of them, takes a variant class on the template,
-never its own archetype; a hand-authored sibling is recorded `--hand-authored --reason` first (the same SKILL.md,
-§ When the encoder cannot). Its cluster unit is then the map plus the exceptions, and the main agent alone re-runs
-`inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged (handoff contract § 3, row C;
-`skills/migrate/reference/importer-recipe.md` § Encoder contract).
+An encoded template's C-archetype — every template with two or more siblings is one — drafts the map
+(`stardust/import/<template>/`) once the archetype gates, round-trips it and records the attempt
+(`encode-attempt.mjs record --template <t>`, `skills/migrate/SKILL.md` § Encoder first; an exception follows the
+same SKILL.md, § When the encoder cannot: a differing sibling, one or under 20 %, takes a variant class, never its
+own archetype; hand-authored last, recorded first). Its cluster unit is then the map plus the exceptions, and the
+main agent alone re-runs `inventory.mjs` and `plan.mjs` once the wave's clusters have encoded and staged
+(handoff contract § 3, row C; `skills/migrate/reference/importer-recipe.md` § Encoder contract).
 **Cluster sub-units (#134):** in C-deliver a template cluster of more than 16
 siblings is delivered as recorded sub-units `cluster-<template>-1..n` — at most
 16 pages each, near-equal, cut in sibling order, run one after another — each
-with its own `stardust/rollout/progress.json` entry
-(`node skills/stardust/scripts/progress.mjs unit start|done|failed <unit>`), checkpoint
-commit and boundary ask; fix rounds (cap 3) and the `gate-all.mjs --only` scope
-are per sub-unit. Target: no C-deliver unit runs longer than 90 minutes
+with its own `stardust/rollout/progress.json` entry, checkpoint commit and
+boundary ask; fix rounds (cap 3, stop at PASS — `reference/delivery-gates.md`
+§ Iteration discipline) and the `gate-all.mjs --only` scope are per sub-unit.
+Target: no C-deliver unit runs longer than 90 minutes
 (handoff contract § 3, row C). A fan-out subagent honours the pause file
 `STARDUST_PAUSE_FILE` (handoff contract § Fan-out discipline).
 Other edits go through instruments too: text in a tracked file through the
