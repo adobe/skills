@@ -4,6 +4,43 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/r16-export-fresh) — the migration export tells the truth about what it was built from, who encoded, and what the owner must still name (#151)
+
+Two recorded hands-off runs wrote their migration export in-run and shipped it stale or misleading. A gap-closure
+rewrote 43 schema sidecars five minutes after the mapping was committed, yet the manifest said fresh and done-check
+raised nothing — it hashed neither the sidecars, the captures nor the encoder maps the mapping was built from. The
+encoder was never invoked: every sibling was hand-built behind `not-attempted` records that named the agent's own
+generator scripts, or a bare "sub-archetype (re-typed …)", as if those were owner decisions (0 of 38 siblings
+encoded). Fifteen re-type decisions turned 9 planned templates into 14, every two-page article becoming its own
+template. Seven blocks judged base type `unknown` reached the adopter as judged metadata. Header parity was measured
+on the preview host while the gates ran on the live host, and the rule never fired because the offline run never named
+the live host. The usage ledger stopped one session short of the run's meter.
+
+- **Export freshness is measured on block-origin's inputs.** `workspace-manifest.mjs` hashes the captures, the
+  eds-schema sidecars and the encoder maps the mapping was built from into `inputs`; `done-check.mjs` re-hashes the
+  same tree and raises `export_stale` naming the changed file. The handoff-end order is gap closure writes →
+  block-origin → manifest → done-check, never reversed (`replica/SKILL.md`, `rollout/reference/delivery-gates.md`
+  § Export freshness).
+- **The encoder is not bypassed with a fake reason.** `encode-attempt.mjs`'s record CLI refuses a
+  `--reason`/`--not-attempted` that names a generator script (a script is not a decision; the owner's decision is a
+  sentence), refuses an automatic `not-attempted` for a template with ≥ 1 sibling and no map (draft the map:
+  `migrate.mjs plan <t>`), and takes an owner `not-attempted` only with a recorded refusal reason (`re-typed:`,
+  `no-repeatable-structure:`). The record carries `siblings`/`encoded` counts and the roster line reads
+  `<t>: <n> siblings · <m> encoded · <k> A′ · <reason>`.
+- **Re-type is the exception, differs is a variant.** `sibling-variance.mjs` records `variant: <name>` on a differing
+  sibling — the same template with variant CSS/JS. `state.mjs set --type` refuses re-typing a sibling into a new
+  template when the current template would be left with ≤ 2 pages or the new one would have ≤ 2 pages, unless
+  `--owner-decision "<sentence>"` is given (recorded on the page). The rollout cluster-brief says the same.
+- **Unknown is not a judged base type.** The judgement draft keeps an unjudged delivered block in `toFill` and offers
+  the candidate base types; the manifest lists it under `handoverNotes` ("N delivered blocks have no judged base type;
+  the owner names them"); `done-check` raises `blocks_unjudged:N` for the migration-workspace export — a gap, not a
+  hard stop, until judged.
+- **The live host is inferred; the ledger records what it saw.** `done-check` infers the live host from the coverage
+  (the delivered rows' deployed URLs) and applies the live-host header-parity rule by default, offline too (the gap
+  says where parity was measured and where the gates ran). `token-ledger.mjs`'s `harnessCost` records `costLinesSeen`
+  and `lastCostAt`, so a reader can tell a ledger run made before the final session's last cost line is one session
+  short; it runs last, after that line.
+
 ## 0.36.x (stardust/r16-capture-settings) — capture settings are recorded where every gate reads them; a gate row tells the truth about its capture (#150)
 
 The recorded hands-off runs: an independent roster re-gate of one run reproduced 8/10 instead of its 10/10 — the run
