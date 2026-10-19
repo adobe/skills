@@ -101,7 +101,8 @@
  * export_quality:schema:<file>:N: <errors> — an export file (coverage/{pages,templates,blocks}.json, rollout.json,
  * workspace/{manifest,mapping,judgement}.json, those present) that fails its published schema under
  * skills/rollout/schemas/ — undeclared or missing required keys, a wrong type, an enum or pattern miss (lib.mjs's
- * structural check, no dependency) — N errors, the first three named, so a run surfaces schema drift before a
+ * structural check, no dependency; `format` and `if`/`then` are not checked) — N errors, the first three named, so a
+ * run surfaces schema drift before a
  * client's validator does; a `skipped:` line names the schemas dir when none is found beside the scripts (plugin
  * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
  * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each

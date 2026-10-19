@@ -7,7 +7,8 @@ they never re-crawl or re-judge. Unchanged inputs give byte-identical files. Sta
 `schemas/rollout-{pages,templates,blocks}.schema.json`, `schemas/rollout-workspace-manifest.schema.json`,
 `schemas/rollout-workspace-mapping.schema.json`. Every export file validates against its schema as
 written — `done-check.mjs` checks each at the end of a run (`export_quality:schema:<file>:<n>` when
-one fails) — and a planned URL that never became a page is accounted for in the manifest's
+one fails; a structural check: `format` and `if`/`then` are not checked; the Phase 5 copy step puts
+`schemas/` beside the copied rollout scripts so the check runs in a project copy too) — and a planned URL that never became a page is accounted for in the manifest's
 `excluded[]`, never only in prose.
 
 **Versioning.** Every coverage file, the manifest and the mapping carry `formatVersion`, now `0.1.0`. Pre-1.0

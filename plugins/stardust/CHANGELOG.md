@@ -25,7 +25,9 @@ why.
   dependency); `done-check.mjs` validates every export file present against
   `skills/rollout/schemas/` and prints `export_quality:schema:<file>:<n>: <first errors>` for one
   that fails (informational, hidden after handover; a `skipped:` line when no schemas dir is beside
-  the scripts — a copied scripts tree needs its `schemas/`). The writers' tests assert that a
+  the scripts — the handoff contract's Phase 5 copy step now copies `rollout/schemas/` beside the
+  rollout scripts, so a project copy runs the check too; `format` and `if`/`then` are not checked).
+  The writers' tests assert that a
   written pages.json (gate rows, `--new` rows, encoded and variance rows), rollout.json,
   blocks.json, manifest, mapping and judgement validate.
 - **`excluded[]` in the manifest** (beside `templateGroups`; optional in the schema, derived —
