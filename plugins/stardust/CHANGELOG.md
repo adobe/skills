@@ -16,11 +16,15 @@ export said so.
 
 - **`blocks.mjs`** counts `usedByTemplates`, `usedByPages` and `instanceCount` for every module row
   with an EDS block from the delivered documents — pages.json `delivered.blocks` records of kind
-  `block`, the same records `block-origin.mjs` maps, so the ledger and the mapping agree instance
-  for instance and `instanceCount` is the sum of `variants[].instances`. A block no document shows
-  reads 0, truthfully, whatever the sidecars planned; `blocks-dir` rows are counted like any other.
-  Chrome and default-content rows keep counting the pages whose sidecars declare them (a fragment or
-  default content leaves no block record). The blocks-directory discovery stays the row source.
+  `block`, the same records `block-origin.mjs` maps, so on a fresh export (the manifest refuses a
+  stale one) the ledger and the mapping agree instance for instance and `instanceCount` is the sum
+  of `variants[].instances`. A block no document shows reads 0, truthfully, whatever the sidecars
+  planned; `blocks-dir` rows are counted like any other. A chrome row counts every page with a
+  delivered document — chrome is site-wide, as this skill defines it, and in the recorded runs no
+  sidecar declared header or footer, so the sidecar rule read 0 for fragments shipping on every
+  page; a default-content row keeps the pages whose sidecars declare it (default content leaves no
+  block record). The stdout `Reuse leverage` line now says `planned listings`, not instances. The
+  blocks-directory discovery stays the row source.
 - **Variant explosion in blocks.json.** Each enriched row gains `variantsSummary {total, singleUse}`
   beside `variants[]`, and the file a top-level `variantsSummary {total, singleUse, blocks}` (one
   row per EDS name); the summary line reads `N variant(s) of M block(s), S single-use`. Both
@@ -36,6 +40,11 @@ export said so.
   and rules as the other export_quality info lines (informational, hidden after handover).
 - Docs: the coverage contract's blocks.json and manifest tables and rollout/SKILL.md carry the
   fields and what a high single-use count means for an adopter.
+- **`replica/gate-triage.mjs`** — its `scopeOf`, the one other reader of `usedByPages` /
+  `usedByTemplates`, gains a `planned` scope source: the pages whose coverage `blocks[]` (the
+  sidecar plan) list the block by id or EDS name. The share map is now delivered usage, 0 / `[]` on
+  every module row until the content files exist, so without it a block group's advisory scope mid-
+  run collapsed to its rows plus the observed DOM.
 
 ## 0.36.x (stardust/r17-stop-aware-wait) — the wait instruments stop on the runner's stop file (#169)
 
