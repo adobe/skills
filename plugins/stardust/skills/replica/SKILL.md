@@ -108,8 +108,8 @@ table), captured HTML through `html-slice.mjs`; instrument output through
 through `measure.mjs`, any other look at a page through `page-probe.mjs`,
 never an authored probe; images one crop per fact,
 never a stitched page or the live/build/diff triplet (the extract thumbnail,
-`thumb.mjs`, is the one exception); script flags from
-`../stardust/reference/scripts-index.md` first, then `--help`, never the
+`thumb.mjs`, is the one exception); what a script is for:
+`../stardust/reference/scripts-index.md`; its flags: `--help`; never the
 source. Edits go through instruments too: text in a tracked file through the
 edit tool or `replace.mjs` (counted, atomic), a JSON value through
 `json-edit.mjs`, a ledger through `progress.mjs` — an inline interpreter may
@@ -707,4 +707,4 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
   hands off to.
 - `../deploy/SKILL.md` § decode tiers (#95) — template-slotted bias.
 - `../stardust/reference/scripts-index.md` — every shipped script on one line
-  (what it does, key flags); read it before any `--help`.
+  (what it does; its flags come from `--help`); read it first.
