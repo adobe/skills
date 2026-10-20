@@ -107,7 +107,10 @@ Additional checks for this sub-command:
    from the *script's* directory and the plugin tree ships no
    `node_modules`: copy every script byte-identical into the project
    (`stardust/scripts/…`; `crawl.mjs` with its `locale-codes.json`
-   beside it) and run the copy. `crawl.mjs` dismisses
+   beside it) and run the copy. The master's instruments (`state.mjs`,
+   `json-edit.mjs` + `replace.mjs`, `ledger.mjs` → `stardust/scripts/stardust/`)
+   need deploy's `file-lock.mjs` at `stardust/scripts/deploy/` — `json-edit.mjs`
+   locks through it. `crawl.mjs` dismisses
    consent from the diff skill's `live-session.mjs` table: copy that
    file into the same directory as the `crawl.mjs` copy, or keep the
    `stardust/scripts/extract/` (or `stardust/scripts/`) ↔

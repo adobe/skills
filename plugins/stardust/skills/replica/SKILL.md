@@ -67,9 +67,10 @@ none" (198/198 nodes).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs, progress.mjs, browser-lock.mjs, unit-commit.mjs)
-   to `stardust/scripts/stardust/` (progress.mjs locks through deploy's
-   `file-lock.mjs`: copy that one to `stardust/scripts/deploy/` now), the migrate
+   (ledger.mjs, state.mjs, json-edit.mjs + replace.mjs, progress.mjs,
+   browser-lock.mjs, unit-commit.mjs) to `stardust/scripts/stardust/`
+   (progress.mjs and json-edit.mjs lock through deploy's `file-lock.mjs`:
+   copy that one to `stardust/scripts/deploy/` now), the migrate
    skill's whole `../migrate/scripts/` dir (migrate.mjs, encode.mjs and its
    `encode/` modules; migrate.mjs imports its siblings) to `stardust/scripts/migrate/`,
    AND the whole
