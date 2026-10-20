@@ -375,12 +375,23 @@ export function variantsSummaryOf(blocks) {
 
 const VOID = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW = new Set(['script', 'style']);
-const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+// Named character references a delivered document carries: the XML five + nbsp, and every name the deploy skill's
+// sanitise.js encode() emits for a non-ASCII character (block-origin.test.mjs keeps this a superset of its table) \u2014
+// a browser decodes them before anyone compares the text, so the parsed tree must too (a capture holds the characters).
+// A null-prototype table: a name that is not in it (`&constructor;`, `&toString;`) must not reach an inherited member.
+const ENTITIES = Object.assign(Object.create(null), Object.fromEntries(('amp:26 lt:3c gt:3e quot:22 apos:27 nbsp:a0 iexcl:a1 pound:a3 yen:a5 copy:a9 laquo:ab reg:ae deg:b0 plusmn:b1 '
+  + 'micro:b5 middot:b7 raquo:bb frac14:bc frac12:bd frac34:be iquest:bf Agrave:c0 Aacute:c1 Acirc:c2 Auml:c4 Ccedil:c7 Eacute:c9 Icirc:ce '
+  + 'Ntilde:d1 Ouml:d6 times:d7 Uacute:da Uuml:dc agrave:e0 aacute:e1 acirc:e2 atilde:e3 auml:e4 aring:e5 aelig:e6 ccedil:e7 egrave:e8 '
+  + 'eacute:e9 ecirc:ea euml:eb igrave:ec iacute:ed icirc:ee iuml:ef eth:f0 ntilde:f1 ograve:f2 oacute:f3 ocirc:f4 otilde:f5 ouml:f6 divide:f7 '
+  + 'oslash:f8 ugrave:f9 uacute:fa ucirc:fb uuml:fc yacute:fd yuml:ff ndash:2013 mdash:2014 lsquo:2018 rsquo:2019 ldquo:201c rdquo:201d '
+  + 'bull:2022 hellip:2026 trade:2122 larr:2190 uarr:2191 rarr:2192 darr:2193 euro:20ac')
+  .split(' ').map((p) => { const [k, h] = p.split(':'); return [k, String.fromCodePoint(parseInt(h, 16))]; })));
 const TAG_NAME = /[a-zA-Z][^\s/>]*/y;
 const ATTR = /([^\s"'<>/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
 
-const decode = (t) => t.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
-  if (e[0] !== '#') return ENTITIES[e.toLowerCase()] ?? m;
+// A name is case-sensitive (&Auml; is not &auml;); an unknown casing of a known name falls back to its lower case.
+const decode = (t) => t.replace(/&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);/gi, (m, e) => {
+  if (e[0] !== '#') return ENTITIES[e] ?? ENTITIES[e.toLowerCase()] ?? m;
   const cp = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
   return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : m;
 });
