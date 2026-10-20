@@ -1,0 +1,96 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/blocks",
+    "writtenAt": "2026-01-01T00:00:00.000Z",
+    "readArtifacts": [
+      "stardust/rollout/coverage/pages.json"
+    ],
+    "stardustVersion": "<plugin-version>"
+  },
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "blocks": [
+    {
+      "id": "cards",
+      "label": "cards",
+      "kind": "module",
+      "signature": "module:cards",
+      "source": null,
+      "usedByTemplates": [
+        "docs",
+        "home"
+      ],
+      "usedByPages": [
+        "docs",
+        "docs-getting-started",
+        "home"
+      ],
+      "instanceCount": 3,
+      "delivery": {
+        "status": "pending",
+        "edsBlockName": "cards",
+        "blockPath": null,
+        "convertedAt": null
+      }
+    },
+    {
+      "id": "hero",
+      "label": "hero",
+      "kind": "module",
+      "signature": "module:hero",
+      "source": null,
+      "usedByTemplates": [
+        "home"
+      ],
+      "usedByPages": [
+        "home"
+      ],
+      "instanceCount": 1,
+      "delivery": {
+        "status": "pending",
+        "edsBlockName": "hero",
+        "blockPath": null,
+        "convertedAt": null
+      }
+    },
+    {
+      "id": "nav",
+      "label": "nav",
+      "kind": "chrome",
+      "signature": "chrome:nav",
+      "source": null,
+      "usedByTemplates": [
+        "home"
+      ],
+      "usedByPages": [
+        "home"
+      ],
+      "instanceCount": 1,
+      "delivery": {
+        "status": "pending",
+        "edsBlockName": null,
+        "blockPath": "fragments/nav.html",
+        "convertedAt": null
+      }
+    },
+    {
+      "id": "site-search",
+      "label": "site-search",
+      "kind": "widget",
+      "signature": "widget:site-search",
+      "source": null,
+      "usedByTemplates": [
+        "docs"
+      ],
+      "usedByPages": [
+        "docs"
+      ],
+      "instanceCount": 1,
+      "delivery": {
+        "status": "pending",
+        "edsBlockName": "site-search",
+        "blockPath": "widgets/search/site-search.html",
+        "convertedAt": null
+      }
+    }
+  ]
+}

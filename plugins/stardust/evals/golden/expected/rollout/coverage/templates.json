@@ -1,0 +1,51 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-01-01T00:00:00.000Z",
+    "readArtifacts": [
+      "stardust/migrated"
+    ],
+    "stardustVersion": "<plugin-version>"
+  },
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "templates": [
+    {
+      "id": "docs",
+      "representativeSlug": "docs",
+      "pages": [
+        "docs",
+        "docs-getting-started"
+      ],
+      "pageCount": 2,
+      "blocks": [
+        "cards",
+        "site-search"
+      ],
+      "delivery": {
+        "verified": 0,
+        "deployed": 0,
+        "contentPending": 0,
+        "pending": 2
+      }
+    },
+    {
+      "id": "home",
+      "representativeSlug": "home",
+      "pages": [
+        "home"
+      ],
+      "pageCount": 1,
+      "blocks": [
+        "cards",
+        "hero",
+        "nav"
+      ],
+      "delivery": {
+        "verified": 0,
+        "deployed": 0,
+        "contentPending": 0,
+        "pending": 1
+      }
+    }
+  ]
+}
