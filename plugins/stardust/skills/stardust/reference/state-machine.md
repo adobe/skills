@@ -60,7 +60,9 @@ master) for the state report.
 ```
 
 Top-level keys: `_provenance`, `site`, `direction`, `pages`. Always in
-that order. `_provenance` is always the first key. A hands-off run adds
+that order. `_provenance` is always the first key. Each key has one writer
+(`skills/stardust/scripts/state.mjs`): `init` (`site`, `pages`), `direction
+set`, `mode` (`handsOff`), `flow` (the flow keys) — never a hand edit. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see

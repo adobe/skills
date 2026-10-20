@@ -13,14 +13,15 @@
 // missing file and init filling it, the three keys in place on an existing file, stamped once, the
 // forced switch and its flow-switch stale flags, refusals byte-identical); mode (the handsOff marker,
 // seeded or set in place, printed) and the approval guard: --by hands-off refused without handsOff: true,
-// --by user and a hands-off run allowed. Run: node <this file>.
+// --by user and a hands-off run allowed; direction (set over an existing block keeping its other keys,
+// the seed, the re-direct line, printed, refusals). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FLOWS, FLOW_SOURCES, FLOW_SWITCH_REASON, HANDS_OFF_BY, MODES, ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, modeOf, orderTopLevel, pluginVersion, setFlow, setMode, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
+import { DIRECTION_FILE, FLOWS, FLOW_SOURCES, FLOW_SWITCH_REASON, HANDS_OFF_BY, IA_FIDELITY, MODES, ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, modeOf, orderTopLevel, pluginVersion, setDirection, setFlow, setMode, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -539,6 +540,70 @@ check('mode prints the current mode (missing file, no key, true, false); mode on
     [['mode', 'hands-off', '--source', 'default'], /--source does not apply to mode/],
   ]) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
   const h = runIn(p.d, ['--help']); assert.match(h.out, /node state\.mjs mode \[hands-off\|interactive\] \[--at <iso>\]/); assert.match(h.out, /--by hands-off refuses \(exit 2\)/);
+});
+// ---- direction (direct's block) ------------------------------------------------------------------
+check('direction constants; setDirection in memory: blank phrase / bad --at / unknown ia-fidelity refused, defaults, the four keys first then the other keys kept in order, re-direct slugs', () => {
+  assert.deepEqual(IA_FIDELITY, ['verbatim', 'reimagined']); assert.equal(DIRECTION_FILE, 'stardust/direction.md');
+  const s = { direction: null, pages: [] };
+  assert.throws(() => setDirection(s, '  '), /direction set needs the user's phrase/);
+  assert.throws(() => setDirection(s, 'calmer', { at: 'yesterday' }), /--at "yesterday" is not an ISO 8601 timestamp/);
+  assert.throws(() => setDirection(s, 'calmer', { iaFidelity: 'loose' }), /--ia-fidelity "loose" is not an ia-fidelity value \(verbatim\|reimagined\)/);
+  assert.equal(s.direction, null, 'nothing changed');
+  const r = setDirection(s, 'calmer, more editorial', { at: '2026-01-02T00:00:00Z' });
+  assert.deepEqual(r, { previous: null, direction: { resolvedAt: '2026-01-02T00:00:00Z', phrase: 'calmer, more editorial', directionFile: 'stardust/direction.md' }, redirect: [] });
+  assert.equal(s.direction, r.direction);
+  const t = { direction: { variants: ['a', 'b'], phrase: 'old', resolvedAt: '2026-01-01T00:00:00Z', variantMode: 'fan-out', iaFidelity: 'verbatim', directionFile: 'stardust/custom.md' }, pages: [mkPage('home', 'approved'), mkPage('about', 'directed'), mkPage('blog', 'migrated')] };
+  const q = setDirection(t, 'new phrase', { at: '2026-02-02T00:00:00Z' });
+  assert.deepEqual(Object.keys(t.direction), ['resolvedAt', 'phrase', 'directionFile', 'iaFidelity', 'variants', 'variantMode'], 'schema keys first, the rest in their order');
+  assert.deepEqual(t.direction, { resolvedAt: '2026-02-02T00:00:00Z', phrase: 'new phrase', directionFile: 'stardust/custom.md', iaFidelity: 'verbatim', variants: ['a', 'b'], variantMode: 'fan-out' }, 'file and ia-fidelity kept when not given');
+  assert.equal(q.previous.phrase, 'old'); assert.deepEqual(q.redirect, ['home', 'blog'], 'the pages past directed');
+  assert.equal(setDirection(t, 'again', { iaFidelity: 'reimagined', directionFile: 'stardust/direction.md', at: '2026-03-03T00:00:00Z' }).direction.iaFidelity, 'reimagined');
+  assert.equal(t.direction.directionFile, 'stardust/direction.md');
+  const pending = { direction: { resolvedAt: null, phrase: 'p', directionFile: null, iaFidelity: 'preserved' }, pages: [mkPage('home', 'approved')] };
+  assert.deepEqual(setDirection(pending, 'p', { at: '2026-01-01T00:00:00Z' }).redirect, [], 'a pending (unresolved) block is no re-direct');
+});
+check('direction set on an existing state.json: the block lands after site, pages untouched, provenance stardust:direct; printed back; a re-direct names the replaced phrase and the pages past directed', () => {
+  const p = project();
+  writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old' }, site: { originUrl: 'https://www.example.com' }, direction: null, flow: 'redesign', pages: [mkPage('home', 'extracted'), mkPage('about', 'extracted')] }, null, 2));
+  assert.equal(runIn(p.d, ['direction']).out, 'direction: null\n');
+  const r = runIn(p.d, ['direction', 'set', 'calmer, more editorial', '--ia-fidelity', 'reimagined', '--at', '2026-01-02T00:00:00Z']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: direction set "calmer, more editorial" · ia-fidelity reimagined · resolved 2026-01-02T00:00:00Z · stardust/direction.md · written by stardust:direct\n');
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'pages']);
+  assert.deepEqual(s.direction, { resolvedAt: '2026-01-02T00:00:00Z', phrase: 'calmer, more editorial', directionFile: 'stardust/direction.md', iaFidelity: 'reimagined' });
+  assert.equal(s._provenance.writtenBy, 'stardust:direct'); assert.equal(s._provenance.writtenAt, '2026-01-02T00:00:00Z'); assert.deepEqual(s.pages.map((x) => x.status), ['extracted', 'extracted'], 'pages move with advance, not here');
+  assert.equal(runIn(p.d, ['direction']).out, 'direction: "calmer, more editorial" (ia-fidelity reimagined, resolved 2026-01-02T00:00:00Z, stardust/direction.md)\n');
+  assert.equal(runIn(p.d, ['advance', 'home', 'about', '--to', 'directed']).code, 0); assert.equal(runIn(p.d, ['advance', 'home', '--to', 'prototyped']).code, 0);
+  const re = runIn(p.d, ['direction', 'set', 'louder, for a young audience', '--at', '2026-02-02T00:00:00Z', '--skill', 'stardust']);
+  assert.equal(re.code, 0, re.err);
+  assert.equal(re.out, 'state: direction set "louder, for a young audience" · ia-fidelity reimagined · resolved 2026-02-02T00:00:00Z · stardust/direction.md · re-direct: replaces "calmer, more editorial" (resolved 2026-01-02T00:00:00Z) — 1 page(s) past directed to judge for stale (state-machine.md § Stale flagging): home · written by stardust:stardust\n');
+  const t = readIn(p.d); assert.equal(t.direction.iaFidelity, 'reimagined', 'kept'); assert.equal(t.pages[0].stale, false, 'nothing flagged here');
+});
+check('direction set on a missing state.json seeds { _provenance, direction }; init keeps it (· kept direction); extra direction keys survive and are listed when printed; usage errors; --help', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['direction']).out, `direction: null (no ${p.stateFile})\n`); assert.ok(!existsSync(p.stateFile));
+  const r = runIn(p.d, ['direction', 'set', 'keep it, tighten the type', '--ia-fidelity', 'verbatim', '--direction-file', 'stardust/direction.md', '--at', '2026-01-01T00:00:00Z']);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, / · seeded .*state\.json \(init fills it after the crawl\) · written by stardust:direct$/m);
+  assert.deepEqual(Object.keys(readIn(p.d)), ['_provenance', 'direction']);
+  const init = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n')]);
+  assert.equal(init.code, 0, init.err); assert.match(init.out, / · kept direction · /);
+  assert.deepEqual(readIn(p.d).direction, { resolvedAt: '2026-01-01T00:00:00Z', phrase: 'keep it, tighten the type', directionFile: 'stardust/direction.md', iaFidelity: 'verbatim' });
+  const s = readIn(p.d); s.direction.variantMode = 'fan-out'; s.direction.variants = ['a', 'b']; writeFileSync(p.stateFile, JSON.stringify(s, null, 2));
+  assert.equal(runIn(p.d, ['direction']).out, 'direction: "keep it, tighten the type" (ia-fidelity verbatim, resolved 2026-01-01T00:00:00Z, stardust/direction.md) · also: variantMode, variants\n');
+  const before = readFileSync(p.stateFile, 'utf8');
+  for (const [args, re] of [
+    [['direction', 'set'], /direction set needs the user's phrase/],
+    [['direction', 'set', '   '], /direction set needs the user's phrase/],
+    [['direction', 'set', 'two', 'words'], /direction set takes one phrase — quote it \(got 2 arguments: two words\)/],
+    [['direction', 'get'], /direction takes set "<phrase>" or nothing, got get/],
+    [['direction', 'set', 'x', '--ia-fidelity', 'loose'], /--ia-fidelity "loose" is not an ia-fidelity value \(verbatim\|reimagined\)/],
+    [['direction', 'set', 'x', '--at', 'now'], /--at "now" is not an ISO 8601 timestamp/],
+    [['direction', 'set', 'x', '--force'], /--force does not apply to direction \(it reads --ia-fidelity, --direction-file, --at, --skill, --dir\)/],
+    [['advance', 'blog', '--to', 'directed', '--ia-fidelity', 'verbatim'], /unknown option --ia-fidelity/],
+    [['flow', 'replica', '--direction-file', 'x'], /--direction-file does not apply to flow/],
+  ]) { const x = runIn(p.d, args); assert.equal(x.code, 2, args.join(' ')); assert.equal(x.out, '', args.join(' ')); assert.match(x.err, re, args.join(' ')); }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before, 'nothing written');
+  const h = runIn(p.d, ['--help']); assert.match(h.out, /node state\.mjs direction \[set "<phrase>"\] \[--ia-fidelity verbatim\|reimagined\] \[--direction-file <path>\]/);
 });
 check('siteTotalDiscovered: the post-cap crawl count is a total only where the cap did not bite', () => {
   assert.equal(siteTotalDiscovered({ count: 38, pageCap: 0, inputCount: 2 }), 38, '--page-cap 0: no cap');

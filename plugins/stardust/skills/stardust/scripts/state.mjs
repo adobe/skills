@@ -17,8 +17,17 @@
 //   node state.mjs flow [replica|redesign|reskin] [--source default|user-phrase|question] [--at <iso>]
 //                  [--skill <name>] [--force] [--dir <stardust dir>]
 //   node state.mjs mode [hands-off|interactive] [--at <iso>] [--skill <name>] [--dir <stardust dir>]
+//   node state.mjs direction [set "<phrase>"] [--ia-fidelity verbatim|reimagined] [--direction-file <path>]
+//                  [--at <iso>] [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
+// direction (direct, once the direction resolves): writes the `direction` block (state-machine.md
+// § File) — resolvedAt (--at, default now), phrase (verbatim, as given), directionFile (default
+// stardust/direction.md) and iaFidelity when pinned (--ia-fidelity) — over the existing block, keeping
+// every other direction key (variantMode, variants, …) and every other top-level key; a missing
+// state.json is seeded as flow's is. Page moves are advance's (--to directed). Replacing a resolved
+// direction prints the re-direct count (pages past directed) — the stale judgment stays direct's
+// (§ Stale flagging). Without `set` it prints the current block.
 // mode (the master skill's hands-off activation): writes the handsOff marker (state-machine.md
 // § Hands-off keys) — hands-off → handsOff: true, interactive → handsOff: false; a missing state.json
 // is seeded as flow's is. `advance --to approved --by hands-off` refuses (exit 2) unless the file reads
@@ -98,6 +107,10 @@ export const FLOW_SWITCH_REASON = 'flow-switch';
 export const MODES = { 'hands-off': true, interactive: false };
 // The approver `advance --to approved --by` records for a hands-off approval; needs handsOff: true.
 export const HANDS_OFF_BY = 'hands-off';
+// direct's ia-fidelity axis (direct/SKILL.md: verbatim when the phrase pins the IA, else reimagined).
+export const IA_FIDELITY = ['verbatim', 'reimagined'];
+// state-machine.md § File: direction.directionFile.
+export const DIRECTION_FILE = 'stardust/direction.md';
 // A page type (init --types, set --type).
 export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 // state-machine.md § validateProvenance(page) — contract; `slow` is listed because
@@ -106,13 +119,14 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set / exclude read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url', '--source', '--at'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url', '--source', '--at', '--ia-fidelity', '--direction-file'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
   set: ['--representative', '--clear-representative', '--type', '--owner-decision', '--skill', '--dir'],
   exclude: ['--reason', '--url', '--skill', '--dir'],
   flow: ['--source', '--at', '--skill', '--force', '--dir'],
   mode: ['--at', '--skill', '--dir'],
+  direction: ['--ia-fidelity', '--direction-file', '--at', '--skill', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -129,10 +143,24 @@ const HELP = `Usage:
   node state.mjs flow [${FLOWS.join('|')}] [--source ${FLOW_SOURCES.join('|')}] [--at <iso>]
                  [--skill <name>] [--force] [--dir <d>]
   node state.mjs mode [${Object.keys(MODES).join('|')}] [--at <iso>] [--skill <name>] [--dir <d>]
+  node state.mjs direction [set "<phrase>"] [--ia-fidelity ${IA_FIDELITY.join('|')}] [--direction-file <path>]
+                 [--at <iso>] [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow and mode seed
-  it when it is missing; advance, set, exclude and summary need it to exist. --current defaults to
-  <dir>/current, the crawl's --out.)
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow, mode and
+  direction seed it when it is missing; advance, set, exclude and summary need it to exist. --current
+  defaults to <dir>/current, the crawl's --out.)
+
+direction
+         set writes the direction block direct resolved (state-machine.md § File) — never a node -e
+         edit: resolvedAt (--at, default now), phrase (the user's phrase, verbatim), directionFile
+         (--direction-file, default ${DIRECTION_FILE}; an existing one is kept) and iaFidelity
+         when pinned (--ia-fidelity ${IA_FIDELITY.join('|')}; an existing one is kept) — over the
+         existing block, every other direction key (variantMode, variants, …) and top-level key
+         kept; _provenance re-stamped (writtenBy stardust:direct unless --skill). Pages move with
+         advance <slug…> --to directed. Replacing a resolved direction is a re-direct: stdout counts
+         the pages past directed (stale is direct's judgment, § Stale flagging — nothing is flagged
+         here). A blank phrase, more than one phrase argument or an unknown --ia-fidelity exits 2.
+         Without set it prints the current block ("direction: null" when unresolved).
 
 mode     records the run mode (state-machine.md § Hands-off keys): hands-off writes handsOff: true,
          interactive writes handsOff: false — the master skill's hands-off activation (--hands-off on
@@ -223,14 +251,14 @@ summary  prints page counts by status (· excluded <n> when any), then one line 
          any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
          archetype), then the slugs per status with --slugs.
 A value flag followed by nothing or by another --flag is a usage error; so is a flag init, set,
-exclude, flow or mode does not read.
-Writes: init writes <dir>/${FILE_NAME}; flow and mode seed it when missing; advance, set, exclude, flow
-and mode rewrite it in place (atomic temp file + rename); summary writes nothing.
+exclude, flow, mode or direction does not read.
+Writes: init writes <dir>/${FILE_NAME}; flow, mode and direction seed it when missing; advance, set,
+exclude, flow, mode and direction rewrite it in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
 parse, a page record is missing or lacks live-render evidence; advance: --by ${HANDS_OFF_BY} without
 handsOff: true; set: unknown slug or representative, a representative cycle; exclude: as above;
 flow: an unknown flow or source, a bad --at, another flow already stamped without --force; mode: an
-unknown mode) — nothing written.`;
+unknown mode; direction: a blank phrase or an unknown --ia-fidelity) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -553,6 +581,63 @@ function runMode(opts, rest) {
   return 0;
 }
 
+// ---- direction ---------------------------------------------------------------------------------
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const DIRECTION_KEYS = ['resolvedAt', 'phrase', 'directionFile', 'iaFidelity'];
+
+// Writes the direction block direct resolved onto `state` in memory (state-machine.md § File): the
+// four keys first, in schema order, then every other key the existing block held, in its order.
+// `directionFile` / `iaFidelity` default to the existing block's values (the file: stardust/direction.md).
+// Throws before touching anything on a blank phrase, a bad timestamp or an unknown ia-fidelity.
+// Returns { previous, direction, redirect }: the block replaced (null when none was resolved), the
+// block written, and the slugs past `directed` a re-direct should judge for staleness.
+export function setDirection(state, phrase, { iaFidelity = null, directionFile = null, at = nowIso() } = {}) {
+  if (typeof phrase !== 'string' || !phrase.trim()) throw new UsageError('direction set needs the user\'s phrase: direction set "<phrase>" (quote it — one argument)');
+  if (typeof at !== 'string' || !ISO_8601.test(at)) throw new UsageError(`--at "${at}" is not an ISO 8601 timestamp`);
+  if (iaFidelity !== null && !IA_FIDELITY.includes(iaFidelity)) throw new UsageError(`--ia-fidelity "${iaFidelity}" is not an ia-fidelity value (${IA_FIDELITY.join('|')})`);
+  if (directionFile !== null && !directionFile.trim()) throw new UsageError('--direction-file needs a path');
+  const existing = isMap(state.direction) ? state.direction : {};
+  const previous = isMap(state.direction) && typeof state.direction.phrase === 'string' ? { ...state.direction } : null;
+  const direction = { resolvedAt: at, phrase, directionFile: directionFile ?? existing.directionFile ?? DIRECTION_FILE };
+  const ia = iaFidelity ?? existing.iaFidelity;
+  if (ia !== undefined && ia !== null) direction.iaFidelity = ia;
+  for (const [k, v] of Object.entries(existing)) if (!DIRECTION_KEYS.includes(k)) direction[k] = v;
+  state.direction = direction;
+  const redirect = previous && previous.resolvedAt ? (Array.isArray(state.pages) ? state.pages : []).filter((p) => CLEARS_STALE.has(p.status)).map((p) => p.slug) : [];
+  return { previous, direction, redirect };
+}
+
+const cutPhrase = (s, n = 80) => { const cps = Array.from(String(s)); return cps.length > n ? `${cps.slice(0, n).join('')}…` : String(s); };
+
+function runDirection(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    if (!present) console.log(`direction: null (no ${file})`);
+    else if (!isMap(state.direction)) console.log('direction: null');
+    else {
+      const d = state.direction;
+      const extra = Object.keys(d).filter((k) => !DIRECTION_KEYS.includes(k));
+      console.log(`direction: ${JSON.stringify(d.phrase ?? null)} (ia-fidelity ${d.iaFidelity ?? 'unset'}, resolved ${d.resolvedAt ?? 'pending'}, ${d.directionFile ?? 'no file'})${extra.length ? ` · also: ${extra.join(', ')}` : ''}`);
+    }
+    return 0;
+  }
+  if (rest[0] !== 'set') throw new UsageError(`direction takes set "<phrase>" or nothing, got ${rest.join(' ')}`);
+  if (rest.length > 2) throw new UsageError(`direction set takes one phrase — quote it (got ${rest.length - 1} arguments: ${rest.slice(1).join(' ')})`);
+  const at = opts.at || nowIso();
+  const r = setDirection(state, rest[1] ?? '', { iaFidelity: opts.iaFidelity, directionFile: opts.directionFile, at });
+  const writtenBy = normaliseSkill(opts.skill || 'direct');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: direction set ${JSON.stringify(cutPhrase(r.direction.phrase))}`, `ia-fidelity ${r.direction.iaFidelity ?? 'unset'}`, `resolved ${at}`, r.direction.directionFile];
+  if (r.previous) parts.push(`re-direct: replaces ${JSON.stringify(cutPhrase(r.previous.phrase))} (resolved ${r.previous.resolvedAt ?? 'pending'})${r.redirect.length ? ` — ${r.redirect.length} page(s) past directed to judge for stale (state-machine.md § Stale flagging): ${r.redirect.join(', ')}` : ''}`);
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
+}
+
 // ---- init --------------------------------------------------------------------------------------
 // The crawl's slug rule (extract/scripts/crawl.mjs `slugify`): pathname, one leading and one
 // trailing `/` stripped, runs of non-alphanumerics → `-`, lowercased, empty → `index`.
@@ -770,7 +855,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, source: null, at: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, source: null, at: null, iaFidelity: null, directionFile: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -804,6 +889,8 @@ function parseArgs(argv) {
     else if (a === '--url') opts.url = need();
     else if (a === '--source') opts.source = need();
     else if (a === '--at') opts.at = need();
+    else if (a === '--ia-fidelity') opts.iaFidelity = need();
+    else if (a === '--direction-file') opts.directionFile = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -935,7 +1022,7 @@ export function main(argv) {
   if (Object.hasOwn(FLAGS_FOR, cmd)) {
     const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
     if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
-    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow, mode: runMode }[cmd](opts, rest);
+    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow, mode: runMode, direction: runDirection }[cmd](opts, rest);
   }
   const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
   if (stray) throw new UsageError(`unknown option ${stray}`);

@@ -826,12 +826,15 @@ resolved axes, divergence inputs, command sequence proposed, user
 confirmation, every assumption that defaulted in. Re-directs append
 to the file as a new section; prior direction stays as history.
 
-Update `stardust/state.json`:
+Update `stardust/state.json` through its writer, never a `node -e` edit:
 
-- `direction.resolvedAt` = now
-- `direction.phrase` = the user's verbatim phrase
-- `direction.directionFile` = `"stardust/direction.md"`
-- For each page in scope: `status` `extracted` → `directed`
+- `node stardust/scripts/stardust/state.mjs direction set "<the user's
+  verbatim phrase>" [--ia-fidelity verbatim|reimagined]` — writes
+  `direction.resolvedAt` (now), `direction.phrase`, `direction.directionFile`
+  (`stardust/direction.md`) and the pinned `iaFidelity`, keeping any other
+  direction key; it prints the re-direct count when a resolved direction is
+  replaced.
+- For each page in scope: `state.mjs advance <slug…> --to directed`.
 - On `--re-direct`, for each page already in `prototyped` /
   `approved` / `migrated`: set `stale: true` and
   `staleReason: "direction changed at <ts>"`. Do not change the
