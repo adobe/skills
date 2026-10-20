@@ -16,7 +16,68 @@ and subcommand grammars live in `--help` and the skill cards. 132 rows before an
 (40 bytes of description on average, the longest row 93); the title drops "key flags" and the intro drops the
 sentence that rationed `--help`. The lint is back at the shipped `12 * 1024` and byte-identical to the shipped
 file. To measure in the next recorded run: whether the `--help` count per run moves now that no row names a
-flag. (#179 is on another branch; this entry is numbered after it.) No version bump.
+flag. No version bump.
+
+## 0.36.x (stardust/s56-standalone) — state.json has a writer for every key, a hands-off approval needs hands-off mode, the copy steps name file-lock.mjs, `.labs/` is the runner's (#179)
+
+The plugin's own evals run standalone — no runner, a user present — and a recorded attended developer-style
+session showed instrument gaps the skills had been papering over by hand. The routing contract stamps `flow` /
+`flowChosenAt` / `flowSource` before extract's `init`, but `json-edit.mjs` refuses `state.json` (guarded) and
+`state.mjs` had no flow command: one session re-wrote the file raw and re-ran `init`, another hand-seeded it.
+`json-edit.mjs` locks through deploy's `file-lock.mjs`, which extract's copy step did not name ("json-edit needs
+deploy's `file-lock.mjs`" — copied by hand). Agents put page lists, probe scripts and CSS dumps into
+`stardust/.labs/`, the runner's directory. And the attended session ran the whole pipeline in one turn,
+self-approved four prototypes with `advance … --to approved --by hands-off` although hands-off mode was never
+activated — the marker `handsOff: true` existed on paper, no instrument wrote it and nothing read it before
+recording an approval — and edited `direction` with a `node -e` one-shot because no setter existed.
+
+- **`state.mjs flow [replica|redesign|reskin] [--source default|user-phrase|question] [--at] [--skill] [--force]`**:
+  seeds a missing `state.json` (`{ _provenance, flow, flowChosenAt, flowSource }`; `init` fills it, "kept flow,
+  …"), sets only the three keys on an existing one, refuses an unknown flow or source, writes nothing for the
+  same flow again and switches only with `--force` (`--source question`; the old flow's prototyped / approved /
+  migrated pages marked stale, `flow-switch` — the switch texts in state-machine.md § Switching, the master and
+  replica now list `approved` too); a bare `flow` prints the current one. The master routing, replica,
+  prepare-migration, reskin and direct Setup name the command instead of a raw write; extract's and migrate's
+  flow guards, `migrate.mjs`'s no-flow refusal and state-machine.md § Flow keys / § Switching name it.
+- **The copy steps name deploy's `file-lock.mjs`**: extract § Setup names the master's instruments (`state.mjs`,
+  `json-edit.mjs` + `replace.mjs`, `ledger.mjs` → `stardust/scripts/stardust/`) with `file-lock.mjs` at
+  `stardust/scripts/deploy/`; replica § Setup step 4 (its list gains `json-edit.mjs` + `replace.mjs`) and the
+  handoff contract's Phase 5 copy step say progress.mjs AND json-edit.mjs lock through it. `copy-sets.test.mjs`
+  builds the static cross-skill import graph of every shipped script (relative imports, literal `join(HERE, …)`
+  sibling paths) and checks that each documented set — extract Setup, replica Setup step 4, replica Phase 5 —
+  covers every edge out of its scripts or declares the later step that adds it, that every literal target
+  exists, and that the three copy-step texts name the files their sets rely on.
+- **`stardust/.labs/` is reserved for the runner**: one sentence in the master skill's write boundary and in
+  replica's reading discipline — a session's scratch goes to `stardust/.work/<skill>/`.
+  `evals/lint/labs-reserved.mjs` (in `lint:stardust` and CI) lets a skill doc or script name a
+  `stardust/.labs/<name>` only for the runner's files (`wake`, `run.json`, `boundary-request.json`) or the bare
+  directory.
+- **A hands-off approval needs hands-off mode**: `state.mjs mode [hands-off|interactive]` writes `handsOff: true`
+  / `false` (seeding a missing file; `init` keeps it; a bare `mode` prints it), and `advance --to approved --by
+  hands-off` — the pure `advance()` too — refuses (exit 2, nothing written) unless the file reads `handsOff:
+  true`. The refusal is prescriptive, one exit per case: invoked with `--hands-off`? run `mode hands-off` and
+  retry; otherwise this is an attended run — wait for the user's own approval, never record `--by user` on
+  their behalf. The master skill's § Hands-off mode runs `mode hands-off` at activation, its § Setup state read
+  self-heals a `--hands-off` session that has no marker (every entry point, `prototype` / `uplift --hands-off`
+  included) and § What stardust never does states the rule; replica Setup step 1 opens with it ("mode first",
+  before the flow guard), Phase 3 mirrors the refusal's sentence and its fan-out briefs state the run mode (a
+  subagent never infers it); prototype Phase 5 records the attended approval with `--by user`;
+  state-machine.md § Hands-off keys names both. The form a recorded hands-off run uses is unchanged.
+- **`state.mjs direction [set "<phrase>"] [--ia-fidelity verbatim|reimagined] [--direction-file] [--at] [--skill]`**:
+  writes the block in schema order (`resolvedAt`, `phrase`, `directionFile`, `iaFidelity`) over the existing
+  one, keeping its other keys (`variantMode`, `variants`) and every other top-level key, re-stamps `_provenance`
+  (`stardust:direct`), seeds a missing file, writes nothing for the same values again on a resolved block
+  ("unchanged", the old `resolvedAt` kept — as `flow` and `mode` do), and on a re-direct prints the replaced
+  phrase and the pages past `directed` to judge for staleness (the flag stays direct's judgment, § Stale
+  flagging); a bare `direction` prints the block. direct's state-update passage names it and `advance <slug…> --to directed` for the page
+  moves; state-machine.md § File names the one writer per key.
+- Tests: `state.test.mjs` — flow (seed → init fill, keys in place, stamped once, the refused and the forced
+  switch with its stale flags, refusals byte-identical), mode and the approval guard (refused without the
+  marker, `--history-only` and `--force` included; `--by user` and no `--by` pass; allowed after `mode
+  hands-off`; the library path too), direction (merge order, defaults, the re-direct line, seed, print,
+  refusals); `copy-sets.test.mjs`; `evals/lint/test/labs-reserved.test.mjs`. The scripts index's `state.mjs` row
+  names the new commands in #180's terse shape (10,365 bytes, under the shipped 12 KiB cap); no other row touched.
+  No version bump.
 
 ## 0.36.x (stardust/s55-export-rows) — the export reads the delivered rows as they are: a case-folded content file is found, a used block is converted, a synthesized row is named (#178)
 

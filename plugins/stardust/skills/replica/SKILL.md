@@ -44,13 +44,19 @@ none" (198/198 nodes).
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup): context
-   loader, state read. **Flow guard.** If `state.json.flow` is
+   loader, state read. **Mode first.** With `--hands-off`, run
+   `node stardust/scripts/stardust/state.mjs mode hands-off` before anything
+   else (the master's `../stardust/scripts/state.mjs` until step 4 copies it;
+   master skill § Hands-off mode) — Phase 3's `--by hands-off` approval
+   refuses without the marker; without the flag this is an attended run and
+   `mode` is not called. **Flow guard.** If `state.json.flow` is
    `redesign`, refuse: print the never-mix line and the switch command
    (`$stardust replica --switch-flow`, which marks the redesign flow's
-   prototyped and migrated pages stale — master skill § Two migration
-   flows). If `flow` is absent, stamp `flow: "replica"`,
-   `flowSource: "user-phrase"` (`../stardust/reference/state-machine.md`
-   § Flow keys): invoking `replica` is the choice.
+   prototyped, approved and migrated pages stale — master skill § Two
+   migration flows). If `flow` is absent: `node stardust/scripts/stardust/state.mjs
+   flow replica --source user-phrase --skill replica` (it seeds `state.json`
+   before extract — `../stardust/reference/state-machine.md` § Flow keys):
+   invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
 3. Probe the gate's deps from the project root first —
@@ -65,9 +71,10 @@ none" (198/198 nodes).
 4. Copy scripts into the project and run them from there, not from the
    plugin: this skill's whole `scripts/` dir to
    `stardust/scripts/replica/`, the master skill's `../stardust/scripts/`
-   (ledger.mjs, state.mjs, progress.mjs, browser-lock.mjs, unit-commit.mjs)
-   to `stardust/scripts/stardust/` (progress.mjs locks through deploy's
-   `file-lock.mjs`: copy that one to `stardust/scripts/deploy/` now), the migrate
+   (ledger.mjs, state.mjs, json-edit.mjs + replace.mjs, progress.mjs,
+   browser-lock.mjs, unit-commit.mjs) to `stardust/scripts/stardust/`
+   (progress.mjs and json-edit.mjs lock through deploy's `file-lock.mjs`:
+   copy that one to `stardust/scripts/deploy/` now), the migrate
    skill's whole `../migrate/scripts/` dir (migrate.mjs, encode.mjs and its
    `encode/` modules; migrate.mjs imports its siblings) to `stardust/scripts/migrate/`,
    AND the whole
@@ -114,7 +121,8 @@ source. Edits go through instruments too: text in a tracked file through the
 edit tool or `replace.mjs` (counted, atomic), a JSON value through
 `json-edit.mjs`, a ledger through `progress.mjs` — an inline interpreter may
 read and print, never write a tracked file. Write anything you will need
-again to a file under `stardust/` and read it back by query.
+again to a file under `stardust/` and read it back by query — scratch under
+`stardust/.work/replica/`; `stardust/.labs/` is reserved for the runner's files.
 
 ## Procedure
 
@@ -462,14 +470,20 @@ fired (`autoplay`/`loop` video, auto-advancing slides — the observe JSON's
 `media` block): the capture freeze is logged as
 `captureState[].restoreAtDelivery` and delivered, never shipped as the spec
 ("poster + paused" is not a deliverable). Fan-out briefs carry the
-evidence rule + instrument invocation verbatim, and the pause check: with
+evidence rule + instrument invocation verbatim, the run mode (`state.mjs
+mode`: hands-off or attended — a subagent never infers it from the
+session), and the pause check: with
 `STARDUST_PAUSE_FILE` set, an archetype subagent checks that file after
 each gate iteration; present → it finishes the iteration, writes its report
 and returns (`reference/handoff-contract.md` § Fan-out discipline).
 
 When all breakpoints pass, present the archetype + its gate metrics for
-approval per the standard prototype approval flow (hands-off mode records
-`approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
+approval per the standard prototype approval flow. Hands-off mode records
+`approvedBy: "hands-off"` (`../stardust/reference/state-machine.md`);
+`advance` refuses that `--by` unless `state.json.handsOff: true` — invoked
+with `--hands-off`? run `state.mjs mode hands-off` and retry; otherwise this
+is an attended run: wait for the user's own approval, never record `--by
+user` on their behalf.
 Bookkeeping is one command each, never a hand-built JSON line or an inline
 `node -e` edit of state.json: `node stardust/scripts/stardust/state.mjs advance <slug> --to
 approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`

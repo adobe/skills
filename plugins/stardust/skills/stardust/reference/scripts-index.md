@@ -131,6 +131,6 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `stardust/ledger.mjs` — status.jsonl phase writer
 - `stardust/progress.mjs` — unit ledger for rollout/migrate/replica, locked
 - `stardust/replace.mjs` — counted, atomic text replace in project files
-- `stardust/state.mjs` — page status writer, `stardust/state.json`
+- `stardust/state.mjs` — `stardust/state.json` writer: pages, flow, mode, direction
 - `stardust/token-ledger.mjs` — usage ledger per phase/unit, advisory; run it last
 - `stardust/unit-commit.mjs` — one unit's pages + bookkeeping committed under a lock

@@ -104,8 +104,8 @@ design", "1:1", "re-platform only", "preserve verbatim", or
 is a same-design migration and `direct` has nothing to decide: write a
 one-paragraph note to `stardust/direction.md` ("zero-movement phrase —
 same-design migration; the direction is the mechanical promotion in
-`replica` Phase 2"), stamp `state.json.flow: "replica"` if unset
-(`../stardust/reference/state-machine.md` § Flow keys), and stop with
+`replica` Phase 2"), `state.mjs flow replica --source user-phrase --skill
+direct` if unset (`../stardust/reference/state-machine.md` § Flow keys), and stop with
 "run `$stardust replica <url>`". Never continue into a redesign
 direction, a `--prep` module catalog or a plan on such a phrase — under
 hands-off included: "ask nothing" below never means "proceed on a
@@ -826,12 +826,15 @@ resolved axes, divergence inputs, command sequence proposed, user
 confirmation, every assumption that defaulted in. Re-directs append
 to the file as a new section; prior direction stays as history.
 
-Update `stardust/state.json`:
+Update `stardust/state.json` through its writer, never a `node -e` edit:
 
-- `direction.resolvedAt` = now
-- `direction.phrase` = the user's verbatim phrase
-- `direction.directionFile` = `"stardust/direction.md"`
-- For each page in scope: `status` `extracted` → `directed`
+- `node stardust/scripts/stardust/state.mjs direction set "<the user's
+  verbatim phrase>" [--ia-fidelity verbatim|reimagined]` — writes
+  `direction.resolvedAt` (now), `direction.phrase`, `direction.directionFile`
+  (`stardust/direction.md`) and the pinned `iaFidelity`, keeping any other
+  direction key; it prints the re-direct count when a resolved direction is
+  replaced.
+- For each page in scope: `state.mjs advance <slug…> --to directed`.
 - On `--re-direct`, for each page already in `prototyped` /
   `approved` / `migrated`: set `stale: true` and
   `staleReason: "direction changed at <ts>"`. Do not change the

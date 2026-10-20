@@ -14,8 +14,34 @@
 //   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
 //                  [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <stardust dir>]
+//   node state.mjs flow [replica|redesign|reskin] [--source default|user-phrase|question] [--at <iso>]
+//                  [--skill <name>] [--force] [--dir <stardust dir>]
+//   node state.mjs mode [hands-off|interactive] [--at <iso>] [--skill <name>] [--dir <stardust dir>]
+//   node state.mjs direction [set "<phrase>"] [--ia-fidelity verbatim|reimagined] [--direction-file <path>]
+//                  [--at <iso>] [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
+// direction (direct, once the direction resolves): writes the `direction` block (state-machine.md
+// § File) — resolvedAt (--at, default now), phrase (verbatim, as given), directionFile (default
+// stardust/direction.md) and iaFidelity when pinned (--ia-fidelity) — over the existing block, keeping
+// every other direction key (variantMode, variants, …) and every other top-level key; a missing
+// state.json is seeded as flow's is. The same values again (phrase, file, ia-fidelity on a resolved
+// block) are unchanged — nothing written, the old resolvedAt kept. Page moves are advance's (--to
+// directed). Replacing a resolved direction prints the re-direct count (pages past directed) — the
+// stale judgment stays direct's (§ Stale flagging). Without `set` it prints the current block.
+// mode (the master skill's hands-off activation): writes the handsOff marker (state-machine.md
+// § Hands-off keys) — hands-off → handsOff: true, interactive → handsOff: false; a missing state.json
+// is seeded as flow's is. `advance --to approved --by hands-off` refuses (exit 2) unless the file reads
+// handsOff: true — an approval nobody gave is never recorded as hands-off: invoked with --hands-off,
+// run `mode hands-off` and retry; otherwise wait for the user's own approval (recorded --by user) and
+// never record it on their behalf. Without an argument it prints the current mode.
+// flow (the master routing, before extract): stamps flow / flowChosenAt / flowSource (state-machine.md
+// § Flow keys) — on a missing state.json it writes the seed init fills later ({ _provenance, flow,
+// flowChosenAt, flowSource }); on an existing one it sets those three keys and nothing else. An unknown
+// flow or source is refused; the same flow again is unchanged (nothing written); another flow is refused
+// unless --force — the explicit switch (§ Switching: --source question), which also marks every
+// prototyped / approved / migrated page stale (staleReason "flow-switch"). Without a flow argument it
+// prints the current one.
 // init (after the crawl): one page per listed URL, in input order, every one `extracted`. A URL is
 // matched to its crawl record through an index of every <current>/pages/*.json record (url, then
 // finalUrl; origin + path without trailing slash + query, `www.` folded) — so the crawl's collision
@@ -74,6 +100,19 @@ export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
 // state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction, the
 // 0.23.0 flow keys (§ Flow keys) between it and pages.
 export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
+// state-machine.md § Flow keys: the flows a migration project records and where the choice came from.
+export const FLOWS = ['redesign', 'replica', 'reskin'];
+export const FLOW_SOURCES = ['user-phrase', 'default', 'question'];
+// § Switching: the staleReason a flow switch stamps on the old flow's prototyped / approved / migrated pages.
+export const FLOW_SWITCH_REASON = 'flow-switch';
+// state-machine.md § Hands-off keys: the mode names and the handsOff value each writes.
+export const MODES = { 'hands-off': true, interactive: false };
+// The approver `advance --to approved --by` records for a hands-off approval; needs handsOff: true.
+export const HANDS_OFF_BY = 'hands-off';
+// direct's ia-fidelity axis (direct/SKILL.md: verbatim when the phrase pins the IA, else reimagined).
+export const IA_FIDELITY = ['verbatim', 'reimagined'];
+// state-machine.md § File: direction.directionFile.
+export const DIRECTION_FILE = 'stardust/direction.md';
 // A page type (init --types, set --type).
 export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 // state-machine.md § validateProvenance(page) — contract; `slow` is listed because
@@ -82,11 +121,14 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set / exclude read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url', '--source', '--at', '--ia-fidelity', '--direction-file'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
   set: ['--representative', '--clear-representative', '--type', '--owner-decision', '--skill', '--dir'],
   exclude: ['--reason', '--url', '--skill', '--dir'],
+  flow: ['--source', '--at', '--skill', '--force', '--dir'],
+  mode: ['--at', '--skill', '--dir'],
+  direction: ['--ia-fidelity', '--direction-file', '--at', '--skill', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,9 +142,51 @@ const HELP = `Usage:
   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
                  [--owner-decision "<why this re-type is a real new template>"] [--skill <name>] [--dir <d>]
   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <d>]
+  node state.mjs flow [${FLOWS.join('|')}] [--source ${FLOW_SOURCES.join('|')}] [--at <iso>]
+                 [--skill <name>] [--force] [--dir <d>]
+  node state.mjs mode [${Object.keys(MODES).join('|')}] [--at <iso>] [--skill <name>] [--dir <d>]
+  node state.mjs direction [set "<phrase>"] [--ia-fidelity ${IA_FIDELITY.join('|')}] [--direction-file <path>]
+                 [--at <iso>] [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set,
-  exclude and summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow, mode and
+  direction seed it when it is missing; advance, set, exclude and summary need it to exist. --current
+  defaults to <dir>/current, the crawl's --out.)
+
+direction
+         set writes the direction block direct resolved (state-machine.md § File) — never a node -e
+         edit: resolvedAt (--at, default now), phrase (the user's phrase, verbatim), directionFile
+         (--direction-file, default ${DIRECTION_FILE}; an existing one is kept) and iaFidelity
+         when pinned (--ia-fidelity ${IA_FIDELITY.join('|')}; an existing one is kept) — over the
+         existing block, every other direction key (variantMode, variants, …) and top-level key
+         kept; _provenance re-stamped (writtenBy stardust:direct unless --skill). The same values
+         again on a resolved block are unchanged: nothing written, the old resolvedAt kept (a pending
+         block, resolvedAt null, is resolved). Pages move with
+         advance <slug…> --to directed. Replacing a resolved direction is a re-direct: stdout counts
+         the pages past directed (stale is direct's judgment, § Stale flagging — nothing is flagged
+         here). A blank phrase, more than one phrase argument or an unknown --ia-fidelity exits 2.
+         Without set it prints the current block ("direction: null" when unresolved).
+
+mode     records the run mode (state-machine.md § Hands-off keys): hands-off writes handsOff: true,
+         interactive writes handsOff: false — the master skill's hands-off activation (--hands-off on
+         the invocation, or an explicit user phrase) runs \`mode hands-off\` before anything else; a
+         missing ${FILE_NAME} is seeded as flow's is, every other key of an existing file is kept. The
+         same mode again is unchanged, nothing written. Without an argument it prints the current mode
+         (hands-off only on handsOff: true). advance --to approved --by ${HANDS_OFF_BY} refuses (exit 2)
+         while the file does not read handsOff: true — an approval nobody gave is never recorded as
+         hands-off: invoked with --hands-off, run \`mode hands-off\` and retry; otherwise the run is
+         attended — wait for the user's own "approve <slug>" (recorded with --by user), never record
+         it on their behalf.
+
+flow     stamps the migration flow the master routing chose (state-machine.md § Flow keys) BEFORE
+         extract: flow, flowChosenAt (--at, default now) and flowSource (--source, default "default" —
+         a migration ask with no redesign phrase; "user-phrase" when a keep-design or redesign phrase
+         chose it). A missing ${FILE_NAME} is seeded ({ _provenance, flow, flowChosenAt, flowSource });
+         init then fills it ("kept flow, …"). An existing file keeps every other key: only the three
+         flow keys and _provenance (writtenBy stardust:stardust unless --skill) change. The same flow
+         again is unchanged, nothing written. Another flow is refused (exit 2) unless --force — the
+         explicit switch ($stardust <skill> --switch-flow, § Switching): pass --source question; every
+         prototyped, approved or migrated page is marked stale (staleReason "${FLOW_SWITCH_REASON}").
+         Without a flow argument it prints the current flow ("flow: none" when unset).
 
 init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages, in input order.
          --pages: a file (or - for stdin) with one URL per line (blank lines and # lines ignored)
@@ -138,7 +222,9 @@ init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages
 advance  moves every named page to <status>: appends { status, at[, approvedBy] } to its history,
          sets prototypePath / migratedPath when given, clears stale on prototyped|approved|migrated,
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
-         --by is only valid with --to approved (it becomes approvedBy, e.g. "hands-off").
+         --by is only valid with --to approved (it becomes approvedBy): "user" for the user's own
+         "approve <slug>"; "${HANDS_OFF_BY}" only in hands-off mode — refused (exit 2, nothing written)
+         unless ${FILE_NAME} reads handsOff: true (see mode).
          Backward moves exit 2 unless --force. All-or-nothing: one bad slug, nothing is written.
          --history-only appends the history entry and leaves status untouched (re-running prototype
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
@@ -170,13 +256,15 @@ exclude  records that the source no longer serves a planned page (a 404 at crawl
 summary  prints page counts by status (· excluded <n> when any), then one line per archetype when
          any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
          archetype), then the slugs per status with --slugs.
-A value flag followed by nothing or by another --flag is a usage error; so is a flag init or set
-does not read.
-Writes: init writes <dir>/${FILE_NAME}; advance, set and exclude rewrite it in place (atomic temp file +
-rename); summary writes nothing.
+A value flag followed by nothing or by another --flag is a usage error; so is a flag init, set,
+exclude, flow, mode or direction does not read.
+Writes: init writes <dir>/${FILE_NAME}; flow, mode and direction seed it when missing; advance, set,
+exclude, flow, mode and direction rewrite it in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
-parse, a page record is missing or lacks live-render evidence; set: unknown slug or
-representative, a representative cycle; exclude: as above) — nothing written.`;
+parse, a page record is missing or lacks live-render evidence; advance: --by ${HANDS_OFF_BY} without
+handsOff: true; set: unknown slug or representative, a representative cycle; exclude: as above;
+flow: an unknown flow or source, a bad --at, another flow already stamped without --force; mode: an
+unknown mode; direction: a blank phrase or an unknown --ia-fidelity) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -259,6 +347,9 @@ export function writeState(file, state) {
 export function advance(state, slugs, { to, by = null, prototype = null, migrated = null, force = false, historyOnly = false, at = nowIso() }) {
   if (!slugs.length) throw new UsageError('advance needs at least one <slug>');
   if (by && to !== 'approved') throw new UsageError('--by only applies to --to approved (it is recorded as approvedBy on the approved history entry)');
+  // state-machine.md § Hands-off keys: approvedBy "hands-off" exists only in hands-off mode. An approval
+  // nobody gave is never recorded under that name (a recorded attended run self-approved four prototypes with it).
+  if (by === HANDS_OFF_BY && state.handsOff !== true) throw new UsageError(`refused: --by ${HANDS_OFF_BY} needs hands-off mode (${FILE_NAME} has no handsOff: true). Invoked with --hands-off? run \`state.mjs mode hands-off\` and retry. Otherwise this is an attended run: wait for the user's own approval — never record --by user on their behalf.`);
   if (historyOnly && force) throw new UsageError('--history-only does not move the page, so --force has nothing to override — pass one of them');
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
   const missing = slugs.filter((s) => !bySlug.has(s));
@@ -429,6 +520,134 @@ export function excludePages(state, slugs, { reason, url = null, at = nowIso() }
     return withKey(p, 'excluded', { reason: why, at }, 'status');
   });
   return { changed, unchanged, listed };
+}
+
+// ---- flow --------------------------------------------------------------------------------------
+// Stamps flow / flowChosenAt / flowSource on `state` in memory (state-machine.md § Flow keys); throws
+// before touching anything on an unknown flow or source, a bad timestamp, or another flow already
+// stamped without `force`. Returns { changed, previous, staled }: `previous` the flow keys the file
+// held (null when none), `staled` the slugs a switch (force over another flow) marked stale — every
+// prototyped / approved / migrated page, staleReason "flow-switch" (§ Switching). The same flow
+// again changes nothing.
+export function setFlow(state, flow, { source = 'default', at = nowIso(), force = false } = {}) {
+  if (!FLOWS.includes(flow)) throw new UsageError(`flow "${flow}" is not a flow (${FLOWS.join('|')}; state-machine.md § Flow keys)`);
+  if (!FLOW_SOURCES.includes(source)) throw new UsageError(`--source "${source}" is not a flow source (${FLOW_SOURCES.join('|')})`);
+  if (typeof at !== 'string' || !ISO_8601.test(at)) throw new UsageError(`--at "${at}" is not an ISO 8601 timestamp`);
+  const previous = typeof state.flow === 'string' ? { flow: state.flow, flowChosenAt: state.flowChosenAt ?? null, flowSource: state.flowSource ?? null } : null;
+  if (previous && previous.flow === flow) return { changed: false, previous, staled: [] };
+  if (previous && !force) throw new UsageError(`refused: flow is already ${previous.flow} (${previous.flowSource ?? 'no source'}, chosen ${previous.flowChosenAt ?? 'at an unknown time'}) — a switch is explicit ($stardust <skill> --switch-flow, state-machine.md § Switching): flow ${flow} --source question --force, which marks the old flow's prototyped, approved and migrated pages stale`);
+  state.flow = flow; state.flowChosenAt = at; state.flowSource = source;
+  const staled = [];
+  if (previous) {
+    for (const p of Array.isArray(state.pages) ? state.pages : []) {
+      if (!CLEARS_STALE.has(p.status)) continue;
+      p.stale = true; p.staleReason = FLOW_SWITCH_REASON; staled.push(p.slug);
+    }
+  }
+  return { changed: true, previous, staled };
+}
+
+// ---- mode --------------------------------------------------------------------------------------
+// Writes the handsOff marker for `mode` in memory (state-machine.md § Hands-off keys): hands-off →
+// true, interactive → false. Throws on an unknown mode. Returns { changed, previous } — `previous` the
+// value the file held (true / false / undefined); the same value again changes nothing.
+export function setMode(state, mode) {
+  if (!Object.hasOwn(MODES, mode)) throw new UsageError(`mode "${mode}" is not a mode (${Object.keys(MODES).join('|')}; state-machine.md § Hands-off keys)`);
+  const previous = state.handsOff;
+  if (previous === MODES[mode]) return { changed: false, previous };
+  state.handsOff = MODES[mode];
+  return { changed: true, previous };
+}
+
+// The mode a state object reads: hands-off only on handsOff === true (chrome-compare's rule too).
+export const modeOf = (state) => (state && state.handsOff === true ? 'hands-off' : 'interactive');
+
+function runMode(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    const why = !present ? `no ${file}` : state.handsOff === undefined ? 'no handsOff key' : `handsOff: ${JSON.stringify(state.handsOff)}`;
+    console.log(`mode: ${modeOf(state)} (${why})`);
+    return 0;
+  }
+  if (rest.length > 1) throw new UsageError(`mode takes one mode (${Object.keys(MODES).join('|')}), got ${rest.join(' ')}`);
+  const [mode] = rest;
+  const at = opts.at || nowIso();
+  if (opts.at && !ISO_8601.test(opts.at)) throw new UsageError(`--at "${opts.at}" is not an ISO 8601 timestamp`);
+  const r = setMode(state, mode);
+  if (!r.changed) { console.log(`state: mode ${mode} unchanged (handsOff: ${JSON.stringify(state.handsOff)})`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'stardust');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: mode ${mode} (handsOff: ${JSON.stringify(state.handsOff)})`];
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
+}
+
+// ---- direction ---------------------------------------------------------------------------------
+const isMap = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const DIRECTION_KEYS = ['resolvedAt', 'phrase', 'directionFile', 'iaFidelity'];
+
+// Writes the direction block direct resolved onto `state` in memory (state-machine.md § File): the
+// four keys first, in schema order, then every other key the existing block held, in its order.
+// `directionFile` / `iaFidelity` default to the existing block's values (the file: stardust/direction.md).
+// Throws before touching anything on a blank phrase, a bad timestamp or an unknown ia-fidelity.
+// Returns { changed, previous, direction, redirect }: whether anything changed (the same values on a
+// resolved block: no — the old resolvedAt stays), the block replaced (null when none was resolved),
+// the block written, and the slugs past `directed` a re-direct should judge for staleness.
+const canon = (v) => (Array.isArray(v) ? v.map(canon) : isMap(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+const sameValues = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
+export function setDirection(state, phrase, { iaFidelity = null, directionFile = null, at = nowIso() } = {}) {
+  if (typeof phrase !== 'string' || !phrase.trim()) throw new UsageError('direction set needs the user\'s phrase: direction set "<phrase>" (quote it — one argument)');
+  if (typeof at !== 'string' || !ISO_8601.test(at)) throw new UsageError(`--at "${at}" is not an ISO 8601 timestamp`);
+  if (iaFidelity !== null && !IA_FIDELITY.includes(iaFidelity)) throw new UsageError(`--ia-fidelity "${iaFidelity}" is not an ia-fidelity value (${IA_FIDELITY.join('|')})`);
+  if (directionFile !== null && !directionFile.trim()) throw new UsageError('--direction-file needs a path');
+  const existing = isMap(state.direction) ? state.direction : {};
+  const previous = isMap(state.direction) && typeof state.direction.phrase === 'string' ? { ...state.direction } : null;
+  const direction = { resolvedAt: at, phrase, directionFile: directionFile ?? existing.directionFile ?? DIRECTION_FILE };
+  const ia = iaFidelity ?? existing.iaFidelity;
+  if (ia !== undefined && ia !== null) direction.iaFidelity = ia;
+  for (const [k, v] of Object.entries(existing)) if (!DIRECTION_KEYS.includes(k)) direction[k] = v;
+  const resolved = typeof existing.resolvedAt === 'string' && existing.resolvedAt !== '';
+  if (resolved && sameValues({ ...direction, resolvedAt: existing.resolvedAt }, existing)) return { changed: false, previous, direction: existing, redirect: [] };
+  state.direction = direction;
+  const redirect = previous && previous.resolvedAt ? (Array.isArray(state.pages) ? state.pages : []).filter((p) => CLEARS_STALE.has(p.status)).map((p) => p.slug) : [];
+  return { changed: true, previous, direction, redirect };
+}
+
+const cutPhrase = (s, n = 80) => { const cps = Array.from(String(s)); return cps.length > n ? `${cps.slice(0, n).join('')}…` : String(s); };
+
+function runDirection(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    if (!present) console.log(`direction: null (no ${file})`);
+    else if (!isMap(state.direction)) console.log('direction: null');
+    else {
+      const d = state.direction;
+      const extra = Object.keys(d).filter((k) => !DIRECTION_KEYS.includes(k));
+      console.log(`direction: ${JSON.stringify(d.phrase ?? null)} (ia-fidelity ${d.iaFidelity ?? 'unset'}, resolved ${d.resolvedAt ?? 'pending'}, ${d.directionFile ?? 'no file'})${extra.length ? ` · also: ${extra.join(', ')}` : ''}`);
+    }
+    return 0;
+  }
+  if (rest[0] !== 'set') throw new UsageError(`direction takes set "<phrase>" or nothing, got ${rest.join(' ')}`);
+  if (rest.length > 2) throw new UsageError(`direction set takes one phrase — quote it (got ${rest.length - 1} arguments: ${rest.slice(1).join(' ')})`);
+  const at = opts.at || nowIso();
+  const r = setDirection(state, rest[1] ?? '', { iaFidelity: opts.iaFidelity, directionFile: opts.directionFile, at });
+  if (!r.changed) { console.log(`state: direction unchanged ${JSON.stringify(cutPhrase(r.direction.phrase))} (ia-fidelity ${r.direction.iaFidelity ?? 'unset'}, resolved ${r.direction.resolvedAt}, ${r.direction.directionFile ?? 'no file'})`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'direct');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: direction set ${JSON.stringify(cutPhrase(r.direction.phrase))}`, `ia-fidelity ${r.direction.iaFidelity ?? 'unset'}`, `resolved ${at}`, r.direction.directionFile];
+  if (r.previous) parts.push(`re-direct: replaces ${JSON.stringify(cutPhrase(r.previous.phrase))} (resolved ${r.previous.resolvedAt ?? 'pending'})${r.redirect.length ? ` — ${r.redirect.length} page(s) past directed to judge for stale (state-machine.md § Stale flagging): ${r.redirect.join(', ')}` : ''}`);
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
 }
 
 // ---- init --------------------------------------------------------------------------------------
@@ -648,7 +867,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, source: null, at: null, iaFidelity: null, directionFile: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -680,6 +899,10 @@ function parseArgs(argv) {
     else if (a === '--owner-decision') opts.ownerDecision = need();
     else if (a === '--reason') opts.reason = need();
     else if (a === '--url') opts.url = need();
+    else if (a === '--source') opts.source = need();
+    else if (a === '--at') opts.at = need();
+    else if (a === '--ia-fidelity') opts.iaFidelity = need();
+    else if (a === '--direction-file') opts.directionFile = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -703,14 +926,48 @@ const INIT_OWNS = ['_provenance', 'site', 'pages'];
 // Setup stamps flow / handsOff before extract runs): init fills it without --force.
 export const holdsPages = (state) => Array.isArray(state.pages) && state.pages.length > 0;
 
-// An existing state.json as init sees it; unreadable, not an object, or a non-array `pages` is a
-// refusal (init never guesses over it).
+// An existing state.json as init and the key-level writers (flow) see it; unreadable, not an object,
+// or a non-array `pages` is a refusal (nothing guesses over it).
 function readPrevForInit(file) {
   let state;
-  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — init leaves it as it is`); }
-  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — init leaves it as it is`);
-  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — init leaves it as it is`);
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — left as it is`); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — left as it is`);
+  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — left as it is`);
   return state;
+}
+
+// The file for a key-level writer: the parsed object when present, else the empty seed it will create.
+function readLooseState(file) {
+  if (!existsSync(file)) return { state: {}, present: false };
+  return { state: readPrevForInit(file), present: true };
+}
+
+function runFlow(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    if (!present) console.log(`flow: none (no ${file})`);
+    else if (typeof state.flow !== 'string') console.log('flow: none');
+    else console.log(`flow: ${state.flow} (${state.flowSource ?? 'no source'}, chosen ${state.flowChosenAt ?? 'at an unknown time'})`);
+    return 0;
+  }
+  if (rest.length > 1) throw new UsageError(`flow takes one flow (${FLOWS.join('|')}), got ${rest.join(' ')}`);
+  const [flow] = rest;
+  const source = opts.source || 'default';
+  const at = opts.at || nowIso();
+  const r = setFlow(state, flow, { source, at, force: opts.force });
+  if (!r.changed) { console.log(`state: flow ${flow} unchanged (${r.previous.flowSource ?? 'no source'}, chosen ${r.previous.flowChosenAt ?? 'at an unknown time'})`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'stardust');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: flow ${flow} (${source}) chosen ${at}`];
+  if (r.previous) parts.push(`switched from ${r.previous.flow}`);
+  if (r.staled.length) parts.push(`stale (${FLOW_SWITCH_REASON}): ${r.staled.join(', ')}`);
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
 }
 
 function runInit(opts, rest) {
@@ -777,7 +1034,7 @@ export function main(argv) {
   if (Object.hasOwn(FLAGS_FOR, cmd)) {
     const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
     if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
-    return { init: runInit, set: runSet, exclude: runExclude }[cmd](opts, rest);
+    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow, mode: runMode, direction: runDirection }[cmd](opts, rest);
   }
   const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
   if (stray) throw new UsageError(`unknown option ${stray}`);

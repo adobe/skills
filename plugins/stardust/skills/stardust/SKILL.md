@@ -52,7 +52,10 @@ sub-commands that delegate the actual design work to **impeccable**.
    session's history.
 3. **Read stardust's state.** Read `stardust/state.json` if present
    (`reference/state-machine.md` defines the schema). Note which pages are
-   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
+   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`. If this
+   session was invoked with `--hands-off` and the file has no `handsOff:
+   true`, run `state.mjs mode hands-off` now (§ Hands-off mode) — on every
+   entry point, `prototype` and `uplift --hands-off` included.
 4. **Read impeccable's command registry.** Parse
    `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
    single source of truth for the 24 impeccable commands; never hardcode
@@ -193,15 +196,18 @@ loads:
   With 1,000+ sitemap URLs and no spec, it adds "Large site: say `spec
   first` to scope it." Offered only, never in hands-off mode.
 
-Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
-(`reference/state-machine.md` § Flow keys) before delegating. The
+Stamp the choice before delegating — `state.mjs flow replica|redesign
+--source default|user-phrase` (`skills/stardust/scripts/state.mjs`, or its
+`stardust/scripts/stardust/` copy) writes `flow` / `flowChosenAt` /
+`flowSource` (`reference/state-machine.md` § Flow keys) and seeds
+`state.json` when extract has not run yet; never a hand-written file. The
 sub-skills enforce it: `migrate`, `deploy`, `rollout` and a
 migration-intent `extract` refuse to start a migration on a project with
 `state.json` and no `flow`; `prepare-migration` refuses under
 `flow: replica` and `replica` under `flow: redesign`. Switching is
 explicit — `$stardust replica --switch-flow` / `$stardust
-prepare-migration --switch-flow` — and marks the old flow's prototyped or
-migrated pages stale (§ Per-page state).
+prepare-migration --switch-flow` — and marks the old flow's prototyped,
+approved or migrated pages stale (§ Per-page state).
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
 plan and its phase gates, the canon, module catalogs, template plans of
@@ -223,9 +229,12 @@ step, so the user never has to ask which prep applies.
 
 Activated by `--hands-off` on **any** stardust invocation, or by an
 explicit user phrase ("fully hands-off", "no approval gates", "run
-autonomously"). On activation, stamp `state.json.handsOff: true`
-(schema note in `reference/state-machine.md` § Hands-off keys) and
-append an activation line to `stardust/direction.md`. The mode removes
+autonomously"). On activation, run `state.mjs mode hands-off`
+(`skills/stardust/scripts/state.mjs`: it stamps `state.json.handsOff: true`,
+seeding the file before extract — `reference/state-machine.md` § Hands-off
+keys) and append an activation line to `stardust/direction.md`. Without
+that marker `state.mjs advance … --to approved --by hands-off` is refused:
+approval is explicit, and only this mode lets the agent grant it. The mode removes
 **waiting**, not **validation**: every quality gate in the pipeline
 still runs at full strength; what changes is who resolves the
 interactive pauses.
@@ -393,7 +402,10 @@ Stardust state lives under `stardust/`. Impeccable's `PRODUCT.md` /
 files at the project root, and the EDS project (only via `deploy`,
 `rollout`, `dynamics`). Run-only files — logs, harness page, pre-renders,
 script copies, drafts — go under `stardust/.work/<skill>/`; the root
-`scripts/` and `qa/` are not stardust's. One machine-level exception:
+`scripts/` and `qa/` are not stardust's. `stardust/.labs/` is reserved for
+the runner's files (`wake`, `run.json`, the pause file): a session's scratch
+— page lists, probe scripts, CSS dumps — goes to `stardust/.work/<skill>/`,
+never there. One machine-level exception:
 `browser-lock.mjs`'s slot files in `~/.stardust/locks/browser/`
 (`STARDUST_BROWSER_LOCK_DIR` moves them) — browser contention is
 cross-project; each holds a pid, the project path and a script name, and
@@ -497,6 +509,9 @@ motion gate cascade).
   impeccable.
 - Execute a redesign plan without showing it first (hands-off mode records
   the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
+- Approve a prototype itself outside hands-off mode: `approvedBy:
+  "hands-off"` is refused unless `state.json.handsOff: true` (§ Hands-off
+  mode); an attended run waits for the user's "approve <slug>" (`--by user`).
 - Force a re-run on stale pages without explicit user opt-in.
 - Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
 - Emit platform-specific output from `migrate`. `migrate` emits

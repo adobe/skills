@@ -60,7 +60,9 @@ master) for the state report.
 ```
 
 Top-level keys: `_provenance`, `site`, `direction`, `pages`. Always in
-that order. `_provenance` is always the first key. A hands-off run adds
+that order. `_provenance` is always the first key. Each key has one writer
+(`skills/stardust/scripts/state.mjs`): `init` (`site`, `pages`), `direction
+set`, `mode` (`handsOff`), `flow` (the flow keys) — never a hand edit. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
@@ -80,11 +82,14 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
 § Hands-off mode), two extra markers appear:
 
 - Top-level `"handsOff": true` — stamped by the master skill at
-  activation; every sub-command reads it to auto-resolve its
+  activation (`state.mjs mode hands-off`; it seeds `state.json` before
+  extract); every sub-command reads it to auto-resolve its
   interactive gates.
 - On a page's `approved` history entry, `"approvedBy": "hands-off"` —
   the approval was granted by the agent's own judgment after all
-  quality gates passed, not by the user. A later explicit user
+  quality gates passed, not by the user — `state.mjs advance … --to
+  approved --by hands-off` refuses it (exit 2) unless `handsOff` is `true`;
+  an attended approval carries `--by user`. A later explicit user
   approval appends a new history entry (without the marker); it does
   not rewrite the hands-off one.
 
@@ -102,8 +107,10 @@ so every sub-skill checks it instead of inferring it from the ask:
   or redesign phrase in the ask; the default (a migration ask with no
   redesign phrase is `replica`); or an explicit switch.
 
-Stamped once, by whichever entry resolves the choice first: the master
-skill when § Two migration flows resolves; `replica` Setup (`replica`),
+Stamped once — `state.mjs flow <flow> --source <source>` (it seeds
+`state.json` before extract; the same flow again writes nothing, another
+flow needs `--force`, the switch below) — by whichever entry resolves the
+choice first: the master skill when § Two migration flows resolves; `replica` Setup (`replica`),
 `prepare-migration` Setup (`redesign`) and `reskin` Setup (`reskin`) when
 invoked directly; `direct` when a zero-movement phrase hands off
 (`replica`). Absent on redesign-only projects that never migrate (a bare
@@ -122,9 +129,10 @@ archetype per page type before siblings ship (`skills/rollout/SKILL.md`
 
 **Switching.** `$stardust replica --switch-flow` / `$stardust
 prepare-migration --switch-flow` / `$stardust reskin --switch-flow` rewrite `flow` (+ `flowChosenAt`,
-`flowSource: "question"`), append a `MODE SWITCH` entry to
+`flowSource: "question"` — `state.mjs flow <new> --source question --force`, which also
+sets the stale flags below), append a `MODE SWITCH` entry to
 `stardust/direction.md` naming the artefacts the old flow produced, and
-mark every `prototyped` / `migrated` page stale (`staleReason:
+mark every `prototyped` / `approved` / `migrated` page stale (`staleReason:
 "flow-switch"`, § Stale flagging) — nothing is deleted or re-run
 automatically. A switch is the only way `flow` changes.
 
