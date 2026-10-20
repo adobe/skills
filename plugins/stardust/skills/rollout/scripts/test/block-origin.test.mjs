@@ -354,6 +354,13 @@ check('lib.parseHtml: every named reference the deploy skill\'s sanitise.js emit
   assert.equal(lib.textOf(doc), `${table.map(([ch]) => ch).join('|')}|Ää|½|&lt;|&bogus;|é—`);
 });
 
+// A name that is not in the table must stay as written even when an object inherits a member of that name.
+check('lib.parseHtml: &constructor; &toString; &valueOf; &hasOwnProperty; stay as written (no inherited member is a reference)', () => {
+  const names = ['constructor', 'toString', 'valueOf', 'hasOwnProperty', 'isPrototypeOf', 'propertyIsEnumerable', 'toLocaleString', '__proto__'];
+  const text = names.map((n) => `&${n};`).join(' ');
+  assert.equal(lib.textOf(lib.parseHtml(`<p>${text}</p>`)), text);
+});
+
 const ENTITY_SRC = '<html><body><main><section class="band"><h2>Game on—let’s go</h2><p>We’ve teamed up with Brand® partners.</p></section><section class="other"><p>Another band.</p></section></main></body></html>';
 check('alignBlock: a delivered fragment written with &rsquo; &mdash; &reg; matches a capture holding the characters (confidence 1)', () => {
   const block = blockNode('<div class="promo"><div><div><h2>Game on&mdash;let&rsquo;s go</h2><p>We&rsquo;ve teamed up with Brand&reg; partners.</p></div></div></div>');

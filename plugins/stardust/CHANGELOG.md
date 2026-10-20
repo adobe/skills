@@ -24,14 +24,16 @@ hero's fallback had landed on the empty component between the breadcrumbs and th
   (the table `deploy/content-inventory.mjs` already reads), case-sensitively (`&Auml;` is not `&auml;`),
   names with digits included (`&frac12;`); numeric references as before, an unknown name stays as written,
   `&amp;lt;` is decoded once. `block-origin.mjs` text alignment now sees the text a browser shows;
-  `inventory.mjs` coverage `metadata` values carry the characters instead of `&rsquo;`. On the run above:
-  position 7 → 3, confidence ≥0.9 53 → 106 (50 text-aligned instances rose, every one to 1, none fell),
+  no coverage file changes (`inventory.mjs` keeps only the parsed document's records and sections). An unknown
+  name never reaches an inherited object member (`&constructor;` stays as written; the deploy skill's
+  `content-inventory.mjs` table is guarded the same way). On the run above:
+  position 7 → 3, confidence ≥0.9 53 → 106 (50 text-aligned instances rose, 49 of them to 1, none fell),
   zero-confidence 7 → 3, sections without a selector 2 → 1; on a 188-instance export 12 confidences rose
   and nothing else moved. The test keeps the table a superset of `sanitise.js`'s.
 - **`block-origin.mjs`'s position fallback never chooses a blank element** — no text and no media (img,
   picture, video, audio, svg, iframe, canvas, object, embed; `isBlank`, exported): a blank free child of
   the section's element or a blank sibling is passed over for the next one in that direction, and when
-  only blanks (or other records' elements) remain the selector is null, verified false — an honest
+  only blanks (or other records' elements) remain the selector is null (verified false under `--verify`) — an honest
   unlocated instance, counted at confidence 0 as before. On the run above the hero moved from the empty
   component to the content grid that holds it; on another run a rate calculator moved from a spacer to its
   app container. Said in --help, the mapping schema's `source` description and the coverage contract;

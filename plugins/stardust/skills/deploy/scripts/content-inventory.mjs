@@ -273,13 +273,14 @@ export function norm(s) {
 // A parsed document carries character references the browser would have decoded before the in-page `norm` saw the
 // text: the XML five + nbsp, every name sanitise.js's encode() emits (the test keeps this a superset of its table),
 // and numeric references.
-const NAMED = Object.fromEntries(('amp:26 lt:3c gt:3e quot:22 apos:27 nbsp:a0 iexcl:a1 pound:a3 yen:a5 copy:a9 laquo:ab reg:ae deg:b0 plusmn:b1 '
+// A null-prototype table: an unknown name (`&constructor;`) must not reach an inherited member.
+const NAMED = Object.assign(Object.create(null), Object.fromEntries(('amp:26 lt:3c gt:3e quot:22 apos:27 nbsp:a0 iexcl:a1 pound:a3 yen:a5 copy:a9 laquo:ab reg:ae deg:b0 plusmn:b1 '
   + 'micro:b5 middot:b7 raquo:bb frac14:bc frac12:bd frac34:be iquest:bf Agrave:c0 Aacute:c1 Acirc:c2 Auml:c4 Ccedil:c7 Eacute:c9 Icirc:ce '
   + 'Ntilde:d1 Ouml:d6 times:d7 Uacute:da Uuml:dc agrave:e0 aacute:e1 acirc:e2 atilde:e3 auml:e4 aring:e5 aelig:e6 ccedil:e7 egrave:e8 '
   + 'eacute:e9 ecirc:ea euml:eb igrave:ec iacute:ed icirc:ee iuml:ef eth:f0 ntilde:f1 ograve:f2 oacute:f3 ocirc:f4 otilde:f5 ouml:f6 divide:f7 '
   + 'oslash:f8 ugrave:f9 uacute:fa ucirc:fb uuml:fc yacute:fd yuml:ff ndash:2013 mdash:2014 lsquo:2018 rsquo:2019 ldquo:201c rdquo:201d '
   + 'bull:2022 hellip:2026 trade:2122 larr:2190 uarr:2191 rarr:2192 darr:2193 euro:20ac')
-  .split(' ').map((p) => { const [k, h] = p.split(':'); return [k, String.fromCodePoint(parseInt(h, 16))]; }));
+  .split(' ').map((p) => { const [k, h] = p.split(':'); return [k, String.fromCodePoint(parseInt(h, 16))]; })));
 const decodeRefs = (s) => String(s || '').replace(/&(#x[0-9a-f]+|#\d+|[a-z][a-z0-9]*);/gi, (m, e) => {
   if (e[0] !== '#') return NAMED[e] ?? NAMED[e.toLowerCase()] ?? m;
   const cp = /^#x/i.test(e) ? parseInt(e.slice(2), 16) : parseInt(e.slice(1), 10);
