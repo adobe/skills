@@ -342,7 +342,11 @@ derived (no data-slot markers)`). The one source refusal is an archetype
 with no proposed HTML; a slot with no value is `strict slots`, and so is
 a value outside the slot grammar (`../extract/reference/prep-mode.md`
 § 4: a nested object, a `text` that is an object, a provenance key
-inside a value). The fix is the value in `<slug>.json#slots`, then the
+inside a value — the refusal names the slot and the key, `headline (src
+"headings[0]" is not an image reference: …)`, `note (key(s) level
+outside the text value shape)`; `src` is an image only when it reads as
+a path, a URL or a file name with an image extension). The fix is the
+value in `<slug>.json#slots`, then the
 fork again — never a hand copy of the archetype's content document for
 the sibling (a recorded hands-off run did that after this refusal; it
 skips the migrated page, its sidecar, the `forked` record and the

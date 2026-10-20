@@ -157,7 +157,11 @@
  *   text? } (a link: on <a> href + text, the text kept when absent; on a container its first <a>)
  *   | an array of those (a repeated slot: successive elements of that name; more values clone the
  *   last element after it, fewer remove the rest; a single value is a list of one) | null (the
- *   page has none: the element is removed, decision slot-empty). Outermost slots first: slots
+ *   page has none: the element is removed, decision slot-empty). Nothing else: a key the shape does
+ *   not have (level, a provenance src: "headings[0]", a nested object) is refused by name — src is an
+ *   image reference only when it reads as a path or URL (holds / or :) or a file name with an image
+ *   extension; provenance goes beside the value in the array form ({ name, value, from }), never in
+ *   it. Outermost slots first: slots
  *   nested in replaced content go with it; inside a kept container (an image / link value) they
  *   are filled next. Slots derived: an archetype with no data-slot inside its <main> (the strict-slots
  *   check's own test) is not refused — deriveSlots marks its content units in-process from its section
@@ -177,7 +181,8 @@
  *   inside the archetype's <main> and none derived (the fork would carry the archetype's own content —
  *   mark the typed slots, or pass --source); a slot
  *   name with no key in slots (every missing name listed; with no slots key at all the fix names the capture HTML that
- *   is absent — with both captured the slots derive, below); a value its element cannot take.
+ *   is absent — with both captured the slots derive, below); a value outside the grammar (the slot and
+ *   its key named) or one its element cannot take.
  *   Head: <title> ← the capture's title (emptied when absent → strict metadata), meta
  *   description ← metaDescription || description (removed when neither), the archetype's
  *   canonical, hreflang alternate links, og:*, twitter:* and every application/ld+json script
@@ -665,15 +670,45 @@ export function slotValues(slots) {
   }
   return { map, bad };
 }
+// The slot value grammar (prep-mode.md § 4; current-state-schema.md § Typed slots) — the fix text of a strict slots refusal.
+export const SLOT_VALUE_GRAMMAR = 'a value is a string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4';
+const IMAGE_EXT = /\.(?:avif|bmp|gif|heic|heif|ico|jpe?g|jxl|png|svg|tiff?|webp)(?:[?#]\S*)?$/i;
+// A `src` is an image reference when it reads as a path or URL (holds / or :) or names a file by an image extension (a query
+// or fragment after it allowed) — never a provenance pointer such as headings[0] or body.0, which slotValueProblem names.
+export const isImageRef = (s) => { const t = String(s).trim(); return !!t && (/[/:]/.test(t) || IMAGE_EXT.test(t)); };
+const SHAPE_KEYS = { html: ['html'], src: ['src', 'alt', 'srcset'], href: ['href', 'text'], text: ['text'] };
+const SHAPE_NAME = { html: 'html', src: 'image', href: 'link', text: 'text' };
+const kindOf = (x) => (x === null ? 'null' : Array.isArray(x) ? 'an array' : typeof x === 'object' ? 'an object' : typeof x);
+const isText = (x) => typeof x === 'string' || typeof x === 'number';
+// Why an object is no slot value (null when it is one). Its leading key — html, else src, else href, else text (the fork's
+// precedence) — names the shape; checked in order: that key's type, a src that is no image reference, alt / srcset / text
+// types, then any key the shape does not have — so a nested object or a provenance pointer (level, from, src: "headings[0]")
+// inside a value is refused by the key's name rather than read as text or as an image.
+export function slotValueProblem(v) {
+  const keys = Object.keys(v); const lead = ['html', 'src', 'href', 'text'].find((k) => k in v);
+  if (!lead) return keys.length ? `an object with key(s) ${keys.join(', ')} and none of text, html, src, href` : 'an empty object';
+  if (lead === 'html' && typeof v.html !== 'string') return `html is ${kindOf(v.html)}, not a string`;
+  if (lead === 'src') {
+    if (typeof v.src !== 'string' || !v.src.trim()) return `src is ${typeof v.src === 'string' ? 'empty' : kindOf(v.src)}, not an image reference`;
+    if (!isImageRef(v.src)) return `src ${JSON.stringify(v.src)} is not an image reference: no / or :, no image extension`;
+    if (v.alt != null && !isText(v.alt)) return `alt is ${kindOf(v.alt)}, not a string`;
+    if (v.srcset != null && typeof v.srcset !== 'string') return `srcset is ${kindOf(v.srcset)}, not a string`;
+  }
+  if (lead === 'href' && (typeof v.href !== 'string' || !v.href.trim())) return `href is ${typeof v.href === 'string' ? 'empty' : kindOf(v.href)}, not a URL`;
+  if ((lead === 'text' || (lead === 'href' && v.text != null)) && !isText(v.text)) return `text is ${kindOf(v.text)}, not a string`;
+  const stray = keys.filter((k) => !SHAPE_KEYS[lead].includes(k));
+  return stray.length ? `key(s) ${stray.join(', ')} outside the ${SHAPE_NAME[lead]} value shape` : null;
+}
+// Why a value of any type is no slot value (fill's `bad` reason): the grammar's shapes give null here.
+const slotValueWhy = (v) => (v === undefined ? 'undefined is no slot value' : Array.isArray(v) ? 'a nested array is no slot value' : !v || typeof v !== 'object' ? `a ${typeof v} is no slot value` : slotValueProblem(v));
 function slotKind(v) {
   if (v === null) return 'none';
-  if (typeof v === 'string' || typeof v === 'number') return 'text';
-  if (!v || typeof v !== 'object' || Array.isArray(v)) return 'bad';
-  if (typeof v.html === 'string') return 'html';
-  if (typeof v.src === 'string' && v.src.trim()) return 'image';
-  if (typeof v.href === 'string' && v.href.trim()) return 'link';
-  if (typeof v.text === 'string' || typeof v.text === 'number') return 'text';
-  return 'bad';
+  if (isText(v)) return 'text';
+  if (!v || typeof v !== 'object' || Array.isArray(v) || slotValueProblem(v)) return 'bad';
+  if ('html' in v) return 'html';
+  if ('src' in v) return 'image';
+  if ('href' in v) return 'link';
+  return 'text';
 }
 // One media reference of a slot value → { ref, unmapped }: the media map's local file (relative to --proto-dir, when the
 // Bundler can place it), else the ledger's contentUrl, else the absolute source URL kept (unmapped = that URL).
@@ -825,9 +860,9 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
     const open0 = src.slice(e.start, e.openEnd); const inner = src.slice(e.openEnd, e.closeStart); const close = src.slice(e.closeStart, e.end);
     const mark = (o, how) => setAttr(o, FORK_MARK, how);
     const kind = slotKind(v); const label = `<${e.tag}>`;
-    const bad = (why) => { problems.push(`${name} (${why})`); return mark(open0, 'done') + inner + close; };
+    const bad = (why) => { const line = `${name} (${why})`; if (!problems.includes(line)) problems.push(line); return mark(open0, 'done') + inner + close; };
     if (kind === 'none') { empty.add(name); return ''; }
-    if (kind === 'bad') return bad('unsupported value');
+    if (kind === 'bad') return bad(slotValueWhy(v));
     if (kind === 'text' || kind === 'html') {
       if (VOID.has(e.tag) || !close) return bad(`${kind} value on ${label}${VOID.has(e.tag) ? '' : ' without a closing tag'}`);
       return mark(open0, 'done') + (kind === 'text' ? esc(typeof v === 'object' ? v.text : v) : mapHtml(v.html)) + close;
@@ -874,7 +909,7 @@ export function forkFromArchetype(archetypeHtml, capture, { slug = 'page', arche
     work = splice(work, edits);
   }
   if (missing.size) throw new Refusal(slug, 'slots', `${capturePath}#slots has no value for slot(s) ${[...missing].sort().join(', ')} of archetype ${archetype}`, `add each name to slots (null when the page has none; extract/reference/prep-mode.md § 4)${deriveHint ? `, or ${deriveHint}` : ''}, or pass --source ${slug}=<file>`);
-  if (problems.length) throw new Refusal(slug, 'slots', `slot value(s) the archetype ${archetype} cannot take: ${problems.join('; ')}`, `fix the value in ${capturePath}#slots or the archetype's markup, or pass --source ${slug}=<file>`);
+  if (problems.length) throw new Refusal(slug, 'slots', `slot value(s) the archetype ${archetype} cannot take: ${problems.join('; ')}`, `fix the value in ${capturePath}#slots (${SLOT_VALUE_GRAMMAR}) or the archetype's markup, or pass --source ${slug}=<file>`);
   work = work.replace(new RegExp(` ${FORK_MARK}="(?:kept|done)"`, 'g'), '');
   const html = headed.slice(0, mi) + open[0] + work + headed.slice(mj);
   const slots = [...placed].sort(); const unused = [...values.keys()].filter((n) => !placed.has(n) && !missing.has(n)).sort();
