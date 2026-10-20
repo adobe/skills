@@ -4,6 +4,46 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s51-position-fallback) — delivered text decodes before it is aligned; the position fallback never lands on a blank element (#174)
+
+In a recorded hands-off run the migration export's `mapping.json` carried 7 position fallbacks (confidence
+0, `verified: true`) among 112 instances, and 4 of their selectors resolved to elements with no text and no
+media — an empty grid component (`<div class="<title-slot>"> </div>`), a spacer, a rule, an empty
+container. Reproduced on the run's own inputs (this version re-creates the shipped file byte for byte):
+five of the seven fell back because their text was "not in the capture", and four of those five carried a
+curly apostrophe, a dash or a ® that the deploy skill writes as a named character reference (`&rsquo;`
+76×, `&reg;` 70×, `&mdash;` 17× in the run's `content/`) while a capture holds the character itself.
+`lib.mjs parseHtml` decoded six names (`amp lt gt quot apos nbsp`), so `squash("We&rsquo;ve …")` could
+never be found. Across twelve recorded runs, 11 of the 15 text-not-found fallbacks anchor at confidence 1
+once the names decode; the other 4 are genuinely absent text (a video title living in attributes and
+JSON-LD, form labels, share-link labels). The run's two remaining fallbacks were an image-only hero (its
+heading delivered as default content in the next section, so nothing to align) and that video — and the
+hero's fallback had landed on the empty component between the breadcrumbs and the hero.
+
+- **`lib.mjs parseHtml` decodes every named reference the deploy skill's `sanitise.js encode()` emits**
+  (the table `deploy/content-inventory.mjs` already reads), case-sensitively (`&Auml;` is not `&auml;`),
+  names with digits included (`&frac12;`); numeric references as before, an unknown name stays as written,
+  `&amp;lt;` is decoded once. `block-origin.mjs` text alignment now sees the text a browser shows;
+  `inventory.mjs` coverage `metadata` values carry the characters instead of `&rsquo;`. On the run above:
+  position 7 → 3, confidence ≥0.9 53 → 106 (50 text-aligned instances rose, every one to 1, none fell),
+  zero-confidence 7 → 3, sections without a selector 2 → 1; on a 188-instance export 12 confidences rose
+  and nothing else moved. The test keeps the table a superset of `sanitise.js`'s.
+- **`block-origin.mjs`'s position fallback never chooses a blank element** — no text and no media (img,
+  picture, video, audio, svg, iframe, canvas, object, embed; `isBlank`, exported): a blank free child of
+  the section's element or a blank sibling is passed over for the next one in that direction, and when
+  only blanks (or other records' elements) remain the selector is null, verified false — an honest
+  unlocated instance, counted at confidence 0 as before. On the run above the hero moved from the empty
+  component to the content grid that holds it; on another run a rate calculator moved from a spacer to its
+  app container. Said in --help, the mapping schema's `source` description and the coverage contract;
+  formatVersion unchanged (no key or value added).
+- Not done, and why: reusing a sibling page's verified selector for the same variant (a `sibling-selector`
+  source). Across the recorded runs 17 of 80 fallbacks had such a candidate resolving to one non-empty
+  element on their page, but the candidates were page-wide structural paths or mis-targets (an image
+  caption for an article grid), the blocks repeat 2–4× per page (one one-hit selector cannot serve them),
+  and the hero's only verified twin sat on a page of another template. Image-only blocks are 65 of the 80
+  fallbacks: matching a delivered image's alt/src against the capture's `img` attributes (not its text
+  nodes) is the follow-up that would locate them.
+
 ## 0.36.x (stardust/r17-block-usage) — blocks.json usage counted from the delivered documents; the variant explosion surfaced (#171)
 
 In a recorded hands-off run the export's `coverage/blocks.json` disagreed with the delivered content
