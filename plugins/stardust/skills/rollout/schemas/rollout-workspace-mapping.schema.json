@@ -127,7 +127,7 @@
         "source": {
           "type": "string",
           "enum": ["encoder-map", "text-alignment", "position"],
-          "description": "encoder-map: the template's encoder map selects the element (a marker's k-th match for the k-th block of its name; confidence 1); text-alignment: the element covering most of the block's text; position: placed among its anchored neighbours (confidence 0). A block the map has no element for falls through to text-alignment, then position."
+          "description": "encoder-map: the template's encoder map selects the element (a marker's k-th match for the k-th block of its name; confidence 1); text-alignment: the element covering most of the block's text; position: placed among its anchored neighbours (confidence 0; never an element another record has, never one with neither text nor media — a spacer or rule is passed over; selector null when none is left). A block the map has no element for falls through to text-alignment, then position."
         },
         "verified": {
           "type": ["boolean", "null"],

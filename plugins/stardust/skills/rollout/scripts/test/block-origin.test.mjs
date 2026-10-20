@@ -5,8 +5,8 @@
 // grammar piece; unsupported syntax throws, countMatches 0), stable selectors (precedence, generated
 // ids and state classes rejected, every derived selector resolving exactly once), the delivered
 // fragments (roles, keyed duplicates), text alignment (a content container beats a nav repeating one
-// of its texts; a delivered-only text lowers confidence; named character references decode), lca and
-// coveredShare; importing runs nothing,
+// of its texts; a delivered-only text lowers confidence; named character references decode), lca,
+// coveredShare and isBlank; importing runs nothing,
 // --help writes nothing, unit-geometry resolves in both layouts and its absence fails only on use.
 // The mapping run (CLI): instance selectors and confidences by text alignment, sections (anchor,
 // confidence, default-content roles), the position fallback, sections aligned across a template's pages
@@ -363,6 +363,12 @@ check('alignBlock: a delivered fragment written with &rsquo; &mdash; &reg; match
   const a = bo.alignBlock(idx, f);
   assert.equal(a.anchor, byClass(idx, 'band'));
   assert.deepEqual([a.confidence, a.unmatched], [1, []]);
+});
+
+check('isBlank: no text and no media — a spacer, a rule, an empty container; an img, svg or iframe makes an element not blank', () => {
+  const idx = bo.indexSource('<html><body><div class="s"> </div><hr><div class="e"><div></div></div><div class="i"><img src="x.jpg" alt=""></div><div class="v"><svg></svg></div><div class="f"><iframe></iframe></div><p class="t">text</p></body></html>');
+  assert.deepEqual(['s', 'e', 'i', 'v', 'f', 't'].map((c) => bo.isBlank(idx, byClass(idx, c))), [true, true, false, false, false, false]);
+  assert.equal(bo.isBlank(idx, idx.els.find((e) => e.tag === 'hr')), true);
 });
 
 check('coveredShare: image alt text does not count', () => {
@@ -827,6 +833,40 @@ check('mapping: a position fallback never takes an element another record alread
   assert.deepEqual(readMapping(dir).templates[0].blocks.map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
     ['media', [[null, 0, 'position']]],
     ['cards', [['section.b', 1, 'text-alignment']]],
+  ]);
+});
+
+check('mapping: a position fallback never takes a blank element — a spacer or rule between the neighbours is passed over; null when only blanks remain', () => {
+  const content = `<main><div><h1>Spaced title</h1><p>Spaced intro text.</p></div>
+<div><div class="media"><div><div><picture><img src="m.jpg" alt=""></picture></div></div></div></div>
+<div><div class="cards"><div><div><p>First spaced card.</p><p>Second spaced card.</p></div></div></div></div></main>`;
+  // between the heading's section and the cards': an empty spacer, a rule, then the figure — the figure, never the spacer
+  const dir = project('map-blank', [{
+    slug: 'spaced', path: '/spaced', templateId: 'spaced', content,
+    capture: '<html><body><main><section class="a"><h1>Spaced title</h1><p>Spaced intro text.</p></section><div class="spacer"> </div><hr><figure class="frame"><img src="m.jpg" alt=""></figure><section class="b"><p>First spaced card.</p><p>Second spaced card.</p></section></main></body></html>',
+  }]);
+  ok(runMap(dir, ['--verify']));
+  assert.deepEqual(readMapping(dir).templates[0].blocks.map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]), [
+    ['media', [['figure.frame', 0, 'position', true]]],
+    ['cards', [['section.b', 1, 'text-alignment', true]]],
+  ]);
+  // only blanks between the two anchored sections (and each section is the other direction's taken element): null
+  put(join(dir, 'stardust', 'current', 'pages', 'spaced.html'), '<html><body><main><section class="a"><h1>Spaced title</h1><p>Spaced intro text.</p></section><div class="spacer"> </div><hr><section class="b"><p>First spaced card.</p><p>Second spaced card.</p></section></main></body></html>');
+  ok(runMap(dir, ['--verify']));
+  assert.deepEqual(readMapping(dir).templates[0].blocks[0].instances, [instance('spaced', 1, null, 0, 'position', false)]);
+});
+
+check('mapping: a section element\'s blank child (a spacer) is passed over for the next free one', () => {
+  const dir = project('map-blank-child', [{
+    slug: 'gallery', path: '/gallery', templateId: 'gallery',
+    content: '<main><div><h2>Gallery heading</h2><div class="media"><div><div><picture><img src="a.jpg" alt=""></picture></div></div></div><div class="cards"><div><div><p>Gallery caption text.</p></div></div></div></div></main>',
+    capture: '<html><body><main><section class="gallery"><h2>Gallery heading</h2><div class="spacer"> </div><figure class="frame"><img src="a.jpg" alt=""></figure><div class="caption"><p>Gallery caption text.</p></div></section></main></body></html>',
+  }]);
+  ok(runMap(dir));
+  // section.gallery's children: h2 (the heading's anchor), div.spacer (blank), figure (free), div.caption (the cards')
+  assert.deepEqual(readMapping(dir).templates[0].blocks.map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source])]), [
+    ['media', [['figure.frame', 0, 'position']]],
+    ['cards', [['div.caption p', 1, 'text-alignment']]],
   ]);
 });
 

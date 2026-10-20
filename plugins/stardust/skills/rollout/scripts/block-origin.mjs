@@ -11,13 +11,14 @@
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
  * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
  * comes before the text when it selects the block's element (its k-th match, confidence 1); a block it has
- * no element for falls through to its text, then to its position among its anchored neighbours; a section
- * takes the lowest common ancestor of its records; a template's sections are aligned across its pages and
- * their selectors generalised (buildMapping).
+ * no element for falls through to its text, then to its position among its anchored neighbours (never a
+ * blank element — no text, no media — isBlank: a spacer or rule between two neighbours is passed over); a
+ * section takes the lowest common ancestor of its records; a template's sections are aligned across its
+ * pages and their selectors generalised (buildMapping).
  *
- * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, stableSelector,
- * parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping, serialize,
- * countsOf; main (the CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
+ * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, isBlank,
+ * stableSelector, parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping,
+ * serialize, countsOf; main (the CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
  * (stardust/scripts/<skill>/: ../diff/); without either the import still succeeds, requireKeyed (so
  * fragmentsOf) throws an Error naming both places and the CLI exits 1.
  * Usage, inputs, outputs and exit codes: --help.
@@ -62,7 +63,8 @@ delivered block is located in its capture by its template's encoder map when the
 (the first marker emitting block:<name>: the k-th block of that name takes the marker's k-th match under
 the map's root; confidence 1), else by its text (the element covering most of it, the deepest on ties;
 confidence = the share covered), else by its position among its anchored neighbours (confidence 0; never
-an element another record already has). A section takes the lowest common ancestor of its records
+an element another record already has, never one with neither text nor media — a spacer or rule between
+two neighbours is passed over; null when none is left). A section takes the lowest common ancestor of its records
 (confidence = the share of their text it holds, the lowest over the pages); its default-content roles are
 the page's eds-schema roles of its text (an equal text, else the shorter of the two, 8+ characters, inside
 the other), else its delivered default parts. A template's sections are aligned across its pages by style
@@ -587,6 +589,12 @@ function defaultRoles(recs, eds) {
   return roles.length ? roles : uniq(recs.flatMap((r) => String(r.cov.variant || '').split('+').filter(Boolean)));
 }
 
+// Elements that show something without text: a blank element has neither text nor one of these at or under it.
+const MEDIA = new Set(['img', 'picture', 'video', 'audio', 'svg', 'iframe', 'canvas', 'object', 'embed']);
+const hasMedia = (el) => MEDIA.has(el.tag) || elements(el).some(hasMedia);
+/** No text and no media (a spacer, a rule, an empty container): never where a block's content came from. */
+export const isBlank = (index, el) => !index.meta.get(el).text && !hasMedia(el);
+
 /**
  * Position fallback for record `r` (the i-th of `recs`) of section `sec`: the element among its neighbours
  * a block without an anchor most likely came from. `anchorOf` gives a record's anchor, or the element an
@@ -595,7 +603,9 @@ function defaultRoles(recs, eds) {
  * the first free child after the one holding the previous record (same section), else the last free one
  * before the one holding the next, else the first free one, else S. Otherwise: the previous record's next
  * element sibling, else the next record's previous element sibling — each walking up the ancestors (up to,
- * not past, body) until one exists. An element another record already has (its anchor, or an earlier
+ * not past, body) until one exists. A blank element (no text, no media — a spacer, a rule, an empty
+ * container; isBlank) is never a block's origin: a free child or a sibling that is blank is passed over for
+ * the next one in that direction. An element another record already has (its anchor, or an earlier
  * fallback's choice) is never chosen: the next option is tried, and when none is left, null.
  */
 function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
@@ -603,13 +613,13 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
   const prev = near(recs.slice(0, i).reverse());
   const next = near(recs.slice(i + 1));
   const taken = new Set(recs.filter((x, j) => j !== i).map(anchorOf).filter(Boolean));
-  const pick = (...els) => els.find((el) => el && !taken.has(el)) || null;
+  const pick = (...els) => els.find((el) => el && !taken.has(el) && !isBlank(index, el)) || null;
   const S = sec && sec.anchor && !sec.own.some((x) => x.anchor === sec.anchor) ? sec.anchor : null;
   if (S) {
     const kids = elements(S);
     const childOf = (x) => (x && sectionOf.get(x) === sec && anchorOf(x) ? kids.findIndex((c) => contains(index, c, anchorOf(x))) : -1);
     const claimed = new Set(sec.own.map(childOf).filter((k) => k >= 0));
-    const free = (j) => !claimed.has(j);
+    const free = (j) => !claimed.has(j) && !isBlank(index, kids[j]);
     const [p, n] = [childOf(prev), childOf(next)];
     return pick(
       p >= 0 ? kids.find((c, j) => j > p && free(j)) : null,
@@ -618,10 +628,13 @@ function positionOf(index, recs, i, sec, sectionOf, anchorOf) {
       S,
     );
   }
+  // The nearest sibling in `step`'s direction that is not blank, walking up when a level has none; a taken
+  // one is returned as found (pick rejects it and tries the other direction — the block cannot lie past it).
   const sibling = (from, step) => {
     for (let a = from; a && a !== index.body; a = parentEl(index, a)) {
-      const sib = elementSibling(index, a, step);
-      if (sib) return sib;
+      for (let sib = elementSibling(index, a, step); sib; sib = elementSibling(index, sib, step)) {
+        if (taken.has(sib) || !isBlank(index, sib)) return sib;
+      }
     }
     return null;
   };
