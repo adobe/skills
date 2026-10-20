@@ -102,8 +102,10 @@ so every sub-skill checks it instead of inferring it from the ask:
   or redesign phrase in the ask; the default (a migration ask with no
   redesign phrase is `replica`); or an explicit switch.
 
-Stamped once, by whichever entry resolves the choice first: the master
-skill when § Two migration flows resolves; `replica` Setup (`replica`),
+Stamped once — `state.mjs flow <flow> --source <source>` (it seeds
+`state.json` before extract; the same flow again writes nothing, another
+flow needs `--force`, the switch below) — by whichever entry resolves the
+choice first: the master skill when § Two migration flows resolves; `replica` Setup (`replica`),
 `prepare-migration` Setup (`redesign`) and `reskin` Setup (`reskin`) when
 invoked directly; `direct` when a zero-movement phrase hands off
 (`replica`). Absent on redesign-only projects that never migrate (a bare
@@ -122,7 +124,8 @@ archetype per page type before siblings ship (`skills/rollout/SKILL.md`
 
 **Switching.** `$stardust replica --switch-flow` / `$stardust
 prepare-migration --switch-flow` / `$stardust reskin --switch-flow` rewrite `flow` (+ `flowChosenAt`,
-`flowSource: "question"`), append a `MODE SWITCH` entry to
+`flowSource: "question"` — `state.mjs flow <new> --source question --force`, which also
+sets the stale flags below), append a `MODE SWITCH` entry to
 `stardust/direction.md` naming the artefacts the old flow produced, and
 mark every `prototyped` / `migrated` page stale (`staleReason:
 "flow-switch"`, § Stale flagging) — nothing is deleted or re-run

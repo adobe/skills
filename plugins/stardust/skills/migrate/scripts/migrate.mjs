@@ -1245,7 +1245,7 @@ function directionLine(stateFile) {
 // state-machine.md § Flow keys: a project with state.json but no `flow` has not answered the two-flow question yet.
 export function flowGuard(state, file) {
   if (typeof state.flow === 'string' && state.flow.trim()) return;
-  throw new RunRefusal(`refused: ${toPosix(file)} has no top-level flow — stamp flow / flowChosenAt / flowSource before migrating (the master skill's routing does this: skills/stardust/SKILL.md § Routing → § Two migration flows — pick one, never mix; state-machine.md § Flow keys)`);
+  throw new RunRefusal(`refused: ${toPosix(file)} has no top-level flow — stamp flow / flowChosenAt / flowSource before migrating (node stardust/scripts/stardust/state.mjs flow replica|redesign --source default|user-phrase — the master skill's routing does this: skills/stardust/SKILL.md § Routing → § Two migration flows — pick one, never mix; state-machine.md § Flow keys)`);
 }
 // The page set of render and plan: --all = every renderable page (a `skip` line for the others), else the named slugs.
 function pageSet(o, pages, bySlug, cmd) {

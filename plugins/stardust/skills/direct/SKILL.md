@@ -104,8 +104,8 @@ design", "1:1", "re-platform only", "preserve verbatim", or
 is a same-design migration and `direct` has nothing to decide: write a
 one-paragraph note to `stardust/direction.md` ("zero-movement phrase —
 same-design migration; the direction is the mechanical promotion in
-`replica` Phase 2"), stamp `state.json.flow: "replica"` if unset
-(`../stardust/reference/state-machine.md` § Flow keys), and stop with
+`replica` Phase 2"), `state.mjs flow replica --source user-phrase --skill
+direct` if unset (`../stardust/reference/state-machine.md` § Flow keys), and stop with
 "run `$stardust replica <url>`". Never continue into a redesign
 direction, a `--prep` module catalog or a plan on such a phrase — under
 hands-off included: "ask nothing" below never means "proceed on a

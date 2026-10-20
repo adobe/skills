@@ -60,8 +60,9 @@ this site" a conscious gesture and keeps idempotency obvious.
    the replica artefacts stale — master skill § Two migration flows).
    If `flow` is absent, resolve it first: only an explicit redesign
    phrase ("redesign", "modernise", "refresh", "new look") selects this
-   skill — stamp `flow: "redesign"`
-   (`skills/stardust/reference/state-machine.md` § Flow keys). Any other
+   skill — `state.mjs flow redesign --source user-phrase --skill
+   prepare-migration` (`skills/stardust/scripts/state.mjs`;
+   `skills/stardust/reference/state-machine.md` § Flow keys). Any other
    migration ask, keep-design phrase or plain "migrate", means this skill
    does not apply — say so and hand to `replica`.
 2. Verify `stardust/state.json` exists with at least one extracted

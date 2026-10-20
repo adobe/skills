@@ -9,14 +9,16 @@
 // --type, --clear-representative, refusals including representative cycles), the crawl's pre-cap
 // totalDiscovered and the summary representative lines; exclude (the on-page record, the top-level
 // excluded[] for a page init never had, idempotence, refusals, the summary count); the stardustVersion
-// stamp order (plugin manifest, else STARDUST_VERSION, else the stamp carried). Run: node <this file>.
+// stamp order (plugin manifest, else STARDUST_VERSION, else the stamp carried); flow (the seed on a
+// missing file and init filling it, the three keys in place on an existing file, stamped once, the
+// forced switch and its flow-switch stale flags, refusals byte-identical). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
+import { FLOWS, FLOW_SOURCES, FLOW_SWITCH_REASON, ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, setFlow, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -395,6 +397,85 @@ check('init: a pages-less file with a direction keeps it as is (named in · kept
   assert.equal(r.code, 0, r.err); assert.match(r.out, / · kept flow, direction · written by stardust:extract$/m);
   const s = readIn(p.d);
   assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'flow', 'pages']); assert.deepEqual(s.direction, direction);
+});
+// ---- flow (the master routing's stamp, before extract) ------------------------------------------
+check('flow constants; setFlow in memory: unknown flow / source / timestamp refused before anything changes, stamped once, another flow refused without force', () => {
+  assert.deepEqual(FLOWS, ['redesign', 'replica', 'reskin']); assert.deepEqual(FLOW_SOURCES, ['user-phrase', 'default', 'question']); assert.equal(FLOW_SWITCH_REASON, 'flow-switch');
+  const s = { pages: [] };
+  assert.throws(() => setFlow(s, 'sideways'), /flow "sideways" is not a flow \(redesign\|replica\|reskin; state-machine\.md § Flow keys\)/);
+  assert.throws(() => setFlow(s, 'replica', { source: 'guess' }), /--source "guess" is not a flow source \(user-phrase\|default\|question\)/);
+  assert.throws(() => setFlow(s, 'replica', { at: 'yesterday' }), /--at "yesterday" is not an ISO 8601 timestamp/);
+  assert.deepEqual(s, { pages: [] }, 'nothing changed');
+  assert.deepEqual(setFlow(s, 'replica', { source: 'user-phrase', at: '2026-01-01T00:00:00Z' }), { changed: true, previous: null, staled: [] });
+  assert.deepEqual(s, { pages: [], flow: 'replica', flowChosenAt: '2026-01-01T00:00:00Z', flowSource: 'user-phrase' });
+  assert.deepEqual(setFlow(s, 'replica', { source: 'default', at: '2026-02-02T00:00:00Z' }), { changed: false, previous: { flow: 'replica', flowChosenAt: '2026-01-01T00:00:00Z', flowSource: 'user-phrase' }, staled: [] });
+  assert.equal(s.flowSource, 'user-phrase', 'the same flow again: stamped once');
+  assert.throws(() => setFlow(s, 'redesign'), /refused: flow is already replica \(user-phrase, chosen 2026-01-01T00:00:00Z\) — a switch is explicit/);
+  assert.equal(s.flow, 'replica');
+});
+check('flow on a missing state.json seeds { _provenance, flow, flowChosenAt, flowSource }; the same flow again writes nothing; init then fills it keeping the keys', () => {
+  const p = project();
+  const none = runIn(p.d, ['flow']); assert.equal(none.code, 0, none.err); assert.equal(none.out, `flow: none (no ${p.stateFile})\n`); assert.ok(!existsSync(p.stateFile), 'printing seeds nothing');
+  const r = runIn(p.d, ['flow', 'replica', '--source', 'default', '--at', '2026-01-01T00:00:00Z']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, `state: flow replica (default) chosen 2026-01-01T00:00:00Z · seeded ${p.stateFile} (init fills it after the crawl) · written by stardust:stardust\n`);
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'flow', 'flowChosenAt', 'flowSource']);
+  assert.deepEqual([s.flow, s.flowChosenAt, s.flowSource, s._provenance.writtenBy, s._provenance.writtenAt], ['replica', '2026-01-01T00:00:00Z', 'default', 'stardust:stardust', '2026-01-01T00:00:00Z']);
+  assert.equal(runIn(p.d, ['flow']).out, 'flow: replica (default, chosen 2026-01-01T00:00:00Z)\n');
+  const before = readFileSync(p.stateFile, 'utf8');
+  const again = runIn(p.d, ['flow', 'replica', '--source', 'user-phrase']);
+  assert.equal(again.code, 0, again.err); assert.equal(again.out, 'state: flow replica unchanged (default, chosen 2026-01-01T00:00:00Z)\n');
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before, 'stamped once: the second call writes nothing');
+  const init = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n')]);
+  assert.equal(init.code, 0, init.err); assert.match(init.out, / · kept flow, flowChosenAt, flowSource · written by stardust:extract$/m);
+  const t = readIn(p.d);
+  assert.deepEqual(Object.keys(t), ['_provenance', 'site', 'direction', 'flow', 'flowChosenAt', 'flowSource', 'pages']); assert.deepEqual([t.flow, t.flowSource], ['replica', 'default']);
+});
+check('flow on an existing state.json with pages sets the three keys in their place and nothing else; --skill names the writer; now when --at is absent', () => {
+  const p = project();
+  writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old', readArtifacts: ['x'] }, site: { originUrl: 'https://www.example.com' }, direction: null, handsOff: true, pages: [mkPage('home', 'extracted')], migrate: { a: 1 } }, null, 2));
+  const r = runIn(p.d, ['flow', 'redesign', '--source', 'user-phrase', '--skill', 'prepare-migration']);
+  assert.equal(r.code, 0, r.err); assert.match(r.out, /^state: flow redesign \(user-phrase\) chosen \d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z · written by stardust:prepare-migration\n$/);
+  const s = readIn(p.d);
+  assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages', 'migrate']);
+  assert.equal(s.flow, 'redesign'); assert.match(s.flowChosenAt, ISO_UTC); assert.equal(s.flowSource, 'user-phrase'); assert.equal(s.flowChosenAt, s._provenance.writtenAt, 'one timestamp for the stamp and the provenance');
+  assert.equal(s._provenance.writtenBy, 'stardust:prepare-migration'); assert.deepEqual(s._provenance.readArtifacts, ['x'], 'extra provenance keys kept');
+  assert.equal(s.handsOff, true); assert.deepEqual(s.migrate, { a: 1 }); assert.deepEqual(s.pages.map((x) => [x.slug, x.status, x.stale]), [['home', 'extracted', false]]);
+});
+check('flow: another flow is refused byte-identical (exit 2); --force switches it (--source question) and marks every prototyped / approved / migrated page stale (flow-switch), extracted and directed untouched', () => {
+  const p = project();
+  const pages = [mkPage('home', 'extracted'), mkPage('about', 'directed'), mkPage('blog', 'prototyped', { prototypePath: 'stardust/prototypes/blog-proposed.html' }), mkPage('pricing', 'approved'), mkPage('contact', 'migrated', { stale: true, staleReason: 'direction changed at 2026-01-03T00:00:00Z; affected: color.primary' })];
+  writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:replica', writtenAt: 'old' }, flow: 'replica', flowChosenAt: '2026-01-01T00:00:00Z', flowSource: 'user-phrase', pages }, null, 2));
+  const before = readFileSync(p.stateFile, 'utf8');
+  const no = runIn(p.d, ['flow', 'redesign', '--source', 'question']);
+  assert.equal(no.code, 2); assert.equal(no.out, '');
+  assert.equal(no.err, 'state: refused: flow is already replica (user-phrase, chosen 2026-01-01T00:00:00Z) — a switch is explicit ($stardust <skill> --switch-flow, state-machine.md § Switching): flow redesign --source question --force, which marks the old flow\'s prototyped, approved and migrated pages stale\n');
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+  const r = runIn(p.d, ['flow', 'redesign', '--source', 'question', '--force', '--at', '2026-02-02T00:00:00Z']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, 'state: flow redesign (question) chosen 2026-02-02T00:00:00Z · switched from replica · stale (flow-switch): blog, pricing, contact · written by stardust:stardust\n');
+  const s = readIn(p.d);
+  assert.deepEqual([s.flow, s.flowChosenAt, s.flowSource], ['redesign', '2026-02-02T00:00:00Z', 'question']);
+  assert.deepEqual(s.pages.map((x) => [x.slug, x.status, x.stale, x.staleReason]), [['home', 'extracted', false, null], ['about', 'directed', false, null], ['blog', 'prototyped', true, 'flow-switch'], ['pricing', 'approved', true, 'flow-switch'], ['contact', 'migrated', true, 'flow-switch']]);
+  assert.equal(s.pages[2].prototypePath, 'stardust/prototypes/blog-proposed.html', 'a switch flags; it deletes nothing');
+  assert.equal(runIn(p.d, ['summary']).out, '5 page(s) · extracted 1 · directed 1 · prototyped 1 · approved 1 · migrated 1 · stale 3\n');
+});
+check('flow usage errors and refusals (exit 2, nothing written, no seed): unknown flow / source, a bad --at, two flows, a flag flow does not read, --source / --at elsewhere, a file that does not parse; --help names it', () => {
+  const p = project();
+  for (const [args, re] of [
+    [['flow', 'sideways'], /flow "sideways" is not a flow \(redesign\|replica\|reskin; state-machine\.md § Flow keys\)/],
+    [['flow', 'replica', '--source', 'guess'], /--source "guess" is not a flow source \(user-phrase\|default\|question\)/],
+    [['flow', 'replica', '--at', 'yesterday'], /--at "yesterday" is not an ISO 8601 timestamp/],
+    [['flow', 'replica', 'redesign'], /flow takes one flow \(redesign\|replica\|reskin\), got replica redesign/],
+    [['flow', 'replica', '--to', 'directed'], /--to does not apply to flow \(it reads --source, --at, --skill, --force, --dir\)/],
+    [['flow', 'replica', '--source'], /--source needs a value/],
+    [['advance', 'home', '--to', 'directed', '--source', 'default'], /unknown option --source/],
+    [['summary', '--at', '2026-01-01T00:00:00Z'], /unknown option --at/],
+  ]) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, '', args.join(' ')); assert.match(r.err, re, args.join(' ')); }
+  assert.ok(!existsSync(p.stateFile), 'a refusal seeds nothing');
+  writeFileSync(p.stateFile, '{ "flow": ');
+  const bad = runIn(p.d, ['flow', 'replica']); assert.equal(bad.code, 2); assert.match(bad.err, /is not valid JSON .* — left as it is/); assert.equal(readFileSync(p.stateFile, 'utf8'), '{ "flow": ');
+  assert.equal(runIn(p.d, ['flow']).code, 2, 'printing refuses a file that does not parse too');
+  const h = runIn(p.d, ['--help']); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs flow \[redesign\|replica\|reskin\] \[--source user-phrase\|default\|question\] \[--at <iso>\]/);
 });
 check('siteTotalDiscovered: the post-cap crawl count is a total only where the cap did not bite', () => {
   assert.equal(siteTotalDiscovered({ count: 38, pageCap: 0, inputCount: 2 }), 38, '--page-cap 0: no cap');

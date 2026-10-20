@@ -48,8 +48,10 @@ none" (198/198 nodes).
    `redesign`, refuse: print the never-mix line and the switch command
    (`$stardust replica --switch-flow`, which marks the redesign flow's
    prototyped and migrated pages stale — master skill § Two migration
-   flows). If `flow` is absent, stamp `flow: "replica"`,
-   `flowSource: "user-phrase"` (`../stardust/reference/state-machine.md`
+   flows). If `flow` is absent: `node stardust/scripts/stardust/state.mjs
+   flow replica --source user-phrase --skill replica` (the master's
+   `../stardust/scripts/state.mjs` until step 4 copies it; it seeds
+   `state.json` before extract — `../stardust/reference/state-machine.md`
    § Flow keys): invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).

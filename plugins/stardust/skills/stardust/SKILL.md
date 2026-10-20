@@ -193,8 +193,11 @@ loads:
   With 1,000+ sitemap URLs and no spec, it adds "Large site: say `spec
   first` to scope it." Offered only, never in hands-off mode.
 
-Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
-(`reference/state-machine.md` § Flow keys) before delegating. The
+Stamp the choice before delegating — `state.mjs flow replica|redesign
+--source default|user-phrase` (`skills/stardust/scripts/state.mjs`, or its
+`stardust/scripts/stardust/` copy) writes `flow` / `flowChosenAt` /
+`flowSource` (`reference/state-machine.md` § Flow keys) and seeds
+`state.json` when extract has not run yet; never a hand-written file. The
 sub-skills enforce it: `migrate`, `deploy`, `rollout` and a
 migration-intent `extract` refuse to start a migration on a project with
 `state.json` and no `flow`; `prepare-migration` refuses under

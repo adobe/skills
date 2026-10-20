@@ -63,7 +63,7 @@ inline, or run an impeccable command) and re-invoke migrate.
    migration (a URL plus "migrate" / "to EDS" / "re-platform"), do not
    run: print the two-flow table from the master skill § Two migration
    flows and hand back to its routing — the flow is chosen and stamped
-   there before any sub-skill runs
+   there (`state.mjs flow`) before any sub-skill runs
    (`skills/stardust/reference/state-machine.md` § Flow keys): `replica`
    unless the ask names a redesign.
    (Recorded: `migrate <url>` as the first command of two same-design

@@ -14,8 +14,17 @@
 //   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
 //                  [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <stardust dir>]
+//   node state.mjs flow [replica|redesign|reskin] [--source default|user-phrase|question] [--at <iso>]
+//                  [--skill <name>] [--force] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
+// flow (the master routing, before extract): stamps flow / flowChosenAt / flowSource (state-machine.md
+// § Flow keys) — on a missing state.json it writes the seed init fills later ({ _provenance, flow,
+// flowChosenAt, flowSource }); on an existing one it sets those three keys and nothing else. An unknown
+// flow or source is refused; the same flow again is unchanged (nothing written); another flow is refused
+// unless --force — the explicit switch (§ Switching: --source question), which also marks every
+// prototyped / approved / migrated page stale (staleReason "flow-switch"). Without a flow argument it
+// prints the current one.
 // init (after the crawl): one page per listed URL, in input order, every one `extracted`. A URL is
 // matched to its crawl record through an index of every <current>/pages/*.json record (url, then
 // finalUrl; origin + path without trailing slash + query, `www.` folded) — so the crawl's collision
@@ -74,6 +83,11 @@ export const CLEARS_STALE = new Set(['prototyped', 'approved', 'migrated']);
 // state-machine.md § File: top-level keys "always in that order"; handsOff sits after direction, the
 // 0.23.0 flow keys (§ Flow keys) between it and pages.
 export const TOP_ORDER = ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages'];
+// state-machine.md § Flow keys: the flows a migration project records and where the choice came from.
+export const FLOWS = ['redesign', 'replica', 'reskin'];
+export const FLOW_SOURCES = ['user-phrase', 'default', 'question'];
+// § Switching: the staleReason a flow switch stamps on the old flow's prototyped / approved / migrated pages.
+export const FLOW_SWITCH_REASON = 'flow-switch';
 // A page type (init --types, set --type).
 export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 // state-machine.md § validateProvenance(page) — contract; `slow` is listed because
@@ -82,11 +96,12 @@ export const WAIT_MODE_RE = /^(fast|medium|slow|spec|networkidle|domcontentloade
 // fetchedAt may lead the reader's clock by at most this much (clock skew between machines).
 export const FUTURE_SKEW_MS = 5 * 60 * 1000;
 // Flags only init / set / exclude read; advance and summary keep refusing them as unknown options.
-const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url'];
+const NEW_FLAGS = ['--pages', '--types', '--site-url', '--page-cap', '--current', '--representative', '--clear-representative', '--type', '--owner-decision', '--reason', '--url', '--source', '--at'];
 const FLAGS_FOR = {
   init: ['--pages', '--types', '--site-url', '--page-cap', '--current', '--force', '--dir'],
   set: ['--representative', '--clear-representative', '--type', '--owner-decision', '--skill', '--dir'],
   exclude: ['--reason', '--url', '--skill', '--dir'],
+  flow: ['--source', '--at', '--skill', '--force', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -100,9 +115,23 @@ const HELP = `Usage:
   node state.mjs set <slug…> (--representative <archetype-slug> | --clear-representative | --type <type>)
                  [--owner-decision "<why this re-type is a real new template>"] [--skill <name>] [--dir <d>]
   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <d>]
+  node state.mjs flow [${FLOWS.join('|')}] [--source ${FLOW_SOURCES.join('|')}] [--at <iso>]
+                 [--skill <name>] [--force] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; advance, set,
-  exclude and summary need it to exist. --current defaults to <dir>/current, the crawl's --out.)
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow seeds it when
+  it is missing; advance, set, exclude and summary need it to exist. --current defaults to
+  <dir>/current, the crawl's --out.)
+
+flow     stamps the migration flow the master routing chose (state-machine.md § Flow keys) BEFORE
+         extract: flow, flowChosenAt (--at, default now) and flowSource (--source, default "default" —
+         a migration ask with no redesign phrase; "user-phrase" when a keep-design or redesign phrase
+         chose it). A missing ${FILE_NAME} is seeded ({ _provenance, flow, flowChosenAt, flowSource });
+         init then fills it ("kept flow, …"). An existing file keeps every other key: only the three
+         flow keys and _provenance (writtenBy stardust:stardust unless --skill) change. The same flow
+         again is unchanged, nothing written. Another flow is refused (exit 2) unless --force — the
+         explicit switch ($stardust <skill> --switch-flow, § Switching): pass --source question; every
+         prototyped, approved or migrated page is marked stale (staleReason "${FLOW_SWITCH_REASON}").
+         Without a flow argument it prints the current flow ("flow: none" when unset).
 
 init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages, in input order.
          --pages: a file (or - for stdin) with one URL per line (blank lines and # lines ignored)
@@ -170,13 +199,14 @@ exclude  records that the source no longer serves a planned page (a 404 at crawl
 summary  prints page counts by status (· excluded <n> when any), then one line per archetype when
          any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
          archetype), then the slugs per status with --slugs.
-A value flag followed by nothing or by another --flag is a usage error; so is a flag init or set
-does not read.
-Writes: init writes <dir>/${FILE_NAME}; advance, set and exclude rewrite it in place (atomic temp file +
-rename); summary writes nothing.
+A value flag followed by nothing or by another --flag is a usage error; so is a flag init, set,
+exclude or flow does not read.
+Writes: init writes <dir>/${FILE_NAME}; flow seeds it when missing; advance, set, exclude and flow rewrite
+it in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
 parse, a page record is missing or lacks live-render evidence; set: unknown slug or
-representative, a representative cycle; exclude: as above) — nothing written.`;
+representative, a representative cycle; exclude: as above; flow: an unknown flow or source, a
+bad --at, another flow already stamped without --force) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -431,6 +461,31 @@ export function excludePages(state, slugs, { reason, url = null, at = nowIso() }
   return { changed, unchanged, listed };
 }
 
+// ---- flow --------------------------------------------------------------------------------------
+// Stamps flow / flowChosenAt / flowSource on `state` in memory (state-machine.md § Flow keys); throws
+// before touching anything on an unknown flow or source, a bad timestamp, or another flow already
+// stamped without `force`. Returns { changed, previous, staled }: `previous` the flow keys the file
+// held (null when none), `staled` the slugs a switch (force over another flow) marked stale — every
+// prototyped / approved / migrated page, staleReason "flow-switch" (§ Switching). The same flow
+// again changes nothing.
+export function setFlow(state, flow, { source = 'default', at = nowIso(), force = false } = {}) {
+  if (!FLOWS.includes(flow)) throw new UsageError(`flow "${flow}" is not a flow (${FLOWS.join('|')}; state-machine.md § Flow keys)`);
+  if (!FLOW_SOURCES.includes(source)) throw new UsageError(`--source "${source}" is not a flow source (${FLOW_SOURCES.join('|')})`);
+  if (typeof at !== 'string' || !ISO_8601.test(at)) throw new UsageError(`--at "${at}" is not an ISO 8601 timestamp`);
+  const previous = typeof state.flow === 'string' ? { flow: state.flow, flowChosenAt: state.flowChosenAt ?? null, flowSource: state.flowSource ?? null } : null;
+  if (previous && previous.flow === flow) return { changed: false, previous, staled: [] };
+  if (previous && !force) throw new UsageError(`refused: flow is already ${previous.flow} (${previous.flowSource ?? 'no source'}, chosen ${previous.flowChosenAt ?? 'at an unknown time'}) — a switch is explicit ($stardust <skill> --switch-flow, state-machine.md § Switching): flow ${flow} --source question --force, which marks the old flow's prototyped, approved and migrated pages stale`);
+  state.flow = flow; state.flowChosenAt = at; state.flowSource = source;
+  const staled = [];
+  if (previous) {
+    for (const p of Array.isArray(state.pages) ? state.pages : []) {
+      if (!CLEARS_STALE.has(p.status)) continue;
+      p.stale = true; p.staleReason = FLOW_SWITCH_REASON; staled.push(p.slug);
+    }
+  }
+  return { changed: true, previous, staled };
+}
+
 // ---- init --------------------------------------------------------------------------------------
 // The crawl's slug rule (extract/scripts/crawl.mjs `slugify`): pathname, one leading and one
 // trailing `/` stripped, runs of non-alphanumerics → `-`, lowercased, empty → `index`.
@@ -648,7 +703,7 @@ export function buildInitState({ pages, types = new Map(), siteUrl = null, pageC
 
 // ---- argv --------------------------------------------------------------------------------------
 function parseArgs(argv) {
-  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, seen: [] };
+  const opts = { dir: DEFAULT_DIR, force: false, historyOnly: false, slugs: false, to: null, by: null, prototype: null, migrated: null, skill: null, pages: null, types: null, siteUrl: null, pageCap: null, current: null, representative: null, clearRepresentative: false, type: null, ownerDecision: null, reason: null, url: null, source: null, at: null, seen: [] };
   const pos = [];
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
@@ -680,6 +735,8 @@ function parseArgs(argv) {
     else if (a === '--owner-decision') opts.ownerDecision = need();
     else if (a === '--reason') opts.reason = need();
     else if (a === '--url') opts.url = need();
+    else if (a === '--source') opts.source = need();
+    else if (a === '--at') opts.at = need();
     else if (a === '--gate' || a === '--note') throw new UsageError(`${a} is not accepted: a state.json history entry carries status, at and approvedBy only (state-machine.md § File). Gate evidence belongs in the producing skill's own ledger; free-text notes belong in stardust/journal.md.`);
     else if (a.startsWith('-')) throw new UsageError(`unknown option ${a}`);
     else pos.push(a);
@@ -703,14 +760,48 @@ const INIT_OWNS = ['_provenance', 'site', 'pages'];
 // Setup stamps flow / handsOff before extract runs): init fills it without --force.
 export const holdsPages = (state) => Array.isArray(state.pages) && state.pages.length > 0;
 
-// An existing state.json as init sees it; unreadable, not an object, or a non-array `pages` is a
-// refusal (init never guesses over it).
+// An existing state.json as init and the key-level writers (flow) see it; unreadable, not an object,
+// or a non-array `pages` is a refusal (nothing guesses over it).
 function readPrevForInit(file) {
   let state;
-  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — init leaves it as it is`); }
-  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — init leaves it as it is`);
-  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — init leaves it as it is`);
+  try { state = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { throw new UsageError(`${file} is not valid JSON (${e.message}) — left as it is`); }
+  if (!state || typeof state !== 'object' || Array.isArray(state)) throw new UsageError(`${file} is not a JSON object — left as it is`);
+  if ('pages' in state && !Array.isArray(state.pages)) throw new UsageError(`${file} has a pages key that is not an array — left as it is`);
   return state;
+}
+
+// The file for a key-level writer: the parsed object when present, else the empty seed it will create.
+function readLooseState(file) {
+  if (!existsSync(file)) return { state: {}, present: false };
+  return { state: readPrevForInit(file), present: true };
+}
+
+function runFlow(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    if (!present) console.log(`flow: none (no ${file})`);
+    else if (typeof state.flow !== 'string') console.log('flow: none');
+    else console.log(`flow: ${state.flow} (${state.flowSource ?? 'no source'}, chosen ${state.flowChosenAt ?? 'at an unknown time'})`);
+    return 0;
+  }
+  if (rest.length > 1) throw new UsageError(`flow takes one flow (${FLOWS.join('|')}), got ${rest.join(' ')}`);
+  const [flow] = rest;
+  const source = opts.source || 'default';
+  const at = opts.at || nowIso();
+  const r = setFlow(state, flow, { source, at, force: opts.force });
+  if (!r.changed) { console.log(`state: flow ${flow} unchanged (${r.previous.flowSource ?? 'no source'}, chosen ${r.previous.flowChosenAt ?? 'at an unknown time'})`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'stardust');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: flow ${flow} (${source}) chosen ${at}`];
+  if (r.previous) parts.push(`switched from ${r.previous.flow}`);
+  if (r.staled.length) parts.push(`stale (${FLOW_SWITCH_REASON}): ${r.staled.join(', ')}`);
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
 }
 
 function runInit(opts, rest) {
@@ -777,7 +868,7 @@ export function main(argv) {
   if (Object.hasOwn(FLAGS_FOR, cmd)) {
     const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
     if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
-    return { init: runInit, set: runSet, exclude: runExclude }[cmd](opts, rest);
+    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow }[cmd](opts, rest);
   }
   const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
   if (stray) throw new UsageError(`unknown option ${stray}`);
