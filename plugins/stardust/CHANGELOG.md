@@ -31,6 +31,16 @@ the block's text, shipped as ordinary selectors with no quality line: `selectorQ
   `encoded 1 · notAttempted 11` to `noRoundtrip 1 · notAttempted 11`. Schema: the enum is unchanged (an
   older manifest still validates), the descriptions state the rule; the coverage contract, rollout
   SKILL.md, the handoff contract's done-check row and done-check's header follow.
+- **`sectionGaps` lists only `no-selector` sections; `blocks-unprojected` is retired** (`sectionGapsOf`,
+  `sectionGapNotes`). A section with no source selector is a property of the export — a client projecting
+  per selector cannot emit it. The retired reason predicted one adopter's per-selector merge (each variant
+  homed to its first emitted section) and was wrong for the next: the recorded export's seven declared
+  gaps are now zero and the "lose their blocks" handover note is gone. The adopter's reader passes any
+  reason through and reconciles against what it sees, so an export without the value changes nothing on
+  its side; what the reason tried to express is the adopter's to report, and the one-off variants behind it
+  are already counted in `variantsSummary.singleUse`. Schema: the value stays in the enum as deprecated
+  (never written; an older manifest still validates), the descriptions say so; `done-check.mjs`'s
+  `export_quality:null_selector_sections` is unchanged; the coverage contract and rollout SKILL.md follow.
 
 ## 0.36.x (stardust/s53-slot-grammar) — the slot value grammar where the slots are written; a provenance `src` is no image; a never-directed sibling is told its status (#176)
 

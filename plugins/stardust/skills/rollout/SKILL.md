@@ -773,10 +773,10 @@ refused", "never applicable" or "never decided", not a guess. `done-check.mjs` s
 `unrecorded` count as the `export_quality:encode_unrecorded` info line and `zeroConfidence` as
 `export_quality:zero_confidence`; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
-Its `sectionGaps` (derived the same way) lists the sections an adopter projecting per selector
-drops: `no-selector` (no source selector — exact) and `blocks-unprojected` (a selector kept but its
-blocks lost). The latter models the adopter's per-selector merge — each variant homes to its first
-emitted section — so it can under- or over-count a given adopter's real losses. `done-check.mjs`
+Its `sectionGaps` (derived the same way) lists the sections with no source selector (`no-selector`
+— exact: a client projecting per selector cannot emit them). The export states its own properties,
+never a client's merge: the retired `blocks-unprojected` reason predicted one adopter's projection
+and was wrong for the next. `done-check.mjs`
 surfaces the no-selector count as the `export_quality:null_selector_sections` info line, and the
 manifest's `judgement` `{toFill, byKind}` (the judgement fields still empty, distinct from the coverage
 placeholders) as `export_quality:judgement_to_fill`, and its `variantsSummary`

@@ -540,8 +540,9 @@ check('variantsSummary: {total, singleUse, blocks} recomputed from blocks.json\'
   assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
 });
 
-check('sectionGaps: derived from mapping.json — two null-selector sections and one whose blocks are unprojected, with the dropped block names; the handover notes carry the counts; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
-  // s1 keeps hero+promo (both home to it); s2/s4 have no selector; s3 keeps its selector but promo homed to s1, so it is lost.
+check('sectionGaps: derived from mapping.json — the two null-selector sections with their declared block names, never a section that keeps its selector (the retired blocks-unprojected prediction); the handover note carries the count; an older manifest with the retired reason still validates and adds no sentence; none → empty list and no sentence; recomputed by --rehash-only; --check never counts it as drift; validates', () => {
+  // s1 keeps hero+promo; s2/s4 have no selector; s3 keeps its selector and declares promo, which a first-entry projection
+  // would home to s1 — one adopter's merge, not a property of the export: no gap.
   const gapMapping = {
     formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
     templates: [{
@@ -561,7 +562,6 @@ check('sectionGaps: derived from mapping.json — two null-selector sections and
   };
   const EXPECTED = [
     { page: 't1', template: 't1', section: 's2', reason: 'no-selector', blocks: ['cards'] },
-    { page: 'home', template: 't1', section: 's3', reason: 'blocks-unprojected', blocks: ['promo'] },
     { page: 't1', template: 't1', section: 's4', reason: 'no-selector', blocks: [] },
   ];
   const dir = withCaptures('section-gaps');
@@ -570,12 +570,17 @@ check('sectionGaps: derived from mapping.json — two null-selector sections and
   ok(run(dir));
   const mf = doc(dir, 'manifest.json');
   assert.deepEqual(mf.sectionGaps, EXPECTED);
-  // the counts ride the handover notes (two null-selector, one blocks-unprojected)
+  assert.ok(!text(dir, 'manifest.json').includes('blocks-unprojected'), 'the writer never emits the retired reason');
+  // the count rides the handover notes (two null-selector; nothing about s3)
   assert.deepEqual((mf.handoverNotes || []).filter((n) => n.includes('selector')), [
     '2 section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps',
-    '1 section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps',
   ]);
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
+  // an older manifest carrying the retired reason still validates (the enum keeps it as deprecated) and adds no sentence
+  const olderGap = { page: 'home', template: 't1', section: 's3', reason: 'blocks-unprojected', blocks: ['promo'] };
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), { ...mf, sectionGaps: [...mf.sectionGaps, olderGap] }), []);
+  assert.deepEqual(wm.sectionGapNotes([olderGap, EXPECTED[0]]), ['1 section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps']);
+  assert.deepEqual(wm.sectionGapNotes(null), []);
   // --check compares inputs/outputs only; the derived sectionGaps is never a drift
   const c = run(dir, '--check', '--json');
   ok(c, 0);

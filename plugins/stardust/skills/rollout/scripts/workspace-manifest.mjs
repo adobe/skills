@@ -28,8 +28,8 @@
  * the same split per template, each row with the template's encode decision `encode {decision, reason, vocabulary,
  * recordedAt}` read from migrate's record <project>/stardust/migrate/encode/<template>.json — never written here —
  * and `selectorQuality.encode` counting the decisions), a `sectionGaps` list derived from mapping.json the same way
- * (sections an adopter
- * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
+ * (the sections with no source selector — what a client projecting per selector cannot emit; the export states its
+ * own properties, never a client's merge), a
  * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field), an
  * `excluded` [{url, reason}] list of the planned URLs that never became a page (the coverage's excluded[] rows, the
  * crawl's failed URLs in <stardust>/current/_crawl-log.json, state.json pages[] and plan.json steps with no pages[]
@@ -344,18 +344,16 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
 }
 
 /**
- * The sections an adopter projecting mapping.json per selector would drop, derived from mapping.json (NOT a rewrite of it,
- * like selectorQuality). Two reasons, from block-origin's section/block model. `no-selector` is exact (a property of the
- * export); `blocks-unprojected` is a PREDICTION of the adopter's current per-selector merge (each variant homes to its
- * first emitted section), so it can under- or over-count a given adopter's real losses.
- *   - 'no-selector'       a template section whose `selector` is null/absent (generalise found no selector resolving to
- *                         its element on any page): the adopter does not emit it — its blocks go with it.
- *   - 'blocks-unprojected' a section that HAS a selector (so it is emitted) and declares blocks (`blocks[]` non-empty), yet
- *                         no block homes to it under a per-selector projection — the adopter merges block instances by
- *                         variant into the FIRST emitted section carrying that variant, so a sibling section sharing a
- *                         variant, or one whose only instances were emitted unsectioned, keeps its selector but loses its
- *                         blocks. `home` is each variant's first `blocks[]` entry; a section is homed when some variant's
- *                         home is it.
+ * The mapping sections with no source selector, derived from mapping.json (NOT a rewrite of it, like selectorQuality):
+ * reason `no-selector` — a template section whose `selector` is null/absent (generalise found no selector resolving to
+ * its element on any page), so a client projecting per selector cannot emit it and its declared blocks go with it. A
+ * property of the export, exact. The second reason this list once carried, `blocks-unprojected` (a section with a
+ * selector whose declared blocks no variant's first entry homed to), was a PREDICTION of one adopter's per-selector
+ * merge: a recorded hands-off run's export declared seven, and the adopter that read it — one that names a block in
+ * every section that places one — reconciled all seven to zero with a note. An export states its own properties,
+ * never a client's behaviour, so the reason is retired: the writer never emits it (a reader of an older manifest may
+ * still meet the value; the schema keeps it as deprecated), and the one-off variants behind such sections are
+ * counted in variantsSummary.singleUse.
  * Each gap: { page (the section's first page, else the templateId), template (templateId), section (id), reason,
  * blocks (the declared block names dropped) }. Entries in template then section emission order. null (field omitted) when
  * there is no readable mapping; [] when a mapping has no such section. Derived, so --check never counts it as drift and
@@ -368,35 +366,19 @@ export function sectionGapsOf(mappingFile) {
   if (!mapping || !Array.isArray(mapping.templates)) return null;
   const gaps = [];
   for (const t of mapping.templates) {
-    const sections = Array.isArray(t.sections) ? t.sections : [];
-    const blocks = Array.isArray(t.blocks) ? t.blocks : [];
-    const emitted = new Set(sections.filter((s) => s && s.selector).map((s) => s.id));
-    const home = new Map();
-    for (const b of blocks) {
-      if (!b || home.has(b.variantId)) continue;
-      home.set(b.variantId, b.section && emitted.has(b.section) ? b.section : null);
-    }
-    const homed = new Set([...home.values()].filter((id) => id != null));
-    for (const s of sections) {
-      if (!s) continue;
+    for (const s of (Array.isArray(t.sections) ? t.sections : [])) {
+      if (!s || s.selector) continue;
       const page = (Array.isArray(s.pages) && s.pages[0]) || t.templateId;
-      const blockNames = Array.isArray(s.blocks) ? s.blocks : [];
-      if (!s.selector) gaps.push({ page, template: t.templateId, section: s.id, reason: 'no-selector', blocks: [...blockNames] });
-      else if (blockNames.length && !homed.has(s.id)) gaps.push({ page, template: t.templateId, section: s.id, reason: 'blocks-unprojected', blocks: [...blockNames] });
+      gaps.push({ page, template: t.templateId, section: s.id, reason: 'no-selector', blocks: Array.isArray(s.blocks) ? [...s.blocks] : [] });
     }
   }
   return gaps;
 }
 
-/** Owner handover sentences for the section gaps, counted by reason; [] when there are none. */
+/** The owner handover sentence for the section gaps (the no-selector count; any other reason adds none); [] when there are none. */
 export function sectionGapNotes(gaps) {
-  if (!Array.isArray(gaps) || !gaps.length) return [];
-  const nulls = gaps.filter((g) => g.reason === 'no-selector').length;
-  const unprojected = gaps.filter((g) => g.reason === 'blocks-unprojected').length;
-  const notes = [];
-  if (nulls) notes.push(`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`);
-  if (unprojected) notes.push(`${unprojected} section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps`);
-  return notes;
+  const nulls = Array.isArray(gaps) ? gaps.filter((g) => g && g.reason === 'no-selector').length : 0;
+  return nulls ? [`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`] : [];
 }
 
 /** A judged field is still open when it is empty: null/'', an empty array, or an object all of whose values are empty (e.g. an untouched reuseGuidance {suitableFor:[], notSuitableFor:[]}). */
