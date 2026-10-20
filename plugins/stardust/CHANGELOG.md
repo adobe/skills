@@ -6,13 +6,12 @@ git history only (plus the branch-scoped notes in
 
 ## 0.36.x (stardust/s52-image-alignment) — a block with no text to anchor is located by its images (#175)
 
-After #174, the position fallbacks left in the recorded hands-off runs were almost all image-only blocks —
-65 of 80 across twelve runs (an image-only hero, repeating carousel and article-grid tiles) — each a
+With #174 applied to the recorded hands-off runs, 69 position fallbacks remained across twelve runs and 66
+of them were blocks carrying images (an image-only hero, repeating carousel and article-grid tiles) — each a
 confidence-0 guess among its neighbours although the capture carries the very image: the delivered `img`
 is named by the media harvester from the source file (`<stem>-<8 hex>.<ext>`, the stem lower-cased, folded,
-cut to 60 characters) and its alt is the source's. A probe over those runs found 51 of 62 image-carrying
-fallbacks matching every image by stem exactly once; 10 were ambiguous (a logo repeated on the page) and 1
-missing.
+cut to 60 characters) and its alt is the source's. Of those 66, 62 match every image by stem exactly once;
+the other 4 are ambiguous (a logo repeated on the page) or missing from the capture.
 
 - **`block-origin.mjs` image alignment** (`imagesOf`, `captureImages`, `alignImages`, `deliveredStem`,
   `captureStem`, exported) sits between text alignment and position: a block whose text found no anchor
@@ -27,16 +26,18 @@ missing.
   (the position fallback's discipline — text alignment has none, two records may cover one element) falls
   through to position as before. On the 112-instance export of #174 the hero moved from the position
   fallback (confidence 0) to `image-alignment` 1 at the grid column holding exactly the hero component;
-  sections without a selector 1 → 0; nothing else moved and no confidence fell. On a 206-instance export
-  position 48 → 1 (zero-confidence 48 → 1), on a 90-instance one 14 → 2; a 188-instance encoder-backed
-  export is unchanged. Two runs give the same bytes.
+  sections without a selector 1 → 0; nothing else moved and no confidence fell. Against the #174 baseline, a
+  206-instance export goes position 48 → 1 (zero-confidence 48 → 1), a 90-instance one 9 → 2, the 112-instance
+  one 3 → 2; a 188-instance encoder-backed export is unchanged; 62 of the 69 fallbacks are located, 7 remain
+  (4 whose images are ambiguous or missing, 3 with neither text nor image). Two runs give the same bytes.
 - Format: the mapping schema's `source` enum gains `image-alignment` (formatVersion unchanged — an enum
   value, no key); the status line and `--json counts.sources` carry `image-alignment N`; the manifest's
   `selectorQuality.sources` and `byTemplate[]` gain `imageAlignment` (optional in the manifest schema, so an
   older manifest still validates); `zeroConfidence`, `encode`, `export_quality:zero_confidence` and
   `encode_unrecorded` keep their meaning (confidence 0 is still the position fallback). --help, the exit-3
-  message and the coverage contract say what a remaining zero-confidence instance now is: text not in the
-  capture and images not found there exactly once. The position-fallback fixtures name images the capture
+  message, the coverage contract, the manifest schema, rollout/SKILL.md and the done-check's info-line note say
+  what a remaining zero-confidence instance now is: a position fallback — no encoder-map marker, no text
+  match, no uniquely matched image. The position-fallback fixtures name images the capture
   does not carry, so each fallback rule is still exercised.
 - Not covered, deliberately: CSS `background-image` (hundreds per page in one run; the delivered document
   has no counterpart to match it to) and images the deploy pipeline renamed beyond the harvester's rule.

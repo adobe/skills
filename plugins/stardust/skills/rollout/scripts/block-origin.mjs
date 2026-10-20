@@ -332,11 +332,39 @@ const rawStem = (u) => fileOf(u).replace(/\.[A-Za-z0-9]+$/, '');
 export const deliveredStem = (u) => (u ? foldStem(rawStem(u).replace(/-[0-9a-f]{8}$/i, '')) : '');
 /** The comparable stem of a capture image URL (src, data-src, a srcset candidate); '' for none. */
 export const captureStem = (u) => (u ? foldStem(rawStem(u)) : '');
-const srcsetUrls = (v) => String(v || '').split(',').map((c) => c.trim().split(/[ \t\n\r\f]+/)[0]).filter(Boolean);
+// The HTML srcset grammar, as the harvester reads it (extract/media-harvest.mjs parseSrcset): a candidate's URL is
+// the next run of non-whitespace (commas inside it belong to it — CDN transform paths carry them); a trailing comma
+// ends a descriptor-less candidate, else the descriptors run to the next comma outside parentheses.
+function srcsetUrls(value) {
+  const s = String(value ?? '');
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && /[\s,]/.test(s[i])) i += 1;
+    if (i >= s.length) break;
+    let j = i;
+    while (j < s.length && !/\s/.test(s[j])) j += 1;
+    let url = s.slice(i, j);
+    i = j;
+    if (/,$/.test(url)) url = url.replace(/,+$/, '');
+    else {
+      let depth = 0;
+      while (i < s.length) {
+        const c = s[i];
+        i += 1;
+        if (c === '(') depth += 1;
+        else if (c === ')') depth = Math.max(0, depth - 1);
+        else if (c === ',' && depth === 0) break;
+      }
+    }
+    if (url) out.push(url);
+  }
+  return out;
+}
 const LEAF_MEDIA = new Set(['img', 'video', 'audio', 'svg', 'iframe', 'canvas', 'object', 'embed']);
 const HIDDEN = new Set(['noscript', 'template']);
 
-/** imagesOf(nodes) → [{ stem, alt }] of the img elements under a delivered block div (or a default record's nodes), in document order. */
+/** imagesOf(nodes) → [{ stem, alt }] of the img elements under a delivered block div, in document order (the node, or an array of nodes). */
 export function imagesOf(nodes) {
   const out = [];
   const visit = (n) => { if (n.tag === 'img') out.push({ stem: deliveredStem(n.attrs && n.attrs.src), alt: squash(n.attrs && n.attrs.alt) }); elements(n).forEach(visit); };

@@ -762,8 +762,8 @@ node skills/rollout/scripts/workspace-manifest.mjs  # 3. → workspace/manifest.
 ```
 
 The manifest's `selectorQuality` records how the source selectors were found — the sources, `encoderCoverage`,
-the `zeroConfidence` count (image-only repeating blocks with no text to anchor, shipped without an encoder
-map) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
+the `zeroConfidence` count (position fallbacks: no encoder-map marker, no text match, no uniquely matched
+image) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
 which fell back). A reviewer reads each row's `encoderCoverage` together with its `encode.decision`
 and `encode.reason` — `encoded`, `hand-authored`, `not-attempted`, `no-roundtrip`, `not-applicable`
 or `unrecorded`, with the owner's why from migrate's encode record — so a 0 reads as "tried and

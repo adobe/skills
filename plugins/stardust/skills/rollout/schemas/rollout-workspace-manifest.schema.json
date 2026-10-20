@@ -87,7 +87,7 @@
           }
         },
         "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances, 0 to 1, three decimals (0 when there are no instances)." },
-        "zeroConfidence": { "type": "integer", "minimum": 0, "description": "Instances at confidence 0 — image-only repeating blocks with no text to anchor, shipped without an encoder map." },
+        "zeroConfidence": { "type": "integer", "minimum": 0, "description": "Instances still at confidence 0 — position fallbacks: no encoder-map marker, no text match, no uniquely matched image." },
         "zeroConfidenceBlocks": {
           "type": "array",
           "description": "The top blocks behind zeroConfidence (the whole count stays in zeroConfidence), most instances first.",

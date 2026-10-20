@@ -290,10 +290,10 @@ export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = 
 
 /**
  * The selectorQuality block derived from mapping.json at manifest time (block-origin's countsOf; mapping.json is NOT
- * rewritten): instances, the three selector sources ({encoderMap, textAlignment, position}), encoderCoverage
- * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — image-only repeating blocks
- * with no text to anchor), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, position, encoderCoverage, encode}], one row
+ * rewritten): instances, the selector sources ({encoderMap, textAlignment, imageAlignment, position}), encoderCoverage
+ * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — position fallbacks: no
+ * encoder-map marker, no text match, no uniquely matched image), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
+ * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
  * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
  * applicable (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under

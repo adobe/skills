@@ -889,9 +889,11 @@ check('imagesOf / captureImages: a block\'s img stems and alts; the page\'s unit
   assert.deepEqual(bo.imagesOf(blockNode('<div class="gallery"><div><div><picture><img src="/media/p/first-shot-0a1b2c3d.jpg" alt="First shot"></picture></div><div><img src="/media/p/second-shot-9f8e7d6c.webp" alt=""></div></div></div>')),
     [{ stem: 'first-shot', alt: 'firstshot' }, { stem: 'second-shot', alt: '' }]);
   const idx = bo.indexSource('<html><body><main><picture class="p"><source srcset="/i/first-shot.webp 1x, /i/first-shot@2x.webp 2x"><img src="/i/first-shot.jpg" alt="First shot"></picture>'
-    + '<img class="lazy" data-src="/i/second-shot.webp" src="/i/blank.gif" alt=""><noscript><img src="/i/second-shot.webp" alt=""></noscript></main></body></html>');
+    + '<img class="lazy" data-src="/i/second-shot.webp" src="/i/blank.gif" alt=""><noscript><img src="/i/second-shot.webp" alt=""></noscript>'
+    // a CDN transform path carries commas inside the URL: the candidate is the run of non-whitespace, as the harvester reads it
+    + '<img class="cdn" srcset="https://cdn.example/t/w_400,h_300,c_fill/third-shot.jpg 400w, https://cdn.example/t/w_800,h_600,c_fill/third-shot.jpg 800w" alt=""></main></body></html>');
   const units = bo.captureImages(idx);
-  assert.deepEqual(units.map((u) => [u.el.tag, [...u.stems].sort(), u.alt]), [['picture', ['first-shot', 'first-shot-2x'], 'firstshot'], ['img', ['blank', 'second-shot'], '']]);
+  assert.deepEqual(units.map((u) => [u.el.tag, [...u.stems].sort(), u.alt]), [['picture', ['first-shot', 'first-shot-2x'], 'firstshot'], ['img', ['blank', 'second-shot'], ''], ['img', ['third-shot'], '']]);
 });
 
 // A page with a heading, a figure (one image), a two-image strip, and an aside repeating a stem twice.
