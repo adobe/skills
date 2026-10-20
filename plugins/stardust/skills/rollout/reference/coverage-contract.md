@@ -39,6 +39,13 @@ absent (sections live in `delivered.sections`, chrome in the blocks.json chrome 
 
 `variantId` = `v_` + the first 12 hex of sha256 of `stardust-variant:<block>|<classes space-joined>`; prior ids stay.
 
+A row without `source.sourceUrl` is **synthesized** — added with `update-coverage.mjs --new` (an origin marker
+`<origin>:<slug>` in `source.migratedHtml`; a search results page, a landing page, anything built outside the migrated
+tree): it has no source to gate against and no schema sidecar, so `done-check.mjs` never counts it under
+`sidecars_missing` (its `synthesized_pages:N` info line names it) and `gate-all.mjs` skips it; it carries a status, is
+verified like any row (`verify.mjs --all`) and gets `delivered` from its content file like any row. It is never
+removed from pages.json by hand — a recorded hands-off run did, after `json-edit` refused, to close a false gap.
+
 ## templates.json: new fields
 
 | Field | Meaning |

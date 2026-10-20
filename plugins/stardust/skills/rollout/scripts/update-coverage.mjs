@@ -74,6 +74,9 @@
  *   that belongs to a captured page is refused; a path already owned by another slug is refused).
  *   `inventory.mjs` keeps these rows on a re-run (the origin marker identifies them; status untouched)
  *   until the migrated tree holds a file for the slug or a migrated page owns the path — the line runs once.
+ *   Without a source.sourceUrl the row is synthesized: gate-all skips it, done-check asks it for no sidecar
+ *   or gate (`sidecars_missing` never counts it) and names it under `info: synthesized_pages:N`; its status
+ *   still counts (verify.mjs --all proves it live). It is never removed from pages.json by hand.
  *
  * Re-derives templates.json + rollout.json roll-ups after every write.
  *
