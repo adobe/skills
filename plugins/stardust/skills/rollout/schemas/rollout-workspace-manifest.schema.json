@@ -101,6 +101,7 @@
             }
           }
         },
+        "lowConfidence": { "type": "integer", "minimum": 0, "description": "Verified instances at 0 < confidence < 0.5 (LOW_CONFIDENCE in workspace-manifest.mjs). Confidence is the share of the block's text its selected element holds, so below 0.5 the element holds a minority of that text — a fragment anchors the selector, evidence against it as the block's origin — yet the selector resolves to one element and ships as an ordinary one (the confidence-0 position fallbacks are zeroConfidence, counted apart). done-check.mjs surfaces it as the export_quality:low_confidence info line. Optional (older manifests omit it)." },
         "byTemplate": {
           "type": "array",
           "description": "Per mapping template, most instances first: the instance count and its split across the three selector sources, so a reviewer sees which templates are encoder-backed and which fell back. Optional (older manifests omit it).",
@@ -116,6 +117,7 @@
               "imageAlignment": { "type": "integer", "minimum": 0 },
               "position": { "type": "integer", "minimum": 0 },
               "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances for this template, three decimals (0 when it has no instances)." },
+              "lowConfidence": { "type": "integer", "minimum": 0, "description": "This template's verified instances at 0 < confidence < 0.5 (see lowConfidence above). Optional (older manifests omit it)." },
               "encode": {
                 "type": "object",
                 "description": "The template's encode decision, so encoderCoverage reads with its reason. Read at manifest time from migrate's record stardust/migrate/encode/<template>.json (its verdict, reason and at; never written here) — the record's verdict, never an inference from the mapping's encoder-map count. Optional (older manifests omit it); derived, never a drift input.",

@@ -24,7 +24,9 @@
  * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `variantsSummary`
  * {total, singleUse, blocks} recomputed from blocks.json's module rows (the variants, those a single instance uses —
  * each a catalog block for an adopter — and the blocks with any), a `selectorQuality` block derived from mapping.json
- * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count, the
+ * lowConfidence count — verified selectors at 0 < confidence < 0.5, whose element holds a minority of the block's
+ * text — and byTemplate,
  * the same split per template, each row with the template's encode decision `encode {decision, reason, vocabulary,
  * recordedAt}` read from migrate's record <project>/stardust/migrate/encode/<template>.json — never written here —
  * and `selectorQuality.encode` counting the decisions), a `sectionGaps` list derived from mapping.json the same way
@@ -226,6 +228,15 @@ export function blockOriginInputDirs(project, capturesDir = join(project, 'stard
 
 // The top zero-confidence blocks named in the manifest; the whole count stays in `zeroConfidence`, this breakdown is capped.
 const SELECTOR_QUALITY_TOP = 10;
+// A verified selector below this confidence is low-confidence. block-origin's confidence is coveredShare — the share
+// of the block's text the selected element holds (images never text) — so below 0.5 the element holds a MINORITY of
+// that text: a fragment (a heading, a 16-character span) anchors the selector, evidence against it as the block's
+// origin, while it resolves to one element and a per-selector client reads it as any other (in a recorded hands-off
+// run 45 of 124 verified selectors, 33 of them under 0.25, shipped so with no line naming them). The bar is
+// block-origin's own `>0–<0.5` status bucket (countsOf), so its status line, the manifest and done-check agree. The
+// confidence-0 position fallbacks are zeroConfidence, counted apart; an unverified instance is not a selector a client reads.
+export const LOW_CONFIDENCE = 0.5;
+const isLowConfidence = (i) => !!i && i.verified === true && typeof i.confidence === 'number' && i.confidence > 0 && i.confidence < LOW_CONFIDENCE;
 
 // The verdicts migrate's encode-attempt.mjs records (its VERDICTS), read here, never written; a record with any other
 // verdict is not a decision and counts as no record.
@@ -294,7 +305,9 @@ export function encodeDecisionOf({ record = null, pages = 0 } = {}) {
  * rewritten): instances, the selector sources ({encoderMap, textAlignment, imageAlignment, position}), encoderCoverage
  * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — position fallbacks: no
  * encoder-map marker, no text match, no uniquely matched image), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, encode}], one row
+ * sorted), lowConfidence (the verified instances at 0 < confidence < LOW_CONFIDENCE — selectors a per-selector client
+ * reads whose element holds a minority of the block's text; done-check.mjs surfaces it as export_quality:low_confidence),
+ * byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, lowConfidence, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
  * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
  * applicable (encodeDecisionOf over migrate's record under `project` and the template's page count — never the
@@ -329,6 +342,7 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
       template, instances: insts.length,
       encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
+      lowConfidence: insts.filter(isLowConfidence).length,
       encode: { decision, reason: record ? record.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
@@ -338,6 +352,7 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
+    lowConfidence: byTemplate.reduce((n, t) => n + t.lowConfidence, 0),
     byTemplate,
     encode,
   };
@@ -690,6 +705,9 @@ function main(argv) {
   });
   const mods = [...moduleBlocks(coverage.blocks).values()];
   const variants = mods.flatMap((b) => (Array.isArray(b.variants) ? b.variants : []));
+  // Derived from mapping.json (not a rewrite of it), so it is recomputed on a re-hash and never counts as drift
+  // (--check hashes only inputs/outputs); computed here so the --json counts and the printed line carry its figures.
+  const selectorQuality = selectorQualityOf(mappingFile, { project });
   const counts = {
     templates: coverage.templates.templates.length,
     archetypes: templateGroups.archetypes,
@@ -700,6 +718,7 @@ function main(argv) {
     singleUseVariants: variantsSummary.singleUse,
     instances: variants.reduce((n, v) => n + (typeof v.instances === 'number' ? v.instances : 0), 0),
     excluded: excluded.length,
+    lowConfidence: selectorQuality ? selectorQuality.lowConfidence : null,
   };
 
   const report = (status, hashes, extra = {}) => {
@@ -714,6 +733,7 @@ function main(argv) {
       console.log(`rollout workspace-manifest → ${shown}`);
       console.log('='.repeat(60));
       console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.singleUseVariants} single-use, ${counts.instances} instances)`);
+      if (selectorQuality) console.log(`Selectors     ${selectorQuality.instances} instances · ${selectorQuality.zeroConfidence} zero-confidence · ${selectorQuality.lowConfidence} low-confidence (verified, 0 < confidence < ${LOW_CONFIDENCE})`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
       if (excluded.length) console.log(`Excluded      ${excluded.length} planned URL(s) never became a page (manifest.json excluded[])`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
@@ -822,9 +842,8 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
-  // Derived from mapping.json / judgement.json (not a rewrite of either), so all are recomputed on a re-hash and
-  // never count as drift (--check hashes only inputs/outputs).
-  const selectorQuality = selectorQualityOf(mappingFile, { project });
+  // Derived from mapping.json / judgement.json (not a rewrite of either, like selectorQuality above), so all are
+  // recomputed on a re-hash and never count as drift (--check hashes only inputs/outputs).
   const sectionGaps = sectionGapsOf(mappingFile);
   const judgement = judgementDebtOf(judgementFile);
   // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.

@@ -94,6 +94,9 @@
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence
  * (position fallbacks: no encoder-map marker, no text match, no uniquely matched image) once above the threshold
  * (default 0); informational, it never flips completeness — the hard gate is block-origin.mjs --max-zero-confidence;
+ * export_quality:low_confidence:N — the manifest's selectorQuality.lowConfidence (verified selectors at 0 < confidence
+ * < 0.5: the selected element holds less than half of the block's text, so a fragment anchors a selector that resolves
+ * and ships as any other; the position fallbacks at 0 are the line above) when N>0, informational, never a gap;
  * export_quality:null_selector_sections:N — the manifest's sectionGaps with reason no-selector (sections an adopter
  * projecting per selector drops) when N>0, informational, never a gap;
  * export_quality:judgement_to_fill:N — the manifest's judgement.toFill (judgement.json fields still empty: block
@@ -112,7 +115,7 @@
  * client's validator does; a `skipped:` line names the schemas dir when none is found beside the scripts (plugin
  * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
  * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each
- * with its recorded reason — workspace-manifest.mjs --help) when N>0; all seven hidden once the export is handed over.
+ * with its recorded reason — workspace-manifest.mjs --help) when N>0; all eight hidden once the export is handed over.
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -481,7 +484,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -508,15 +511,16 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // planned pages the source no longer serves (coverage excluded[]) and blocks delivered without a conversion record:
   // named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
-  // the migration export's zero-confidence selector count (manifest selectorQuality), null-selector section count
-  // (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), single-use variant count
-  // (manifest variantsSummary.singleUse — one catalog block each for an adopter), multi-page templates without an
+  // the migration export's zero-confidence and low-confidence selector counts (manifest selectorQuality), null-selector
+  // section count (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), single-use variant
+  // count (manifest variantsSummary.singleUse — one catalog block each for an adopter), multi-page templates without an
   // encode decision (manifest selectorQuality.encode.unrecorded), export files failing their schema (schemaErrorsOf) and
   // planned URLs that never became a page (manifest excluded[]): informational, never a gap
   const failing = (Array.isArray(schemaErrors) ? schemaErrors : []).filter((s) => s && typeof s.file === 'string' && Array.isArray(s.errors) && s.errors.length);
   const planned = (Array.isArray(plannedExcluded) ? plannedExcluded : []).filter((e) => e && typeof e.url === 'string');
   const info = [
     ...(zeroConfidence != null && zeroConfidence > zeroConfidenceThreshold ? [`export_quality:zero_confidence:${zeroConfidence}`] : []),
+    ...(lowConfidence != null && lowConfidence > 0 ? [`export_quality:low_confidence:${lowConfidence}`] : []),
     ...(nullSelectorSections != null && nullSelectorSections > 0 ? [`export_quality:null_selector_sections:${nullSelectorSections}`] : []),
     ...(judgementToFill != null && judgementToFill > 0 ? [`export_quality:judgement_to_fill:${judgementToFill}`] : []),
     ...(singleUseVariants != null && singleUseVariants > 0 ? [`export_quality:single_use_variants:${singleUseVariants}`] : []),
@@ -595,9 +599,9 @@ async function exportState({ out, config, pagesDoc, wm }) {
     handedOver,
     dir: ws,
   });
-  // the shipped manifest's zero-confidence figure, null-selector section count, judgement debt, single-use variant
-  // count, encode decisions and excluded planned URLs, and the export files' schema verdicts, for the info lines;
-  // none surfaced once a client owns the export
+  // the shipped manifest's zero- and low-confidence figures, null-selector section count, judgement debt, single-use
+  // variant count, encode decisions and excluded planned URLs, and the export files' schema verdicts, for the info
+  // lines; none surfaced once a client owns the export
   const sq = !handedOver && isMap(manifest) && isMap(manifest.selectorQuality) ? manifest.selectorQuality : null;
   const gaps = !handedOver && isMap(manifest) && Array.isArray(manifest.sectionGaps) ? manifest.sectionGaps : null;
   const judgement = !handedOver && isMap(manifest) && isMap(manifest.judgement) ? manifest.judgement : null;
@@ -612,6 +616,7 @@ async function exportState({ out, config, pagesDoc, wm }) {
     ...gap,
     skipped: [...gap.skipped, ...schemas.skipped],
     zeroConfidence: sq && typeof sq.zeroConfidence === 'number' ? sq.zeroConfidence : null,
+    lowConfidence: sq && typeof sq.lowConfidence === 'number' ? sq.lowConfidence : null,
     nullSelectorSections: gaps ? gaps.filter((g) => g && g.reason === 'no-selector').length : null,
     judgementToFill: judgement && typeof judgement.toFill === 'number' ? judgement.toFill : null,
     schemaErrors: schemas.errors,
@@ -706,6 +711,7 @@ async function main() {
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
     headerAgent: headerDecidedByAgent(parity),
     zeroConfidence: exported.zeroConfidence,
+    lowConfidence: exported.lowConfidence,
     nullSelectorSections: exported.nullSelectorSections,
     judgementToFill: exported.judgementToFill,
     schemaErrors: exported.schemaErrors,

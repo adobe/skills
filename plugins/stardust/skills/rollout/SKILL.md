@@ -770,8 +770,10 @@ and `encode.reason` — the verdict migrate's encode record holds (`encoded`, `h
 is not an archetype that round-tripped), `not-applicable` (one page) or `unrecorded` (no record),
 with the owner's why — so a 0 reads as "tried and
 refused", "never applicable" or "never decided", not a guess. `done-check.mjs` surfaces the
-`unrecorded` count as the `export_quality:encode_unrecorded` info line and `zeroConfidence` as
-`export_quality:zero_confidence`; pass
+`unrecorded` count as the `export_quality:encode_unrecorded` info line, `zeroConfidence` as
+`export_quality:zero_confidence` and `lowConfidence` — verified selectors whose element holds less
+than half of the block's text (0 < confidence < 0.5); they resolve and ship, so only this line names
+them — as `export_quality:low_confidence`; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
 Its `sectionGaps` (derived the same way) lists the sections with no source selector (`no-selector`
 — exact: a client projecting per selector cannot emit them). The export states its own properties,

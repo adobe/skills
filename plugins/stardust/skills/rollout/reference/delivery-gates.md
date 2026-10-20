@@ -121,9 +121,10 @@ tree and raises `export_stale` naming any file whose hash differs — a sidecar,
 capture or map rewritten after the mapping is a stale export, not a fresh one.
 The manifest also carries a derived `selectorQuality` block (sources,
 `encoderCoverage`, the `zeroConfidence` count of image-only blocks shipped without
-a map, and `byTemplate` — the same split per template, so a reviewer sees which
+a map, the `lowConfidence` count of verified selectors whose element holds less than
+half of the block's text, and `byTemplate` — the same split per template, so a reviewer sees which
 templates are encoder-backed and which fell back) that `done-check.mjs` surfaces
-as the `export_quality:zero_confidence` info line; `block-origin.mjs
+as the `export_quality:zero_confidence` and `export_quality:low_confidence` info lines; `block-origin.mjs
 --max-zero-confidence <n>` turns that count into a hard gate (exit 3) for a
 hands-off run.
 

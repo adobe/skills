@@ -205,7 +205,7 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   expected.outputs[MAP] = mf.outputs[MAP];
   expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
   // an empty-templates mapping now adds a zeroed selectorQuality block and an empty sectionGaps (derived from mapping.json, not drift inputs)
-  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE };
+  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], lowConfidence: 0, byTemplate: [], encode: NO_ENCODE };
   expected.sectionGaps = [];
   assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality and sectionGaps');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
@@ -231,7 +231,7 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
     }],
   };
   // t1 has an encoder-map selector but no record: two pages (slugs a, b), no decision → `unrecorded` (the mapping never decides)
-  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3, encoderCoverage: 0.167, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, unrecorded: 1 } };
+  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], lowConfidence: 0, byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3, encoderCoverage: 0.167, lowConfidence: 0, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, unrecorded: 1 } };
   const dir = withCaptures('selector-quality');
   mkdirSync(W(dir), { recursive: true });
   writeFileSync(join(dir, MAP), `${JSON.stringify(mixedMapping, null, 2)}\n`);
@@ -250,7 +250,7 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
   // an empty mapping → all zeros
   writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
   ok(run(dir));
-  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE });
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], lowConfidence: 0, byTemplate: [], encode: NO_ENCODE });
 });
 
 check('selectorQuality.byTemplate: one row per mapping template with its instance count split across the three sources and its own encoderCoverage, most instances first; validates', () => {
@@ -274,11 +274,57 @@ check('selectorQuality.byTemplate: one row per mapping template with its instanc
   writeFileSync(join(dir, MAP), `${JSON.stringify(twoTemplates, null, 2)}\n`);
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.byTemplate, [
-    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, imageAlignment: 0, position: 0, encoderCoverage: 0.667, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } },
-    { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 1, encoderCoverage: 0, encode: { decision: 'not-applicable', reason: null, vocabulary: null, recordedAt: null } },
+    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, imageAlignment: 0, position: 0, encoderCoverage: 0.667, lowConfidence: 0, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } },
+    { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 1, encoderCoverage: 0, lowConfidence: 0, encode: { decision: 'not-applicable', reason: null, vocabulary: null, recordedAt: null } },
   ], 'most instances first; per-template source split and encoderCoverage; three pages without a record are unrecorded (its encoder-map selectors never decide), a one-page template not-applicable');
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.encode, { ...NO_ENCODE, unrecorded: 1, notApplicable: 1 });
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+});
+
+check('selectorQuality.lowConfidence: the verified instances at 0 < confidence < LOW_CONFIDENCE (0.5 — the element holds a minority of the block\'s text), top level and per template; confidence 0 (position) is zeroConfidence, not this; 0.5 and above, an unverified or an unchecked instance never count; the printed line and --json name it (null without a mapping); recomputed by --rehash-only; optional in the schema', () => {
+  assert.equal(wm.LOW_CONFIDENCE, 0.5, 'block-origin\'s own >0–<0.5 status bucket: the majority boundary of coveredShare');
+  const inst = (slug, pos, confidence, verified = true, source = 'text-alignment') => ({ slug, pos, selector: `s${pos}`, source, confidence, verified });
+  const mapping = {
+    formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
+    templates: [
+      { templateId: 'weak', pages: ['w1', 'w2'], sections: [], blocks: [
+        { block: 'columns', instances: [inst('w1', 0, 0.009), inst('w1', 1, 0.019), inst('w2', 2, 0.25), inst('w2', 3, 0.499)] }, // four low
+        { block: 'hero', instances: [inst('w1', 4, 0.5), inst('w2', 5, 0.9), inst('w2', 6, 1, true, 'encoder-map')] }, // at and above the bar
+        { block: 'cards', instances: [inst('w1', 7, 0, true, 'position'), inst('w2', 8, 0.3, false), inst('w2', 9, 0.3, null)] }, // zero-confidence; unverified; unchecked
+      ] },
+      { templateId: 'solid', pages: ['s1'], sections: [], blocks: [{ block: 'hero', instances: [inst('s1', 0, 1)] }] },
+    ],
+  };
+  const dir = withCaptures('low-confidence');
+  mkdirSync(W(dir), { recursive: true });
+  writeFileSync(join(dir, MAP), `${JSON.stringify(mapping, null, 2)}\n`);
+  const r = run(dir);
+  ok(r);
+  const sq = doc(dir, 'manifest.json').selectorQuality;
+  assert.equal(sq.lowConfidence, 4);
+  assert.equal(sq.zeroConfidence, 1, 'the position fallback is zero-confidence, not low');
+  assert.deepEqual(sq.byTemplate.map((t) => [t.template, t.instances, t.lowConfidence]), [['weak', 10, 4], ['solid', 1, 0]]);
+  assert.deepEqual(Object.keys(sq), ['instances', 'sources', 'encoderCoverage', 'zeroConfidence', 'zeroConfidenceBlocks', 'lowConfidence', 'byTemplate', 'encode']);
+  assert.ok(/Selectors\s+11 instances · 1 zero-confidence · 4 low-confidence \(verified, 0 < confidence < 0\.5\)/.test(r.stdout), r.stdout);
+  assert.equal(jsonOut(run(dir, '--json')).counts.lowConfidence, 4);
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
+  // derived: --check never a drift; corrupt it and --rehash-only recomputes both levels
+  assert.equal(jsonOut(run(dir, '--check', '--json')).status, 'fresh');
+  editJSON(join(W(dir), 'manifest.json'), (m) => { m.selectorQuality.lowConfidence = 999; m.selectorQuality.byTemplate[0].lowConfidence = 999; });
+  ok(run(dir, '--rehash-only'), 0);
+  const after = doc(dir, 'manifest.json').selectorQuality;
+  assert.deepEqual([after.lowConfidence, after.byTemplate[0].lowConfidence], [4, 4]);
+  // an older manifest without the field validates (optional at both levels)
+  const older = doc(dir, 'manifest.json');
+  delete older.selectorQuality.lowConfidence;
+  for (const row of older.selectorQuality.byTemplate) delete row.lowConfidence;
+  assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), older), []);
+  // a project without a mapping: no selectorQuality, no Selectors line, the --json count is null
+  const bare = copy('low-confidence-none');
+  const b = run(bare);
+  ok(b);
+  assert.ok(!/^Selectors/m.test(b.stdout), b.stdout);
+  assert.equal(jsonOut(run(bare, '--json')).counts.lowConfidence, null);
 });
 
 check('selectorQuality encode: each byTemplate row carries {decision, reason, vocabulary, recordedAt} — the recorded verdict (encoded, no-roundtrip, not-attempted, hand-authored) whatever the mapping\'s encoder-map count, not-applicable for a one-page template without a record, unrecorded for a multi-page one (encoder-map selectors or not); reason and recordedAt are the record\'s (capped reason); records read tolerantly, never written; counts; vocabulary resolved where block-origin reads it; records are never drift inputs; --rehash-only recomputes; validates', () => {

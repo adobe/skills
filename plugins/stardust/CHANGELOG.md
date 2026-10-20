@@ -41,6 +41,27 @@ the block's text, shipped as ordinary selectors with no quality line: `selectorQ
   are already counted in `variantsSummary.singleUse`. Schema: the value stays in the enum as deprecated
   (never written; an older manifest still validates), the descriptions say so; `done-check.mjs`'s
   `export_quality:null_selector_sections` is unchanged; the coverage contract and rollout SKILL.md follow.
+- **`selectorQuality.lowConfidence`, per template too, and `export_quality:low_confidence:<n>`**
+  (`workspace-manifest.mjs` `LOW_CONFIDENCE = 0.5`, `done-check.mjs`). A verified instance at 0 < confidence
+  < 0.5 is counted: block-origin's confidence is `coveredShare` — the share of the block's text the selected
+  element holds (images never text) — so below 0.5 the element holds a minority of that text and a fragment
+  (a heading, a 16-character span) anchors the selector, evidence against it as the block's origin, while
+  it resolves to one element and a per-selector client reads it as any other (the adopter places verified
+  instances only and carries the confidence-0 position fallbacks as gaps, so those stay in
+  `zeroConfidence`). The bar is block-origin's own `>0–<0.5` status bucket, so its status line, the
+  manifest and done-check agree. The figure rides `--json` (`counts.lowConfidence`, null without a
+  mapping) and a `Selectors` line in the printed status; done-check prints it right after
+  `zero_confidence` — informational, never a gap, hidden after handover with the other seven. On the
+  recorded export: 45 of 124 (33 under 0.25), where the manifest had said `zeroConfidence 0` and nothing
+  else. Schema: both fields optional (an older manifest validates); the adopter reads `zeroConfidence` and
+  `zeroConfidenceBlocks` by name and ignores keys it does not know. The coverage contract, rollout
+  SKILL.md, delivery-gates and the handoff contract's done-check row follow.
+- Tests: `workspace-manifest.test.mjs` — the mapping-decides cases flip to `unrecorded` / the record's
+  verdict, a `no-roundtrip` + forked record beside encoder-map selectors, no gap for a section that keeps
+  its selector, the retired value still validates and adds no note, the low-confidence buckets (0.009 …
+  0.499 in; 0, 0.5, unverified and unchecked out), `--json` and the printed line; `done-check.test.mjs` —
+  the new line's place, silence at 0 / null, hidden after handover. The scripts index is untouched (20551
+  bytes). No version bump.
 
 ## 0.36.x (stardust/s53-slot-grammar) — the slot value grammar where the slots are written; a provenance `src` is no image; a never-directed sibling is told its status (#176)
 
