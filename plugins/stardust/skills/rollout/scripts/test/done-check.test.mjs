@@ -21,8 +21,8 @@
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
 // than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows and module
 // blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps; so are
-// the export_quality figures the manifest carries (zero_confidence, null_selector_sections, judgement_to_fill,
-// encode_unrecorded), hidden after handover.
+// the export_quality figures the manifest carries (zero_confidence, low_confidence, null_selector_sections,
+// judgement_to_fill, encode_unrecorded), hidden after handover.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -180,6 +180,18 @@ check('export_quality: the manifest selectorQuality.encode.unrecorded count (mul
   const withGap = doneGaps({ ...base, ledgerLines: [], encodeUnrecorded: 1 });
   assert.ok(withGap.gaps.includes('rollout_incomplete') && !withGap.complete);
   assert.deepEqual(withGap.info, ['export_quality:encode_unrecorded:1']);
+});
+check('export_quality: the manifest selectorQuality.lowConfidence count (verified selectors at 0 < confidence < 0.5) is an info line when > 0, never a gap; 0 and null are silent; it rides right after zero_confidence and completeness never flips', () => {
+  const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
+  assert.deepEqual(doneGaps({ ...base, lowConfidence: 45 }).info, ['export_quality:low_confidence:45']);
+  assert.deepEqual(doneGaps({ ...base, lowConfidence: 0 }).info, [], '0: no line');
+  assert.deepEqual(doneGaps({ ...base }).info, [], 'null (no manifest / a manifest from before the field / not listed): no line');
+  const all = doneGaps({ ...base, zeroConfidence: 2, lowConfidence: 45, nullSelectorSections: 9, judgementToFill: 14, singleUseVariants: 8, encodeUnrecorded: 2, excluded: [{ slug: 'news', path: '/news' }] });
+  assert.deepEqual([all.complete, all.gaps, all.info], [true, [], ['export_quality:zero_confidence:2', 'export_quality:low_confidence:45', 'export_quality:null_selector_sections:9', 'export_quality:judgement_to_fill:14', 'export_quality:single_use_variants:8', 'export_quality:encode_unrecorded:2', 'pages_excluded:1: /news']]);
+  assert.deepEqual(doneGaps({ ...base, zeroConfidence: 0, lowConfidence: 45 }).info, ['export_quality:low_confidence:45'], 'a silent zero_confidence does not hide it');
+  const withGap = doneGaps({ ...base, ledgerLines: [], lowConfidence: 1 });
+  assert.ok(withGap.gaps.includes('rollout_incomplete') && !withGap.complete);
+  assert.deepEqual(withGap.info, ['export_quality:low_confidence:1']);
 });
 check('export_quality: the manifest variantsSummary.singleUse count is an info line when > 0, never a gap; 0 and null are silent; it rides last of the quality lines and completeness never flips', () => {
   const base = { pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] };
@@ -999,7 +1011,7 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const sha = (f) => `sha256:${createHash('sha256').update(readFileSync(join(proj, f))).digest('hex')}`;
   const { inputs } = inputHashes({ project: proj, contentDir: join(proj, 'content'), blocksDir: join(proj, 'blocks'), judgementFile: join(proj, WS, 'judgement.json'), ...blockOriginInputDirs(proj) });
   const outputs = Object.fromEntries(['stardust/rollout/coverage/blocks.json', 'stardust/rollout/coverage/pages.json', 'stardust/rollout/coverage/templates.json', `${WS}/mapping.json`].map((f) => [f, sha(f)]));
-  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }], encode: { encoded: 0, noRoundtrip: 0, notAttempted: 0, handAuthored: 1, notApplicable: 1, unrecorded: 2 } };
+  const selectorQuality = { instances: 2, sources: { encoderMap: 0, textAlignment: 0, position: 2 }, encoderCoverage: 0, zeroConfidence: 2, zeroConfidenceBlocks: [{ block: 'carousel', instances: 2 }], lowConfidence: 45, encode: { encoded: 0, noRoundtrip: 0, notAttempted: 0, handAuthored: 1, notApplicable: 1, unrecorded: 2 } };
   const sectionGaps = [{ page: 'home', template: 'home', section: 's2', reason: 'no-selector', blocks: ['carousel'] }];
   const judgement = { toFill: 23, byKind: { baseType: 3, purpose: 10, reuseGuidance: 10 } };
   const excluded = [{ url: 'https://example.com/faq.html', reason: 'crawl: HTTP 404' }];
@@ -1008,6 +1020,8 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const v = JSON.parse(run(proj, ['--offline', '--json']).stdout);
   assert.deepEqual(v.gaps.filter((g) => g.startsWith('export')), [], 'the export is fresh: no export_stale');
   assert.ok(v.info.includes('export_quality:zero_confidence:2'), JSON.stringify(v.info));
+  assert.ok(v.info.includes('export_quality:low_confidence:45'), JSON.stringify(v.info));
+  assert.equal(v.info.indexOf('export_quality:low_confidence:45'), v.info.indexOf('export_quality:zero_confidence:2') + 1, 'right after zero_confidence');
   assert.ok(v.info.includes('export_quality:null_selector_sections:1'), JSON.stringify(v.info));
   assert.ok(v.info.includes('export_quality:judgement_to_fill:23'), JSON.stringify(v.info));
   // the fixture's coverage files, rollout.json and manifest are not schema-shaped (no _provenance, bare rows): each is
@@ -1025,6 +1039,7 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:zero_confidence:2'), r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: export_quality:low_confidence:45'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:null_selector_sections:1'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:judgement_to_fill:23'), r.stdout);
   assert.ok(r.stdout.split('\n').includes('info: export_quality:encode_unrecorded:2'), r.stdout);

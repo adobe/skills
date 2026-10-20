@@ -24,12 +24,14 @@
  * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `variantsSummary`
  * {total, singleUse, blocks} recomputed from blocks.json's module rows (the variants, those a single instance uses —
  * each a catalog block for an adopter — and the blocks with any), a `selectorQuality` block derived from mapping.json
- * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count and byTemplate,
+ * when present (block-origin's countsOf: the selector sources, encoderCoverage, the zeroConfidence count, the
+ * lowConfidence count — verified selectors at 0 < confidence < 0.5, whose element holds a minority of the block's
+ * text — and byTemplate,
  * the same split per template, each row with the template's encode decision `encode {decision, reason, vocabulary,
  * recordedAt}` read from migrate's record <project>/stardust/migrate/encode/<template>.json — never written here —
  * and `selectorQuality.encode` counting the decisions), a `sectionGaps` list derived from mapping.json the same way
- * (sections an adopter
- * projecting per selector drops: a null selector, or a selector kept but the blocks lost to the projection), a
+ * (the sections with no source selector — what a client projecting per selector cannot emit; the export states its
+ * own properties, never a client's merge), a
  * `judgement` {toFill, byKind} derived from judgement.json (its own toFill[] fields still empty, by field), an
  * `excluded` [{url, reason}] list of the planned URLs that never became a page (the coverage's excluded[] rows, the
  * crawl's failed URLs in <stardust>/current/_crawl-log.json, state.json pages[] and plan.json steps with no pages[]
@@ -226,6 +228,16 @@ export function blockOriginInputDirs(project, capturesDir = join(project, 'stard
 
 // The top zero-confidence blocks named in the manifest; the whole count stays in `zeroConfidence`, this breakdown is capped.
 const SELECTOR_QUALITY_TOP = 10;
+// A verified selector below this confidence is low-confidence. block-origin's confidence is coveredShare — the share
+// of the block's text the selected element holds (images never text) — so below 0.5 the element holds a MINORITY of
+// that text: a fragment (a heading, a 16-character span) anchors the selector, evidence against it as the block's
+// origin, while it resolves to one element and a per-selector client reads it as any other (in a recorded hands-off
+// run 45 of 124 verified selectors, 33 of them under 0.25, shipped so with no line naming them). The bar is
+// block-origin's own `>0–<0.5` status bucket (countsOf), so all three agree on the bar — the manifest counts verified
+// instances only, block-origin's status line counts them all. The
+// confidence-0 position fallbacks are zeroConfidence, counted apart; an unverified instance is not a selector a client reads.
+export const LOW_CONFIDENCE = 0.5;
+const isLowConfidence = (i) => !!i && i.verified === true && typeof i.confidence === 'number' && i.confidence > 0 && i.confidence < LOW_CONFIDENCE;
 
 // The verdicts migrate's encode-attempt.mjs records (its VERDICTS), read here, never written; a record with any other
 // verdict is not a decision and counts as no record.
@@ -275,15 +287,16 @@ export function vocabularyOf(project, templateId) {
 }
 
 /**
- * One template's encode decision, in precedence order: `encoded` when the mapping holds ≥ 1 encoder-map selector for
- * it (the export's own evidence that a vocabulary drove it, record or not); else the recorded verdict (`encoded`,
- * `no-roundtrip`, `not-attempted`, `hand-authored` — the owner's decision as migrate recorded it); else
- * `not-applicable` for a template of at most one page (no sibling to encode, nothing to decide); else `unrecorded` —
- * a multi-page template whose encoder decision the export cannot show, the case a reviewer cannot interpret
+ * One template's encode decision — the record's verdict, never an inference from the mapping: `encoded`,
+ * `no-roundtrip`, `not-attempted` or `hand-authored` as migrate's encode-attempt.mjs recorded it (the one source that
+ * knows whether the encoder ran and what its round trip said; an encoder-map selector in the mapping proves a
+ * vocabulary matched the captures, not that the archetype round-tripped — in a recorded hands-off run a template
+ * with 50 encoder-map selectors carried a `no-roundtrip` record and nine forked siblings, and the manifest read
+ * `encoded`); else `not-applicable` for a template of at most one page (no sibling to encode, nothing to decide);
+ * else `unrecorded` — a multi-page template with no record at all, the case a reviewer cannot interpret
  * (done-check.mjs counts these as export_quality:encode_unrecorded). Pure.
  */
-export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = {}) {
-  if (encoderMap > 0) return 'encoded';
+export function encodeDecisionOf({ record = null, pages = 0 } = {}) {
   if (record && ENCODE_VERDICTS.includes(record.verdict)) return record.verdict;
   return pages > 1 ? 'unrecorded' : 'not-applicable';
 }
@@ -293,12 +306,14 @@ export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = 
  * rewritten): instances, the selector sources ({encoderMap, textAlignment, imageAlignment, position}), encoderCoverage
  * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — position fallbacks: no
  * encoder-map marker, no text match, no uniquely matched image), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, encode}], one row
+ * sorted), lowConfidence (the verified instances at 0 < confidence < LOW_CONFIDENCE — selectors a per-selector client
+ * reads whose element holds a minority of the block's text; done-check.mjs surfaces it as export_quality:low_confidence),
+ * byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, lowConfidence, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
  * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
- * applicable (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under
- * `project`; vocabularyOf names the map; `reason` and `recordedAt` are the record's only when the decision IS its
- * verdict — a decision the mapping or the page count made carries null for both) so `encoderCoverage` reads with its
+ * applicable (encodeDecisionOf over migrate's record under `project` and the template's page count — never the
+ * encoder-map count; vocabularyOf names the map; `reason` and `recordedAt` are the record's, null without one — a
+ * decision the page count made) so `encoderCoverage` reads with its
  * reason) and `encode` ({encoded, noRoundtrip, notAttempted, handAuthored, notApplicable, unrecorded}, the decisions
  * counted). null when there is no readable
  * mapping (nothing shipped to measure). Derived, so --check keeps it out of the drift classification (it hashes only
@@ -321,15 +336,15 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     const slugs = Array.isArray(t.pages) ? t.pages : insts.map((i) => i && i.slug);
     const pages = new Set(slugs.filter((s) => typeof s === 'string' && s)).size;
     const record = encodeRecordOf(project, template);
-    const decision = encodeDecisionOf({ record, encoderMap, pages });
-    // the record's stamp and reason belong to the decision only when the decision is the record's verdict
-    const recorded = record && record.verdict === decision ? record : null;
+    // the record decides; its stamp and reason travel with it (a decision the page count made carries null for both)
+    const decision = encodeDecisionOf({ record, pages });
     encode[ENCODE_COUNTER[decision]] += 1;
     return {
       template, instances: insts.length,
       encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
-      encode: { decision, reason: recorded ? recorded.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: recorded ? recorded.recordedAt : null },
+      lowConfidence: insts.filter(isLowConfidence).length,
+      encode: { decision, reason: record ? record.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
@@ -338,24 +353,23 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
+    lowConfidence: byTemplate.reduce((n, t) => n + t.lowConfidence, 0),
     byTemplate,
     encode,
   };
 }
 
 /**
- * The sections an adopter projecting mapping.json per selector would drop, derived from mapping.json (NOT a rewrite of it,
- * like selectorQuality). Two reasons, from block-origin's section/block model. `no-selector` is exact (a property of the
- * export); `blocks-unprojected` is a PREDICTION of the adopter's current per-selector merge (each variant homes to its
- * first emitted section), so it can under- or over-count a given adopter's real losses.
- *   - 'no-selector'       a template section whose `selector` is null/absent (generalise found no selector resolving to
- *                         its element on any page): the adopter does not emit it — its blocks go with it.
- *   - 'blocks-unprojected' a section that HAS a selector (so it is emitted) and declares blocks (`blocks[]` non-empty), yet
- *                         no block homes to it under a per-selector projection — the adopter merges block instances by
- *                         variant into the FIRST emitted section carrying that variant, so a sibling section sharing a
- *                         variant, or one whose only instances were emitted unsectioned, keeps its selector but loses its
- *                         blocks. `home` is each variant's first `blocks[]` entry; a section is homed when some variant's
- *                         home is it.
+ * The mapping sections with no source selector, derived from mapping.json (NOT a rewrite of it, like selectorQuality):
+ * reason `no-selector` — a template section whose `selector` is null/absent (generalise found no selector resolving to
+ * its element on any page), so a client projecting per selector cannot emit it and its declared blocks go with it. A
+ * property of the export, exact. The second reason this list once carried, `blocks-unprojected` (a section with a
+ * selector whose declared blocks no variant's first entry homed to), was a PREDICTION of one adopter's per-selector
+ * merge: a recorded hands-off run's export declared seven, and the adopter that read it — one that names a block in
+ * every section that places one — reconciled all seven to zero with a note. An export states its own properties,
+ * never a client's behaviour, so the reason is retired: the writer never emits it (a reader of an older manifest may
+ * still meet the value; the schema keeps it as deprecated), and the one-off variants behind such sections are
+ * counted in variantsSummary.singleUse.
  * Each gap: { page (the section's first page, else the templateId), template (templateId), section (id), reason,
  * blocks (the declared block names dropped) }. Entries in template then section emission order. null (field omitted) when
  * there is no readable mapping; [] when a mapping has no such section. Derived, so --check never counts it as drift and
@@ -368,35 +382,19 @@ export function sectionGapsOf(mappingFile) {
   if (!mapping || !Array.isArray(mapping.templates)) return null;
   const gaps = [];
   for (const t of mapping.templates) {
-    const sections = Array.isArray(t.sections) ? t.sections : [];
-    const blocks = Array.isArray(t.blocks) ? t.blocks : [];
-    const emitted = new Set(sections.filter((s) => s && s.selector).map((s) => s.id));
-    const home = new Map();
-    for (const b of blocks) {
-      if (!b || home.has(b.variantId)) continue;
-      home.set(b.variantId, b.section && emitted.has(b.section) ? b.section : null);
-    }
-    const homed = new Set([...home.values()].filter((id) => id != null));
-    for (const s of sections) {
-      if (!s) continue;
+    for (const s of (Array.isArray(t.sections) ? t.sections : [])) {
+      if (!s || s.selector) continue;
       const page = (Array.isArray(s.pages) && s.pages[0]) || t.templateId;
-      const blockNames = Array.isArray(s.blocks) ? s.blocks : [];
-      if (!s.selector) gaps.push({ page, template: t.templateId, section: s.id, reason: 'no-selector', blocks: [...blockNames] });
-      else if (blockNames.length && !homed.has(s.id)) gaps.push({ page, template: t.templateId, section: s.id, reason: 'blocks-unprojected', blocks: [...blockNames] });
+      gaps.push({ page, template: t.templateId, section: s.id, reason: 'no-selector', blocks: Array.isArray(s.blocks) ? [...s.blocks] : [] });
     }
   }
   return gaps;
 }
 
-/** Owner handover sentences for the section gaps, counted by reason; [] when there are none. */
+/** The owner handover sentence for the section gaps (the no-selector count; any other reason adds none); [] when there are none. */
 export function sectionGapNotes(gaps) {
-  if (!Array.isArray(gaps) || !gaps.length) return [];
-  const nulls = gaps.filter((g) => g.reason === 'no-selector').length;
-  const unprojected = gaps.filter((g) => g.reason === 'blocks-unprojected').length;
-  const notes = [];
-  if (nulls) notes.push(`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`);
-  if (unprojected) notes.push(`${unprojected} section(s) keep their selector but lose their blocks to a per-selector projection — see sectionGaps`);
-  return notes;
+  const nulls = Array.isArray(gaps) ? gaps.filter((g) => g && g.reason === 'no-selector').length : 0;
+  return nulls ? [`${nulls} section(s) have no source selector; an adopter projecting per selector drops them — see sectionGaps`] : [];
 }
 
 /** A judged field is still open when it is empty: null/'', an empty array, or an object all of whose values are empty (e.g. an untouched reuseGuidance {suitableFor:[], notSuitableFor:[]}). */
@@ -708,6 +706,9 @@ function main(argv) {
   });
   const mods = [...moduleBlocks(coverage.blocks).values()];
   const variants = mods.flatMap((b) => (Array.isArray(b.variants) ? b.variants : []));
+  // Derived from mapping.json (not a rewrite of it), so it is recomputed on a re-hash and never counts as drift
+  // (--check hashes only inputs/outputs); computed here so the --json counts and the printed line carry its figures.
+  const selectorQuality = selectorQualityOf(mappingFile, { project });
   const counts = {
     templates: coverage.templates.templates.length,
     archetypes: templateGroups.archetypes,
@@ -718,6 +719,7 @@ function main(argv) {
     singleUseVariants: variantsSummary.singleUse,
     instances: variants.reduce((n, v) => n + (typeof v.instances === 'number' ? v.instances : 0), 0),
     excluded: excluded.length,
+    lowConfidence: selectorQuality ? selectorQuality.lowConfidence : null,
   };
 
   const report = (status, hashes, extra = {}) => {
@@ -732,6 +734,7 @@ function main(argv) {
       console.log(`rollout workspace-manifest → ${shown}`);
       console.log('='.repeat(60));
       console.log(`Coverage      ${tpl} · ${counts.pages} pages (${withoutContent} without a content file) · ${counts.blocks} blocks (${counts.variants} variants, ${counts.singleUseVariants} single-use, ${counts.instances} instances)`);
+      if (selectorQuality) console.log(`Selectors     ${selectorQuality.instances} instances · ${selectorQuality.zeroConfidence} zero-confidence · ${selectorQuality.lowConfidence} low-confidence (verified, 0 < confidence < ${LOW_CONFIDENCE})`);
       console.log(`Placeholders  ${placeholders.length}${placeholders.length ? ' (listed in manifest.json)' : ''}`);
       if (excluded.length) console.log(`Excluded      ${excluded.length} planned URL(s) never became a page (manifest.json excluded[])`);
       if (handover) console.log(`Handover      forced (detected from ${handover.detectedFrom})${degraded ? `; degraded: ${extra.degraded.inputs.length} input(s) changed` : ''}`);
@@ -840,9 +843,8 @@ function main(argv) {
     const union = [...new Set([...(priorManifest.degraded?.inputs || []), ...changed])].sort(byStr);
     if (union.length) degraded = { reason: `forced run after handover (${handover.detectedFrom}): inputs differ from the last manifest before it`, inputs: union };
   }
-  // Derived from mapping.json / judgement.json (not a rewrite of either), so all are recomputed on a re-hash and
-  // never count as drift (--check hashes only inputs/outputs).
-  const selectorQuality = selectorQualityOf(mappingFile, { project });
+  // Derived from mapping.json / judgement.json (not a rewrite of either, like selectorQuality above), so all are
+  // recomputed on a re-hash and never count as drift (--check hashes only inputs/outputs).
   const sectionGaps = sectionGapsOf(mappingFile);
   const judgement = judgementDebtOf(judgementFile);
   // unknown is not a judged base type: the owner must name these before the adopter emits them as judged metadata.

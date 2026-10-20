@@ -4,6 +4,65 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s54-export-truth) — the export states its own facts: the encode decision is the record's, section gaps stop predicting the adopter, low-confidence selectors are counted (#177)
+
+In a recorded hands-off run the migration-workspace export was complete and self-consistent (outputs 4/4,
+124/124 selectors verified, 7/7 files schema-valid) and still misstated three things the reviewing client
+reads first. The ten-page template's `encode.decision` read `encoded` with `reason` and `recordedAt` null
+while migrate's record said `no-roundtrip` (round trip exit 2, nine differences; nine siblings forked from
+the archetype) — #173 let one encoder-map selector in the mapping decide before the record, and a
+vocabulary that matched the captures is not an archetype that round-tripped. `sectionGaps` declared seven
+`blocks-unprojected` sections and the handover note said they "lose their blocks", yet the adopter that
+read the export names a block in every section that places one and reconciled all seven to zero with a
+note — #164's reason modelled one client's per-selector merge, not a property of the export. And 45 of the
+124 verified selectors (33 of them under 0.25) were text alignments whose element holds less than half of
+the block's text, shipped as ordinary selectors with no quality line: `selectorQuality` counted confidence
+0 only.
+
+- **The encode decision is the record's verdict, never the mapping's inference** (`workspace-manifest.mjs`
+  `encodeDecisionOf`): `encoded` / `no-roundtrip` / `not-attempted` / `hand-authored` as
+  `migrate/encode-attempt.mjs` wrote it — the four verdicts it writes, and the one source that knows
+  whether the encoder ran and what its round trip said — else `not-applicable` (a template of at most one
+  page, no record) or `unrecorded` (a multi-page template with no record at all; `done-check.mjs`'s
+  `export_quality:encode_unrecorded` keeps that meaning). `reason` and `recordedAt` always travel with the
+  record. The mapping's encoder-map count stays on the row (`encoderMap`, `encoderCoverage`) as what it
+  is: evidence that a vocabulary matched. On the recorded export the ten-page row now reads
+  `no-roundtrip` with the round-trip line as its reason and the record's stamp; the counters move from
+  `encoded 1 · notAttempted 11` to `noRoundtrip 1 · notAttempted 11`. Schema: the enum is unchanged (an
+  older manifest still validates), the descriptions state the rule; the coverage contract, rollout
+  SKILL.md, the handoff contract's done-check row and done-check's header follow.
+- **`sectionGaps` lists only `no-selector` sections; `blocks-unprojected` is retired** (`sectionGapsOf`,
+  `sectionGapNotes`). A section with no source selector is a property of the export — a client projecting
+  per selector cannot emit it. The retired reason predicted one adopter's per-selector merge (each variant
+  homed to its first emitted section) and was wrong for the next: the recorded export's seven declared
+  gaps are now zero and the "lose their blocks" handover note is gone. The adopter's reader passes any
+  reason through and reconciles against what it sees, so an export without the value changes nothing on
+  its side; what the reason tried to express is the adopter's to report, and the one-off variants behind it
+  are already counted in `variantsSummary.singleUse`. Schema: the value stays in the enum as deprecated
+  (never written; an older manifest still validates), the descriptions say so; `done-check.mjs`'s
+  `export_quality:null_selector_sections` is unchanged; the coverage contract and rollout SKILL.md follow.
+- **`selectorQuality.lowConfidence`, per template too, and `export_quality:low_confidence:<n>`**
+  (`workspace-manifest.mjs` `LOW_CONFIDENCE = 0.5`, `done-check.mjs`). A verified instance at 0 < confidence
+  < 0.5 is counted: block-origin's confidence is `coveredShare` — the share of the block's text the selected
+  element holds (images never text) — so below 0.5 the element holds a minority of that text and a fragment
+  (a heading, a 16-character span) anchors the selector, evidence against it as the block's origin, while
+  it resolves to one element and a per-selector client reads it as any other (the adopter places verified
+  instances only and carries the confidence-0 position fallbacks as gaps, so those stay in
+  `zeroConfidence`). The bar is block-origin's own `>0–<0.5` status bucket, so its status line, the
+  manifest and done-check agree. The figure rides `--json` (`counts.lowConfidence`, null without a
+  mapping) and a `Selectors` line in the printed status; done-check prints it right after
+  `zero_confidence` — informational, never a gap, hidden after handover with the other seven. On the
+  recorded export: 45 of 124 (33 under 0.25), where the manifest had said `zeroConfidence 0` and nothing
+  else. Schema: both fields optional (an older manifest validates); the adopter reads `zeroConfidence` and
+  `zeroConfidenceBlocks` by name and ignores keys it does not know. The coverage contract, rollout
+  SKILL.md, delivery-gates and the handoff contract's done-check row follow.
+- Tests: `workspace-manifest.test.mjs` — the mapping-decides cases flip to `unrecorded` / the record's
+  verdict, a `no-roundtrip` + forked record beside encoder-map selectors, no gap for a section that keeps
+  its selector, the retired value still validates and adds no note, the low-confidence buckets (0.009 …
+  0.499 in; 0, 0.5, unverified and unchecked out), `--json` and the printed line; `done-check.test.mjs` —
+  the new line's place, silence at 0 / null, hidden after handover. The scripts index is untouched (20551
+  bytes). No version bump.
+
 ## 0.36.x (stardust/s53-slot-grammar) — the slot value grammar where the slots are written; a provenance `src` is no image; a never-directed sibling is told its status (#176)
 
 In a recorded hands-off run the prep session (`extract --prep`) wrote the typed slots of

@@ -765,16 +765,20 @@ The manifest's `selectorQuality` records how the source selectors were found —
 the `zeroConfidence` count (position fallbacks: no encoder-map marker, no text match, no uniquely matched
 image) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
 which fell back). A reviewer reads each row's `encoderCoverage` together with its `encode.decision`
-and `encode.reason` — `encoded`, `hand-authored`, `not-attempted`, `no-roundtrip`, `not-applicable`
-or `unrecorded`, with the owner's why from migrate's encode record — so a 0 reads as "tried and
+and `encode.reason` — the verdict migrate's encode record holds (`encoded`, `hand-authored`,
+`not-attempted`, `no-roundtrip`; never inferred from encoder-map selectors: a vocabulary that matched
+is not an archetype that round-tripped), `not-applicable` (one page) or `unrecorded` (no record),
+with the owner's why — so a 0 reads as "tried and
 refused", "never applicable" or "never decided", not a guess. `done-check.mjs` surfaces the
-`unrecorded` count as the `export_quality:encode_unrecorded` info line and `zeroConfidence` as
-`export_quality:zero_confidence`; pass
+`unrecorded` count as the `export_quality:encode_unrecorded` info line, `zeroConfidence` as
+`export_quality:zero_confidence` and `lowConfidence` — verified selectors whose element holds less
+than half of the block's text (0 < confidence < 0.5); they resolve and ship, so only this line names
+them — as `export_quality:low_confidence`; pass
 `block-origin.mjs --max-zero-confidence <n>` to fail the run (exit 3) when more than `n` land at confidence 0.
-Its `sectionGaps` (derived the same way) lists the sections an adopter projecting per selector
-drops: `no-selector` (no source selector — exact) and `blocks-unprojected` (a selector kept but its
-blocks lost). The latter models the adopter's per-selector merge — each variant homes to its first
-emitted section — so it can under- or over-count a given adopter's real losses. `done-check.mjs`
+Its `sectionGaps` (derived the same way) lists the sections with no source selector (`no-selector`
+— exact: a client projecting per selector cannot emit them). The export states its own properties,
+never a client's merge: the retired `blocks-unprojected` reason predicted one adopter's projection
+and was wrong for the next. `done-check.mjs`
 surfaces the no-selector count as the `export_quality:null_selector_sections` info line, and the
 manifest's `judgement` `{toFill, byKind}` (the judgement fields still empty, distinct from the coverage
 placeholders) as `export_quality:judgement_to_fill`, and its `variantsSummary`
