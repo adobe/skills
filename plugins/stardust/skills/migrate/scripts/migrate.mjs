@@ -72,7 +72,10 @@
  *   (state.mjs set <slug…> --representative <archetype-slug>), else the single approved/migrated
  *   page of the same type that has a source file — zero or several: refused (strict branch)
  *   until one is named. Source HTML: --source, else page.prototypePath, else
- *   <proto-dir>/<slug>-proposed.html; an A / B page without one is refused (strict source). A
+ *   <proto-dir>/<slug>-proposed.html; an A / B page without one is refused (strict source — a page
+ *   whose status is not directed is told so, with its status: an extracted one gets state.mjs advance
+ *   <slug> --to directed, then render — or render --from-archetype <proto> --capture <page.json> first;
+ *   a prototyped / approved one its prototype or --source). A
  *   directed page with its own source HTML renders A' from it; without one (or with
  *   --from-archetype) it is an A' FORK of the archetype's source HTML (below). The source
  *   refusals on A': an explicit --source <slug>=<file> that does not exist (`strict source — no
@@ -934,8 +937,15 @@ export const namedArchetype = (run, page) => run.archetypes.get(page.slug) || (p
 export function chooseBranch(run, page) {
   const source = sourceFor(run, page); const own = isFile(source);
   const noSource = () => new Refusal(page.slug, 'source', `no source HTML at ${source}`, 'pass --source <slug>=<file> or build the page first');
+  // Branch A with no source HTML and no --source: the refusal names the status — a page never advanced to directed is its own
+  // archetype here, and a recorded hands-off run read the bare "no source HTML" as a missing sibling prototype.
+  const notDirected = () => {
+    const { slug, status } = page; const archetypeFix = `build the page's prototype or pass --source ${slug}=<file>`;
+    const siblingFix = `a sibling of an archetype: node stardust/scripts/stardust/state.mjs advance ${slug} --to directed, then render ${slug} again (it forks the archetype's prototype; render --from-archetype ${toPosix(run.protoDir)}/<archetype>-proposed.html --capture ${toPosix(join(run.currentDir, 'pages', `${slug}.json`))} first writes the sibling's own source HTML)`;
+    return new Refusal(slug, 'source', `no source HTML at ${source} (status ${status}: branch A renders the page's own prototype — only a directed page forks its archetype)`, status === 'extracted' ? `${siblingFix}; an archetype: ${archetypeFix}` : archetypeFix);
+  };
   if (run.branchB.has(page.slug)) { if (!own) throw noSource(); return { branch: 'B', tier: 'thin', archetype: null, source, fork: false }; }
-  if (page.status !== 'directed') { if (!own) throw noSource(); return { branch: 'A', tier: 'archetype', archetype: null, source, fork: false }; }
+  if (page.status !== 'directed') { if (!own) throw run.sources.has(page.slug) ? noSource() : notDirected(); return { branch: 'A', tier: 'archetype', archetype: null, source, fork: false }; }
   if (run.sources.has(page.slug) && !own) throw noSource(); // a named --source that is missing is a mistake, never a fork
   const flagged = run.archetypes.get(page.slug); const named = namedArchetype(run, page);
   let archetype = null;

@@ -550,6 +550,15 @@ check('an explicit --source <slug>=<file> that does not exist is a strict source
   assert.doesNotMatch(r.out, /fork of/);
   assert.deepEqual([read(`${OUT}/guides/alpha/index.html`), read(`${OUT}/guides/alpha/_meta.json`)], before);
 });
+check('a page never advanced to directed with no source HTML is a strict source refusal naming its status and the advance step (branch A, never a fork); an approved page without its prototype is told to build it; plan prints the same', () => {
+  const r = run(['render', 'contact']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused contact: strict source — no source HTML at stardust\/prototypes\/contact-proposed\.html \(status extracted: branch A renders the page's own prototype — only a directed page forks its archetype\) — a sibling of an archetype: node stardust\/scripts\/stardust\/state\.mjs advance contact --to directed, then render contact again \(it forks the archetype's prototype; render --from-archetype stardust\/prototypes\/<archetype>-proposed\.html --capture stardust\/current\/pages\/contact\.json first writes the sibling's own source HTML\); an archetype: build the page's prototype or pass --source contact=<file>$/m);
+  assert.match(r.out, /^rendered 0, unchanged 0, refused 1, passthrough 0 /m); assert.doesNotMatch(r.out, /fork of/); assert.ok(!has(`${OUT}/contact/index.html`));
+  const a = run(['render', 'guide-draft']); assert.equal(a.status, 2);
+  assert.match(a.err, /^refused guide-draft: strict source — no source HTML at stardust\/prototypes\/guide-draft-proposed\.html \(status approved: branch A renders the page's own prototype — only a directed page forks its archetype\) — build the page's prototype or pass --source guide-draft=<file>$/m);
+  const p = run(['plan', 'contact']); assert.equal(p.status, 2);
+  assert.match(p.err, /^refused contact: strict source — no source HTML at stardust\/prototypes\/contact-proposed\.html \(status extracted: .* advance contact --to directed, /m);
+});
 check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); the archetype's hreflang alternates go", () => {
   const arch = '<html lang="en"><head><title>Arch</title>\n<meta name="description" content="Arch desc.">\n<link rel="alternate" hreflang="de" href="https://example.test/de/guides/">\n<link rel="alternate" hreflang="x-default" href="https://example.test/guides/">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head><body><main></main></body></html>';
   const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });

@@ -338,8 +338,13 @@ map, then the deploy media ledger — the rules, the fallback line and the
 refusals: `reference/template-and-module-rendering.md` § Path A′ Step 2).
 An archetype without `data-slot` marks is not refused: render derives
 them from its sections (`<section>-<tag>` names; the run prints `slots
-derived (no data-slot markers)`). The one source refusal is an archetype
-with no proposed HTML; a slot with no value is `strict slots`, and so is
+derived (no data-slot markers)`). The one source refusal on a `directed`
+page is an archetype with no proposed HTML. A page not yet `directed` has
+no A′ at all: `render <slug>` takes branch A and refuses `strict source`
+naming its status and the step — `state.mjs advance <slug> --to
+directed`, then render again (`render --from-archetype … --capture …`
+first when the sibling needs its own source HTML). A slot with no value
+is `strict slots`, and so is
 a value outside the slot grammar (`../extract/reference/prep-mode.md`
 § 4: a nested object, a `text` that is an object, a provenance key
 inside a value — the refusal names the slot and the key, `headline (src
