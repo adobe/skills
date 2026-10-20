@@ -30,6 +30,13 @@
  * sidecar need declare them); a default-content row the pages whose sidecar `modules[]` declare it (default
  * content leaves no block record).
  *
+ * Delivery status is a fact of the documents, not of the bookkeeping: a module row the delivered documents use
+ * (`instanceCount` > 0) whose code is under the blocks dir reads `converted` without a conversion record
+ * (`convertedAt` null: derived, not recorded; a recorded conversion keeps its time). `pending` therefore means:
+ * planned by a sidecar and shown by no delivered document yet, or shown by one while `<blocks>/<name>/<name>.{js,css}`
+ * is missing (a recorded hands-off run shipped 13 live, gated blocks as `pending` because no unit recorded them).
+ * A status update-coverage.mjs recorded (converted, deployed, verified, failed, not-delivered) is never overridden.
+ *
  * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
  * that needs no block) keeps its name whatever its status. A second run writes the same bytes
  * except timestamps.
@@ -209,34 +216,7 @@ const withDelivered = (row, name) => (row.kind === 'module' && row.delivery.edsB
   ? { ...row, ...deliveredFields(name) }
   : row);
 
-const planned = [...agg.keys()].map((id) => {
-  const kind = kindOf(id);
-  const p = prior.get(id);
-  const delivery = (p && p.delivery) || {
-    status: 'pending',
-    edsBlockName: kind === 'chrome' ? null : edsName(id),
-    blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
-    convertedAt: null,
-  };
-  // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
-  // mapping, which is a resolved decision (no block to build) even while its status reads pending.
-  if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
-    delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
-    delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
-  }
-  const row = {
-    id,
-    label: id,
-    kind,
-    signature: `${kind}:${id}`,
-    source: null,
-    ...usageOf(id, kind, delivery.edsBlockName || edsName(id)),
-    delivery,
-  };
-  return withDelivered(row, delivery.edsBlockName || edsName(id));
-});
-
-// Delivered blocks under the blocks dir that no planned row covers (by id, EDS name or edsBlockName).
+// The blocks dir: every subdirectory <name> holding <name>.js or <name>.css is a delivered block's code.
 const blocksDirExists = existsSync(BLOCKS_DIR) && statSync(BLOCKS_DIR).isDirectory();
 const dirNames = blocksDirExists
   ? readdirSync(BLOCKS_DIR, { withFileTypes: true })
@@ -244,6 +224,47 @@ const dirNames = blocksDirExists
     .map((d) => d.name)
     .sort((x, y) => x.localeCompare(y))
   : [];
+const hasCode = new Set(dirNames);
+
+const derived = []; // module rows read converted from the delivered documents + their code, no record needed
+const planned = [...agg.keys()].map((id) => {
+  const kind = kindOf(id);
+  const p = prior.get(id);
+  const delivery = { ...((p && p.delivery) || {
+    status: 'pending',
+    edsBlockName: kind === 'chrome' ? null : edsName(id),
+    blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
+    convertedAt: null,
+  }) };
+  // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
+  // mapping, which is a resolved decision (no block to build) even while its status reads pending.
+  if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
+    delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
+    delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
+  }
+  const name = delivery.edsBlockName || edsName(id);
+  const usage = usageOf(id, kind, name);
+  // Delivery is a fact of the documents, not of the bookkeeping: a module block the delivered documents use
+  // (instanceCount > 0, counted from pages.json `delivered.blocks`) whose code is under the blocks dir reads
+  // `converted` without a conversion record (convertedAt stays null: derived, not recorded). A block no
+  // document shows, one whose code is missing, or any recorded status other than pending stays as recorded.
+  if (kind === 'module' && delivery.status === 'pending' && name !== DEFAULT_CONTENT && usage.instanceCount > 0 && hasCode.has(name)) {
+    delivery.status = 'converted';
+    derived.push(name);
+  }
+  const row = {
+    id,
+    label: id,
+    kind,
+    signature: `${kind}:${id}`,
+    source: null,
+    ...usage,
+    delivery,
+  };
+  return withDelivered(row, name);
+});
+
+// Delivered blocks under the blocks dir that no planned row covers (by id, EDS name or edsBlockName).
 // header and nav are one chrome (both deliver the canon header): either name covers the other.
 const SAME_CHROME = ['header', 'nav'];
 const withChromeAlias = (names) => names.flatMap((n) => (SAME_CHROME.includes(n) ? SAME_CHROME : [n]));
@@ -320,4 +341,5 @@ const unmatched = [...delivered.keys()].filter((n) => !named.has(n)).sort(byStr)
 if (unmatched.length) console.log(`Unmatched        ${unmatched.length} delivered block name(s) with no module row: ${unmatched.join(', ')} — record the conversion (update-coverage.mjs --block <id> --eds-name <name>)`);
 if (!blocksDirExists) console.log(`Note             no ${BLOCKS_SHOWN}/ directory — no delivered block registered from it (run from the project root, or pass --blocks <dir>)`);
 if (registered.length) console.log(`Registered  ${registered.length} block(s) from ${BLOCKS_SHOWN}/ that no page lists: ${registered.map((b) => b.id).join(', ')}`);
+if (derived.length) console.log(`Converted   ${derived.length} planned block(s) read converted from the delivered documents and ${BLOCKS_SHOWN}/ (no record needed): ${derived.sort(byStr).join(', ')}`);
 if (templatesWritten) console.log('Templates        judged names/descriptions refreshed in templates.json');

@@ -44,7 +44,10 @@
  *                                  `flow` replica, or any coverage row carrying delivery.gate; else skipped and the
  *                                  count reads `-`), or — when the source path (source.sourceUrl) differs from the
  *                                  delivered URL — a line for the source path in the redirects sheet or the
- *                                  redirects-cdn.tsv beside it
+ *                                  redirects-cdn.tsv beside it. A row without source.sourceUrl is synthesized
+ *                                  (update-coverage.mjs --new: built outside the migrated tree, nothing to gate
+ *                                  against, no schema sidecar) and is not judged here — gate-all skips it the
+ *                                  same way; a skipped line counts it, the synthesized_pages info line names it
  *   unit_unproven:<unit>: <why>    one per done unit of progress.json (kind not foundation or final, by name)
  *                                  whose units/<unit>.paths is missing, or lists a page not proven: proven =
  *                                  `delivery.gate.passByWidth[w] === true` (update-coverage.mjs keeps each
@@ -81,14 +84,25 @@
  *                                  them (workspace-manifest.mjs lists them under handoverNotes)
  *   rollout_incomplete             the last stardust:rollout I-dashboard ledger line is not an `end`
  * A check that did not run is named after the gaps, one `skipped: <what>` line each (JSON: skipped[]): the live
- * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the redirects
- * of delivered rows without source.sourceUrl; the sidecar gate widths in a flow without a gate table; the per-width
+ * probe under --offline; the units, when progress.json is missing, is not JSON or has no units map; the sidecars
+ * of delivered rows without source.sourceUrl (synthesized); the sidecar gate widths in a flow without a gate table; the per-width
  * verdicts of done units' rows gated before passByWidth (proven on the last width's pass); the export once a client
  * took it over (workspace/handover.json, or a manifest recording a handover).
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
  * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude);
- * blocks_pending:N: <names> — record each, the module blocks of coverage/blocks.json delivered (instances in the
- * content files) without a conversion record (update-coverage.mjs --block … converted|deployed|verified|not-delivered);
+ * synthesized_pages:N: <paths> — the coverage rows without source.sourceUrl (update-coverage.mjs --new: a search
+ * results page, a landing page, anything built outside the migrated tree): no source to gate against and no schema
+ * sidecar, so sidecars_missing never counts them and gate-all skips them; their status still counts like any row's
+ * (pages_unfinished until verified — verify.mjs --all proves them live); never retired by hand from pages.json;
+ * pages_case_collisions:N: <path (file ↔ alternate)> — the coverage pages.json caseCollisions[] rows (inventory.mjs):
+ * a page whose content file exists under its own case and under its delivered-path fold — the exact file is read,
+ * the two collide once delivered, so one of them must go (the manifest lists the same pairs as a placeholder);
+ * blocks_pending:N: <names> — the module blocks of coverage/blocks.json the delivered documents show (instances in
+ * the content files) while blocks.json reads `pending` — no block code under blocks/<name>/ for blocks.mjs to derive
+ * `converted` from, or a blocks.json older than that rule — or `failed` (a recorded failure the documents
+ * contradict): build the code (blocks.mjs then reads it converted) or record each (update-coverage.mjs --block …
+ * converted|not-delivered). One definition (workspace-manifest.mjs pendingBlocks) for this line and the manifest's
+ * `blocks[].delivery` placeholder;
  * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
  * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent);
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence
@@ -115,7 +129,8 @@
  * client's validator does; a `skipped:` line names the schemas dir when none is found beside the scripts (plugin
  * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
  * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each
- * with its recorded reason — workspace-manifest.mjs --help) when N>0; all eight hidden once the export is handed over.
+ * with its recorded reason — workspace-manifest.mjs --help) when N>0; all eight hidden once the export is handed over
+ * (pages_excluded, synthesized_pages, pages_case_collisions and blocks_pending read the coverage, not the export, and stay).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -140,6 +155,9 @@ const statusOf = (p) => (p.delivery && p.delivery.status) || 'pending';
 const pathOf = (p) => p.path || `/${p.slug}`;
 const listed = (paths) => (paths.length > LIST_MAX ? `${paths.slice(0, LIST_MAX).join(', ')}, … (+${paths.length - LIST_MAX})` : paths.join(', '));
 const isDelivered = (p) => DELIVERED.has(statusOf(p));
+// a row without source.sourceUrl is synthesized (update-coverage.mjs --new): nothing to gate against, no schema sidecar;
+// gate-all's roster filter (coveragePages: `delivered(r) && r.source && r.source.sourceUrl`) draws the same line
+const hasSource = (p) => typeof (p && p.source && p.source.sourceUrl) === 'string' && p.source.sourceUrl !== '';
 const gateOf = (p) => (p && p.delivery && p.delivery.gate) || null;
 // a gate with no verdict (a polluted capture): its reasons as a non-empty string, or true
 const isInconclusive = (p) => { const i = (gateOf(p) || {}).inconclusive; return i === true || (typeof i === 'string' && i !== ''); };
@@ -350,31 +368,28 @@ export const WIDTHS_SKIP = 'sidecars_missing gate widths: no published-origin ga
  * width (only when `judgeWidths`; else skipped and the count reads `-`), and — when the pathname of
  * source.sourceUrl differs from its delivered URL (publicUrl) — a redirects line whose source is that pathname
  * (`redirects` = the text of the sheet and of redirects-cdn.tsv; decodeURI forms compared too). Rows without
- * source.sourceUrl are not judged for redirects; their count is skipped. Pure.
+ * source.sourceUrl (synthesized) are not judged at all — no source to gate against, no schema sidecar, no redirect
+ * line; their count is one skipped line, doneGaps names them under synthesized_pages. Pure.
  */
 export function sidecarGap({ pages = [], widths = DEFAULT_WIDTHS, schemaExists = () => false, redirects = '', judgeWidths = true } = {}) {
   const sources = redirectSources(redirects);
   const hasLine = (path) => sources.some((s) => s === path || decoded(s) === decoded(path));
   const count = { schema: 0, gate: 0, redirects: 0 };
   const missing = [];
-  let unjudged = 0;
+  let synthesized = 0;
   for (const p of pages.filter(isDelivered)) {
+    if (!hasSource(p)) { synthesized += 1; continue; }
     const noSchema = !schemaExists(p.slug);
     const noWidths = judgeWidths && !gatedAt(gateOf(p), widths);
-    const src = p.source && p.source.sourceUrl;
-    let noRedirect = false;
-    if (typeof src !== 'string' || !src) unjudged += 1;
-    else {
-      let from = null;
-      try { from = new URL(src, 'https://source.invalid').pathname; } catch { from = null; }
-      noRedirect = from === null || (from !== publicUrl(p) && !hasLine(from));
-    }
+    let from = null;
+    try { from = new URL(p.source.sourceUrl, 'https://source.invalid').pathname; } catch { from = null; }
+    const noRedirect = from === null || (from !== publicUrl(p) && !hasLine(from));
     count.schema += noSchema ? 1 : 0; count.gate += noWidths ? 1 : 0; count.redirects += noRedirect ? 1 : 0;
     if (noSchema || noWidths || noRedirect) missing.push(pathOf(p));
   }
   return {
     gap: missing.length ? `sidecars_missing:${missing.length}: schema ${count.schema}, gate widths ${judgeWidths ? count.gate : '-'}, redirects ${count.redirects}: ${listed(missing)}` : null,
-    skipped: [...(judgeWidths || !pages.some(isDelivered) ? [] : [WIDTHS_SKIP]), ...(unjudged ? [`sidecars_missing redirects: ${unjudged} delivered rows without source.sourceUrl`] : [])],
+    skipped: [...(judgeWidths || !pages.some(isDelivered) ? [] : [WIDTHS_SKIP]), ...(synthesized ? [`sidecars_missing: ${synthesized} delivered row(s) without source.sourceUrl (synthesized) not judged`] : [])],
   };
 }
 
@@ -484,7 +499,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], caseCollisions = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -508,9 +523,12 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // delivered blocks with no judged base type: a gap (not a hard stop) until the owner names them — unknown is not judged
   if (blocksUnjudged > 0) gaps.push(`blocks_unjudged:${blocksUnjudged}`);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
-  // planned pages the source no longer serves (coverage excluded[]) and blocks delivered without a conversion record:
-  // named, never a gap
+  // planned pages the source no longer serves (coverage excluded[]), content files present under both cases (coverage
+  // caseCollisions[]) and blocks the documents show while blocks.json reads pending or failed: named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
+  const collisions = (Array.isArray(caseCollisions) ? caseCollisions : []).filter((c) => c && typeof c === 'object');
+  // rows without a source URL (update-coverage.mjs --new): built, verified like any row, never gated — named, never a gap
+  const synthesized = pages.filter((p) => p && typeof p === 'object' && !hasSource(p));
   // the migration export's zero-confidence and low-confidence selector counts (manifest selectorQuality), null-selector
   // section count (manifest sectionGaps), judgement documentation debt (manifest judgement.toFill), single-use variant
   // count (manifest variantsSummary.singleUse — one catalog block each for an adopter), multi-page templates without an
@@ -528,7 +546,9 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
     ...failing.map((s) => `export_quality:schema:${s.file}:${s.errors.length}: ${s.errors.slice(0, SCHEMA_ERRORS_SHOWN).join('; ')}${s.errors.length > SCHEMA_ERRORS_SHOWN ? `, … (+${s.errors.length - SCHEMA_ERRORS_SHOWN})` : ''}`),
     ...(planned.length ? [`export_quality:excluded:${planned.length}: ${listed(planned.map((e) => `${e.url} (${typeof e.reason === 'string' && e.reason ? e.reason : 'unrecorded'})`))}`] : []),
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
-    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
+    ...(synthesized.length ? [`synthesized_pages:${synthesized.length}: ${listed(synthesized.map(pathOf))}`] : []),
+    ...(collisions.length ? [`pages_case_collisions:${collisions.length}: ${listed(collisions.map((c) => `${c.path || `/${c.slug}`} (${c.file} ↔ ${c.alternate})`))}`] : []),
+    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered`] : []),
     ...(headerAgent ? [headerAgent] : []),
   ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
@@ -708,6 +728,7 @@ async function main() {
     exported: exported.gap,
     blocksUnjudged: unjudgedKnown ? wm.unjudgedBaseTypes(blocksDoc).length : 0,
     excluded: pagesDoc.excluded,
+    caseCollisions: pagesDoc.caseCollisions,
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
     headerAgent: headerDecidedByAgent(parity),
     zeroConfidence: exported.zeroConfidence,

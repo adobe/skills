@@ -21,6 +21,9 @@
 // that differ from the tree, a mapping.json missing while captures exist, unreadable or with another generatedAt
 // than pages.json, with inventory → block-origin → manifest as the remedy. pages.json excluded[] rows and module
 // blocks delivered without a conversion record are info lines (pages_excluded, blocks_pending), never gaps; so are
+// coverage rows without source.sourceUrl (synthesized_pages — update-coverage.mjs --new: no sidecar or gate asked of
+// them, sidecars_missing never counts them, their status still counts) and pages.json caseCollisions[] rows
+// (pages_case_collisions: a content file under both cases), and so are
 // the export_quality figures the manifest carries (zero_confidence, low_confidence, null_selector_sections,
 // judgement_to_fill, encode_unrecorded), hidden after handover.
 // Run: node plugins/stardust/skills/rollout/scripts/test/done-check.test.mjs
@@ -92,7 +95,7 @@ check('pages_excluded: excluded[] rows of pages.json are info, never a gap — t
 check('blocks_pending: blocks delivered without a conversion record are info naming the remedy, never a gap — after pages_excluded', () => {
   const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], pendingBlocks: ['hero', 'teaser'] });
   assert.equal(v.complete, true);
-  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — record each: update-coverage.mjs --block <name|id> --status converted']);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'blocks_pending:2: hero, teaser — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered']);
   assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [] }).info, []);
 });
 check('export_quality: the manifest zero-confidence count is an info line above the threshold (default 0), never a gap; at/below it nothing; null is silent; completeness never flips', () => {
@@ -209,7 +212,7 @@ check('CLI: coverage blocks.json rows delivered without a conversion record prin
   const proj = project({ files: { 'stardust/rollout/coverage/blocks.json': blocks } });
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 0, r.stdout);
-  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — record each: update-coverage.mjs --block <name|id> --status converted'), r.stdout);
+  assert.ok(r.stdout.split('\n').includes('info: blocks_pending:1: hero — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered'), r.stdout);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -507,9 +510,25 @@ check('sidecars_missing: a changed path needs a redirects line for its source pa
   assert.equal(sidecars(flat, { redirects: '/news/\t/news\n' }).gap, null);
 });
 
-check('sidecars_missing: delivered rows without source.sourceUrl are not judged for redirects — counted as skipped', () => {
+check('sidecars_missing: delivered rows without source.sourceUrl (synthesized) are not judged at all — no schema, no widths, no redirects; one skipped line counts them; a sourced row beside them is still judged', () => {
   const bare = [...SIDE_PAGES, { ...row('x', '/x', 'verified'), delivery: SIDE_PAGES[0].delivery }, { ...row('y', '/y', 'pending') }];
-  assert.deepEqual(sidecars(bare), { gap: null, skipped: ['sidecars_missing redirects: 1 delivered rows without source.sourceUrl'] });
+  const SKIP = 'sidecars_missing: 1 delivered row(s) without source.sourceUrl (synthesized) not judged';
+  assert.deepEqual(sidecars(bare), { gap: null, skipped: [SKIP] });
+  assert.deepEqual(sidecars(bare, { schemaExists: (slug) => slug !== 'x' }), { gap: null, skipped: [SKIP] }, 'no schema sidecar asked of it');
+  assert.deepEqual(sidecars([row('x', '/x', 'verified'), { ...row('z', '/z', 'deployed'), source: { migratedHtml: 'dynamics:z', sourceUrl: null } }], { schemaExists: () => false }), { gap: null, skipped: ['sidecars_missing: 2 delivered row(s) without source.sourceUrl (synthesized) not judged'] }, 'no gate widths asked of it either (a --new row: origin marker, sourceUrl null)');
+  assert.equal(sidecars([...bare, withSource(row('s', '/s', 'verified'), 'https://example.com/s')], { schemaExists: () => false }).gap, 'sidecars_missing:4: schema 4, gate widths 1, redirects 0: /, /about, /news, /s', 'the sourced rows are judged as before (the new one has no gate)');
+  assert.deepEqual(sidecars([row('y', '/y', 'pending')]), { gap: null, skipped: [] }, 'a synthesized row not yet delivered: nothing to skip');
+});
+check('synthesized_pages: coverage rows without source.sourceUrl are an info line (after pages_excluded, before blocks_pending), never a gap; their status still counts', () => {
+  const synth = { ...row('search', '/search', 'verified'), source: { migratedHtml: 'dynamics:search', sourceUrl: null } };
+  const pair = { slug: 'news-six', path: '/news/Six-FTAs', file: 'news/Six-FTAs.html', alternate: 'news/six-ftas.html' };
+  const v = doneGaps({ pages: [...CLEAN_PAGES, synth, { ...row('x', '/x', 'verified'), source: {} }], ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], caseCollisions: [pair], pendingBlocks: ['hero'] });
+  assert.deepEqual(v.gaps, []);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'synthesized_pages:2: /search, /x', 'pages_case_collisions:1: /news/Six-FTAs (news/Six-FTAs.html ↔ news/six-ftas.html)', 'blocks_pending:1: hero — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered'], 'coverage info lines in their documented order: excluded, synthesized, case collisions, pending blocks');
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], caseCollisions: [] }).info, [], 'no collision: no line');
+  const unfinished = doneGaps({ pages: [...CLEAN_PAGES, { ...synth, delivery: { status: 'deployed' } }], ledgerLines: ENDED, notLive: [] });
+  assert.deepEqual([unfinished.gaps, unfinished.info], [['pages_unfinished:1'], ['synthesized_pages:1: /search']], 'deployed, not verified: unfinished like any row');
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [] }).info, [], 'every row sourced: no line');
 });
 
 check('sidecars_missing: gate widths are judged only in a flow with a gate table (replica, or any gated row); otherwise skipped, never a gap', () => {
@@ -597,7 +616,7 @@ check('CLI: gaps exit 1, one line each, then the summary line', () => {
   const proj = project({ pages: [row('a', '/a', 'pending')], ledger: [] });
   const r = run(proj, ['--offline']);
   assert.equal(r.status, 1);
-  assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', `skipped: ${OFFLINE_SKIP}`, 'skipped: unit_unproven: no stardust/rollout/progress.json', '✗ 2 gap(s) (live probe skipped: --offline)']);
+  assert.deepEqual(r.stdout.trim().split('\n'), ['pages_unfinished:1', 'rollout_incomplete', `skipped: ${OFFLINE_SKIP}`, 'skipped: unit_unproven: no stardust/rollout/progress.json', 'info: synthesized_pages:1: /a', '✗ 2 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -607,6 +626,16 @@ check('CLI: pages.json excluded[] rows print as an info line after the skipped o
   assert.equal(r.status, 0, r.stdout);
   assert.deepEqual(r.stdout.trim().split('\n').slice(-2), ['info: pages_excluded:1: /news', '✓ complete (live probe skipped: --offline)']);
   assert.deepEqual(JSON.parse(run(proj, ['--offline', '--json']).stdout).info, ['pages_excluded:1: /news']);
+  rmSync(proj, { recursive: true, force: true });
+});
+
+check('CLI: pages.json caseCollisions[] prints as an info line (coverage facts, after pages_excluded and synthesized_pages) and keeps a clean run complete (exit 0)', () => {
+  const pair = { slug: 'news-six', path: '/news/Six-FTAs', file: 'news/Six-FTAs.html', alternate: 'news/six-ftas.html' };
+  const proj = project({ files: { 'stardust/rollout/coverage/pages.json': { pages: CLEAN_PAGES, excluded: [{ slug: 'news', path: '/news', sourceUrl: 'https://example.com/news', status: 'excluded', reason: 'the source answers 404', at: AT[1440] }], caseCollisions: [pair] } } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  assert.deepEqual(r.stdout.trim().split('\n').slice(-3), ['info: pages_excluded:1: /news', 'info: pages_case_collisions:1: /news/Six-FTAs (news/Six-FTAs.html ↔ news/six-ftas.html)', '✓ complete (live probe skipped: --offline)']);
+  assert.deepEqual(JSON.parse(run(proj, ['--offline', '--json']).stdout).info, ['pages_excluded:1: /news', 'pages_case_collisions:1: /news/Six-FTAs (news/Six-FTAs.html ↔ news/six-ftas.html)']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -766,9 +795,10 @@ check('CLI: --json lists every new gap in order and every check that did not run
   const proj = proofProject();
   const r = run(proj, ['--offline', '--json']);
   assert.equal(r.status, 1, r.stderr);
-  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, 'sidecars_missing redirects: 1 delivered rows without source.sourceUrl'], info: [] });
+  const SYNTH_SKIP = 'sidecars_missing: 1 delivered row(s) without source.sourceUrl (synthesized) not judged';
+  assert.deepEqual(JSON.parse(r.stdout), { complete: false, gaps: PROOF_GAPS, liveChecked: false, skipped: [OFFLINE_SKIP, SYNTH_SKIP], info: ['synthesized_pages:1: /bare'] });
   const text = run(proj, ['--offline']).stdout.trim().split('\n');
-  assert.deepEqual(text.slice(-3), [`skipped: ${OFFLINE_SKIP}`, 'skipped: sidecars_missing redirects: 1 delivered rows without source.sourceUrl', '✗ 5 gap(s) (live probe skipped: --offline)']);
+  assert.deepEqual(text.slice(-4), [`skipped: ${OFFLINE_SKIP}`, `skipped: ${SYNTH_SKIP}`, 'info: synthesized_pages:1: /bare', '✗ 5 gap(s) (live probe skipped: --offline)']);
   rmSync(proj, { recursive: true, force: true });
 });
 
@@ -797,7 +827,7 @@ check('CLI: --widths, --register, --schemas and --redirects point the checks els
   put('elsewhere/redirects.tsv', '/About_Us.html\t/about-us\n');
   assert.equal(gaps()[0], 'pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %); no register entry for /o1');
   assert.deepEqual(gaps('--register', 'elsewhere/register.md', '--schemas', 'elsewhere/schemas', '--redirects', 'elsewhere/redirects.tsv').slice(0, 2),
-    ['pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %)', 'sidecars_missing:6: schema 6, gate widths 1, redirects 0: /, /about, /o1, /news/b, /about-us, /bare']);
+    ['pages_overridden:1: 1/7 delivered pages pass by override (cap 10 %)', 'sidecars_missing:5: schema 5, gate widths 1, redirects 0: /, /about, /o1, /news/b, /about-us']);
   const bad = run(proj, ['--offline', '--widths', '1440,wide']);
   assert.equal(bad.status, 2); assert.match(bad.stderr, /--widths/);
   rmSync(proj, { recursive: true, force: true });

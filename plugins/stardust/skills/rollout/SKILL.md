@@ -486,7 +486,10 @@ node skills/rollout/scripts/update-coverage.mjs --new search --path /search --te
 ```
 then record its status like any page. `inventory.mjs` keeps such rows on a re-run (the
 origin marker in `source.migratedHtml` identifies them; status untouched), so the line
-runs once.
+runs once. The row has no `source.sourceUrl`, so `gate-all.mjs` skips it and
+`done-check.mjs` asks it for no sidecar or gate (`sidecars_missing` never counts it) —
+it names it under `info: synthesized_pages:N` instead; `verify.mjs --all` still proves it
+live and its status still counts. Never remove such a row from pages.json by hand.
 
 ### Phase D3 — Multilingual (per-language trees) — optional
 
@@ -787,7 +790,12 @@ variant, so a high single-use count is an option-class explosion to review, not 
 `export_quality:single_use_variants`. Every export file validates against its schema
 (`export_quality:schema:<file>:<n>` names one that does not) and a planned URL that never became a
 page is accounted for in the manifest's `excluded[]` (`export_quality:excluded:<n>`; the reason as
-the coverage or the crawl recorded it) — all informational, all hidden after handover.
+the coverage or the crawl recorded it) — all informational, all hidden after handover. The
+coverage's own info lines — `pages_excluded:<n>`, `synthesized_pages:<n>` (rows without a source
+URL: no sidecar or gate asked of them), `pages_case_collisions:<n>` (a content file present under
+both its own case and its delivered-path fold — the exact one is read, the two collide once
+delivered), `blocks_pending:<n>` (blocks the documents show while blocks.json reads `pending` or
+`failed`) — stay after handover.
 
 Build the export once the roster is frozen — no unit running, no fix round open, gap-closure
 finished — so the manifest, mapping and judgement describe the final content. Re-run all three, in

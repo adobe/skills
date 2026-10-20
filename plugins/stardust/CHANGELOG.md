@@ -4,6 +4,64 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s55-export-rows) — the export reads the delivered rows as they are: a case-folded content file is found, a used block is converted, a synthesized row is named (#178)
+
+In a recorded hands-off run the migration-workspace export was fresh and schema-valid and still misread three
+things that were right on the delivered site. A verified, gated, live page shipped `delivered: null` ("1 page(s)
+without a content file"), no mapping entry ("no delivered structure") and an empty template: its coverage row
+keeps the source path's case while the deploy writes the document under the lower-cased delivered path, and
+`contentFileFor` matched the row's path exactly on a case-sensitive file system. Thirteen module blocks, every one
+live, gated and used by the delivered pages, read `pending` (rollout.json `blocks.pending 13`, the placeholder
+"12 block(s) delivered without a conversion record", `blocks_pending:12`) because no unit had run
+`update-coverage.mjs --block`. And three per-locale search pages added with `--new` (no source URL) left
+done-check at `sidecars_missing:3: schema 3, gate widths 3` for ever — nothing to gate against, no schema
+sidecar — until the lead removed them from pages.json by hand after json-edit's guard had refused.
+
+- **A content file is found by the row path exactly, then by its delivered-path fold** (`lib.mjs`
+  `foldDeliveredPath`, `contentFileMatch` → `{ file, rule, alternate }`; `contentFileFor` keeps its signature):
+  the deploy's fold (`deploy/scripts/eds-path.mjs` `deliveredUrl` — segments lower-cased, runs outside
+  `[a-z0-9]` → `-`), never a looser match; both cases present as two files: the exact one is read and the
+  other named as `alternate`, not guessed. `inventory.mjs` reads the content tree by real names (a walk, not
+  `existsSync`: on a case-insensitive file system the old lookup matched in inventory and the manifest then
+  refused "coverage is stale" for the same page — one defect, two symptoms) and prints `Folded <n> row(s) …`
+  and `Ambiguous <n> row(s) …`; block-origin and workspace-manifest resolve through the same function. On the
+  recorded export: `Delivered 9/9` (was 8/9), the page's template maps 5 blocks / 14 sections (was skipped),
+  the page placeholder is gone.
+- **A block the delivered documents use, with its code under `blocks/`, reads `converted`** (`blocks.mjs`): a
+  planned module row with `instanceCount` > 0 (counted from pages.json `delivered.blocks`) and
+  `<blocks>/<name>/<name>.{js,css}` present is `converted` with `convertedAt: null` (derived, not recorded); a
+  block no document shows, one whose code is missing, or any recorded status stays as recorded. `pending` now
+  means: planned and shown by no delivered document yet, or shown while its code is missing. Stdout names the
+  derived rows (`Converted <n> …`); `done-check.mjs`'s `blocks_pending` text, coverage-model.md, the coverage
+  contract (a `delivery.status` row) and the handoff contract follow. On the recorded export: `blocks.pending
+  13 → 0`, placeholders 2 → 0, no `blocks_pending` line.
+- **A coverage row without `source.sourceUrl` is synthesized — no sidecar or gate asked of it**
+  (`done-check.mjs`): `sidecarGap` leaves such rows unjudged (schema, widths, redirects; one skipped line counts
+  them — gate-all's roster filter `delivered(r) && r.source && r.source.sourceUrl` draws the same line) and
+  `doneGaps` names them under a new info line `synthesized_pages:N: <paths>` (after `pages_excluded`, before
+  `blocks_pending`; a coverage fact, shown after handover too). Their status still counts — `pages_unfinished`
+  until `verify.mjs --all` proves them live — and `unit_unproven` is unchanged. The coverage contract's row
+  semantics, rollout SKILL.md (Phase D2 and the info lines), `update-coverage.mjs --new` and the handoff
+  contract say so: such a row is never removed from pages.json by hand. On the recorded export with its three
+  rows restored: `sidecars_missing:3` → complete, `info: synthesized_pages:3`.
+- Tests: `inventory.test.mjs` — the pure rule (exact, folded, folder index, both cases, a missing file stays
+  null, predicate and object inputs), a mixed-case row delivered from its lower-cased file and keeping its path,
+  a file missing in both cases still null; `blocks.test.mjs` — derived vs recorded vs missing-code vs unused vs
+  default-content rows, the counts, the summary line, idempotence; `done-check.test.mjs` — synthesized rows
+  unjudged beside sourced rows still judged, the skipped and info lines and their place, a deployed synthesized
+  row still unfinished, the CLI text and `--json`.
+- Review follow-ups. A content file present under BOTH cases is no longer a stdout-only note: `inventory.mjs` records
+  the pair in pages.json `caseCollisions[]` (`{slug, path, file, alternate}`, schema and contract updated; the exact
+  file is read), the manifest lists it as a placeholder (`caseCollisions[]: N page(s) whose content file also exists
+  under another case …`) and done-check prints `pages_case_collisions:N: <path (file ↔ alternate)>` — a coverage
+  info line beside `pages_excluded` / `synthesized_pages` / `blocks_pending`, never a gap, not in the hidden-after-
+  handover set. And the pending-block placeholder follows the redefinition: `workspace-manifest.mjs` `pendingBlocks`
+  (its `SETTLED` set: converted, deployed, verified, not-delivered) is the one definition both the placeholder and
+  done-check's `blocks_pending` read — blocks the documents show while blocks.json reads `pending` (no code to derive
+  `converted` from) or `failed` — and both texts say so. Tests: the schema admits the key; the pure placeholder and
+  info lines, their place; the inventory lays the two files down where the file system allows it (a case-insensitive
+  one cannot hold both and says so). The scripts index is untouched (20551 bytes). No version bump.
+
 ## 0.36.x (stardust/s54-export-truth) — the export states its own facts: the encode decision is the record's, section gaps stop predicting the adopter, low-confidence selectors are counted (#177)
 
 In a recorded hands-off run the migration-workspace export was complete and self-consistent (outputs 4/4,

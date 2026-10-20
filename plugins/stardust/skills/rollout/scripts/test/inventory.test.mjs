@@ -8,7 +8,9 @@
 // the opt-in `exports` key in rollout.json (carried across re-runs; `--export <name>` adds a name
 // once; an unknown name exits 2 before any write), and coverage 0.1.0: each row's `delivered` structure
 // parsed from its content file (records in document order, sections, variantId carry-forward,
-// contentHash; null without a content file), the templates' type/representativeUrl/urls and judged
+// contentHash; null without a content file; the file found by the row's path exactly, else by its delivered-path
+// fold — the deploy lower-cases — never looser; both cases present: the exact one is read and the pair recorded in
+// pages.json caseCollisions[]), the templates' type/representativeUrl/urls and judged
 // name/description, `formatVersion`, schema validity, byte-identical re-runs and no project identity.
 // Encoded pages (migrate's encoder: a sidecar with `encode`, the document under stardust/encoded/):
 // listed once from the sidecar, sourceHash over the encoded document (a re-encode with new bytes
@@ -33,7 +35,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, 
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { IDENTITY_PATTERNS, findIdentity, identityTokens, publicUrl } from '../lib.mjs';
+import { IDENTITY_PATTERNS, contentFileFor, contentFileMatch, findIdentity, foldDeliveredPath, identityTokens, publicUrl } from '../lib.mjs';
 import { loadSchema, unsupported, validate } from './schema-validate.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -383,6 +385,66 @@ check('a row added with update-coverage.mjs --new gets delivered from its conten
   assert.deepEqual(Object.keys(row), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'delivered', 'delivery']);
   assert.deepEqual(row.delivered.blocks.map((b) => [b.block, b.variantId]), [['search-results', vid('search-results', [])]]);
   assert.equal(row.delivered.contentHash, hash('content/search.html'));
+});
+check('contentFileMatch: the row path exactly, else its delivered-path fold (the deploy lower-cases); never looser; both cases → the exact one, the other reported', () => {
+  const files = new Set(['en/4-benefits-ftas-to-chain.html', 'a/FTAs.html', 'a/ftas.html', 'b/index.html', 'index.html']);
+  assert.equal(foldDeliveredPath('/en/4-benefits-FTAs-to-chain'), 'en/4-benefits-ftas-to-chain');
+  assert.equal(foldDeliveredPath('/A b/C_d.e/'), 'a-b/c-d-e', 'segments lower-cased, runs outside [a-z0-9] → -, trimmed');
+  assert.deepEqual(contentFileMatch('/en/4-benefits-FTAs-to-chain', files), { file: 'en/4-benefits-ftas-to-chain.html', rule: 'folded', alternate: null });
+  assert.deepEqual(contentFileMatch('/en/4-benefits-ftas-to-chain', files), { file: 'en/4-benefits-ftas-to-chain.html', rule: 'exact', alternate: null });
+  assert.deepEqual(contentFileMatch('/a/FTAs', files), { file: 'a/FTAs.html', rule: 'exact', alternate: 'a/ftas.html' }, 'both cases exist: exact wins, the fold is named');
+  assert.deepEqual(contentFileMatch('/a/ftas', files), { file: 'a/ftas.html', rule: 'exact', alternate: null });
+  assert.deepEqual(contentFileMatch('/B', files), { file: 'b/index.html', rule: 'folded', alternate: null }, 'the folder-index form of the fold');
+  assert.deepEqual(contentFileMatch('/en/4-benefits-FTAs', files), { file: null, rule: null, alternate: null }, 'a missing file stays null — no prefix or fuzzy match');
+  assert.deepEqual(contentFileMatch('/en/4-benefits-ftas-to-chain-2', files), { file: null, rule: null, alternate: null });
+  assert.deepEqual(contentFileMatch('/', files), { file: 'index.html', rule: 'exact', alternate: null });
+  assert.deepEqual(contentFileMatch(null, files), { file: null, rule: null, alternate: null });
+  assert.equal(contentFileFor('/a/FTAs', (k) => files.has(k)), 'a/FTAs.html', 'a predicate works too');
+  assert.equal(contentFileFor('/A/ftas', { 'a/ftas.html': 1 }), 'a/ftas.html', 'an object keyed by path works too');
+});
+check('a row whose path keeps the source case is delivered from the lower-cased file the deploy wrote; a file missing in both cases stays null', () => {
+  migratedPage('news/Four-FTAs.html', { slug: 'news-four', type: 'article', template: 'about', source: { url: 'https://www.example.com/news/Four-FTAs.html' }, modules: [] });
+  migratedPage('news/Five-FTAs.html', { slug: 'news-five', type: 'article', template: 'about', source: { url: 'https://www.example.com/news/Five-FTAs.html' }, modules: [] });
+  put('content/news/four-ftas.html', '<main><div><div class="cards"><div><div>Four</div></div></div></div></main>\n');
+  const r = runSite();
+  assert.equal(r.status, 0, r.stderr);
+  const p = pagesOf();
+  assert.equal(p['news-four'].path, '/news/Four-FTAs', 'the row keeps its path (the page key)');
+  assert.deepEqual(p['news-four'].delivered.blocks.map((b) => [b.block, b.variantId]), [['cards', vid('cards', [])]]);
+  assert.equal(p['news-four'].delivered.contentHash, hash('content/news/four-ftas.html'));
+  assert.equal(p['news-five'].delivered, null, 'no file in either case: still null');
+  assert.match(r.stdout, /^Folded {6}1 row\(s\) read from the delivered-path fold of their path .*: news-four → news\/four-ftas\.html$/m, r.stdout);
+  assert.doesNotMatch(r.stdout, /^Ambiguous/m);
+  for (const f of ['stardust/migrated/news/Four-FTAs.html', 'stardust/migrated/news/Four-FTAs._meta.json', 'stardust/migrated/news/Five-FTAs.html', 'stardust/migrated/news/Five-FTAs._meta.json', 'content/news/four-ftas.html']) rmSync(join(site, f));
+  assert.equal(runSite().status, 0);
+});
+check('a content file under both cases: the exact one is read, pages.json caseCollisions[] names the pair (laid down only where the file system holds both), the schema admits it', () => {
+  const head = siteJson('stardust/rollout/coverage/pages.json');
+  const pair = { slug: 'news-six', path: '/news/Six-FTAs', file: 'news/Six-FTAs.html', alternate: 'news/six-ftas.html' };
+  const sample = { _provenance: head._provenance, formatVersion: head.formatVersion, generatedAt: head.generatedAt, pages: [], caseCollisions: [pair] };
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), sample), [], 'caseCollisions[] is declared in the closed schema');
+  assert.ok(!('caseCollisions' in head), 'no collision so far: the key is absent');
+  put('content/news/Six-FTAs.html', '<main><div><div class="cards"><div><div>Exact</div></div></div></div></main>\n');
+  if (existsSync(join(site, 'content/news/six-ftas.html'))) {
+    rmSync(join(site, 'content/news/Six-FTAs.html'));
+    console.log('  (case-insensitive file system: it cannot hold both files — the record is covered on the doc shape and in contentFileMatch)');
+    return;
+  }
+  put('content/news/six-ftas.html', '<main><div><div class="hero"><div><div>Fold</div></div></div></div></main>\n');
+  migratedPage('news/Six-FTAs.html', { slug: 'news-six', type: 'article', template: 'about', source: { url: 'https://www.example.com/news/Six-FTAs.html' }, modules: [] });
+  const r = runSite();
+  assert.equal(r.status, 0, r.stderr);
+  const doc = siteJson('stardust/rollout/coverage/pages.json');
+  assert.deepEqual(doc.caseCollisions, [pair]);
+  assert.deepEqual(Object.keys(doc).slice(-2), ['pages', 'caseCollisions']);
+  const row = pagesOf()['news-six'];
+  assert.equal(row.delivered.contentHash, hash('content/news/Six-FTAs.html'), 'the exact file is read');
+  assert.deepEqual(row.delivered.blocks.map((b) => b.block), ['cards']);
+  assert.match(r.stdout, /^Ambiguous {3}1 row\(s\) with a content file in both cases .*: news-six → news\/Six-FTAs\.html \(not news\/six-ftas\.html\)$/m, r.stdout);
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), doc), []);
+  for (const f of ['stardust/migrated/news/Six-FTAs.html', 'stardust/migrated/news/Six-FTAs._meta.json', 'content/news/Six-FTAs.html', 'content/news/six-ftas.html']) rmSync(join(site, f));
+  assert.equal(runSite().status, 0);
+  assert.ok(!('caseCollisions' in siteJson('stardust/rollout/coverage/pages.json')), 'the pair gone: the key is gone');
 });
 check('--content <dir> reads another content tree; a page outside it gets delivered: null', () => {
   cpSync(join(site, 'content'), join(site, 'alt-content'), { recursive: true });

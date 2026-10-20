@@ -13,7 +13,8 @@
 // <name>.css is a delivered block and gets a ledger row even when no page lists it (source `blocks-dir`,
 // status converted; a chrome name delivers as a fragment; a module one carries the delivered structure
 // too); a directory equal to a planned block's id, EDS name or edsBlockName is not duplicated, and header
-// and nav are one chrome; a prior delivery (a block recorded not-delivered with its reason) survives a
+// and nav are one chrome; a planned module the delivered documents use, with its code under blocks/, reads
+// converted without a record (no code, no instance or a recorded status: unchanged); a prior delivery (a block recorded not-delivered with its reason) survives a
 // re-run; a re-run writes the same bytes but timestamps; a missing blocks dir is a note, never an error;
 // every key written is declared in the (closed) rollout schemas.
 // Run: node plugins/stardust/skills/rollout/scripts/test/blocks.test.mjs
@@ -417,6 +418,35 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
     assert.equal(r.status, 0, r.stderr);
     assert.equal(strip(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8')), first);
     assert.equal(strip(readFileSync(join(out, 'rollout.json'), 'utf8')), firstCfg);
+  });
+
+  check('a planned module the delivered documents use, with its code under blocks/, reads converted without a record (convertedAt null); no code, no instance, or a recorded status: unchanged; counts and the summary line follow; a re-run is idempotent', () => {
+    const rec = (pos, block) => ({ pos, block, kind: 'block', classes: [], variantId: vid(`${block}|`) });
+    const home = { ...page('home', ['hero', 'promo', 'teaser', 'quote', 'cards', 'heading']), delivered: { blocks: [rec(0, 'hero'), rec(1, 'promo'), rec(2, 'quote'), rec(3, 'cards')] } };
+    const prior = [
+      { id: 'quote', label: 'quote', kind: 'module', signature: 'module:quote', source: null, usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'failed', edsBlockName: 'quote', blockPath: null, convertedAt: null } },
+      { id: 'cards', label: 'cards', kind: 'module', signature: 'module:cards', source: null, usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'converted', edsBlockName: 'cards', blockPath: null, convertedAt: '2026-01-01T00:00:00.000Z' } },
+      { id: 'heading', label: 'heading', kind: 'module', signature: 'module:heading', source: null, usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'pending', edsBlockName: 'default-content', blockPath: null, convertedAt: null } },
+    ];
+    const { proj, out } = project({ pages: [home], dirBlocks: { hero: ['hero.js', 'hero.css'], teaser: ['teaser.js'], quote: ['quote.js'], cards: ['cards.js'] }, priorBlocks: prior });
+    let r = run(proj);
+    assert.equal(r.status, 0, r.stderr);
+    const b = byId(out);
+    assert.deepEqual(b.hero.delivery, { status: 'converted', edsBlockName: 'hero', blockPath: null, convertedAt: null }, 'used by a document + code: converted, derived (no time)');
+    assert.equal(b.promo.delivery.status, 'pending', 'used by a document, no code under blocks/: stays pending');
+    assert.equal(b.teaser.delivery.status, 'pending', 'code, but no document shows it: stays pending');
+    assert.equal(b.quote.delivery.status, 'failed', 'a recorded status is never overridden');
+    assert.deepEqual(b.cards.delivery, prior[1].delivery, 'a recorded conversion keeps its time');
+    assert.equal(b.heading.delivery.status, 'pending', 'a default-content mapping is not a block to convert');
+    assert.match(r.stdout, /^Converted {3}1 planned block\(s\) read converted from the delivered documents and blocks\/ \(no record needed\): hero$/m, r.stdout);
+    const counts = JSON.parse(readFileSync(join(out, 'rollout.json'), 'utf8')).lastRun.blocks;
+    assert.deepEqual(counts, { total: 6, converted: 3, notDelivered: 0, pending: 3 }, 'hero (derived), cards (recorded), heading (default content) converted; promo, teaser, quote not');
+    const strip = (x) => x.replace(/"(writtenAt|generatedAt)": "[^"]*"/g, '"$1": "<t>"');
+    const first = strip(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8'));
+    r = run(proj);
+    assert.equal(r.status, 0, r.stderr);
+    assert.equal(strip(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8')), first, 'the derived status is stable across runs');
+    assert.doesNotMatch(r.stdout, /^Converted/m, 'the second run finds it recorded already');
   });
 
   check('a missing blocks dir is a note, not an error; --blocks <dir> reads another directory', () => {
