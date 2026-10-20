@@ -27,6 +27,21 @@
           "at": { "type": ["string", "null"] }
         }
       }
+    },
+    "caseCollisions": {
+      "type": "array",
+      "description": "Pages whose content file exists under both the row's own case and its delivered-path fold (inventory.mjs): `file` is read (the exact one), `alternate` is the fold; the two collide once delivered, so one must go. Present only when there is one.",
+      "items": {
+        "type": "object",
+        "required": ["slug", "path", "file", "alternate"],
+        "additionalProperties": false,
+        "properties": {
+          "slug": { "type": "string" },
+          "path": { "type": "string" },
+          "file": { "type": "string", "description": "Content-relative path of the file read (the row's own case)." },
+          "alternate": { "type": "string", "description": "Content-relative path of the other file (the delivered-path fold)." }
+        }
+      }
     }
   },
   "$defs": {

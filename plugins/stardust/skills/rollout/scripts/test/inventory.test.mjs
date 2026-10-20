@@ -9,7 +9,8 @@
 // once; an unknown name exits 2 before any write), and coverage 0.1.0: each row's `delivered` structure
 // parsed from its content file (records in document order, sections, variantId carry-forward,
 // contentHash; null without a content file; the file found by the row's path exactly, else by its delivered-path
-// fold — the deploy lower-cases — never looser; both cases present: the exact one, reported), the templates' type/representativeUrl/urls and judged
+// fold — the deploy lower-cases — never looser; both cases present: the exact one is read and the pair recorded in
+// pages.json caseCollisions[]), the templates' type/representativeUrl/urls and judged
 // name/description, `formatVersion`, schema validity, byte-identical re-runs and no project identity.
 // Encoded pages (migrate's encoder: a sidecar with `encode`, the document under stardust/encoded/):
 // listed once from the sidecar, sourceHash over the encoded document (a re-encode with new bytes
@@ -416,6 +417,34 @@ check('a row whose path keeps the source case is delivered from the lower-cased 
   assert.doesNotMatch(r.stdout, /^Ambiguous/m);
   for (const f of ['stardust/migrated/news/Four-FTAs.html', 'stardust/migrated/news/Four-FTAs._meta.json', 'stardust/migrated/news/Five-FTAs.html', 'stardust/migrated/news/Five-FTAs._meta.json', 'content/news/four-ftas.html']) rmSync(join(site, f));
   assert.equal(runSite().status, 0);
+});
+check('a content file under both cases: the exact one is read, pages.json caseCollisions[] names the pair (laid down only where the file system holds both), the schema admits it', () => {
+  const head = siteJson('stardust/rollout/coverage/pages.json');
+  const pair = { slug: 'news-six', path: '/news/Six-FTAs', file: 'news/Six-FTAs.html', alternate: 'news/six-ftas.html' };
+  const sample = { _provenance: head._provenance, formatVersion: head.formatVersion, generatedAt: head.generatedAt, pages: [], caseCollisions: [pair] };
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), sample), [], 'caseCollisions[] is declared in the closed schema');
+  assert.ok(!('caseCollisions' in head), 'no collision so far: the key is absent');
+  put('content/news/Six-FTAs.html', '<main><div><div class="cards"><div><div>Exact</div></div></div></div></main>\n');
+  if (existsSync(join(site, 'content/news/six-ftas.html'))) {
+    rmSync(join(site, 'content/news/Six-FTAs.html'));
+    console.log('  (case-insensitive file system: it cannot hold both files — the record is covered on the doc shape and in contentFileMatch)');
+    return;
+  }
+  put('content/news/six-ftas.html', '<main><div><div class="hero"><div><div>Fold</div></div></div></div></main>\n');
+  migratedPage('news/Six-FTAs.html', { slug: 'news-six', type: 'article', template: 'about', source: { url: 'https://www.example.com/news/Six-FTAs.html' }, modules: [] });
+  const r = runSite();
+  assert.equal(r.status, 0, r.stderr);
+  const doc = siteJson('stardust/rollout/coverage/pages.json');
+  assert.deepEqual(doc.caseCollisions, [pair]);
+  assert.deepEqual(Object.keys(doc).slice(-2), ['pages', 'caseCollisions']);
+  const row = pagesOf()['news-six'];
+  assert.equal(row.delivered.contentHash, hash('content/news/Six-FTAs.html'), 'the exact file is read');
+  assert.deepEqual(row.delivered.blocks.map((b) => b.block), ['cards']);
+  assert.match(r.stdout, /^Ambiguous {3}1 row\(s\) with a content file in both cases .*: news-six → news\/Six-FTAs\.html \(not news\/six-ftas\.html\)$/m, r.stdout);
+  assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), doc), []);
+  for (const f of ['stardust/migrated/news/Six-FTAs.html', 'stardust/migrated/news/Six-FTAs._meta.json', 'content/news/Six-FTAs.html', 'content/news/six-ftas.html']) rmSync(join(site, f));
+  assert.equal(runSite().status, 0);
+  assert.ok(!('caseCollisions' in siteJson('stardust/rollout/coverage/pages.json')), 'the pair gone: the key is gone');
 });
 check('--content <dir> reads another content tree; a page outside it gets delivered: null', () => {
   cpSync(join(site, 'content'), join(site, 'alt-content'), { recursive: true });

@@ -49,7 +49,18 @@ sidecar — until the lead removed them from pages.json by hand after json-edit'
   a file missing in both cases still null; `blocks.test.mjs` — derived vs recorded vs missing-code vs unused vs
   default-content rows, the counts, the summary line, idempotence; `done-check.test.mjs` — synthesized rows
   unjudged beside sourced rows still judged, the skipped and info lines and their place, a deployed synthesized
-  row still unfinished, the CLI text and `--json`. The scripts index is untouched (20551 bytes). No version bump.
+  row still unfinished, the CLI text and `--json`.
+- Review follow-ups. A content file present under BOTH cases is no longer a stdout-only note: `inventory.mjs` records
+  the pair in pages.json `caseCollisions[]` (`{slug, path, file, alternate}`, schema and contract updated; the exact
+  file is read), the manifest lists it as a placeholder (`caseCollisions[]: N page(s) whose content file also exists
+  under another case …`) and done-check prints `pages_case_collisions:N: <path (file ↔ alternate)>` — a coverage
+  info line beside `pages_excluded` / `synthesized_pages` / `blocks_pending`, never a gap, not in the hidden-after-
+  handover set. And the pending-block placeholder follows the redefinition: `workspace-manifest.mjs` `pendingBlocks`
+  (its `SETTLED` set: converted, deployed, verified, not-delivered) is the one definition both the placeholder and
+  done-check's `blocks_pending` read — blocks the documents show while blocks.json reads `pending` (no code to derive
+  `converted` from) or `failed` — and both texts say so. Tests: the schema admits the key; the pure placeholder and
+  info lines, their place; the inventory lays the two files down where the file system allows it (a case-insensitive
+  one cannot hold both and says so). The scripts index is untouched (20551 bytes). No version bump.
 
 ## 0.36.x (stardust/s54-export-truth) — the export states its own facts: the encode decision is the record's, section gaps stop predicting the adopter, low-confidence selectors are counted (#177)
 

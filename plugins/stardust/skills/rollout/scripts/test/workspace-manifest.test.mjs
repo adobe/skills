@@ -1064,7 +1064,7 @@ check('judgement: default names are kebab(type || id), made unique in id order w
   assert.equal(j.defaults.templates.d.description, 'article-page-3: 1 page(s); blocks none.');
 });
 
-check('pendingBlocks: a module block is pending only with delivered instances and no conversion record (converted, deployed, verified, not-delivered); unused rows, default content and chrome never are; EDS names sorted', () => {
+check('pendingBlocks: a module block is listed only with delivered instances and an unsettled row (pending or failed — not converted, deployed, verified, not-delivered); unused rows, default content and chrome never are; EDS names sorted', () => {
   const { pendingBlocks } = wm;
   const row = (id, status, instances) => ({ id, kind: 'module', delivery: { status, edsBlockName: id }, ...(instances == null ? {} : { variants: [{ id: `v_${id}`, classes: [], pages: 1, instances }] }) });
   const blocksDoc = { blocks: [
@@ -1077,11 +1077,23 @@ check('pendingBlocks: a module block is pending only with delivered instances an
   for (const empty of [null, {}, { blocks: null }]) assert.deepEqual(pendingBlocks(empty), []);
 });
 
-check('placeholders: blocks delivered without a conversion record are one line naming update-coverage.mjs --block', () => {
+check('placeholders: blocks the documents show while blocks.json reads pending or failed are one line — the rows pendingBlocks lists (one definition with done-check\'s blocks_pending)', () => {
   const dir = copy('pending-blocks');
   ok(node(dir, 'update-coverage.mjs', '--block', 'hero-banner', '--status', 'pending'));
   ok(run(dir));
-  assert.deepEqual(doc(dir, 'manifest.json').placeholders, [...BASE_PLACEHOLDERS, 'blocks[].delivery: 1 block(s) delivered without a conversion record (update-coverage.mjs --block)'].sort(byStr));
+  const PENDING = 'blocks[].delivery: 1 block(s) the delivered documents show while blocks.json reads pending (no code under blocks/<name>/ for blocks.mjs to derive converted from) or failed';
+  assert.deepEqual(doc(dir, 'manifest.json').placeholders, [...BASE_PLACEHOLDERS, PENDING].sort(byStr));
+  assert.equal(wm.pendingBlocks(doc(dir, '../coverage/blocks.json')).length, 1, 'the placeholder counts exactly what pendingBlocks lists');
+});
+
+check('placeholders: pages.json caseCollisions[] (a content file under both cases) is one line naming each pair; absent key, no line', () => {
+  const { placeholdersOf } = wm;
+  const base = { templates: { templates: [{ id: 't', name: 'n', description: 'd' }] }, blocks: { blocks: [] }, pages: { pages: [] } };
+  assert.deepEqual(placeholdersOf(base), []);
+  const pair = { slug: 'news-six', path: '/news/Six-FTAs', file: 'news/Six-FTAs.html', alternate: 'news/six-ftas.html' };
+  assert.deepEqual(placeholdersOf({ ...base, pages: { pages: [], caseCollisions: [pair, { ...pair, slug: 'x', path: '/x/A', file: 'x/A.html', alternate: 'x/a.html' }] } }),
+    ['caseCollisions[]: 2 page(s) whose content file also exists under another case (the exact one is read; the two collide once delivered): /news/Six-FTAs (news/Six-FTAs.html ↔ news/six-ftas.html), /x/A (x/A.html ↔ x/a.html)']);
+  assert.deepEqual(placeholdersOf({ ...base, pages: { pages: [], caseCollisions: [] } }), [], 'an empty list: no line');
 });
 
 check('placeholders: the "(not judged)" summary lines from coverage, sorted; pages with delivered: null counted (a state roster page without a content file)', () => {

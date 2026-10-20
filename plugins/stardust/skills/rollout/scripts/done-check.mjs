@@ -94,10 +94,15 @@
  * results page, a landing page, anything built outside the migrated tree): no source to gate against and no schema
  * sidecar, so sidecars_missing never counts them and gate-all skips them; their status still counts like any row's
  * (pages_unfinished until verified — verify.mjs --all proves them live); never retired by hand from pages.json;
- * blocks_pending:N: <names> — record each, the module blocks of coverage/blocks.json delivered (instances in the
- * content files) and still `pending`: blocks.mjs derives `converted` for a delivered block whose code is under
- * blocks/<name>/, so what remains has no block code (build it) or a blocks.json older than that rule (re-run blocks.mjs),
- * else a conversion record settles it (update-coverage.mjs --block … converted|deployed|verified|not-delivered);
+ * pages_case_collisions:N: <path (file ↔ alternate)> — the coverage pages.json caseCollisions[] rows (inventory.mjs):
+ * a page whose content file exists under its own case and under its delivered-path fold — the exact file is read,
+ * the two collide once delivered, so one of them must go (the manifest lists the same pairs as a placeholder);
+ * blocks_pending:N: <names> — the module blocks of coverage/blocks.json the delivered documents show (instances in
+ * the content files) while blocks.json reads `pending` — no block code under blocks/<name>/ for blocks.mjs to derive
+ * `converted` from, or a blocks.json older than that rule — or `failed` (a recorded failure the documents
+ * contradict): build the code (blocks.mjs then reads it converted) or record each (update-coverage.mjs --block …
+ * converted|not-delivered). One definition (workspace-manifest.mjs pendingBlocks) for this line and the manifest's
+ * `blocks[].delivery` placeholder;
  * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
  * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent);
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence
@@ -125,7 +130,7 @@
  * tree: skills/rollout/schemas/; a copied scripts dir: its schemas/);
  * export_quality:excluded:N: <url (reason)> — the manifest's excluded[] (planned URLs that never became a page, each
  * with its recorded reason — workspace-manifest.mjs --help) when N>0; all eight hidden once the export is handed over
- * (pages_excluded, synthesized_pages and blocks_pending read the coverage, not the export, and stay).
+ * (pages_excluded, synthesized_pages, pages_case_collisions and blocks_pending read the coverage, not the export, and stay).
  *
  * Exit: 0 complete · 1 gaps · 2 usage (no coverage/pages.json; no live host and no --offline; bad --widths).
  */
@@ -494,7 +499,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], caseCollisions = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -518,9 +523,10 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // delivered blocks with no judged base type: a gap (not a hard stop) until the owner names them — unknown is not judged
   if (blocksUnjudged > 0) gaps.push(`blocks_unjudged:${blocksUnjudged}`);
   if (!rolloutEnded(ledgerLines)) gaps.push('rollout_incomplete');
-  // planned pages the source no longer serves (coverage excluded[]) and blocks delivered without a conversion record:
-  // named, never a gap
+  // planned pages the source no longer serves (coverage excluded[]), content files present under both cases (coverage
+  // caseCollisions[]) and blocks the documents show while blocks.json reads pending or failed: named, never a gap
   const out = (Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e === 'object');
+  const collisions = (Array.isArray(caseCollisions) ? caseCollisions : []).filter((c) => c && typeof c === 'object');
   // rows without a source URL (update-coverage.mjs --new): built, verified like any row, never gated — named, never a gap
   const synthesized = pages.filter((p) => p && typeof p === 'object' && !hasSource(p));
   // the migration export's zero-confidence and low-confidence selector counts (manifest selectorQuality), null-selector
@@ -541,7 +547,8 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
     ...(planned.length ? [`export_quality:excluded:${planned.length}: ${listed(planned.map((e) => `${e.url} (${typeof e.reason === 'string' && e.reason ? e.reason : 'unrecorded'})`))}`] : []),
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
     ...(synthesized.length ? [`synthesized_pages:${synthesized.length}: ${listed(synthesized.map(pathOf))}`] : []),
-    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — record each: update-coverage.mjs --block <name|id> --status converted`] : []),
+    ...(collisions.length ? [`pages_case_collisions:${collisions.length}: ${listed(collisions.map((c) => `${c.path || `/${c.slug}`} (${c.file} ↔ ${c.alternate})`))}`] : []),
+    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered`] : []),
     ...(headerAgent ? [headerAgent] : []),
   ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
@@ -721,6 +728,7 @@ async function main() {
     exported: exported.gap,
     blocksUnjudged: unjudgedKnown ? wm.unjudgedBaseTypes(blocksDoc).length : 0,
     excluded: pagesDoc.excluded,
+    caseCollisions: pagesDoc.caseCollisions,
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
     headerAgent: headerDecidedByAgent(parity),
     zeroConfidence: exported.zeroConfidence,

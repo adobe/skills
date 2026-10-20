@@ -19,7 +19,8 @@
  * and of <out>/workspace/mapping.json when present (outputs) and of what the coverage was built
  * from (inputs: every <content>/**.html as one entry, each <blocks>/<name>/<name>.{js,css},
  * <out>/workspace/judgement.json when present), placeholders
- * (fields not judged, pages without a content file, module blocks delivered without a conversion record — instances
+ * (fields not judged, pages without a content file, pages whose content file exists under both cases, module blocks
+ * the documents show while blocks.json reads pending or failed — instances
  * in the content files, no update-coverage.mjs --block record), a `templateGroups` {total, archetypes, siblings} count
  * split (siblings = the cloned sibling template groups beyond one archetype per page type), a `variantsSummary`
  * {total, singleUse, blocks} recomputed from blocks.json's module rows (the variants, those a single instance uses —
@@ -474,15 +475,19 @@ export function moduleBlocks(blocksDoc) {
   return byName;
 }
 
-// a conversion record: update-coverage.mjs --block … --status converted|deployed|verified, or not-delivered with its reason
-const RECORDED = new Set(['converted', 'deployed', 'verified', 'not-delivered']);
+// the statuses that settle a block's delivery: a conversion blocks.mjs derived or update-coverage.mjs recorded
+// (converted, deployed, verified), or a recorded decision not to deliver it (not-delivered, with its reason)
+const SETTLED = new Set(['converted', 'deployed', 'verified', 'not-delivered']);
 /**
- * The module blocks still pending, by EDS name, sorted: delivered instances (variants[].instances, from the pages'
- * content files) and no conversion record. A row no page delivers is not pending — nothing of it shipped. Pure.
+ * The module blocks the delivered documents show (variants[].instances > 0, from the pages' content files) whose
+ * blocks.json row is not settled, by EDS name, sorted: `pending` — no block code under blocks/<name>/ for blocks.mjs
+ * to derive `converted` from (or a blocks.json older than that rule) — or `failed` (a recorded failure the documents
+ * contradict). A row no page delivers is never listed — nothing of it shipped. ONE definition, two readers: the
+ * manifest's `blocks[].delivery` placeholder and done-check's `blocks_pending` info line both count exactly this. Pure.
  */
 export function pendingBlocks(blocksDoc) {
   const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
-  return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !RECORDED.has(b.delivery && b.delivery.status))
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !SETTLED.has(b.delivery && b.delivery.status))
     .map(([name]) => name).sort(byStr);
 }
 
@@ -550,10 +555,15 @@ export function unjudgedBaseTypes(blocksDoc) {
   return [...moduleBlocks(blocksDoc)].filter(([, b]) => !b.baseType || b.baseType === 'unknown').map(([name]) => name).sort(byStr);
 }
 
-/** Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a content file, blocks pending (pendingBlocks). Sorted. */
+/**
+ * Summary lines for what a client gets as a default: fields not judged (colorScheme is optional), pages without a
+ * content file, pages whose content file exists under both cases (pages.json caseCollisions[] — the exact file is
+ * read, the two collide once delivered), blocks the documents show while unsettled (pendingBlocks). Sorted.
+ */
 export function placeholdersOf(coverage) {
   const templates = coverage.templates.templates;
   const blocks = [...moduleBlocks(coverage.blocks).values()];
+  const collisions = (Array.isArray(coverage.pages.caseCollisions) ? coverage.pages.caseCollisions : []).filter((c) => c && typeof c === 'object');
   const count = (rows, test) => rows.filter(test).length;
   return [
     ['templates[].name', count(templates, (t) => !t.name), 'template(s) without a name (not judged)'],
@@ -562,7 +572,8 @@ export function placeholdersOf(coverage) {
     ['blocks[].purpose', count(blocks, (b) => !b.purpose), 'block(s) without purpose (not judged)'],
     ['blocks[].reuseGuidance', count(blocks, (b) => !b.reuseGuidance), 'block(s) without reuse guidance (not judged)'],
     ['pages[].delivered', count(coverage.pages.pages, (p) => p.delivered == null), 'page(s) without a content file (null)'],
-    ['blocks[].delivery', pendingBlocks(coverage.blocks).length, 'block(s) delivered without a conversion record (update-coverage.mjs --block)'],
+    ['caseCollisions[]', collisions.length, `page(s) whose content file also exists under another case (the exact one is read; the two collide once delivered): ${collisions.map((c) => `${c.path} (${c.file} ↔ ${c.alternate})`).join(', ')}`],
+    ['blocks[].delivery', pendingBlocks(coverage.blocks).length, 'block(s) the delivered documents show while blocks.json reads pending (no code under blocks/<name>/ for blocks.mjs to derive converted from) or failed'],
   ].filter(([, n]) => n).map(([field, n, why]) => `${field}: ${n} ${why}`).sort(byStr);
 }
 
