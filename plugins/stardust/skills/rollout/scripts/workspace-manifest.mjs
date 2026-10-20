@@ -275,15 +275,16 @@ export function vocabularyOf(project, templateId) {
 }
 
 /**
- * One template's encode decision, in precedence order: `encoded` when the mapping holds ≥ 1 encoder-map selector for
- * it (the export's own evidence that a vocabulary drove it, record or not); else the recorded verdict (`encoded`,
- * `no-roundtrip`, `not-attempted`, `hand-authored` — the owner's decision as migrate recorded it); else
- * `not-applicable` for a template of at most one page (no sibling to encode, nothing to decide); else `unrecorded` —
- * a multi-page template whose encoder decision the export cannot show, the case a reviewer cannot interpret
+ * One template's encode decision — the record's verdict, never an inference from the mapping: `encoded`,
+ * `no-roundtrip`, `not-attempted` or `hand-authored` as migrate's encode-attempt.mjs recorded it (the one source that
+ * knows whether the encoder ran and what its round trip said; an encoder-map selector in the mapping proves a
+ * vocabulary matched the captures, not that the archetype round-tripped — in a recorded hands-off run a template
+ * with 50 encoder-map selectors carried a `no-roundtrip` record and nine forked siblings, and the manifest read
+ * `encoded`); else `not-applicable` for a template of at most one page (no sibling to encode, nothing to decide);
+ * else `unrecorded` — a multi-page template with no record at all, the case a reviewer cannot interpret
  * (done-check.mjs counts these as export_quality:encode_unrecorded). Pure.
  */
-export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = {}) {
-  if (encoderMap > 0) return 'encoded';
+export function encodeDecisionOf({ record = null, pages = 0 } = {}) {
   if (record && ENCODE_VERDICTS.includes(record.verdict)) return record.verdict;
   return pages > 1 ? 'unrecorded' : 'not-applicable';
 }
@@ -296,9 +297,9 @@ export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = 
  * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
  * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
- * applicable (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under
- * `project`; vocabularyOf names the map; `reason` and `recordedAt` are the record's only when the decision IS its
- * verdict — a decision the mapping or the page count made carries null for both) so `encoderCoverage` reads with its
+ * applicable (encodeDecisionOf over migrate's record under `project` and the template's page count — never the
+ * encoder-map count; vocabularyOf names the map; `reason` and `recordedAt` are the record's, null without one — a
+ * decision the page count made) so `encoderCoverage` reads with its
  * reason) and `encode` ({encoded, noRoundtrip, notAttempted, handAuthored, notApplicable, unrecorded}, the decisions
  * counted). null when there is no readable
  * mapping (nothing shipped to measure). Derived, so --check keeps it out of the drift classification (it hashes only
@@ -321,15 +322,14 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     const slugs = Array.isArray(t.pages) ? t.pages : insts.map((i) => i && i.slug);
     const pages = new Set(slugs.filter((s) => typeof s === 'string' && s)).size;
     const record = encodeRecordOf(project, template);
-    const decision = encodeDecisionOf({ record, encoderMap, pages });
-    // the record's stamp and reason belong to the decision only when the decision is the record's verdict
-    const recorded = record && record.verdict === decision ? record : null;
+    // the record decides; its stamp and reason travel with it (a decision the page count made carries null for both)
+    const decision = encodeDecisionOf({ record, pages });
     encode[ENCODE_COUNTER[decision]] += 1;
     return {
       template, instances: insts.length,
       encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
-      encode: { decision, reason: recorded ? recorded.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: recorded ? recorded.recordedAt : null },
+      encode: { decision, reason: record ? record.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {

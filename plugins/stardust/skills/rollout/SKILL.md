@@ -765,8 +765,10 @@ The manifest's `selectorQuality` records how the source selectors were found —
 the `zeroConfidence` count (position fallbacks: no encoder-map marker, no text match, no uniquely matched
 image) and `byTemplate` (the same split per template, so a reviewer sees which templates are encoder-backed and
 which fell back). A reviewer reads each row's `encoderCoverage` together with its `encode.decision`
-and `encode.reason` — `encoded`, `hand-authored`, `not-attempted`, `no-roundtrip`, `not-applicable`
-or `unrecorded`, with the owner's why from migrate's encode record — so a 0 reads as "tried and
+and `encode.reason` — the verdict migrate's encode record holds (`encoded`, `hand-authored`,
+`not-attempted`, `no-roundtrip`; never inferred from encoder-map selectors: a vocabulary that matched
+is not an archetype that round-tripped), `not-applicable` (one page) or `unrecorded` (no record),
+with the owner's why — so a 0 reads as "tried and
 refused", "never applicable" or "never decided", not a guess. `done-check.mjs` surfaces the
 `unrecorded` count as the `export_quality:encode_unrecorded` info line and `zeroConfidence` as
 `export_quality:zero_confidence`; pass

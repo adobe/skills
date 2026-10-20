@@ -230,8 +230,8 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
       ],
     }],
   };
-  // t1 has an encoder-map selector: encode decision `encoded` from the mapping alone (no record, no vocabulary on disk)
-  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3, encoderCoverage: 0.167, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, encoded: 1 } };
+  // t1 has an encoder-map selector but no record: two pages (slugs a, b), no decision → `unrecorded` (the mapping never decides)
+  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3, encoderCoverage: 0.167, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, unrecorded: 1 } };
   const dir = withCaptures('selector-quality');
   mkdirSync(W(dir), { recursive: true });
   writeFileSync(join(dir, MAP), `${JSON.stringify(mixedMapping, null, 2)}\n`);
@@ -274,22 +274,23 @@ check('selectorQuality.byTemplate: one row per mapping template with its instanc
   writeFileSync(join(dir, MAP), `${JSON.stringify(twoTemplates, null, 2)}\n`);
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.byTemplate, [
-    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, imageAlignment: 0, position: 0, encoderCoverage: 0.667, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } },
+    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, imageAlignment: 0, position: 0, encoderCoverage: 0.667, encode: { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null } },
     { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 1, encoderCoverage: 0, encode: { decision: 'not-applicable', reason: null, vocabulary: null, recordedAt: null } },
-  ], 'most instances first; per-template source split and encoderCoverage; encoded from the mapping, a one-page template not-applicable');
-  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.encode, { ...NO_ENCODE, encoded: 1, notApplicable: 1 });
+  ], 'most instances first; per-template source split and encoderCoverage; three pages without a record are unrecorded (its encoder-map selectors never decide), a one-page template not-applicable');
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.encode, { ...NO_ENCODE, unrecorded: 1, notApplicable: 1 });
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);
 });
 
-check('selectorQuality encode: each byTemplate row carries {decision, reason, vocabulary, recordedAt} — encoded from an encoder-map selector (record or not), the recorded verdict (hand-authored, not-attempted, no-roundtrip, encoded), not-applicable for a one-page template without a record, unrecorded for a multi-page one; reason and recordedAt are the record\'s only when the decision is its verdict (capped reason); records read tolerantly, never written; counts; vocabulary resolved where block-origin reads it; records are never drift inputs; --rehash-only recomputes; validates', () => {
+check('selectorQuality encode: each byTemplate row carries {decision, reason, vocabulary, recordedAt} — the recorded verdict (encoded, no-roundtrip, not-attempted, hand-authored) whatever the mapping\'s encoder-map count, not-applicable for a one-page template without a record, unrecorded for a multi-page one (encoder-map selectors or not); reason and recordedAt are the record\'s (capped reason); records read tolerantly, never written; counts; vocabulary resolved where block-origin reads it; records are never drift inputs; --rehash-only recomputes; validates', () => {
   const inst = (slug, pos, source) => ({ slug, pos, selector: `s${pos}`, source, confidence: source === 'encoder-map' ? 1 : source === 'position' ? 0 : 0.6, verified: null });
   const tpl = (templateId, pages, sources) => ({ templateId, pages, sections: [], blocks: [{ block: 'b', instances: sources.map((s, i) => inst(pages[i % pages.length], i, s)) }] });
   const mapping = {
     formatVersion: '0.1.0', generatedAt: '2026-01-01T00:00:00.000Z', skipped: [],
     templates: [
       tpl('enc-rec', ['enc-rec', 'enc-rec-2'], ['encoder-map', 'encoder-map', 'text-alignment']), // vocabulary + record encoded
-      tpl('enc-map', ['enc-map', 'enc-map-2'], ['encoder-map', 'text-alignment']), // vocabulary, NO record: encoded from the mapping
-      tpl('mixed', ['mixed', 'mixed-2'], ['encoder-map', 'text-alignment']), // an encoder-map selector over a hand-authored record: encoded, the record's stamp and reason NOT carried
+      tpl('enc-map', ['enc-map', 'enc-map-2'], ['encoder-map', 'text-alignment']), // vocabulary, NO record: unrecorded — the mapping never decides
+      tpl('mixed', ['mixed', 'mixed-2'], ['encoder-map', 'text-alignment']), // an encoder-map selector beside a hand-authored record: the record, its stamp and reason carried
+      tpl('nort-map', ['nort-map', 'nort-map-2', 'nort-map-3'], ['encoder-map', 'encoder-map', 'text-alignment']), // the recorded run: the vocabulary matched, the round trip failed, the siblings were forked — no-roundtrip with its reason
       tpl('hand', ['hand', 'hand-2', 'hand-3'], ['text-alignment', 'text-alignment', 'position']), // record hand-authored
       tpl('owner', ['owner', 'owner-2'], ['text-alignment']), // record not-attempted (an owner reason)
       tpl('nort', ['nort', 'nort-2'], ['text-alignment']), // record no-roundtrip
@@ -316,13 +317,15 @@ check('selectorQuality encode: each byTemplate row carries {decision, reason, vo
   record('hand', 'hand-authored', { pages: ['hand-2', 'hand-3'], reason: '  variance probe exit 2, major for both siblings  ' });
   record('owner', 'not-attempted', { reason: LONG });
   record('nort', 'no-roundtrip', { reason: '' });
+  const RT = 'roundtrip nort-map at text: not equal (9 differences) — content/nort-map.html';
+  record('nort-map', 'no-roundtrip', { reason: RT, roundtrip: { exit: 2, line: RT }, lint: { exit: 1, line: 'lint nort-map: 1 finding' }, siblings: 2, encoded: 0, source: 'forked', sourceReason: 'no derivation on record', forked: ['nort-map-2', 'nort-map-3'] });
   record('rec-enc-0', 'encoded');
   record('solo-rec', 'not-attempted');
   writeFileSync(join(REC, 'bad-json.json'), '{ not json');
   record('other', 'hand-authored', { template: 'someone-else' });
   record('odd', 'maybe');
   // the vocabularies where block-origin reads them by default: stardust/import/<t>/vocabulary.json
-  for (const t of ['enc-rec', 'enc-map', 'mixed']) { mkdirSync(join(dir, 'stardust', 'import', t), { recursive: true }); writeFileSync(join(dir, 'stardust', 'import', t, 'vocabulary.json'), '{ "markers": [] }\n'); }
+  for (const t of ['enc-rec', 'enc-map', 'mixed', 'nort-map']) { mkdirSync(join(dir, 'stardust', 'import', t), { recursive: true }); writeFileSync(join(dir, 'stardust', 'import', t, 'vocabulary.json'), '{ "markers": [] }\n'); }
   ok(run(dir));
   const sq = doc(dir, 'manifest.json').selectorQuality;
   const enc = Object.fromEntries(sq.byTemplate.map((r) => [r.template, r.encode]));
@@ -330,8 +333,9 @@ check('selectorQuality encode: each byTemplate row carries {decision, reason, vo
   const none = { reason: null, vocabulary: null, recordedAt: null };
   assert.deepEqual(enc, {
     'enc-rec': { decision: 'encoded', reason: null, vocabulary: 'stardust/import/enc-rec/vocabulary.json', recordedAt: AT },
-    'enc-map': { decision: 'encoded', reason: null, vocabulary: 'stardust/import/enc-map/vocabulary.json', recordedAt: null },
-    mixed: { decision: 'encoded', reason: null, vocabulary: 'stardust/import/mixed/vocabulary.json', recordedAt: null },
+    'enc-map': { decision: 'unrecorded', reason: null, vocabulary: 'stardust/import/enc-map/vocabulary.json', recordedAt: null },
+    mixed: { decision: 'hand-authored', reason: 'the siblings differ beyond a fork', vocabulary: 'stardust/import/mixed/vocabulary.json', recordedAt: AT },
+    'nort-map': { decision: 'no-roundtrip', reason: RT, vocabulary: 'stardust/import/nort-map/vocabulary.json', recordedAt: AT },
     hand: { decision: 'hand-authored', reason: 'variance probe exit 2, major for both siblings', vocabulary: null, recordedAt: AT },
     owner: { decision: 'not-attempted', reason: `${LONG.slice(0, 299)}…`, vocabulary: null, recordedAt: AT },
     nort: { decision: 'no-roundtrip', reason: null, vocabulary: null, recordedAt: AT },
@@ -345,13 +349,13 @@ check('selectorQuality encode: each byTemplate row carries {decision, reason, vo
     nopages: { decision: 'unrecorded', ...none },
   });
   assert.equal(enc.owner.reason.length, 300, 'a long reason is capped at 300 characters, ellipsis included');
-  assert.deepEqual(sq.encode, { encoded: 4, noRoundtrip: 1, notAttempted: 2, handAuthored: 1, notApplicable: 1, unrecorded: 5 });
+  assert.deepEqual(sq.encode, { encoded: 2, noRoundtrip: 2, notAttempted: 2, handAuthored: 2, notApplicable: 1, unrecorded: 6 });
   assert.equal(Object.values(sq.encode).reduce((a, b) => a + b, 0), sq.byTemplate.length, 'the counters sum to the template count');
   const mf = doc(dir, 'manifest.json');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
   // the records are never hashed: no inputs key under stardust/migrate/encode/<t>.json (the vocabularies are, as before)
   assert.deepEqual(Object.keys(mf.inputs).filter((k) => k.startsWith('stardust/migrate/encode/')), []);
-  assert.deepEqual(Object.keys(mf.inputs).filter((k) => k.startsWith('stardust/import/')), ['stardust/import/enc-map/vocabulary.json', 'stardust/import/enc-rec/vocabulary.json', 'stardust/import/mixed/vocabulary.json']);
+  assert.deepEqual(Object.keys(mf.inputs).filter((k) => k.startsWith('stardust/import/')), ['stardust/import/enc-map/vocabulary.json', 'stardust/import/enc-rec/vocabulary.json', 'stardust/import/mixed/vocabulary.json', 'stardust/import/nort-map/vocabulary.json']);
   // a record added after the manifest is no drift (--check fresh); --rehash-only picks the decision up (derived, recomputed)
   record('silent', 'hand-authored', { reason: 'late decision' });
   const c = run(dir, '--check', '--json');
@@ -363,14 +367,17 @@ check('selectorQuality encode: each byTemplate row carries {decision, reason, vo
   assert.equal(jsonOut(r).status, 'rehashed');
   const after = doc(dir, 'manifest.json').selectorQuality;
   assert.deepEqual(after.byTemplate.find((x) => x.template === 'silent').encode, { decision: 'hand-authored', reason: 'late decision', vocabulary: null, recordedAt: AT });
-  assert.deepEqual(after.encode, { encoded: 4, noRoundtrip: 1, notAttempted: 2, handAuthored: 2, notApplicable: 1, unrecorded: 4 });
+  assert.deepEqual(after.encode, { encoded: 2, noRoundtrip: 2, notAttempted: 2, handAuthored: 3, notApplicable: 1, unrecorded: 5 });
   assert.equal(jsonOut(run(dir, '--rehash-only', '--json')).status, 'unchanged', 'idempotent');
   // the records are read, never written: byte-identical after the runs
   assert.equal(readFileSync(join(REC, 'hand.json'), 'utf8').includes('"verdict": "hand-authored"'), true);
-  assert.deepEqual(readdirSync(REC).sort(byStr), ['bad-json.json', 'enc-rec.json', 'hand.json', 'mixed.json', 'nort.json', 'odd.json', 'other.json', 'owner.json', 'rec-enc-0.json', 'silent.json', 'solo-rec.json']);
+  assert.deepEqual(readdirSync(REC).sort(byStr), ['bad-json.json', 'enc-rec.json', 'hand.json', 'mixed.json', 'nort-map.json', 'nort.json', 'odd.json', 'other.json', 'owner.json', 'rec-enc-0.json', 'silent.json', 'solo-rec.json']);
   assert.ok(readFileSync(join(REC, 'owner.json'), 'utf8').includes(LONG), 'the long reason is untouched on disk');
   // the pure pieces: precedence and tolerance
-  assert.equal(wm.encodeDecisionOf({ record: { verdict: 'hand-authored' }, encoderMap: 2, pages: 3 }), 'encoded', 'an encoder-map selector wins: the export shows a vocabulary drove it');
+  assert.equal(wm.encodeDecisionOf({ record: { verdict: 'hand-authored' }, encoderMap: 2, pages: 3 }), 'hand-authored', 'the record decides; the mapping\'s encoder-map count never does');
+  assert.equal(wm.encodeDecisionOf({ record: { verdict: 'no-roundtrip' }, encoderMap: 50, pages: 10 }), 'no-roundtrip', 'a vocabulary that matched is not an archetype that round-tripped');
+  assert.equal(wm.encodeDecisionOf({ record: null, encoderMap: 5, pages: 2 }), 'unrecorded', 'no record, two pages: unrecorded whatever the mapping shows');
+  assert.equal(wm.encodeDecisionOf({ record: null, encoderMap: 5, pages: 1 }), 'not-applicable');
   assert.equal(wm.encodeDecisionOf({ record: { verdict: 'hand-authored' }, encoderMap: 0, pages: 1 }), 'hand-authored', 'a record stands on a one-page template');
   assert.equal(wm.encodeDecisionOf({ record: null, encoderMap: 0, pages: 0 }), 'not-applicable');
   assert.equal(wm.encodeDecisionOf({}), 'not-applicable');

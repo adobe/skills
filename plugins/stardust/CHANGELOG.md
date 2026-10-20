@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s54-export-truth) — the export states its own facts: the encode decision is the record's, section gaps stop predicting the adopter, low-confidence selectors are counted (#177)
+
+In a recorded hands-off run the migration-workspace export was complete and self-consistent (outputs 4/4,
+124/124 selectors verified, 7/7 files schema-valid) and still misstated three things the reviewing client
+reads first. The ten-page template's `encode.decision` read `encoded` with `reason` and `recordedAt` null
+while migrate's record said `no-roundtrip` (round trip exit 2, nine differences; nine siblings forked from
+the archetype) — #173 let one encoder-map selector in the mapping decide before the record, and a
+vocabulary that matched the captures is not an archetype that round-tripped. `sectionGaps` declared seven
+`blocks-unprojected` sections and the handover note said they "lose their blocks", yet the adopter that
+read the export names a block in every section that places one and reconciled all seven to zero with a
+note — #164's reason modelled one client's per-selector merge, not a property of the export. And 45 of the
+124 verified selectors (33 of them under 0.25) were text alignments whose element holds less than half of
+the block's text, shipped as ordinary selectors with no quality line: `selectorQuality` counted confidence
+0 only.
+
+- **The encode decision is the record's verdict, never the mapping's inference** (`workspace-manifest.mjs`
+  `encodeDecisionOf`): `encoded` / `no-roundtrip` / `not-attempted` / `hand-authored` as
+  `migrate/encode-attempt.mjs` wrote it — the four verdicts it writes, and the one source that knows
+  whether the encoder ran and what its round trip said — else `not-applicable` (a template of at most one
+  page, no record) or `unrecorded` (a multi-page template with no record at all; `done-check.mjs`'s
+  `export_quality:encode_unrecorded` keeps that meaning). `reason` and `recordedAt` always travel with the
+  record. The mapping's encoder-map count stays on the row (`encoderMap`, `encoderCoverage`) as what it
+  is: evidence that a vocabulary matched. On the recorded export the ten-page row now reads
+  `no-roundtrip` with the round-trip line as its reason and the record's stamp; the counters move from
+  `encoded 1 · notAttempted 11` to `noRoundtrip 1 · notAttempted 11`. Schema: the enum is unchanged (an
+  older manifest still validates), the descriptions state the rule; the coverage contract, rollout
+  SKILL.md, the handoff contract's done-check row and done-check's header follow.
+
 ## 0.36.x (stardust/s53-slot-grammar) — the slot value grammar where the slots are written; a provenance `src` is no image; a never-directed sibling is told its status (#176)
 
 In a recorded hands-off run the prep session (`extract --prep`) wrote the typed slots of

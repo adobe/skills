@@ -102,9 +102,8 @@
  * instance; an adopter emits one catalog block per variant, so each is a one-off catalog entry to review or fold)
  * when N>0, informational, never a gap;
  * export_quality:encode_unrecorded:N — the manifest's selectorQuality.encode.unrecorded (multi-page templates with
- * no encoder-map selector and no migrate encode record, so a reviewer cannot tell whether the encoder was tried,
- * skipped or never applicable; else counted from byTemplate[].encode.decision) when N>0, informational, never a
- * gap;
+ * no migrate encode record at all, so a reviewer cannot tell whether the encoder was tried, skipped or never
+ * applicable; else counted from byTemplate[].encode.decision) when N>0, informational, never a gap;
  * export_quality:schema:<file>:N: <errors> — an export file (coverage/{pages,templates,blocks}.json, rollout.json,
  * workspace/{manifest,mapping,judgement}.json, those present) that fails its published schema under
  * skills/rollout/schemas/ — undeclared or missing required keys, a wrong type, an enum or pattern miss (lib.mjs's

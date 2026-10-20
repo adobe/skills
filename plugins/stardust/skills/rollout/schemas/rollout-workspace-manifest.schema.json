@@ -118,18 +118,18 @@
               "encoderCoverage": { "type": "number", "minimum": 0, "description": "encoderMap / instances for this template, three decimals (0 when it has no instances)." },
               "encode": {
                 "type": "object",
-                "description": "The template's encode decision, so encoderCoverage reads with its reason. Read at manifest time from migrate's record stardust/migrate/encode/<template>.json (its verdict, reason and at; never written here). Optional (older manifests omit it); derived, never a drift input.",
+                "description": "The template's encode decision, so encoderCoverage reads with its reason. Read at manifest time from migrate's record stardust/migrate/encode/<template>.json (its verdict, reason and at; never written here) — the record's verdict, never an inference from the mapping's encoder-map count. Optional (older manifests omit it); derived, never a drift input.",
                 "required": ["decision", "reason", "vocabulary", "recordedAt"],
                 "additionalProperties": false,
                 "properties": {
                   "decision": {
                     "type": "string",
                     "enum": ["encoded", "no-roundtrip", "not-attempted", "hand-authored", "not-applicable", "unrecorded"],
-                    "description": "encoded: an encoder vocabulary drove this template (at least one encoder-map selector in the mapping, or the record says so); no-roundtrip, not-attempted, hand-authored: the verdict migrate recorded (the encoder ran and the archetype does not round-trip; it was not run, with the owner's reason; the siblings were written by hand); not-applicable: a template of at most one page with no record (no sibling to encode); unrecorded: a multi-page template with no encoder-map selector and no record, the case a reviewer cannot interpret."
+                    "description": "encoded, no-roundtrip, not-attempted, hand-authored: the verdict migrate recorded (the archetype round-trips and the siblings are encoded; the encoder ran and the archetype does not round-trip; it was not run, with the owner's reason; the siblings were written by hand) — an encoder-map selector in the mapping proves a vocabulary matched the captures, not that the template encoded, so it never makes the decision (manifests before this rule read encoded over a no-roundtrip record); not-applicable: a template of at most one page with no record (no sibling to encode); unrecorded: a multi-page template with no record at all, the case a reviewer cannot interpret."
                   },
-                  "reason": { "type": ["string", "null"], "description": "The owner's why as the record carries it (reason, trimmed, at most 300 characters, an ellipsis closing a cut one) when the decision is the record's verdict; null when the record has none, or when the decision is not the record's verdict (an encoder-map selector made it encoded over the record)." },
+                  "reason": { "type": ["string", "null"], "description": "The owner's why as the record carries it (reason, trimmed, at most 300 characters, an ellipsis closing a cut one); null when there is no record or it has none." },
                   "vocabulary": { "type": ["string", "null"], "description": "Project-relative path of the template's encoder map where block-origin reads it by default (stardust/import/<t>/vocabulary.json when stardust/import is a directory, else stardust/migrate/encode/<t>/vocabulary.json); null when there is none." },
-                  "recordedAt": { "type": ["string", "null"], "description": "The record's at (else its _provenance.writtenAt) when the decision is the record's verdict; null otherwise - no record, or a decision the mapping or the page count made." }
+                  "recordedAt": { "type": ["string", "null"], "description": "The record's at (else its _provenance.writtenAt); null without a record (a decision the page count made)." }
                 }
               }
             }
