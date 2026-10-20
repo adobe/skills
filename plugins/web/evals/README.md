@@ -15,6 +15,9 @@ So scenarios give the agent browser output captured from live pages in
 | page-reduce-skeleton-from-phase1 | page-reduce | `web page reduce` output from https://www.aem.live/ |
 | page-langs-audit-from-capture | page-langs | browser-step output of `web page langs` (signals and text) from a local en/es/de test page, URL rewritten |
 | page-prep-throwaway-session-cleanup | page-prep | `web page overlays` detection report from https://www.20minutes.fr/ |
+| site-scan-report-from-scan | site-scan | `web site scan` output for an invented store (3 languages, an archive, two failed sitemaps) |
+| site-scan-empty-sitemap | site-scan | `web site scan` error (EMPTY_RESULT) for a site with no sitemap |
+| page-cache-offline-replay | page-cache | none |
 | domain-mask-demo-domain | domain-mask | none |
 
 cdp-connect (a pointer), cdp-ext-pilot, page-tree and page-collect have no scenarios: what they

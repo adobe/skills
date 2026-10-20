@@ -1,3 +1,28 @@
+# [1.2.0](https://github.com/adobe/skills/compare/web-cli-v1.1.0...web-cli-v1.2.0) (2026-10-20)
+
+
+### Bug Fixes
+
+* **web-cli:** collision-free cache keys, timeout validation, quieter scan errors ([d0ed643](https://github.com/adobe/skills/commit/d0ed643f325a937c095a1c61e64a62424974a10e))
+* **web-cli:** confine cache paths, store full responses, route CDN assets, fix http crawl ([02598a5](https://github.com/adobe/skills/commit/02598a5335b11bcc149853ef40ad2ff7d88aaa6b))
+
+
+### Features
+
+* **web-cli:** add site scan and cache serve, with site-scan and page-cache skills ([b79b1b4](https://github.com/adobe/skills/commit/b79b1b455cb79e77a140feeb8a3afcb928ed78e4))
+
+# [1.1.0](https://github.com/adobe/skills/compare/web-cli-v1.0.2...web-cli-v1.1.0) (2026-10-20)
+
+
+### Bug Fixes
+
+* **web-cli:** page bands keeps stacked siblings and splits text rows ([92e09ca](https://github.com/adobe/skills/commit/92e09ca831a149d4e04c28d22c0b34aebdef4537))
+
+
+### Features
+
+* **web-cli:** page bands slices a page into bands ([03a0758](https://github.com/adobe/skills/commit/03a0758ddb3711660364215ea1f17629a9da43d2))
+
 ## [1.0.2](https://github.com/adobe/skills/compare/web-cli-v1.0.1...web-cli-v1.0.2) (2026-10-20)
 
 

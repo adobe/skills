@@ -9,7 +9,8 @@
  *
  * Dedup signal (Phase 2): brand-module ids carried per page in the _meta.json
  * sidecar `modules[]` (shared by construction) + chrome (header/nav/footer,
- * site-wide singletons). Finer section-archetype dedup via structural signatures
+ * site-wide singletons) + widgets (`widgets[] {id, href}`: kind `widget`, code at
+ * widgets/<path>/<name>.html, no document rows — the page carries one link). Finer section-archetype dedup via structural signatures
  * is a later refinement; the `signature` field is reserved for it.
  *
  * Delivered blocks no page lists: every subdirectory <name> of the project's blocks dir holding
@@ -28,7 +29,8 @@
  * instance for instance; a block no document shows reads 0, truthfully, whatever the sidecars planned. A chrome
  * row counts every page with a delivered document (chrome is site-wide: the fragments ship on every page, and no
  * sidecar need declare them); a default-content row the pages whose sidecar `modules[]` declare it (default
- * content leaves no block record).
+ * content leaves no block record); a widget row (kind `widget`) the pages whose sidecar `widgets[]` mount it (a mount is
+ * one link, not a block record).
  *
  * Delivery status is a fact of the documents, not of the bookkeeping: a module row the delivered documents use
  * (`instanceCount` > 0) whose code is under the blocks dir reads `converted` without a conversion record
@@ -36,6 +38,9 @@
  * planned by a sidecar and shown by no delivered document yet, or shown by one while `<blocks>/<name>/<name>.{js,css}`
  * is missing (a recorded hands-off run shipped 13 live, gated blocks as `pending` because no unit recorded them).
  * A status update-coverage.mjs recorded (converted, deployed, verified, failed, not-delivered) is never overridden.
+ * A widget row is recorded as planned: `pending` with its stem as EDS name and its code path under widgets/ until a
+ * conversion is recorded — the blocks-dir rule reads `<blocks>/<name>/` and never a widget; the stock `blocks/widget/`
+ * loader (the reserved name every widget mounts through) is not a project block and registers no row.
  *
  * Idempotent: existing block delivery status is preserved; a `default-content` mapping (a module
  * that needs no block) keeps its name whatever its status. A second run writes the same bytes
@@ -73,7 +78,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import {
-  readJSON, writeJSON, edsName, kindOf, blockCounts, DEFAULT_CONTENT, COVERAGE_FORMAT_VERSION, byStr, sha256, variantIdentity,
+  readJSON, writeJSON, edsName, kindOf, blockCounts, widgetCodePath, DEFAULT_CONTENT, COVERAGE_FORMAT_VERSION, byStr, sha256, variantIdentity,
   cssOptionClasses, blockDescription, contractFor, baseTypeOf, identityTokens, scrubIdentity, judgedText, judgedGuidance,
   applyTemplateJudgement, writeCoverage, variantsSummary, variantsSummaryOf,
 } from './lib.mjs';
@@ -104,17 +109,20 @@ const pages = pagesDoc.pages || [];
 const blocksPath = join(OUT, 'coverage', 'blocks.json');
 const prior = new Map(((readJSON(blocksPath, { blocks: [] }) || {}).blocks || []).map((b) => [b.id, b]));
 
-// The blocks the sidecars plan (pages.json `blocks[]`, the sidecar modules[]): the row set, and the usage of the
-// default-content rows (the delivered documents cannot count them).
-const agg = new Map(); // id -> { templates:Set, pages:Set, count }
+// The blocks the sidecars plan (pages.json `blocks[]`, the sidecar modules[]) and the widgets they mount (pages.json
+// `widgets[]`, the sidecar widgets[]): the row set, and the usage of the default-content and widget rows (the delivered
+// documents cannot count them — default content leaves no block record, a widget mount is one link).
+const agg = new Map(); // id -> { templates:Set, pages:Set, count, kind, href }
+const tally = (p, id, extra) => {
+  if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: new Set(), count: 0, ...extra });
+  const a = agg.get(id);
+  a.count += 1;
+  a.pages.add(p.slug);
+  if (p.templateId) a.templates.add(p.templateId);
+};
 for (const p of pages) {
-  for (const id of p.blocks || []) {
-    if (!agg.has(id)) agg.set(id, { templates: new Set(), pages: new Set(), count: 0 });
-    const a = agg.get(id);
-    a.count += 1;
-    a.pages.add(p.slug);
-    if (p.templateId) a.templates.add(p.templateId);
-  }
+  for (const id of p.blocks || []) tally(p, id, { kind: kindOf(id) });
+  for (const w of p.widgets || []) tally(p, w.id, { kind: 'widget', href: w.href });
 }
 
 const now = new Date().toISOString();
@@ -175,10 +183,11 @@ for (const p of pages) {
  * A row's usage, in contract order. A module row with an EDS block: counted from the delivered documents by its EDS
  * name (a block no document shows reads 0, whatever the sidecars planned); a chrome row: every page with a delivered
  * document (site-wide; no sidecar need declare it); a default-content row: the pages whose sidecar modules[] declare
- * it — default content leaves no block record to count.
+ * it — default content leaves no block record to count; a widget row: the pages whose sidecar widgets[] mount it — a
+ * mount is one link in the document, not a block record.
  */
 function usageOf(id, kind, edsBlockName) {
-  const u = kind === 'chrome' ? siteWide : edsBlockName === DEFAULT_CONTENT ? agg.get(id) : usedBy.get(edsBlockName);
+  const u = kind === 'chrome' ? siteWide : kind === 'widget' || edsBlockName === DEFAULT_CONTENT ? agg.get(id) : usedBy.get(edsBlockName);
   return {
     usedByTemplates: [...(u ? u.templates : [])].sort(),
     usedByPages: [...(u ? u.pages : [])].sort(),
@@ -218,29 +227,31 @@ const withDelivered = (row, name) => (row.kind === 'module' && row.delivery.edsB
 
 // The blocks dir: every subdirectory <name> holding <name>.js or <name>.css is a delivered block's code.
 const blocksDirExists = existsSync(BLOCKS_DIR) && statSync(BLOCKS_DIR).isDirectory();
+// `widget` is the stock loader every EDS widget mounts through (reserved; never a project block), so blocks/widget/ registers no row.
 const dirNames = blocksDirExists
   ? readdirSync(BLOCKS_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && ['js', 'css'].some((ext) => existsSync(join(BLOCKS_DIR, d.name, `${d.name}.${ext}`))))
+    .filter((d) => d.isDirectory() && d.name !== 'widget' && ['js', 'css'].some((ext) => existsSync(join(BLOCKS_DIR, d.name, `${d.name}.${ext}`))))
     .map((d) => d.name)
     .sort((x, y) => x.localeCompare(y))
   : [];
 const hasCode = new Set(dirNames);
 
 const derived = []; // module rows read converted from the delivered documents + their code, no record needed
-const planned = [...agg.keys()].map((id) => {
-  const kind = kindOf(id);
+const planned = [...agg.entries()].map(([id, a]) => {
+  const { kind } = a;
+  const codePath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : kind === 'widget' ? widgetCodePath(a.href) : null;
   const p = prior.get(id);
   const delivery = { ...((p && p.delivery) || {
     status: 'pending',
-    edsBlockName: kind === 'chrome' ? null : edsName(id),
-    blockPath: kind === 'chrome' ? `fragments/${edsName(id)}.html` : null,
+    edsBlockName: kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id), // a widget's class is its file stem verbatim (reservedStem is the lint's job)
+    blockPath: codePath,
     convertedAt: null,
   }) };
   // Keep the derived EDS name fresh for not-yet-converted blocks — never over a default-content
   // mapping, which is a resolved decision (no block to build) even while its status reads pending.
   if (delivery.status === 'pending' && delivery.edsBlockName !== DEFAULT_CONTENT) {
-    delivery.edsBlockName = kind === 'chrome' ? null : edsName(id);
-    delivery.blockPath = kind === 'chrome' ? `fragments/${edsName(id)}.html` : delivery.blockPath || null;
+    delivery.edsBlockName = kind === 'chrome' ? null : kind === 'widget' ? id : edsName(id);
+    delivery.blockPath = codePath || delivery.blockPath || null;
   }
   const name = delivery.edsBlockName || edsName(id);
   const usage = usageOf(id, kind, name);
@@ -327,13 +338,15 @@ if (config) {
 
 const modules = blocks.filter((b) => b.kind === 'module');
 const chrome = blocks.filter((b) => b.kind === 'chrome');
+const widgets = blocks.filter((b) => b.kind === 'widget');
 console.log(`rollout blocks → ${blocksPath}${written ? '' : ' (unchanged)'}`);
 console.log('='.repeat(60));
-console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment)`);
-console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length, 0)} planned listings → ${planned.length} conversions`);
+console.log(`Distinct blocks  ${blocks.length}  (${modules.length} module · ${chrome.length} chrome/fragment · ${widgets.length} widget)`);
+console.log(`Reuse leverage   ${pages.reduce((n, p) => n + (p.blocks || []).length + (p.widgets || []).length, 0)} planned listings → ${planned.length} conversions`);
 const top = modules.filter((b) => b.instanceCount > 0).sort((a, b) => b.instanceCount - a.instanceCount).slice(0, 6);
 if (top.length) console.log(`Most reused      ${top.map((b) => `${b.id}×${b.instanceCount}`).join(', ')}`);
 if (chrome.length) console.log(`Fragments        ${chrome.map((b) => b.id).join(', ')}`);
+if (widgets.length) console.log(`Widgets          ${widgets.map((b) => `${b.id} → ${b.delivery.blockPath}`).join(', ')} (code only; no document rows)`);
 const summary = variantsSummaryOf(blocks);
 if (summary.total) console.log(`Delivered        ${summary.total} variant(s) of ${summary.blocks} block(s), ${summary.singleUse} single-use (one catalog block per variant for an adopter)`);
 const named = new Set(planned.filter((b) => b.variants).map((b) => b.delivery.edsBlockName || edsName(b.id)));

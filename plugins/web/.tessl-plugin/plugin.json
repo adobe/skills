@@ -12,6 +12,8 @@
     "skills/page-reduce",
     "skills/page-collect",
     "skills/domain-mask",
-    "skills/page-langs"
+    "skills/page-langs",
+    "skills/site-scan",
+    "skills/page-cache"
   ]
 }

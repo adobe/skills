@@ -447,10 +447,11 @@ carousel, a live select carries its real option list, tabs switch,
 accordions open. Justifying a whole widget away as a class-level residual
 is not acceptable; confirm-justify stays reserved for genuinely
 unreachable or nondeterministic content (ticker values, personalization —
-§ Asset harvest, capture-state policy). The interaction-parity pass
-(§ Interaction parity) is what makes this affordable: probe the live
-behavior cheaply, replicate it, and mirror the full widget DOM so
-content-diff stays at zero structural red.
+§ Asset harvest, capture-state policy); § Interaction parity is what makes
+this affordable. On EDS the delivery form of an app-like component with no
+authored content is a widget (`widgets/<path>/<name>`, mounted as one link —
+`../../stardust/reference/data-attributes.md`), not a block with empty rows,
+and the fidelity gate measures the rendered DOM the same way.
 
 ## Role parity (wrapping and heading level, not text)
 

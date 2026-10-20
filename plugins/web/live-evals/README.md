@@ -85,6 +85,8 @@ tried, and a sweeper kills automation browsers started without `--headless`.
 | page-prep | 2 fixtures, 1 real | checked in the agent's own browser: overlay gone, nothing accepted |
 | cdp-connect | 4 fixture tasks | pointer skill → `web browser attach/eval/cdp`; Chrome on 9222: form, screenshot, network, accessibility |
 | cdp-ext-pilot | 3 fixture tasks | headless via the CLI, no shim; tiny MV3 extension: side panel, options page, extension id |
+| site-scan | 4 fixture tasks, 1 real | `urls.json` vs the fixture sitemaps (index, gzip, a 404 sitemap), exclude, limit, link following |
+| page-cache | 3 fixture tasks | proxy filled then replayed offline from `./out/cache`; `--also` image on another origin; offline miss is 504 |
 | domain-mask | none | needs sudo, `/etc/hosts` and port 443; not run unattended |
 
 Add a model: one entry in `models.yaml`. Add a skill: `skills/<name>/` with a config, cases,

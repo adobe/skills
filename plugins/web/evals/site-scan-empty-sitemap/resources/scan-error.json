@@ -1,0 +1,7 @@
+{
+  "error": {
+    "code": "EMPTY_RESULT",
+    "message": "no valid URLs found at https://www.example-shop.test (https://www.example-shop.test/sitemap.xml: HTTP 404)",
+    "hint": "retry with --strategy http"
+  }
+}

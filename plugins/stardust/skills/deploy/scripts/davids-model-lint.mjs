@@ -220,8 +220,9 @@ function lintBlock(file, section, block, name, flag) {
 
   // D1 — over-blocking advisory: a lone single-column block whose every cell is
   // prose-expressible and which has no repeating structure reads as default
-  // content wearing a table. (Advisory: bespoke widgets legitimately look
-  // like this — template-slotted heroes, countdowns.)
+  // content wearing a table. (Advisory: bespoke components legitimately look
+  // like this — template-slotted heroes, countdowns. Not to be confused with
+  // an EDS widget, which is a /widgets/ link in default content, never a table.)
   if (!isKeyValue && rows.length > 0 && rows.length <= 3 && maxCols <= 1) {
     const allProse = rows.every((row) => {
       const cells = childDivs(row.inner);
@@ -229,7 +230,7 @@ function lintBlock(file, section, block, name, flag) {
       return tagsIn(htmlIn).every((t) => PROSE_TAGS.has(t));
     });
     if (allProse) {
-      flag('🟡', 'D1', `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke widget)`);
+      flag('🟡', 'D1', `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke component)`);
     }
   }
 }

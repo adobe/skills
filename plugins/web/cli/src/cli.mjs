@@ -6,6 +6,8 @@ import { registerProbe } from '#src/commands/probe.mjs';
 import { registerExt } from '#src/commands/ext.mjs';
 import { registerMask } from '#src/commands/mask.mjs';
 import { registerPage } from '#src/commands/page.mjs';
+import { registerCache } from '#src/commands/cache.mjs';
+import { registerSite } from '#src/commands/site.mjs';
 import { registerDoc } from '#src/commands/doc.mjs';
 
 const ROOT_HELP = `
@@ -83,6 +85,8 @@ export function createProgram(deps = {}) {
   registerPage(program, deps);
   registerExt(program, deps);
   registerMask(program, deps);
+  registerSite(program, deps);
+  registerCache(program, deps);
   registerDoc(program, deps);
   deps.extend?.(program, deps);
   return program;

@@ -127,7 +127,7 @@ export function rollupConfig(config, pages, blocks, now) {
 }
 
 /** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
+export const RESERVED = new Set(['section', 'block', 'wrap', 'button', 'widget']);
 export function edsName(id) {
   let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!n) n = 'block';
@@ -190,6 +190,14 @@ export function gateProof(page, widths = DEFAULT_GATE_WIDTHS) {
 
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
+/** A widget's file stem becomes its block class verbatim, so a reserved or -wrapper/-container stem collides (#15); the lint rejects it, nothing renames it. Pure. */
+export const reservedStem = (n) => RESERVED.has(String(n)) || /-(wrapper|container)$/.test(String(n));
+/** Code path of a widget from its authored link: /widgets/<path>/<name>.html?<params> → widgets/<path>/<name>.html. Pure. */
+export const widgetCodePath = (href) => String(href).replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*/, '').replace(/^\//, '');
+/** Widget rows of a page: `{ id, href }` pairs from the sidecar's widgets[]; id defaults to the href's file stem. Pure. */
+export const pageWidgets = (meta) => (Array.isArray(meta && meta.widgets) ? meta.widgets : [])
+  .filter((w) => w && typeof w.href === 'string')
+  .map((w) => ({ id: String(w.id || widgetCodePath(w.href).replace(/^.*\//, '').replace(/\.html$/, '')), href: w.href }));
 
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {

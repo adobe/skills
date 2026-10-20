@@ -184,9 +184,15 @@ export function instrument(EDITABLE_SEL) {
     if (isConfig(block) || block.classList.contains('default-content-wrapper') || /-wrapper$/.test(block.classList[0] || '')) return;
     block.querySelectorAll(':scope > div > div').forEach(wrapCell);
   });
+  // The EDS widget mount — a <p> holding only a /widgets/ link — is replaced by the loader at runtime, so its
+  // text can never be found again: key it 'widget' (readBlockExemptions exempts that key for every caller).
+  const isWidgetMount = (p) => !!p && p.childElementCount === 1 && p.firstElementChild.tagName === 'A'
+    && (/\/widgets\//.test(p.firstElementChild.getAttribute('href') || '') || p.firstElementChild.hasAttribute('data-widget'))
+    && p.textContent.trim() === p.firstElementChild.textContent.trim();
   const blockOf = (el) => {
-    const decorated = el.closest('main .block[data-block-name]');
+    const decorated = el.closest('main [data-block-name]'); // the widget loader drops `.block` but keeps data-block-name="widget"
     if (decorated) return decorated.dataset.blockName;
+    if (isWidgetMount(el.closest('p'))) return 'widget';
     const section = el.closest('main > div');
     const top = [...(section?.children ?? [])].find((c) => c.contains(el));
     if (!top || top.tagName !== 'DIV' || !top.classList.length || top.classList.contains('default-content-wrapper')) return 'default';
@@ -335,6 +341,8 @@ export function readBlockExemptions(blocksDir, names, cliExempt = new Set()) {
     if (out[name]) out[name].reasons = [...out[name].reasons, '--exempt (CLI)'];
     else out[name] = { all: false, reasons: ['--exempt (CLI)'], categories: [], source: '--exempt' };
   });
+  // every EDS widget: the loader replaces the authored mount with code-rendered markup — nothing authored survives by design
+  out.widget ??= { all: true, reasons: ['widget: rendered by code, nothing authored'], categories: ['all'], source: 'widget' };
   return out;
 }
 

@@ -2298,6 +2298,51 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
   names the keys.
 
+## 0.34.0 — widgets: code-driven UI with no authored content ships as an EDS widget, not a block with empty rows (#133)
+
+Platform change: the boilerplate gained widgets (`adobe/aem-boilerplate` #630, `aem.live/docs/widgets`) — a
+self-contained unit at `widgets/<path>/<name>.html|.css|.js` (+ optional `.json`) that an author mounts with one link
+(`/widgets/<path>/<name>.html?<params>`; params become `data-*` on the root), loaded by the stock `blocks/widget/` and
+`buildWidgetAutoBlocks()`. Every skill modelled reusable UI as block, default content, chrome or module, and told the
+agent to build a search box, calculator or copy-free form as "one self-contained interactive block" with key-value
+config rows — the empty-placeholder block the platform now calls a widget. Four gates would have flagged a correct
+widget: rollout's `.html` link rule, deploy's round-trip harness (heading and CTA MISSING), qa's `unblocked-page`
+on a widget-only page, and the editability probe (dead text). The term "widget" also meant "bespoke content block"
+(a countdown) in deploy — a clash with the platform term.
+
+One rule, stated once per skill: **widget when the section carries no authored content — configuration only, or
+everything arrives from code, index, API or user input; block when authors fill rows.** `widget` joins the reserved
+block names; a widget's file stem obeys the same `-wrapper`/`-container` guard.
+
+- **Vocabulary** (`stardust/reference/data-attributes.md`): `data-widget="<path>/<name>"` beside `data-module`; the
+  mount is a link alone in its paragraph, never `data-placeholder`. `DESIGN.json.extensions.widgets[] {id, path,
+  params}`; `_meta.json.widgets[] {id, href}` derived by `migrate.mjs` from `a[data-widget]`, whose hrefs
+  `rewriteLinks` now leaves verbatim.
+- **deploy:** Step 2 triage is three-way (default content / block / widget); #17 and #28 bound the interactive-block
+  rule to sections that keep authored rows; `scripts.js` hooks name `buildWidgetAutoBlocks()` and `blocks/widget/` as
+  stock (ported verbatim on a pre-2026-06 clone); the fixed-asset grep scans `widgets/`; the bespoke-block sense of
+  "widget" is renamed. `block-roundtrip.mjs` lists a `/widgets/` link as `widget:<name>`, drops it before the role
+  inventory and never inlines `blocks/<name>/`; `ai-readability.md` explains the default `--exclude-blocks
+  client-app,widget` (the words come from code by design; `strict` still counts them).
+- **dynamics:** triage gains a fifth column, **target** (`block · widget · runtime · content · embed`);
+  `dynamics-plan.mjs` emits it — widget for client-compute tools, the site-search box, form-less control groups,
+  locators and kept chrome search/cart/account. A form with authored intro or success copy stays a block.
+- **spec:** `kind` gains `widget` on both sides; one `CODED` set in `lib.mjs` replaces the kind lists in `spec-knowledge`,
+  `spec-variants` and `spec-pick`, so a widget is counted, variant-signed and capture-picked like any coded block;
+  `search` is the starter widget (`verdict: new`); `search`, `map`, `location-selector`, `chart` and copy-free `form`
+  families default to widget.
+- **direct --prep / migrate / replica:** a fourth prep action "mark as widget"; a widget instance renders as the
+  mount link, so the placeholder gate does not fire; replica keeps "widgets are implemented, not justified away" and
+  names the EDS delivery form.
+- **rollout:** ledger `kind` gains `widget` (`blockPath` = the code path, no document rows), pages schema gains
+  `widgets[]`, content-pending siblings inherit them, `plan.mjs` walks them; `delivery-lint.mjs` exempts
+  `/widgets/…html` from `html-extension` and adds P1 `unknown-widget` (code file missing) and `widget-name`
+  (reserved stem).
+- **qa:** a `/widgets/` link counts as a block named by its file stem for `missing-template-blocks` and
+  `unblocked-page`; new `unknown-widget` (HEAD on the code path ≠ 200); the shared editability probe keys the authored mount
+  (`<p>` holding only the `/widgets/` link) as `widget` and exempts it for both the deploy and qa callers. Tests: `deploy/block-roundtrip`, `qa/widgets` (new), `dynamics-plan`, `migrate`,
+  `spec-knowledge`, `rules`, `inventory`, `delivery-lint` extended.
+
 ## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
 
 Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but

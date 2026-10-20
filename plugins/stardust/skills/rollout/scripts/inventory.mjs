@@ -47,7 +47,9 @@
  * `archetype` or renderBranch `A`) whose `template` is null — the migrate spec's form —
  * groups under its OWN slug, which its siblings name in their `template`; `type` is the
  * last resort. A template's representative is its archetype. Sidecars with an empty
- * `modules[]` are counted in the report: Phase B (blocks.mjs) dedups from them.
+ * `modules[]` are counted in the report: Phase B (blocks.mjs) dedups from them. A sidecar's
+ * `widgets[] {id, href}` (code-only units, one /widgets/<path>/<name>.html link each) rides along
+ * as the row's `widgets` and joins the template's block set under its id.
  *
  * Archetypes-only mode (`--state <state.json>`): the migrated tree holds only the
  * template archetypes (one per template); the full page roster lives in state.json.
@@ -106,7 +108,7 @@ import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import {
   COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileMatch, variantIdentity, variantId, priorVariantIds,
-  identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock, urlToDeliveredPath,
+  identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock, urlToDeliveredPath, pageWidgets,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -349,6 +351,7 @@ for (const relHtml of htmlFiles) {
       ...(meta.variance && typeof meta.variance === 'object' && !Array.isArray(meta.variance) ? { variance: meta.variance } : {}),
     },
     blocks: Array.isArray(meta.modules) ? meta.modules : [],
+    widgets: pageWidgets(meta),
     delivery,
   });
 }
@@ -448,6 +451,7 @@ if (STATE) {
       representative: rep ? rep.slug : null,
       source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath, sourceUrl: sp.url },
       blocks: rep ? rep.blocks.slice() : [],
+      widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
     coveredPaths.add(path);
@@ -527,7 +531,7 @@ function withDelivered(row, delivered) {
     if (k === 'delivered') continue;
     if (k === 'delivery' && !('delivered' in out)) out.delivered = delivered;
     out[k] = v;
-    if (k === 'blocks') out.delivered = delivered;
+    if (k === 'widgets') out.delivered = delivered; // after the planned listing (blocks, then the widgets they mount)
   }
   if (!('delivered' in out)) out.delivered = delivered;
   return out;
@@ -545,6 +549,7 @@ for (const p of pages) {
   const t = tmap.get(id);
   t.pages.push(p.slug);
   p.blocks.forEach((b) => t.blocks.add(b));
+  (p.widgets || []).forEach((w) => t.blocks.add(w.id));
 }
 const templates = [...tmap.values()].map((t) => {
   const tp = pages.filter((p) => t.pages.includes(p.slug));
@@ -632,6 +637,8 @@ if (ambiguous.length) console.log(`Ambiguous   ${ambiguous.length} row(s) with a
 if (notCurrent.length) console.log(`Not current ${notCurrent.length} encoded page(s) — deploy stages none of them until each encodes clean; the row keeps the last clean encode's hash: ${notCurrent.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);
+const widgetIds = new Set(pages.flatMap((p) => (p.widgets || []).map((w) => w.id)));
+if (widgetIds.size) console.log(`Widgets     ${widgetIds.size} distinct (${[...widgetIds].sort().join(', ')}) on ${pages.filter((p) => (p.widgets || []).length).length} pages — code only, one /widgets/ link per page`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));
 if (todo.length) console.log(`To deliver  ${todo.length}: ${todo.slice(0, 8).map((p) => p.slug).join(', ')}${todo.length > 8 ? ' …' : ''}`);
 else console.log('To deliver  0 — all pages delivered.');

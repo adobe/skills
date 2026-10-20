@@ -21,6 +21,9 @@ jobs:
 
       - run: npm run validate
 
+      - name: Skill release configs extend a file that exists
+        run: node scripts/check-release-configs.mjs
+
   web-cli:
     runs-on: ubuntu-latest
     defaults:

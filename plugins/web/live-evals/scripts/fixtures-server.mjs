@@ -6,7 +6,7 @@ import { dirname, extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', 'fixtures');
-const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png' };
+const types = { '.html': 'text/html; charset=utf-8', '.svg': 'image/svg+xml', '.css': 'text/css', '.js': 'text/javascript', '.png': 'image/png', '.xml': 'application/xml', '.txt': 'text/plain' };
 
 createServer((req, res) => {
   const path = normalize(join(root, decodeURIComponent(new URL(req.url, 'http://x').pathname)));

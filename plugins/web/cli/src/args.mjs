@@ -11,3 +11,14 @@ export function parseIntArg(value) {
   }
   return Number(value);
 }
+
+/**
+ * Commander argParser for integer options that must be at least 1.
+ * @param {string} value
+ * @returns {number}
+ */
+export function parsePositiveIntArg(value) {
+  const n = parseIntArg(value);
+  if (n < 1) throw new InvalidArgumentError(`expected an integer >= 1, got "${value}"`);
+  return n;
+}
