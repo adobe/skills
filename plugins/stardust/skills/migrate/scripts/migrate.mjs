@@ -676,9 +676,10 @@ export function slotValues(slots) {
 // The slot value grammar (prep-mode.md § 4; current-state-schema.md § Typed slots) — the fix text of a strict slots refusal.
 export const SLOT_VALUE_GRAMMAR = 'a value is a string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4';
 const IMAGE_EXT = /\.(?:avif|bmp|gif|heic|heif|ico|jpe?g|jxl|png|svg|tiff?|webp)(?:[?#]\S*)?$/i;
-// A `src` is an image reference when it reads as a path or URL (holds / or :) or names a file by an image extension (a query
-// or fragment after it allowed) — never a provenance pointer such as headings[0] or body.0, which slotValueProblem names.
-export const isImageRef = (s) => { const t = String(s).trim(); return !!t && (/[/:]/.test(t) || IMAGE_EXT.test(t)); };
+// A `src` is an image reference when it reads as a path or URL (holds / : ? or #, so a same-directory `getimage?id=3`
+// counts) or names a file by an image extension (a query or fragment after it allowed) — never a provenance pointer such as
+// headings[0] or body.0, which slotValueProblem names.
+export const isImageRef = (s) => { const t = String(s).trim(); return !!t && (/[/:?#]/.test(t) || IMAGE_EXT.test(t)); };
 const SHAPE_KEYS = { html: ['html'], src: ['src', 'alt', 'srcset'], href: ['href', 'text'], text: ['text'] };
 const SHAPE_NAME = { html: 'html', src: 'image', href: 'link', text: 'text' };
 const kindOf = (x) => (x === null ? 'null' : Array.isArray(x) ? 'an array' : typeof x === 'object' ? 'an object' : typeof x);
@@ -693,7 +694,7 @@ export function slotValueProblem(v) {
   if (lead === 'html' && typeof v.html !== 'string') return `html is ${kindOf(v.html)}, not a string`;
   if (lead === 'src') {
     if (typeof v.src !== 'string' || !v.src.trim()) return `src is ${typeof v.src === 'string' ? 'empty' : kindOf(v.src)}, not an image reference`;
-    if (!isImageRef(v.src)) return `src ${JSON.stringify(v.src)} is not an image reference: no / or :, no image extension`;
+    if (!isImageRef(v.src)) return `src ${JSON.stringify(v.src)} is not an image reference: no / : ? or #, no image extension`;
     if (v.alt != null && !isText(v.alt)) return `alt is ${kindOf(v.alt)}, not a string`;
     if (v.srcset != null && typeof v.srcset !== 'string') return `srcset is ${kindOf(v.srcset)}, not a string`;
   }

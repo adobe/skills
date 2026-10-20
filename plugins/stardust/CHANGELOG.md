@@ -38,7 +38,7 @@ recorded run whose lane re-derived flat values from the captured HTML forked six
   reference): `slotValueProblem` (exported) takes the leading key — `html`, else `src`, else `href`, else `text`,
   the fork's precedence — as the shape and checks that key's type, a `src` that is no image reference, `alt` /
   `srcset` / `text` types, then any key the shape does not have. Reasons: `headline (src "headings[0]" is not an
-  image reference: no / or :, no image extension)`, `items (an object with key(s) question, answer and none of
+  image reference: no / : ? or #, no image extension)`, `items (an object with key(s) question, answer and none of
   text, html, src, href)`, `help (text is an object, not a string)`, `note (key(s) level outside the text value
   shape)`, `flag (a boolean is no slot value)`. An identical problem is listed once; the refusal's fix states the
   grammar — `fix the value in <capture>#slots (a value is a string | {text} | {html} | {src, alt?, srcset?} |

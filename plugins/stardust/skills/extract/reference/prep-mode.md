@@ -139,7 +139,8 @@ section that identifies content slots per page-type:
 - `listing` pages: `index-headline`, `filter-controls`, and one
   slot name per card field — `card-title[]`, `card-image[]`,
   `card-link[]` — each an array with one value per card (never an
-  object per card)
+  object per card; the `[]` is notation for "an array", not part of
+  the slot name)
 - `program` pages: `program-headline`, `summary`,
   `feature-grid`, `cta-band`
 - `landing`, `form`, `static` — typed slots inferred per
@@ -184,7 +185,8 @@ the slot and the offending key:
 - **No nested objects.** `{ "question": { "text": "…" }, "answer":
   null }` is not a value; a question-and-answer list is two repeated
   slots (`question[]`, `answer[]`) or one `{ "html" }` per item.
-  `{ "text": { … } }` is refused (`text is an object, not a string`).
+  `{ "text": { … } }` is refused (`text is an object, not a string`);
+  a `text` is a string (a number passes too).
 - **No provenance keys — no key at all — inside a value.** A key the
   shape does not have (`level`, `from`, `source`, a second content
   key) is refused by name (`key(s) level outside the text value

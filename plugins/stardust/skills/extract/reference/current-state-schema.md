@@ -558,8 +558,8 @@ and its key named in the refusal):
 
 - a value is one of the seven shapes above. A nested object
   (`{ "question": { … }, "answer": … }`), a `text` / `html` that is
-  not a string, an object with none of `text` / `html` / `src` /
-  `href` is refused — a list of question-and-answer pairs is two
+  neither a string nor a number, an object with none of `text` / `html` /
+  `src` / `href` is refused — a list of question-and-answer pairs is two
   repeated slots (`question[]`, `answer[]`) or one `{ "html" }` per
   item;
 - no key outside the shape: `{ "text": "…", "level": "h1" }` is
@@ -593,9 +593,9 @@ keeps consumers simple.
 
 The exceptions: `og`, `themeColor`, `forms`, `widgets` may be empty
 objects. Empty arrays for `headings`, `landmarks`, `ctas`, `links.*`
-are valid (and unusual — log a warning). `slots` (§ Typed slots) is
-the one key that may be absent: `extract --prep` writes it,
-discovery-mode captures have none.
+are valid (and unusual — log a warning). `slots` (§ Typed slots) may
+be absent — `extract --prep` writes it, discovery-mode captures have
+none — as may the opt-in `dynamic` (§ Dynamic).
 
 ## Versioning
 
