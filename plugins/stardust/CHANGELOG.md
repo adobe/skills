@@ -7,7 +7,7 @@ git history only (plus the branch-scoped notes in
 ## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
 
 The scripts index (`stardust/reference/scripts-index.md`) had grown to 20,551 bytes — 132 rows averaging 119 bytes
-of description, 29 rows over 200 bytes, the longest inlining whole flag lists — and the lint's 12 KiB cap had been
+of description, 29 index lines over 200 bytes, the longest inlining whole flag lists — and the lint's 12 KiB cap had been
 raised locally across six commits to carry it. Recorded hands-off runs still called `--help` 240–410 times per run
 with those flags inlined, so the inlining bought nothing: the row is read at session start to learn what a script
 is for, and the flags are recovered from `--help` regardless. Every row is now a terse purpose phrase — the

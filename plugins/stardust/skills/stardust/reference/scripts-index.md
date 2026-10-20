@@ -8,13 +8,13 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `deploy/chrome-docs.mjs` — canon chrome → `content/nav.html` + `footer.html`
 - `deploy/chrome-map.mjs` — nav/footer documents per page → `chrome-map.json`
 - `deploy/content-count.mjs` — offline L5 content count, capture vs document
-- `deploy/content-inventory.mjs` — library, no CLI
+- `deploy/content-inventory.mjs` — library: role classifier + inventory differ, no CLI
 - `deploy/da-media-upload.mjs` — rehost captured images to the DA media folder
 - `deploy/davids-model-lint.mjs` — content-model conformance lint (David's Model)
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live driver for DA
-- `deploy/diff-profiles.mjs` — library, no CLI
-- `deploy/file-lock.mjs` — library, no CLI
-- `deploy/eds-path.mjs` — library, no CLI
+- `deploy/diff-profiles.mjs` — library: stack profiles (eds|generic), no CLI
+- `deploy/file-lock.mjs` — library: lock + atomic merge for deploy ledgers, no CLI
+- `deploy/eds-path.mjs` — library: the delivered-path contract for EDS, no CLI
 - `deploy/ew-editability-probe.mjs` — Experience Workspace editability gate, per block
 - `deploy/fresh-check.mjs` — propagation wait on the decoded body of a delivery URL
 - `deploy/localize-links.mjs` — source-host hrefs → root-relative across `content/`
@@ -43,7 +43,7 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `dynamics/dynamics-check.mjs` — replay dynamic parity checks on the published origin
 - `dynamics/dynamics-detect.mjs` — detect + classify dynamic features per page
 - `dynamics/dynamics-plan.mjs` — triage draft from `_dynamics.json`
-- `dynamics/lib.mjs` — library, no CLI
+- `dynamics/lib.mjs` — library: dynamics instruments' helpers, no CLI
 - `dynamics/martech.mjs` — library (contract, hand-off), no CLI
 - `dynamics/snapshot-api.mjs` — record live same-origin API responses
 - `dynamics/snapshot-forms.mjs` — record live forms as definitions
@@ -58,7 +58,7 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `migrate/migrate.mjs` — render driver + sidecar; forks A′ from the archetype
 - `migrate/slot-map.mjs` — library (A′ slot values), no CLI
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist
-- `qa/lib.mjs` — library, no CLI
+- `qa/lib.mjs` — library: shared helpers for qa.mjs + checks, no CLI
 - `qa/qa.mjs` — read-only live sweep → report.json
 - `qa/report-html.mjs` — report.json → report.html
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps or source switch points
@@ -100,7 +100,7 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `rollout/done-check.mjs` — run complete? exit 0 = yes; verdict from the ledgers
 - `rollout/findings.mjs` — record/resolve findings from audit sources
 - `rollout/inventory.mjs` — delivery coverage from the migrated tree
-- `rollout/lib.mjs` — library, no CLI
+- `rollout/lib.mjs` — library: shared IO + roll-up helpers, no CLI
 - `rollout/media-manifest.mjs` — delivered media per page, source → delivered path
 - `rollout/media-reconcile.mjs` — per-image reconciliation decision
 - `rollout/optimize.mjs` — quality findings + gate; source parity informational
@@ -110,7 +110,7 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `rollout/update-coverage.mjs` — coverage status writer: pages, blocks, gate verdicts
 - `rollout/verify.mjs` — full-site verify: renders + internal links
 - `rollout/workspace-manifest.mjs` — migration-workspace export manifest + judgement draft
-- `spec/lib.mjs` — library, no CLI
+- `spec/lib.mjs` — library: spec args, config, HTML reader, pool, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
 - `spec/spec-capture.mjs` — S6/S8 page + block crops
 - `spec/spec-fetch.mjs` — S2 resumable fetch

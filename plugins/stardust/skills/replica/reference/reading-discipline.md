@@ -24,7 +24,7 @@ reproducible by the next session or the gate.
 | how far two captures differ, and where | the gate's lines; `pixel-compare.mjs`, `crop-compare.mjs` bands |
 | any other look at a page: click, evaluate, screenshot | `page-probe.mjs <url>` — for looking, never gate evidence |
 | wait for a background job | `run-bg.mjs wait` (bounded), then `log <job> --grep <re>`; never `cat` a log or a capture |
-| a script's flags | `../stardust/reference/scripts-index.md` first, then `--help`; never the source |
+| what a script is for, and its flags | `../stardust/reference/scripts-index.md` for the purpose, `--help` for the flags; never the source |
 
 **An inline interpreter may read and print; it never writes a tracked file.**
 Four recorded runs wrote ~150 python programs that read a tracked HTML or
