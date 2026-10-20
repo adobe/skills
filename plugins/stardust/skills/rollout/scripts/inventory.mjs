@@ -97,11 +97,11 @@
  *   siblings) — one line on stderr, nothing written.
  */
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSync } from 'node:fs';
-import { join, dirname, relative, basename } from 'node:path';
+import { join, dirname, relative, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { pathToFileURL } from 'node:url';
 import {
-  COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileFor, variantIdentity, variantId, priorVariantIds,
+  COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileMatch, variantIdentity, variantId, priorVariantIds,
   identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock, urlToDeliveredPath,
 } from './lib.mjs';
 
@@ -478,11 +478,28 @@ for (let i = pages.length - 1; i >= 0; i -= 1) if (exclusionOf(pages[i])) pages.
 // A block record's variantId is minted from its identity (block + classes), unless the prior pages.json
 // already gave that identity another id: an id a client stored never changes.
 const priorIds = priorVariantIds(priorPages);
-const inContent = (rel) => !rel.split('/').includes('..') && existsSync(join(CONTENT, rel)) && statSync(join(CONTENT, rel)).isFile();
+// The content files by their real names (a walk, not existsSync: a case-insensitive file system must not match a
+// row's case where a case-sensitive one would not) — contentFileMatch reads the row's path exactly, then its
+// delivered-path fold (the deploy writes the document under the fold, so a row keeping the source's case still owns it).
+const walkContent = (dir, acc = []) => {
+  let entries = [];
+  try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return acc; }
+  for (const e of entries) {
+    if (e.isDirectory()) walkContent(join(dir, e.name), acc);
+    else if (e.isFile() && e.name.endsWith('.html')) acc.push(relative(CONTENT, join(dir, e.name)).split(sep).join('/'));
+  }
+  return acc;
+};
+const contentFiles = new Set(walkContent(CONTENT));
+const folded = []; // [slug, file] — found by the fold alone
+const ambiguous = []; // [slug, exact, alternate] — both cases exist; the exact one is read
 const styleOf = (s) => (s == null ? null : scrubIdentity(s, tokens));
 function deliveredFor(p) {
-  const file = typeof p.path === 'string' ? contentFileFor(p.path, inContent) : null;
+  const match = typeof p.path === 'string' ? contentFileMatch(p.path, contentFiles) : { file: null, rule: null, alternate: null };
+  const { file } = match;
   if (!file) return null;
+  if (match.rule === 'folded') folded.push([p.slug, file]);
+  if (match.alternate) ambiguous.push([p.slug, file, match.alternate]);
   const bytes = readFileSync(join(CONTENT, file));
   const { records, sections } = parseDelivered(bytes.toString('utf8'));
   const meta = sidecars.get(p.slug) || {};
@@ -606,6 +623,8 @@ if (notCompared.length) {
 }
 const delivered = pages.filter((p) => p.delivered).length;
 console.log(`Delivered   ${delivered}/${pages.length} pages parsed from ${CONTENT}${delivered < pages.length ? ` · ${pages.length - delivered} without a content file (delivered: null)` : ''}${wrote.some(Boolean) ? '' : ' · coverage unchanged, not rewritten'}`);
+if (folded.length) console.log(`Folded      ${folded.length} row(s) read from the delivered-path fold of their path (the deploy lower-cases; the row keeps the source's case): ${folded.slice(0, 8).map(([slug, file]) => `${slug} → ${file}`).join(', ')}${folded.length > 8 ? ' …' : ''}`);
+if (ambiguous.length) console.log(`Ambiguous   ${ambiguous.length} row(s) with a content file in both cases (they collide once delivered) — the exact one is read: ${ambiguous.slice(0, 8).map(([slug, file, alt]) => `${slug} → ${file} (not ${alt})`).join(', ')}${ambiguous.length > 8 ? ' …' : ''}`);
 if (notCurrent.length) console.log(`Not current ${notCurrent.length} encoded page(s) — deploy stages none of them until each encodes clean; the row keeps the last clean encode's hash: ${notCurrent.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);

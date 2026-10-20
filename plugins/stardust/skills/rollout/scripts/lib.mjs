@@ -560,14 +560,37 @@ export function parseDelivered(html) {
   return { records, sections, metadata };
 }
 
-/** Content file (relative to the content dir) of a delivered path: `index.html` for `/`, else `<p>.html`, `<p>/index.html`. */
-export function contentFileFor(deliveredPath, exists) {
-  if (deliveredPath == null) return null;
+/**
+ * The delivered-path fold the deploy writes content under (deploy/scripts/eds-path.mjs `deliveredUrl`): each segment
+ * lower-cased, runs outside `[a-z0-9]` → `-`, no leading or trailing `-`; empty segments dropped. Pure.
+ */
+export const foldDeliveredPath = (p) => String(p == null ? '' : p).split('/').filter(Boolean)
+  .map((s) => s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '')).filter(Boolean).join('/');
+
+/**
+ * Content file (relative to the content dir) of a delivered path, with the rule that found it: `{ file, rule, alternate }`.
+ * Candidates, in order: the path as the row carries it — `index.html` for `/`, else `<p>.html`, `<p>/index.html`
+ * (`rule: 'exact'`) — then the same two forms of its delivered-path fold (`rule: 'folded'`: the deploy writes a document
+ * under the folded path, so a row whose path keeps the source's case still owns the lower-cased file on a case-sensitive
+ * file system). Never a looser match. `alternate` names the folded file when BOTH exist as different names (two files
+ * that differ only by case collide once delivered — the exact one is read, the other is reported, never guessed); null
+ * otherwise. `exists` is a predicate, a Set/Map or an object keyed by content-relative path. Pure.
+ */
+export function contentFileMatch(deliveredPath, exists) {
+  if (deliveredPath == null) return { file: null, rule: null, alternate: null };
   const has = typeof exists === 'function' ? exists
     : (k) => !!exists && (typeof exists.has === 'function' ? exists.has(k) : Object.hasOwn(exists, k));
+  const forms = (p) => (p ? [`${p}.html`, `${p}/index.html`] : ['index.html']);
   const p = String(deliveredPath).replace(/^\/+|\/+$/g, '');
-  return (p ? [`${p}.html`, `${p}/index.html`] : ['index.html']).find((k) => has(k)) || null;
+  const folded = foldDeliveredPath(p);
+  const exact = forms(p).find((k) => has(k)) || null;
+  const byFold = folded === p ? null : forms(folded).find((k) => has(k)) || null;
+  if (exact) return { file: exact, rule: 'exact', alternate: byFold && byFold !== exact ? byFold : null };
+  return byFold ? { file: byFold, rule: 'folded', alternate: null } : { file: null, rule: null, alternate: null };
 }
+
+/** The content file of a delivered path (contentFileMatch's `file`): exact first, then the delivered-path fold; else null. */
+export const contentFileFor = (deliveredPath, exists) => contentFileMatch(deliveredPath, exists).file;
 
 /**
  * Classify migration-export drift from the project-relative keys that drifted between the manifest and
