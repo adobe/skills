@@ -10,16 +10,16 @@ So scenarios give the agent browser output captured from live pages in
 
 | Scenario | Skill | Fixture source |
 |---|---|---|
-| browser-probe-recipe-from-report | browser-probe | probe report built with `browser-probe.js` helpers (CloudFront UA block) |
-| browser-probe-all-blocked | browser-probe | same, every step blocked (Akamai Bot Manager) |
-| page-reduce-skeleton-from-phase1 | page-reduce | Phase 1 output from https://www.aem.live/ |
-| page-langs-audit-from-capture | page-langs | `collect.js` run on a local en/es/de test page, URL rewritten |
-| page-prep-throwaway-session-cleanup | page-prep | overlay detection report from https://www.20minutes.fr/ |
+| browser-probe-recipe-from-report | browser-probe | `web probe` report (CloudFront UA block) |
+| browser-probe-all-blocked | browser-probe | `web probe` report, every step blocked (Akamai Bot Manager; exit 3) |
+| page-reduce-skeleton-from-phase1 | page-reduce | `web page reduce` output from https://www.aem.live/ |
+| page-langs-audit-from-capture | page-langs | browser-step output of `web page langs` (signals and text) from a local en/es/de test page, URL rewritten |
+| page-prep-throwaway-session-cleanup | page-prep | `web page overlays` detection report from https://www.20minutes.fr/ |
 | domain-mask-demo-domain | domain-mask | none |
 
-cdp-connect, cdp-ext-pilot, page-tree and page-collect have no scenarios: what they
+cdp-connect (a pointer), cdp-ext-pilot, page-tree and page-collect have no scenarios: what they
 add happens inside a live browser.
 
-To refresh a fixture, rerun the skill's browser step locally and replace the file in
+To refresh a fixture, rerun the skill's `web` command locally and replace the file in
 `resources/`; keep the facts the criteria rely on (named in each `criteria.json`
 context).

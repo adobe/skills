@@ -1,0 +1,39 @@
+<!doctype html><meta charset="utf-8" /><title>
+  Absolute menus and the overflow that clips them
+</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  body {
+    position: relative;
+  }
+  .trigger {
+    height: 80px;
+    overflow: hidden;
+  }
+  .menu {
+    position: absolute;
+    left: 0;
+    width: 1280px;
+    height: 400px;
+    background: #eee;
+  }
+  .free .menu {
+    top: 133px;
+  }
+  .held {
+    position: relative;
+  }
+  .held .menu {
+    top: 80px;
+  }
+</style>
+<div id="utility">English</div>
+<div class="trigger free">
+  <span>Menu</span>
+  <div class="menu">Open menu</div>
+</div>
+<div class="trigger held">
+  <span>Menu</span>
+  <div class="menu">Clipped menu</div>
+</div>
+<div class="content">Body</div>

@@ -21,6 +21,26 @@ jobs:
 
       - run: npm run validate
 
+  web-cli:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugins/web/cli
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      - run: npm ci
+
+      - run: npm run lint
+
+      - run: npm test
+
+      - run: npm run check:dist
+
   stardust-harness-neutral:
     runs-on: ubuntu-latest
     steps:
