@@ -198,9 +198,13 @@ in this order:
 - `node stardust/scripts/migrate/migrate.mjs render --from-archetype
   <proto>.html --capture <page.json>` forks that prototype into the
   sibling's own `-proposed.html` — the sibling capture's texts and images
-  in the archetype's slots — when the variance report says `same` or
-  `minor`; `render <slug>` then places it. The attempt record lists each
-  forked sibling under `forked`.
+  in the archetype's slots (the capture's `#slots` values — one grammar,
+  `string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an
+  array of those | null`, nothing else inside a value:
+  `../extract/reference/prep-mode.md` § 4 — or, with no `slots` key,
+  values derived from the two captures) — when the variance report says
+  `same` or `minor`; `render <slug>` then places it. The attempt record
+  lists each forked sibling under `forked`.
 - A `major` variance (a new block — an extra probe or a `SECTIONS` delta)
   is the only case hand-authored: build the page's HTML by hand, then
   `node stardust/scripts/migrate/encode-attempt.mjs record --template <t>
@@ -335,7 +339,14 @@ refusals: `reference/template-and-module-rendering.md` § Path A′ Step 2).
 An archetype without `data-slot` marks is not refused: render derives
 them from its sections (`<section>-<tag>` names; the run prints `slots
 derived (no data-slot markers)`). The one source refusal is an archetype
-with no proposed HTML; a slot with no value is `strict slots`. Every A′
+with no proposed HTML; a slot with no value is `strict slots`, and so is
+a value outside the slot grammar (`../extract/reference/prep-mode.md`
+§ 4: a nested object, a `text` that is an object, a provenance key
+inside a value). The fix is the value in `<slug>.json#slots`, then the
+fork again — never a hand copy of the archetype's content document for
+the sibling (a recorded hands-off run did that after this refusal; it
+skips the migrated page, its sidecar, the `forked` record and the
+`--hand-authored` record). Every A′
 page also needs its template's encode-attempt record (any verdict;
 without one render refuses it, naming `encode-attempt.mjs record`).
 
@@ -344,7 +355,11 @@ express, a reasoned `not-attempted`), in this order:
 
 1. **The A′ fork** above — the prototype's slots and the sibling's
    values. Mark the prototype when the derived names do not fit
-   (`../replica/reference/recreation-procedure.md` § Slot markers).
+   (`../replica/reference/recreation-procedure.md` § Slot markers). A
+   `strict slots` refusal is fixed in the sibling's `#slots` (the value
+   grammar), then in this order: `render --from-archetype <proto>.html
+   --capture <page.json>` → `state.mjs advance <slug> --to directed` →
+   `render <slug>`.
 2. **A variant, never a re-type.** A sibling the variance probe reports
    as differing — one of them, or fewer than 20 % — gets a variant class
    on the template: `render <slug> --accept-variance "<the delta and its

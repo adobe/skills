@@ -815,7 +815,10 @@ reference):
 - Module candidates (cross-page structural repeats, detected by the
   signal-source priority in the reference) are drafted under
   `DESIGN.json.extensions.modules[]` with `status: "candidate"`;
-  per-page JSON gains a typed `slots` section per page-type.
+  per-page JSON gains a typed `slots` section per page-type (slot
+  names per type, one value grammar — `reference/prep-mode.md` § 4;
+  a nested object or a provenance key inside a value is what migrate
+  refuses).
 - **Locale-root capture gaps are settled before Phase 2 of any flow.**
   After the crawl, `crawl.mjs` takes every captured locale root (a one-
   or two-segment path of locale codes — `/en`, `/fr-ca`, `/ca/en`),

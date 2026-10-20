@@ -136,19 +136,79 @@ section that identifies content slots per page-type:
 
 - `article` pages: `headline`, `deck`, `byline`, `meta`,
   `lead-image`, `body`, `pullquotes[]`, `related[]`
-- `listing` pages: `index-headline`, `filter-controls`,
-  `card-grid` with typed sub-slots per card
+- `listing` pages: `index-headline`, `filter-controls`, and one
+  slot name per card field — `card-title[]`, `card-image[]`,
+  `card-link[]` — each an array with one value per card (never an
+  object per card)
 - `program` pages: `program-headline`, `summary`,
   `feature-grid`, `cta-band`
 - `landing`, `form`, `static` — typed slots inferred per
   content shape
 
-Schema additions live in `current-state-schema.md`
-§ Typed slots (extend that doc separately). Once the rollout block
-mapping covers a template's archetype, migrate's A′ fork reads its
-siblings' slots through it
+The slot NAMES are per page type; the slot VALUES have one grammar,
+the one `migrate.mjs render` reads when it forks a sibling from its
+archetype (the A′ fork, `migrate.mjs --help` § A' fork). A value is
+exactly one of the shapes below — one example each:
+
+```json
+{
+  "slots": {
+    "headline": "Our story",
+    "deck": { "text": "One platform for every team." },
+    "body": { "html": "<p>First paragraph.</p><p>Second.</p>" },
+    "lead-image": { "src": "https://example.com/img/hero.jpg", "alt": "Two engineers at a whiteboard" },
+    "cta": { "href": "/signup", "text": "Start free trial" },
+    "related": [
+      { "href": "/pricing", "text": "Pricing" },
+      { "href": "/docs", "text": "Documentation" }
+    ],
+    "byline": null
+  }
+}
+```
+
+| value | the fork writes |
+|---|---|
+| a string (`headline`) | the text, escaped |
+| `{ "text" }` (`deck`) | the text, escaped |
+| `{ "html" }` (`body`) | the inner HTML verbatim; media URLs in it resolved through the media map / ledger |
+| `{ "src", "alt"?, "srcset"? }` (`lead-image`) | an image: `src` / `alt` / `srcset` on the slot's `<img>` (or the first `<img>` inside the slot) |
+| `{ "href", "text"? }` (`cta`) | a link: `href` on the slot's `<a>` (or the first `<a>` inside it); the text replaced when given, kept when absent |
+| an array of the above (`related`) | a repeated slot: one element per value — more values clone the last element, fewer remove the rest |
+| `null` (`byline`) | the page has none: the element is removed, decision `slot-empty` |
+
+**A value is one of these or `null` — nothing else.** The fork refuses
+anything outside the grammar (`strict slots`, nothing written), naming
+the slot and the offending key:
+
+- **No nested objects.** `{ "question": { "text": "…" }, "answer":
+  null }` is not a value; a question-and-answer list is two repeated
+  slots (`question[]`, `answer[]`) or one `{ "html" }` per item.
+  `{ "text": { … } }` is refused (`text is an object, not a string`).
+- **No provenance keys — no key at all — inside a value.** A key the
+  shape does not have (`level`, `from`, `source`, a second content
+  key) is refused by name (`key(s) level outside the text value
+  shape`). `src` is an image reference only when it reads as a path,
+  a URL or a file name with an image extension; `{ "text": "Our
+  story", "src": "headings[0]" }` is refused as `src "headings[0]" is
+  not an image reference` — never read as an image, never silently as
+  text.
+- **Record provenance beside the value.** The array form of `slots`
+  carries it: `[{ "name": "headline", "value": "Our story", "from":
+  "headings[0]" }, …]` — keys other than `name` and `value` are not
+  read. (The other array form, `{ "name": "lead-image", "src": "…",
+  "alt": "…" }`, spreads the value's own keys and nothing else.)
+  Page-level evidence stays in `_provenance`
+  (`current-state-schema.md` § Top-level shape).
+
+The schema is `current-state-schema.md` § Typed slots. Once the
+rollout block mapping covers a template's archetype, migrate's A′ fork
+reads its siblings' slots through it
 (`skills/migrate/reference/template-and-module-rendering.md` § Path A′
-Step 2); typed slots kept here still override the mapped values.
+Step 2); typed slots kept here still override the mapped values. A
+page JSON without the `slots` key is not refused: the fork derives
+the values from the archetype's and the sibling's captured HTML
+(`current/pages/<slug>.html`, both required).
 
 ## 5. Prep summary
 
