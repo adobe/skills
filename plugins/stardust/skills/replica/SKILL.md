@@ -117,7 +117,8 @@ source. Edits go through instruments too: text in a tracked file through the
 edit tool or `replace.mjs` (counted, atomic), a JSON value through
 `json-edit.mjs`, a ledger through `progress.mjs` — an inline interpreter may
 read and print, never write a tracked file. Write anything you will need
-again to a file under `stardust/` and read it back by query.
+again to a file under `stardust/` and read it back by query — scratch under
+`stardust/.work/replica/`; `stardust/.labs/` is reserved for the runner's files.
 
 ## Procedure
 

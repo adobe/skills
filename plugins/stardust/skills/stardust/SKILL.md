@@ -396,7 +396,10 @@ Stardust state lives under `stardust/`. Impeccable's `PRODUCT.md` /
 files at the project root, and the EDS project (only via `deploy`,
 `rollout`, `dynamics`). Run-only files — logs, harness page, pre-renders,
 script copies, drafts — go under `stardust/.work/<skill>/`; the root
-`scripts/` and `qa/` are not stardust's. One machine-level exception:
+`scripts/` and `qa/` are not stardust's. `stardust/.labs/` is reserved for
+the runner's files (`wake`, `run.json`, the pause file): a session's scratch
+— page lists, probe scripts, CSS dumps — goes to `stardust/.work/<skill>/`,
+never there. One machine-level exception:
 `browser-lock.mjs`'s slot files in `~/.stardust/locks/browser/`
 (`STARDUST_BROWSER_LOCK_DIR` moves them) — browser contention is
 cross-project; each holds a pid, the project path and a script name, and
