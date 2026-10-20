@@ -506,6 +506,82 @@ brand-surface aggregation has a stable input.
 }
 ```
 
+## § Typed slots
+
+Optional — written by `extract --prep` only (`prep-mode.md` § 4);
+discovery-mode captures have no `slots` key, and that is not an
+error: migrate's A′ fork then derives each sibling's values from the
+archetype's and the sibling's captured HTML
+(`stardust/current/pages/<slug>.html`). Read by `migrate.mjs render`
+— the A′ fork: every `data-slot` of the archetype prototype's
+`<main>` takes this page's value by name — and by `migrate.mjs plan`.
+
+Two forms. Object: `{ "<name>": <value> }`. Array:
+`[{ "name": "<name>", "value": <value>, …provenance }]` — keys other
+than `name` and `value` are not read, which is where a value's
+provenance goes (`"from": "headings[0]"`); an entry may instead
+spread the value's own keys (`{ "name": "lead-image", "src": "…",
+"alt": "…" }`), and then nothing else. A repeated `name` in the array
+form appends to the same slot.
+
+A value is exactly one of — nothing else:
+
+```json
+{
+  "slots": {
+    "headline": "Our story",
+    "deck": { "text": "One platform for every team." },
+    "body": { "html": "<p>First paragraph.</p><p>Second.</p>" },
+    "lead-image": { "src": "https://example.com/img/hero.jpg", "alt": "Two engineers at a whiteboard" },
+    "cta": { "href": "/signup", "text": "Start free trial" },
+    "related": [
+      { "href": "/pricing", "text": "Pricing" },
+      { "href": "/docs", "text": "Documentation" }
+    ],
+    "byline": null
+  }
+}
+```
+
+| value | the fork writes |
+|---|---|
+| a string (`headline`) | the text, escaped |
+| `{ "text" }` (`deck`) | the text, escaped |
+| `{ "html" }` (`body`) | the inner HTML verbatim; media URLs in it resolved through the media map / ledger |
+| `{ "src", "alt"?, "srcset"? }` (`lead-image`) | an image: `src` / `alt` / `srcset` on the slot's `<img>` (or the first `<img>` inside the slot) |
+| `{ "href", "text"? }` (`cta`) | a link: `href` on the slot's `<a>` (or the first `<a>` inside it); the text replaced when given, kept when absent |
+| an array of the above (`related`) | a repeated slot: one element per value — more values clone the last element, fewer remove the rest |
+| `null` (`byline`) | the page has none: the element is removed, decision `slot-empty` |
+
+Rules the fork enforces (`strict slots`, nothing written, the slot
+and its key named in the refusal):
+
+- a value is one of the seven shapes above. A nested object
+  (`{ "question": { … }, "answer": … }`), a `text` / `html` that is
+  neither a string nor a number, an object with none of `text` / `html` /
+  `src` / `href` is refused — a list of question-and-answer pairs is two
+  repeated slots (`question[]`, `answer[]`) or one `{ "html" }` per
+  item;
+- no key outside the shape: `{ "text": "…", "level": "h1" }` is
+  refused naming `level`; provenance keys (`from`, `source`,
+  `selector`) belong beside the value in the array form, never in it;
+- `src` is an image reference only when it reads as a path or URL
+  (contains `/` or `:`) or a file name with an image extension
+  (`.avif .bmp .gif .heic .heif .ico .jpg .jpeg .jxl .png .svg .tif
+  .tiff .webp`; a query or fragment after it allowed) — `{ "text":
+  "Our story", "src": "headings[0]" }` is refused as `src
+  "headings[0]" is not an image reference`;
+- a slot name of the archetype with no key at all is refused (give
+  it a value, or `null` when the page has none); a key no archetype
+  slot takes is recorded (decision `slot-unused`), not refused;
+- an element that cannot take its value is refused: a text or HTML
+  value on a void element (`<img>`), an image value on an element
+  with no `<img>` in it, a link value on an element with no `<a>`.
+
+Slot names are per page type (`prep-mode.md` § 4); a markerless
+archetype's names are derived from its sections (`<section>-<tag>`,
+`migrate.mjs --help` § A' fork).
+
 ---
 
 ## Required vs optional
@@ -517,7 +593,9 @@ keeps consumers simple.
 
 The exceptions: `og`, `themeColor`, `forms`, `widgets` may be empty
 objects. Empty arrays for `headings`, `landmarks`, `ctas`, `links.*`
-are valid (and unusual — log a warning).
+are valid (and unusual — log a warning). `slots` (§ Typed slots) may
+be absent — `extract --prep` writes it, discovery-mode captures have
+none — as may the opt-in `dynamic` (§ Dynamic).
 
 ## Versioning
 

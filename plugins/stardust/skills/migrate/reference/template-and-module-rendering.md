@@ -59,7 +59,12 @@ them.
 - **page-json** — the page's typed slots in
   `stardust/current/pages/<slug>.json § slots`, captured during
   `extract --prep` (`data-slot="article-headline"` ← its
-  `headline` slot).
+  `headline` slot). The value grammar — `string | {text} | {html} |
+  {src, alt?, srcset?} | {href, text?} | an array of those | null`,
+  no other key inside a value — is `../../extract/reference/prep-mode.md`
+  § 4 and `../../extract/reference/current-state-schema.md` § Typed
+  slots; a value outside it is refused (strict slots, nothing
+  written), naming the slot and the key.
 - **mapping** — the rollout block mapping
   (`stardust/rollout/workspace/mapping.json`), trusted only while the
   rollout workspace manifest lists its sha256 and its `generatedAt`

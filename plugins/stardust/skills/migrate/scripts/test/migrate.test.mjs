@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { composeHead, deriveSlots, foldPath, forkFromArchetype, forkHead, rewriteLinks } from '../migrate.mjs';
+import { composeHead, deriveSlots, foldPath, forkFromArchetype, forkHead, isImageRef, rewriteLinks, slotValueProblem, SLOT_VALUE_GRAMMAR } from '../migrate.mjs';
 import { recordAttempt } from '../encode-attempt.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'migrate.mjs');
@@ -550,6 +550,15 @@ check('an explicit --source <slug>=<file> that does not exist is a strict source
   assert.doesNotMatch(r.out, /fork of/);
   assert.deepEqual([read(`${OUT}/guides/alpha/index.html`), read(`${OUT}/guides/alpha/_meta.json`)], before);
 });
+check('a page never advanced to directed with no source HTML is a strict source refusal naming its status and the advance step (branch A, never a fork); an approved page without its prototype is told to build it; plan prints the same', () => {
+  const r = run(['render', 'contact']); assert.equal(r.status, 2);
+  assert.match(r.err, /^refused contact: strict source — no source HTML at stardust\/prototypes\/contact-proposed\.html \(status extracted: branch A renders the page's own prototype — only a directed page forks its archetype\) — a sibling of an archetype: node stardust\/scripts\/stardust\/state\.mjs advance contact --to directed, then render contact again \(it forks the archetype's prototype; render --from-archetype stardust\/prototypes\/<archetype>-proposed\.html --capture stardust\/current\/pages\/contact\.json first writes the sibling's own source HTML\); an archetype: build the page's prototype or pass --source contact=<file>$/m);
+  assert.match(r.out, /^rendered 0, unchanged 0, refused 1, passthrough 0 /m); assert.doesNotMatch(r.out, /fork of/); assert.ok(!has(`${OUT}/contact/index.html`));
+  const a = run(['render', 'guide-draft']); assert.equal(a.status, 2);
+  assert.match(a.err, /^refused guide-draft: strict source — no source HTML at stardust\/prototypes\/guide-draft-proposed\.html \(status approved: branch A renders the page's own prototype — only a directed page forks its archetype\) — build the page's prototype or pass --source guide-draft=<file>$/m);
+  const p = run(['plan', 'contact']); assert.equal(p.status, 2);
+  assert.match(p.err, /^refused contact: strict source — no source HTML at stardust\/prototypes\/contact-proposed\.html \(status extracted: .* advance contact --to directed, /m);
+});
 check("forkHead (pure): capture text with $ sequences lands verbatim (escaped); the archetype's hreflang alternates go", () => {
   const arch = '<html lang="en"><head><title>Arch</title>\n<meta name="description" content="Arch desc.">\n<link rel="alternate" hreflang="de" href="https://example.test/de/guides/">\n<link rel="alternate" hreflang="x-default" href="https://example.test/guides/">\n<link rel="alternate" type="application/rss+xml" href="/feed.xml">\n<link rel="stylesheet" href="site.css">\n</head><body><main></main></body></html>';
   const h = forkHead(arch, { title: 'Save $$ and $& more', metaDescription: "From $' on" });
@@ -563,9 +572,41 @@ check('composeHead / rewriteLinks (pure): $ sequences in a capture title, a depl
   const l = rewriteLinks('<a href="/deals/?q=$&x=$1">Deals</a>', { base: 'https://example.test/', originHosts: new Set(['example.test']), origin: 'https://example.test', byPath: new Map([['/deals/', { slug: 'deals', outputPath: 'deals/index.html' }]]), depth: 0, available: () => true });
   assert.equal(l.html, '<a href="./deals/index.html?q=$&x=$1">Deals</a>');
 });
-check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal', () => {
+check('forkFromArchetype (pure): a value the slot element cannot take is a strict slots refusal; the fix states the grammar', () => {
   assert.throws(() => forkFromArchetype('<html><head><title>t</title></head><body><main><img data-slot="pic" src="a.jpg"><div data-slot="box"><p>x</p></div></main></body></html>', { slots: { pic: 'words', box: { src: '/b.jpg' } } }, { slug: 's', archetype: 'a' }),
-    /^Error: refused s: strict slots — slot value\(s\) the archetype a cannot take: pic \(text value on <img>\); box \(image value on <div> without an <img>\) — /);
+    (e) => e.message === "refused s: strict slots — slot value(s) the archetype a cannot take: pic (text value on <img>); box (image value on <div> without an <img>) — fix the value in the capture#slots (a value is a string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4) or the archetype's markup, or pass --source s=<file>" || e);
+  assert.equal(SLOT_VALUE_GRAMMAR, 'a value is a string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4');
+});
+check('isImageRef (pure): a path or URL (holds / : ? or #) or a file name with an image extension (query / fragment allowed) — never a provenance pointer', () => {
+  for (const s of ['/a.jpg', 'getimage?id=3', 'img#3', 'media/x', 'https://cdn.example.test/hero', 'data:image/png;base64,AAA', './p', 'hero.PNG', 'hero.webp?w=200', 'hero.svg#icon', 'a.jpeg', 'a.avif', 'a.tif', 'a.tiff', 'a.jxl', 'a.heic', 'a.gif', 'a.bmp', 'a.ico', ' a.jpg ']) assert.ok(isImageRef(s), `image: ${JSON.stringify(s)}`);
+  for (const s of ['headings[0]', 'body.0', 'body[0]', 'media.images[0].src', 'hero', 'hero.jpgx', '', '  ', 'a.json', 'x.html', 'h1']) assert.ok(!isImageRef(s), `not an image: ${JSON.stringify(s)}`);
+});
+check('slotValueProblem (pure): every grammar shape passes; a nested object, a wrong type, a provenance src and a stray key are named', () => {
+  for (const v of [{ text: 'x' }, { text: 3 }, { text: '' }, { html: '' }, { html: '<p>x</p>' }, { src: 'a.jpg' }, { src: '/a' }, { src: 'https://x.example.test/y', alt: null, srcset: 'a.jpg 1x' }, { src: 'a.png', alt: 'A' }, { src: 'a.png', alt: 7 }, { href: '/x' }, { href: '/x', text: 't' }, { href: '/x', text: null }, { href: '/x', text: 0 }]) assert.equal(slotValueProblem(v), null, JSON.stringify(v));
+  assert.equal(slotValueProblem({}), 'an empty object');
+  assert.equal(slotValueProblem({ question: { text: 'q' }, answer: null }), 'an object with key(s) question, answer and none of text, html, src, href');
+  assert.equal(slotValueProblem({ text: 'Title', level: 'h1', src: 'headings[0]' }), 'src "headings[0]" is not an image reference: no / : ? or #, no image extension');
+  assert.equal(slotValueProblem({ text: 'Intro', src: 'body[0]' }), 'src "body[0]" is not an image reference: no / : ? or #, no image extension');
+  assert.equal(slotValueProblem({ src: '' }), 'src is empty, not an image reference'); assert.equal(slotValueProblem({ src: 5 }), 'src is number, not an image reference'); assert.equal(slotValueProblem({ src: null }), 'src is null, not an image reference');
+  assert.equal(slotValueProblem({ src: 'a.jpg', alt: {} }), 'alt is an object, not a string'); assert.equal(slotValueProblem({ src: 'a.jpg', srcset: ['a'] }), 'srcset is an array, not a string');
+  assert.equal(slotValueProblem({ html: 5 }), 'html is number, not a string'); assert.equal(slotValueProblem({ html: { text: 'x' } }), 'html is an object, not a string');
+  assert.equal(slotValueProblem({ href: '' }), 'href is empty, not a URL'); assert.equal(slotValueProblem({ href: ['/x'] }), 'href is an array, not a URL');
+  assert.equal(slotValueProblem({ heading: 'Help', text: { html: '<p>x</p>' }, links: [] }), 'text is an object, not a string'); assert.equal(slotValueProblem({ text: ['a'] }), 'text is an array, not a string'); assert.equal(slotValueProblem({ href: '/x', text: {} }), 'text is an object, not a string');
+  assert.equal(slotValueProblem({ text: 'x', level: 'h1' }), 'key(s) level outside the text value shape'); assert.equal(slotValueProblem({ text: 'x', from: 'headings[0]', source: 'dom' }), 'key(s) from, source outside the text value shape');
+  assert.equal(slotValueProblem({ text: 'cap', src: '/a.jpg' }), 'key(s) text outside the image value shape'); assert.equal(slotValueProblem({ href: '/x', title: 't' }), 'key(s) title outside the link value shape'); assert.equal(slotValueProblem({ html: '<p>', text: 'x' }), 'key(s) text outside the html value shape');
+});
+check('forkFromArchetype (pure): values outside the grammar are refused naming the slot and the key, identical problems once; provenance beside the value in the array form is not read, inside it refused', () => {
+  const proto = '<html><head><title>t</title></head><body><main><h1 data-slot="headline">H</h1><p data-slot="intro">I</p><ul><li data-slot="items">a</li></ul><div data-slot="help"><p>h</p></div><p data-slot="note">n</p><div data-slot="pic"><img src="a.jpg"></div><p data-slot="flag">f</p></main></body></html>';
+  const slots = { headline: { text: 'Title', level: 'h1', src: 'headings[0]' }, intro: { text: 'Intro', src: 'body[0]' }, items: [{ question: { text: 'q1' }, answer: null }, { question: { text: 'q2' }, answer: null }, { question: { text: 'q3' }, answer: null }], help: { heading: 'Help', text: { html: '<p>x</p>' }, links: [] }, note: { text: 'n', level: 'p' }, pic: { text: 'cap', src: '/a.jpg' }, flag: true };
+  assert.throws(() => forkFromArchetype(proto, { slots }, { slug: 's', archetype: 'a', capturePath: 'cap.json' }), (e) => {
+    assert.equal(e.message, 'refused s: strict slots — slot value(s) the archetype a cannot take: headline (src "headings[0]" is not an image reference: no / : ? or #, no image extension); intro (src "body[0]" is not an image reference: no / : ? or #, no image extension); items (an object with key(s) question, answer and none of text, html, src, href); help (text is an object, not a string); note (key(s) level outside the text value shape); pic (key(s) text outside the image value shape); flag (a boolean is no slot value) — fix the value in cap.json#slots (a value is a string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4) or the archetype\'s markup, or pass --source s=<file>');
+    return true;
+  });
+  const small = '<html><head><title>t</title></head><body><main><h1 data-slot="headline">H</h1><div data-slot="pic"><img src="a.jpg" alt="old"></div></main></body></html>';
+  const ok = forkFromArchetype(small, { slots: [{ name: 'headline', value: 'Our story', from: 'headings[0]' }, { name: 'pic', value: { src: 'hero.webp?w=200', alt: 'Hero' }, from: 'media.images[0]' }] }, { slug: 's', archetype: 'a' });
+  assert.match(ok.html, /<h1 data-slot="headline">Our story<\/h1>/); assert.match(ok.html, /<img src="hero\.webp\?w=200" alt="Hero">/); assert.deepEqual(ok.slots, ['headline', 'pic']);
+  assert.throws(() => forkFromArchetype(small, { slots: [{ name: 'headline', text: 'Our story', from: 'headings[0]' }, { name: 'pic', value: { src: '/a.jpg' } }] }, { slug: 's', archetype: 'a' }),
+    /^Error: refused s: strict slots — slot value\(s\) the archetype a cannot take: headline \(key\(s\) from outside the text value shape\) — /);
 });
 check('forkFromArchetype (pure): inserted HTML maps src / srcset on img, source, video, audio and poster on video only; an <iframe src> keeps its URL', () => {
   const seen = []; const resolveMedia = (ref) => { seen.push(ref); return { ref: `mapped/${ref.split('/').pop()}`, unmapped: null }; };
