@@ -1,0 +1,8 @@
+{
+  "site": "A regional airport operator",
+  "origin": "https://www.example.com",
+  "scopePath": "/en/",
+  "template": { "bodyAttr": "data-template" },
+  "parser": { "profile": "aem-core", "main": "main" },
+  "maxPages": 50
+}
