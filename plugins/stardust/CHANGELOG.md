@@ -48,8 +48,8 @@ the block's text, shipped as ordinary selectors with no quality line: `selectorQ
   (a heading, a 16-character span) anchors the selector, evidence against it as the block's origin, while
   it resolves to one element and a per-selector client reads it as any other (the adopter places verified
   instances only and carries the confidence-0 position fallbacks as gaps, so those stay in
-  `zeroConfidence`). The bar is block-origin's own `>0–<0.5` status bucket, so its status line, the
-  manifest and done-check agree. The figure rides `--json` (`counts.lowConfidence`, null without a
+  `zeroConfidence`). The bar is block-origin's own `>0–<0.5` status bucket, so all three agree on the bar (the manifest counts verified
+  instances only; block-origin's status line counts them all). The figure rides `--json` (`counts.lowConfidence`, null without a
   mapping) and a `Selectors` line in the printed status; done-check prints it right after
   `zero_confidence` — informational, never a gap, hidden after handover with the other seven. On the
   recorded export: 45 of 124 (33 under 0.25), where the manifest had said `zeroConfidence 0` and nothing
