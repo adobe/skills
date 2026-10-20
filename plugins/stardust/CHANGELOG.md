@@ -4,6 +4,63 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s53-slot-grammar) — the slot value grammar where the slots are written; a provenance `src` is no image; a never-directed sibling is told its status (#176)
+
+In a recorded hands-off run the prep session (`extract --prep`) wrote the typed slots of
+`stardust/current/pages/<slug>.json#slots` with a generator of its own and invented nested value shapes —
+`headline: {text, level: "h1", src: "headings[0]"}`, `items: [{question: {…}, answer: null}, …]`, `help: {heading,
+text: {…}, links: […]}` — because the slot VALUE grammar lived only in the header of `migrate.mjs` while
+`extract/reference/prep-mode.md` § 4 named slot NAMES and pointed to a `current-state-schema.md` § Typed slots
+that did not exist. `render --from-archetype` then refused every sibling: `headline (image value on <div> without
+an <img>)` — misleading, `slotKind` tested `src` before `text`, so the provenance pointer read as an image — and
+`items (unsupported value)` seven times over. A sibling the lane had never advanced to `directed` was refused
+`strict source — no source HTML at stardust/prototypes/<slug>-proposed.html`, which the lane read as "no sibling
+prototype". It then hand-copied the archetype's content document into `content/` for the sibling: no migrated
+page, no sidecar or provenance, no `forked` record, no `encode-attempt.mjs record --hand-authored`. The one
+recorded run whose lane re-derived flat values from the captured HTML forked six siblings on the same path.
+
+- **The grammar at the source of the slots.** `prep-mode.md` § 4 carries the seven value shapes verbatim with one
+  example each — `string | {text} | {html} | {src, alt?, srcset?} | {href, text?} | an array of those | null` — and
+  the rule: a value is one of these or `null`, no nested objects, no provenance key inside a value; provenance goes
+  beside the value in the array form (`{name, value, from}` — keys other than `name` and `value` are not read),
+  page-level evidence in `_provenance`. A listing's card fields are one slot name per field (`card-title[]`,
+  `card-image[]`, `card-link[]`), never an object per card. `current-state-schema.md` gains the § Typed slots the
+  pointer named (both forms, the grammar, the rules the fork enforces; `slots` listed as the one key that may be
+  absent). migrate/SKILL.md cross-links it where it describes `render --from-archetype` and strict slots and
+  states the order after a strict slots refusal — fix the value → fork → `state.mjs advance … --to directed` →
+  render; never a hand copy of the archetype's content document; `template-and-module-rendering.md` § Path A′
+  Step 2 and extract/SKILL.md point at it. No stardust doc told an agent to copy the archetype when render
+  refuses — the run's own brief did; nothing to replace.
+- **`slotKind`: a `src` is an image reference only when it reads as one** — a path or URL (holds `/` or `:`) or a
+  file name with an image extension (`.avif .bmp .gif .heic .heif .ico .jpg .jpeg .jxl .png .svg .tif .tiff
+  .webp`; a query or fragment after it allowed): `isImageRef`, exported. Anything else inside a value is refused
+  by name rather than read as text or as an image (a silently accepted stray `src` could hide a real image
+  reference): `slotValueProblem` (exported) takes the leading key — `html`, else `src`, else `href`, else `text`,
+  the fork's precedence — as the shape and checks that key's type, a `src` that is no image reference, `alt` /
+  `srcset` / `text` types, then any key the shape does not have. Reasons: `headline (src "headings[0]" is not an
+  image reference: no / or :, no image extension)`, `items (an object with key(s) question, answer and none of
+  text, html, src, href)`, `help (text is an object, not a string)`, `note (key(s) level outside the text value
+  shape)`, `flag (a boolean is no slot value)`. An identical problem is listed once; the refusal's fix states the
+  grammar — `fix the value in <capture>#slots (a value is a string | {text} | {html} | {src, alt?, srcset?} |
+  {href, text?} | an array of those | null, with no other key inside it — extract/reference/prep-mode.md § 4) or
+  the archetype's markup, or pass --source <slug>=<file>` (`SLOT_VALUE_GRAMMAR`, exported). The seven shapes, the
+  array form's unread keys beside `value` and every existing fixture pass unchanged.
+- **`chooseBranch`: a page whose status is not `directed` and has no source HTML is told so.** `strict source — no
+  source HTML at <path> (status extracted: branch A renders the page's own prototype — only a directed page forks
+  its archetype) — a sibling of an archetype: node stardust/scripts/stardust/state.mjs advance <slug> --to
+  directed, then render <slug> again (it forks the archetype's prototype; render --from-archetype
+  <proto-dir>/<archetype>-proposed.html --capture <current>/pages/<slug>.json first writes the sibling's own
+  source HTML); an archetype: build the page's prototype or pass --source <slug>=<file>`; a prototyped / approved /
+  migrated page gets the archetype fix alone. An explicit `--source` that does not exist and a `--branch-b` page
+  keep the old line (the named file is the mistake, not the status). `plan` prints the same.
+- `--help` (the header) states both rules; the scripts index is untouched (20551 bytes). Tests: `migrate.test.mjs`
+  92 → 96 checks — the pinned refusal pins the fix text; `isImageRef` over 18 image references and 11 pointers;
+  `slotValueProblem` over every shape and each reason; a fork with the run's six shapes refused in one line,
+  identical items once, `{name, value, from}` accepted and `{name, text, from}` refused; the extracted and the
+  approved page without a prototype pin both strict source lines, exit 2, nothing written. No version bump.
+- Not done, deliberately: no bypass flag (`--unfillable empty` or any `--allow-*`) — an owner decision; the
+  proposal is in the wave report.
+
 ## 0.36.x (stardust/s52-image-alignment) — a block with no text to anchor is located by its images (#175)
 
 With #174 applied to the recorded hands-off runs, 69 position fallbacks remained across twelve runs and 66
