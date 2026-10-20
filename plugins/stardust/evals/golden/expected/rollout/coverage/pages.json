@@ -1,0 +1,89 @@
+{
+  "_provenance": {
+    "writtenBy": "stardust:rollout/inventory",
+    "writtenAt": "2026-01-01T00:00:00.000Z",
+    "readArtifacts": [
+      "stardust/migrated"
+    ],
+    "stardustVersion": "<plugin-version>"
+  },
+  "generatedAt": "2026-01-01T00:00:00.000Z",
+  "pages": [
+    {
+      "slug": "docs",
+      "path": "/docs",
+      "title": "Documentation",
+      "templateId": "docs",
+      "source": {
+        "migratedHtml": "stardust/migrated/docs/index.html",
+        "metaJson": "stardust/migrated/docs/_meta.json",
+        "sourceHash": "sha256:03f62187296ef4ec8ddde3529161f7ec97a0f5251ea8351d79803e1af8a88a43",
+        "sourceUrl": "/docs/"
+      },
+      "blocks": [
+        "cards"
+      ],
+      "widgets": [
+        {
+          "id": "site-search",
+          "href": "/widgets/search/site-search.html?q=docs"
+        }
+      ],
+      "delivery": {
+        "status": "pending",
+        "deployedUrl": null,
+        "deployedAt": null,
+        "verifiedAt": null,
+        "error": null
+      }
+    },
+    {
+      "slug": "docs-getting-started",
+      "path": "/docs/getting-started",
+      "title": "Getting started",
+      "templateId": "docs",
+      "source": {
+        "migratedHtml": "stardust/migrated/docs/getting-started.html",
+        "metaJson": "stardust/migrated/docs/getting-started._meta.json",
+        "sourceHash": "sha256:a0464ce271e1eb0ae16388aa3ba94b03196ff46bca74c4c0c7972164995598d3",
+        "sourceUrl": "/docs/getting-started.html"
+      },
+      "blocks": [
+        "cards"
+      ],
+      "widgets": [],
+      "delivery": {
+        "status": "pending",
+        "deployedUrl": null,
+        "deployedAt": null,
+        "verifiedAt": null,
+        "error": null
+      }
+    },
+    {
+      "slug": "home",
+      "path": "/",
+      "title": "Home",
+      "templateId": "home",
+      "source": {
+        "migratedHtml": "stardust/migrated/index.html",
+        "metaJson": "stardust/migrated/_meta.json",
+        "sourceHash": "sha256:d81e44a4453e971d587fee06c09717e038708a73865db07c163d21be14fe308a",
+        "sourceUrl": "/"
+      },
+      "blocks": [
+        "hero",
+        "cards",
+        "nav"
+      ],
+      "widgets": [],
+      "delivery": {
+        "status": "pending",
+        "deployedUrl": null,
+        "deployedAt": null,
+        "verifiedAt": null,
+        "error": null
+      }
+    }
+  ]
+}

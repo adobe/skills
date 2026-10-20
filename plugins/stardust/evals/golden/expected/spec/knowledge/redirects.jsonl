@@ -1,0 +1,4 @@
+{"src":"https://www.example.com/en/old.html","target":"https://www.example.com/en/gone.html","status":301,"hops":1,"kind":"legacy","needs_entry":null,"target_status":404,"external":0,"in_sitemap":1,"inbound_pages":2,"rum_views":0,"note":null}
+{"src":"/en/a.html","target":"/en/a","status":301,"hops":1,"kind":"migration","needs_entry":0,"target_status":200,"external":0,"in_sitemap":1,"inbound_pages":0,"rum_views":0,"note":"EDS path normalisation"}
+{"src":"/en/b.html","target":"/en/b","status":301,"hops":1,"kind":"migration","needs_entry":0,"target_status":200,"external":0,"in_sitemap":1,"inbound_pages":0,"rum_views":0,"note":"EDS path normalisation"}
+{"src":"/en/c.html","target":"/en/c","status":301,"hops":1,"kind":"migration","needs_entry":0,"target_status":200,"external":0,"in_sitemap":1,"inbound_pages":0,"rum_views":0,"note":"EDS path normalisation"}
