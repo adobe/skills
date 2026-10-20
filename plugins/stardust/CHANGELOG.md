@@ -4,6 +4,20 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
+
+The scripts index (`stardust/reference/scripts-index.md`) had grown to 20,551 bytes — 132 rows averaging 119 bytes
+of description, 29 rows over 200 bytes, the longest inlining whole flag lists — and the lint's 12 KiB cap had been
+raised locally across six commits to carry it. Recorded hands-off runs still called `--help` 240–410 times per run
+with those flags inlined, so the inlining bought nothing: the row is read at session start to learn what a script
+is for, and the flags are recovered from `--help` regardless. Every row is now a terse purpose phrase — the
+script's role, plus the artefact it reads or writes when that is the distinguishing fact; flag lists, exit codes
+and subcommand grammars live in `--help` and the skill cards. 132 rows before and after, same order; 10,088 bytes
+(40 bytes of description on average, the longest row 93); the title drops "key flags" and the intro drops the
+sentence that rationed `--help`. The lint is back at the shipped `12 * 1024` and byte-identical to the shipped
+file. To measure in the next recorded run: whether the `--help` count per run moves now that no row names a
+flag. (#179 is on another branch; this entry is numbered after it.) No version bump.
+
 ## 0.36.x (stardust/s55-export-rows) — the export reads the delivered rows as they are: a case-folded content file is found, a used block is converted, a synthesized row is named (#178)
 
 In a recorded hands-off run the migration-workspace export was fresh and schema-valid and still misread three
