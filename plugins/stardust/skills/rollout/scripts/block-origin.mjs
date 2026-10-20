@@ -11,14 +11,15 @@
  * are a minimal selector engine over lib.mjs parseHtml (the plugin tree ships no dependency); syntax outside
  * its grammar throws UnsupportedSelector, and countMatches counts it as 0 hits. An encoder map's marker
  * comes before the text when it selects the block's element (its k-th match, confidence 1); a block it has
- * no element for falls through to its text, then to its position among its anchored neighbours (never a
- * blank element — no text, no media — isBlank: a spacer or rule between two neighbours is passed over); a
- * section takes the lowest common ancestor of its records; a template's sections are aligned across its
- * pages and their selectors generalised (buildMapping).
+ * no element for falls through to its text, then to its images (imagesOf + captureImages + alignImages: each
+ * delivered image found once in the capture by file stem, else by alt; confidence 1 / 0.8), then to its
+ * position among its anchored neighbours (never a blank element — no text, no media — isBlank: a spacer or
+ * rule between two neighbours is passed over); a section takes the lowest common ancestor of its records; a
+ * template's sections are aligned across its pages and their selectors generalised (buildMapping).
  *
- * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, isBlank,
- * stableSelector, parseSelector, querySelectorAll, countMatches, requireKeyed, buildMapping, verifyMapping,
- * serialize, countsOf; main (the CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
+ * Exports (pure): normText, squash, indexSource, fragmentsOf, alignBlock, lca, coveredShare, deliveredStem,
+ * captureStem, imagesOf, captureImages, alignImages, isBlank, stableSelector, parseSelector, querySelectorAll,
+ * countMatches, requireKeyed, buildMapping, verifyMapping, serialize, countsOf; main (the CLI). unit-geometry.mjs is found in the plugin tree (../../diff/scripts/) or a project copy
  * (stardust/scripts/<skill>/: ../diff/); without either the import still succeeds, requireKeyed (so
  * fragmentsOf) throws an Error naming both places and the CLI exits 1.
  * Usage, inputs, outputs and exit codes: --help.
@@ -48,8 +49,9 @@ Usage: node skills/rollout/scripts/block-origin.mjs [--coverage <pages.json>] [-
                       stardust/migrate/encode; an explicit --encode wins; optional)
   --out <file>        default stardust/rollout/workspace/mapping.json
   --max-zero-confidence <n>  exit 3 when more than n instances land at confidence 0 (the position
-                      fallback: image-only repeating blocks with no text to anchor), the message listing
-                      them by block; default unlimited (no gate), so no existing caller changes
+                      fallback: blocks whose text is not in the capture and whose images are not found
+                      there exactly once), the message listing them by block; default unlimited (no
+                      gate), so no existing caller changes
   --verify            re-read and re-index every capture and count each selector's hits: an instance is
                       verified true (exactly one element) or false; a section's pages are re-checked (a
                       page may drop, none is added)
@@ -62,9 +64,14 @@ Per page (coverage pages in slug order with a delivered structure, a content fil
 delivered block is located in its capture by its template's encoder map when the map selects its element
 (the first marker emitting block:<name>: the k-th block of that name takes the marker's k-th match under
 the map's root; confidence 1), else by its text (the element covering most of it, the deepest on ties;
-confidence = the share covered), else by its position among its anchored neighbours (confidence 0; never
-an element another record already has, never one with neither text nor media — a spacer or rule between
-two neighbours is passed over; null when none is left). A section takes the lowest common ancestor of its records
+confidence = the share covered), else by its images when each delivered img is found once in the capture
+— by file stem (the media harvester's name without its -<8 hex>, compared to the capture's img / picture
+source URLs folded the same way), else by a non-empty alt (confidence 1 when all by stem, 0.8 when any by
+alt; two or more candidates, a missing image or an element another record already has: no) — one image
+climbs its wrapper-only ancestors (no text, no other media), several take their lowest common ancestor;
+else by its position among its anchored neighbours (confidence 0; never an element another record
+already has, never one with neither text nor media — a spacer or rule between two neighbours is passed
+over; null when none is left). A section takes the lowest common ancestor of its records
 (confidence = the share of their text it holds, the lowest over the pages); its default-content roles are
 the page's eds-schema roles of its text (an equal text, else the shorter of the two, 8+ characters, inside
 the other), else its delivered default parts. A template's sections are aligned across its pages by style
@@ -76,7 +83,7 @@ null (skipped).
 
 Stdout: templates N · blocks N · instances N · verified P % (the share verified true; verified skipped
 without --verify, verified n/a without instances); sources encoder-map N · text-alignment N ·
-position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; encode <dir> (the encoder-map directory
+image-alignment N · position N; confidence ≥0.9 N · 0.5–<0.9 N · >0–<0.5 N · 0 N; encode <dir> (the encoder-map directory
 read, as given or defaulted) or encode none (it is not a directory: no map is read); encoder-coverage
 F · zero-confidence N · sections-without-selector N (F = encoder-map/instances to three decimals, the
 confidence-0 count, and the sections generalised to no selector — an adopter projecting per selector drops them);
@@ -306,6 +313,122 @@ export function coveredShare(index, el, fragments) {
   const m = el && index.meta.get(el);
   if (!total || !m) return 0;
   return round3(lengthOf(frags.filter((f) => m.text.includes(f.s))) / total);
+}
+
+// --- image alignment ---------------------------------------------------------------------------------
+// A delivered image's file name is the media harvester's (extract/media-harvest.mjs mediaFileName): the source
+// file's stem lower-cased, runs of other characters folded to '-', cut to 60 characters, then '-' + 8 hex of its
+// bytes. The same folding of a capture URL's stem makes the two comparable; the hash is dropped on the delivered
+// side only (an 8-hex tail of a capture's own name is part of that name).
+const fileOf = (u) => {
+  let seg = '';
+  try { seg = new URL(String(u), 'https://host/').pathname.split('/').pop() || ''; } catch { seg = String(u).split(/[?#]/)[0].split('/').pop() || ''; }
+  try { seg = decodeURIComponent(seg); } catch { /* keep as is */ }
+  return seg;
+};
+const foldStem = (s) => s.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '');
+const rawStem = (u) => fileOf(u).replace(/\.[A-Za-z0-9]+$/, '');
+/** The comparable stem of a delivered image's src (the harvester's -<8 hex> dropped); '' for none. */
+export const deliveredStem = (u) => (u ? foldStem(rawStem(u).replace(/-[0-9a-f]{8}$/i, '')) : '');
+/** The comparable stem of a capture image URL (src, data-src, a srcset candidate); '' for none. */
+export const captureStem = (u) => (u ? foldStem(rawStem(u)) : '');
+// The HTML srcset grammar, as the harvester reads it (extract/media-harvest.mjs parseSrcset): a candidate's URL is
+// the next run of non-whitespace (commas inside it belong to it — CDN transform paths carry them); a trailing comma
+// ends a descriptor-less candidate, else the descriptors run to the next comma outside parentheses.
+function srcsetUrls(value) {
+  const s = String(value ?? '');
+  const out = [];
+  let i = 0;
+  while (i < s.length) {
+    while (i < s.length && /[\s,]/.test(s[i])) i += 1;
+    if (i >= s.length) break;
+    let j = i;
+    while (j < s.length && !/\s/.test(s[j])) j += 1;
+    let url = s.slice(i, j);
+    i = j;
+    if (/,$/.test(url)) url = url.replace(/,+$/, '');
+    else {
+      let depth = 0;
+      while (i < s.length) {
+        const c = s[i];
+        i += 1;
+        if (c === '(') depth += 1;
+        else if (c === ')') depth = Math.max(0, depth - 1);
+        else if (c === ',' && depth === 0) break;
+      }
+    }
+    if (url) out.push(url);
+  }
+  return out;
+}
+const LEAF_MEDIA = new Set(['img', 'video', 'audio', 'svg', 'iframe', 'canvas', 'object', 'embed']);
+const HIDDEN = new Set(['noscript', 'template']);
+
+/** imagesOf(nodes) → [{ stem, alt }] of the img elements under a delivered block div, in document order (the node, or an array of nodes). */
+export function imagesOf(nodes) {
+  const out = [];
+  const visit = (n) => { if (n.tag === 'img') out.push({ stem: deliveredStem(n.attrs && n.attrs.src), alt: squash(n.attrs && n.attrs.alt) }); elements(n).forEach(visit); };
+  (Array.isArray(nodes) ? nodes : [nodes]).filter((n) => n && n.tag && n.tag !== '#text').forEach(visit);
+  return out;
+}
+
+/**
+ * captureImages(index) → [{ el, stems, alt }], one per image unit of the page: an img, or a picture for the img
+ * and source elements inside it (one unit, their stems merged); stems = the comparable stems of src, data-src,
+ * srcset and data-srcset; alt = the img's alt, squashed. Images under noscript or template (a lazy-load
+ * fallback) are not units.
+ */
+export function captureImages(index) {
+  const units = new Map();
+  const hidden = (el) => { for (let p = index.meta.get(el).parent; p && p !== index.root; p = index.meta.get(p).parent) if (HIDDEN.has(p.tag)) return true; return false; };
+  for (const el of index.els) {
+    if ((el.tag !== 'img' && el.tag !== 'source') || hidden(el)) continue;
+    const a = el.attrs || {};
+    const p = index.meta.get(el).parent;
+    const unit = p && p.tag === 'picture' ? p : el.tag === 'img' ? el : null;
+    if (!unit) continue;
+    if (!units.has(unit)) units.set(unit, { el: unit, stems: new Set(), alt: '' });
+    const u = units.get(unit);
+    for (const s of [a.src, a['data-src'], ...srcsetUrls(a.srcset), ...srcsetUrls(a['data-srcset'])].map(captureStem)) if (s) u.stems.add(s);
+    if (el.tag === 'img' && !u.alt) u.alt = squash(a.alt);
+  }
+  return [...units.values()];
+}
+
+/**
+ * alignImages(index, images, catalogue) → { anchor, confidence, how } for a record's delivered images (imagesOf)
+ * against the page's image units (captureImages). Each image matches the one unit sharing its stem ('stem'),
+ * else — no unit shares it — the one sharing its non-empty alt ('alt'); two or more sharing either make it
+ * 'ambiguous', none 'missing': then anchor null. All matched: several distinct units → their lowest common
+ * ancestor; one unit climbs through wrapper-only ancestors (no text, no other leaf media — the block is the
+ * picture, not the band around it) and stops below the first that holds anything else, never past a child of
+ * body. confidence 1 when every image matched by stem, 0.8 when any matched by alt only.
+ */
+export function alignImages(index, images, catalogue) {
+  const imgs = (images || []).filter((im) => im && (im.stem || im.alt));
+  if (!imgs.length) return { anchor: null, confidence: 0, how: 'none' };
+  const els = [];
+  let byAlt = false;
+  for (const im of imgs) {
+    const stem = im.stem ? catalogue.filter((c) => c.stems.has(im.stem)) : [];
+    const alt = !stem.length && im.alt ? catalogue.filter((c) => c.alt && c.alt === im.alt) : [];
+    if (stem.length > 1 || alt.length > 1) return { anchor: null, confidence: 0, how: 'ambiguous' };
+    const hit = stem[0] || alt[0];
+    if (!hit) return { anchor: null, confidence: 0, how: 'missing' };
+    if (!stem.length) byAlt = true;
+    els.push(hit.el);
+  }
+  const uniq = [...new Set(els)];
+  let anchor = uniq.length > 1 ? lca(index, uniq) : uniq[0];
+  if (uniq.length === 1) {
+    const own = anchor;
+    const otherMedia = (p) => { let k = 0; const go = (x) => { if (x !== own && !contains(index, own, x) && LEAF_MEDIA.has(x.tag)) k += 1; elements(x).forEach(go); }; go(p); return k; };
+    for (let p = parentEl(index, anchor); p && p !== index.body; p = parentEl(index, p)) {
+      if (index.meta.get(p).text || otherMedia(p)) break;
+      anchor = p;
+    }
+  }
+  return { anchor, confidence: byAlt ? 0.8 : 1, how: byAlt ? 'alt' : 'stem' };
 }
 
 // --- selector engine ---------------------------------------------------------------------------------
@@ -697,6 +820,21 @@ function mapPage(row, contentHtml, index, { map = null, eds = null } = {}) {
     if (a.anchor) Object.assign(r, { selector: stableSelector(index, a.anchor), confidence: a.confidence, source: 'text-alignment' });
     else r.source = 'position';
   }
+  // Images next: a block without a text anchor whose delivered images are each found once in the capture takes
+  // their element (alignImages) — unless another record already has that element (as the position fallback
+  // never takes one; text alignment itself has no such rule: two records may cover one element). Else position.
+  let catalogue = null;
+  const anchored = new Set(recs.map((r) => r.anchor).filter(Boolean));
+  for (const r of recs) {
+    if (r.source !== 'position') continue;
+    const images = imagesOf(doc.nodes[r.doc.pos]);
+    if (!images.length) continue;
+    catalogue = catalogue || captureImages(index);
+    const a = alignImages(index, images, catalogue);
+    if (!a.anchor || anchored.has(a.anchor)) continue;
+    anchored.add(a.anchor);
+    Object.assign(r, { anchor: a.anchor, selector: stableSelector(index, a.anchor), confidence: a.confidence, source: 'image-alignment' });
+  }
   const byPos = new Map(recs.map((r) => [r.cov.pos, r]));
   const sectionOf = new Map();
   const sections = (Array.isArray(row.delivered.sections) ? row.delivered.sections : []).filter((s) => s && Array.isArray(s.blocks)).map((s) => {
@@ -964,7 +1102,7 @@ export const serialize = (mapping) => `${JSON.stringify(sortKeys(mapping), null,
 /** Counts behind the status lines and --json. */
 export function countsOf(mapping, verify) {
   const all = mapping.templates.flatMap((t) => t.blocks.flatMap((b) => b.instances.map((i) => ({ ...i, block: b.block }))));
-  const sources = { 'encoder-map': 0, 'text-alignment': 0, position: 0 };
+  const sources = { 'encoder-map': 0, 'text-alignment': 0, 'image-alignment': 0, position: 0 };
   const confidence = { high: 0, medium: 0, low: 0, none: 0 };
   const position = new Map();
   for (const i of all) {
@@ -994,7 +1132,7 @@ function statusLines(c, skipped, verify, encode) {
   const v = !verify ? 'verified skipped' : !c.instances ? 'verified n/a' : `verified ${c.verifiedPct.toFixed(1)} %`;
   const out = [
     `templates ${c.templates} · blocks ${c.blocks} · instances ${c.instances} · ${v}`,
-    `sources encoder-map ${c.sources['encoder-map']} · text-alignment ${c.sources['text-alignment']} · position ${c.sources.position}`,
+    `sources encoder-map ${c.sources['encoder-map']} · text-alignment ${c.sources['text-alignment']} · image-alignment ${c.sources['image-alignment']} · position ${c.sources.position}`,
     `confidence ≥0.9 ${c.confidence.high} · 0.5–<0.9 ${c.confidence.medium} · >0–<0.5 ${c.confidence.low} · 0 ${c.confidence.none}`,
     `encode ${encode ?? 'none'}`,
     `encoder-coverage ${(c.instances ? c.sources['encoder-map'] / c.instances : 0).toFixed(3)} · zero-confidence ${c.confidence.none} · sections-without-selector ${c.sectionsWithoutSelector}`,
@@ -1089,7 +1227,7 @@ export function main(argv) {
   const maxZero = opts['max-zero-confidence'];
   if (maxZero !== null && counts.confidence.none > maxZero) {
     const blocks = Object.entries(counts.positionBlocks).map(([b, n]) => `${b} ×${n}`).join(', ') || 'no block breakdown';
-    return fail(3, `${counts.confidence.none} zero-confidence selector(s) over --max-zero-confidence ${maxZero}: ${blocks} — image-only repeating blocks with no text to anchor; draft an encoder map (stardust/import/<archetype>/vocabulary.json) or raise the threshold`);
+    return fail(3, `${counts.confidence.none} zero-confidence selector(s) over --max-zero-confidence ${maxZero}: ${blocks} — their text is not in the capture and their images are not found there exactly once; draft an encoder map (stardust/import/<archetype>/vocabulary.json) or raise the threshold`);
   }
   return 0;
 }

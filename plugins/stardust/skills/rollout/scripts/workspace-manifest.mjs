@@ -290,10 +290,10 @@ export function encodeDecisionOf({ record = null, encoderMap = 0, pages = 0 } = 
 
 /**
  * The selectorQuality block derived from mapping.json at manifest time (block-origin's countsOf; mapping.json is NOT
- * rewritten): instances, the three selector sources ({encoderMap, textAlignment, position}), encoderCoverage
- * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — image-only repeating blocks
- * with no text to anchor), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
- * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, position, encoderCoverage, encode}], one row
+ * rewritten): instances, the selector sources ({encoderMap, textAlignment, imageAlignment, position}), encoderCoverage
+ * (encoder-map/instances, 0–1 to three decimals), zeroConfidence (the confidence-0 count — position fallbacks: no
+ * encoder-map marker, no text match, no uniquely matched image), the top zeroConfidenceBlocks ([{block, instances}], the position fallbacks that make it up,
+ * sorted), byTemplate ([{template, instances, encoderMap, textAlignment, imageAlignment, position, encoderCoverage, encode}], one row
  * per mapping template, most instances first, so a reviewer sees which templates are encoder-backed and which fell
  * back — `encode {decision, reason, vocabulary, recordedAt}` says whether the encoder was tried, skipped or never
  * applicable (encodeDecisionOf over the template's encoder-map count, its page count and migrate's record under
@@ -327,14 +327,14 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     encode[ENCODE_COUNTER[decision]] += 1;
     return {
       template, instances: insts.length,
-      encoderMap, textAlignment: bySource('text-alignment'), position: bySource('position'),
+      encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
       encode: { decision, reason: recorded ? recorded.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: recorded ? recorded.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
     instances: c.instances,
-    sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], position: c.sources.position },
+    sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], imageAlignment: c.sources['image-alignment'], position: c.sources.position },
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),

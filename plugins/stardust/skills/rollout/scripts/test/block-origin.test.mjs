@@ -489,7 +489,8 @@ const sortedKeys = (v) => (Array.isArray(v) ? v.map(sortedKeys) : v && typeof v 
 const instance = (slug, pos, selector, confidence, source, verified = null) => ({ slug, pos, selector, confidence, source, verified });
 
 // A hub page. Delivered: [heading+text, teaser-grid] · dark [cards with a delivered-only sentence] ·
-// [heading, an image-only media block, cards] · [an image-only hero]. Captured: the header nav repeats a
+// [heading, an image-only media block, cards] · [an image-only hero] — both images re-rendered under names and
+// alts the capture does not carry (so they fall to position). Captured: the header nav repeats a
 // teaser title; a header note and a footer paragraph carry the class `intro` (outside main).
 const HUB_CONTENT = `<html><head><title>A hub page</title></head><body><header></header><main>
 <div>
@@ -503,11 +504,11 @@ const HUB_CONTENT = `<html><head><title>A hub page</title></head><body><header><
 </div>
 <div>
 <h2>Gallery heading</h2>
-<div class="media"><div><div><picture><img src="a.jpg" alt="A view of the gallery"></picture></div></div></div>
+<div class="media"><div><div><picture><img src="gallery-render.jpg" alt="Gallery still"></picture></div></div></div>
 <div class="cards"><div><div><p>Gallery caption text.</p></div></div></div>
 </div>
 <div>
-<div class="hero wide"><div><div><picture><img src="b.jpg" alt=""></picture></div></div></div>
+<div class="hero wide"><div><div><picture><img src="banner-render.jpg" alt=""></picture></div></div></div>
 </div>
 </main><footer></footer></body></html>`;
 const HUB_CAPTURE = `<!doctype html><html><head><title>A hub page</title></head><body>
@@ -589,7 +590,7 @@ check('mapping: status lines — counts, verified skipped, sources, confidence b
   assert.ok(hubRun, 'the one-page run did not happen');
   assert.deepEqual(lines(hubRun), [
     'templates 1 · blocks 5 · instances 5 · verified skipped',
-    'sources encoder-map 0 · text-alignment 3 · position 2',
+    'sources encoder-map 0 · text-alignment 3 · image-alignment 0 · position 2',
     'confidence ≥0.9 2 · 0.5–<0.9 1 · >0–<0.5 0 · 0 2',
     'encode none',
     'encoder-coverage 0.000 · zero-confidence 2 · sections-without-selector 1',
@@ -643,7 +644,7 @@ check('mapping: --json — one object { status, out, encode, counts, skipped }, 
     encode: null,
     counts: {
       templates: 1, blocks: 5, instances: 5, sectionsWithoutSelector: 1, verified: null, verifiedPct: null,
-      sources: { 'encoder-map': 0, 'text-alignment': 3, position: 2 },
+      sources: { 'encoder-map': 0, 'text-alignment': 3, 'image-alignment': 0, position: 2 },
       confidence: { high: 2, medium: 1, low: 0, none: 2 },
       positionBlocks: { hero: 1, media: 1 },
     },
@@ -707,7 +708,7 @@ check('mapping: an encoder map marker wins over text alignment (confidence 1): i
     ['s4', 'hero', [['section.banner', 0, 'position']]],
   ]);
   assert.deepEqual(t.sections.map((s) => [s.id, s.selector, s.confidence]), [['s1', 'section.intro', 1], ['s2', 'div.card', 0.593], ['s3', 'section.gallery', 1], ['s4', null, 0]]);
-  assert.equal(lines(r)[1], 'sources encoder-map 3 · text-alignment 0 · position 2');
+  assert.equal(lines(r)[1], 'sources encoder-map 3 · text-alignment 0 · image-alignment 0 · position 2');
   assert.equal(lines(r)[2], 'confidence ≥0.9 3 · 0.5–<0.9 0 · >0–<0.5 0 · 0 2');
 });
 
@@ -769,7 +770,7 @@ check('mapping: --encode defaults to stardust/import when it is a directory, els
   let r = runMap(dir);
   ok(r);
   assert.deepEqual(teaser(), [instance('hub', 1, 'section.intro', 1, 'encoder-map')]);
-  assert.equal(lines(r)[1], 'sources encoder-map 1 · text-alignment 2 · position 2');
+  assert.equal(lines(r)[1], 'sources encoder-map 1 · text-alignment 2 · image-alignment 0 · position 2');
   assert.equal(lines(r)[3], 'encode stardust/import', r.stdout);
   put(join(dir, 'stardust', 'migrate', 'encode', 'hub', 'vocabulary.json'), JSON.stringify(migrateMap));
   r = runMap(dir);
@@ -792,7 +793,7 @@ check('mapping: encode none — no map directory, or an explicit --encode that i
   const dir = hubProject('map-encode-missing');
   let r = runMap(dir);
   ok(r);
-  assert.equal(lines(r)[1], 'sources encoder-map 0 · text-alignment 3 · position 2');
+  assert.equal(lines(r)[1], 'sources encoder-map 0 · text-alignment 3 · image-alignment 0 · position 2');
   assert.equal(lines(r)[3], 'encode none', r.stdout);
   const bytes = readFileSync(join(dir, MAPPING), 'utf8');
   r = runMap(dir, ['--json']);
@@ -815,7 +816,7 @@ check('mapping: encode none — no map directory, or an explicit --encode that i
 check('mapping: an image-only first block — the next anchor\'s previous element sibling, walking up the ancestors', () => {
   const dir = project('map-first', [{
     slug: 'landing', path: '/landing', templateId: 'landing',
-    content: '<main><div><div class="hero"><div><div><picture><img src="h.jpg" alt=""></picture></div></div></div></div><div><h1>Landing title</h1><p>Landing intro text.</p></div></main>',
+    content: '<main><div><div class="hero"><div><div><picture><img src="hero-render.jpg" alt=""></picture></div></div></div></div><div><h1>Landing title</h1><p>Landing intro text.</p></div></main>',
     capture: '<html><body><main><div class="stage"><img src="h.jpg" alt=""></div><section class="lead"><div class="inner"><h1>Landing title</h1><p>Landing intro text.</p></div></section></main></body></html>',
   }]);
   ok(runMap(dir));
@@ -845,7 +846,7 @@ check('mapping: a position fallback never takes an element another record alread
 
 check('mapping: a position fallback never takes a blank element — a spacer or rule between the neighbours is passed over; null when only blanks remain', () => {
   const content = `<main><div><h1>Spaced title</h1><p>Spaced intro text.</p></div>
-<div><div class="media"><div><div><picture><img src="m.jpg" alt=""></picture></div></div></div></div>
+<div><div class="media"><div><div><picture><img src="media-render.jpg" alt=""></picture></div></div></div></div>
 <div><div class="cards"><div><div><p>First spaced card.</p><p>Second spaced card.</p></div></div></div></div></main>`;
   // between the heading's section and the cards': an empty spacer, a rule, then the figure — the figure, never the spacer
   const dir = project('map-blank', [{
@@ -866,7 +867,7 @@ check('mapping: a position fallback never takes a blank element — a spacer or 
 check('mapping: a section element\'s blank child (a spacer) is passed over for the next free one', () => {
   const dir = project('map-blank-child', [{
     slug: 'gallery', path: '/gallery', templateId: 'gallery',
-    content: '<main><div><h2>Gallery heading</h2><div class="media"><div><div><picture><img src="a.jpg" alt=""></picture></div></div></div><div class="cards"><div><div><p>Gallery caption text.</p></div></div></div></div></main>',
+    content: '<main><div><h2>Gallery heading</h2><div class="media"><div><div><picture><img src="media-render.jpg" alt=""></picture></div></div></div><div class="cards"><div><div><p>Gallery caption text.</p></div></div></div></div></main>',
     capture: '<html><body><main><section class="gallery"><h2>Gallery heading</h2><div class="spacer"> </div><figure class="frame"><img src="a.jpg" alt=""></figure><div class="caption"><p>Gallery caption text.</p></div></section></main></body></html>',
   }]);
   ok(runMap(dir));
@@ -875,6 +876,75 @@ check('mapping: a section element\'s blank child (a spacer) is passed over for t
     ['media', [['figure.frame', 0, 'position']]],
     ['cards', [['div.caption p', 1, 'text-alignment']]],
   ]);
+});
+
+// Image alignment: a block without a text anchor is located by its images — each delivered img found once in the
+// capture by file stem (the media harvester's name without its -<8 hex>), else by alt.
+const mh = await import('../../../extract/scripts/media-harvest.mjs').catch((e) => { console.log(`(media-harvest.mjs did not load: ${e.message})`); return {}; });
+check('deliveredStem / captureStem: the harvester\'s folding (lower case, runs → -, 60 characters), the -<8 hex> dropped on the delivered side only, URLs relative or absolute, srcset-free', () => {
+  const url = 'https://cdn.example/assets/My%20Photo%20(1).JPG?width=750';
+  assert.equal(bo.captureStem(url), mh.baseName(url), 'a capture stem folds like the harvester names a file');
+  assert.equal(bo.deliveredStem(`https://content.example/site/media/page/${mh.baseName(url)}-1a2b3c4d.jpg`), bo.captureStem(url), 'the delivered name without its hash is the capture stem');
+  assert.equal(bo.deliveredStem('/media/plain-name.png'), 'plain-name', 'a name without a hash stays');
+  assert.equal(bo.captureStem('/img/shot-1a2b3c4d.png'), 'shot-1a2b3c4d', 'a capture\'s own 8-hex tail is part of its name');
+  const long = `${'a'.repeat(70)}.jpg`;
+  assert.equal(bo.captureStem(`/x/${long}`), 'a'.repeat(60));
+  assert.deepEqual([bo.deliveredStem(''), bo.deliveredStem(undefined), bo.captureStem(null)], ['', '', '']);
+});
+
+check('imagesOf / captureImages: a block\'s img stems and alts; the page\'s units — a picture with its source and img is one unit, a noscript fallback none', () => {
+  assert.deepEqual(bo.imagesOf(blockNode('<div class="gallery"><div><div><picture><img src="/media/p/first-shot-0a1b2c3d.jpg" alt="First shot"></picture></div><div><img src="/media/p/second-shot-9f8e7d6c.webp" alt=""></div></div></div>')),
+    [{ stem: 'first-shot', alt: 'firstshot' }, { stem: 'second-shot', alt: '' }]);
+  const idx = bo.indexSource('<html><body><main><picture class="p"><source srcset="/i/first-shot.webp 1x, /i/first-shot@2x.webp 2x"><img src="/i/first-shot.jpg" alt="First shot"></picture>'
+    + '<img class="lazy" data-src="/i/second-shot.webp" src="/i/blank.gif" alt=""><noscript><img src="/i/second-shot.webp" alt=""></noscript>'
+    // a CDN transform path carries commas inside the URL: the candidate is the run of non-whitespace, as the harvester reads it
+    + '<img class="cdn" srcset="https://cdn.example/t/w_400,h_300,c_fill/third-shot.jpg 400w, https://cdn.example/t/w_800,h_600,c_fill/third-shot.jpg 800w" alt=""></main></body></html>');
+  const units = bo.captureImages(idx);
+  assert.deepEqual(units.map((u) => [u.el.tag, [...u.stems].sort(), u.alt]), [['picture', ['first-shot', 'first-shot-2x'], 'firstshot'], ['img', ['blank', 'second-shot'], ''], ['img', ['third-shot'], '']]);
+});
+
+// A page with a heading, a figure (one image), a two-image strip, and an aside repeating a stem twice.
+const IMG_CAPTURE = `<html><body><main>
+<section class="lead"><h1>Image page</h1><p>Image page intro.</p></section>
+<section class="band"><div class="frame"><div class="inner"><img src="/dam/hero-shot.jpg" alt="Hero shot"></div></div><p>Band caption.</p></section>
+<section class="strip"><div class="cell"><img src="/dam/strip-left.jpg" alt=""></div><div class="cell"><img src="/dam/strip-right.jpg" alt=""></div><p>Strip caption.</p></section>
+<aside class="twice"><img src="/dam/logo-mark.png" alt="Logo mark"><img src="/dam/logo-mark.png" alt="Logo mark"></aside>
+</main></body></html>`;
+const imgBlock = (name, imgs) => `<div><div class="${name}"><div>${imgs.map((i) => `<div><picture><img src="${i.src}" alt="${i.alt ?? ''}"></picture></div>`).join('')}</div></div></div>`;
+const imgPage = (slug, blocks) => ({ slug, path: `/${slug}`, templateId: 'images', capture: IMG_CAPTURE,
+  content: `<main><div><h1>Image page</h1><p>Image page intro.</p></div>${blocks}</main>` });
+const imgInstances = (dir) => readMapping(dir).templates[0].blocks.map((b) => [b.block, b.instances.map((i) => [i.selector, i.confidence, i.source, i.verified])]);
+
+check('mapping: image alignment — one image by stem climbs to its wrapper top (confidence 1); two images take their lowest common ancestor; alt only → 0.8', () => {
+  const dir = project('map-images', [imgPage('images', imgBlock('figure', [{ src: '/media/images/hero-shot-0a1b2c3d.jpg', alt: 'Different alt' }])
+    + imgBlock('strip', [{ src: '/media/images/strip-left-11111111.jpg' }, { src: '/media/images/strip-right-22222222.jpg' }])
+    + imgBlock('badge', [{ src: '/media/images/renamed-elsewhere-33333333.jpg', alt: 'Hero shot' }]))]);
+  const r = runMap(dir, ['--verify']);
+  ok(r);
+  assert.deepEqual(imgInstances(dir), [
+    // img → div.inner → div.frame (no text, no other media); section.band holds a caption: stop below it
+    ['figure', [['div.frame', 1, 'image-alignment', true]]],
+    // two cells' images: their lowest common ancestor
+    ['strip', [['section.strip', 1, 'image-alignment', true]]],
+    // no stem match, one img with that alt: the same frame — but the figure already has it → position (the strip's next sibling)
+    ['badge', [['aside.twice', 0, 'position', true]]],
+  ]);
+  assert.equal(lines(r)[1], 'sources encoder-map 0 · text-alignment 0 · image-alignment 2 · position 1');
+  // alt only, on its own page: 0.8
+  const dir2 = project('map-images-alt', [imgPage('images', imgBlock('badge', [{ src: '/media/images/renamed-elsewhere-33333333.jpg', alt: 'Hero shot' }]))]);
+  ok(runMap(dir2, ['--verify']));
+  assert.deepEqual(imgInstances(dir2), [['badge', [['div.frame', 0.8, 'image-alignment', true]]]]);
+  // the same bytes on a second run
+  assert.equal(lines(runMap(dir2, ['--verify'])).at(-1), `→ ${MAPPING} (unchanged)`);
+});
+
+check('mapping: image alignment falls through to position when a stem is ambiguous, an image is missing, or a block\'s images match only partly', () => {
+  const dir = project('map-images-fallthrough', [imgPage('images', imgBlock('mark', [{ src: '/media/images/logo-mark-44444444.png', alt: 'Logo mark' }])
+    + imgBlock('ghost', [{ src: '/media/images/never-captured-55555555.jpg', alt: 'Never captured' }])
+    + imgBlock('pair', [{ src: '/media/images/strip-left-11111111.jpg' }, { src: '/media/images/never-captured-55555555.jpg' }]))]);
+  ok(runMap(dir, ['--verify']));
+  // the aside carries the mark twice (ambiguous), the ghost is nowhere, the pair matches one of two: each takes its position
+  assert.deepEqual(imgInstances(dir).map(([b, [[, c, s]]]) => [b, c, s]), [['mark', 0, 'position'], ['ghost', 0, 'position'], ['pair', 0, 'position']]);
 });
 
 check('mapping: default-content roles — an equal text wins; containment needs the shorter text to be 8+ characters', () => {
@@ -936,7 +1006,7 @@ check('mapping: --verify — every selector resolves once (story-three\'s quote,
   r = runMap(dir, ['--verify', '--json']);
   ok(r);
   const o = JSON.parse(r.stdout);
-  assert.deepEqual([o.status, o.counts.verified, o.counts.verifiedPct, o.counts.sources], ['unchanged', 5, 100, { 'encoder-map': 1, 'text-alignment': 4, position: 0 }]);
+  assert.deepEqual([o.status, o.counts.verified, o.counts.verifiedPct, o.counts.sources], ['unchanged', 5, 100, { 'encoder-map': 1, 'text-alignment': 4, 'image-alignment': 0, position: 0 }]);
   const none = project('map-verify-none', [{ slug: 'plain', path: '/plain', templateId: 'plain', content: '<main><div><h1>Only a heading</h1></div></main>', capture: '<main><h1>Only a heading</h1></main>' }]);
   r = runMap(none, ['--verify']);
   ok(r);

@@ -205,7 +205,7 @@ check('mapping: a workspace/mapping.json file is hashed under outputs (and so in
   expected.outputs[MAP] = mf.outputs[MAP];
   expected._provenance.readArtifacts = [...without._provenance.readArtifacts, MAP].sort(byStr);
   // an empty-templates mapping now adds a zeroed selectorQuality block and an empty sectionGaps (derived from mapping.json, not drift inputs)
-  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE };
+  expected.selectorQuality = { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE };
   expected.sectionGaps = [];
   assert.deepEqual(mf, expected, 'the only change is the outputs entry, its readArtifacts line and the derived selectorQuality and sectionGaps');
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), mf), []);
@@ -231,7 +231,7 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
     }],
   };
   // t1 has an encoder-map selector: encode decision `encoded` from the mapping alone (no record, no vocabulary on disk)
-  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, position: 3, encoderCoverage: 0.167, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, encoded: 1 } };
+  const MIXED = { instances: 6, sources: { encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3 }, encoderCoverage: 0.167, zeroConfidence: 3, zeroConfidenceBlocks: [{ block: 'media', instances: 2 }, { block: 'gallery', instances: 1 }], byTemplate: [{ template: 't1', instances: 6, encoderMap: 1, textAlignment: 2, imageAlignment: 0, position: 3, encoderCoverage: 0.167, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } }], encode: { ...NO_ENCODE, encoded: 1 } };
   const dir = withCaptures('selector-quality');
   mkdirSync(W(dir), { recursive: true });
   writeFileSync(join(dir, MAP), `${JSON.stringify(mixedMapping, null, 2)}\n`);
@@ -250,7 +250,7 @@ check('selectorQuality: derived from mapping.json (mixed sources) — sources, e
   // an empty mapping → all zeros
   writeFileSync(join(dir, MAP), mappingDoc('2026-01-01T00:00:00.000Z'));
   ok(run(dir));
-  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE });
+  assert.deepEqual(doc(dir, 'manifest.json').selectorQuality, { instances: 0, sources: { encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 0 }, encoderCoverage: 0, zeroConfidence: 0, zeroConfidenceBlocks: [], byTemplate: [], encode: NO_ENCODE });
 });
 
 check('selectorQuality.byTemplate: one row per mapping template with its instance count split across the three sources and its own encoderCoverage, most instances first; validates', () => {
@@ -274,8 +274,8 @@ check('selectorQuality.byTemplate: one row per mapping template with its instanc
   writeFileSync(join(dir, MAP), `${JSON.stringify(twoTemplates, null, 2)}\n`);
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.byTemplate, [
-    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, position: 0, encoderCoverage: 0.667, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } },
-    { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, position: 1, encoderCoverage: 0, encode: { decision: 'not-applicable', reason: null, vocabulary: null, recordedAt: null } },
+    { template: 'big', instances: 3, encoderMap: 2, textAlignment: 1, imageAlignment: 0, position: 0, encoderCoverage: 0.667, encode: { decision: 'encoded', reason: null, vocabulary: null, recordedAt: null } },
+    { template: 'small', instances: 1, encoderMap: 0, textAlignment: 0, imageAlignment: 0, position: 1, encoderCoverage: 0, encode: { decision: 'not-applicable', reason: null, vocabulary: null, recordedAt: null } },
   ], 'most instances first; per-template source split and encoderCoverage; encoded from the mapping, a one-page template not-applicable');
   assert.deepEqual(doc(dir, 'manifest.json').selectorQuality.encode, { ...NO_ENCODE, encoded: 1, notApplicable: 1 });
   assert.deepEqual(validate(loadSchema('rollout-workspace-manifest.schema.json'), doc(dir, 'manifest.json')), []);

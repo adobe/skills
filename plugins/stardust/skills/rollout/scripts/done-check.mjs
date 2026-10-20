@@ -92,7 +92,7 @@
  * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
  * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent);
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence
- * (image-only repeating blocks with no text to anchor, shipped without an encoder map) once above the threshold
+ * (position fallbacks: no encoder-map marker, no text match, no uniquely matched image) once above the threshold
  * (default 0); informational, it never flips completeness — the hard gate is block-origin.mjs --max-zero-confidence;
  * export_quality:null_selector_sections:N — the manifest's sectionGaps with reason no-selector (sections an adopter
  * projecting per selector drops) when N>0, informational, never a gap;
