@@ -25,14 +25,16 @@
 // § File) — resolvedAt (--at, default now), phrase (verbatim, as given), directionFile (default
 // stardust/direction.md) and iaFidelity when pinned (--ia-fidelity) — over the existing block, keeping
 // every other direction key (variantMode, variants, …) and every other top-level key; a missing
-// state.json is seeded as flow's is. Page moves are advance's (--to directed). Replacing a resolved
-// direction prints the re-direct count (pages past directed) — the stale judgment stays direct's
-// (§ Stale flagging). Without `set` it prints the current block.
+// state.json is seeded as flow's is. The same values again (phrase, file, ia-fidelity on a resolved
+// block) are unchanged — nothing written, the old resolvedAt kept. Page moves are advance's (--to
+// directed). Replacing a resolved direction prints the re-direct count (pages past directed) — the
+// stale judgment stays direct's (§ Stale flagging). Without `set` it prints the current block.
 // mode (the master skill's hands-off activation): writes the handsOff marker (state-machine.md
 // § Hands-off keys) — hands-off → handsOff: true, interactive → handsOff: false; a missing state.json
 // is seeded as flow's is. `advance --to approved --by hands-off` refuses (exit 2) unless the file reads
-// handsOff: true — an approval nobody gave is never recorded as hands-off; an interactive run records
-// the user's own approval with --by user. Without an argument it prints the current mode.
+// handsOff: true — an approval nobody gave is never recorded as hands-off: invoked with --hands-off,
+// run `mode hands-off` and retry; otherwise wait for the user's own approval (recorded --by user) and
+// never record it on their behalf. Without an argument it prints the current mode.
 // flow (the master routing, before extract): stamps flow / flowChosenAt / flowSource (state-machine.md
 // § Flow keys) — on a missing state.json it writes the seed init fills later ({ _provenance, flow,
 // flowChosenAt, flowSource }); on an existing one it sets those three keys and nothing else. An unknown
@@ -156,7 +158,9 @@ direction
          (--direction-file, default ${DIRECTION_FILE}; an existing one is kept) and iaFidelity
          when pinned (--ia-fidelity ${IA_FIDELITY.join('|')}; an existing one is kept) — over the
          existing block, every other direction key (variantMode, variants, …) and top-level key
-         kept; _provenance re-stamped (writtenBy stardust:direct unless --skill). Pages move with
+         kept; _provenance re-stamped (writtenBy stardust:direct unless --skill). The same values
+         again on a resolved block are unchanged: nothing written, the old resolvedAt kept (a pending
+         block, resolvedAt null, is resolved). Pages move with
          advance <slug…> --to directed. Replacing a resolved direction is a re-direct: stdout counts
          the pages past directed (stale is direct's judgment, § Stale flagging — nothing is flagged
          here). A blank phrase, more than one phrase argument or an unknown --ia-fidelity exits 2.
@@ -169,7 +173,9 @@ mode     records the run mode (state-machine.md § Hands-off keys): hands-off wr
          same mode again is unchanged, nothing written. Without an argument it prints the current mode
          (hands-off only on handsOff: true). advance --to approved --by ${HANDS_OFF_BY} refuses (exit 2)
          while the file does not read handsOff: true — an approval nobody gave is never recorded as
-         hands-off; an interactive run records the user's own "approve <slug>" with --by user.
+         hands-off: invoked with --hands-off, run \`mode hands-off\` and retry; otherwise the run is
+         attended — wait for the user's own "approve <slug>" (recorded with --by user), never record
+         it on their behalf.
 
 flow     stamps the migration flow the master routing chose (state-machine.md § Flow keys) BEFORE
          extract: flow, flowChosenAt (--at, default now) and flowSource (--source, default "default" —
@@ -343,7 +349,7 @@ export function advance(state, slugs, { to, by = null, prototype = null, migrate
   if (by && to !== 'approved') throw new UsageError('--by only applies to --to approved (it is recorded as approvedBy on the approved history entry)');
   // state-machine.md § Hands-off keys: approvedBy "hands-off" exists only in hands-off mode. An approval
   // nobody gave is never recorded under that name (a recorded attended run self-approved four prototypes with it).
-  if (by === HANDS_OFF_BY && state.handsOff !== true) throw new UsageError(`refused: --by ${HANDS_OFF_BY} needs hands-off mode — ${FILE_NAME} has no handsOff: true. Hands-off is activated by --hands-off on the invocation or an explicit user phrase (master skill § Hands-off mode) and recorded with \`state.mjs mode hands-off\`; an interactive run records the user's own "approve <slug>" as advance <slug> --to approved --by user`);
+  if (by === HANDS_OFF_BY && state.handsOff !== true) throw new UsageError(`refused: --by ${HANDS_OFF_BY} needs hands-off mode (${FILE_NAME} has no handsOff: true). Invoked with --hands-off? run \`state.mjs mode hands-off\` and retry. Otherwise this is an attended run: wait for the user's own approval — never record --by user on their behalf.`);
   if (historyOnly && force) throw new UsageError('--history-only does not move the page, so --force has nothing to override — pass one of them');
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
   const missing = slugs.filter((s) => !bySlug.has(s));
@@ -589,8 +595,11 @@ const DIRECTION_KEYS = ['resolvedAt', 'phrase', 'directionFile', 'iaFidelity'];
 // four keys first, in schema order, then every other key the existing block held, in its order.
 // `directionFile` / `iaFidelity` default to the existing block's values (the file: stardust/direction.md).
 // Throws before touching anything on a blank phrase, a bad timestamp or an unknown ia-fidelity.
-// Returns { previous, direction, redirect }: the block replaced (null when none was resolved), the
-// block written, and the slugs past `directed` a re-direct should judge for staleness.
+// Returns { changed, previous, direction, redirect }: whether anything changed (the same values on a
+// resolved block: no — the old resolvedAt stays), the block replaced (null when none was resolved),
+// the block written, and the slugs past `directed` a re-direct should judge for staleness.
+const canon = (v) => (Array.isArray(v) ? v.map(canon) : isMap(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, canon(v[k])])) : v);
+const sameValues = (a, b) => JSON.stringify(canon(a)) === JSON.stringify(canon(b));
 export function setDirection(state, phrase, { iaFidelity = null, directionFile = null, at = nowIso() } = {}) {
   if (typeof phrase !== 'string' || !phrase.trim()) throw new UsageError('direction set needs the user\'s phrase: direction set "<phrase>" (quote it — one argument)');
   if (typeof at !== 'string' || !ISO_8601.test(at)) throw new UsageError(`--at "${at}" is not an ISO 8601 timestamp`);
@@ -602,9 +611,11 @@ export function setDirection(state, phrase, { iaFidelity = null, directionFile =
   const ia = iaFidelity ?? existing.iaFidelity;
   if (ia !== undefined && ia !== null) direction.iaFidelity = ia;
   for (const [k, v] of Object.entries(existing)) if (!DIRECTION_KEYS.includes(k)) direction[k] = v;
+  const resolved = typeof existing.resolvedAt === 'string' && existing.resolvedAt !== '';
+  if (resolved && sameValues({ ...direction, resolvedAt: existing.resolvedAt }, existing)) return { changed: false, previous, direction: existing, redirect: [] };
   state.direction = direction;
   const redirect = previous && previous.resolvedAt ? (Array.isArray(state.pages) ? state.pages : []).filter((p) => CLEARS_STALE.has(p.status)).map((p) => p.slug) : [];
-  return { previous, direction, redirect };
+  return { changed: true, previous, direction, redirect };
 }
 
 const cutPhrase = (s, n = 80) => { const cps = Array.from(String(s)); return cps.length > n ? `${cps.slice(0, n).join('')}…` : String(s); };
@@ -626,6 +637,7 @@ function runDirection(opts, rest) {
   if (rest.length > 2) throw new UsageError(`direction set takes one phrase — quote it (got ${rest.length - 1} arguments: ${rest.slice(1).join(' ')})`);
   const at = opts.at || nowIso();
   const r = setDirection(state, rest[1] ?? '', { iaFidelity: opts.iaFidelity, directionFile: opts.directionFile, at });
+  if (!r.changed) { console.log(`state: direction unchanged ${JSON.stringify(cutPhrase(r.direction.phrase))} (ia-fidelity ${r.direction.iaFidelity ?? 'unset'}, resolved ${r.direction.resolvedAt}, ${r.direction.directionFile ?? 'no file'})`); return 0; }
   const writtenBy = normaliseSkill(opts.skill || 'direct');
   state._provenance = stampProvenance(state._provenance, writtenBy, at);
   if (!present) mkdirSync(opts.dir, { recursive: true });

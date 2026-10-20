@@ -17,7 +17,7 @@
 // the seed, the re-direct line, printed, refusals). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -496,7 +496,7 @@ check('advance --to approved --by hands-off is refused (exit 2, byte-identical) 
   const seed = () => writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old' }, site: { originUrl: 'https://www.example.com' }, direction: null, pages: [mkPage('home', 'prototyped', { prototypePath: 'stardust/prototypes/home-proposed.html' }), mkPage('about', 'prototyped')] }, null, 2));
   seed();
   const before = readFileSync(p.stateFile, 'utf8');
-  const msg = 'state: refused: --by hands-off needs hands-off mode — state.json has no handsOff: true. Hands-off is activated by --hands-off on the invocation or an explicit user phrase (master skill § Hands-off mode) and recorded with `state.mjs mode hands-off`; an interactive run records the user\'s own "approve <slug>" as advance <slug> --to approved --by user\n';
+  const msg = 'state: refused: --by hands-off needs hands-off mode (state.json has no handsOff: true). Invoked with --hands-off? run `state.mjs mode hands-off` and retry. Otherwise this is an attended run: wait for the user\'s own approval — never record --by user on their behalf.\n';
   for (const args of [['advance', 'home', '--to', 'approved', '--by', 'hands-off'], ['advance', 'home', 'about', '--to', 'approved', '--by', 'hands-off', '--prototype', 'x.html'], ['advance', 'home', '--to', 'approved', '--by', 'hands-off', '--history-only'], ['advance', 'home', '--to', 'approved', '--by', 'hands-off', '--force']]) {
     const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.equal(r.err, msg, args.join(' '));
   }
@@ -550,8 +550,12 @@ check('direction constants; setDirection in memory: blank phrase / bad --at / un
   assert.throws(() => setDirection(s, 'calmer', { iaFidelity: 'loose' }), /--ia-fidelity "loose" is not an ia-fidelity value \(verbatim\|reimagined\)/);
   assert.equal(s.direction, null, 'nothing changed');
   const r = setDirection(s, 'calmer, more editorial', { at: '2026-01-02T00:00:00Z' });
-  assert.deepEqual(r, { previous: null, direction: { resolvedAt: '2026-01-02T00:00:00Z', phrase: 'calmer, more editorial', directionFile: 'stardust/direction.md' }, redirect: [] });
+  assert.deepEqual(r, { changed: true, previous: null, direction: { resolvedAt: '2026-01-02T00:00:00Z', phrase: 'calmer, more editorial', directionFile: 'stardust/direction.md' }, redirect: [] });
   assert.equal(s.direction, r.direction);
+  const same = setDirection(s, 'calmer, more editorial', { directionFile: 'stardust/direction.md', at: '2026-02-02T00:00:00Z' });
+  assert.deepEqual([same.changed, same.redirect, same.direction === s.direction, s.direction.resolvedAt], [false, [], true, '2026-01-02T00:00:00Z'], 'the same values again: unchanged, the old resolvedAt kept');
+  assert.equal(setDirection(s, 'calmer, more editorial', { iaFidelity: 'verbatim', at: '2026-02-02T00:00:00Z' }).changed, true, 'a newly pinned ia-fidelity is a change');
+  assert.equal(setDirection(s, 'calmer, more editorial', { iaFidelity: 'verbatim', at: '2026-03-03T00:00:00Z' }).changed, false);
   const t = { direction: { variants: ['a', 'b'], phrase: 'old', resolvedAt: '2026-01-01T00:00:00Z', variantMode: 'fan-out', iaFidelity: 'verbatim', directionFile: 'stardust/custom.md' }, pages: [mkPage('home', 'approved'), mkPage('about', 'directed'), mkPage('blog', 'migrated')] };
   const q = setDirection(t, 'new phrase', { at: '2026-02-02T00:00:00Z' });
   assert.deepEqual(Object.keys(t.direction), ['resolvedAt', 'phrase', 'directionFile', 'iaFidelity', 'variants', 'variantMode'], 'schema keys first, the rest in their order');
@@ -560,7 +564,10 @@ check('direction constants; setDirection in memory: blank phrase / bad --at / un
   assert.equal(setDirection(t, 'again', { iaFidelity: 'reimagined', directionFile: 'stardust/direction.md', at: '2026-03-03T00:00:00Z' }).direction.iaFidelity, 'reimagined');
   assert.equal(t.direction.directionFile, 'stardust/direction.md');
   const pending = { direction: { resolvedAt: null, phrase: 'p', directionFile: null, iaFidelity: 'preserved' }, pages: [mkPage('home', 'approved')] };
-  assert.deepEqual(setDirection(pending, 'p', { at: '2026-01-01T00:00:00Z' }).redirect, [], 'a pending (unresolved) block is no re-direct');
+  const resolvedNow = setDirection(pending, 'p', { at: '2026-01-01T00:00:00Z' });
+  assert.deepEqual([resolvedNow.changed, resolvedNow.redirect, pending.direction.resolvedAt], [true, [], '2026-01-01T00:00:00Z'], 'a pending (unresolved) block with the same phrase is resolved, no re-direct');
+  const reordered = { direction: { variants: ['a'], iaFidelity: 'verbatim', directionFile: 'stardust/direction.md', phrase: 'p', resolvedAt: '2026-01-01T00:00:00Z' } };
+  assert.equal(setDirection(reordered, 'p', { at: '2026-02-02T00:00:00Z' }).changed, false, 'key order is not a value');
 });
 check('direction set on an existing state.json: the block lands after site, pages untouched, provenance stardust:direct; printed back; a re-direct names the replaced phrase and the pages past directed', () => {
   const p = project();
@@ -573,6 +580,12 @@ check('direction set on an existing state.json: the block lands after site, page
   assert.deepEqual(s.direction, { resolvedAt: '2026-01-02T00:00:00Z', phrase: 'calmer, more editorial', directionFile: 'stardust/direction.md', iaFidelity: 'reimagined' });
   assert.equal(s._provenance.writtenBy, 'stardust:direct'); assert.equal(s._provenance.writtenAt, '2026-01-02T00:00:00Z'); assert.deepEqual(s.pages.map((x) => x.status), ['extracted', 'extracted'], 'pages move with advance, not here');
   assert.equal(runIn(p.d, ['direction']).out, 'direction: "calmer, more editorial" (ia-fidelity reimagined, resolved 2026-01-02T00:00:00Z, stardust/direction.md)\n');
+  const before = readFileSync(p.stateFile, 'utf8'); const mtime = statSync(p.stateFile).mtimeMs;
+  for (const args of [['direction', 'set', 'calmer, more editorial', '--at', '2026-01-03T00:00:00Z'], ['direction', 'set', 'calmer, more editorial', '--ia-fidelity', 'reimagined', '--direction-file', 'stardust/direction.md']]) {
+    const same = runIn(p.d, args); assert.equal(same.code, 0, same.err);
+    assert.equal(same.out, 'state: direction unchanged "calmer, more editorial" (ia-fidelity reimagined, resolved 2026-01-02T00:00:00Z, stardust/direction.md)\n', args.join(' '));
+  }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before, 'the same values again: nothing written'); assert.equal(statSync(p.stateFile).mtimeMs, mtime, 'not even touched');
   assert.equal(runIn(p.d, ['advance', 'home', 'about', '--to', 'directed']).code, 0); assert.equal(runIn(p.d, ['advance', 'home', '--to', 'prototyped']).code, 0);
   const re = runIn(p.d, ['direction', 'set', 'louder, for a young audience', '--at', '2026-02-02T00:00:00Z', '--skill', 'stardust']);
   assert.equal(re.code, 0, re.err);

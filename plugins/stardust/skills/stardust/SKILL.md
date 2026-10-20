@@ -52,7 +52,10 @@ sub-commands that delegate the actual design work to **impeccable**.
    session's history.
 3. **Read stardust's state.** Read `stardust/state.json` if present
    (`reference/state-machine.md` defines the schema). Note which pages are
-   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`.
+   `extracted`, `directed`, `prototyped`, `approved`, or `migrated`. If this
+   session was invoked with `--hands-off` and the file has no `handsOff:
+   true`, run `state.mjs mode hands-off` now (§ Hands-off mode) — on every
+   entry point, `prototype` and `uplift --hands-off` included.
 4. **Read impeccable's command registry.** Parse
    `<harness>/skills/impeccable/scripts/command-metadata.json`. This is the
    single source of truth for the 24 impeccable commands; never hardcode
@@ -203,8 +206,8 @@ migration-intent `extract` refuse to start a migration on a project with
 `state.json` and no `flow`; `prepare-migration` refuses under
 `flow: replica` and `replica` under `flow: redesign`. Switching is
 explicit — `$stardust replica --switch-flow` / `$stardust
-prepare-migration --switch-flow` — and marks the old flow's prototyped or
-migrated pages stale (§ Per-page state).
+prepare-migration --switch-flow` — and marks the old flow's prototyped,
+approved or migrated pages stale (§ Per-page state).
 
 **Planning aids belong to one flow.** Redesign: the `prepare-migration`
 plan and its phase gates, the canon, module catalogs, template plans of

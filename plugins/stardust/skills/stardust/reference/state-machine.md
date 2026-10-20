@@ -132,7 +132,7 @@ prepare-migration --switch-flow` / `$stardust reskin --switch-flow` rewrite `flo
 `flowSource: "question"` — `state.mjs flow <new> --source question --force`, which also
 sets the stale flags below), append a `MODE SWITCH` entry to
 `stardust/direction.md` naming the artefacts the old flow produced, and
-mark every `prototyped` / `migrated` page stale (`staleReason:
+mark every `prototyped` / `approved` / `migrated` page stale (`staleReason:
 "flow-switch"`, § Stale flagging) — nothing is deleted or re-run
 automatically. A switch is the only way `flow` changes.
 

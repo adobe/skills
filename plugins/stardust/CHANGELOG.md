@@ -21,7 +21,8 @@ recording an approval — and edited `direction` with a `node -e` one-shot becau
   seeds a missing `state.json` (`{ _provenance, flow, flowChosenAt, flowSource }`; `init` fills it, "kept flow,
   …"), sets only the three keys on an existing one, refuses an unknown flow or source, writes nothing for the
   same flow again and switches only with `--force` (`--source question`; the old flow's prototyped / approved /
-  migrated pages marked stale, `flow-switch`); a bare `flow` prints the current one. The master routing, replica,
+  migrated pages marked stale, `flow-switch` — the switch texts in state-machine.md § Switching, the master and
+  replica now list `approved` too); a bare `flow` prints the current one. The master routing, replica,
   prepare-migration, reskin and direct Setup name the command instead of a raw write; extract's and migrate's
   flow guards, `migrate.mjs`'s no-flow refusal and state-machine.md § Flow keys / § Switching name it.
 - **The copy steps name deploy's `file-lock.mjs`**: extract § Setup names the master's instruments (`state.mjs`,
@@ -40,18 +41,21 @@ recording an approval — and edited `direction` with a `node -e` one-shot becau
 - **A hands-off approval needs hands-off mode**: `state.mjs mode [hands-off|interactive]` writes `handsOff: true`
   / `false` (seeding a missing file; `init` keeps it; a bare `mode` prints it), and `advance --to approved --by
   hands-off` — the pure `advance()` too — refuses (exit 2, nothing written) unless the file reads `handsOff:
-  true`, naming the activation (`--hands-off` on the invocation or an explicit user phrase → `mode hands-off`)
-  and the attended form (`--by user`). The master skill's § Hands-off mode runs `mode hands-off` at activation
-  and § What stardust never does states the rule; replica Setup step 1 runs it under `--hands-off`, before
-  Phase 3's approval, and its approval text names the guard; prototype Phase 5 records the attended approval
-  with `--by user`; state-machine.md § Hands-off keys names both. The form a recorded hands-off run uses is
-  unchanged.
+  true`. The refusal is prescriptive, one exit per case: invoked with `--hands-off`? run `mode hands-off` and
+  retry; otherwise this is an attended run — wait for the user's own approval, never record `--by user` on
+  their behalf. The master skill's § Hands-off mode runs `mode hands-off` at activation, its § Setup state read
+  self-heals a `--hands-off` session that has no marker (every entry point, `prototype` / `uplift --hands-off`
+  included) and § What stardust never does states the rule; replica Setup step 1 opens with it ("mode first",
+  before the flow guard), Phase 3 mirrors the refusal's sentence and its fan-out briefs state the run mode (a
+  subagent never infers it); prototype Phase 5 records the attended approval with `--by user`;
+  state-machine.md § Hands-off keys names both. The form a recorded hands-off run uses is unchanged.
 - **`state.mjs direction [set "<phrase>"] [--ia-fidelity verbatim|reimagined] [--direction-file] [--at] [--skill]`**:
   writes the block in schema order (`resolvedAt`, `phrase`, `directionFile`, `iaFidelity`) over the existing
   one, keeping its other keys (`variantMode`, `variants`) and every other top-level key, re-stamps `_provenance`
-  (`stardust:direct`), seeds a missing file, and on a re-direct prints the replaced phrase and the pages past
-  `directed` to judge for staleness (the flag stays direct's judgment, § Stale flagging); a bare `direction`
-  prints the block. direct's state-update passage names it and `advance <slug…> --to directed` for the page
+  (`stardust:direct`), seeds a missing file, writes nothing for the same values again on a resolved block
+  ("unchanged", the old `resolvedAt` kept — as `flow` and `mode` do), and on a re-direct prints the replaced
+  phrase and the pages past `directed` to judge for staleness (the flag stays direct's judgment, § Stale
+  flagging); a bare `direction` prints the block. direct's state-update passage names it and `advance <slug…> --to directed` for the page
   moves; state-machine.md § File names the one writer per key.
 - Tests: `state.test.mjs` — flow (seed → init fill, keys in place, stamped once, the refused and the forced
   switch with its stale flags, refusals byte-identical), mode and the approval guard (refused without the

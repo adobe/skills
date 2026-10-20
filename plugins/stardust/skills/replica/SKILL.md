@@ -44,17 +44,19 @@ none" (198/198 nodes).
 ## Setup
 
 1. Run the master skill's setup (`../stardust/SKILL.md` § Setup): context
-   loader, state read. **Flow guard.** If `state.json.flow` is
+   loader, state read. **Mode first.** With `--hands-off`, run
+   `node stardust/scripts/stardust/state.mjs mode hands-off` before anything
+   else (the master's `../stardust/scripts/state.mjs` until step 4 copies it;
+   master skill § Hands-off mode) — Phase 3's `--by hands-off` approval
+   refuses without the marker; without the flag this is an attended run and
+   `mode` is not called. **Flow guard.** If `state.json.flow` is
    `redesign`, refuse: print the never-mix line and the switch command
    (`$stardust replica --switch-flow`, which marks the redesign flow's
-   prototyped and migrated pages stale — master skill § Two migration
-   flows). If `flow` is absent: `node stardust/scripts/stardust/state.mjs
-   flow replica --source user-phrase --skill replica` (the master's
-   `../stardust/scripts/state.mjs` until step 4 copies it; it seeds
-   `state.json` before extract — `../stardust/reference/state-machine.md`
-   § Flow keys): invoking `replica` is the choice. With `--hands-off`,
-   `state.mjs mode hands-off` in the same step (master skill § Hands-off
-   mode) — Phase 3's `--by hands-off` approval refuses without the marker.
+   prototyped, approved and migrated pages stale — master skill § Two
+   migration flows). If `flow` is absent: `node stardust/scripts/stardust/state.mjs
+   flow replica --source user-phrase --skill replica` (it seeds `state.json`
+   before extract — `../stardust/reference/state-machine.md` § Flow keys):
+   invoking `replica` is the choice.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
 3. Probe the gate's deps from the project root first —
@@ -468,16 +470,20 @@ fired (`autoplay`/`loop` video, auto-advancing slides — the observe JSON's
 `media` block): the capture freeze is logged as
 `captureState[].restoreAtDelivery` and delivered, never shipped as the spec
 ("poster + paused" is not a deliverable). Fan-out briefs carry the
-evidence rule + instrument invocation verbatim, and the pause check: with
+evidence rule + instrument invocation verbatim, the run mode (`state.mjs
+mode`: hands-off or attended — a subagent never infers it from the
+session), and the pause check: with
 `STARDUST_PAUSE_FILE` set, an archetype subagent checks that file after
 each gate iteration; present → it finishes the iteration, writes its report
 and returns (`reference/handoff-contract.md` § Fan-out discipline).
 
 When all breakpoints pass, present the archetype + its gate metrics for
-approval per the standard prototype approval flow (hands-off mode records
-`approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`;
-`advance` refuses that `--by` unless `state.json.handsOff: true` — an
-attended run waits for the user and records `--by user`).
+approval per the standard prototype approval flow. Hands-off mode records
+`approvedBy: "hands-off"` (`../stardust/reference/state-machine.md`);
+`advance` refuses that `--by` unless `state.json.handsOff: true` — invoked
+with `--hands-off`? run `state.mjs mode hands-off` and retry; otherwise this
+is an attended run: wait for the user's own approval, never record `--by
+user` on their behalf.
 Bookkeeping is one command each, never a hand-built JSON line or an inline
 `node -e` edit of state.json: `node stardust/scripts/stardust/state.mjs advance <slug> --to
 approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`
