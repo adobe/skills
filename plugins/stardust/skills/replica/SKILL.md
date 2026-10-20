@@ -52,7 +52,9 @@ none" (198/198 nodes).
    flow replica --source user-phrase --skill replica` (the master's
    `../stardust/scripts/state.mjs` until step 4 copies it; it seeds
    `state.json` before extract — `../stardust/reference/state-machine.md`
-   § Flow keys): invoking `replica` is the choice.
+   § Flow keys): invoking `replica` is the choice. With `--hands-off`,
+   `state.mjs mode hands-off` in the same step (master skill § Hands-off
+   mode) — Phase 3's `--by hands-off` approval refuses without the marker.
 2. Verify Playwright is importable from the project root (extract needs it;
    so do the gate scripts).
 3. Probe the gate's deps from the project root first —
@@ -473,7 +475,9 @@ and returns (`reference/handoff-contract.md` § Fan-out discipline).
 
 When all breakpoints pass, present the archetype + its gate metrics for
 approval per the standard prototype approval flow (hands-off mode records
-`approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`).
+`approvedBy: "hands-off"` per `../stardust/reference/state-machine.md`;
+`advance` refuses that `--by` unless `state.json.handsOff: true` — an
+attended run waits for the user and records `--by user`).
 Bookkeeping is one command each, never a hand-built JSON line or an inline
 `node -e` edit of state.json: `node stardust/scripts/stardust/state.mjs advance <slug> --to
 approved --by hands-off --prototype stardust/prototypes/<slug>-proposed.html`

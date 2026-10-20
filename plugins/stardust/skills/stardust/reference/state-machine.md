@@ -80,11 +80,14 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
 § Hands-off mode), two extra markers appear:
 
 - Top-level `"handsOff": true` — stamped by the master skill at
-  activation; every sub-command reads it to auto-resolve its
+  activation (`state.mjs mode hands-off`; it seeds `state.json` before
+  extract); every sub-command reads it to auto-resolve its
   interactive gates.
 - On a page's `approved` history entry, `"approvedBy": "hands-off"` —
   the approval was granted by the agent's own judgment after all
-  quality gates passed, not by the user. A later explicit user
+  quality gates passed, not by the user — `state.mjs advance … --to
+  approved --by hands-off` refuses it (exit 2) unless `handsOff` is `true`;
+  an attended approval carries `--by user`. A later explicit user
   approval appends a new history entry (without the marker); it does
   not rewrite the hands-off one.
 

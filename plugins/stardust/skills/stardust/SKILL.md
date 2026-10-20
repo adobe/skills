@@ -226,9 +226,12 @@ step, so the user never has to ask which prep applies.
 
 Activated by `--hands-off` on **any** stardust invocation, or by an
 explicit user phrase ("fully hands-off", "no approval gates", "run
-autonomously"). On activation, stamp `state.json.handsOff: true`
-(schema note in `reference/state-machine.md` § Hands-off keys) and
-append an activation line to `stardust/direction.md`. The mode removes
+autonomously"). On activation, run `state.mjs mode hands-off`
+(`skills/stardust/scripts/state.mjs`: it stamps `state.json.handsOff: true`,
+seeding the file before extract — `reference/state-machine.md` § Hands-off
+keys) and append an activation line to `stardust/direction.md`. Without
+that marker `state.mjs advance … --to approved --by hands-off` is refused:
+approval is explicit, and only this mode lets the agent grant it. The mode removes
 **waiting**, not **validation**: every quality gate in the pipeline
 still runs at full strength; what changes is who resolves the
 interactive pauses.
@@ -503,6 +506,9 @@ motion gate cascade).
   impeccable.
 - Execute a redesign plan without showing it first (hands-off mode records
   the plan in `stardust/direction.md` instead of waiting — § Hands-off mode).
+- Approve a prototype itself outside hands-off mode: `approvedBy:
+  "hands-off"` is refused unless `state.json.handsOff: true` (§ Hands-off
+  mode); an attended run waits for the user's "approve <slug>" (`--by user`).
 - Force a re-run on stale pages without explicit user opt-in.
 - Crawl an existing site beyond the user's confirmed page cap (an explicit `--pages` list is itself the confirmed scope — listed pages are never dropped; the crawler warns rather than truncates when the list exceeds `--max`).
 - Emit platform-specific output from `migrate`. `migrate` emits

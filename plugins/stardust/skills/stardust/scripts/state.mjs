@@ -16,8 +16,14 @@
 //   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs flow [replica|redesign|reskin] [--source default|user-phrase|question] [--at <iso>]
 //                  [--skill <name>] [--force] [--dir <stardust dir>]
+//   node state.mjs mode [hands-off|interactive] [--at <iso>] [--skill <name>] [--dir <stardust dir>]
 //   node state.mjs summary [--slugs] [--dir <stardust dir>]
 //
+// mode (the master skill's hands-off activation): writes the handsOff marker (state-machine.md
+// § Hands-off keys) — hands-off → handsOff: true, interactive → handsOff: false; a missing state.json
+// is seeded as flow's is. `advance --to approved --by hands-off` refuses (exit 2) unless the file reads
+// handsOff: true — an approval nobody gave is never recorded as hands-off; an interactive run records
+// the user's own approval with --by user. Without an argument it prints the current mode.
 // flow (the master routing, before extract): stamps flow / flowChosenAt / flowSource (state-machine.md
 // § Flow keys) — on a missing state.json it writes the seed init fills later ({ _provenance, flow,
 // flowChosenAt, flowSource }); on an existing one it sets those three keys and nothing else. An unknown
@@ -88,6 +94,10 @@ export const FLOWS = ['redesign', 'replica', 'reskin'];
 export const FLOW_SOURCES = ['user-phrase', 'default', 'question'];
 // § Switching: the staleReason a flow switch stamps on the old flow's prototyped / approved / migrated pages.
 export const FLOW_SWITCH_REASON = 'flow-switch';
+// state-machine.md § Hands-off keys: the mode names and the handsOff value each writes.
+export const MODES = { 'hands-off': true, interactive: false };
+// The approver `advance --to approved --by` records for a hands-off approval; needs handsOff: true.
+export const HANDS_OFF_BY = 'hands-off';
 // A page type (init --types, set --type).
 export const TYPE_RE = /^[a-z][a-z0-9-]*$/;
 // state-machine.md § validateProvenance(page) — contract; `slow` is listed because
@@ -102,6 +112,7 @@ const FLAGS_FOR = {
   set: ['--representative', '--clear-representative', '--type', '--owner-decision', '--skill', '--dir'],
   exclude: ['--reason', '--url', '--skill', '--dir'],
   flow: ['--source', '--at', '--skill', '--force', '--dir'],
+  mode: ['--at', '--skill', '--dir'],
 };
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -117,10 +128,20 @@ const HELP = `Usage:
   node state.mjs exclude <slug…> --reason "<why>" [--url <url>] [--skill <name>] [--dir <d>]
   node state.mjs flow [${FLOWS.join('|')}] [--source ${FLOW_SOURCES.join('|')}] [--at <iso>]
                  [--skill <name>] [--force] [--dir <d>]
+  node state.mjs mode [${Object.keys(MODES).join('|')}] [--at <iso>] [--skill <name>] [--dir <d>]
   node state.mjs summary [--slugs] [--dir <d>]
-  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow seeds it when
-  it is missing; advance, set, exclude and summary need it to exist. --current defaults to
+  (--dir defaults to ${DEFAULT_DIR}; the file is <dir>/${FILE_NAME}. init creates it; flow and mode seed
+  it when it is missing; advance, set, exclude and summary need it to exist. --current defaults to
   <dir>/current, the crawl's --out.)
+
+mode     records the run mode (state-machine.md § Hands-off keys): hands-off writes handsOff: true,
+         interactive writes handsOff: false — the master skill's hands-off activation (--hands-off on
+         the invocation, or an explicit user phrase) runs \`mode hands-off\` before anything else; a
+         missing ${FILE_NAME} is seeded as flow's is, every other key of an existing file is kept. The
+         same mode again is unchanged, nothing written. Without an argument it prints the current mode
+         (hands-off only on handsOff: true). advance --to approved --by ${HANDS_OFF_BY} refuses (exit 2)
+         while the file does not read handsOff: true — an approval nobody gave is never recorded as
+         hands-off; an interactive run records the user's own "approve <slug>" with --by user.
 
 flow     stamps the migration flow the master routing chose (state-machine.md § Flow keys) BEFORE
          extract: flow, flowChosenAt (--at, default now) and flowSource (--source, default "default" —
@@ -167,7 +188,9 @@ init     creates <dir>/${FILE_NAME} after the crawl, one page per URL in --pages
 advance  moves every named page to <status>: appends { status, at[, approvedBy] } to its history,
          sets prototypePath / migratedPath when given, clears stale on prototyped|approved|migrated,
          re-stamps _provenance (writtenBy stardust:<skill>, writtenAt, stardustVersion).
-         --by is only valid with --to approved (it becomes approvedBy, e.g. "hands-off").
+         --by is only valid with --to approved (it becomes approvedBy): "user" for the user's own
+         "approve <slug>"; "${HANDS_OFF_BY}" only in hands-off mode — refused (exit 2, nothing written)
+         unless ${FILE_NAME} reads handsOff: true (see mode).
          Backward moves exit 2 unless --force. All-or-nothing: one bad slug, nothing is written.
          --history-only appends the history entry and leaves status untouched (re-running prototype
          after approved does not demote — state-machine.md § Linearity rule); no direction check,
@@ -200,13 +223,14 @@ summary  prints page counts by status (· excluded <n> when any), then one line 
          any page has a representative ("  representative <archetype> <n>  <slug, …>", sorted by
          archetype), then the slugs per status with --slugs.
 A value flag followed by nothing or by another --flag is a usage error; so is a flag init, set,
-exclude or flow does not read.
-Writes: init writes <dir>/${FILE_NAME}; flow seeds it when missing; advance, set, exclude and flow rewrite
-it in place (atomic temp file + rename); summary writes nothing.
+exclude, flow or mode does not read.
+Writes: init writes <dir>/${FILE_NAME}; flow and mode seed it when missing; advance, set, exclude, flow
+and mode rewrite it in place (atomic temp file + rename); summary writes nothing.
 Exit codes: 0 ok, 2 usage / illegal transition / refusal (init: ${FILE_NAME} holds pages or does not
-parse, a page record is missing or lacks live-render evidence; set: unknown slug or
-representative, a representative cycle; exclude: as above; flow: an unknown flow or source, a
-bad --at, another flow already stamped without --force) — nothing written.`;
+parse, a page record is missing or lacks live-render evidence; advance: --by ${HANDS_OFF_BY} without
+handsOff: true; set: unknown slug or representative, a representative cycle; exclude: as above;
+flow: an unknown flow or source, a bad --at, another flow already stamped without --force; mode: an
+unknown mode) — nothing written.`;
 
 export class UsageError extends Error { constructor(msg, code = 2) { super(msg); this.code = code; } }
 
@@ -289,6 +313,9 @@ export function writeState(file, state) {
 export function advance(state, slugs, { to, by = null, prototype = null, migrated = null, force = false, historyOnly = false, at = nowIso() }) {
   if (!slugs.length) throw new UsageError('advance needs at least one <slug>');
   if (by && to !== 'approved') throw new UsageError('--by only applies to --to approved (it is recorded as approvedBy on the approved history entry)');
+  // state-machine.md § Hands-off keys: approvedBy "hands-off" exists only in hands-off mode. An approval
+  // nobody gave is never recorded under that name (a recorded attended run self-approved four prototypes with it).
+  if (by === HANDS_OFF_BY && state.handsOff !== true) throw new UsageError(`refused: --by ${HANDS_OFF_BY} needs hands-off mode — ${FILE_NAME} has no handsOff: true. Hands-off is activated by --hands-off on the invocation or an explicit user phrase (master skill § Hands-off mode) and recorded with \`state.mjs mode hands-off\`; an interactive run records the user's own "approve <slug>" as advance <slug> --to approved --by user`);
   if (historyOnly && force) throw new UsageError('--history-only does not move the page, so --force has nothing to override — pass one of them');
   const bySlug = new Map(state.pages.map((p) => [p.slug, p]));
   const missing = slugs.filter((s) => !bySlug.has(s));
@@ -484,6 +511,46 @@ export function setFlow(state, flow, { source = 'default', at = nowIso(), force 
     }
   }
   return { changed: true, previous, staled };
+}
+
+// ---- mode --------------------------------------------------------------------------------------
+// Writes the handsOff marker for `mode` in memory (state-machine.md § Hands-off keys): hands-off →
+// true, interactive → false. Throws on an unknown mode. Returns { changed, previous } — `previous` the
+// value the file held (true / false / undefined); the same value again changes nothing.
+export function setMode(state, mode) {
+  if (!Object.hasOwn(MODES, mode)) throw new UsageError(`mode "${mode}" is not a mode (${Object.keys(MODES).join('|')}; state-machine.md § Hands-off keys)`);
+  const previous = state.handsOff;
+  if (previous === MODES[mode]) return { changed: false, previous };
+  state.handsOff = MODES[mode];
+  return { changed: true, previous };
+}
+
+// The mode a state object reads: hands-off only on handsOff === true (chrome-compare's rule too).
+export const modeOf = (state) => (state && state.handsOff === true ? 'hands-off' : 'interactive');
+
+function runMode(opts, rest) {
+  const file = statePath(opts.dir);
+  const { state, present } = readLooseState(file);
+  if (!rest.length) {
+    const why = !present ? `no ${file}` : state.handsOff === undefined ? 'no handsOff key' : `handsOff: ${JSON.stringify(state.handsOff)}`;
+    console.log(`mode: ${modeOf(state)} (${why})`);
+    return 0;
+  }
+  if (rest.length > 1) throw new UsageError(`mode takes one mode (${Object.keys(MODES).join('|')}), got ${rest.join(' ')}`);
+  const [mode] = rest;
+  const at = opts.at || nowIso();
+  if (opts.at && !ISO_8601.test(opts.at)) throw new UsageError(`--at "${opts.at}" is not an ISO 8601 timestamp`);
+  const r = setMode(state, mode);
+  if (!r.changed) { console.log(`state: mode ${mode} unchanged (handsOff: ${JSON.stringify(state.handsOff)})`); return 0; }
+  const writtenBy = normaliseSkill(opts.skill || 'stardust');
+  state._provenance = stampProvenance(state._provenance, writtenBy, at);
+  if (!present) mkdirSync(opts.dir, { recursive: true });
+  writeState(file, state);
+  const parts = [`state: mode ${mode} (handsOff: ${JSON.stringify(state.handsOff)})`];
+  if (!present) parts.push(`seeded ${file} (init fills it after the crawl)`);
+  parts.push(`written by ${writtenBy}`);
+  console.log(parts.join(' · '));
+  return 0;
 }
 
 // ---- init --------------------------------------------------------------------------------------
@@ -868,7 +935,7 @@ export function main(argv) {
   if (Object.hasOwn(FLAGS_FOR, cmd)) {
     const stray = opts.seen.find((f) => !FLAGS_FOR[cmd].includes(f));
     if (stray) throw new UsageError(`${stray} does not apply to ${cmd} (it reads ${FLAGS_FOR[cmd].join(', ')})`);
-    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow }[cmd](opts, rest);
+    return { init: runInit, set: runSet, exclude: runExclude, flow: runFlow, mode: runMode }[cmd](opts, rest);
   }
   const stray = opts.seen.find((f) => NEW_FLAGS.includes(f));
   if (stray) throw new UsageError(`unknown option ${stray}`);

@@ -11,14 +11,16 @@
 // excluded[] for a page init never had, idempotence, refusals, the summary count); the stardustVersion
 // stamp order (plugin manifest, else STARDUST_VERSION, else the stamp carried); flow (the seed on a
 // missing file and init filling it, the three keys in place on an existing file, stamped once, the
-// forced switch and its flow-switch stale flags, refusals byte-identical). Run: node <this file>.
+// forced switch and its flow-switch stale flags, refusals byte-identical); mode (the handsOff marker,
+// seeded or set in place, printed) and the approval guard: --by hands-off refused without handsOff: true,
+// --by user and a hands-off run allowed. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FLOWS, FLOW_SOURCES, FLOW_SWITCH_REASON, ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, orderTopLevel, pluginVersion, setFlow, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
+import { FLOWS, FLOW_SOURCES, FLOW_SWITCH_REASON, HANDS_OFF_BY, MODES, ORDER, SET_BY, TOP_ORDER, advance, classify, crawlSlug, modeOf, orderTopLevel, pluginVersion, setFlow, setMode, siteTotalDiscovered, stampProvenance, summarise, urlKey, validateProvenance } from '../state.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'state.mjs');
@@ -476,6 +478,67 @@ check('flow usage errors and refusals (exit 2, nothing written, no seed): unknow
   const bad = runIn(p.d, ['flow', 'replica']); assert.equal(bad.code, 2); assert.match(bad.err, /is not valid JSON .* — left as it is/); assert.equal(readFileSync(p.stateFile, 'utf8'), '{ "flow": ');
   assert.equal(runIn(p.d, ['flow']).code, 2, 'printing refuses a file that does not parse too');
   const h = runIn(p.d, ['--help']); assert.equal(h.code, 0); assert.match(h.out, /node state\.mjs flow \[redesign\|replica\|reskin\] \[--source user-phrase\|default\|question\] \[--at <iso>\]/);
+});
+// ---- mode (the handsOff marker) and the approval guard ------------------------------------------
+check('mode constants; setMode / modeOf in memory: an unknown mode refused, the same value unchanged, hands-off only on handsOff === true', () => {
+  assert.deepEqual(MODES, { 'hands-off': true, interactive: false }); assert.equal(HANDS_OFF_BY, 'hands-off');
+  const s = { pages: [] };
+  assert.throws(() => setMode(s, 'autopilot'), /mode "autopilot" is not a mode \(hands-off\|interactive; state-machine\.md § Hands-off keys\)/);
+  assert.deepEqual(s, { pages: [] });
+  assert.deepEqual(setMode(s, 'hands-off'), { changed: true, previous: undefined }); assert.equal(s.handsOff, true);
+  assert.deepEqual(setMode(s, 'hands-off'), { changed: false, previous: true });
+  assert.deepEqual(setMode(s, 'interactive'), { changed: true, previous: true }); assert.equal(s.handsOff, false);
+  for (const [state, mode] of [[{ handsOff: true }, 'hands-off'], [{ handsOff: false }, 'interactive'], [{}, 'interactive'], [{ handsOff: 'yes' }, 'interactive'], [null, 'interactive']]) assert.equal(modeOf(state), mode, JSON.stringify(state));
+});
+check('advance --to approved --by hands-off is refused (exit 2, byte-identical) without handsOff: true — with --history-only too; --by user and no --by pass; after mode hands-off it passes', () => {
+  const p = project();
+  const seed = () => writeFileSync(p.stateFile, JSON.stringify({ _provenance: { writtenBy: 'stardust:extract', writtenAt: 'old' }, site: { originUrl: 'https://www.example.com' }, direction: null, pages: [mkPage('home', 'prototyped', { prototypePath: 'stardust/prototypes/home-proposed.html' }), mkPage('about', 'prototyped')] }, null, 2));
+  seed();
+  const before = readFileSync(p.stateFile, 'utf8');
+  const msg = 'state: refused: --by hands-off needs hands-off mode — state.json has no handsOff: true. Hands-off is activated by --hands-off on the invocation or an explicit user phrase (master skill § Hands-off mode) and recorded with `state.mjs mode hands-off`; an interactive run records the user\'s own "approve <slug>" as advance <slug> --to approved --by user\n';
+  for (const args of [['advance', 'home', '--to', 'approved', '--by', 'hands-off'], ['advance', 'home', 'about', '--to', 'approved', '--by', 'hands-off', '--prototype', 'x.html'], ['advance', 'home', '--to', 'approved', '--by', 'hands-off', '--history-only'], ['advance', 'home', '--to', 'approved', '--by', 'hands-off', '--force']]) {
+    const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.equal(r.err, msg, args.join(' '));
+  }
+  assert.equal(readFileSync(p.stateFile, 'utf8'), before, 'nothing written');
+  assert.equal(runIn(p.d, ['mode', 'interactive']).code, 0);
+  const still = runIn(p.d, ['advance', 'home', '--to', 'approved', '--by', 'hands-off']); assert.equal(still.code, 2, 'handsOff: false is not hands-off'); assert.equal(still.err, msg);
+  assert.throws(() => advance(JSON.parse(readFileSync(p.stateFile, 'utf8')), ['home'], { to: 'approved', by: 'hands-off' }), /refused: --by hands-off needs hands-off mode/, 'the library path is guarded too');
+  const user = runIn(p.d, ['advance', 'home', '--to', 'approved', '--by', 'user', '--prototype', 'stardust/prototypes/home-proposed.html']);
+  assert.equal(user.code, 0, user.err); assert.match(user.out, /home \(prototyped→approved\) · approvedBy user · prototypePath set · written by stardust:prototype/);
+  assert.deepEqual(readIn(p.d).pages[0].history.at(-1), { status: 'approved', at: readIn(p.d).pages[0].history.at(-1).at, approvedBy: 'user' });
+  const plain = runIn(p.d, ['advance', 'about', '--to', 'approved']); assert.equal(plain.code, 0, plain.err); assert.deepEqual(Object.keys(readIn(p.d).pages[1].history.at(-1)), ['status', 'at']);
+  seed();
+  const on = runIn(p.d, ['mode', 'hands-off', '--at', '2026-03-03T00:00:00Z']);
+  assert.equal(on.code, 0, on.err); assert.equal(on.out, 'state: mode hands-off (handsOff: true) · written by stardust:stardust\n');
+  const s = readIn(p.d); assert.deepEqual(Object.keys(s), ['_provenance', 'site', 'direction', 'handsOff', 'pages']); assert.equal(s.handsOff, true); assert.equal(s._provenance.writtenAt, '2026-03-03T00:00:00Z');
+  const ok = runIn(p.d, ['advance', 'home', '--to', 'approved', '--by', 'hands-off', '--prototype', 'stardust/prototypes/home-proposed.html']);
+  assert.equal(ok.code, 0, ok.err); assert.match(ok.out, /approvedBy hands-off/); assert.equal(readIn(p.d).pages[0].history.at(-1).approvedBy, 'hands-off');
+});
+check('mode prints the current mode (missing file, no key, true, false); mode on a missing state.json seeds it and init keeps the key; the same mode again writes nothing; usage errors', () => {
+  const p = project();
+  assert.equal(runIn(p.d, ['mode']).out, `mode: interactive (no ${p.stateFile})\n`); assert.ok(!existsSync(p.stateFile), 'printing seeds nothing');
+  const r = runIn(p.d, ['mode', 'hands-off', '--skill', 'replica', '--at', '2026-01-01T00:00:00Z']);
+  assert.equal(r.code, 0, r.err); assert.equal(r.out, `state: mode hands-off (handsOff: true) · seeded ${p.stateFile} (init fills it after the crawl) · written by stardust:replica\n`);
+  const s = readIn(p.d); assert.deepEqual(Object.keys(s), ['_provenance', 'handsOff']); assert.equal(s.handsOff, true); assert.equal(s._provenance.writtenBy, 'stardust:replica');
+  assert.equal(runIn(p.d, ['mode']).out, 'mode: hands-off (handsOff: true)\n');
+  const before = readFileSync(p.stateFile, 'utf8');
+  const again = runIn(p.d, ['mode', 'hands-off']); assert.equal(again.code, 0, again.err); assert.equal(again.out, 'state: mode hands-off unchanged (handsOff: true)\n'); assert.equal(readFileSync(p.stateFile, 'utf8'), before);
+  assert.equal(runIn(p.d, ['flow', 'replica', '--at', '2026-01-01T00:00:00Z']).code, 0, 'flow and mode stack on the same seed');
+  assert.deepEqual(Object.keys(readIn(p.d)), ['_provenance', 'handsOff', 'flow', 'flowChosenAt', 'flowSource']);
+  const init = runIn(p.d, ['init', '--pages', p.list('pages.txt', 'https://www.example.com/blog\n')]);
+  assert.equal(init.code, 0, init.err); assert.match(init.out, / · kept handsOff, flow, flowChosenAt, flowSource · /);
+  assert.deepEqual(Object.keys(readIn(p.d)), ['_provenance', 'site', 'direction', 'handsOff', 'flow', 'flowChosenAt', 'flowSource', 'pages']);
+  const off = runIn(p.d, ['mode', 'interactive']); assert.equal(off.code, 0, off.err); assert.equal(off.out, 'state: mode interactive (handsOff: false) · written by stardust:stardust\n');
+  assert.equal(runIn(p.d, ['mode']).out, 'mode: interactive (handsOff: false)\n');
+  writeFileSync(p.stateFile, JSON.stringify({ pages: [] })); assert.equal(runIn(p.d, ['mode']).out, 'mode: interactive (no handsOff key)\n');
+  for (const [args, re] of [
+    [['mode', 'autopilot'], /mode "autopilot" is not a mode \(hands-off\|interactive/],
+    [['mode', 'hands-off', 'interactive'], /mode takes one mode \(hands-off\|interactive\), got hands-off interactive/],
+    [['mode', 'hands-off', '--at', 'now'], /--at "now" is not an ISO 8601 timestamp/],
+    [['mode', 'hands-off', '--force'], /--force does not apply to mode \(it reads --at, --skill, --dir\)/],
+    [['mode', 'hands-off', '--source', 'default'], /--source does not apply to mode/],
+  ]) { const r = runIn(p.d, args); assert.equal(r.code, 2, args.join(' ')); assert.equal(r.out, ''); assert.match(r.err, re, args.join(' ')); }
+  const h = runIn(p.d, ['--help']); assert.match(h.out, /node state\.mjs mode \[hands-off\|interactive\] \[--at <iso>\]/); assert.match(h.out, /--by hands-off refuses \(exit 2\)/);
 });
 check('siteTotalDiscovered: the post-cap crawl count is a total only where the cap did not bite', () => {
   assert.equal(siteTotalDiscovered({ count: 38, pageCap: 0, inputCount: 2 }), 38, '--page-cap 0: no cap');

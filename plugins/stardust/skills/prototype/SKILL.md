@@ -1217,7 +1217,9 @@ command.
 
 ### Phase 5 — Approval (+ fold-back, Part III)
 
-Approval is **explicit**. Stardust does not auto-approve.
+Approval is **explicit**. Stardust does not auto-approve: `state.mjs advance
+<slug> --to approved --by hands-off` is refused unless `state.json.handsOff:
+true` (master skill § Hands-off mode).
 
 The user signals approval by saying **"approve <slug>"** or simply
 **"approve"** in the conversation. The agent confirms the slug
@@ -1241,8 +1243,9 @@ On approval:
    construction (A1/A2/A3 are surface forks; nothing structural to
    fold). Flags: `--auto-fold` skips the gate; `--no-fold` opts out
    entirely.
-3. Mark the page `approved` in `state.json`. Append a
-   `{ status: "approved", at: <ts> }` history entry.
+3. Mark the page `approved` in `state.json` — `node stardust/scripts/stardust/state.mjs
+   advance <slug> --to approved --by user --prototype <path>` appends the
+   `{ status: "approved", at: <ts>, approvedBy: "user" }` history entry.
 4. Clear any `stale` flag on the page.
 5. Print:
    ```
