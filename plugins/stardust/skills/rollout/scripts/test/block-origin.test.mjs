@@ -5,7 +5,8 @@
 // grammar piece; unsupported syntax throws, countMatches 0), stable selectors (precedence, generated
 // ids and state classes rejected, every derived selector resolving exactly once), the delivered
 // fragments (roles, keyed duplicates), text alignment (a content container beats a nav repeating one
-// of its texts; a delivered-only text lowers confidence), lca and coveredShare; importing runs nothing,
+// of its texts; a delivered-only text lowers confidence; named character references decode), lca and
+// coveredShare; importing runs nothing,
 // --help writes nothing, unit-geometry resolves in both layouts and its absence fails only on use.
 // The mapping run (CLI): instance selectors and confidences by text alignment, sections (anchor,
 // confidence, default-content roles), the position fallback, sections aligned across a template's pages
@@ -340,6 +341,28 @@ check('alignBlock: an image-only block whose alt equals a page heading has no an
   const f = bo.fragmentsOf(ALT_ONLY);
   assert.deepEqual(f.map((x) => [x.role, x.text, x.key]), [['image', 'Explore the teaser grid', 'image:explore the teaser grid']]);
   assert.deepEqual(bo.alignBlock(idx, f), { anchor: null, confidence: 0, covered: 0, total: 0, unmatched: [] });
+});
+
+// A delivered document carries named character references (the deploy skill's sanitise.js writes every non-ASCII
+// character it has a name for as one); a capture holds the characters. The parsed tree must decode them, or no
+// fragment with a curly apostrophe, a dash or a ® is ever found (in a recorded run, 4 of 7 position fallbacks).
+check('lib.parseHtml: every named reference the deploy skill\'s sanitise.js emits decodes (case-sensitive); an unknown name stays; &amp;lt; is one pass', () => {
+  const table = [...readFileSync(join(SCRIPTS, '..', '..', 'deploy', 'scripts', 'sanitise.js'), 'utf8').matchAll(/\[0x([0-9A-F]+), '&([A-Za-z0-9]+);'\]/g)]
+    .map((m) => [String.fromCodePoint(parseInt(m[1], 16)), m[2]]);
+  assert.ok(table.length > 50, `sanitise table not found (${table.length})`);
+  const doc = lib.parseHtml(`<p>${table.map(([, name]) => `&${name};`).join('|')}|&Auml;&auml;|&frac12;|&amp;lt;|&bogus;|&#233;&#x2014;</p>`);
+  assert.equal(lib.textOf(doc), `${table.map(([ch]) => ch).join('|')}|Ää|½|&lt;|&bogus;|é—`);
+});
+
+const ENTITY_SRC = '<html><body><main><section class="band"><h2>Game on—let’s go</h2><p>We’ve teamed up with Brand® partners.</p></section><section class="other"><p>Another band.</p></section></main></body></html>';
+check('alignBlock: a delivered fragment written with &rsquo; &mdash; &reg; matches a capture holding the characters (confidence 1)', () => {
+  const block = blockNode('<div class="promo"><div><div><h2>Game on&mdash;let&rsquo;s go</h2><p>We&rsquo;ve teamed up with Brand&reg; partners.</p></div></div></div>');
+  const f = bo.fragmentsOf(block);
+  assert.deepEqual(f.map((x) => x.text), ['Game on—let’s go', 'We’ve teamed up with Brand® partners.'], 'walkDelivered hands over decoded text');
+  const idx = bo.indexSource(ENTITY_SRC);
+  const a = bo.alignBlock(idx, f);
+  assert.equal(a.anchor, byClass(idx, 'band'));
+  assert.deepEqual([a.confidence, a.unmatched], [1, []]);
 });
 
 check('coveredShare: image alt text does not count', () => {
