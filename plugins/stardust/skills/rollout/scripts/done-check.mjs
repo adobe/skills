@@ -88,7 +88,9 @@
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
  * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude);
  * blocks_pending:N: <names> — record each, the module blocks of coverage/blocks.json delivered (instances in the
- * content files) without a conversion record (update-coverage.mjs --block … converted|deployed|verified|not-delivered);
+ * content files) and still `pending`: blocks.mjs derives `converted` for a delivered block whose code is under
+ * blocks/<name>/, so what remains has no block code (build it) or a blocks.json older than that rule (re-run blocks.mjs),
+ * else a conversion record settles it (update-coverage.mjs --block … converted|deployed|verified|not-delivered);
  * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
  * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent);
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence

@@ -118,8 +118,14 @@ sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
      └─ blocks.mjs  conversion point in plan.json; siblings reuse it)
 ```
 
-- **pending** — inventoried as a distinct block, not yet converted.
-- **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists.
+- **pending** — inventoried as a distinct block that no delivered document shows yet, or
+  one a document shows while `blocks/<edsBlockName>/<edsBlockName>.{js,css}` is missing.
+- **converted** — its EDS block (`blocks/<edsBlockName>/`) or fragment exists. `blocks.mjs`
+  derives it for a module row the delivered documents use (`instanceCount` > 0, counted from
+  pages.json `delivered.blocks`) whose code is under `blocks/` — delivery is a fact of the
+  documents, not of the bookkeeping; a derived conversion has `convertedAt: null`, a recorded
+  one (`update-coverage.mjs --block … --status converted`) its time. A recorded hands-off
+  run shipped 13 live, gated blocks as `pending` because no unit recorded them.
 - **deployed / verified** — live on the delivered site.
 - **not-delivered** — deliberately left undelivered, from any status (a block under
   `blocks/` no page uses, a module the site drops): `update-coverage.mjs --block <name>
@@ -130,8 +136,8 @@ sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
   whatever its status (record it `--status converted --eds-name default-content`).
 
 `blocks.mjs` is idempotent: a block already past `pending` keeps its status and
-`edsBlockName`; only still-`pending` blocks get a freshly derived name, never one mapped
-to `default-content`. It also registers every `blocks/<name>/` holding `<name>.js` or
+`edsBlockName`; only still-`pending` blocks get a freshly derived name (and the derived
+`converted` above), never one mapped to `default-content`. It also registers every `blocks/<name>/` holding `<name>.js` or
 `<name>.css` that no row covers (by id, EDS name or `delivery.edsBlockName`; header and
 nav count as one chrome) as a row with `source: blocks-dir`, no pages, 0 instances and
 its prior delivery, else `converted` — no delivered block without a ledger row.
