@@ -327,14 +327,14 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     encode[ENCODE_COUNTER[decision]] += 1;
     return {
       template, instances: insts.length,
-      encoderMap, textAlignment: bySource('text-alignment'), position: bySource('position'),
+      encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
       encode: { decision, reason: recorded ? recorded.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: recorded ? recorded.recordedAt : null },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
     instances: c.instances,
-    sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], position: c.sources.position },
+    sources: { encoderMap: c.sources['encoder-map'], textAlignment: c.sources['text-alignment'], imageAlignment: c.sources['image-alignment'], position: c.sources.position },
     encoderCoverage: c.instances ? round3(c.sources['encoder-map'] / c.instances) : 0,
     zeroConfidence: c.confidence.none,
     zeroConfidenceBlocks: Object.entries(c.positionBlocks).slice(0, SELECTOR_QUALITY_TOP).map(([block, instances]) => ({ block, instances })),
