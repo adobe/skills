@@ -233,7 +233,8 @@ const SELECTOR_QUALITY_TOP = 10;
 // that text: a fragment (a heading, a 16-character span) anchors the selector, evidence against it as the block's
 // origin, while it resolves to one element and a per-selector client reads it as any other (in a recorded hands-off
 // run 45 of 124 verified selectors, 33 of them under 0.25, shipped so with no line naming them). The bar is
-// block-origin's own `>0–<0.5` status bucket (countsOf), so its status line, the manifest and done-check agree. The
+// block-origin's own `>0–<0.5` status bucket (countsOf), so all three agree on the bar — the manifest counts verified
+// instances only, block-origin's status line counts them all. The
 // confidence-0 position fallbacks are zeroConfidence, counted apart; an unverified instance is not a selector a client reads.
 export const LOW_CONFIDENCE = 0.5;
 const isLowConfidence = (i) => !!i && i.verified === true && typeof i.confidence === 'number' && i.confidence > 0 && i.confidence < LOW_CONFIDENCE;
