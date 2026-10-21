@@ -97,6 +97,34 @@ export const DEFAULT_NORMALIZE = `(() => {
 })()`;
 
 /**
+ * Disclosure rest state — the SINGLE definition of "collapsed at rest" both content gates use.
+ * DISCLOSURE_STATE is a function-source string (run inside page.evaluate() on a scope element) that
+ * counts the disclosures in it BEFORE any normalization or reveal: collapsed = a trigger with
+ * aria-expanded="false", a closed <details>, or a hidden="until-found" region; expanded = a trigger
+ * with aria-expanded="true" or an open <details>.
+ *
+ * REVEAL_DISCLOSURES is the RENDERED side's counterpart of a source ledger's "expand every
+ * accordion" entry: it opens every <details> and every hidden="until-found" region so the gate reads
+ * the panel text. It runs only after the rest state was recorded. A normalization is capture-only:
+ * it never describes how the delivered block behaves at rest (reference/content-model.md
+ * § Normalization ledger). A delivered block hides a collapsed panel with hidden="until-found" or a
+ * closed <details> — text hidden any other way (display:none on a class) stays unread and fails the
+ * text check, which is the point.
+ */
+export const DISCLOSURE_STATE = `((root) => {
+  const n = (sel) => root.querySelectorAll(sel).length;
+  return {
+    collapsed: n('[aria-expanded="false"]') + n('details:not([open])') + n('[hidden="until-found"]'),
+    expanded: n('[aria-expanded="true"]') + n('details[open]'),
+  };
+})`;
+
+export const REVEAL_DISCLOSURES = `(() => {
+  document.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; });
+  document.querySelectorAll('[hidden="until-found"]').forEach((e) => { e.removeAttribute('hidden'); });
+})()`;
+
+/**
  * Shared image-visibility predicate — the SINGLE definition used by both
  * capture-content.mjs (model images) and dom-equality.mjs (gate images), so
  * capture and gate can never drift on which images count as content
@@ -139,7 +167,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (arg === '--help' || arg === '-h') {
     console.log('source-normalize.mjs — shared executable normalization ledger (reskin).');
     console.log('Usage: node source-normalize.mjs        # print default ledger entries + script');
-    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE } from it.');
+    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES } from it.');
     console.log('Page ledgers: export NORMALIZE (string) and LEDGER; pass via --normalize to');
     console.log('capture-content.mjs and dom-equality.mjs — the SAME file to both.');
     process.exit(0);

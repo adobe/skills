@@ -4,6 +4,25 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.39.0 — disclosures keep the source's rest state
+
+A migration shipped every accordion open at rest (one 3,327 px tall where the source's was 128 px): the page ledger's
+"expand every accordion" entry, there so the capture reads the hidden panel text, was carried into the delivered block,
+and EW7 was read as "no text hidden at rest". The content gate could not tell: it read `innerText`, so a correctly
+collapsed panel would have failed as missing text, and an all-open one passed.
+
+- **`dom-equality` disclosure rest state (gating).** Collapsed and open disclosures (`aria-expanded`, `<details>`,
+  `hidden="until-found"`) are counted on both sides before the ledger runs; a source with any collapsed against a render
+  with none collapsed fails, named in the report and on stderr. Waived per page by the deltas file's
+  `"disclosures": { "restState": "open", "why": "…" }` (a waiver without a why is exit 2).
+- **Rendered-side reveal.** `source-normalize.mjs` exports `DISCLOSURE_STATE` and `REVEAL_DISCLOSURES`; `dom-equality`,
+  `slot-coverage` and `figma-text-gate` open `<details>` and `hidden="until-found"` regions before reading the render's
+  text, so a block that starts closed is still measured. A panel hidden by `display:none` stays unread and fails.
+- **Docs.** content-model § Normalization ledger: a normalization is capture-only. deploy EW7: collapsed at rest is
+  allowed and expected when the source is; close panels with `hidden="until-found"` (open on `beforematch`) or `<details>`.
+- **Test.** `test/dom-equality-disclosures.test.mjs`: until-found and `<details>` pass, all-open fails, the waiver
+  passes, a waiver without a why is exit 2, `display:none` fails the text check.
+
 ## 0.38.0 — reskin holds the chrome to a bar (deployed A6)
 
 A migration whose every page gate passed still shipped a header that stacked its nav inline and covered the page,

@@ -209,6 +209,9 @@ async function main(argv) {
       }
     } else await page.goto(target, { waitUntil: o['wait-until'] || 'load' });
     const scope = o.scope || 'main';
+    // Collapsed panels (hidden="until-found", closed <details>) are content: read them open (source-normalize.mjs).
+    const { REVEAL_DISCLOSURES } = await import('./source-normalize.mjs');
+    await page.evaluate(REVEAL_DISCLOSURES);
     measured = await page.evaluate((sel) => {
       const root = document.querySelector(sel) || document.querySelector('.site-main') || document.body;
       return { text: root.innerText, attrs: [...root.querySelectorAll('input[placeholder], textarea[placeholder]')].map((e) => e.getAttribute('placeholder')), scope: root.tagName.toLowerCase() + (root.className ? `.${String(root.className).split(' ')[0]}` : '') };

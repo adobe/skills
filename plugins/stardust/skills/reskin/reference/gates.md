@@ -63,6 +63,19 @@ executed identically by `capture-content.mjs` and this gate: hidden
 by style → out; rendered above 1×1px → in (tracking pixels are not
 content); `loading="lazy"` and still zero-size → in. One definition,
 two callers — capture and gate cannot drift on image counts.
+(3) **disclosure rest state**: the collapsed and open disclosures in
+scope (`aria-expanded`, `<details>`, `hidden="until-found"`, the shared
+`DISCLOSURE_STATE` in `source-normalize.mjs`) are counted on both sides
+**before** the ledger runs. A source that starts any collapsed against a
+render that starts none collapsed FAILS: a ledger entry that expands
+accordions is capture-only and never makes the delivered block start
+open. The rendered side then runs `REVEAL_DISCLOSURES` (opens `<details>`,
+unhides `hidden="until-found"`) before its text is read, so a correctly
+collapsed panel is still measured; a panel hidden any other way
+(`display:none` on a class) stays unread and fails (1). `slot-coverage`
+and `figma-text-gate` run the same reveal. A page whose redesign starts
+every disclosure open says so in its deltas file:
+`"disclosures": { "restState": "open", "why": "…" }`.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.

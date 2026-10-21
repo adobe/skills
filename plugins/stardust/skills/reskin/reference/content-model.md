@@ -394,6 +394,14 @@ export const NORMALIZE = `${DEFAULT_NORMALIZE};(() => {
 
 Rules:
 
+- A normalization is **capture-only**. It changes what the capture and
+  the gate read, never how the delivered block behaves: an entry that
+  expands every accordion (so the hidden panel text is captured) does
+  not make the deployed accordion start open. The block keeps the
+  source's rest state, hiding a closed panel with `hidden="until-found"`
+  or a closed `<details>`; `dom-equality` fails a render that starts
+  everything open against a source that does not (`reference/gates.md`
+  § dom-equality).
 - A normalization may only remove **chrome or duplication** — never
   content. De-carouselling keeps every slide's text and image; it
   removes clones and pager dots. If in doubt whether something is

@@ -7,7 +7,8 @@
 //     "text":   { "allow": [ { "id", "from", "to", "why" } ] },   literal source text → rendered text; `to` may be ""
 //     "images": "count+alt+width",                        replaces the host+path image comparison
 //     "links":  { "localize": { "sourceHost": "<host>" } },       slot-coverage: CTA hrefs also match as localized
-//     "metadata": { "ignore": ["canonical", "og:url", …], "jsonLd": "count-only" | "ignore", "absent": [ … ] } }
+//     "metadata": { "ignore": ["canonical", "og:url", …], "jsonLd": "count-only" | "ignore", "absent": [ … ] },
+//     "disclosures": { "restState": "open", "why": "…" } }        dom-equality: waives the rest-state check
 //
 //   loadDeltas(path)                    read and validate; a UsageError (exit 2) lists every problem at once
 //   isBlocking(deltas)                  false only when the file says "blocking": false
@@ -62,7 +63,7 @@ export function loadDeltas(path) {
     if (!Array.isArray(v) || v.some((s) => typeof s !== 'string' || !s.trim())) { problems.push(`${where} must be a list of non-empty strings`); return []; }
     return v;
   };
-  for (const k of Object.keys(raw)) if (!['version', 'blocking', 'text', 'images', 'links', 'metadata'].includes(k)) problems.push(`unknown key "${k}"`);
+  for (const k of Object.keys(raw)) if (!['version', 'blocking', 'text', 'images', 'links', 'metadata', 'disclosures'].includes(k)) problems.push(`unknown key "${k}"`);
   if (raw.version !== 1) problems.push(`version must be 1, got ${raw.version === undefined ? 'nothing' : JSON.stringify(raw.version)}`);
   if (raw.blocking !== undefined && typeof raw.blocking !== 'boolean') problems.push('blocking must be true or false');
 
@@ -101,8 +102,14 @@ export function loadDeltas(path) {
       else problems.push(`metadata.jsonLd must be "count-only" or "ignore", got ${JSON.stringify(raw.metadata.jsonLd)}`);
     }
   }
+  let disclosures = null;
+  if (raw.disclosures !== undefined && nested(raw.disclosures, 'disclosures', ['restState', 'why'])) {
+    if (raw.disclosures.restState !== 'open') problems.push(`disclosures.restState must be "open" (the only waiver), got ${JSON.stringify(raw.disclosures.restState)}`);
+    else if (typeof raw.disclosures.why !== 'string' || !raw.disclosures.why.trim()) problems.push('disclosures.why must say why the delivered page starts every disclosure open');
+    else disclosures = { restState: 'open', why: raw.disclosures.why };
+  }
   if (problems.length) throw new UsageError(`deltas ${path}: ${problems.length} problem(s)\n  - ${problems.join('\n  - ')}`);
-  return { version: 1, blocking: raw.blocking !== false, text: { allow }, images: raw.images ?? null, links: { localize }, metadata: { ignore, jsonLd, absent } };
+  return { version: 1, blocking: raw.blocking !== false, text: { allow }, images: raw.images ?? null, links: { localize }, metadata: { ignore, jsonLd, absent }, disclosures };
 }
 
 export const isBlocking = (deltas) => deltas?.blocking !== false;

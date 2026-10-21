@@ -254,6 +254,11 @@ await page.evaluate(() => Promise.race([
   new Promise((r) => setTimeout(r, 10000)),
 ]));
 await page.waitForTimeout(300);
+// Collapsed panels (hidden="until-found", closed <details>) are content: read them open (source-normalize.mjs).
+try {
+  const { REVEAL_DISCLOSURES } = await import('./source-normalize.mjs');
+  await page.evaluate(REVEAL_DISCLOSURES);
+} catch (e) { if (e.code !== 'ERR_MODULE_NOT_FOUND') throw e; }
 
 const results = []; // { gate, check, pass, detail }
 const R = (gate, check, pass, detail = '') => results.push({ gate, check, pass, detail });
