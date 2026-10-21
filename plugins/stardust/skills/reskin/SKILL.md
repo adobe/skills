@@ -22,6 +22,10 @@ The two halves have different contracts:
   explicitly declared, executable normalization ledger.
 - **Design is flexible.** Content is re-laid-out onto donor modules; a
   carousel may become a static card grid, a sidebar may become a band.
+  "May become" is never "may vanish": every region of the source page
+  (inside the scope or not), every late-rendered block and every dark
+  band lands on the target or is declared dropped with a why — gate
+  (a′), `source-coverage.mjs`.
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
@@ -194,6 +198,17 @@ experiment's top two failure modes:
    (`--normalize`), so the gate measures exactly the normalization the
    capture declared. The ledger is code, not prose. Format in
    `reference/content-model.md` § Normalization ledger.
+3. **WHAT THE SCOPE DID NOT TAKE IN.** The capture records it so it
+   cannot be lost silently: `residue[]` (every region beside the
+   scope's ancestor chain — a breadcrumb, a section sidebar, a utility
+   bar — with its text lines), `_provenance.settle` (it waits until the
+   page text stops growing, so an XHR feed is in the model) and each
+   slot's measured band `tone` (`dark | tinted | page`). Read the
+   `residue` and `tones:` console lines: each non-chrome residue region
+   and each dark band is a Phase 3 mapping decision — carry it (a block,
+   page chrome such as a breadcrumb/section-nav layout, a tone variant)
+   or declare it dropped in `stardust/reskin/coverage/<slug>.json`.
+   Gate (a′) holds the decision.
 
 ### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
 
@@ -342,6 +357,17 @@ node stardust/scripts/reskin/slot-coverage.mjs \
   --report stardust/reskin/reports/<slug>-slot-coverage.md
 ```
 
+Then **(a′) SOURCE COVERAGE** — what the content reference above did
+not take in (`reference/gates.md` § (a′)):
+
+```bash
+node stardust/scripts/reskin/source-coverage.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --target stardust/reskin/pages/<slug>.html \
+  --declared stardust/reskin/coverage/<slug>.json \
+  --out stardust/reskin/reports/<slug>-source-coverage.json
+```
+
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
 equality** and the **ordered, URL-normalized visible-image set**;
 `slot-coverage.mjs` also proves every slot, CTA (text and absolute
@@ -417,6 +443,10 @@ node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
   node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
 node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
+
+Re-run (a′) on the preview (`--target https://<branch>--<repo>--<org>.aem.page/<path>`,
+`--token-env <NAME>` when protected): a sidebar or a feed that is page chrome or a client-rendered block in EDS
+exists only there.
 
 On a protected preview give the `all` command `--token-env <NAME>`, never
 `--auth-header` (`run-bg` saves and prints its command); without the token

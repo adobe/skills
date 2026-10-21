@@ -4,6 +4,25 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.40.0 — source coverage: what the content reference did not take in
+
+A 52-page migration passed every content gate while its deployed pages had no breadcrumb and no section sidebar, no
+Facebook posts on the home page, and light bands where the source's callouts were dark. One pattern behind all three:
+every gate compares the target with the captured model, so whatever the capture did not observe — beside the scope
+(space), after it read the page (time) or as a property it never measured (attribute) — is lost without a failure.
+
+- **`capture-content` settles** after the lazy-load scroll: it polls the body text every 500 ms until it is unchanged
+  three times, re-scrolling on growth, capped by `CAPTURE_SETTLE_CAP_MS` (15000). `_provenance.settle` records it.
+- **`residue[]`**: every sibling of each scope's ancestor chain that holds no scope and has text, with `kind`
+  (`chrome | breadcrumb | aside | nav | other`), selector, text lines and rect, printed as `residue (…)` lines.
+- **Slot `tone`** (`dark | tinted | page`), `bg` and `toneEl`, measured from the painted background.
+- **`source-coverage.mjs`, gate (a′)**: S1 every non-chrome residue region ≥ 20 chars is carried (one target element,
+  ≤ 3× its text, ≥ 60% of its lines) or declared; S2 a model without a stable settle warns; S3 a dark source band whose
+  heading is not on a dark target band fails. Declared drops in `stardust/reskin/coverage/<slug>.json`, each with a
+  why. Run in Phase 5 against the local page and again on the aem.page preview; per sibling in `migrate`.
+- Docs: the "a sidebar may become a band" principle now says "never may vanish"; Scope discovery step 5 is
+  machine-checked; Phase 2 adds a third mandatory declaration. Tests: `test/source-coverage.test.mjs`.
+
 ## 0.39.0 — disclosures keep the source's rest state
 
 A migration shipped every accordion open at rest (one 3,327 px tall where the source's was 128 px): the page ledger's

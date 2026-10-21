@@ -52,6 +52,9 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    none of: move such a key from `metadata.absent` to `metadata.ignore`, with the why in `mapping.md`.
 6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. On a protected preview
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
+   Then **gate (a′) on the preview**: `source-coverage.mjs --model … --target <preview-url> --declared
+   stardust/reskin/coverage/<slug>.json` (`gates.md` § (a′)). A breadcrumb or section sidebar that EDS builds as page
+   chrome, or a feed block that renders client-side, exists only here; the local page cannot prove it.
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the header-behavior checks `chrome` (A6) does not cover. Record each result, or `unresolved: <why>`, under

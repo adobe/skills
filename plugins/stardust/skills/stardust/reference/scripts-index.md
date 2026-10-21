@@ -1,14 +1,14 @@
 # Scripts index — `<skill>/<script>` — what — key flags
 
-Run the project copies under `stardust/scripts/<skill>/`. Read this before `--help`; ask it only for flags not named here. Full invocations: `../../replica/reference/handoff-contract.md` § 4.
+Run the project copies under `stardust/scripts/<skill>/`. Read this before `--help`. Full invocations: `../../replica/reference/handoff-contract.md` § 4.
 
 - `deploy/ai-readability.mjs` — AI-readability gate — `--origin <o> [--paths <f>] [--min 98] [--token-env <N>]`
-- `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks a,b] --ew`
+- `deploy/block-roundtrip.mjs` — round-trip + editability — `<protoURL> content/<p>.html [--blocks] --ew`
 - `deploy/build-harness.mjs` — local structural harness — `content/<p>.html <out.html> [--root <dir>]`
 - `deploy/content-inventory.mjs` — library (role classifier), no CLI
 - `deploy/da-media-upload.mjs` — rehost images to DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file] [--dry-run]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — content-model lint — `content/ | <page>.html [--json]`
-- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file] [--site-token-env]`; exit 1 = failed, 3 = token halt
+- `deploy/deploy-batch.mjs` — resumable PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file] [--site-token-env]`; exit 1 fail, 3 token halt
 - `deploy/diff-profiles.mjs` — library (profiles), no CLI
 - `deploy/file-lock.mjs` — library (ledger lock), no CLI
 - `deploy/eds-path.mjs` — library (path contract), no CLI
@@ -30,7 +30,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `diff/diff-profiles.mjs` — library (profiles), no CLI
 - `diff/live-session.mjs` — library (hardened browser session), no CLI
 - `diff/measure-live.mjs` — library (settle + measurement), no CLI
-- `diff/unit-geometry.mjs` — unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>)`; exit 2 = unit off/hidden
+- `diff/unit-geometry.mjs` — unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <f> --slug)`; exit 2 = unit off/hidden
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks vs source — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
@@ -49,13 +49,13 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `qa/qa.mjs` — read-only live sweep → report.json — `--base <live-url>`
 - `qa/report-html.mjs` — report.json → report.html — `[--report stardust/qa/report.json]`
 - `replica/breakpoint-lint.mjs` — breakpoints on target steps — `[--target 600,900,1200] [--dirs <list>]` | `--inventory <file|dir…>`; exit 1 = off-target
-- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design DESIGN.json]` | `<live> --against <build> [--design DESIGN.json] [--slug <s>]`; exit 2 = FAIL
+- `replica/cap-probe.mjs` — content caps — `<url…> [--write-design <f>]` | `<live> --against <build> [--design <f>] [--slug]`; exit 2 = FAIL
 - `replica/anchor.mjs` — section anchors — `<url> [--width 1440] [--main <sel>] [--cache <json>]`
 - `replica/chrome-parity.mjs` — header/footer style parity — `<liveURL> <buildURL> [--width] [--live-cache <json>]`
 - `replica/crop-compare.mjs` — pixel diff of one band — `<a.png> <b.png> --height <px> [--y] [--y-b] [--threshold 2]`
 - `replica/css-rules.mjs` — rule blocks by selector regex — `<f.css> "<re>" [--media <re>|--no-media] [--decl <re>]`
 - `replica/foundation-freeze.mjs` — frozen delivery foundation — `freeze [--paths a,b]`; `check`
-- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = any FAIL
+- `replica/gate-all.mjs` — pixel tables, deployed or `--stage prototype` — `[--only <slug,…>] [--skip-existing] [--recapture-eds] [--no-probes]`; exit 2 = FAIL
 - `replica/gate-evidence.mjs` — sidecar gates from pixel tables — `[--slug <s>]… [--check] [--dry-run]`
 - `replica/gate.sh` — one gate round + overflow + probes — `<slug> <live> <build> <width> [iter] [--full] [--main <sel>]`
 - `replica/html-slice.mjs` — one element of captured HTML — `<page.html> header|footer|main|.cls [--text]`
@@ -81,6 +81,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/reskin-ledger.mjs` — gate ledger — `record <slug> [--stage] | eyeball | residual [--by] | show`
 - `reskin/reskin-preflight.mjs` — ready to migrate? 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <f> --rendered <u|f> [--deltas]`
+- `reskin/source-coverage.mjs` — gate (a′) — `--model <f> --target <u|f> [--declared <f>]`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
@@ -97,7 +98,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
-- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s>`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
+- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s>`; `--block <id> --status <s>`; `--new <slug> --path --template --origin`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
@@ -114,6 +115,6 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `spec/spec-rum.mjs` — S5 Optel — `[--days 90] [--key-env <NAME>]`
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
-- `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
+- `stardust/impeccable-version-check.mjs` — newer? — `[--offline] [--json]`; `--where`
 - `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`

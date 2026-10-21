@@ -175,6 +175,30 @@ await page.evaluate(async () => {
 });
 await page.waitForTimeout(2000);
 
+// Settle (source-coverage S2): content a page renders after first paint (a feed fetched over XHR, a
+// listing hydrated by a widget) is content. Capturing before it lands makes the byte gate pass
+// against an incomplete reference. Wait until the rendered text stops growing; each growth re-scrolls
+// so lazily observed sections get their turn.
+const SETTLE_CAP_MS = Number(process.env.CAPTURE_SETTLE_CAP_MS || 15000);
+const textLen = () => page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' ').trim().length);
+const settle = { firstLen: await textLen(), waitedMs: 0, stable: false };
+{
+  let last = settle.firstLen; let still = 0; const t0 = Date.now();
+  while (Date.now() - t0 < SETTLE_CAP_MS) {
+    await page.waitForTimeout(500);
+    const now = await textLen();
+    if (now === last) { still += 1; if (still >= 3) { settle.stable = true; break; } continue; }
+    still = 0; last = now;
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 700) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 100)); }
+      window.scrollTo(0, 0);
+    });
+  }
+  settle.waitedMs = Date.now() - t0;
+  settle.settledLen = last;
+  settle.lateChars = Math.max(0, last - settle.firstLen);
+}
+
 // Apply the declared source normalizations (shared with the gates).
 await page.evaluate(NORMALIZE);
 await page.waitForTimeout(300);
@@ -514,6 +538,95 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
   // Scope-coverage diagnostic (reference/content-model.md § Scope discovery):
   // the whole-body normalized text is the ceiling; the h1 must live in scope.
   const scopeText = norm(scopes.map((s) => s.innerText || '').join(' '));
+
+  // Measured band tone (source-coverage S3): the painted background behind a slot — the opaque
+  // background of the largest box inside it (≥ 50% of its area, 3 levels down), else of its nearest
+  // painted ancestor. dark = relative luminance < 0.2, tinted = painted but not the page colour.
+  const rgba = (c) => { const m = (c || '').match(/[\d.]+/g); return m ? m.map(Number) : null; };
+  const opaque = (el) => { const c = rgba(getComputedStyle(el).backgroundColor); return c && (c[3] === undefined || c[3] > 0.5) ? c : null; };
+  const lum = ([r, g, b]) => { const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const pageBg = (() => { for (const el of [document.body, document.documentElement]) { const c = opaque(el); if (c) return c; } return [255, 255, 255]; })();
+  const selPath = (el) => {
+    const parts = [];
+    for (let e = el; e && e !== document.body && parts.length < 4; e = e.parentElement) {
+      const cls = (typeof e.className === 'string' && e.className.trim()) ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : '';
+      parts.unshift(e.id ? `${e.tagName.toLowerCase()}#${e.id}` : `${e.tagName.toLowerCase()}${cls}`);
+      if (e.id) break;
+    }
+    return parts.join(' > ');
+  };
+  const paintedBy = (el) => {
+    const r = el.getBoundingClientRect(); const area = r.width * r.height;
+    let best = null;
+    (function down(e, depth) {
+      if (depth > 3) return;
+      for (const k of e.children) {
+        const kr = k.getBoundingClientRect();
+        if (area && kr.width * kr.height >= area * 0.5) { if (opaque(k)) best = k; down(k, depth + 1); }
+      }
+    }(el, 0));
+    if (best) return best;
+    for (let e = el; e && e !== document.documentElement; e = e.parentElement) if (opaque(e)) return e;
+    return null;
+  };
+  const toneOf = (el) => {
+    const painter = paintedBy(el);
+    const c = painter ? opaque(painter) : pageBg;
+    const same = c.slice(0, 3).every((v, i) => Math.abs(v - pageBg[i]) < 6);
+    const tone = lum(c) < 0.2 ? 'dark' : (same ? 'page' : 'tinted');
+    return { tone, bg: `rgb(${c.slice(0, 3).map(Math.round).join(', ')})`, ...(painter && tone !== 'page' ? { toneEl: selPath(painter) } : {}) };
+  };
+  sections.forEach((s, i) => Object.assign(s, toneOf(sectionEls[i])));
+
+  // Residue inventory (source-coverage S1): every visible, text-bearing region OUTSIDE the scopes —
+  // the siblings of each scope's ancestor chain that hold no scope. A sidebar, a breadcrumb, a
+  // utility bar: none of it is in the byte-gate reference, so a gate can only see its loss here.
+  const inScope = (e) => scopes.some((s) => s === e || s.contains(e) || e.contains(s));
+  const residueEls = new Set();
+  scopes.forEach((s) => {
+    for (let e = s; e && e !== document.body; e = e.parentElement) {
+      for (const sib of (e.parentElement ? e.parentElement.children : [])) {
+        if (sib !== e && !inScope(sib) && !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(sib.tagName)) residueEls.add(sib);
+      }
+    }
+  });
+  const regionKind = (el) => {
+    const is = (sel) => el.matches(sel) || !!el.closest(sel);
+    if (is('header, footer, [role="banner"], [role="contentinfo"]')) return 'chrome';
+    const label = `${el.getAttribute('aria-label') || ''} ${typeof el.className === 'string' ? el.className : ''} ${el.id}`.toLowerCase();
+    if (/breadcrumb/.test(label) || el.querySelector('[aria-label*="readcrumb" i], [class*="breadcrumb" i]')) return 'breadcrumb';
+    if (is('aside, [role="complementary"]') || /sidebar|side-nav|sidenav|subnav|local-nav|in-page/.test(label) || el.querySelector('aside, [role="complementary"]')) return 'aside';
+    if (is('nav, [role="navigation"]') || el.querySelector('nav, [role="navigation"]')) return 'nav';
+    return 'other';
+  };
+  // One line per rendered text node (a breadcrumb's inline items are separate lines, not one run).
+  const textLines = (el) => {
+    const out = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n && out.length < 60; n = walker.nextNode()) {
+      const t = norm(n.nodeValue);
+      const host = n.parentElement;
+      if (t.length < 2 || !host || !host.getClientRects().length) continue;
+      if (getComputedStyle(host).visibility === 'hidden') continue;
+      if (out[out.length - 1] !== t) out.push(t);
+    }
+    return out;
+  };
+  const residue = [...residueEls]
+    .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; })
+    .map((el) => {
+      const text = norm(el.innerText);
+      const r = el.getBoundingClientRect();
+      return {
+        sel: selPath(el),
+        kind: regionKind(el),
+        textLen: text.length,
+        lines: textLines(el),
+        rect: { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) },
+      };
+    })
+    .filter((r) => r.textLen > 0)
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
   const bodyText = norm(document.body.innerText || '');
   const h1 = document.querySelector('h1');
   const h1Text = h1 ? norm(h1.innerText) : null;
@@ -528,6 +641,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       h1InScope: h1Text ? scopeText.includes(h1Text) : null,
     },
     sections,
+    residue,
   };
 }, { scopeSelList: opts.scope, imgVisibleSrc: IMG_VISIBLE });
 
@@ -559,6 +673,7 @@ writeFileSync(out, JSON.stringify({
     viewport: '1440x900',
     scope: opts.scope,
     normalize: { source: normalizeSource, ledger },
+    settle,
     nav: {
       live: isLiveHttpUrl(opts.url),
       waitUntil: isLiveHttpUrl(opts.url) ? opts.waitUntil : 'networkidle',
@@ -593,5 +708,14 @@ if (unverified.length) {
   console.log(`[capture-content] WARNING: ordered stream did not tile visibleText for ${unverified.join(', ')} — renderers must not trust sep flags on those slots; inspect before rendering.`);
   console.log('[capture-content] sanctioned resolution: drop stream text absent from the slot\'s visibleText and record the drop in the model\'s provenance (content-model.md § The ordered stream — orderedVerified:false fallback).');
 }
+// Source-coverage evidence (reference/gates.md § (a′)): what the reference did NOT take in.
+console.log(`[capture-content] settle: ${settle.stable ? 'stable' : 'NOT stable'} after ${settle.waitedMs}ms — ${settle.lateChars} chars rendered after the fixed waits${settle.lateChars ? ' (captured)' : ''}`);
+if (!settle.stable) console.log(`[capture-content] WARNING: page text still growing at the ${SETTLE_CAP_MS}ms settle cap — a feed or widget may be incomplete in the reference; re-capture or raise CAPTURE_SETTLE_CAP_MS.`);
+const tones = model.sections.filter((s) => s.tone !== 'page').map((s) => `${s.slot}:${s.tone}`);
+console.log(`[capture-content] tones: ${tones.length ? tones.join(' ') : 'all slots on the page colour'}`);
+for (const r of model.residue.filter((x) => x.kind !== 'chrome')) {
+  console.log(`[capture-content] residue (${r.kind}) ${r.sel} — ${r.textLen} chars outside the scope: "${r.lines.slice(0, 4).join(' | ').slice(0, 100)}"`);
+}
+if (model.residue.some((x) => x.kind !== 'chrome')) console.log('[capture-content] each residue region is carried to the target or declared dropped — source-coverage.mjs gates it (gates.md § (a′)).');
 console.log(`[capture-content] wrote ${out} + ${shot}`);
 await browser.close();

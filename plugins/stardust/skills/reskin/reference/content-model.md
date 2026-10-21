@@ -23,7 +23,8 @@ It complements — does not replace — extract's design-oriented capture
     "viewport": "1440x900",
     "scope": "<the --scope string, verbatim>",
     "normalize": { "source": "<ledger path | 'default'>", "ledger": [ { "id", "what", "why" } ] },
-    "nav": { "live": true, "waitUntil": "domcontentloaded", "headed": false }
+    "nav": { "live": true, "waitUntil": "domcontentloaded", "headed": false },
+    "settle": { "firstLen": 4102, "waitedMs": 1511, "stable": true, "settledLen": 4413, "lateChars": 311 }
   },
   "metadata": {
     "title": "", "description": "", "canonical": null,
@@ -33,10 +34,13 @@ It complements — does not replace — extract's design-oriented capture
   "scope": [ { "sel": "#content", "whole": false } ],
   "visibleTextNormalized": "<whitespace-normalized innerText of the whole scope — the content-gate reference string>",
   "coverage": { "bodyTextLen": 2911, "scopeTextLen": 2281, "ratio": 0.784, "h1Text": "…", "h1InScope": true },
+  "residue": [ { "sel": "div.layout > aside.sidebar", "kind": "aside", "textLen": 140,
+                 "lines": [ "Section navigation", "Learning and support", "…" ], "rect": { "x": 120, "y": 420, "w": 400, "h": 900 } } ],
   "sections": [
     {
       "slot": "s01",
       "rootTag": "div", "rootClass": "stage section",
+      "tone": "dark", "bg": "rgb(99, 0, 25)", "toneEl": "div.callout",
       "visibleText": "<normalized innerText of this slot>",
       "headings":   [ { "level": "h1", "text": "…" } ],
       "paragraphs": [ "…" ],
@@ -65,6 +69,19 @@ It complements — does not replace — extract's design-oriented capture
   ]
 }
 ```
+
+**Settle, residue, tone (stardust 0.40).** After the lazy-load scroll the
+capture polls the body text every 500 ms until it is unchanged three times
+(re-scrolling on growth, capped by `CAPTURE_SETTLE_CAP_MS`, default 15000):
+`_provenance.settle` records it, and `stable: false` means the reference may
+still be short. `residue[]` lists every sibling of each scope's ancestor chain
+that holds no scope and has visible text — `kind` is `chrome`
+(header/footer/banner/contentinfo), `breadcrumb`, `aside`, `nav` or `other`;
+`lines` are its visible text nodes (≤ 60). Each slot's `tone` is measured from
+the background that paints it (the largest ≥ 50%-area opaque descendant up to
+three levels down, else the nearest opaque ancestor): `dark` below relative
+luminance 0.2, `tinted` when it differs from the page background, else `page`.
+None of these feed the byte gates; gate (a′) reads them.
 
 ## Slot taxonomy
 
@@ -327,10 +344,14 @@ Procedure, per page:
    (`section.section--highlights:nth-of-type(2)`-style). The same
    first-match rule applies verbatim to `dom-equality.mjs
    --source-scope`.
-5. **Declare the residue.** Whatever stays outside the scope
-   (nav, footer) is a chrome delta (`D1`-style) recorded in the
-   mapping brief — an explicit swap to donor chrome, never a silent
-   omission.
+5. **Declare the residue — machine-checked.** Whatever stays outside the
+   scope is in `residue[]`. Header and footer (`kind: chrome`) are a
+   chrome delta (`D1`-style) recorded in the mapping brief and held by
+   A6. Every other region with ≥ 20 chars — a breadcrumb, a section
+   sidebar, a utility bar — is carried to the target or declared in
+   `coverage/<slug>.json` with a why; `source-coverage.mjs` (gate (a′))
+   FAILs a region that is neither. Widening the scope to take it in is
+   also fine — then it is content and the byte gates hold it.
 
 **Zero-output failures carry the discovery evidence.** When the
 scope matches nothing, the capturer prints the whole-body text

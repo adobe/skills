@@ -189,6 +189,43 @@ beside it: `figma-donor.mjs content` seeds that file (the deployed leg's schema,
 with `metadata.absent: [description, canonical]`, asserted not carried; the model's empty OG/Twitter
 maps and JSON-LD list make the gate expect none, and images keep the host+path comparison.
 
+## (a′) Source coverage
+
+Every gate above compares the target with the captured model, so what the
+capture did not observe is invisible to all of them and its loss passes.
+`source-coverage.mjs` gates the three blind spots — space, time, attribute —
+against the local reskin page (Phase 5) and again on the aem.page preview
+(after (e)'s `preview`), where page chrome and client-rendered blocks exist.
+
+| Check | Reads | Bar |
+|---|---|---|
+| S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
+| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails |
+| S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
+
+The target is settled the same way as the source (scroll, then text stable
+3 × 500 ms, ≤ 15 s) before it is measured. Declared drops,
+`stardust/reskin/coverage/<slug>.json`:
+
+```json
+{ "version": 1,
+  "residue": [ { "match": "<substring of the sel or the first line>", "why": "…" } ],
+  "tones":   [ { "slot": "s01", "to": "tinted", "why": "donor hero module is a light band" } ],
+  "blocking": true }
+```
+
+Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
+every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
+Exit 0 PASS, 1 FAIL, 2 setup. `--token-env <NAME>` for a protected preview.
+
+**Why it exists.** A 52-page school-site migration passed every content gate
+while the deployed pages had no breadcrumb or section sidebar (outside
+`main`, so never in the model), no Facebook posts on the home page (rendered
+by XHR after the capture read the page) and light bands where the source's
+callouts were dark (tone was a mapping judgment nothing measured). (a′)
+FAILs all three on the original render, PASSes the fixed preview, and PASSes
+a declared hero change.
+
 ## (b) Design-adoption gate
 
 ### donor-probe.mjs — computed-style token assertions
@@ -421,6 +458,11 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes
+
+- **The reference was smaller than the page.** A region beside the scope
+  (sidebar, breadcrumb), a block rendered after the capture read the page,
+  or a band tone the mapping recoloured — no byte gate can see these,
+  because they compare against the model. (a′) `source-coverage.mjs`.
 
 - **Content-root drop (the top one).** Byte equality "passes" against
   an incomplete reference because the scope missed content (the 30%
