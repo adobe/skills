@@ -89,7 +89,10 @@
  * verdicts of done units' rows gated before passByWidth (proven on the last width's pass); the export once a client
  * took it over (workspace/handover.json, or a manifest recording a handover).
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
- * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude);
+ * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude) and planned
+ * URLs inventory.mjs found no row for; plan_vs_pages:N: <urls> — planned URLs (state.json pages[] / excluded[], the
+ * crawl's failures) with neither a pages[] row nor an excluded[] row, so the plan count is not pages + excluded (a
+ * recorded hands-off run kept such a URL in prose only): re-run inventory.mjs, or state.mjs exclude it;
  * synthesized_pages:N: <paths> — the coverage rows without source.sourceUrl (update-coverage.mjs --new: a search
  * results page, a landing page, anything built outside the migrated tree): no source to gate against and no schema
  * sidecar, so sidecars_missing never counts them and gate-all skips them; their status still counts like any row's
@@ -102,7 +105,10 @@
  * `converted` from, or a blocks.json older than that rule — or `failed` (a recorded failure the documents
  * contradict): build the code (blocks.mjs then reads it converted) or record each (update-coverage.mjs --block …
  * converted|not-delivered). One definition (workspace-manifest.mjs pendingBlocks) for this line and the manifest's
- * `blocks[].delivery` placeholder;
+ * `blocks[].delivery` placeholder; the count also names every planned module row no document shows while it reads
+ * `pending` (0 instances — workspace-manifest.mjs plannedUndelivered, never a placeholder: nothing shipped), with the
+ * exit `update-coverage.mjs --block <id> --status not-delivered --reason "<why>"` (a recorded hands-off run carried one
+ * as `pendingBlocks 1`, unnamed);
  * header_decided_by_agent:N: <keys> — for the owner's review, the header findings a hands-off agent decided
  * (decided.agent in chrome/header-parity.json, else its counts.decidedByAgent);
  * export_quality:zero_confidence:N — migration-workspace export only: the manifest's selectorQuality.zeroConfidence
@@ -137,7 +143,7 @@
 import { readFileSync, existsSync, realpathSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift, gateProof, validateSchema } from './lib.mjs';
+import { readJSON, isSourceParity, publicUrl, sha256, classifyExportDrift, gateProof, validateSchema, plannedEntries, unaccountedPlanned } from './lib.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const UNFINISHED = new Set(['pending', 'content-pending', 'converting', 'deployed', 'stale']);
@@ -499,7 +505,7 @@ export function exportGap({ listed: judged = false, manifest = null, tree = null
  * width (delivery.gate.passByWidth[w] === false: any recorded width's failure counts, whichever width came last).
  * `headerErrors` is left out when `header` already names the undecided errors (`header_parity:<n>: …`).
  */
-export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], caseCollisions = [], pendingBlocks = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
+export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive = null, header = null, headerErrors = null, overridden = null, sidecars = null, units = [], ledger = null, exported = null, blocksUnjudged = 0, excluded = [], caseCollisions = [], pendingBlocks = [], plannedUndelivered = [], planGaps = [], headerAgent = null, zeroConfidence = null, zeroConfidenceThreshold = ZERO_CONFIDENCE_INFO_THRESHOLD, lowConfidence = null, nullSelectorSections = null, judgementToFill = null, schemaErrors = [], plannedExcluded = [], encodeUnrecorded = null, singleUseVariants = null, skipped = [] }) {
   const gaps = [];
   const unfinished = pages.filter((p) => UNFINISHED.has(statusOf(p)));
   if (unfinished.length) gaps.push(`pages_unfinished:${unfinished.length}`);
@@ -536,6 +542,12 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
   // planned URLs that never became a page (manifest excluded[]): informational, never a gap
   const failing = (Array.isArray(schemaErrors) ? schemaErrors : []).filter((s) => s && typeof s.file === 'string' && Array.isArray(s.errors) && s.errors.length);
   const planned = (Array.isArray(plannedExcluded) ? plannedExcluded : []).filter((e) => e && typeof e.url === 'string');
+  // planned URLs (state.json pages[] / excluded[], the crawl's failures) with neither a pages[] row nor an excluded[]
+  // row: the plan count differs from pages + excluded — inventory.mjs writes them to excluded[] on its next run
+  const unaccounted = (Array.isArray(planGaps) ? planGaps : []).filter((e) => e && typeof e === 'object' && (typeof e.url === 'string' || typeof e.path === 'string'));
+  // module rows planned by a sidecar, shown by no document and still pending: named with the pending ones (one count)
+  const undelivered = (Array.isArray(plannedUndelivered) ? plannedUndelivered : []).filter((n) => typeof n === 'string' && n && !pendingBlocks.includes(n));
+  const pendingAll = [...pendingBlocks, ...undelivered];
   const info = [
     ...(zeroConfidence != null && zeroConfidence > zeroConfidenceThreshold ? [`export_quality:zero_confidence:${zeroConfidence}`] : []),
     ...(lowConfidence != null && lowConfidence > 0 ? [`export_quality:low_confidence:${lowConfidence}`] : []),
@@ -546,9 +558,10 @@ export function doneGaps({ pages = [], findings = [], ledgerLines = [], notLive 
     ...failing.map((s) => `export_quality:schema:${s.file}:${s.errors.length}: ${s.errors.slice(0, SCHEMA_ERRORS_SHOWN).join('; ')}${s.errors.length > SCHEMA_ERRORS_SHOWN ? `, … (+${s.errors.length - SCHEMA_ERRORS_SHOWN})` : ''}`),
     ...(planned.length ? [`export_quality:excluded:${planned.length}: ${listed(planned.map((e) => `${e.url} (${typeof e.reason === 'string' && e.reason ? e.reason : 'unrecorded'})`))}`] : []),
     ...(out.length ? [`pages_excluded:${out.length}: ${listed(out.map((e) => e.path || `/${e.slug}`))}`] : []),
+    ...(unaccounted.length ? [`plan_vs_pages:${unaccounted.length}: ${listed(unaccounted.map((e) => e.url || e.path))} — planned URL(s) with neither a pages[] row nor an excluded[] row: re-run inventory.mjs (it writes them to excluded[]), or state.mjs exclude <slug> --reason "<why>"`] : []),
     ...(synthesized.length ? [`synthesized_pages:${synthesized.length}: ${listed(synthesized.map(pathOf))}`] : []),
     ...(collisions.length ? [`pages_case_collisions:${collisions.length}: ${listed(collisions.map((c) => `${c.path || `/${c.slug}`} (${c.file} ↔ ${c.alternate})`))}`] : []),
-    ...(pendingBlocks.length ? [`blocks_pending:${pendingBlocks.length}: ${listed(pendingBlocks)} — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered`] : []),
+    ...(pendingAll.length ? [`blocks_pending:${pendingAll.length}: ${listed(pendingAll)} — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered${undelivered.length ? `; planned by a sidecar and shown by no delivered document (0 instances: ${listed(undelivered)}): record update-coverage.mjs --block <id> --status not-delivered --reason "<why>"` : ''}`] : []),
     ...(headerAgent ? [headerAgent] : []),
   ];
   return { complete: gaps.length === 0, gaps, liveChecked: notLive !== null, skipped: [...(notLive === null ? [OFFLINE_SKIP] : []), ...skipped], info };
@@ -700,7 +713,8 @@ async function main() {
     ? { gaps: [], skipped: [`unit_unproven: ${progressFile} is not JSON`] }
     // a file holding JSON null exists: a record without a units map, never "no progress.json"
     : unitGaps({ progress: progressExists && progress === null ? {} : progress, unitPaths, pages, widths: WIDTHS, pathKey, out: OUT, excluded: pagesDoc.excluded });
-  const flow = (readJSON(arg('state', 'stardust/state.json'), {}) || {}).flow || null;
+  const stateDoc = readJSON(arg('state', 'stardust/state.json'), {}) || {};
+  const flow = stateDoc.flow || null;
   // seed-redirects.mjs routes the sources the sheet cannot match to redirects-cdn.tsv beside it: a line there counts
   const redirects = [textOf(REDIRECTS), textOf(join(dirname(REDIRECTS), 'redirects-cdn.tsv'))].join('\n');
   const sidecars = sidecarGap({ pages, widths: WIDTHS, schemaExists: (slug) => typeof slug === 'string' && slug !== '' && existsSync(join(SCHEMAS, `${slug}.json`)), redirects, judgeWidths: widthsJudged({ flow, pages }) });
@@ -730,6 +744,8 @@ async function main() {
     excluded: pagesDoc.excluded,
     caseCollisions: pagesDoc.caseCollisions,
     pendingBlocks: blocksDoc && pendingKnown ? wm.pendingBlocks(blocksDoc) : [],
+    plannedUndelivered: blocksDoc && wm && typeof wm.plannedUndelivered === 'function' ? wm.plannedUndelivered(blocksDoc) : [],
+    planGaps: unaccountedPlanned(plannedEntries({ state: stateDoc, crawlLog: readJSON(join(dirname(OUT), 'current', '_crawl-log.json')) }), pages, pagesDoc.excluded),
     headerAgent: headerDecidedByAgent(parity),
     zeroConfidence: exported.zeroConfidence,
     lowConfidence: exported.lowConfidence,
