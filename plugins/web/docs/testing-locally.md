@@ -1,64 +1,50 @@
-# Testing Skills Locally
+# Testing Locally
 
-This document explains how to test changes to web plugin skills in a Claude Code
-session before opening a PR.
+The web plugin's skills contain no scripts: every skill calls the `web` CLI in
+`plugins/web/cli`. Testing a change means running the CLI from the worktree and
+reading the SKILL.md it belongs to.
 
-## Setup
-
-Copy the skills you want to test into a project-scope `.claude/skills/` directory
-in your worktree. Claude Code loads project-scope skills before global ones, so
-your local copies take effect in any session started from that worktree.
+## Run the CLI from a worktree
 
 ```bash
 # From the worktree root
+node plugins/web/cli/dist/web.mjs --help
+node plugins/web/cli/dist/web.mjs page tree https://example.com --format text
+```
+
+`dist/web.mjs` is the committed bundle. To run the sources instead, use
+`node plugins/web/cli/bin/web.mjs …` (no rebuild needed).
+
+Requires Node 22+ and `playwright-cli` >= 0.1.20 on PATH
+(`npm install -g @playwright/cli@latest`).
+
+## Tests and build
+
+```bash
+cd plugins/web/cli
+npm test              # unit tests (node --test, fake driver)
+npm run test:smoke    # real browser; skipped when playwright-cli is absent
+npm run build         # rebuild dist/web.mjs and dist/lib.mjs
+npm run check:dist    # fails when a dist file is stale (also run in CI)
+```
+
+Commit `dist/` with any change under `cli/src/`.
+
+## Testing SKILL.md changes
+
+Skills resolve the CLI as `web` on PATH, then `<skill-dir>/../../cli/dist/web.mjs`
+(plugin layout). To try an edited skill in a Claude Code session, copy it into the
+worktree's project-scope `.claude/skills/`; the plugin-relative CLI path no longer
+resolves there, so set `WEB='node plugins/web/cli/dist/web.mjs'` when following it.
+
+```bash
 mkdir -p .claude/skills
-
-for skill in plugins/web/skills/*/; do
-  cp -r "$skill" ".claude/skills/$(basename $skill)"
-done
+cp -r plugins/web/skills/page-tree .claude/skills/page-tree
 ```
 
-Use copies, not symlinks. Symlinks to directories cause a path mismatch in
-`isMain` guards that use `import.meta.url` — the guard sees the real path but
-`process.argv[1]` has the symlink path, so the script's `main()` never runs.
+Project-scope skills do not override a globally installed skill of the same name;
+edit the global copy or follow the project-local `SKILL.md` by hand. Changes to
+`.claude/skills/` are picked up on the next session. The directory is untracked:
+edit `plugins/web/skills/` and re-copy, so there is nothing to sync back.
 
-## Precedence Limitation
-
-Project-scope skills only override globally installed skills for skill names that
-**do not already exist globally**. If a user has `cdp-connect` installed globally,
-your project-scope copy of `cdp-connect` will be ignored — the global version wins.
-
-This means:
-- **New skills** (e.g. `browser-probe`, `page-tree`, `page-reduce`) — project-scope
-  works correctly; invoke them with the `Skill` tool as normal.
-- **Updated existing skills** — the global version loads. To test changes, either
-  update the global install directly (`~/.claude/skills/<name>/`) or read and
-  follow the project-local `SKILL.md` manually, pointing scripts at the local path.
-
-## Syncing Edits Back
-
-The `.claude/skills/` directory is untracked (add it to `.gitignore` if needed).
-Edits you make to test a fix must be **manually synced back** to `plugins/web/skills/`
-before committing — the repo tracks the plugin source, not the test copies.
-
-```bash
-# After editing .claude/skills/<name>/scripts/foo.js
-cp .claude/skills/<name>/scripts/foo.js plugins/web/skills/<name>/scripts/foo.js
-git add plugins/web/skills/<name>/scripts/foo.js
-```
-
-## Starting a Test Session
-
-Start Claude Code from the worktree root. The project-scope skills load at
-session start — changes to `.claude/skills/` after session start are not picked up
-until the next session.
-
-```bash
-cd <worktree-root>
-claude
-```
-
-Invoke skills via the `Skill` tool as you normally would. The base directory
-printed at skill load time confirms which copy loaded:
-- `Base directory: /path/to/worktree/.claude/skills/<name>` → project-scope copy
-- `Base directory: /Users/<you>/.claude/skills/<name>` → global install
+Validate frontmatter before opening a PR: `npm run validate` at the repo root.

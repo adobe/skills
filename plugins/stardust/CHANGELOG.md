@@ -1553,6 +1553,86 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
   names the keys.
 
+## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
+
+Field learning (a Magento marketplace replica): the source home slider is PageBuilder, and each of its three slides
+carries its own overlay rule (`padding: 200px 10px 10px 50px`, `… 750px`, `190px 10px 0 35px; background-size: auto`).
+The block ported that per-slide style as an authored config cell — `padding: …; size: auto`, documented in the JSDoc,
+tagged `@ew-exempt config`, copied into `overlay.style.padding` by `decorate()`. Two gates blessed it: the editability
+probe counted the three cells exempt ("24/27 editable, 3 exempt (config)" in the conversion log) and D15's lint knew
+only a full `prop: value; }` rule. The author saw CSS as body text in DA. Nothing in the skill said how a per-instance
+visual difference is encoded — only that it must not be flattened — and a page-builder source hands the agent a
+ready-made per-instance style field to port.
+
+- **deploy ENCODE contract:** new rule — per-instance visual variation is a NAMED VARIANT: every #90 fingerprint
+  cluster becomes one plain word from a closed set of ≤3–4 (`left | right`, `dark | light`) in a dedicated cell on
+  every row (or a block variant class); `decorate()` maps the word to a class, the block CSS carries each variant's
+  exact source values, an empty/unknown word falls back to the declared default. That keeps fidelity (each slide looks
+  as it did) AND authoring flexibility (an author can pick a side) — normalising clusters into one treatment is the
+  exception, for sub-16 px deltas or when the set would exceed the D6/D9 budget, logged in the inconsistency register.
+  Never a declaration, length, colour, class name or `--token: value` in a cell, and never `el.style.x = text` /
+  `setProperty(…, text)` / `setAttribute('style', text)` from authored content in block JS. D15 names the
+  bare-declaration form; EW5's "variant selectors" are keywords; anti-pattern 20; Step-8 JSDoc scaffold; checklist row.
+- **`@variants <cell>: a | b (default a)` JSDoc tag:** declares a variant cell's vocabulary. `parseExemptTags()` returns
+  it; with a vocabulary declared, `aggregate()` reports an exempt ONE-WORD cell outside the set dead ("not a declared
+  variant word") — a misspelled `rigth` would otherwise fall back silently in the block.
+- **`davids-model-lint.mjs`:** D15 gains a per-cell and per-paragraph check — text that IS a CSS declaration
+  (every value token CSS-shaped: lengths, numbers, colours, functions, keywords) or a custom-property assignment is
+  🔴; a cell that is only CSS lengths or a lone hex colour is 🟡 (a data table may legitimately hold them).
+  Key-value blocks (`metadata`, `section-metadata`, `library-metadata`) are exempt — configuration may hold a
+  colour. Calibrated on 38k generated pages: zero 🔴 false positives ("color: text-only teaser boxes, 6-up grid"
+  and decades like "1970s" were the two that had to be excluded), 204 hex-colour advisories on one site that had
+  authored a brand colour per tile — the pattern this release names. The classifier lives in `css-as-text.mjs`.
+- **`ew-editability-probe.mjs` (and `block-roundtrip --ew`, qa `editability`):** an `@ew-exempt` tag no longer covers a
+  cell whose text is CSS — `aggregate()` reports it dead with a #134 label, so the round-trip gate fails on the
+  recorded case instead of listing it under "exempt (config)". Tests: `deploy/davids-model-lint`,
+  `deploy/ew-editability-probe` (new).
+
+## 0.34.0 — widgets: code-driven UI with no authored content ships as an EDS widget, not a block with empty rows (#133)
+
+Platform change: the boilerplate gained widgets (`adobe/aem-boilerplate` #630, `aem.live/docs/widgets`) — a
+self-contained unit at `widgets/<path>/<name>.html|.css|.js` (+ optional `.json`) that an author mounts with one link
+(`/widgets/<path>/<name>.html?<params>`; params become `data-*` on the root), loaded by the stock `blocks/widget/` and
+`buildWidgetAutoBlocks()`. Every skill modelled reusable UI as block, default content, chrome or module, and told the
+agent to build a search box, calculator or copy-free form as "one self-contained interactive block" with key-value
+config rows — the empty-placeholder block the platform now calls a widget. Four gates would have flagged a correct
+widget: rollout's `.html` link rule, deploy's round-trip harness (heading and CTA MISSING), qa's `unblocked-page`
+on a widget-only page, and the editability probe (dead text). The term "widget" also meant "bespoke content block"
+(a countdown) in deploy — a clash with the platform term.
+
+One rule, stated once per skill: **widget when the section carries no authored content — configuration only, or
+everything arrives from code, index, API or user input; block when authors fill rows.** `widget` joins the reserved
+block names; a widget's file stem obeys the same `-wrapper`/`-container` guard.
+
+- **Vocabulary** (`stardust/reference/data-attributes.md`): `data-widget="<path>/<name>"` beside `data-module`; the
+  mount is a link alone in its paragraph, never `data-placeholder`. `DESIGN.json.extensions.widgets[] {id, path,
+  params}`; `_meta.json.widgets[] {id, href}` derived by `migrate.mjs` from `a[data-widget]`, whose hrefs
+  `rewriteLinks` now leaves verbatim.
+- **deploy:** Step 2 triage is three-way (default content / block / widget); #17 and #28 bound the interactive-block
+  rule to sections that keep authored rows; `scripts.js` hooks name `buildWidgetAutoBlocks()` and `blocks/widget/` as
+  stock (ported verbatim on a pre-2026-06 clone); the fixed-asset grep scans `widgets/`; the bespoke-block sense of
+  "widget" is renamed. `block-roundtrip.mjs` lists a `/widgets/` link as `widget:<name>`, drops it before the role
+  inventory and never inlines `blocks/<name>/`; `ai-readability.md` explains the default `--exclude-blocks
+  client-app,widget` (the words come from code by design; `strict` still counts them).
+- **dynamics:** triage gains a fifth column, **target** (`block · widget · runtime · content · embed`);
+  `dynamics-plan.mjs` emits it — widget for client-compute tools, the site-search box, form-less control groups,
+  locators and kept chrome search/cart/account. A form with authored intro or success copy stays a block.
+- **spec:** `kind` gains `widget` on both sides; one `CODED` set in `lib.mjs` replaces the kind lists in `spec-knowledge`,
+  `spec-variants` and `spec-pick`, so a widget is counted, variant-signed and capture-picked like any coded block;
+  `search` is the starter widget (`verdict: new`); `search`, `map`, `location-selector`, `chart` and copy-free `form`
+  families default to widget.
+- **direct --prep / migrate / replica:** a fourth prep action "mark as widget"; a widget instance renders as the
+  mount link, so the placeholder gate does not fire; replica keeps "widgets are implemented, not justified away" and
+  names the EDS delivery form.
+- **rollout:** ledger `kind` gains `widget` (`blockPath` = the code path, no document rows), pages schema gains
+  `widgets[]`, content-pending siblings inherit them, `plan.mjs` walks them; `delivery-lint.mjs` exempts
+  `/widgets/…html` from `html-extension` and adds P1 `unknown-widget` (code file missing) and `widget-name`
+  (reserved stem).
+- **qa:** a `/widgets/` link counts as a block named by its file stem for `missing-template-blocks` and
+  `unblocked-page`; new `unknown-widget` (HEAD on the code path ≠ 200); the shared editability probe keys the authored mount
+  (`<p>` holding only the `/widgets/` link) as `widget` and exempts it for both the deploy and qa callers. Tests: `deploy/block-roundtrip`, `qa/widgets` (new), `dynamics-plan`, `migrate`,
+  `spec-knowledge`, `rules`, `inventory`, `delivery-lint` extended.
+
 ## 0.33.0 — martech: the source's Web SDK is read and offered as an `aem-martech` switch, off
 
 Field learning: a full run on a consumer-brand site on Launch + Web SDK carried the tag stack over, but

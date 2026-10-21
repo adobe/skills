@@ -9,6 +9,7 @@ Run the copies in `stardust/scripts/<skill>/`. Ask `--help` only for a flag not 
 - `deploy/chrome-map.mjs` — chrome map — `[--dry-run]`
 - `deploy/content-count.mjs` — L5 count — `--capture <f> --doc <f> [--map <f>] [--project .]`
 - `deploy/content-inventory.mjs` — library, no CLI
+- `deploy/css-as-text.mjs` — library (CSS-as-content test), no CLI
 - `deploy/da-media-upload.mjs` — images → DA — `--org --repo --scope <s> --dir|--manifest [--token-env|--token-file]`; exit 3 = token halt
 - `deploy/davids-model-lint.mjs` — model lint — `content/|<p>.html`
 - `deploy/deploy-batch.mjs` — PUT→preview→live — `--org --repo --branch --content content [--no-publish] [--token-env|--token-file]`; exit 1 = failed pages, 3 = token halt

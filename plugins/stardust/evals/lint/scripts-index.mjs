@@ -18,7 +18,7 @@ import { join, relative } from 'node:path';
 
 const ROOT = join(import.meta.dirname, '..', '..', 'skills');
 const INDEX = join(ROOT, 'stardust', 'reference', 'scripts-index.md');
-const MAX_BYTES = 20 * 1024 + 96; // LOCAL run-17: the four-branch union of new rows exceeds the historic 20 KiB cap after trimming the new rows (flags kept in --help); raised the minimum needed — maintainer question: keep the terse rows or relocate a row upstream
+const MAX_BYTES = 20 * 1024 + 142; // LOCAL run-17: the four-branch union of new rows exceeds the historic 20 KiB cap after trimming the new rows (flags kept in --help); raised the minimum needed — maintainer question: keep the terse rows or relocate a row upstream. +46 at the landing merge: upstream's `deploy/css-as-text.mjs` row (the 12 KiB short-form index lands above this level)
 const LINE = /^- `([a-z][a-z0-9-]*\/[A-Za-z0-9_.-]+\.(?:mjs|js|sh))` — \S/;
 
 const scripts = new Set();
