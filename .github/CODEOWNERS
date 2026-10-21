@@ -56,5 +56,8 @@
 /plugins/commerce/app-migration/                       @adobe/commerce-decepticons
 /plugins/commerce/app-review/                          @adobe/commerce-decepticons @adobe/commerce-mercury
 
+# Adobe Developer Platform Connector (promoted from adobe-developer-platform/platform-internals-adp-connector)
+/plugins/adp-connector/                                @stanwar_adobe @vinshett_adobe @asachdeva_adobe 
+
 # Adobe Workfront (Planning solution architecture, Fusion optimizer)
 /plugins/workfront                                     @ashot3232

@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^(?:mcp__.*[Aa][Dd][Pp].*[Cc][Oo][Nn][Nn][Ee][Cc][Tt][Oo][Rr].*__|[Aa][Dd][Pp]-[Cc][Oo][Nn][Nn][Ee][Cc][Tt][Oo][Rr]-)(delete_credential|delete_event_registration|delete_project|delete_subscriber_filter|delete_workspace|unsubscribe_credential_from_service)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh \"${CLAUDE_PLUGIN_ROOT}/hooks/requireApproval.sh\" || exit 0",
+            "windows": "powershell -NoProfile -ExecutionPolicy Bypass -File \"${CLAUDE_PLUGIN_ROOT}/hooks/requireApproval.ps1\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}
