@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s59-export-bookkeeping) — export truth: a hand-authored page keeps its source URL, a planned URL that never became a page is an excluded row, a planned block never delivered has an exit, an orphaned encode record is found (#182)
+
+Four export-truth defects from a recorded hands-off run, each fixed where the row is written or read. (1)
+`update-coverage.mjs --new` keeps `source.sourceUrl` for a slug or path the roster (`stardust/state.json`, or a prior
+roster row — now updated, not refused as captured) knows, and retires the page's `excluded[]` row: nine planned pages
+re-created by hand were exported as synthesized rows (`unique:<slug>`, no URL) and a client keyed on source URLs
+skipped every one; `synthesized_pages` now counts only pages with no source at all. (2) `inventory.mjs` derives
+`excluded[]` from the plan minus the pages — `state.json` pages and `excluded[]`, the crawl's failures — with the
+reason on record (`crawl: HTTP 404`), else `captured, not migrated` / `not captured`; `done-check.mjs` prints
+`plan_vs_pages:<n>` for planned URLs with neither a row nor an exclusion (lib.mjs `plannedEntries`,
+`unaccountedPlanned`): the tenth planned URL of that run lived in prose only. (3) `done-check.mjs` `blocks_pending`
+names every pending module row, the 0-instance planned ones (workspace-manifest.mjs `plannedUndelivered`) with the
+exit `update-coverage.mjs --block <id> --status not-delivered --reason "<why>"`; `blocks.mjs` prints an `Undelivered`
+hint for a planned block with neither code nor an instance once its planning pages are verified — a hint, not a
+derived `not-delivered`: that status is the owner's decision with a reason the schema requires, and deriving it would
+settle a row the check should keep naming. (4) `workspace-manifest.mjs encodeRecordOf` falls back to the record a
+re-type orphaned (`<old-id>.json` whose `template` or `pages[]` names one of the template's pages) and the manifest's
+`byTemplate[].encode` carries `recordedAs: <old-id>` (schema: optional); `encode_unrecorded` follows. Read side only —
+`encode-attempt.mjs` is untouched. Tests in the five rollout test files; no version bump.
+
 ## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
 
 The scripts index (`stardust/reference/scripts-index.md`) had grown to 20,551 bytes — 132 rows averaging 119 bytes

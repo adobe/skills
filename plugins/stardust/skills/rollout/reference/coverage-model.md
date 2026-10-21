@@ -88,6 +88,9 @@ On every `inventory.mjs` run:
 
 ## Rows added outside the migrated tree (`update-coverage.mjs --new`)
 
+A slug or path the roster (`stardust/state.json`) knows keeps its `source.sourceUrl`: a hand-authored planned page is
+a real page, not a synthesized one; only a page no roster names is synthesized.
+
 A page built during delivery rather than captured — a search results page from
 the dynamics phase, a landing page for a redirect — has no migrated HTML and no
 sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
@@ -129,7 +132,9 @@ sidecar, so `inventory.mjs` never rows it and it stays outside `verify.mjs
 - **deployed / verified** — live on the delivered site.
 - **not-delivered** — deliberately left undelivered, from any status (a block under
   `blocks/` no page uses, a module the site drops): `update-coverage.mjs --block <name>
-  --status not-delivered --reason "<text>"`. The reason is required and kept as
+  --status not-delivered --reason "<text>"`. A planned module no delivered document shows while it reads
+  `pending` (0 instances) is named by `done-check.mjs` under `blocks_pending` with this exit, and `blocks.mjs` prints
+  an `Undelivered` hint for it once every page planning it is verified. The reason is required and kept as
   `delivery.reason` (any other status deletes it); counted apart, never pending.
 - **default-content mapping** — `edsBlockName: "default-content"` records a module that
   maps to EDS default content and needs no block; every roll-up counts it as converted
