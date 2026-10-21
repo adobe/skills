@@ -126,9 +126,10 @@
  *   archetype's capture HTML (<current>/pages/<archetype>.html) must exist and slot-map.mjs deriveRecipes must locate
  *   ≥ 1 slot in it. Not derivable: `no slot in <proto>'s <main>`, `the archetype capture <path> is absent`, `none of
  *   <proto>'s <n> slot(s) is found in <capture>`. Encoder first: a template
- *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record unless it derives (the
- *   record then says source derived and the fork builds the siblings) — its stderr line
- *   is encode-attempt.mjs's refusal plus `; no slot map derives either (<cause>) — <the one command>` (the extract
+ *   with ≥ 2 siblings (the state's, plus this set's) and no map is refused a not-attempted record — with or without a
+ *   derived slot map (a derivation serves one sibling's fork; below two siblings it records source derived); the
+ *   stderr line is encode-attempt.mjs's refusal plus `; a derived slot map (<n> slot(s)) serves one sibling's fork,
+ *   not <n> siblings — the map is due`, or `; no slot map derives either (<cause>) — <the one command>` (the extract
  *   crawl.mjs run that captures the archetype, or the edit then `run: …/migrate.mjs plan <slugs>`), nothing is
  *   written (an earlier automatic record goes), and after the per-template
  *   lines one stdout line names them all: `maps due: <k> template(s) — <t> (<n> siblings), … — draft each map in

@@ -4,6 +4,64 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.x (stardust/s58-encoder-gate) — a derived slot map is not the encoder's map: `plan` names `maps due` on a two-sibling template, the no-map refusal names the map's author (#181)
+
+A recorded hands-off run never engaged the sibling encoder on any site (`encoderMap 0` in every export), although
+every decision sentence that chooses encoder over clone over hand-authoring was in place. The map the encoder needs,
+`stardust/import/<template>/vocabulary.json`, is authored by the C-archetype subagent — no instrument writes it — and
+the only mechanical gate that asked for it, `encode-attempt.mjs record`, named `migrate.mjs plan` as the fix for a
+missing map; `plan` derives the SLOT map, never the vocabulary, and as soon as one derived it recorded the template
+`not-attempted · source derived` and let it through, so the `maps due` refusal the migrate card promises could not
+fire. The skill texts used "map" for both artefacts, the scripts index no longer named `plan`'s `maps due` role, and
+the only example of a map in the plugin was a test fixture. Every cluster took the A′ fork or a hand-written
+generator.
+
+- **`encode-attempt.mjs`: a derived slot map satisfies the encoder-first gate only below two siblings** — a template
+  with two or more siblings and no map is refused (`AttemptRefusal`), with or without a derivation, so `migrate.mjs
+  plan` prints `maps due: …`, records nothing and exits 2 exactly as the card says; one sibling keeps today's
+  behaviour (`not-attempted · source derived`, the fork serves it); a `--reason "re-typed|no-repeatable-structure:
+  …"` or `--hand-authored --reason` records as before; with the map present the encoder runs (the roundtrip path)
+  and a derivation rides on its verdict. The automatic-record cleanup and the refusal's shape are kept; a refusal
+  that had a derivation says so (`; a derived slot map (<n> slot(s)) serves one sibling's fork, not <n> siblings —
+  the map is due`).
+- **The no-map fix names the map's author, never `plan`**: `author the map stardust/import/<t>/vocabulary.json from
+  the gated archetype's delivered document and its capture (no instrument writes it: migrate/reference/importer-recipe.md
+  § Encoder contract; shape: migrate/reference/vocabulary.example.json), then record again` — the `--not-attempted`
+  vocabulary guard and the `--help` header say the same; `migrate.mjs plan` is a slot-map derivation and an
+  attempt recorder, not a drafting command, anywhere the script speaks.
+- **Texts — "map" is the vocabulary, `plan` derives the slot map**: the handoff contract's row 2 and the migrate
+  card's § "Derived slot map, then fork" say "slot map" wherever `plan`'s derivation is meant and name the
+  two-sibling `maps due` refusal; row C's C-archetype sentence adds that the map is authored by this subagent from
+  the delivered document and the capture — no instrument writes it; the brief must say so. Every other sentence is
+  unchanged.
+- **Scripts index**: `migrate/migrate.mjs` names `plan`'s role (`plan` records encode attempts and names `maps
+  due`); `migrate/encode-attempt.mjs` names the refusal; the file stays under the 12 KiB cap.
+- **`migrate/reference/vocabulary.example.json`** — a minimal valid map beside the schema (generic selectors, the
+  emitter kinds, a rows marker, a variant, a drop), the shape the refusal and importer-recipe § Encoder contract
+  point at; `encode-attempt.test.mjs` loads it through `encode.mjs`'s `loadMap` and the engine's validator so it
+  cannot rot.
+- **`migrate.mjs --help`** states the gate as shipped: a ≥ 2-sibling template without a map is refused a not-attempted
+  record with or without a derived slot map (a derivation serves one sibling's fork; below two siblings it records
+  `source derived`), and names both stderr suffixes.
+- **The lead meets a missing map before cluster fan-out** (texts): the contract's row C C-archetype chain ends in
+  `encode-attempt.mjs record --template <t>` (encoded / no-roundtrip with the map; a `--reason` only with the
+  delivered document in hand — this unit's decision, never a cluster's) before `unit done`; § 5's C-deliver unit list
+  names the `archetype-<t>` unit's mechanical check, `encode-attempt.mjs check --template <t>` — exit 2 keeps the unit
+  running (`progress.mjs unit start archetype-<t> --again`) and a cluster unit is never spawned on a template without
+  a record; replica's Phase 5 C-archetype sentence says the same; row 2 and importer-recipe § Encoder contract say
+  which template takes the A′ clone without a map: below two siblings, or with a recorded reason.
+- **Whole-template `--hand-authored` needs a tagged reason**: on the CLI, `--hand-authored` on a template with ≥ 2
+  siblings and no `--pages` subset (no `--pages`, or `--pages` naming every sibling) is refused — exit 2, nothing
+  written — unless the reason begins with `re-typed:` or `no-repeatable-structure:`, exactly `--reason`'s rule; a
+  `--pages` subset (the `major` variance page) and a one-sibling template keep a free-text reason; the refusal names
+  both ways out and the map that is otherwise due. A recorded hands-off run's clusters had recorded "the siblings are
+  authored by hand per the brief" on nine-sibling templates.
+- Tests: two siblings + derivable + no map → refused, `maps due`, exit 2, nothing recorded, render still closed; one
+  sibling → `source derived` recorded; two siblings + `--reason "re-typed: …"` → recorded and kept by `plan`; map
+  present → the encoder runs, `no-roundtrip · source derived`, the fork tests continue from that record; the example
+  map; whole-template `--hand-authored` with free text refused (with and without `--pages` naming every sibling), a
+  `--pages` subset, a one-sibling template and a tagged reason recorded, the library default kept. No version bump.
+
 ## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
 
 The scripts index (`stardust/reference/scripts-index.md`) had grown to 20,551 bytes — 132 rows averaging 119 bytes

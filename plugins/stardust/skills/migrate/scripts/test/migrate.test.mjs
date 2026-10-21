@@ -1147,14 +1147,53 @@ const ferryCap = (slug, title, extra = {}) => write(`stardust/current/pages/${sl
 ferryCap('ferries', 'Ferries'); ferryCap('ferry-north', 'North ferries'); ferryCap('ferry-south', 'South ferries');
 for (const s of ['ferries', 'ferry-north', 'ferry-south']) write(`stardust/current/pages/${s}.html`, dfx(`${s}.html`));
 const FERRY_SLOTS = ['body-p', 'hero-h1', 'hero-img', 'hero-p'];
-check('plan derives the slot map of a template without a map (a markerless prototype, siblings without slots, the archetype captured): no maps due, exit 0, the record says source derived', () => {
-  const r = run(['plan', 'ferry-north', 'ferry-south']); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+const FERRY_DERIVE = { prototype: 'stardust/prototypes/ferries-proposed.html', markers: 'derived', slots: FERRY_SLOTS, located: 4, total: 4, capture: 'stardust/current/pages/ferries.html' };
+check('two siblings, a derivable prototype and no map: plan is refused — maps due, exit 2, nothing recorded; the refusal names the author of the map (never plan) and the derived slot map as one sibling\'s fork; render keeps its A′ path closed', () => {
+  const r = run(['plan', 'ferry-north', 'ferry-south']); assert.equal(r.status, 2, r.out);
+  assert.match(r.err, /^encode-attempt ferries: refused not-attempted — 2 sibling\(s\) \(ferry-north, ferry-south\) and no map at stardust\/import\/ferries\/vocabulary\.json: author the map stardust\/import\/ferries\/vocabulary\.json from the gated archetype's delivered document and its capture \(no instrument writes it: migrate\/reference\/importer-recipe\.md § Encoder contract; shape: migrate\/reference\/vocabulary\.example\.json\), then record again — or a recorded refusal reason: --reason "re-typed\|no-repeatable-structure: <why the encoder cannot serve this template>"; a derived slot map \(4 slot\(s\)\) serves one sibling's fork, not 2 siblings — the map is due$/m);
+  assert.doesNotMatch(r.err, /migrate\.mjs plan/, 'plan derives the slot map; it is not a drafting command');
+  assert.deepEqual(r.out.trim().split('\n').slice(-2), [
+    'maps due: 1 template(s) — ferries (2 siblings) — draft each map in the C-archetype unit (stardust/import/<template>/vocabulary.json; migrate SKILL.md § Encoder first), or record why not: node stardust/scripts/migrate/encode-attempt.mjs record --template <template> --reason "<why>"',
+    'encode: 0 encoded · 0 A′ (0 no-roundtrip, 0 not-attempted, 0 hand-authored) · 1 without a record',
+  ]);
+  assert.ok(!has(ENC('ferries')), 'nothing recorded');
+  const rr = run(['render', 'ferry-south']); assert.equal(rr.status, 2); assert.match(rr.err, /^refused ferry-south: strict encode-attempt — /m);
+  assert.equal(read(`${P}/ferries-proposed.html`), dfx('ferries-proposed.html'), 'the prototype is never written');
+});
+check('one sibling, a derivable prototype and no map: plan records not-attempted with source derived, no maps due, exit 0 (unchanged — the fork serves the one sibling)', () => {
+  const keep = read(STATE); const s = json(STATE); s.pages.push(page('piers', '/piers/', 'approved', 'pier'), page('pier-one', '/piers/one/', 'directed', 'pier')); write(STATE, `${JSON.stringify(s, null, 2)}\n`);
+  write(`${P}/piers-proposed.html`, dfx('ferries-proposed.html')); write('stardust/current/pages/piers.html', dfx('ferries.html'));
+  for (const [slug, title] of [['piers', 'Piers'], ['pier-one', 'Pier one']]) write(`stardust/current/pages/${slug}.json`, JSON.stringify({ url: `https://example.test/${slug === 'piers' ? 'piers' : 'piers/one'}/`, title, metaDescription: `${title}.`, _provenance: { unsourcedContent: [] } }));
+  try {
+    const r = run(['plan', 'pier-one']); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+    assert.doesNotMatch(r.out, /^maps due/m);
+    assert.match(r.out, /^encode-attempt piers: not-attempted — no map at stardust\/import\/piers\/vocabulary\.json — the encoder needs the template's map · source derived: the slot map derives from stardust\/prototypes\/piers-proposed\.html \(4 derived slot\(s\); 4\/4 located in stardust\/current\/pages\/piers\.html\)$/m);
+    assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
+    const rec = json(ENC('piers')); assert.equal(rec.source, 'derived'); assert.equal(rec.siblings, 1); assert.equal(rec.forked, null);
+    assert.deepEqual(rec.derive, { ...FERRY_DERIVE, prototype: 'stardust/prototypes/piers-proposed.html', capture: 'stardust/current/pages/piers.html' });
+  } finally { write(STATE, keep); rmSync(join(tmp, ENC('piers')), { force: true }); }
+});
+check('two siblings and a recorded refusal reason: encode-attempt.mjs record --reason "re-typed: …" records (source not-attempted, an owner decision); plan keeps the reasoned record, no maps due', () => {
+  const r = spawnSync(process.execPath, [join(dirname(SCRIPT), 'encode-attempt.mjs'), 'record', '--template', 'ferries', '--root', tmp, '--reason', 're-typed: both crossing pages were re-typed into the timetable template'], { cwd: tmp, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(r.stdout, "encode-attempt ferries: not-attempted — re-typed: both crossing pages were re-typed into the timetable template (no map at stardust/import/ferries/vocabulary.json — the encoder needs the template's map)\n");
+  assert.equal(json(ENC('ferries')).source, 'not-attempted'); assert.equal(json(ENC('ferries')).sourceReason, 'an owner decision');
+  const p = run(['plan', 'ferry-north', 'ferry-south']); assert.equal(p.status, 0, p.err);
+  assert.doesNotMatch(p.out, /^maps due/m); assert.match(p.out, /^encode-attempt ferries: not-attempted — re-typed: both crossing pages were re-typed into the timetable template \(.*\(kept from /m);
+  assert.equal(p.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
+  rmSync(join(tmp, ENC('ferries')));
+});
+check('with the map present plan runs the encoder (the roundtrip path): no refusal, no maps due; a map that does not round-trip yet leaves the template on A′ with the derived slot map on record', () => {
+  write('stardust/import/ferries/vocabulary.json', '{}\n');
+  const before = encRuns().length;
+  const r = run(['plan', 'ferry-north', 'ferry-south', '--encoder', 'fake-encode.mjs']); assert.equal(r.status, 0, r.err); assert.equal(r.err, '');
+  assert.deepEqual(encRuns().slice(before), ['--roundtrip ferries', '--lint ferries']);
   assert.doesNotMatch(r.out, /^maps due/m);
-  assert.match(r.out, /^encode-attempt ferries: not-attempted — (no map at stardust\/import\/ferries\/vocabulary\.json — the encoder needs the template's map|encode\.mjs not found beside this script) · source derived: the slot map derives from stardust\/prototypes\/ferries-proposed\.html \(4 derived slot\(s\); 4\/4 located in stardust\/current\/pages\/ferries\.html\)$/m);
-  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (0 no-roundtrip, 1 not-attempted, 0 hand-authored)');
+  assert.match(r.out, /^encode-attempt ferries: no-roundtrip — roundtrip ferries at text: not equal \(2 differences\) — content\/ferries\.html · source derived: the slot map derives from stardust\/prototypes\/ferries-proposed\.html \(4 derived slot\(s\); 4\/4 located in stardust\/current\/pages\/ferries\.html\)$/m);
+  assert.equal(r.out.trim().split('\n').at(-1), 'encode: 0 encoded · 1 A′ (1 no-roundtrip, 0 not-attempted, 0 hand-authored)');
   const rec = json(ENC('ferries'));
-  assert.equal(rec.source, 'derived'); assert.equal(rec.forked, null);
-  assert.deepEqual(rec.derive, { prototype: 'stardust/prototypes/ferries-proposed.html', markers: 'derived', slots: FERRY_SLOTS, located: 4, total: 4, capture: 'stardust/current/pages/ferries.html' });
+  assert.equal(rec.verdict, 'no-roundtrip'); assert.equal(rec.source, 'derived'); assert.equal(rec.forked, null);
+  assert.deepEqual(rec.derive, FERRY_DERIVE);
   assert.equal(read(`${P}/ferries-proposed.html`), dfx('ferries-proposed.html'), 'the prototype is never written');
 });
 check('render <slug>: a fork whose capture JSON has no slots reads them from its capture HTML through the archetype\'s (slotSource derived), one run line per archetype', () => {

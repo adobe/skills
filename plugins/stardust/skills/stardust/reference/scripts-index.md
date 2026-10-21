@@ -54,9 +54,9 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `extract/media-harvest.mjs` — page media → `assets/media/` + `media-map.json`
 - `extract/style-census.mjs` — computed-style census (one live pass)
 - `extract/thumb.mjs` — whole-page thumbnails of the captured screenshots
-- `migrate/encode-attempt.mjs` — per-template sibling-encoder attempt record
+- `migrate/encode-attempt.mjs` — per-template sibling-encoder attempt record; refuses a ≥2-sibling template without its map
 - `migrate/encode.mjs` — sibling encoder: template map → encoded pages
-- `migrate/migrate.mjs` — render driver + sidecar; forks A′ from the archetype
+- `migrate/migrate.mjs` — render driver + sidecar; forks A′ from the archetype; `plan` records encode attempts and names `maps due`
 - `migrate/slot-map.mjs` — library (A′ slot values), no CLI
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist
 - `qa/lib.mjs` — library: shared helpers for qa.mjs + checks, no CLI

@@ -15,6 +15,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readAttempt, recordAttempt, recordFork, Refusal, requireEncodeAttempt, siblingsOf, summaryLine, UsageError } from '../encode-attempt.mjs';
+import { loadMap } from '../encode.mjs';
+import { validateVocabulary } from '../encode/engine.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'encode-attempt.mjs');
 const tmp = mkdtempSync(join(tmpdir(), 'encode-attempt-test-'));
@@ -31,6 +33,9 @@ const REC = (t) => `stardust/migrate/encode/${t}.json`;
 const MARKER = 'encoder-runs.log';
 const runs = () => (has(MARKER) ? read(MARKER).split('\n').filter(Boolean) : []);
 const CMD = 'node stardust/scripts/migrate/encode-attempt.mjs record --template';
+// The no-map fix: the map is authored, by the C-archetype subagent, from the gated archetype's delivered document and its capture — no instrument writes it.
+const AUTHOR = (t) => `author the map stardust/import/${t}/vocabulary.json from the gated archetype's delivered document and its capture (no instrument writes it: migrate/reference/importer-recipe.md § Encoder contract; shape: migrate/reference/vocabulary.example.json), then record again`;
+const OR_REASON = ' — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"';
 
 // ---- fixture: the project and a fake encoder ---------------------------------------------------
 const ROOT = join(tmp, 'project');
@@ -253,17 +258,18 @@ check('siblingsOf: representative links, else the directed pages of the template
 check('no map and ≥ 2 siblings → not-attempted refused: exit 2, nothing written, the line names the siblings, the C-archetype map and --reason', () => {
   const before = runs().length;
   const r = rec('guides'); assert.equal(r.status, 2); assert.equal(r.out, '');
-  assert.equal(r.err, 'encode-attempt guides: refused not-attempted — 3 sibling(s) (guide-a, guide-b, guide-c) and no map at stardust/import/guides/vocabulary.json: draft the map: `migrate.mjs plan guides` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"\n');
+  assert.equal(r.err, `encode-attempt guides: refused not-attempted — 3 sibling(s) (guide-a, guide-b, guide-c) and no map at stardust/import/guides/vocabulary.json: ${AUTHOR('guides')}${OR_REASON}\n`);
+  assert.doesNotMatch(r.err, /migrate\.mjs plan/, 'plan derives the slot map; it is not a drafting command');
   assert.ok(!has(P(REC('guides')))); assert.equal(runs().length, before);
   assert.throws(() => recordAttempt(ROOT, 'guides', { encoder: FAKE }), (e) => e instanceof Refusal && /^encode-attempt guides: refused not-attempted — 3 sibling\(s\)/.test(e.message));
 });
-check('--reason with a recorded refusal reason → not-attempted, the reason first and the cause in brackets; a single sibling is refused too (draft the map)', () => {
+check('--reason with a recorded refusal reason → not-attempted, the reason first and the cause in brackets; a single sibling is refused too (the map is due)', () => {
   const r = rec('guides', ['--reason', 'no-repeatable-structure: each guide is a one-off legal text']); assert.equal(r.status, 0, r.err);
   assert.equal(r.out, 'encode-attempt guides: not-attempted — no-repeatable-structure: each guide is a one-off legal text (no map at stardust/import/guides/vocabulary.json — the encoder needs the template\'s map)\n');
   assert.equal(json(P(REC('guides'))).verdict, 'not-attempted');
   // one sibling and no map is refused now — the map is due, not an automatic not-attempted record
   const one = rec('notes'); assert.equal(one.status, 2, one.out + one.err);
-  assert.equal(one.err, 'encode-attempt notes: refused not-attempted — 1 sibling(s) (note-a) and no map at stardust/import/notes/vocabulary.json: draft the map: `migrate.mjs plan notes` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"\n');
+  assert.equal(one.err, `encode-attempt notes: refused not-attempted — 1 sibling(s) (note-a) and no map at stardust/import/notes/vocabulary.json: ${AUTHOR('notes')}${OR_REASON}\n`);
   assert.ok(!has(P(REC('notes'))));
   rmSync(join(ROOT, REC('guides')));
 });
@@ -309,13 +315,29 @@ check('usage: --reason with --not-attempted (which carries its own), an empty --
   }
   assert.ok(!has(P(REC('guides'))));
 });
+check('whole-template --hand-authored on ≥ 2 siblings (no --pages, or --pages naming every sibling) needs a recorded refusal reason: free text → exit 2, nothing written; a --pages subset and a one-sibling template keep a free-text reason; the library keeps its default', () => {
+  const brief = 'the siblings are authored by hand per the cluster brief';
+  for (const extra of [[], ['--pages', 'guide-c,guide-a,guide-b']]) {
+    const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', brief, ...extra]);
+    assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`); assert.equal(r.out, '');
+    assert.equal(r.err, `encode-attempt guides: --hand-authored "${brief}" covers all 3 siblings (no --pages subset) — whole-template hand-authoring needs a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>" (encode-attempt --help), or name the exception page(s): --pages <slug,…>; otherwise the map is due: author stardust/import/guides/vocabulary.json (migrate/reference/importer-recipe.md § Encoder contract)\n`);
+    assert.ok(!has(P(REC('guides'))), 'nothing written');
+  }
+  const page = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'a new block: the legal table', '--pages', 'guide-b']); assert.equal(page.status, 0, page.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-b']); assert.equal(json(P(REC('guides'))).reason, 'a new block: the legal table'); rmSync(join(ROOT, REC('guides')));
+  const one = run(['record', '--template', 'notes', '--root', ROOT, '--hand-authored', '--reason', 'the one note page is written by hand']); assert.equal(one.status, 0, one.err);
+  assert.deepEqual(json(P(REC('notes'))).pages, ['note-a']); rmSync(join(ROOT, REC('notes')));
+  const tagged = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'RE-TYPED: the guides moved to the handbook templates']); assert.equal(tagged.status, 0, tagged.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-a', 'guide-b', 'guide-c']); rmSync(join(ROOT, REC('guides')));
+  assert.equal(recordAttempt(ROOT, 'guides', { handAuthored: true, reason: 'free text: the library does not enforce the vocabulary, the CLI does' }).verdict, 'hand-authored'); rmSync(join(ROOT, REC('guides')));
+});
 check('--hand-authored --reason: verdict hand-authored, nothing run, pages = the template\'s siblings, the earlier run\'s roundtrip and lint kept as evidence', () => {
   map('guides'); rec('guides'); const tried = json(P(REC('guides'))); assert.equal(tried.verdict, 'no-roundtrip');
   const before = runs().length;
-  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode-attempt guides: hand-authored — the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
+  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'no-repeatable-structure: the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: hand-authored — no-repeatable-structure: the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
   const j = json(P(REC('guides')));
-  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'the map cannot express the per-page legal tables');
+  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'no-repeatable-structure: the map cannot express the per-page legal tables');
   assert.deepEqual(j.pages, ['guide-a', 'guide-b', 'guide-c']); assert.deepEqual(j.roundtrip, tried.roundtrip); assert.deepEqual(j.lint, tried.lint);
   assert.equal(runs().length, before, 'nothing run');
   const some = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'two exception pages', '--pages', 'guide-c,guide-a']); assert.equal(some.status, 0, some.err);
@@ -369,8 +391,9 @@ check('summaryLine counts records; a missing record (null) is named, not counted
 console.log('source: derived / forked / not-attempted');
 const DP = join(tmp, 'derive'); const dput = (rel, data) => { const f = join(DP, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, `${JSON.stringify(data, null, 2)}\n`); };
 const djson = (t) => JSON.parse(readFileSync(join(DP, REC(t)), 'utf8'));
-dput('stardust/state.json', { pages: [pg('parks', 'approved', 'park'), pg('park-a', 'directed', 'park'), pg('park-b', 'directed', 'park'), pg('park-c', 'directed', 'park')] });
+dput('stardust/state.json', { pages: [pg('parks', 'approved', 'park'), pg('park-a', 'directed', 'park'), pg('park-b', 'directed', 'park'), pg('park-c', 'directed', 'park'), pg('piers', 'approved', 'pier'), pg('pier-a', 'directed', 'pier')] });
 const DERIV = { prototype: 'stardust/prototypes/parks-proposed.html', markers: 'derived', slots: ['hero-h1', 'hero-p'], located: 2, total: 2, capture: 'stardust/current/pages/parks.html' };
+const PIER_DERIV = { ...DERIV, prototype: 'stardust/prototypes/piers-proposed.html', capture: 'stardust/current/pages/piers.html' };
 check('every record says how the siblings get their slots — source not-attempted with the reason: the template encodes, an owner decision, hand-authored, no derivation on record', () => {
   const good = readAttempt(ROOT, 'good');
   assert.deepEqual([good.source, good.sourceReason, good.derive, good.forked], ['not-attempted', 'the template encodes', null, null]);
@@ -379,27 +402,48 @@ check('every record says how the siblings get their slots — source not-attempt
   assert.equal(recordAttempt(DP, 'solo', {}).sourceReason, 'no derivation on record — migrate.mjs plan derives the slot map');
   rmSync(join(DP, REC('owner'))); rmSync(join(DP, REC('solo')));
 });
-check('a derivation (plan) lets an automatic not-attempted through for ≥ 2 siblings: source derived, the derivation on record; without one the refusal adds the cause and its command', () => {
-  const r = recordAttempt(DP, 'parks', { derive: DERIV });
-  assert.equal(r.verdict, 'not-attempted'); assert.match(r.reason, /^no map at stardust\/import\/parks\/vocabulary\.json/);
-  assert.equal(r.source, 'derived'); assert.deepEqual(r.derive, DERIV); assert.equal(r.forked, null);
-  assert.equal(r.sourceReason, 'the slot map derives from stardust/prototypes/parks-proposed.html (2 derived slot(s); 2/2 located in stardust/current/pages/parks.html)');
-  assert.deepEqual(djson('parks'), r);
+check('a derivation (plan) lets an automatic not-attempted through only below two siblings: one sibling → source derived, the derivation on record', () => {
+  const r = recordAttempt(DP, 'piers', { derive: PIER_DERIV });
+  assert.equal(r.verdict, 'not-attempted'); assert.match(r.reason, /^no map at stardust\/import\/piers\/vocabulary\.json/); assert.equal(r.siblings, 1);
+  assert.equal(r.source, 'derived'); assert.deepEqual(r.derive, PIER_DERIV); assert.equal(r.forked, null);
+  assert.equal(r.sourceReason, 'the slot map derives from stardust/prototypes/piers-proposed.html (2 derived slot(s); 2/2 located in stardust/current/pages/piers.html)');
+  assert.deepEqual(djson('piers'), r);
+  rmSync(join(DP, REC('piers')));
+});
+check('two or more siblings, a derivation and no map → refused all the same (the map is due): the line names the author of the map, never plan, and the derived slot map as one sibling\'s fork; an earlier automatic record goes; a recorded refusal reason still records; without a derivation the refusal adds the cause and its command', () => {
+  recordAttempt(DP, 'parks', { siblings: [] }); assert.ok(existsSync(join(DP, REC('parks'))), 'an automatic record written before the rule');
+  const refused = (e) => e instanceof Refusal && !/migrate\.mjs plan/.test(e.message)
+    && e.message.startsWith(`encode-attempt parks: refused not-attempted — 3 sibling(s) (park-a, park-b, park-c) and no map at stardust/import/parks/vocabulary.json: ${AUTHOR('parks')}${OR_REASON}; a derived slot map (2 slot(s)) serves one sibling's fork, not 3 siblings — the map is due`);
+  assert.throws(() => recordAttempt(DP, 'parks', { derive: DERIV }), refused);
+  assert.ok(!existsSync(join(DP, REC('parks'))), 'the earlier automatic record goes with the refusal');
+  assert.throws(() => recordAttempt(DP, 'parks', { derive: DERIV, siblings: ['park-a', 'park-b'] }), (e) => e instanceof Refusal && / 2 sibling\(s\) \(park-a, park-b\) and /.test(e.message) && / not 2 siblings — the map is due$/.test(e.message), 'two siblings exactly');
+  const reasoned = recordAttempt(DP, 'parks', { derive: DERIV, reason: 're-typed: the park pages were re-typed into the district templates' });
+  assert.equal(reasoned.verdict, 'not-attempted'); assert.match(reasoned.reason, /^re-typed: the park pages were re-typed into the district templates \(no map at /); assert.equal(reasoned.source, 'derived');
+  rmSync(join(DP, REC('parks')));
   const cause = { cause: 'the archetype capture stardust/current/pages/parks.html is absent', fix: 'run: node stardust/scripts/extract/crawl.mjs --url https://example.test/parks/ --pages https://example.test/parks/ --out stardust/current' };
   assert.throws(() => recordAttempt(DP, 'parks', { derive: cause }), (e) => e instanceof Refusal
     && e.message.startsWith('encode-attempt parks: refused not-attempted — 3 sibling(s) (park-a, park-b, park-c) and no map at stardust/import/parks/vocabulary.json: ')
-    && e.message.endsWith(` — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>"; no slot map derives either (${cause.cause}) — ${cause.fix}`));
-  assert.ok(!existsSync(join(DP, REC('parks'))), 'the earlier automatic record goes with the refusal');
+    && e.message.endsWith(`${OR_REASON}; no slot map derives either (${cause.cause}) — ${cause.fix}`));
+  assert.ok(!existsSync(join(DP, REC('parks'))));
+});
+check('with the map present the encoder runs (the roundtrip path) and the derivation rides on its verdict: no-roundtrip, source derived — the A′ fork of a template whose map does not round-trip yet', () => {
+  const f = join(DP, 'stardust', 'import', 'parks', 'vocabulary.json'); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, '{}\n');
+  const before = runs().length;
+  const r = recordAttempt(DP, 'parks', { derive: DERIV, encoder: FAKE });
+  assert.deepEqual(runs().slice(before).map((l) => l.split(' ')[0]), ['--roundtrip', '--lint']);
+  assert.equal(r.verdict, 'no-roundtrip'); assert.equal(r.reason, 'roundtrip exit 1: encode: no gated document for parks');
+  assert.equal(r.source, 'derived'); assert.deepEqual(r.derive, DERIV); assert.equal(r.forked, null);
+  assert.deepEqual(djson('parks'), r);
 });
 check('recordFork adds the slug to forked (sorted, once) and sets source forked, everything else kept; a re-record keeps the list; no record → refused', () => {
-  const before = recordAttempt(DP, 'parks', { derive: DERIV });
+  const before = recordAttempt(DP, 'parks', { derive: DERIV, encoder: FAKE });
   const one = recordFork(DP, 'parks', 'park-b', { prototype: DERIV.prototype });
   assert.deepEqual(one, djson('parks')); assert.deepEqual(one.forked, ['park-b']); assert.equal(one.source, 'forked');
   const { source: s0, forked: f0, ...rest0 } = before; const { source: s1, forked: f1, ...rest1 } = one; assert.deepEqual(rest1, rest0);
   assert.deepEqual(recordFork(DP, 'parks', 'park-a', { prototype: DERIV.prototype }).forked, ['park-a', 'park-b']);
   const bytes = readFileSync(join(DP, REC('parks')), 'utf8');
   recordFork(DP, 'parks', 'park-a', { prototype: DERIV.prototype }); assert.equal(readFileSync(join(DP, REC('parks')), 'utf8'), bytes, 'a slug already listed: not rewritten');
-  const again = recordAttempt(DP, 'parks', { derive: DERIV });
+  const again = recordAttempt(DP, 'parks', { derive: DERIV, encoder: FAKE });
   assert.deepEqual(again.forked, ['park-a', 'park-b']); assert.equal(again.source, 'forked');
   assert.throws(() => recordFork(DP, 'nowhere', 'x', { prototype: 'stardust/prototypes/nowhere-proposed.html' }), (e) => e instanceof Refusal && /^encode-attempt nowhere: no attempt record to add the fork of x \(stardust\/prototypes\/nowhere-proposed\.html\) to — run: node stardust\/scripts\/migrate\/migrate\.mjs plan x$/.test(e.message));
   assert.deepEqual(readdirSync(join(DP, 'stardust/migrate/encode')).filter((f) => !f.endsWith('.json')), [], 'no tmp file left');
@@ -410,8 +454,24 @@ check('summary counts a sibling listed in forked as slot-rendered (its own-file 
   const r = run(['summary', '--root', DP]); assert.equal(r.status, 0, r.err);
   assert.equal(r.out.split('\n')[0], 'encode-attempt parks: 3 siblings · 0 encoded · 3 A′ · the slot map derives from stardust/prototypes/parks-proposed.html (2 derived slot(s); 2/2 located in stardust/current/pages/parks.html)');
   const j = JSON.parse(run(['summary', '--root', DP, '--json']).out);
-  assert.deepEqual(j.templates, [{ template: 'parks', verdict: 'not-attempted', reason: djson('parks').reason, source: 'forked' }]);
+  assert.deepEqual(j.templates, [{ template: 'parks', verdict: 'no-roundtrip', reason: djson('parks').reason, source: 'forked' }]);
   assert.deepEqual(j.perTemplate[0].unrecorded, []);
+});
+
+// ---- the reference example map the no-map refusal points at ---------------------------------------
+console.log('reference/vocabulary.example.json');
+check('migrate/reference/vocabulary.example.json is a valid map: the schema\'s required keys, only schema keys, no engine error, encode.mjs loadMap clean, no site named', () => {
+  const REF = join(dirname(SCRIPT), '..', 'reference');
+  const text = readFileSync(join(REF, 'vocabulary.example.json'), 'utf8'); const ex = JSON.parse(text);
+  const schema = JSON.parse(readFileSync(join(REF, 'encode-map.schema.json'), 'utf8'));
+  for (const k of schema.required) assert.ok(k in ex, `required key ${k}`);
+  for (const k of Object.keys(ex)) assert.ok(k in schema.properties, `${k}: not a key of encode-map.schema.json`);
+  assert.match(ex.archetype, /^[\w.-]+$/); assert.match(ex.inputs.capture.sha, /^sha256:[0-9a-f]{64}$/);
+  assert.deepEqual(validateVocabulary(ex), []);
+  const root = join(tmp, 'example'); const f = join(root, 'stardust', 'import', ex.archetype, 'vocabulary.json'); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, text);
+  const m = loadMap(root, ex.archetype); assert.deepEqual(m.errors, []); assert.deepEqual(m.vocab, ex); assert.deepEqual(m.tf, {});
+  assert.ok(Array.isArray(ex.markers) && ex.markers.length >= 3, 'markers: an array, several emitter kinds');
+  assert.doesNotMatch(text, /https?:\/\//, 'no URL, no site');
 });
 
 // ---- done -----------------------------------------------------------------------------------
