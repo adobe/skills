@@ -1,0 +1,59 @@
+{
+  "$comment": "A minimal encoder map — the shape of stardust/import/<archetype-slug>/vocabulary.json. One per template, authored at C-archetype by the archetype's subagent from the gated archetype's delivered document and its committed capture (importer-recipe.md § The map, § Encoder contract) — no instrument writes it; migrate.mjs plan derives the slot map only. Copy this file, set archetype and inputs, then replace every selector with the capture's own (never delivered text, never a condition on slug or URL). Keys: encode-map.schema.json; semantics: scripts/encode/engine.mjs; checks: encode.mjs --lint.",
+  "archetype": "article",
+  "inputs": {
+    "$comment": "what the map was authored against; --lint fails while the recorded sha differs from the file and prints the current one",
+    "capture": { "path": "stardust/current/pages/article.html", "sha": "sha256:0000000000000000000000000000000000000000000000000000000000000000" }
+  },
+  "root": "main",
+  "chrome": ["header.site-header", "footer.site-footer", "nav.breadcrumb"],
+  "wrappers": [".container", ".row"],
+  "moduleSelectors": [{ "childClass": "^mod-[a-z]+(-[a-z]+)*$" }],
+  "ignoreModifiers": ["^col-"],
+  "metadata": [
+    ["Title", "$title"],
+    ["Description", "$description || text(.mod-hero__lede)"],
+    ["nav", "$nav"],
+    ["footer", "$footer"]
+  ],
+  "markers": [
+    {
+      "$comment": "a block with fixed cells: each cell a selector inside the module; parts stack several sources into one cell; optional parts may be absent",
+      "sel": ".mod-hero", "kind": "hero", "emitter": "block:hero",
+      "cells": [
+        { "sel": ".mod-hero__media", "as": "image" },
+        {
+          "sel": ".mod-hero__body",
+          "parts": [
+            { "sel": ".mod-hero__kicker", "as": "text", "wrap": "p", "optional": true },
+            { "sel": ".mod-hero__title", "as": "rich" },
+            { "sel": ".mod-hero__lede", "as": "rich", "optional": true },
+            { "sel": "a.mod-hero__cta", "as": "link", "wrap": ["p", "strong"], "optional": true }
+          ]
+        }
+      ]
+    },
+    {
+      "$comment": "a block with repeated rows: rows selects each row inside the module, cells apply per row",
+      "sel": ".mod-facts", "kind": "facts", "emitter": "block:facts",
+      "rows": ".mod-facts__row",
+      "cells": [{ "sel": ".mod-facts__label", "as": "text" }, { "sel": ".mod-facts__value", "as": "inline" }]
+    },
+    {
+      "$comment": "a variant: the token is added to the block name when the module matches `when`",
+      "sel": ".mod-teaser", "kind": "teaser", "emitter": "block:teaser",
+      "variants": [{ "when": ".mod-teaser--featured", "add": "featured" }],
+      "cells": [
+        { "sel": ".mod-teaser__image", "as": "image" },
+        { "sel": ".mod-teaser__content", "parts": [{ "sel": ".mod-teaser__title", "as": "rich" }, { "sel": "a.mod-teaser__link", "as": "link", "wrap": ["p", "strong"] }] }
+      ]
+    },
+    { "$comment": "one cell per repeated item", "sel": ".mod-tags", "kind": "tags", "emitter": "block:tags", "cells": { "each": ".mod-tags__item", "as": "text" } },
+    { "$comment": "default content: the module's own markup, no block", "sel": ".mod-title", "kind": "title", "emitter": "default-content" },
+    { "sel": ".mod-text", "kind": "text", "emitter": "default-content" },
+    { "sel": ".mod-image", "kind": "image", "emitter": "default-content" },
+    { "$comment": "a section style: the container's modules are walked, the section gets the style", "sel": ".mod-container--highlight", "kind": "highlight-container", "emitter": "section-style:highlight" },
+    { "sel": ".mod-separator", "kind": "separator", "emitter": "section-break:rule" },
+    { "$comment": "a module the delivered page does not carry: drop names the reason; dynamics names the dynamics row that delivers it", "sel": ".mod-newsletter", "kind": "newsletter", "emitter": "drop:runtime form, delivered by a dynamics row" }
+  ]
+}
