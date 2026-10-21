@@ -38,7 +38,7 @@
  *                                           with ≥ 1 sibling must begin with a recorded refusal reason:
  *                                           `re-typed:` (the siblings were re-typed into other templates) or
  *                                           `no-repeatable-structure:` (one-off sections, no slot to map) — else
- *                                           exit 2 pointing at `migrate.mjs plan <t>`
+ *                                           exit 2 naming the map to author
  *     --hand-authored --reason "<why>"    → hand-authored: the siblings are written by hand (migrate SKILL.md § When
  *                                           the encoder cannot); nothing run, the reason required, pages = --pages
  *                                           <slug,…> (sorted) else the template's siblings, an earlier record's
@@ -46,13 +46,19 @@
  *                                           --not-attempted; --pages needs --hand-authored
  *   Encoder first (migrate SKILL.md § Encoder first): on the CLI the two automatic not-attempted outcomes (encoder
  *   absent, no map) are REFUSED for a template with ≥ 1 sibling unless --reason "<tag>: <why>" names a recorded
- *   refusal reason (`re-typed:`, `no-repeatable-structure:`) the encoder cannot serve — its map is drafted by
- *   `migrate.mjs plan <t>` — or migrate.mjs plan derived the template's slot map (source derived, below: the fork
- *   builds the siblings). Refused: nothing written (an earlier automatic not-attempted record of the template is
+ *   refusal reason (`re-typed:`, `no-repeatable-structure:`) the encoder cannot serve — or, below two siblings,
+ *   migrate.mjs plan derived the template's slot map (source derived, below: the fork builds the one sibling). The
+ *   map itself, stardust/import/<t>/vocabulary.json, is authored at C-archetype from the gated archetype's delivered
+ *   document and its capture (migrate/reference/importer-recipe.md § Encoder contract; shape:
+ *   migrate/reference/vocabulary.example.json) — no instrument writes it; `migrate.mjs plan` derives the SLOT map
+ *   only and refuses a template with two or more siblings until its map exists (`maps due`). Refused: nothing
+ *   written (an earlier automatic not-attempted record of the template is
  *   removed — it would open render's A′ path), exit 2, one stderr line `encode-attempt <t>: refused not-attempted —
  *   <n> sibling(s) (<slug, …>) and <cause>: <fix> — or a recorded refusal reason: --reason "re-typed|no-repeatable-structure:
- *   <why the encoder cannot serve this template>"` (the no-map <fix> is `draft the map: \`migrate.mjs plan <t>\``;
- *   plus `; no slot map derives either (<cause>) — <the one command>`). With a recorded --reason the record's reason
+ *   <why the encoder cannot serve this template>"` (the no-map <fix> is `author the map stardust/import/<t>/vocabulary.json
+ *   from the gated archetype's delivered document and its capture (…), then record again`; plus `; no slot map derives
+ *   either (<cause>) — <the one command>`, or, when one derives for two or more siblings, `; a derived slot map (<n>
+ *   slot(s)) serves one sibling's fork, not <n> siblings — the map is due`). With a recorded --reason the record's reason
  *   is `<why> (<cause>)`; --reason is used only on these two outcomes and never with --not-attempted. A reason that
  *   names a generator script is refused (exit 2) whatever the sibling count. Siblings (siblingsOf): the --state pages (default
  *   <root>/stardust/state.json; none when it is absent) whose representative is <t>, whose migrate sidecar names <t>
@@ -105,7 +111,8 @@
  *   UsageError, writing nothing, when a named encoder does not exist; Refusal, the encoder-first/script/vocabulary
  *   line, when it refuses; siblings: slugs that replace the state's; siblingMin defaults to 2 and
  *   enforceReasonVocabulary to false — the CLI passes 1 and true; derive: plan's derivation { prototype, markers,
- *   slots, located, total, capture }, or { cause, fix } when nothing derives) · recordFork(root, t, slug, { prototype
+ *   slots, located, total, capture }, or { cause, fix } when nothing derives — a derivation satisfies the gate only
+ *   below two siblings) · recordFork(root, t, slug, { prototype
  *   }) → the record with slug added to `forked` and source forked, the rest kept (atomic; Refusal when t has no
  *   record) · siblingsOf(state,
  *   t[, sidecars]) → sorted slugs · isAutoNotAttempted(record) → true when its reason is only an automatic cause ·
@@ -281,7 +288,7 @@ export function recordAttempt(root, template, opts = {}) {
   // An owner's not-attempted decision on a template with siblings must name a recorded refusal reason (not free text).
   const requireRefusalReason = (flag, r) => {
     if (enforceReasonVocabulary && sibs.length >= 1 && !isRecordedRefusalReason(r)) {
-      throw new Refusal(`encode-attempt ${template}: ${flag} "${String(r).trim()}" is not a recorded refusal reason for a template with ${sibs.length} sibling(s) — use ${REASON_TAGS.join(' | ')} (encode-attempt --help), or draft the map: \`migrate.mjs plan ${template}\``);
+      throw new Refusal(`encode-attempt ${template}: ${flag} "${String(r).trim()}" is not a recorded refusal reason for a template with ${sibs.length} sibling(s) — use ${REASON_TAGS.join(' | ')} (encode-attempt --help), or author the map ${mapRel(template)} (migrate/reference/importer-recipe.md § Encoder contract) and record again`);
     }
   };
   const encoderFile = encoder ? resolve(encoder) : join(HERE, 'encode.mjs');
@@ -294,7 +301,7 @@ export function recordAttempt(root, template, opts = {}) {
     pages = Array.isArray(named) ? [...new Set(named)].sort() : sibs;
   } else if (typeof notAttempted === 'string') { requireRefusalReason('--not-attempted', notAttempted); verdict = 'not-attempted'; reason = notAttempted.trim(); }
   else if (!isFile(encoderFile)) { cause = 'encode.mjs not found beside this script'; fix = 'copy the migrate scripts (encode.mjs and encode/) beside encode-attempt.mjs, then record again'; }
-  else if (!isFile(join(rootAbs, mapRel(template)))) { cause = `no map at ${mapRel(template)} — the encoder needs the template's map`; fix = `draft the map: \`migrate.mjs plan ${template}\``; }
+  else if (!isFile(join(rootAbs, mapRel(template)))) { cause = `no map at ${mapRel(template)} — the encoder needs the template's map`; fix = `author the map ${mapRel(template)} from the gated archetype's delivered document and its capture (no instrument writes it: migrate/reference/importer-recipe.md § Encoder contract; shape: migrate/reference/vocabulary.example.json), then record again`; }
   else {
     const rt = runEncoder(encoderFile, '--roundtrip', template, rootAbs, timeoutMs);
     lint = runEncoder(encoderFile, '--lint', template, rootAbs, timeoutMs).result;
@@ -309,11 +316,15 @@ export function recordAttempt(root, template, opts = {}) {
     if (prev && (prev.verdict === 'hand-authored' || (prev.verdict === 'not-attempted' && !isAutoNotAttempted(prev)))) return prev;
   }
   if (cause) {
-    // Encoder first: a template with siblings gets its map (or a recorded refusal reason), or migrate.mjs plan derived it — not-attempted is not the default.
-    if (sibs.length >= siblingMin && typeof given !== 'string' && !isDerivation(derive)) {
+    // Encoder first: a template with siblings gets its map (or a recorded refusal reason) — not-attempted is not the default.
+    // A slot map migrate.mjs plan derived satisfies the gate only below two siblings: it feeds one sibling's fork, it is
+    // not the encoder's map (a recorded hands-off run let every ≥ 2-sibling template through on a derivation and never
+    // authored a map).
+    if (sibs.length >= siblingMin && typeof given !== 'string' && !(isDerivation(derive) && sibs.length < 2)) {
       // An automatic not-attempted written before this rule would still open render's A′ path: it goes with the refusal.
       if (isAutoNotAttempted(readAttempt(rootAbs, template))) rmSync(join(recordDir(rootAbs), `${template}.json`), { force: true });
-      const why = typeof derive?.cause === 'string' ? `; no slot map derives either (${derive.cause})${derive.fix ? ` — ${derive.fix}` : ''}` : '';
+      const why = typeof derive?.cause === 'string' ? `; no slot map derives either (${derive.cause})${derive.fix ? ` — ${derive.fix}` : ''}`
+        : isDerivation(derive) ? `; a derived slot map (${derive.slots.length} slot(s)) serves one sibling's fork, not ${sibs.length} siblings — the map is due` : '';
       throw new Refusal(`encode-attempt ${template}: refused not-attempted — ${sibs.length} sibling(s) (${sibs.join(', ')}) and ${cause.split(' — ')[0]}: ${fix} — or a recorded refusal reason: --reason "${REASON_TAGS.join('|')}: <why the encoder cannot serve this template>"${why}`);
     }
     if (typeof given === 'string') requireRefusalReason('--reason', given);
