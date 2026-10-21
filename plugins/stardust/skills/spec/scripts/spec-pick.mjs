@@ -9,7 +9,7 @@
  * Reads <work>/map/variants.json + map/page-blocks.jsonl (unless --components-only) and parse/components.jsonl.
  * Writes <work>/capture-urls.txt (or --out).
  */
-import { arg, flag, helpAndExit, loadConfig, log, readJSON, readJSONL, writeText } from './lib.mjs';
+import { CODED, arg, flag, helpAndExit, loadConfig, log, readJSON, readJSONL, writeText } from './lib.mjs';
 
 helpAndExit(import.meta.url);
 
@@ -36,7 +36,7 @@ function main() {
     const best = {};
     for (const r of readJSONL(cfg.w('map', 'page-blocks.jsonl'))) {
       for (const b of r.blocks) {
-        if (b.kind !== 'block' && b.kind !== 'dynamic') continue;
+        if (!CODED.has(b.kind)) continue;
         const k = `${b.block}|${b.variant}`;
         if (!best[k] || vOf(r.url) > vOf(best[k])) best[k] = r.url;
       }

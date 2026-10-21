@@ -69,6 +69,11 @@
           "description": "Block ids this page composes (rollout/coverage/blocks.json[].id).",
           "items": { "type": "string" }
         },
+        "widgets": {
+          "type": "array",
+          "description": "Widgets this page mounts (sidecar widgets[]): id = the EDS widget name (rollout/coverage/blocks.json[].id, kind widget), href = the one /widgets/<path>/<name>.html link the page carries, query params included.",
+          "items": { "type": "object", "required": ["id", "href"], "additionalProperties": false, "properties": { "id": { "type": "string" }, "href": { "type": "string" } } }
+        },
         "delivered": {
           "type": ["object", "null"],
           "description": "The delivered page's block structure, parsed from its content document; null while the page has no content document.",

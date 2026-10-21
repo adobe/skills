@@ -39,9 +39,10 @@ for a judgment pass without re-crawling.
 | `bare-ordinals` | warn | `<p>1</p>` rows — numbered component flattened |
 | `duplicate-text` | warn | 12-word shingle repeats within 400 words — pasted twice |
 | `flattened-collection` | warn / error (≥6 repeats + >40% of page words unblocked) | a periodic tag cycle (e.g. `h4+p+p` ×24) or ≥5 same-level headings at a steady stride in DEFAULT content — a structured directory/card set rendered as plain prose instead of a block ("masthead + prose dump + CTA" pages). Fixture-tested: `scripts/test/flattened.test.mjs` |
-| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | a page that DOES use blocks but one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of the page across ≤2 block types — the source's multi-section structure collapsed into one long body (the "fat single block" flatten variant `unblocked-page`/`flattened-collection` miss). Distinguishes defect from an INTENTIONAL single block: skips prose-by-design template families (article/blog/wellness/legal…); with a source capture, fires only when the source had ≥3 heading-led regions (≤1 region = faithfully flat, skipped); without source, fires only when the hoarding block's own inner headings/lists reveal recoverable structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
+| `single-block-hoard` | warn / error (source-confirmed or ≥5 latent headings) | one PROSE-CONTAINER block (`*-body`/`prose`/`text`/`content`) holds ≥60% of a blocked page across ≤2 block types — the source's sections collapsed into one body (the flatten variant `unblocked-page`/`flattened-collection` miss). Skips prose-by-design template families (article/blog/wellness/legal…); with a source capture fires only when the source had ≥3 heading-led regions, without one only when the block's inner headings/lists reveal structure. Fixture-tested: `scripts/test/single-block-hoard.test.mjs` |
 | `source-images-lost` | error | capture has ≥4 images, delivered page renders <25% of them — pipeline strips imagery authored inside flat content |
 | `unknown-block` | error | authored block class serves no code under /blocks/ |
+| `unknown-widget` | error | a `/widgets/<path>/<name>.html` link (the one sanctioned `.html` link) whose code does not HEAD 200 |
 | `verbatim-below-threshold` | warn *(triage)* | <95% of captured source text found verbatim; evidence lists missing nodes |
 | `verbatim-missing-nodes` | info | coverage ok but some nodes absent |
 | `scrape-dir-empty` | info | fidelity skipped |
@@ -50,8 +51,8 @@ for a judgment pass without re-crawling.
 
 | id | sev | what |
 |---|---|---|
-| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus) |
-| `unblocked-page` | error | zero blocks while template siblings have them — fell back to plain prose |
+| `missing-template-blocks` | error | page lacks blocks its template prescribes (explicit config, else >70% sibling consensus); a widget link counts as a block named by its file stem |
+| `unblocked-page` | error | zero blocks (widget links included) while template siblings have them — fell back to plain prose |
 | `no-template-map` | info | no template assignments; check skipped |
 
 ## rendered (D, browser; desktop 1440 + mobile 390)

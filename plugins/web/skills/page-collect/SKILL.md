@@ -1,60 +1,82 @@
 ---
 name: page-collect
 license: Apache-2.0
-compatibility: Requires Node 22+ and playwright-cli on PATH. Run `playwright-cli --help` for usage.
+compatibility: Requires Node 22+ and playwright-cli on PATH; uses the web CLI (plugins/web/cli)
 description: >-
-  Extracts structured resources from a webpage with playwright-cli: icons
-  (SVGs classified as icon or logo and optimized for AEM Edge Delivery Services
+  Extracts structured resources from a webpage with the web CLI: icons (SVGs
+  classified as icon or logo and optimized for AEM Edge Delivery Services
   /icons/), metadata and Open Graph tags, body text, forms, videos, and social
-  links. Use when migrating pages to Edge Delivery Services, auditing a site,
-  or extracting a page's icons, metadata, or other assets.
+  links. Use when migrating pages to Edge Delivery Services, auditing a site, or
+  extracting a page's icons, metadata, or other assets.
 ---
 
 # page-collect
 
-Extract structured resources from any webpage via `playwright-cli`.
-Node 22+ required. Run `playwright-cli --help` for the command reference.
+Extract structured resources from any webpage with `web page collect`.
 
-## Subcommands
+## Requirements
 
-| Subcommand | Purpose | Output |
-|------------|---------|--------|
-| `all` | Run all collectors | `collection.json`, `screenshot.jpg` + assets |
-| `icons` | SVGs, icon fonts, CSS icons → classified SVGs | `icons/` + `icons.json` |
-| `metadata` | Meta tags, OG, structured data | `metadata.json` |
-| `text` | Body text, headings, word count | `text.json` |
-| `forms` | Form structures, fields, actions | `forms.json` |
-| `videos` | Video embeds, sources | `videos.json` |
-| `socials` | Social media links | `socials.json` |
-
-## How to Run
-
-Paths like `scripts/…` are relative to this skill's directory (the folder
-containing this SKILL.md). Run commands from the current working directory with
-those paths made absolute; don't `cd` into the skill directory.
-
-### Invocation
+Node 22+ and `playwright-cli` >= 0.1.20 on PATH (`playwright-cli --version`).
+Locate the `web` CLI once:
 
 ```bash
-node scripts/page-collect.js <subcommand> <url> [--output <dir>]
+# <skill-dir> is the directory containing this SKILL.md
+WEB=$(command -v web || echo "node <skill-dir>/../../cli/dist/web.mjs")
 ```
 
-Default output: `./page-collect-output/`
+then run `$WEB …`; it prints exactly one JSON document on stdout,
+so `$WEB … > file.json` is safe.
+Fallback when published: `npx -y @adobe/web-cli`. Use an absolute `<skill-dir>`; don't `cd` into it.
 
-### Prerequisites
+**Sessions.** If `WEB_SESSION` or `PLAYWRIGHT_CLI_SESSION` is set, do not pass
+`--session`: every `web` command uses that browser and leaves it open. Otherwise
+either run one-shot (`$WEB page tree "$URL"` opens and closes its own browser) or
+start a browser and reuse the generated name:
+`S=$($WEB browser open "$URL" | jq -r .session)` then `--session "$S"`.
+Never invent a fixed session name.
 
-`playwright-cli` must be on PATH. Optionally pass `--browser-recipe <path>` to
-use a `browser-recipe.json` from the `browser-probe` skill to bypass bot protection.
+## When to Use
+
+Migrating pages to Edge Delivery Services, auditing a site, or extracting a
+page's icons, metadata, or other assets.
+
+## Command
+
+```bash
+$WEB page collect <what> "$URL" [--output <dir>]
+$WEB page collect all "$URL" --output ./collected
+$WEB page collect metadata --session "$S"
+```
+
+`<what>` is one of:
+
+| Collector | Purpose | Files under `--output` |
+|-----------|---------|------------------------|
+| `all` | Run all collectors | `<session>-collect/collection.json`, `screenshot.jpg`, plus the collector files |
+| `icons` | SVGs, icon fonts, CSS icons → classified SVGs | `<session>-collect/icons/` + `icons.json` |
+| `metadata` | Meta tags, OG, structured data | `<session>-collect/metadata.json` |
+| `text` | Body text, headings, word count | `<session>-collect/text.json` |
+| `forms` | Form structures, fields, actions | `<session>-collect/forms.json` |
+| `videos` | Video embeds, sources | `<session>-collect/videos.json` |
+| `socials` | Social media links | `<session>-collect/socials.json` |
+
+Default `--output` is `./.web`. Artifacts live in `<session>-collect/` with stable names; the
+paths are listed in the `files` field. An unknown `<what>` exits 2 (USAGE).
+
+## Reading the JSON
+
+- One collector: `{ ...collectorFields, files, url, session, durationMs }`
+- `all`: `{ url, collectedAt, screenshot?, collectors: {...}, files, session, durationMs }`
+
+`collection.screenshot` is the full path of the screenshot file (not a bare
+`screenshot.jpg`). Per-collector fields, extraction sources and limitations:
+[references/collectors.md](references/collectors.md).
 
 ## Icon Collector Details
 
-The icon collector extracts SVGs from multiple sources:
-- Inline `<svg>` elements
-- `<img>` tags with `.svg` src or `data:image/svg+xml` URIs
-- CSS `background-image` SVG data URIs
-- SVG `<use>` sprite references (resolved to standalone SVGs)
-
-### Classification
+The icon collector extracts SVGs from inline `<svg>` elements, `<img>` tags with
+`.svg` src or `data:image/svg+xml` URIs, CSS `background-image` SVG data URIs,
+and SVG `<use>` sprite references (resolved to standalone SVGs).
 
 | Class | Criteria | Output |
 |-------|----------|--------|
@@ -62,51 +84,35 @@ The icon collector extracts SVGs from multiple sources:
 | `logo` | Brand area, "logo" in class/alt/src | `/icons/logo.svg` |
 | `image` | > 48px, standalone | Excluded |
 
-### Naming
+Icons are named from DOM context (aria-label, class, ID). When no meaningful
+name can be derived they get `icon-{n}` with `nameConfidence: "low"`: review and
+rename those. Each SVG is cleaned: XML declarations, comments and metadata
+stripped; viewBox ensured and hardcoded width/height removed; fill/stroke
+replaced with `currentColor` (icons only, not logos); whitespace collapsed.
 
-Icons are named from DOM context (aria-label, class, ID). When no
-meaningful name can be derived, they get `icon-{n}` with
-`nameConfidence: "low"` in the manifest — review these and rename.
-
-### SVG Optimization
-
-Each icon SVG is cleaned:
-1. Strip XML declarations, comments, metadata
-2. Ensure viewBox, remove hardcoded width/height
-3. Replace fill/stroke with `currentColor` (icons only, not logos)
-4. Collapse whitespace
-
-For extraction sources, per-collector output schemas, and limitations, see
-[references/collectors.md](references/collectors.md).
-
-### icons.json Manifest
+`icons.json` manifest:
 
 ```json
-{
-  "url": "https://example.com",
-  "icons": [
-    {
-      "name": "search",
-      "class": "icon",
-      "source": "inline-svg",
-      "file": "icons/search.svg",
-      "nameConfidence": "high",
-      "context": "header button Search"
-    }
-  ]
-}
+{ "url": "https://example.com",
+  "icons": [ { "name": "search", "class": "icon", "source": "inline-svg",
+    "file": "icons/search.svg", "nameConfidence": "high", "context": "header button Search" } ] }
 ```
 
 ## After Running
 
-### For icon results:
-1. Review `icons.json` — rename any `nameConfidence: "low"` icons
-2. Copy `/icons/*.svg` to the EDS project's `/icons/` directory
-3. Reference in content with `:iconname:` notation
-4. `decorateIcons()` in `aem.js` handles rendering
+- Icons: review `icons.json`, rename `nameConfidence: "low"` icons, copy the SVGs
+  to the EDS project's `/icons/` directory, reference them in content as
+  `:iconname:` (`decorateIcons()` in `aem.js` renders them).
+- `all`: review the collection file for a full resource inventory.
 
-### For `all` results:
-Review `collection.json` for a full resource inventory of the page.
+## Chaining
+
+- Blocked (exit 3): `browser-probe`, then `--recipe <recipePath>`.
+- Overlays in the way: `$WEB page overlays --session "$S" --dismiss` first.
+
+## Escape hatch
+
+`playwright-cli -s <session> …` drives the same browser.
 
 ## Notes
 

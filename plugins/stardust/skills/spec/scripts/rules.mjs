@@ -98,7 +98,7 @@ function urlTerm(term, K, rule) {
     f = (u) => (I.sig.get(u.id) || []).some(test);
   } else if (t.startsWith('verdict:')) {
     const v = t.slice(8);
-    f = (u) => (I.pb.get(u.id) || []).some((pb) => (pb.kind === 'block' || pb.kind === 'dynamic') && I.bv.get(`${pb.block}|${pb.variant ?? ''}`) === v);
+    f = (u) => (I.pb.get(u.id) || []).some((pb) => ['block', 'dynamic', 'widget'].includes(pb.kind) && I.bv.get(`${pb.block}|${pb.variant ?? ''}`) === v);
   } else {
     f = fieldFilter(t, K.urls || [], rule);
     if (!f) throw new Error(`rule "${rule}": unknown term "${term}"`);

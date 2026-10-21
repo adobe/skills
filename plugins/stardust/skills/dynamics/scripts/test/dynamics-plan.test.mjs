@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// dynamics-plan.mjs — the martech contract is opt-in: without --martech the outputs are unchanged.
+// dynamics-plan.mjs — the martech contract is opt-in: without --martech the outputs are unchanged;
+// `target` (delivery form) is derived per row: widget for client-compute, search, form-less forms, locators, chrome account/cart.
 // Run: node plugins/stardust/skills/dynamics/scripts/test/dynamics-plan.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -42,6 +43,7 @@ check('--chrome: one row per header-contract family (menus, drawer, search, cart
     assert.equal(r.status, 0, r.stderr);
     const rows = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.json'), 'utf8')).rows;
     assert.deepEqual(rows.map((x) => [x.id, x.class, x.disposition, x.reproducibility]), [['chrome-drawer', 'M', 'rebuild-native', 'self'], ['chrome-menu', 'M', 'rebuild-native', 'self'], ['chrome-search', 'S', 'index-backed', 'self'], ['chrome-cart', 'X', 'rebuild-native', 'needs-backend']]);
+    assert.deepEqual(rows.map((x) => x.target), ['runtime', 'runtime', 'widget', 'widget'], 'chrome search and cart ship as widgets, menus as runtime');
     assert.match(rows[1].feature, /^header menu: Shop, About/); assert.deepEqual(rows[1].evidence, ['1440 hover', '1440 click']);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -72,8 +74,32 @@ check('without --martech: no contract, no martech line, rows untouched', () => r
   assert.ok(!existsSync(join(dir, 'stardust')));
   assert.doesNotMatch(read('plan/dynamic-features.generated-plan.md'), /Martech/);
   const [row] = JSON.parse(read('plan/dynamic-features.generated-plan.json')).rows;
-  assert.equal(row.status, 'pending');
+  assert.equal(row.status, 'pending'); assert.equal(row.target, 'embed');
 }));
+
+check('target: widget for client-compute, site search, form-less control groups and locators; block for authored forms and listings; runtime for modals; — for decided-out', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'sd-plan-'));
+  try {
+    const f = (id, cls, feature, extra = {}) => ({ id, class: cls, feature, evidence: [], pages: ['/'], ...extra });
+    writeFileSync(join(dir, 'in.json'), JSON.stringify({ pages: { '/': {} }, findings: [
+      f('F1', 'F', 'form "calc" → (JS-submitted) (3 fields)', { hint: 'client-compute?' }),
+      f('S1', 'S', 'site search form → /search'),
+      f('F2', 'F', 'form-less control group in main (4 controls, submit "Send")', { hint: 'forms' }),
+      f('A1', 'A', 'first-party API GET /api/store-locator', { api: { method: 'GET', path: '/api/store-locator' } }),
+      f('F3', 'F', 'form "contact" → /thanks (5 fields)', { hint: 'forms' }),
+      f('L1', 'L', 'listing candidate .news (8 cards)'),
+      f('M1', 'M', 'modal trigger .js-modal → /contact'),
+      f('X1', 'X', 'sign-in / account links'),
+      f('X2', 'X', 'session-bound dealer-locator shortlist'),
+    ] }));
+    const r = spawnSync(process.execPath, [SCRIPT, '--in', 'in.json', '--out', 'plan'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(r.status, 0, r.stderr);
+    const rows = JSON.parse(readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.json'), 'utf8')).rows;
+    assert.deepEqual(rows.map((x) => [x.id, x.target]), [['F1', 'widget'], ['S1', 'widget'], ['F2', 'widget'], ['A1', 'widget'], ['F3', 'block'], ['L1', 'block'], ['M1', 'runtime'], ['X1', null], ['X2', null]], 'a locator that is decided-out stays decided-out');
+    const md = readFileSync(join(dir, 'plan', 'dynamic-features.generated-plan.md'), 'utf8');
+    assert.match(md, /\| disposition \| target \| reproducibility \|/); assert.match(md, /\| X1 \| X \| [^|]+\| 1\/1 \| decided-out \| — \|/);
+  } finally { rmSync(dir, { recursive: true, force: true }); }
+});
 
 check('--martech <dir>: contract and handoff, evidence read from the dir', () => {
   const dir = mkdtempSync(join(tmpdir(), 'sd-plan-'));

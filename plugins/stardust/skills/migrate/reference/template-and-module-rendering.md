@@ -106,6 +106,12 @@ If the target page has a module instance the archetype doesn't
 position, insert the module at a sensible position; log as
 `template-adapted`.
 
+A widget instance (`DESIGN.json.extensions.widgets[]`) has no slot
+values to inject: render it as the single mount link
+`<p><a data-widget="<path>/<name>" href="/widgets/<path>/<name>.html?<params>">…</a></p>`
+— a link, never `data-placeholder`, so the placeholder gate does not
+fire; the driver lists it in `_meta.json.widgets[]`.
+
 ### Step 5 — canon application
 
 Inject canon chrome into the page's structural skeleton:

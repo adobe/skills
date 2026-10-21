@@ -115,12 +115,13 @@ Per page it prints three numbers and a cause table:
 
 - **strict** — the checker's popup number (landmarks ignored), plus the toggle-off variant;
 - **code** — strict with referenced fragment documents credited to the served side and the
-  `--exclude-blocks` app blocks removed from the rendered side: isolates block-decoration defects
-  from content-architecture decisions;
+  `--exclude-blocks` app blocks removed from the rendered side (default `client-app,widget`: an EDS
+  widget, `data-block-name="widget"`, fetches its words from code by design — deploy Step 2):
+  isolates block-decoration defects from content-architecture decisions;
 - **servedGap** — rendered words absent from the served HTML, attributed per block (metric 2).
 
 Gate on `code ≥ --min` (default 98) — that is the part the block code owns. Report `strict` as the
-customer number and list what is agent-invisible *by design* with its point cost ("fragments cost
+customer number (it still counts the excluded widgets) and list what is agent-invisible *by design* with its point cost ("fragments cost
 12 points on this page"), so the owner sees a decision, not a bare 84. Where it runs: the deploy
 atomic delivery contract on the **published** page; the `qa` `ai-readability` check (same code); the
 `audit` LLM-visibility phase on sampled pages. Allowlist entries name a block and the runtime string

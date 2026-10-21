@@ -24,7 +24,11 @@ module.exports = {
       prepareCmd: 'bash "$(git rev-parse --show-toplevel)/scripts/prepare-release.sh" "$PWD" "${nextRelease.version}"'
     }],
     ["@semantic-release/github", {
-      assets: [{ path: "*.skill", label: "Skill package" }]
+      assets: [{ path: "*.skill", label: "Skill package" }],
+      // A release would comment on and label every PR since the skill's last tag, and every
+      // PR in the repository's history on its first release, related to the skill or not.
+      successCommentCondition: false,
+      releasedLabels: false
     }],
     ["@semantic-release/git", {
       assets: ["CHANGELOG.md", "SKILL.md"],
