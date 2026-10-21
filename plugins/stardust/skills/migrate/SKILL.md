@@ -185,16 +185,19 @@ not-attempted, <h> hand-authored)`, is the `plan` unit's ledger detail
 (`verdict`). It is not the full plan below; render still runs every
 strict check.
 
-**Derived map, then fork — never a hand-written generator.** The encoder
+**Derived slot map, then fork — never a hand-written generator.** The encoder
 serves a template without a hand-drafted map or a hand-built sibling file,
 in this order:
 
 - `node stardust/scripts/migrate/migrate.mjs plan <slug…>` derives the slot
   map from the archetype prototype when the capture carries no `#slots`
   (the prototype's typed slots read through the archetype capture's
-  `<main>`), records `source: derived`, and refuses only when nothing
+  `<main>`), records `source: derived`, and refuses when nothing
   derives — the refusal then names the one command that makes it derivable
-  (capture the archetype, mark its slots, or give each sibling its slots).
+  (capture the archetype, mark its slots, or give each sibling its slots) —
+  or when a template with two or more siblings has no map yet (`maps due`,
+  above: the derived slot map serves one sibling's fork; it is not the map
+  § Encoder first asks for, which no instrument writes).
 - `node stardust/scripts/migrate/migrate.mjs render --from-archetype
   <proto>.html --capture <page.json>` forks that prototype into the
   sibling's own `-proposed.html` — the sibling capture's texts and images
