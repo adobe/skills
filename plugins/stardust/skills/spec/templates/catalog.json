@@ -1,9 +1,10 @@
 {
- "_about": "One entry per block or dynamic block the mapping emits (spec-knowledge warns on any missing). family: the neutral list in reference/judgement.md. verdict vs config.referenceBlocks. Delete this key.",
+ "_about": "One entry per block, dynamic block or widget the mapping emits (spec-knowledge warns on any missing). family: the neutral list in reference/judgement.md. verdict vs config.referenceBlocks; a widget (code only, no authored rows) is new. Delete this key.",
  "blocks": {
   "header": { "kind": "global", "family": "other", "description": "Site header and navigation.", "aem": [], "reference": "header", "verdict": "variant", "rationale": "" },
   "footer": { "kind": "global", "family": "other", "description": "Site footer.", "aem": [], "reference": "footer", "verdict": "variant", "rationale": "" },
   "cards": { "kind": "block", "family": "grid", "description": "Repeating tiles: media, title, text, link.", "aem": [], "reference": "cards", "verdict": "reuse", "rationale": "", "variants": {} },
-  "columns": { "kind": "block", "family": "grid", "description": "Two to four columns of text and media.", "aem": [], "reference": "columns", "verdict": "reuse", "rationale": "", "variants": {} }
+  "columns": { "kind": "block", "family": "grid", "description": "Two to four columns of text and media.", "aem": [], "reference": "columns", "verdict": "reuse", "rationale": "", "variants": {} },
+  "search": { "kind": "widget", "family": "search", "description": "Search box and results from the query index; no authored content.", "aem": ["search"], "reference": null, "verdict": "new", "rationale": "" }
  }
 }

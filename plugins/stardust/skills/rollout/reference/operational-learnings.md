@@ -7,7 +7,7 @@ they apply to; none change the per-phase contract, they just save a debugging cy
 
 When you add page types *after* the first rollout, a "new template" is almost
 always a new composition of the existing block library, not new block code. Audit
-`blocks/` BEFORE writing any block — most "new templates" resolve to existing
+`blocks/` and `widgets/` BEFORE writing any — most "new templates" resolve to existing
 blocks recomposed, e.g.:
 - blog = `article-header` + `article-body` (the news blocks)
 - legal = `page-header` + `body-text`

@@ -3,7 +3,9 @@
 // from the sidecars (an archetype with `template: null` groups under its own slug, with the
 // siblings that name it; `type` last), the archetype as representative, the empty-modules
 // report, delivery state preserved across re-runs, a row added by `update-coverage.mjs --new`
-// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it, a
+// (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it, a sidecar's
+// widgets[] through inventory → blocks.mjs (kind widget, code path, no document rows) → plan.mjs, and inherited
+// by content-pending siblings in archetypes-only mode, a
 // sidecar's `variance` object copied verbatim to the row's source.variance (absent otherwise), and
 // the opt-in `exports` key in rollout.json (carried across re-runs; `--export <name>` adds a name
 // once; an unknown name exits 2 before any write), and coverage 0.1.0: each row's `delivered` structure
@@ -94,7 +96,9 @@ check('sidecars with an empty modules[] are counted in the report, naming Phase 
 // Fill the tours pages' modules and mark one page deployed, then re-run: the count drops, the
 // template's block set fills from its pages, and delivery state survives the re-run.
 for (const [rel, slug] of [['tours/bali/_meta.json', 'tours-bali'], ['tours/utah/_meta.json', 'tours-utah'], ['tours/alps._meta.json', 'tours-alps']]) {
-  const p = join(migrated, rel); const m = JSON.parse(readFileSync(p, 'utf8')); m.modules = ['hero', slug === 'tours-bali' ? 'gallery' : 'cards']; writeFileSync(p, JSON.stringify(m));
+  const p = join(migrated, rel); const m = JSON.parse(readFileSync(p, 'utf8')); m.modules = ['hero', slug === 'tours-bali' ? 'gallery' : 'cards'];
+  if (slug === 'tours-bali') m.widgets = [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }];
+  writeFileSync(p, JSON.stringify(m));
 }
 { const pj = join(out, 'coverage', 'pages.json'); const pages = json('coverage/pages.json'); const utah = pages.pages.find((p) => p.slug === 'tours-utah'); utah.delivery = { ...utah.delivery, status: 'deployed', deployedUrl: 'https://x.test/tours/utah', deployedAt: 'now' }; writeFileSync(pj, JSON.stringify(pages)); }
 const second = run();
@@ -102,9 +106,29 @@ check('a re-run keeps delivery state, drops the empty-modules count and fills th
   assert.equal(second.status, 0, second.stderr);
   assert.match(second.stdout, /modules\[\] empty on 2\/5 sidecars/, second.stdout);
   const t = Object.fromEntries(json('coverage/templates.json').templates.map((x) => [x.id, x]));
-  assert.deepEqual(t['tours-bali'].blocks, ['cards', 'gallery', 'hero']); assert.equal(t['tours-bali'].delivery.deployed, 1);
+  assert.deepEqual(t['tours-bali'].blocks, ['cards', 'gallery', 'hero', 'tour-finder']); assert.equal(t['tours-bali'].delivery.deployed, 1);
   const utah = json('coverage/pages.json').pages.find((p) => p.slug === 'tours-utah'); assert.equal(utah.delivery.status, 'deployed');
   assert.equal(json('rollout.json').site.sourceUrl, 'https://example.test', 'site config survives a re-run without --site-url');
+});
+check('a sidecar widget rides along as the page row\'s widgets[] and joins the template block set under its id', () => {
+  const bali = json('coverage/pages.json').pages.find((p) => p.slug === 'tours-bali');
+  assert.deepEqual(bali.widgets, [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }]); assert.deepEqual(bali.blocks, ['hero', 'gallery'], 'modules[] unchanged');
+  assert.deepEqual(json('coverage/pages.json').pages.find((p) => p.slug === 'tours-utah').widgets, [], 'a migrated sibling carries only its own sidecar\'s widgets');
+  const t = Object.fromEntries(json('coverage/templates.json').templates.map((x) => [x.id, x]));
+  assert.deepEqual(t['tours-bali'].blocks, ['cards', 'gallery', 'hero', 'tour-finder']);
+  assert.match(second.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 1 pages — code only, one \/widgets\/ link per page$/m, second.stdout);
+});
+check('blocks.mjs: a widget is a ledger row of kind widget — edsBlockName = its id, blockPath = its code under widgets/, no fragment; plan.mjs converts it once', () => {
+  const b = spawnSync(process.execPath, [join(HERE, '..', 'blocks.mjs'), '--out', out], { encoding: 'utf8' }); assert.equal(b.status, 0, b.stderr);
+  const row = json('coverage/blocks.json').blocks.find((x) => x.id === 'tour-finder');
+  assert.equal(row.kind, 'widget'); assert.equal(row.signature, 'widget:tour-finder'); assert.deepEqual(row.usedByPages, ['tours-bali']); assert.equal(row.instanceCount, 1);
+  assert.deepEqual(row.delivery, { status: 'pending', edsBlockName: 'tour-finder', blockPath: 'widgets/tours/tour-finder.html', convertedAt: null });
+  assert.equal(json('coverage/blocks.json').blocks.find((x) => x.id === 'hero').kind, 'module');
+  assert.match(b.stdout, /Distinct blocks {2}4 {2}\(3 module · 0 chrome\/fragment · 1 widget\)/, b.stdout); assert.match(b.stdout, /^Widgets {10}tour-finder → widgets\/tours\/tour-finder\.html \(code only; no document rows\)$/m, b.stdout);
+  const pl = spawnSync(process.execPath, [join(HERE, '..', 'plan.mjs'), '--out', out], { encoding: 'utf8' }); assert.equal(pl.status, 0, pl.stderr);
+  const step = json('plan.json').steps.find((s) => s.slug === 'tours-bali');
+  assert.deepEqual(step.convert.find((c) => c.id === 'tour-finder'), { id: 'tour-finder', edsBlockName: 'tour-finder', kind: 'widget' });
+  assert.ok(!json('plan.json').fragments.some((f) => f.id === 'tour-finder'), 'a widget is not a fragment');
 });
 
 // A page built outside the migrated tree, registered with `update-coverage.mjs --new`, survives the
@@ -264,7 +288,7 @@ const templatesOf = () => Object.fromEntries(siteJson('stardust/rollout/coverage
 check('delivered: records in document order with the spec keys in order — sorted unique classes, merged default-content runs, sections with style and block positions', () => {
   assert.equal(d1.status, 0, d1.stderr);
   const home = pagesOf().home;
-  assert.deepEqual(Object.keys(home), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'delivered', 'delivery']);
+  assert.deepEqual(Object.keys(home), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'widgets', 'delivered', 'delivery']);
   assert.deepEqual(Object.keys(home.delivered), ['blocks', 'sections', 'lang', 'sourceSnapshot', 'contentHash']);
   for (const r of home.delivered.blocks) assert.deepEqual(Object.keys(r), REC_KEYS);
   const style = 'highlight <site>'; // the trimmed section-metadata style, project identity scrubbed
@@ -292,7 +316,7 @@ check('delivered: lang from the sidecar, sourceSnapshot when committed, contentH
 check('delivered is null for a page with no content file, placed after blocks; module ids in blocks unchanged', () => {
   const p = pagesOf();
   assert.equal(p['news-two'].delivered, null); assert.equal(p['news-three'].delivered, null);
-  assert.deepEqual(Object.keys(p['news-two']), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'delivered', 'delivery']);
+  assert.deepEqual(Object.keys(p['news-two']), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'widgets', 'delivered', 'delivery']);
   assert.deepEqual(p.home.blocks, ['hero', 'cards']);
   assert.match(d1.stdout, /^Delivered {3}3\/5 pages parsed from content · 2 without a content file \(delivered: null\)$/m, d1.stdout);
 });
@@ -358,7 +382,7 @@ check('a row added with update-coverage.mjs --new gets delivered from its conten
   assert.equal(r.status, 0, r.stderr);
   const row = pagesOf().search;
   assert.equal(row.source.migratedHtml, 'dynamics:search');
-  assert.deepEqual(Object.keys(row), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'delivered', 'delivery']);
+  assert.deepEqual(Object.keys(row), ['slug', 'path', 'title', 'templateId', 'source', 'blocks', 'delivered', 'delivery'], 'a row update-coverage registered carries no widgets key; delivered still follows its listing');
   assert.deepEqual(row.delivered.blocks.map((b) => [b.block, b.variantId]), [['search-results', vid('search-results', [])]]);
   assert.equal(row.delivered.contentHash, hash('content/search.html'));
 });
@@ -763,6 +787,22 @@ check('exclusions: --state (archetypes-only) never seeds an excluded roster page
 });
 rmSync(ex, { recursive: true, force: true });
 }
+
+// Upstream's archetypes-only widget check, adapted: --state refuses a tree that holds siblings, so the archetype
+// (with its widget mount) stands alone in its own tree; the roster's sibling inherits the widget as it inherits the blocks.
+check('archetypes-only mode: a content-pending sibling inherits the archetype\'s widgets as it inherits its blocks', () => {
+  const wBox = mkdtempSync(join(tmpdir(), 'rollout-inventory-widgets-')); const wMigrated = join(wBox, 'migrated'); const out2 = join(wBox, 'rollout'); const state = join(wBox, 'roster.json');
+  mkdirSync(join(wMigrated, 'tours', 'bali'), { recursive: true });
+  writeFileSync(join(wMigrated, 'tours', 'bali', 'index.html'), '<html><body><main>bali</main></body></html>');
+  writeFileSync(join(wMigrated, 'tours', 'bali', '_meta.json'), JSON.stringify({ slug: 'tours-bali', type: 'program', fidelityTier: 'archetype', renderBranch: 'A', template: null, modules: ['hero', 'gallery'], widgets: [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }] }));
+  writeFileSync(state, JSON.stringify({ pages: [{ slug: 'tours-bali', url: 'https://example.com/tours/bali/' }, { slug: 'tours-fiji', url: 'https://example.com/tours/fiji/', type: 'tours-bali' }] }));
+  const r = spawnSync(process.execPath, [SCRIPT, '--migrated', wMigrated, '--out', out2, '--state', state], { encoding: 'utf8', cwd: wBox }); assert.equal(r.status, 0, r.stderr);
+  const fiji = JSON.parse(readFileSync(join(out2, 'coverage', 'pages.json'), 'utf8')).pages.find((p) => p.slug === 'tours-fiji');
+  assert.equal(fiji.delivery.status, 'content-pending'); assert.deepEqual(fiji.blocks, ['hero', 'gallery']); assert.deepEqual(fiji.widgets, [{ id: 'tour-finder', href: '/widgets/tours/tour-finder.html?region=all' }]);
+  assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
+  rmSync(wBox, { recursive: true, force: true });
+});
+
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exitCode = failed ? 1 : 0;

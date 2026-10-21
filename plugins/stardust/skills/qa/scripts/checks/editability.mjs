@@ -16,7 +16,8 @@
  * editability/duplicated-index (warn, per block), editability/summary (info, per
  * page), editability/probe-failed (warn). Exemptions (EW5): --ew-exempt a,b and,
  * with --blocks-dir <dir>, `@ew-exempt <reason>` tags in each block's leading
- * JSDoc. Shared instrument: skills/deploy/scripts/ew-editability-probe.mjs.
+ * JSDoc; `widget` (data-block-name of every EDS widget) is always exempt — its text
+ * is code, not authored. Shared instrument: skills/deploy/scripts/ew-editability-probe.mjs.
  * Contract: deploy SKILL.md § Experience Workspace editability contract (EW1–EW10).
  */
 import {
