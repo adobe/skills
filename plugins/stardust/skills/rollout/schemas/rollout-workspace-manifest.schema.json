@@ -131,7 +131,8 @@
                   },
                   "reason": { "type": ["string", "null"], "description": "The owner's why as the record carries it (reason, trimmed, at most 300 characters, an ellipsis closing a cut one); null when there is no record or it has none." },
                   "vocabulary": { "type": ["string", "null"], "description": "Project-relative path of the template's encoder map where block-origin reads it by default (stardust/import/<t>/vocabulary.json when stardust/import is a directory, else stardust/migrate/encode/<t>/vocabulary.json); null when there is none." },
-                  "recordedAt": { "type": ["string", "null"], "description": "The record's at (else its _provenance.writtenAt); null without a record (a decision the page count made)." }
+                  "recordedAt": { "type": ["string", "null"], "description": "The record's at (else its _provenance.writtenAt); null without a record (a decision the page count made)." },
+                  "recordedAs": { "type": "string", "description": "Present only when the record was read under another template id (stardust/migrate/encode/<recordedAs>.json): the pages were re-typed after it was written, and it was found by the template's pages (its `template` or `pages[]`)." }
                 }
               }
             }

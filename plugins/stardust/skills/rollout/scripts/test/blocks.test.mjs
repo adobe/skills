@@ -528,4 +528,32 @@ const check = (name, fn) => { try { fn(); console.log(`✓ ${name}`); } catch (e
 }
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
+// A planned module with neither code nor a delivered instance while every page planning it is verified: a hint
+// (the not-delivered exit), never a derived status — the owner decides, with the reason the schema requires.
+check('a planned module with neither code nor an instance on verified pages only prints the Undelivered hint naming the not-delivered exit; its row stays pending (no derived not-delivered); a page still pending, code under blocks/, or an instance silences the hint', () => {
+  const SCRIPT = join(HERE, '..', 'blocks.mjs');
+  const mk = ({ pages, dirBlocks = [] }) => {
+    const proj = mkdtempSync(join(tmpdir(), 'rollout-blocks-hint-'));
+    const out = join(proj, 'stardust', 'rollout');
+    mkdirSync(join(out, 'coverage'), { recursive: true });
+    writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify({ pages }));
+    writeFileSync(join(out, 'rollout.json'), JSON.stringify({ site: {} }));
+    for (const name of dirBlocks) { mkdirSync(join(proj, 'blocks', name), { recursive: true }); writeFileSync(join(proj, 'blocks', name, `${name}.js`), '// x\n'); }
+    const r = spawnSync(process.execPath, [SCRIPT, '--out', join('stardust', 'rollout')], { cwd: proj, encoding: 'utf8' });
+    const rows = Object.fromEntries(JSON.parse(readFileSync(join(out, 'coverage', 'blocks.json'), 'utf8')).blocks.map((b) => [b.id, b]));
+    rmSync(proj, { recursive: true, force: true });
+    return { r, rows };
+  };
+  const home = (status, delivered) => ({ slug: 'home', path: '/', templateId: 'home', blocks: ['app-promo', 'hero'], delivery: { status }, delivered });
+  const shown = { blocks: [{ kind: 'block', block: 'hero', classes: [], variantId: 'v_1', section: null }], sections: [], lang: null, sourceSnapshot: null, contentHash: 'sha256:' + '0'.repeat(64) };
+  let { r, rows } = mk({ pages: [home('verified', shown)], dirBlocks: ['hero'] });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /^Undelivered 1 planned block\(s\) with neither code under blocks\/ nor a delivered instance while every page planning them is verified \(planned, never delivered as a block\): app-promo — record each: update-coverage\.mjs --block <id> --status not-delivered --reason "<why>"$/m, r.stdout);
+  assert.deepEqual([rows['app-promo'].delivery.status, rows['app-promo'].instanceCount, rows.hero.delivery.status], ['pending', 0, 'converted'], 'a hint, not a status');
+  assert.deepEqual(validate(loadSchema('rollout-blocks.schema.json'), { blocks: Object.values(rows) }).filter((e) => /delivery/.test(e)), []);
+  ({ r } = mk({ pages: [home('deployed', shown)], dirBlocks: ['hero'] }));
+  assert.doesNotMatch(r.stdout, /^Undelivered/m, 'a planning page not yet verified: no hint');
+  ({ r } = mk({ pages: [home('verified', shown)], dirBlocks: ['hero', 'app-promo'] }));
+  assert.doesNotMatch(r.stdout, /^Undelivered/m, 'code under blocks/: no hint (the block exists, a page may still use it)');
+});
 process.exitCode = failed ? 1 : 0;

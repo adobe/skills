@@ -355,4 +355,13 @@ if (unmatched.length) console.log(`Unmatched        ${unmatched.length} delivere
 if (!blocksDirExists) console.log(`Note             no ${BLOCKS_SHOWN}/ directory — no delivered block registered from it (run from the project root, or pass --blocks <dir>)`);
 if (registered.length) console.log(`Registered  ${registered.length} block(s) from ${BLOCKS_SHOWN}/ that no page lists: ${registered.map((b) => b.id).join(', ')}`);
 if (derived.length) console.log(`Converted   ${derived.length} planned block(s) read converted from the delivered documents and ${BLOCKS_SHOWN}/ (no record needed): ${derived.sort(byStr).join(', ')}`);
+// A planned module with neither code nor a delivered instance while every page planning it is verified was never
+// delivered as a block (its section was authored under another block, or dropped). A hint, not a status: `not-delivered`
+// is the owner's decision with a reason the schema requires, and deriving it would settle a row done-check should keep
+// naming (blocks_pending) until someone decides. A recorded hands-off run carried one such row as `pendingBlocks 1`.
+const statusOf = new Map(pages.map((p) => [p.slug, p.delivery && p.delivery.status]));
+const undelivered = planned.filter((b) => b.kind === 'module' && b.delivery.status === 'pending' && b.delivery.edsBlockName !== DEFAULT_CONTENT
+  && b.instanceCount === 0 && !hasCode.has(b.delivery.edsBlockName || edsName(b.id))
+  && (agg.get(b.id) || { pages: new Set() }).pages.size > 0 && [...agg.get(b.id).pages].every((slug) => statusOf.get(slug) === 'verified'));
+if (undelivered.length) console.log(`Undelivered ${undelivered.length} planned block(s) with neither code under ${BLOCKS_SHOWN}/ nor a delivered instance while every page planning them is verified (planned, never delivered as a block): ${undelivered.map((b) => b.id).sort(byStr).join(', ')} — record each: update-coverage.mjs --block <id> --status not-delivered --reason "<why>"`);
 if (templatesWritten) console.log('Templates        judged names/descriptions refreshed in templates.json');

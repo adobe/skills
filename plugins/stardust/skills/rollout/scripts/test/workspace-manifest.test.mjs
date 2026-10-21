@@ -512,15 +512,17 @@ check('excluded: planned URLs that never became a page — the coverage excluded
   ], 'sorted by url; the coverage record of /news wins over the crawl\'s; a captured page\'s crawl failure is no exclusion');
   assert.deepEqual(wm.excludedOf({ pages, crawlLog: { crawl: { failures: [{ url: 'https://www.example.com/x.html' }] } } }), [{ url: 'https://www.example.com/x.html', reason: 'crawl: failed' }]);
   assert.deepEqual(wm.excludedOf({ pages, state: 'not a state', crawlLog: [], plan: null, excluded: null }), [], 'malformed sources add nothing');
-  // in a manifest: the fixture's state.json plans a contact page that was never migrated → unrecorded
+  // in a manifest: the fixture's state.json plans a contact page that was never migrated → unrecorded (no recorded
+  // failure, so inventory.mjs writes no excluded[] row for it — it is undone work, not an exclusion)
   const dir = copy('excluded');
   const planned = 'https://www.example.com/contact.html';
   ok(run(dir));
   assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'unrecorded' }]);
   assert.equal(jsonOut(run(dir, '--json')).counts.excluded, 1);
-  // the crawl's record of that URL gives the reason
+  // the crawl's record of that URL gives the reason — inventory.mjs writes the recorded failure to excluded[] on a rebuild
   mkdirSync(join(dir, 'stardust', 'current'), { recursive: true });
   writeFileSync(join(dir, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [{ url: planned, slug: 'contact', errorClass: 'HTTPError', message: 'HTTP 404', at: '2026-01-01T00:00:00Z' }] } }));
+  rebuild(dir);
   const r = run(dir);
   ok(r);
   assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'crawl: HTTP 404' }]);
@@ -1193,5 +1195,58 @@ check('moved project: coverage built with absolute --out/--blocks from another c
 });
 
 rmSync(ROOT, { recursive: true, force: true });
+check('plannedUndelivered: the module rows planned by a sidecar that no document shows (0 instances) while they read pending — disjoint from pendingBlocks; settled rows, default content, chrome and widgets never', () => {
+  const { plannedUndelivered, pendingBlocks } = wm;
+  const row = (id, status, instances, extra = {}) => ({ id, kind: 'module', instanceCount: instances ?? 0, delivery: { status, edsBlockName: id }, variants: instances == null ? [] : [{ id: `v_${id}`, classes: [], pages: 1, instances }], ...extra });
+  const blocksDoc = { blocks: [
+    row('app-promo', 'pending', 0), row('zeta', 'pending', 2), row('alpha', 'failed', 0), row('unused', 'pending', null),
+    row('done', 'converted', 0), row('skipped', 'not-delivered', 0), row('legacy', 'pending', 0, { instanceCount: 3 }),
+    { id: 'text', kind: 'module', delivery: { status: 'pending', edsBlockName: 'default-content' }, variants: [] },
+    { id: 'header', kind: 'chrome', delivery: { status: 'pending' }, variants: [] },
+    { id: 'finder', kind: 'widget', delivery: { status: 'pending', edsBlockName: 'finder' } },
+  ] };
+  assert.deepEqual(plannedUndelivered(blocksDoc), ['app-promo', 'unused']);
+  assert.deepEqual(pendingBlocks(blocksDoc), ['zeta'], 'the two lists never overlap');
+  for (const empty of [null, {}, { blocks: null }]) assert.deepEqual(plannedUndelivered(empty), []);
+});
+
+check('encodeRecordOf: a record a re-type orphaned (written under the old template id) is found by the template\'s pages — its `template` first, else its `pages[]` — and carries recordedAs; the direct file wins; no slugs or no match: null; selectorQualityOf writes recordedAs and the decision follows (done-check\'s encode_unrecorded with it); validates', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'rollout-encode-retype-'));
+  const REC = join(dir, 'stardust', 'migrate', 'encode');
+  mkdirSync(REC, { recursive: true });
+  const AT = '2026-01-01T00:00:05.000Z';
+  const record = (file, body) => writeFileSync(join(REC, `${file}.json`), `${JSON.stringify({ _provenance: { writtenBy: 'stardust:migrate/encode-attempt', writtenAt: AT }, verdict: 'hand-authored', roundtrip: null, lint: null, reason: 'major variance, no map', pages: [], siblings: 1, encoded: 0, at: AT, ...body }, null, 2)}\n`);
+  record('billing-old', { template: 'billing-old', pages: ['intl'] });        // the old archetype id is a page of the re-typed template
+  record('sponsor-old', { template: 'sponsor-old', pages: ['sustainability'] }); // found by pages[] only
+  record('direct', { template: 'direct', verdict: 'encoded', reason: null });
+  record('noise', { template: 'elsewhere', pages: ['zzz'] });
+  const hit = { verdict: 'hand-authored', recordedAt: AT, reason: 'major variance, no map' };
+  assert.deepEqual(wm.encodeRecordOf(dir, 'service', { slugs: ['billing-old', 'intl'] }), { ...hit, recordedAs: 'billing-old' }, 'by template id among the pages');
+  assert.deepEqual(wm.encodeRecordOf(dir, 'corporate', { slugs: ['about', 'sustainability'] }), { ...hit, recordedAs: 'sponsor-old' }, 'by pages[]');
+  assert.deepEqual(wm.encodeRecordOf(dir, 'direct', { slugs: ['billing-old'] }), { verdict: 'encoded', recordedAt: AT, reason: null }, 'the direct file wins, no recordedAs');
+  assert.equal(wm.encodeRecordOf(dir, 'service'), null, 'no slugs: nothing to find by');
+  assert.equal(wm.encodeRecordOf(dir, 'service', { slugs: ['nobody'] }), null);
+  assert.equal(wm.encodeRecordOf(dir, 'service', { slugs: ['zzz'] }), null, 'a record naming another template (noise: template elsewhere) is not this template\'s even when its pages[] overlap');
+  // through selectorQualityOf: the orphaned record decides, recordedAs names it, the counters follow
+  const inst = (slug, pos) => ({ slug, pos, selector: `s${pos}`, source: 'text-alignment', confidence: 0.6, verified: null });
+  const mapping = { formatVersion: '0.1.0', generatedAt: AT, templates: [
+    { templateId: 'service', pages: ['billing-old', 'intl'], sections: [], blocks: [{ block: 'b', instances: [inst('billing-old', 0), inst('intl', 0)] }] },
+    { templateId: 'lonely', pages: ['x', 'y'], sections: [], blocks: [{ block: 'b', instances: [inst('x', 0), inst('y', 0)] }] },
+  ] };
+  mkdirSync(join(dir, 'stardust', 'rollout', 'workspace'), { recursive: true });
+  const mapFile = join(dir, 'stardust', 'rollout', 'workspace', 'mapping.json');
+  writeFileSync(mapFile, JSON.stringify(mapping));
+  const sq = wm.selectorQualityOf(mapFile, { project: dir });
+  const by = Object.fromEntries(sq.byTemplate.map((t) => [t.template, t.encode]));
+  assert.deepEqual(by.service, { decision: 'hand-authored', reason: 'major variance, no map', vocabulary: null, recordedAt: AT, recordedAs: 'billing-old' });
+  assert.deepEqual(by.lonely, { decision: 'unrecorded', reason: null, vocabulary: null, recordedAt: null }, 'no record anywhere: unrecorded, no recordedAs key');
+  assert.deepEqual([sq.encode.handAuthored, sq.encode.unrecorded], [1, 1]);
+  const schema = loadSchema('rollout-workspace-manifest.schema.json');
+  const encodeSchema = schema.properties.selectorQuality.properties.byTemplate.items.properties.encode;
+  assert.deepEqual(validate(encodeSchema, by.service, { root: schema }), []);
+  assert.deepEqual(validate(encodeSchema, by.lonely, { root: schema }), []);
+  rmSync(dir, { recursive: true, force: true });
+});
+
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }
 console.log('\nall checks passed');

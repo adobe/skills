@@ -74,6 +74,11 @@
  *   that belongs to a captured page is refused; a path already owned by another slug is refused).
  *   `inventory.mjs` keeps these rows on a re-run (the origin marker identifies them; status untouched)
  *   until the migrated tree holds a file for the slug or a migrated page owns the path — the line runs once.
+ *   A slug (else a path) the roster knows — a prior roster row's source.sourceUrl, else <stardust>/state.json
+ *   pages[] — keeps that URL as `source.sourceUrl`: a planned page re-created by hand (a roster sibling built
+ *   outside migrate) is a real page with a URL, gated and judged like any row, and an excluded[] row for it is
+ *   retired (a recorded hands-off run exported nine such pages without a sourceUrl; a client keyed on source
+ *   URLs skipped every one). A roster row (no document) is updated, never refused as captured.
  *   Without a source.sourceUrl the row is synthesized: gate-all skips it, done-check asks it for no sidecar
  *   or gate (`sidecars_missing` never counts it) and names it under `info: synthesized_pages:N`; its status
  *   still counts (verify.mjs --all proves it live). It is never removed from pages.json by hand.
@@ -95,7 +100,7 @@
  */
 import { join, dirname, basename } from 'node:path';
 import { createHash } from 'node:crypto';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, acquireLock, urlToDeliveredPath } from './lib.mjs';
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -167,15 +172,37 @@ if (newSlug) {
   const clash = doc.pages.find((p) => p.slug !== newSlug && (p.path || '') === normPath);
   if (clash) { console.error(`rollout: path ${normPath} already belongs to "${clash.slug}" — not added.`); process.exit(1); }
   let row = doc.pages.find((p) => p.slug === newSlug);
-  if (row && !(row.source && isOriginMarker(row.source.migratedHtml))) {
-    console.error(`rollout: "${newSlug}" is a captured page (source ${row.source && row.source.migratedHtml}) — record its status with \`${newSlug} --status <s>\` instead.`);
+  // a prior --new row, or a roster row (inventory.mjs --state: no document — migratedHtml null, no encodedHtml, the
+  // roster's sourceUrl), is the page this call records; any other row is a captured page: refused
+  const isRosterRow = (r) => !!(r && r.source && typeof r.source === 'object' && r.source.migratedHtml === null && !r.source.encodedHtml && typeof r.source.sourceUrl === 'string');
+  if (row && !(row.source && isOriginMarker(row.source.migratedHtml)) && !isRosterRow(row)) {
+    console.error(`rollout: "${newSlug}" is a captured page (source ${row.source && (row.source.migratedHtml || row.source.encodedHtml)}) — record its status with \`${newSlug} --status <s>\` instead.`);
     process.exit(1);
   }
+  // The page's source URL when the plan knows it: the prior row's (a roster row keeps it), else the roster's —
+  // <stardust>/state.json pages[] by slug, else by delivered path. A planned page re-created by hand is a real page
+  // with a URL, not a synthesized one (a recorded hands-off run exported nine such rows without a sourceUrl and a
+  // client keyed on source URLs skipped every one); `synthesized` is only a page with no source at all.
+  const rosterSourceUrl = () => {
+    const prior = row && row.source && typeof row.source.sourceUrl === 'string' && row.source.sourceUrl ? row.source.sourceUrl : null;
+    if (prior) return prior;
+    const state = readJSON(join(dirname(OUT), 'state.json'));
+    const roster = state && Array.isArray(state.pages) ? state.pages.filter((p) => p && typeof p === 'object' && typeof p.url === 'string' && p.url) : [];
+    const hit = roster.find((p) => p.slug === newSlug) || roster.find((p) => urlToDeliveredPath(p.url) === normPath);
+    return hit ? hit.url : null;
+  };
+  const sourceUrl = rosterSourceUrl();
   const source = {
     migratedHtml: `${origin}:${newSlug}`,
     metaJson: null,
     sourceHash: `sha256:${createHash('sha256').update(`${origin}:${newSlug}:${normPath}`).digest('hex')}`,
+    ...(sourceUrl ? { sourceUrl } : {}),
   };
+  // the page exists now: an excluded[] row for it (a planned page recorded as never captured) is retired
+  if (Array.isArray(doc.excluded)) {
+    doc.excluded = doc.excluded.filter((e) => !(e && (e.slug === newSlug || e.path === normPath || (typeof e.sourceUrl === 'string' && sourceUrl && urlToDeliveredPath(e.sourceUrl) === normPath))));
+    if (!doc.excluded.length) delete doc.excluded;
+  }
   let verb;
   if (row) {
     row.path = normPath;
@@ -211,7 +238,7 @@ if (newSlug) {
     writeJSON(templatesPath, tDoc);
   }
   reRoll();
-  console.log(`${newSlug} ${verb} (${origin}) → ${normPath}   template ${template} · ${row.delivery.status}`);
+  console.log(`${newSlug} ${verb} (${origin}) → ${normPath}   template ${template} · ${row.delivery.status}${sourceUrl ? `   source ${sourceUrl}` : ''}`);
   process.exit(0);
 }
 

@@ -709,4 +709,46 @@ await check('--gate <dir> takes each row\'s host from its own table — the row\
 });
 
 console.log(failed ? `update-coverage: ${failed} check(s) failed` : 'update-coverage: all checks passed');
+// --- --new keeps the roster's source URL: a planned page re-created by hand is a real page, not a synthesized one ---
+await check('--new keeps source.sourceUrl for a page the roster knows — a prior roster row (updated, not refused as captured), else stardust/state.json by slug, else by delivered path — retires its excluded[] row, and stays synthesized (same shape) for a page no roster names', async () => {
+  const { proj, out } = fixture();
+  const pagesSchema = loadSchema('rollout-pages.schema.json');
+  const rosterRow = { slug: 'about', path: '/about', title: 'About', templateId: 'home', representative: 'home', source: { migratedHtml: null, metaJson: null, sourceHash: 'sha256:' + 'a'.repeat(64), currentStatePath: null, sourceUrl: 'https://example.com/about.html' }, blocks: ['hero'], widgets: [], delivery: { status: 'content-pending', deployedUrl: null, deployedAt: null, verifiedAt: null, error: null } };
+  const doc = JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8'));
+  doc.pages.push(rosterRow);
+  doc.excluded = [{ slug: 'faq', path: '/faq', sourceUrl: 'https://example.com/faq/', status: 'excluded', reason: 'not captured', at: null }];
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify(doc, null, 2));
+  writeFileSync(join(proj, 'stardust', 'state.json'), JSON.stringify({ pages: [{ slug: 'about', url: 'https://example.com/about.html' }, { slug: 'faq', url: 'https://example.com/faq/' }, { slug: 'kontakt', url: 'https://example.com/contact' }] }));
+  // a roster row (no document): updated, its URL kept
+  let r = await run(['--new', 'about', '--path', '/about', '--template', 'about', '--origin', 'unique', '--status', 'verified'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^about updated \(unique\) → \/about {3}template about · verified {3}source https:\/\/example\.com\/about\.html$/m, r.out);
+  let row = readPages(out).find((p) => p.slug === 'about');
+  assert.deepEqual(row.source, { migratedHtml: 'unique:about', metaJson: null, sourceHash: row.source.sourceHash, sourceUrl: 'https://example.com/about.html' });
+  assert.equal(row.delivery.status, 'verified');
+  assert.deepEqual(validate(pagesSchema.$defs.page, row, { root: pagesSchema }), []);
+  // the roster by slug: the URL from state.json; the excluded[] row for it is retired (the key goes with the last row)
+  r = await run(['--new', 'faq', '--path', '/faq', '--template', 'faq', '--origin', 'unique'], proj);
+  assert.equal(r.code, 0, r.err);
+  row = readPages(out).find((p) => p.slug === 'faq');
+  assert.equal(row.source.sourceUrl, 'https://example.com/faq/');
+  assert.ok(!('excluded' in JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8'))), 'the planned page exists now: no excluded[] row for it');
+  // the roster by delivered path (another slug): the URL still found
+  r = await run(['--new', 'contact', '--path', '/contact/', '--template', 'contact', '--origin', 'unique'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.equal(readPages(out).find((p) => p.slug === 'contact').source.sourceUrl, 'https://example.com/contact');
+  // no roster entry: synthesized, the shape unchanged (no sourceUrl key), the result line unchanged
+  r = await run(['--new', 'search', '--path', '/search', '--template', 'search', '--origin', 'dynamics'], proj);
+  assert.equal(r.code, 0, r.err);
+  assert.match(r.out, /^search added \(dynamics\) → \/search {3}template search · pending$/m, r.out);
+  assert.deepEqual(Object.keys(readPages(out).find((p) => p.slug === 'search').source).sort(), SOURCE_KEYS);
+  // a captured page (a migrated file) is still refused
+  const d2 = JSON.parse(readFileSync(join(out, 'coverage', 'pages.json'), 'utf8'));
+  d2.pages.find((p) => p.slug === 'page-1').source = { migratedHtml: 'stardust/migrated/page-1.html', sourceHash: 'sha256:' + 'b'.repeat(64), sourceUrl: 'https://example.com/page-1' };
+  writeFileSync(join(out, 'coverage', 'pages.json'), JSON.stringify(d2, null, 2));
+  r = await run(['--new', 'page-1', '--path', '/page-1', '--template', 'x', '--origin', 'unique'], proj);
+  assert.equal(r.code, 1); assert.match(r.err, /"page-1" is a captured page \(source stardust\/migrated\/page-1\.html\)/);
+  assert.deepEqual(validate(pagesSchema.$defs.page, readPages(out).find((p) => p.slug === 'contact'), { root: pagesSchema }), [], 'a roster-matched row validates as a page');
+});
+
 process.exit(failed ? 1 : 0);

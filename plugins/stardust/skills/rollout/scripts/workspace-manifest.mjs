@@ -256,13 +256,39 @@ const REASON_MAX = 300;
  * pages, siblings, encoded, at, source, …}`) — read tolerantly: a JSON object whose `verdict` is one of
  * ENCODE_VERDICTS and whose `template`, when a string, is this template; `recordedAt` = its `at`, else
  * `_provenance.writtenAt`, else null; `reason` = its `reason` trimmed, capped at REASON_MAX chars (an ellipsis closes a
- * cut one), null when absent or blank. Every other key is ignored, so older or richer records read alike. null when
- * there is no such record (absent, unreadable, another template's, an unknown verdict). Never writes. Pure but for
- * the one read.
+ * cut one), null when absent or blank. Every other key is ignored, so older or richer records read alike. Without
+ * that file, `slugs` (the template's pages) finds the record a re-type orphaned — one whose `template` or `pages[]`
+ * names one of them — and the result carries `recordedAs: <that id>`. null when there is no such record (absent,
+ * unreadable, another template's, an unknown verdict). Never writes. Pure but for the reads.
  */
-export function encodeRecordOf(project, templateId) {
+export function encodeRecordOf(project, templateId, { slugs = [] } = {}) {
   if (!project || !pathSafeId(templateId)) return null;
-  const file = join(project, 'stardust', 'migrate', 'encode', `${templateId}.json`);
+  const dir = join(project, 'stardust', 'migrate', 'encode');
+  const direct = readEncodeRecord(join(dir, `${templateId}.json`), templateId);
+  if (direct) return direct;
+  // The record written under another template id — the pages were re-typed after `encode-attempt.mjs record
+  // --template <old-id>` (state.mjs set --type), so <templateId>.json is not where the decision lives (a recorded
+  // hands-off run read two `hand-authored` templates as `unrecorded` this way). The record whose `template` is one of
+  // this template's pages, else whose `pages[]` names one, decides; its id travels as `recordedAs`. Several such
+  // records: the first by file name (deterministic; the manifest names the one it read).
+  const wanted = new Set((Array.isArray(slugs) ? slugs : []).filter((s) => typeof s === 'string' && s));
+  if (!wanted.size || !isDir(dir)) return null;
+  let names = [];
+  try { names = readdirSync(dir).filter((n) => n.endsWith('.json') && n !== `${templateId}.json`).sort(byStr); } catch { return null; }
+  const found = (pick) => {
+    for (const n of names) {
+      const id = n.slice(0, -'.json'.length);
+      const rec = readEncodeRecord(join(dir, n), id);
+      if (rec && pick(rec)) return { ...rec, recordedAs: id };
+    }
+    return null;
+  };
+  return found((r) => r.template !== null && wanted.has(r.template)) || found((r) => r.pages.some((s) => wanted.has(s)));
+}
+
+// One record file, read tolerantly (see encodeRecordOf): null unless a JSON object with a known verdict whose
+// `template` (when a string) is `templateId`; `template` and `pages` (its string entries) are kept for the fallback.
+function readEncodeRecord(file, templateId) {
   if (!isFile(file)) return null;
   let rec;
   try { rec = JSON.parse(readFileSync(file, 'utf8')); } catch { return null; }
@@ -272,7 +298,10 @@ export function encodeRecordOf(project, templateId) {
   const recordedAt = [rec.at, rec._provenance && rec._provenance.writtenAt].find((v) => typeof v === 'string' && v) ?? null;
   const why = typeof rec.reason === 'string' ? rec.reason.trim() : '';
   const reason = !why ? null : why.length > REASON_MAX ? `${why.slice(0, REASON_MAX - 1)}…` : why;
-  return { verdict: rec.verdict, recordedAt, reason };
+  const out = { verdict: rec.verdict, recordedAt, reason };
+  Object.defineProperty(out, 'template', { value: typeof rec.template === 'string' ? rec.template : null, enumerable: false });
+  Object.defineProperty(out, 'pages', { value: Array.isArray(rec.pages) ? rec.pages.filter((s) => typeof s === 'string') : [], enumerable: false });
+  return out;
 }
 
 /**
@@ -336,7 +365,7 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
     // the template's pages: block-origin's pages[] (its sorted slugs), else the slugs its instances sit on
     const slugs = Array.isArray(t.pages) ? t.pages : insts.map((i) => i && i.slug);
     const pages = new Set(slugs.filter((s) => typeof s === 'string' && s)).size;
-    const record = encodeRecordOf(project, template);
+    const record = encodeRecordOf(project, template, { slugs });
     // the record decides; its stamp and reason travel with it (a decision the page count made carries null for both)
     const decision = encodeDecisionOf({ record, pages });
     encode[ENCODE_COUNTER[decision]] += 1;
@@ -345,7 +374,7 @@ export function selectorQualityOf(mappingFile, { project = null } = {}) {
       encoderMap, textAlignment: bySource('text-alignment'), imageAlignment: bySource('image-alignment'), position: bySource('position'),
       encoderCoverage: insts.length ? round3(encoderMap / insts.length) : 0,
       lowConfidence: insts.filter(isLowConfidence).length,
-      encode: { decision, reason: record ? record.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null },
+      encode: { decision, reason: record ? record.reason : null, vocabulary: vocabularyOf(project, template), recordedAt: record ? record.recordedAt : null, ...(record && record.recordedAs ? { recordedAs: record.recordedAs } : {}) },
     };
   }).sort((a, b) => b.instances - a.instances || byStr(a.template, b.template));
   return {
@@ -486,8 +515,20 @@ const SETTLED = new Set(['converted', 'deployed', 'verified', 'not-delivered']);
  * manifest's `blocks[].delivery` placeholder and done-check's `blocks_pending` info line both count exactly this. Pure.
  */
 export function pendingBlocks(blocksDoc) {
-  const delivered = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
-  return [...moduleBlocks(blocksDoc)].filter(([, b]) => delivered(b) > 0 && !SETTLED.has(b.delivery && b.delivery.status))
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => deliveredInstances(b) > 0 && !SETTLED.has(b.delivery && b.delivery.status))
+    .map(([name]) => name).sort(byStr);
+}
+const deliveredInstances = (b) => (Array.isArray(b.variants) ? b.variants : []).reduce((n, v) => n + (v && typeof v.instances === 'number' ? v.instances : 0), 0);
+
+/**
+ * The module blocks planned (a sidecar's modules[]) that no delivered document shows (0 instances) while blocks.json
+ * still reads `pending` — never shipped as a block (its section was authored under another block, or dropped) and
+ * never decided: the exit is `update-coverage.mjs --block <id> --status not-delivered --reason "<why>"`. By EDS name,
+ * sorted; disjoint from pendingBlocks (a recorded hands-off run carried one such row as `pendingBlocks 1`, unnamed
+ * anywhere a client reads). Not a manifest placeholder (nothing of it shipped): done-check's blocks_pending names it. Pure.
+ */
+export function plannedUndelivered(blocksDoc) {
+  return [...moduleBlocks(blocksDoc)].filter(([, b]) => deliveredInstances(b) === 0 && (b.instanceCount ?? 0) === 0 && (b.delivery && b.delivery.status) === 'pending')
     .map(([name]) => name).sort(byStr);
 }
 

@@ -419,6 +419,18 @@ check('unit_unproven: a unit page excluded since (coverage excluded[] by path, n
     ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], 'an excluded path never hides a row still in pages[]');
 });
 
+check('unit_unproven: a planned page with no row and no recorded failure stays a unit gap — an excluded[] row with a derived reason (captured, not migrated / not captured) never leaves the count; an owner\'s or the crawl\'s recorded reason does', () => {
+  for (const reason of ['captured, not migrated', 'not captured']) {
+    assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [{ slug: 'news-a', path: '/news/a', status: 'excluded', reason, at: null }] }).gaps,
+      ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html'], reason);
+  }
+  for (const reason of ['crawl: HTTP 404', 'the source answers 404', null]) {
+    assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [{ slug: 'news-a', path: '/news/a', status: 'excluded', reason, at: null }] }).gaps, [], String(reason));
+  }
+  // and no exclusion at all for it: the gap, as before this unit
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [] }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html']);
+});
+
 check('unit_unproven: a unit flipped with progress.mjs unit done --unproven "<reason>" carries the reason on its gap', () => {
   const reason = 'preview host 500 during the gate window; re-gate next session';
   const progress = { units: { ...PROGRESS.units, 'cluster-news': { ...PROGRESS.units['cluster-news'], unproven: reason } } };
@@ -1090,8 +1102,49 @@ check('CLI: export_quality — a fresh migration-workspace manifest carrying sel
   rmSync(proj, { recursive: true, force: true });
 });
 
+// --- plan_vs_pages and the 0-instance pending rows ------------------------------------------------
+check('plan_vs_pages: planned URLs with neither a pages[] row nor an excluded[] row are one info line after pages_excluded, never a gap; none when the plan is accounted for; malformed input is silent', () => {
+  const planned = [{ slug: 'faq', url: 'https://example.com/faq.html', path: '/faq' }, { slug: 'old', path: '/old' }];
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], excluded: [{ slug: 'news', path: '/news' }], planGaps: planned });
+  assert.deepEqual(v.gaps, []);
+  assert.deepEqual(v.info, ['pages_excluded:1: /news', 'plan_vs_pages:2: https://example.com/faq.html, /old — planned URL(s) with neither a pages[] row nor an excluded[] row: migrate or update-coverage.mjs --new the page, state.mjs exclude <slug> --reason "<why>", or re-run inventory.mjs for a crawl-recorded failure']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], planGaps: [] }).info, []);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], planGaps: 'x' }).info, []);
+});
+check('blocks_pending counts every pending row: the delivered-without-record ones with their remedy, plus the planned rows no document shows (0 instances) with the not-delivered exit; one line, one count', () => {
+  const v = doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: ['hero'], plannedUndelivered: ['app-promo', 'hero'] });
+  assert.deepEqual(v.gaps, []);
+  assert.deepEqual(v.info, ['blocks_pending:2: hero, app-promo — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered; planned by a sidecar and shown by no delivered document (0 instances: app-promo): record update-coverage.mjs --block <id> --status not-delivered --reason "<why>"']);
+  assert.deepEqual(doneGaps({ pages: CLEAN_PAGES, ledgerLines: ENDED, notLive: [], pendingBlocks: [], plannedUndelivered: ['app-promo'] }).info, ['blocks_pending:1: app-promo — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered; planned by a sidecar and shown by no delivered document (0 instances: app-promo): record update-coverage.mjs --block <id> --status not-delivered --reason "<why>"'], 'a 0-instance pending row alone is named — a recorded hands-off run carried one unnamed');
+});
+check('CLI: a planned module row with 0 instances still pending prints under blocks_pending; a crawl failure with no row and no excluded[] row prints plan_vs_pages; both info, exit 0', () => {
+  const blocks = { blocks: [
+    { id: 'app-promo', kind: 'module', source: null, usedByTemplates: [], usedByPages: [], instanceCount: 0, delivery: { status: 'pending', edsBlockName: 'app-promo' }, variants: [] },
+    { id: 'three-up', kind: 'module', delivery: { status: 'converted', edsBlockName: 'columns' }, variants: [{ id: 'v_2', classes: [], pages: 1, instances: 1 }] },
+    { id: 'skipped', kind: 'module', instanceCount: 0, delivery: { status: 'not-delivered', edsBlockName: 'skipped', reason: 'dropped' }, variants: [] },
+  ] };
+  const proj = project({ files: { 'stardust/rollout/coverage/blocks.json': blocks, 'stardust/current/_crawl-log.json': { crawl: { failures: [{ url: 'https://example.com/faq.html', slug: 'faq', message: 'HTTP 404' }] } } } });
+  const r = run(proj, ['--offline']);
+  assert.equal(r.status, 0, r.stdout);
+  const lines = r.stdout.split('\n');
+  assert.ok(lines.includes('info: plan_vs_pages:1: https://example.com/faq.html — planned URL(s) with neither a pages[] row nor an excluded[] row: migrate or update-coverage.mjs --new the page, state.mjs exclude <slug> --reason "<why>", or re-run inventory.mjs for a crawl-recorded failure'), r.stdout);
+  assert.ok(lines.includes('info: blocks_pending:1: app-promo — build the block code (blocks.mjs then reads it converted) or record each: update-coverage.mjs --block <name|id> --status converted|not-delivered; planned by a sidecar and shown by no delivered document (0 instances: app-promo): record update-coverage.mjs --block <id> --status not-delivered --reason "<why>"'), r.stdout);
+  // the excluded[] row inventory writes for it, and the not-delivered record, silence both
+  const pagesDoc = JSON.parse(readFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), 'utf8'));
+  pagesDoc.excluded = [{ slug: 'faq', path: '/faq', sourceUrl: 'https://example.com/faq.html', status: 'excluded', reason: 'crawl: HTTP 404', at: null }];
+  writeFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'pages.json'), JSON.stringify(pagesDoc));
+  blocks.blocks[0].delivery = { status: 'not-delivered', edsBlockName: 'app-promo', reason: 'authored under another block' };
+  writeFileSync(join(proj, 'stardust', 'rollout', 'coverage', 'blocks.json'), JSON.stringify(blocks));
+  const r2 = run(proj, ['--offline']);
+  assert.equal(r2.status, 0, r2.stdout);
+  assert.ok(r2.stdout.split('\n').includes('info: pages_excluded:1: /faq'), r2.stdout);
+  assert.ok(!/plan_vs_pages|blocks_pending/.test(r2.stdout), r2.stdout);
+  rmSync(proj, { recursive: true, force: true });
+});
+
 for (const [name, fn] of tests) {
   try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
 }
 console.log(failed ? `\n${failed} failed` : '\nall passed');
+
 process.exit(failed ? 1 : 0);
