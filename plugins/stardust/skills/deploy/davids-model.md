@@ -27,7 +27,7 @@ lives in the skill.
 | D12 | **Fragments may be harmful.** Chrome (`/nav`, `/footer`) and genuinely reused bands (disclaimers, sign-up forms) are the legitimate uses. Fragments add indirection; SEO-relevant copy belongs directly on the page (duplicate-content caveat). | Step 6 (chrome documents); ENCODE contract #86/D12 (key facts in page content) |
 | D13 | **Don't overload alt-text.** Alt-text is the image description, nothing else — never data a block parses (easily lost in copy/paste, invisible to authors). | ENCODE structural rules; Images (alt required, description only) |
 | D14 | **Name/value pairs only for configuration.** They map to `data-`/`<meta>`; never model displayed content (Heading/Image/Text) as name/value. | ENCODE contract; page `metadata` + section-metadata usage; lint 🔴 (display copy in a key-value block) |
-| D15 | **No HTML, CSS, or JSON in documents.** A visible `<tag>`, `{{ }}`, or style rule as author-facing text is a modeling mistake — code lives in the repo. | ENCODE structural rules; content-page checklist; lint 🔴 |
+| D15 | **No HTML, CSS, or JSON in documents.** A visible `<tag>`, `{{ }}`, or style rule as author-facing text is a modeling mistake — code lives in the repo. | ENCODE structural rules (#134 — a bare declaration in a cell is the same mistake); content-page checklist; lint 🔴 (tags, bindings, rules, declarations, `--token`), lint 🟡 (lone length / hex colour) |
 
 ## Component-model shape compatibility (forward-looking)
 

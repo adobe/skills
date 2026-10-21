@@ -46,6 +46,10 @@
  *                           comment). Any tag exempts the block's dead texts (they
  *                           are reported as `exempt`, with the declared reasons);
  *                           `@ew-exempt all` = the whole block is index/API-driven.
+ *                           No tag covers a cell whose text is CSS (`padding: 200px …`,
+ *                           `--x: …`): it is reported DEAD with a #134 label (css-as-text.mjs).
+ *   @variants <cell>: a | b (default a)   the closed vocabulary of a variant-word cell (#134);
+ *                           declared, an exempt one-word cell outside it is DEAD (typo).
  *                           Read whenever a blocks dir is known (harness mode
  *                           always; URL mode with --blocks-dir). Union with --exempt.
  *   metadata / section-metadata cells are pipeline config (never displayed) and
@@ -69,6 +73,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
+import { cssAsText } from './css-as-text.mjs';
 
 export const EDITABLE = 'h1, h2, h3, h4, h5, h6, p, ol, ul, pre, blockquote';
 export const QE_CSS = 'https://raw.githubusercontent.com/adobe/da-nx/main/nx/public/plugins/quick-edit/quick-edit.css';
@@ -323,7 +328,20 @@ export function parseExemptTags(js) {
   if (!reasons.length) return null;
   const all = reasons.some((r) => /^all\b/i.test(r));
   const categories = EW_EXEMPT_CATEGORIES.filter((c) => reasons.some((r) => new RegExp(`\\b${c}\\b`, 'i').test(r)));
-  return { all, reasons, categories };
+  return { all, reasons, categories, variants: parseVariantTags(lead) };
+}
+
+// `@variants <cell>: left | right (default left)` lines in the leading JSDoc (#134) — the closed
+// vocabulary of the block's variant-word cells. Returns a Set of lower-case words (empty = none
+// declared). With a vocabulary declared, an exempt ONE-WORD cell outside it is dead (a typo falls
+// back silently in the block; the probe is where it is caught).
+export function parseVariantTags(lead) {
+  const words = new Set();
+  for (const m of (lead || '').matchAll(/@variants\s+(?:[^:\n]*:\s*)?([^\n]*)/g)) {
+    const list = m[1].replace(/\(default\s+[^)]*\)/i, '').split(/\s+—.*$/)[0];
+    list.split('|').map((w) => w.trim().toLowerCase()).filter((w) => /^[a-z0-9-]+$/.test(w)).forEach((w) => words.add(w));
+  }
+  return words;
 }
 
 // Exemptions for a set of blocks: JSDoc tags from <blocksDir>/<name>/<name>.js
@@ -360,6 +378,16 @@ export function aggregate(rows, { sim = null, exemptions = {}, keyOf = (r) => r.
     const label = `<${r.tag}> ${r.text}`;
     if (r.hits === 1) { b.editable += 1; if (!r.sameText) b.textDrift += 1; }
     else if (r.hits > 1) { b.duplicated += 1; b.editable += 1; b.dupItems.push({ tag: r.tag, text: r.text, hits: r.hits, label: `${label} (×${r.hits})` }); }
+    else if (ex && ex.variants?.size && /^[a-z0-9-]+$/i.test(r.text.trim()) && !ex.variants.has(r.text.trim().toLowerCase())) {
+      // #134 — the block declares a variant vocabulary (@variants); a one-word exempt cell outside
+      // it is a misspelled or undeclared variant word — the block would fall back silently.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — not a declared variant word (@variants: ${[...ex.variants].join(' | ')}) (#134)` });
+    }
+    else if (ex && cssAsText(r.text)?.sev === '🔴') {
+      // #134 — an @ew-exempt tag (config, metadata, …) never covers a style value: CSS authored as a
+      // cell is a modeling defect (D15), not exempt text. The look is block CSS or a named variant word.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — CSS as content, not covered by @ew-exempt (#134)` });
+    }
     else if (ex) { b.exempt += 1; b.exemptItems.push({ tag: r.tag, text: r.text, label }); }
     else { b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label }); }
   });
@@ -392,7 +420,8 @@ export function formatTable(label, { blocks, totals }, { sim = null, verbose = f
   return out.join('\n');
 }
 
-// Gate verdict over aggregated blocks: dead non-exempt text or duplicated index → fail.
+// Gate verdict over aggregated blocks: dead non-exempt text (including an exempt-tagged cell whose
+// text is CSS, #134) or duplicated index → fail.
 export function verdict({ blocks }) {
   return { dead: blocks.some((b) => b.dead > 0), duplicated: blocks.some((b) => b.duplicated > 0) };
 }

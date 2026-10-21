@@ -7,6 +7,11 @@ script you touch — playwright scripts from a project copy, the plugin tree shi
   duplicated rationale, a twice-told anecdote, a superseded rule — and quote
   `evals/lint/prose-delta.mjs` in the PR. Scripts are the relaxed budget; one shared instrument
   beats three copies.
+- **A rule has one home.** State it once, where the agent acts on it (the ENCODE contract, a
+  step, an anti-pattern). Every other mention — a reference table, a checklist row, a JSDoc, a
+  CHANGELOG entry — is a pointer (`#N`) plus only what that file owns (the enforcement column
+  says which lint and which tier, not why). A second telling in a reference file is the first
+  thing to fold.
 - **No site names anywhere**, evidence included: role names ("a commerce home page") and
   placeholders (`<site>`, `main > div.<cms-list>`). `evals/lint/site-names.mjs` fails otherwise;
   extend its allowlist only with a reason on the line.

@@ -2298,6 +2298,41 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
   names the keys.
 
+## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
+
+Field learning (a Magento marketplace replica): the source home slider is PageBuilder, and each of its three slides
+carries its own overlay rule (`padding: 200px 10px 10px 50px`, `… 750px`, `190px 10px 0 35px; background-size: auto`).
+The block ported that per-slide style as an authored config cell — `padding: …; size: auto`, documented in the JSDoc,
+tagged `@ew-exempt config`, copied into `overlay.style.padding` by `decorate()`. Two gates blessed it: the editability
+probe counted the three cells exempt ("24/27 editable, 3 exempt (config)" in the conversion log) and D15's lint knew
+only a full `prop: value; }` rule. The author saw CSS as body text in DA. Nothing in the skill said how a per-instance
+visual difference is encoded — only that it must not be flattened — and a page-builder source hands the agent a
+ready-made per-instance style field to port.
+
+- **deploy ENCODE contract:** new rule — per-instance visual variation is a NAMED VARIANT: every #90 fingerprint
+  cluster becomes one plain word from a closed set of ≤3–4 (`left | right`, `dark | light`) in a dedicated cell on
+  every row (or a block variant class); `decorate()` maps the word to a class, the block CSS carries each variant's
+  exact source values, an empty/unknown word falls back to the declared default. That keeps fidelity (each slide looks
+  as it did) AND authoring flexibility (an author can pick a side) — normalising clusters into one treatment is the
+  exception, for sub-16 px deltas or when the set would exceed the D6/D9 budget, logged in the inconsistency register.
+  Never a declaration, length, colour, class name or `--token: value` in a cell, and never `el.style.x = text` /
+  `setProperty(…, text)` / `setAttribute('style', text)` from authored content in block JS. D15 names the
+  bare-declaration form; EW5's "variant selectors" are keywords; anti-pattern 20; Step-8 JSDoc scaffold; checklist row.
+- **`@variants <cell>: a | b (default a)` JSDoc tag:** declares a variant cell's vocabulary. `parseExemptTags()` returns
+  it; with a vocabulary declared, `aggregate()` reports an exempt ONE-WORD cell outside the set dead ("not a declared
+  variant word") — a misspelled `rigth` would otherwise fall back silently in the block.
+- **`davids-model-lint.mjs`:** D15 gains a per-cell and per-paragraph check — text that IS a CSS declaration
+  (every value token CSS-shaped: lengths, numbers, colours, functions, keywords) or a custom-property assignment is
+  🔴; a cell that is only CSS lengths or a lone hex colour is 🟡 (a data table may legitimately hold them).
+  Key-value blocks (`metadata`, `section-metadata`, `library-metadata`) are exempt — configuration may hold a
+  colour. Calibrated on 38k generated pages: zero 🔴 false positives ("color: text-only teaser boxes, 6-up grid"
+  and decades like "1970s" were the two that had to be excluded), 204 hex-colour advisories on one site that had
+  authored a brand colour per tile — the pattern this release names. The classifier lives in `css-as-text.mjs`.
+- **`ew-editability-probe.mjs` (and `block-roundtrip --ew`, qa `editability`):** an `@ew-exempt` tag no longer covers a
+  cell whose text is CSS — `aggregate()` reports it dead with a #134 label, so the round-trip gate fails on the
+  recorded case instead of listing it under "exempt (config)". Tests: `deploy/davids-model-lint`,
+  `deploy/ew-editability-probe` (new).
+
 ## 0.34.0 — widgets: code-driven UI with no authored content ships as an EDS widget, not a block with empty rows (#133)
 
 Platform change: the boilerplate gained widgets (`adobe/aem-boilerplate` #630, `aem.live/docs/widgets`) — a

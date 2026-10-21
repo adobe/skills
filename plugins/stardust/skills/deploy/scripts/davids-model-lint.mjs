@@ -33,7 +33,9 @@
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
  *   D15 code visible as text (tags/{{}}/CSS/   D5  complex nested list inside a cell
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
- *                                                  lookalike (advisory: legit acronyms exist)
+ *   D15 CSS as content (#134): a cell or           lookalike (advisory: legit acronyms exist)
+ *       paragraph whose text IS a declaration   D15 a cell that is only a CSS length or a
+ *       ("padding: 200px 10px") or a --token        lone hex colour (#134, advisory)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
@@ -43,6 +45,7 @@
 import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
 import { pathKey } from './eds-path.mjs';
+import { cssAsText, decodeEntities } from './css-as-text.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -53,7 +56,7 @@ if (process.argv.includes('--help') || process.argv.includes('-h')) {
 }
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
-const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
+const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata', 'library-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
@@ -126,6 +129,14 @@ function lintPage(file, html, findings) {
     }
 
     lintSectionShape(file, section, kids, defaultContentText, flag);
+
+    // D15 / #134 — a default-content paragraph that is only CSS.
+    for (const m of childlessHtml(section.inner, kids).matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+      const css = cssAsText(stripTags(m[1]));
+      if (css) {
+        flag(css.sev, 'D15', `section ${classOf(section.openTag) || '(unnamed)'}: ${css.what} authored as a paragraph ("${decodeEntities(stripTags(m[1])).slice(0, 40)}") — never CSS in the document (#134)`);
+      }
+    }
   }
 
   lintText(file, main, flag);
@@ -185,6 +196,13 @@ function lintBlock(file, section, block, name, flag) {
         if (links.length === 1 && EMBED_HOST.test(links[0][1]) && text === stripTags(links[0][2])) {
           flag('🔴', 'D1', `${where}: embed/video URL authored inside a block — author it as a plain link in default content and auto-block it in scripts.js buildAutoBlocks()`);
         }
+      }
+
+      // D15 / #134 — CSS authored as the cell's content. Key-value blocks are
+      // configuration (D14) and may legitimately hold a colour or a length.
+      const css = isKeyValue ? null : cssAsText(stripTags(cell.inner));
+      if (css) {
+        flag(css.sev, 'D15', `${where}: ${css.what} authored as cell text ("${decodeEntities(stripTags(cell.inner)).slice(0, 40)}") — a per-item look is block CSS, an author-facing choice is one word from a closed variant set; never CSS in the document (#134)`);
       }
 
       // D5 — complex nested list inside a cell (list items carrying headings /

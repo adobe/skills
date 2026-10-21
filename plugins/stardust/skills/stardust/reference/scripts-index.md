@@ -9,6 +9,7 @@ Run the copies in `stardust/scripts/<skill>/`. Deploy/rollout/migrate calls: `..
 - `deploy/chrome-map.mjs` — nav/footer documents per page → `chrome-map.json`
 - `deploy/content-count.mjs` — offline L5 content count, capture vs document
 - `deploy/content-inventory.mjs` — library: role classifier + inventory differ, no CLI
+- `deploy/css-as-text.mjs` — library: is this authored text CSS? no CLI
 - `deploy/da-media-upload.mjs` — rehost captured images to the DA media folder
 - `deploy/davids-model-lint.mjs` — content-model conformance lint (David's Model)
 - `deploy/deploy-batch.mjs` — resumable PUT→preview→live driver for DA
