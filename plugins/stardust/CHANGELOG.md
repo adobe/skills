@@ -4,34 +4,9 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.36.0 — local integration for the next recorded run (not a release)
+## 0.35.0 — hands-off replica, wave 1: gates measured on the live host, delivery bookkeeping, the shipped sibling encoder and the migration export (#135–#147)
 
-A local integration of the stardust branches for the next recorded hands-off run's image: never pushed,
-never released. Each merged branch keeps its own entry below in version order, under its provisional
-version; numbers marked "local" are integration-only and renumbered by the maintainer at merge.
-
-- Base `stardust/gate-economics` — 0.35.6 (#143, #144 local), carrying `stardust/gate-trust` 0.35.5,
-  `stardust/gate-all-coverage-roster` 0.35.1, `stardust/replica-fidelity-run14` 0.34.5 (#140 local),
-  `stardust/replica-retro-pack` 0.34.4, `stardust/replica-gate-triage` 0.34.3,
-  `stardust/replica-source-oracle` 0.34.2, `stardust/replica-speed-instruments` 0.34.1 and
-  `stardust/replica-consent-and-progress-shape` 0.33.1.
-- `stardust/replica-cluster-subunits` — 0.35.0 (#136).
-- `stardust/replica-instrument-deadlines` — 0.35.2 (#137).
-- `stardust/rollout-bookkeeping-proof` — 0.35.3 (#142 local).
-- `stardust/handover-tools` — 0.35.4 (#139).
-- `stardust/migrate-shipped-encoder` — 0.35.0 (#141 local).
-- `stardust/rollout-workspace-export` — 0.34.0 (#135, PR #443).
-- `stardust/rollout-block-origin` — 0.34.1 (#138 local).
-- `stardust/rollout-run-followups` — 0.35.7 (#145 local); it tracks the gate's JSON sidecars under
-  `replica/gates/`, which replaced the local stand-in.
-- `stardust/handover-followups` — 0.35.9 (#146 local).
-- `stardust/capture-dialogs-and-denials` — 0.35.8 (#147 local).
-- Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
-  its delivered `lang` in the rollout inventory; an INCONCLUSIVE gate row keeps a width's earlier failing
-  verdict; the master card's Versioning line names the tracked gate sidecars; a crawl loader comment; the
-  renumbering above.
-
-## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#146)
+### handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#146)
 
 A recorded hands-off run never invoked the encoder: it hand-built every A′ sibling, wrote each sibling's slot data by
 hand, and its plan ledger could not say how many templates were encoded. Review of the 0.35.4 handover tools left open
@@ -127,7 +102,7 @@ re-renders once; each earlier variance acceptance is refused once, quoting its r
 Provisional version, renumbered at merge; stacks on 0.35.4 (the handover-tools branch); 0.35.7 and 0.35.8 are other
 branches.
 
-## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#147)
+### the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#147)
 
 Pre-run probes: a large logistics site served the headless browser a 900 px denial page with status 200, and
 `stitch-shot.mjs` wrote it as a capture with exit 0. In headed stealth Chrome the page rendered fully, but an open modal
@@ -194,7 +169,7 @@ verdict, never a false pass: every live instrument exits 3, and the crawl captur
 stitch exit 3 takes its existing blocked path, and the INCONCLUSIVE `origin blocked` row arrives with the gate-trust
 merge; provisional: version and #147 renumbered at merge.
 
-## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#145)
+### bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#145)
 
 A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,
 missed headings it passed to `section.mjs` verbatim, read 65 full-page PNGs (about 17 MB) into context and held the
@@ -341,7 +316,7 @@ dynamics-check: any FAIL exits 2 (was 1, or 0 when the event loop drained first)
 #125, #126, #136, #142. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
 gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed contract is a minor release.
 
-## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
+### the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
 
 Retrospectives of recorded hands-off runs found the gate's economics kept in prose: the 3-round fix cap was a
 sentence a new brief could reset, while gate-triage counted the tables on disk; the same page could PASS at
@@ -443,7 +418,7 @@ provisionally, stacked on 0.35.5.
   `gate-all --eds-host --only home` → `gate-all: --eds-host needs a value, got "--only"` (`got nothing` at the end of
   the arguments).
 
-## 0.35.5 — a gate names what it could not measure; an override must earn its row
+### a gate names what it could not measure; an override must earn its row
 
 Recorded hands-off runs measured fix rounds against origin captures a consent wall or a geo modal had polluted, and
 still got numeric PASS / FAIL verdicts with the normal exit code; one 99-page run then delivered 94 pages through
@@ -495,7 +470,7 @@ read as a pass. Costs: one extra origin capture per page whose record
 predates the check, a slower settled build capture in gate.sh. crawl.mjs keeps its own label list until its owner
 imports the shared table (a live-session test fails if the two drift).
 
-## 0.35.4 — extract and migrate hand over what the agent otherwise rebuilds (#139)
+### extract and migrate hand over what the agent otherwise rebuilds (#139)
 
 Recorded hands-off runs wrote throwaway helpers wherever nothing shipped did the job: `state.json` built by hand and
 representatives set with `node -e`, two media harvesters, a canon-chrome → nav/footer document converter, a
@@ -532,7 +507,7 @@ The extract, migrate, deploy, replica and rollout docs, handoff contract rows 1�
 `scripts-index.md` name the new tools; touches #126. No gate changed: no verdict, threshold or criterion moved; the
 variance refusal and the scope note only add caution, and a sibling rendered without a probe row is recorded skipped.
 
-## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#142)
+### delivery bookkeeping ships with the pages; the done-check proves it (#142)
 
 A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
 coverage rows and gate captures went with it. Parallel subagents collided in one worktree (`git add content`,
@@ -597,7 +572,7 @@ and every skipped check is named. Touches #112, #125, #136. The number is provis
 handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin `AGENTS.md` a changed contract is
 a minor release.
 
-## 0.35.2 — instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#137)
+### instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#137)
 
 Recorded hands-off runs: `measure.mjs` hung 8× at 900 s on a site that navigates after load — after a resize or a
 consent click — because it reused one page across widths with no deadline on the reads. The live instruments'
@@ -649,7 +624,7 @@ code; touches #124 (cap-probe). One contract touch: a bare `run-bg.mjs wait`/`st
 jobs and handoff contract § Fan-out discipline says so — the 0.35.0 entry counted such an edit as minor, so patch vs
 minor is decided at merge with the renumbering — 0.35.2 and #137 are provisional.
 
-## 0.35.1 — gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
+### gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
 
 Two recorded hands-off runs, a 100-page and a 10-page one, each hand-wrote a script that built a gate state file
 from the rollout coverage: gate-all selected only `state.json` pages `deployed` with a `liveUrl` — which nothing in
@@ -688,7 +663,7 @@ Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally �
 No threshold, criterion, capture or reuse change; a page that was already selectable keeps its template, tier and
 units, and its gate key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`.
 
-## 0.35.0 (stardust/replica-cluster-subunits) — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#136)
+### C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#136)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
 and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
@@ -718,7 +693,7 @@ Contract change: handoff contract § 3 row C, the `progress.json` unit names, §
 order and the 90-minute unit target; touches #125, #126; no script, verdict, threshold, criterion or gate-row change.
 Minor: a changed contract is a minor release (plugin `AGENTS.md`), hence 0.35.0 rather than a 0.34.x patch.
 
-## 0.35.0 (stardust/migrate-shipped-encoder) — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#141)
+### encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#141)
 
 Minor: the row-2 and encoder contract change. A recorded hands-off run showed the clone is not needed: every sibling
 encodes from its committed capture and the site's ledgers, while the clone was each sibling's heaviest copy and the
@@ -764,7 +739,7 @@ file two gates checked in place of the delivered document.
   reference/importer-recipe.md and their test fixtures; commits 9aaeff4f, 1080f2b6, d4a37277, 7662fda2), rewritten
   for the archetype-first order; the ported files keep their provenance header.
 
-## 0.34.5 — replica self-hosts the source's brand faces; one hide list for in-flow bars across captures, probes and the header contract; cap-probe lists unpaired modules
+### replica self-hosts the source's brand faces; one hide list for in-flow bars across captures, probes and the header contract; cap-probe lists unpaired modules
 
 A recorded ten-page hands-off run passed all four gated archetypes at both widths, but three of its six register
 entries and most residual pixels came from one cause — the substituted brand face; a per-visitor bar shifted
@@ -831,7 +806,7 @@ move only through content-diff's placeholder rule, cap-probe's unpaired rows / I
 `_provenance.presence`); content-diff's live cache re-probes once (inventory version) and its JSON `attrs` gains
 `placeholders`. No threshold change.
 
-## 0.34.4 — roster gates sized to their deadline; an older gate table never reverts a newer verdict
+### roster gates sized to their deadline; an older gate table never reverts a newer verdict
 
 A recorded 100-page hands-off run lost about 58 minutes to discarded roster gates (run-bg's 900 s default deadline
 killed a 99-page roster at 1440 that needed 2152 s) and reverted 8 passing pages by ingesting an older gate table.
@@ -856,7 +831,7 @@ killed a 99-page roster at 1440 that needed 2152 s) and reverted 8 passing pages
 Patch: no verdict, threshold, criterion, gate-row or capture change; the refusal fires only when a job's deadline
 could not hold the roster; `delivery.gate` only gains fields; the verdict gains one advisory count, no unit step.
 
-## 0.34.3 — gate-triage: failing gate rows grouped by shared cause before the next pixel round
+### gate-triage: failing gate rows grouped by shared cause before the next pixel round
 
 A failing all-pages table usually holds a few causes repeated across many pages. One advisory script names them
 before the next fix round, so each cause is fixed once and re-gated over the pages it touches.
@@ -882,7 +857,7 @@ before the next fix round, so each cause is fixed once and re-gated over the pag
 Patch: a new advisory script and three one-sentence doc additions; no verdict, threshold, criterion, row or
 capture change; the C-deliver wording is advisory, not a new required unit step.
 
-## 0.34.2 — the source oracle holds still: fix rounds measure against this run's captured origin; browser budgets split
+### the source oracle holds still: fix rounds measure against this run's captured origin; browser budgets split
 
 A fix round compares the build against the source capture its run already took instead of loading the source
 again, the diff probes cache their live side the way chrome-parity always did, and browser jobs share one
@@ -935,7 +910,7 @@ only queues jobs (gate-all's pools unchanged); `--one-load` and cross-run reuse 
 fields are additive (`originReused`, `presenceReused`, `unitsReused`, `oneLoad`, `liveCache`, `originCache`,
 `pair`, `live.json`).
 
-## 0.34.1 (stardust/replica-speed-instruments) — replica speed instruments: measure the run, stop paying for the same evidence twice
+### replica speed instruments: measure the run, stop paying for the same evidence twice
 
 One new instrument shows where a run's tokens go; the gate, the deploy batch and the B2 dynamics probe stop
 re-measuring evidence they already hold, and skip it only while it is provably unchanged.
@@ -977,7 +952,7 @@ the C-final roster gate. No threshold, criterion or pairing rule changes; the ne
 fields stay additive (`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`);
 every skip is recorded where it happened.
 
-## 0.34.1 (stardust/rollout-block-origin) — block provenance: the export carries the source selector of every delivered block (#138)
+### block provenance: the export carries the source selector of every delivered block (#138)
 
 Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
 from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
@@ -1014,7 +989,7 @@ the element), so nothing in the export said which element a block was built from
   records, byte-identical re-runs, the schema and the project-copy layout; the manifest test covers the new `outputs`
   entry and that nothing else changes.
 
-## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#135)
+### coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#135)
 
 Field learning: a hands-off replica of a travel-brand site (64 pages in 11 locales, 8 templates, 12 blocks) ended
 with a working site but nothing a catalog-driven migration tool could continue from. That tool would analyse the
@@ -1058,7 +1033,7 @@ shape: a page's blocks use the spec skill's record (`pos`, `block`, `variant`, `
   forward, the new template and block fields, every coverage file against its schema, no new identity, byte-identical
   re-runs, the stale-coverage and handover refusals, atomic writes and the opt-in key.
 
-## 0.33.1 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
+### consent overlays are dismissed on gate captures; the archetype ledger keeps its shape
 
 Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
 
@@ -1079,6 +1054,13 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
   that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
   names the keys.
+
+### Integration commits
+
+- Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
+  its delivered `lang` in the rollout inventory; an INCONCLUSIVE gate row keeps a width's earlier failing
+  verdict; the master card's Versioning line names the tracked gate sidecars; a crawl loader comment; the
+  renumbering above.
 
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
 
