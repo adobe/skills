@@ -10,28 +10,28 @@ A local integration of the stardust branches for the next recorded hands-off run
 never released. Each merged branch keeps its own entry below in version order, under its provisional
 version; numbers marked "local" are integration-only and renumbered by the maintainer at merge.
 
-- Base `stardust/gate-economics` — 0.35.6 (#141, #142 local), carrying `stardust/gate-trust` 0.35.5,
-  `stardust/gate-all-coverage-roster` 0.35.1, `stardust/replica-fidelity-run14` 0.34.5 (#138 local),
+- Base `stardust/gate-economics` — 0.35.6 (#143, #144 local), carrying `stardust/gate-trust` 0.35.5,
+  `stardust/gate-all-coverage-roster` 0.35.1, `stardust/replica-fidelity-run14` 0.34.5 (#140 local),
   `stardust/replica-retro-pack` 0.34.4, `stardust/replica-gate-triage` 0.34.3,
   `stardust/replica-source-oracle` 0.34.2, `stardust/replica-speed-instruments` 0.34.1 and
   `stardust/replica-consent-and-progress-shape` 0.33.1.
-- `stardust/replica-cluster-subunits` — 0.35.0 (#134).
-- `stardust/replica-instrument-deadlines` — 0.35.2 (#135).
-- `stardust/rollout-bookkeeping-proof` — 0.35.3 (#140 local).
-- `stardust/handover-tools` — 0.35.4 (#137).
-- `stardust/migrate-shipped-encoder` — 0.35.0 (#139 local).
-- `stardust/rollout-workspace-export` — 0.34.0 (#133, PR #443).
-- `stardust/rollout-block-origin` — 0.34.1 (#136 local).
-- `stardust/rollout-run-followups` — 0.35.7 (#143 local); it tracks the gate's JSON sidecars under
+- `stardust/replica-cluster-subunits` — 0.35.0 (#136).
+- `stardust/replica-instrument-deadlines` — 0.35.2 (#137).
+- `stardust/rollout-bookkeeping-proof` — 0.35.3 (#142 local).
+- `stardust/handover-tools` — 0.35.4 (#139).
+- `stardust/migrate-shipped-encoder` — 0.35.0 (#141 local).
+- `stardust/rollout-workspace-export` — 0.34.0 (#135, PR #443).
+- `stardust/rollout-block-origin` — 0.34.1 (#138 local).
+- `stardust/rollout-run-followups` — 0.35.7 (#145 local); it tracks the gate's JSON sidecars under
   `replica/gates/`, which replaced the local stand-in.
-- `stardust/handover-followups` — 0.35.9 (#144 local).
-- `stardust/capture-dialogs-and-denials` — 0.35.8 (#145 local).
+- `stardust/handover-followups` — 0.35.9 (#146 local).
+- `stardust/capture-dialogs-and-denials` — 0.35.8 (#147 local).
 - Local-only commits: the scripts-index lint cap at 16 KiB, then 20 KiB; an encoded page's sidecar feeds
   its delivered `lang` in the rollout inventory; an INCONCLUSIVE gate row keeps a width's earlier failing
   verdict; the master card's Versioning line names the tracked gate sidecars; a crawl loader comment; the
   renumbering above.
 
-## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#144)
+## 0.35.9 — handover follow-ups: the encoder attempted before A′, fork slots from the block mapping (#146)
 
 A recorded hands-off run never invoked the encoder: it hand-built every A′ sibling, wrote each sibling's slot data by
 hand, and its plan ledger could not say how many templates were encoded. Review of the 0.35.4 handover tools left open
@@ -113,7 +113,7 @@ that it encoded; `--clear-representative` writes `representative: null`, the key
 
 `migrate.mjs` now imports `slot-map.mjs` and `encode-attempt.mjs` beside it, so a project copies migrate's whole
 scripts dir. The extract, migrate and replica docs, the handoff contract, `state-machine.md`, `artifact-map.md` and
-`scripts-index.md` name the changes; touches #137, #126. The scripts-index lint cap is now 14016 bytes (was 13312),
+`scripts-index.md` name the changes; touches #139, #126. The scripts-index lint cap is now 14016 bytes (was 13312),
 raised for the new rows with none trimmed — a maintainer question.
 
 Patch: no verdict, threshold, criterion or gate row moved; the new refusals (an A′ page without an attempt record, an
@@ -127,7 +127,7 @@ re-renders once; each earlier variance acceptance is refused once, quoting its r
 Provisional version, renumbered at merge; stacks on 0.35.4 (the handover-tools branch); 0.35.7 and 0.35.8 are other
 branches.
 
-## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#145)
+## 0.35.8 — the capture sweep closes dialogs; a 2xx denial page is a bot challenge; client hints stay consistent (#147)
 
 Pre-run probes: a large logistics site served the headless browser a 900 px denial page with status 200, and
 `stitch-shot.mjs` wrote it as a capture with exit 0. In headed stealth Chrome the page rendered fully, but an open modal
@@ -192,9 +192,9 @@ is released only after the dialog pass closed a dialog and none survives — a l
 own layout and a lock over a survivor stays, so the scroll stall still fails loud on both. A denial page gives no
 verdict, never a false pass: every live instrument exits 3, and the crawl captures none. gate-all is untouched: a
 stitch exit 3 takes its existing blocked path, and the INCONCLUSIVE `origin blocked` row arrives with the gate-trust
-merge; provisional: version and #145 renumbered at merge.
+merge; provisional: version and #147 renumbered at merge.
 
-## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#143)
+## 0.35.7 — bookkeeping follow-ups from a recorded local run: scripts record the units, gap closure is bounded, the foundation is three units (#145)
 
 A recorded ten-page local hands-off run recorded its units by 16 hand-written `node -e` edits of the progress ledgers,
 missed headings it passed to `section.mjs` verbatim, read 65 full-page PNGs (about 17 MB) into context and held the
@@ -338,7 +338,7 @@ the image), `gates_inconclusive`, unvalidated overrides, `header_parity_errors` 
 add caution; every skipped check is a named line. Output changes: crop-compare writes JPEGs unless `--full-res`; in its
 JSON `diffImage` now names the capped JPEG (was the `--out` PNG), `strip` is now `stripImage` and `fullRes` is new.
 dynamics-check: any FAIL exits 2 (was 1, or 0 when the event loop drained first), usage errors exit 1 (was 2). Touches
-#125, #126, #134, #140. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
+#125, #126, #136, #142. Provisional version, renumbered at merge: handoff contract row C (C0's sub-units, the
 gap-closure phase) and § 5 change, and by plugin `AGENTS.md` a changed contract is a minor release.
 
 ## 0.35.6 — the instrument counts fix rounds; one height bar per regime; one browser budget across jobs; the hide list is derived, not remembered
@@ -354,7 +354,7 @@ register to the file; probed later, the recorded selector matched nothing on eit
 in-flow block above the header), and chrome-parity had printed `hidden live: … ×0` and carried on. Numbered 0.35.6
 provisionally, stacked on 0.35.5.
 
-- **Fix rounds are counted by the instrument (#141, extends #126).** gate-all counts 3 fix rounds per page in
+- **Fix rounds are counted by the instrument (#143, extends #126).** gate-all counts 3 fix rounds per page in
   `<out>/<slug>/rounds.json` — a fix round is a measured `--only` verdict of a page that already has one; the first
   gating and a row reused whole are not rounds (nor is an INCONCLUSIVE row); a fourth round is refused before any
   capture — `gate-all: refused to start, no verdict — cap reached — re-prototype decision: <slug> 3/3 @<w> …`, exit
@@ -408,7 +408,7 @@ provisionally, stacked on 0.35.5.
   probes.json inputs and the gate key; a capture taken with another list is not reused (`dismiss list differs`), and
   a kept origin taken with another dismiss / hide list makes the row INCONCLUSIVE —
   `origin capture polluted: kept origin taken with another dismiss/hide list`.
-- **One hide list per site (#142, extends #125).** `stardust/replica/presence.json` — a gate dir's presence.json
+- **One hide list per site (#144, extends #125).** `stardust/replica/presence.json` — a gate dir's presence.json
   shape, `"*"` and per slug — lists the in-flow per-visitor regions once; live-session's `mergePresence` puts it under
   a gate dir's file (the gate dir's value wins per key and field). gate-all, gate.sh, chrome-parity, chrome-explore
   and chrome-compare read it with no flag (`--slug` no longer needs `--presence`); gate-triage passes it to
@@ -495,7 +495,7 @@ read as a pass. Costs: one extra origin capture per page whose record
 predates the check, a slower settled build capture in gate.sh. crawl.mjs keeps its own label list until its owner
 imports the shared table (a live-session test fails if the two drift).
 
-## 0.35.4 — extract and migrate hand over what the agent otherwise rebuilds (#137)
+## 0.35.4 — extract and migrate hand over what the agent otherwise rebuilds (#139)
 
 Recorded hands-off runs wrote throwaway helpers wherever nothing shipped did the job: `state.json` built by hand and
 representatives set with `node -e`, two media harvesters, a canon-chrome → nav/footer document converter, a
@@ -532,7 +532,7 @@ The extract, migrate, deploy, replica and rollout docs, handoff contract rows 1�
 `scripts-index.md` name the new tools; touches #126. No gate changed: no verdict, threshold or criterion moved; the
 variance refusal and the scope note only add caution, and a sibling rendered without a probe row is recorded skipped.
 
-## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#140)
+## 0.35.3 — delivery bookkeeping ships with the pages; the done-check proves it (#142)
 
 A recorded 99-page hands-off run lost its container mid-gate with no checkpoint inside the unit: 20 published pages'
 coverage rows and gate captures went with it. Parallel subagents collided in one worktree (`git add content`,
@@ -593,11 +593,11 @@ Patch/contract: no gate verdict, pixel threshold, capture or freeze change. One 
 h1 whose captured source has none is a note (delivery-lint, verify), source parity (optimize) or a WARN (qa-gate with
 `--source-capture`), not a P0, a failure or an open P1; a missing capture, or one with an h1, keeps all of them.
 done-check adds a 10 % override cap and new gaps, and `ledger.mjs check` a pairing check — these only add caution,
-and every skipped check is named. Touches #112, #125, #134. The number is provisional (renumbered at merge):
+and every skipped check is named. Touches #112, #125, #136. The number is provisional (renumbered at merge):
 handoff contract § 2, § 3 row C, § Fan-out discipline and § 5 change, and by plugin `AGENTS.md` a changed contract is
 a minor release.
 
-## 0.35.2 — instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#135)
+## 0.35.2 — instrument deadlines: one navigation timeout, every width read bounded, `run-bg wait` scoped to its caller (#137)
 
 Recorded hands-off runs: `measure.mjs` hung 8× at 900 s on a site that navigates after load — after a resize or a
 consent click — because it reused one page across widths with no deadline on the reads. The live instruments'
@@ -647,7 +647,7 @@ Patch: no verdict, threshold, criterion, gate-row or pairing change; the new sta
 measured is recorded as not measured, and a compare that could not measure both sides never exits with a PASS or FAIL
 code; touches #124 (cap-probe). One contract touch: a bare `run-bg.mjs wait`/`status` now selects the caller's own
 jobs and handoff contract § Fan-out discipline says so — the 0.35.0 entry counted such an edit as minor, so patch vs
-minor is decided at merge with the renumbering — 0.35.2 and #135 are provisional.
+minor is decided at merge with the renumbering — 0.35.2 and #137 are provisional.
 
 ## 0.35.1 — gate-all reads its published roster from the rollout coverage; `--eds-host` takes a bare host
 
@@ -688,7 +688,7 @@ Patch: an input source added, no verdict change. Numbered 0.35.1 provisionally �
 No threshold, criterion, capture or reuse change; a page that was already selectable keeps its template, tier and
 units, and its gate key while its coverage `deployedUrl` / `source.sourceUrl` equal the state's `liveUrl` / `url`.
 
-## 0.35.0 (stardust/replica-cluster-subunits) — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#134)
+## 0.35.0 (stardust/replica-cluster-subunits) — C-deliver clusters over 16 siblings run as sub-units; fan-out subagents pause on request (#136)
 
 A recorded 100-page hands-off run held a 64-sibling template as ONE recorded unit for 6 h 38 min across two sessions
 and a wall-clock kill; six of its ten sessions overran a 90-minute session limit, because the main agent reaches its
@@ -718,7 +718,7 @@ Contract change: handoff contract § 3 row C, the `progress.json` unit names, §
 order and the 90-minute unit target; touches #125, #126; no script, verdict, threshold, criterion or gate-row change.
 Minor: a changed contract is a minor release (plugin `AGENTS.md`), hence 0.35.0 rather than a 0.34.x patch.
 
-## 0.35.0 (stardust/migrate-shipped-encoder) — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#139)
+## 0.35.0 (stardust/migrate-shipped-encoder) — encoded siblings: the template's map, applied to each capture, replaces the row-2 clone (#141)
 
 Minor: the row-2 and encoder contract change. A recorded hands-off run showed the clone is not needed: every sibling
 encodes from its committed capture and the site's ledgers, while the clone was each sibling's heaviest copy and the
@@ -771,7 +771,7 @@ entries and most residual pixels came from one cause — the substituted brand f
 every live measurement; and two probes misbehaved: cap-probe failed a module pair that compared two different
 things, and content-diff read hidden image placeholders as missing icons.
 
-- **replica follows deploy § 4 principle 2 from the archetype on (#138, extends #80).** The source's brand faces
+- **replica follows deploy § 4 principle 2 from the archetype on (#140, extends #80).** The source's brand faces
   are self-hosted as-is (the files the live site serves, same weights and styles); the brand family stays first in
   every stack and a metric-matched substitute is only the fallback entry; proprietary faces raise deploy's
   licensing alert (banner, `fonts/LICENSING.md` at delivery, the hand-off message) plus ONE deferred register entry
@@ -977,7 +977,7 @@ the C-final roster gate. No threshold, criterion or pairing rule changes; the ne
 fields stay additive (`gateKey`, `reused`, `probes.json`, `gate-key.json`, `contentSha`, `verifiedAt`, `verifiedOn`);
 every skip is recorded where it happened.
 
-## 0.34.1 (stardust/rollout-block-origin) — block provenance: the export carries the source selector of every delivered block (#136)
+## 0.34.1 (stardust/rollout-block-origin) — block provenance: the export carries the source selector of every delivered block (#138)
 
 Field learning: a client adopting a recorded hands-off run's export had to re-derive where every delivered block came
 from in the source page. The contract had declared source selectors absent (the source snapshot named the page, not
@@ -1014,7 +1014,7 @@ the element), so nothing in the export said which element a block was built from
   records, byte-identical re-runs, the schema and the project-copy layout; the manifest test covers the new `outputs`
   entry and that nothing else changes.
 
-## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#133)
+## 0.34.0 — coverage is the contract: the delivered block structure, versioned coverage files and one shared page-block shape (#135)
 
 Field learning: a hands-off replica of a travel-brand site (64 pages in 11 locales, 8 templates, 12 blocks) ended
 with a working site but nothing a catalog-driven migration tool could continue from. That tool would analyse the
