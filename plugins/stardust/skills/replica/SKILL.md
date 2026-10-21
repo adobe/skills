@@ -552,7 +552,8 @@ phase `end`, and `ledger.mjs … end` warns when it is missing.
   gated archetype is deployed and passes its full gate row on the preview URL
   (cap 3 fix rounds, then the re-prototype decision) BEFORE its siblings
   render or encode — an encoded template's map is drafted and round-tripped
-  there; C1…Cn — one subagent per cluster unit runs the whole chain (an encoded cluster: the map plus its
+  there and its attempt recorded — `encode-attempt.mjs check --template <t>`
+  closes the unit; C1…Cn — one subagent per cluster unit runs the whole chain (an encoded cluster: the map plus its
   exceptions) with
   its own batch ledger and reports one verdict line, `first pass 360: x/y`
   from `gate-triage.mjs --unit <cluster>` included; a cluster of more than

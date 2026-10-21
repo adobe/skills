@@ -40,10 +40,27 @@ generator.
   emitter kinds, a rows marker, a variant, a drop), the shape the refusal and importer-recipe § Encoder contract
   point at; `encode-attempt.test.mjs` loads it through `encode.mjs`'s `loadMap` and the engine's validator so it
   cannot rot.
+- **`migrate.mjs --help`** states the gate as shipped: a ≥ 2-sibling template without a map is refused a not-attempted
+  record with or without a derived slot map (a derivation serves one sibling's fork; below two siblings it records
+  `source derived`), and names both stderr suffixes.
+- **The lead meets a missing map before cluster fan-out** (texts): the contract's row C C-archetype chain ends in
+  `encode-attempt.mjs record --template <t>` (encoded / no-roundtrip with the map; a `--reason` only with the
+  delivered document in hand — this unit's decision, never a cluster's) before `unit done`; § 5's C-deliver unit list
+  names the `archetype-<t>` unit's mechanical check, `encode-attempt.mjs check --template <t>` — exit 2 keeps the unit
+  running (`progress.mjs unit start archetype-<t> --again`) and a cluster unit is never spawned on a template without
+  a record; replica's Phase 5 C-archetype sentence says the same; row 2 and importer-recipe § Encoder contract say
+  which template takes the A′ clone without a map: below two siblings, or with a recorded reason.
+- **Whole-template `--hand-authored` needs a tagged reason**: on the CLI, `--hand-authored` on a template with ≥ 2
+  siblings and no `--pages` subset (no `--pages`, or `--pages` naming every sibling) is refused — exit 2, nothing
+  written — unless the reason begins with `re-typed:` or `no-repeatable-structure:`, exactly `--reason`'s rule; a
+  `--pages` subset (the `major` variance page) and a one-sibling template keep a free-text reason; the refusal names
+  both ways out and the map that is otherwise due. A recorded hands-off run's clusters had recorded "the siblings are
+  authored by hand per the brief" on nine-sibling templates.
 - Tests: two siblings + derivable + no map → refused, `maps due`, exit 2, nothing recorded, render still closed; one
   sibling → `source derived` recorded; two siblings + `--reason "re-typed: …"` → recorded and kept by `plan`; map
   present → the encoder runs, `no-roundtrip · source derived`, the fork tests continue from that record; the example
-  map. No version bump.
+  map; whole-template `--hand-authored` with free text refused (with and without `--pages` naming every sibling), a
+  `--pages` subset, a one-sibling template and a tagged reason recorded, the library default kept. No version bump.
 
 ## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
 
