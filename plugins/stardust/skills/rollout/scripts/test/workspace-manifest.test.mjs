@@ -512,14 +512,14 @@ check('excluded: planned URLs that never became a page — the coverage excluded
   ], 'sorted by url; the coverage record of /news wins over the crawl\'s; a captured page\'s crawl failure is no exclusion');
   assert.deepEqual(wm.excludedOf({ pages, crawlLog: { crawl: { failures: [{ url: 'https://www.example.com/x.html' }] } } }), [{ url: 'https://www.example.com/x.html', reason: 'crawl: failed' }]);
   assert.deepEqual(wm.excludedOf({ pages, state: 'not a state', crawlLog: [], plan: null, excluded: null }), [], 'malformed sources add nothing');
-  // in a manifest: the fixture's state.json plans a contact page that was never migrated → inventory.mjs wrote it to the
-  // coverage excluded[] (reason `not captured`: no capture on disk), which the manifest reads first
+  // in a manifest: the fixture's state.json plans a contact page that was never migrated → unrecorded (no recorded
+  // failure, so inventory.mjs writes no excluded[] row for it — it is undone work, not an exclusion)
   const dir = copy('excluded');
   const planned = 'https://www.example.com/contact.html';
   ok(run(dir));
-  assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'not captured' }]);
+  assert.deepEqual(doc(dir, 'manifest.json').excluded, [{ url: planned, reason: 'unrecorded' }]);
   assert.equal(jsonOut(run(dir, '--json')).counts.excluded, 1);
-  // the crawl's record of that URL gives the reason once the coverage is rebuilt over it
+  // the crawl's record of that URL gives the reason — inventory.mjs writes the recorded failure to excluded[] on a rebuild
   mkdirSync(join(dir, 'stardust', 'current'), { recursive: true });
   writeFileSync(join(dir, 'stardust', 'current', '_crawl-log.json'), JSON.stringify({ crawl: { failures: [{ url: planned, slug: 'contact', errorClass: 'HTTPError', message: 'HTTP 404', at: '2026-01-01T00:00:00Z' }] } }));
   rebuild(dir);

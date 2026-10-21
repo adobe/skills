@@ -90,9 +90,10 @@
  * took it over (workspace/handover.json, or a manifest recording a handover).
  * Info, never a gap, one `info: <what>` line each after the skipped ones (JSON: info[]): pages_excluded:N: <paths>,
  * the coverage pages.json excluded[] rows — planned pages the source no longer serves (state.mjs exclude) and planned
- * URLs inventory.mjs found no row for; plan_vs_pages:N: <urls> — planned URLs (state.json pages[] / excluded[], the
- * crawl's failures) with neither a pages[] row nor an excluded[] row, so the plan count is not pages + excluded (a
- * recorded hands-off run kept such a URL in prose only): re-run inventory.mjs, or state.mjs exclude it;
+ * URLs the crawl recorded as failed that inventory.mjs found no row for; plan_vs_pages:N: <urls> — planned URLs
+ * (state.json pages[] / excluded[], the crawl's failures) with neither a pages[] row nor an excluded[] row, so the plan
+ * count is not pages + excluded (a recorded hands-off run kept such a URL in prose only): a page never migrated stays
+ * here (and in unit_unproven) until it is built or the owner excludes it with state.mjs exclude;
  * synthesized_pages:N: <paths> — the coverage rows without source.sourceUrl (update-coverage.mjs --new: a search
  * results page, a landing page, anything built outside the migrated tree): no source to gate against and no schema
  * sidecar, so sidecars_missing never counts them and gate-all skips them; their status still counts like any row's
@@ -330,7 +331,8 @@ export function unitGaps({ progress = null, unitPaths = {}, pages = [], widths =
   if (!isMap(progress) || !isMap(progress.units)) return { gaps: [], skipped: [`unit_unproven: ${join(out, 'progress.json')} has no units map`] };
   const { units } = progress;
   // a page excluded since (coverage excluded[]) with no row left in pages[] has nothing to prove: it leaves its unit's count
-  const gone = new Set((Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e.path === 'string').map((e) => pathKey(e.path)));
+  // a derived "never migrated" reason (never written since; refused here regardless) is not an owner's exclusion: it stays
+  const gone = new Set((Array.isArray(excluded) ? excluded : []).filter((e) => e && typeof e.path === 'string' && !/^(captured, not migrated|not captured)$/.test(e.reason)).map((e) => pathKey(e.path)));
   const rowsByKey = new Map();
   for (const p of pages) { const k = pathKey(pathOf(p)); rowsByKey.set(k, [...(rowsByKey.get(k) || []), p]); }
   const legacy = new Set();

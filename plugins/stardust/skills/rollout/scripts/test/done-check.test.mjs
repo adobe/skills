@@ -419,6 +419,18 @@ check('unit_unproven: a unit page excluded since (coverage excluded[] by path, n
     ['unit_unproven:archetype-article: 1/1 pages without a passing gate at 1440 and 360: /story'], 'an excluded path never hides a row still in pages[]');
 });
 
+check('unit_unproven: a planned page with no row and no recorded failure stays a unit gap — an excluded[] row with a derived reason (captured, not migrated / not captured) never leaves the count; an owner\'s or the crawl\'s recorded reason does', () => {
+  for (const reason of ['captured, not migrated', 'not captured']) {
+    assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [{ slug: 'news-a', path: '/news/a', status: 'excluded', reason, at: null }] }).gaps,
+      ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html'], reason);
+  }
+  for (const reason of ['crawl: HTTP 404', 'the source answers 404', null]) {
+    assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [{ slug: 'news-a', path: '/news/a', status: 'excluded', reason, at: null }] }).gaps, [], String(reason));
+  }
+  // and no exclusion at all for it: the gap, as before this unit
+  assert.deepEqual(units({ pages: UNIT_PAGES.slice(1), excluded: [] }).gaps, ['unit_unproven:cluster-news: 1/2 pages without a passing gate at 1440 and 360: /news/a.html']);
+});
+
 check('unit_unproven: a unit flipped with progress.mjs unit done --unproven "<reason>" carries the reason on its gap', () => {
   const reason = 'preview host 500 during the gate window; re-gate next session';
   const progress = { units: { ...PROGRESS.units, 'cluster-news': { ...PROGRESS.units['cluster-news'], unproven: reason } } };

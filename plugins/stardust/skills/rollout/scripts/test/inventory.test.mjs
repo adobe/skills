@@ -872,7 +872,7 @@ check('exclusions: --state (archetypes-only) never seeds an excluded roster page
 });
 
 // Planned URLs that never became a page and that nobody recorded: excluded[] rows, never only in prose.
-check('plan minus pages: a state page never migrated, one with a capture, and a crawl failure become excluded[] rows ({reason: not captured | captured, not migrated | crawl: <message>}); named on the report; schema-valid; byte-identical re-run; `update-coverage.mjs --new` of one retires its row and keeps its URL', () => {
+check('plan minus pages: only a planned URL the project RECORDED as failed (a crawl failure) becomes an excluded[] row (reason crawl: <message>); a state page never migrated — captured or not — is no row and no exclusion (undone work: plan_vs_pages / unit_unproven, never excluded); named on the report; schema-valid; byte-identical re-run; `update-coverage.mjs --new` of one keeps its roster URL', () => {
   rmSync(join(ex, 'roster.json'), { force: true });
   exPut('stardust/state.json', { pages: [
     { slug: 'home', url: 'https://example.com/', type: 'home', status: 'migrated' },
@@ -886,26 +886,28 @@ check('plan minus pages: a state page never migrated, one with a capture, and a 
   const doc = exDoc();
   assert.deepEqual(doc.pages.map((p) => p.slug), ['home']);
   assert.deepEqual(doc.excluded, [
-    { slug: 'faq', path: '/faq', sourceUrl: 'https://example.com/faq.html', status: 'excluded', reason: 'not captured', at: null },
-    { slug: 'gear', path: '/gear', sourceUrl: 'https://example.com/gear', status: 'excluded', reason: 'captured, not migrated', at: null },
     { slug: 'old', path: '/old', sourceUrl: 'https://example.com/old.html', status: 'excluded', reason: 'crawl: HTTP 404', at: AT },
-  ]);
-  assert.match(r.stdout, /^Excluded {4}3 /m, r.stdout);
-  assert.match(r.stdout, /^Unaccounted 3 planned URL\(s\) with no page row, written to excluded\[\] \(not captured; captured, not migrated; crawl: HTTP 404\): faq, gear, old — migrate or update-coverage\.mjs --new each, or state\.mjs exclude <slug> --reason "<why>"$/m, r.stdout);
+  ], 'the recorded failure only: faq (not captured) and gear (captured, not migrated) are neither rows nor exclusions');
+  assert.ok(!JSON.stringify(doc).includes('"gear"') && !JSON.stringify(doc).includes('"faq"'), 'a planned page never migrated appears nowhere in pages.json');
+  assert.match(r.stdout, /^Excluded {4}1 /m, r.stdout);
+  assert.match(r.stdout, /^Unaccounted 1 planned URL\(s\) recorded as failed with no page row, written to excluded\[\] \(crawl: HTTP 404\): old — update-coverage\.mjs --new each once built, or state\.mjs exclude <slug> --reason "<why>"$/m, r.stdout);
   assert.deepEqual(validate(loadSchema('rollout-pages.schema.json'), doc), []);
   const bytes = readFileSync(join(ex, 'stardust/rollout/coverage/pages.json'), 'utf8');
   assert.equal(runEx().status, 0);
   assert.equal(readFileSync(join(ex, 'stardust/rollout/coverage/pages.json'), 'utf8'), bytes, 'a re-run is byte-identical');
-  // the hand-authored page enters: its URL from the roster, its excluded[] row retired; the inventory keeps it as a page
+  // the hand-authored page enters: its URL from the roster (state.json by slug); the inventory keeps it as a page
   const u = spawnSync(process.execPath, [UPDATE, '--new', 'gear', '--path', '/gear', '--template', 'gear', '--origin', 'unique', '--status', 'verified'], { encoding: 'utf8', cwd: ex });
   assert.equal(u.status, 0, u.stderr);
-  assert.deepEqual(exDoc().excluded.map((e) => e.slug), ['faq', 'old']);
   assert.equal(exDoc().pages.find((p) => p.slug === 'gear').source.sourceUrl, 'https://example.com/gear');
   const again = runEx();
   assert.equal(again.status, 0, again.stderr);
   assert.deepEqual(exDoc().pages.map((p) => [p.slug, p.delivery.status, p.source.sourceUrl]), [['gear', 'verified', 'https://example.com/gear'], ['home', 'pending', 'https://example.com/']]);
-  assert.deepEqual(exDoc().excluded.map((e) => e.slug), ['faq', 'old'], 'a page is never an excluded row');
-  assert.match(again.stdout, /^Unaccounted 2 /m, again.stdout);
+  assert.deepEqual(exDoc().excluded.map((e) => e.slug), ['old'], 'a page is never an excluded row');
+  // a --new of the recorded failure retires its row
+  const u2 = spawnSync(process.execPath, [UPDATE, '--new', 'old', '--path', '/old', '--template', 'unique', '--origin', 'unique'], { encoding: 'utf8', cwd: ex });
+  assert.equal(u2.status, 0, u2.stderr);
+  assert.ok(!('excluded' in exDoc()));
+  assert.equal(exDoc().pages.find((p) => p.slug === 'old').source.sourceUrl, undefined, 'a URL only the crawl log knows is not the roster\'s: synthesized');
 });
 
 check('--state: a roster page a prior `update-coverage.mjs --new` row records (a hand-authored sibling) is that row on a re-run — kept with its status and URL, never re-seeded content-pending', () => {

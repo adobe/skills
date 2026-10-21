@@ -80,10 +80,11 @@
  * stardust/state.json) is no row of pages[] — matched by slug or delivered path, a
  * migrated or roster page included — but a pages.json `excluded[]` row
  * `{slug, path, sourceUrl, status: "excluded", reason, at}` (the key only when there is
- * one), never in a denominator, a pass or a fail; the report names them. A planned URL with no row and
- * no exclusion recorded — a state page never migrated, a crawl failure (<stardust>/current/_crawl-log.json
- * crawl.failures[]) — is an excluded[] row too (reason `crawl: <message>`, `captured, not migrated` or
- * `not captured`; `at` null): never only in prose. `update-coverage.mjs --new` retires it once the page exists.
+ * one), never in a denominator, a pass or a fail; the report names them. A planned URL the project recorded
+ * as failed (<stardust>/current/_crawl-log.json crawl.failures[]) with no row and no exclusion is an excluded[]
+ * row too (reason `crawl: <message>`; `at` the failure's or null): never only in prose. A planned page with no
+ * row and no recorded failure is NOT excluded (undone work: done-check names it as plan_vs_pages and
+ * unit_unproven keeps counting it). `update-coverage.mjs --new` retires a row once the page exists.
  *
  * Delivered structure: every row's `delivered` holds what the page's content file (<content>/index.html
  * for /, else <path>.html or <path>/index.html) is made of — blocks and default content in document
@@ -492,17 +493,20 @@ const excludedRows = [...exclusions].map(([slug, e]) => {
 }).sort((a, b) => byStr(a.slug, b.slug));
 for (let i = pages.length - 1; i >= 0; i -= 1) if (exclusionOf(pages[i])) pages.splice(i, 1);
 
-// --- Planned URLs that never became a page and that nobody recorded: excluded[] rows too, never only in prose ---
+// --- Planned URLs the project RECORDED as failed and that no row or exclusion covers: excluded[] rows too ---
 // The plan as the project records it (lib.mjs plannedEntries: the state file's pages[] and excluded[], the crawl's
-// failures in <stardust>/current/_crawl-log.json) minus the rows above and the exclusions recorded: each gets a row
-// `{slug, path, sourceUrl, status: "excluded", reason, at}` — the reason the record carries (`crawl: HTTP 404`), else
-// `captured, not migrated` when its state page names a capture on disk, else `not captured`; `at` null when nothing
-// recorded a time. A recorded hands-off run kept its tenth planned URL (the source answered 404 at capture) in the
-// lead's prose only: no row anywhere a client reads. `update-coverage.mjs --new` retires the row once the page exists.
+// failures in <stardust>/current/_crawl-log.json) minus the rows above and the exclusions recorded; only an entry
+// carrying a recorded reason — a crawl failure (`crawl: HTTP 404`) — gets a row `{slug, path, sourceUrl, status:
+// "excluded", reason, at}` (`at` null when nothing recorded a time). A recorded hands-off run kept its tenth planned
+// URL (the source answered 404 at capture) in the lead's prose only: no row anywhere a client reads. A planned page
+// with no row and NO recorded failure (a state page not yet migrated, captured or not) is never excluded here: it is
+// undone work — done-check's plan_vs_pages names it and unit_unproven keeps counting it in its unit (an excluded path
+// leaves a unit's count, so deriving one would turn a gap into a done). `update-coverage.mjs --new` retires a row
+// once the page exists.
 const crawlLog = readJSON(join(dirname(OUT), 'current', '_crawl-log.json'), null);
-const captureOf = new Map(stateRows.filter((p) => p && p.slug && typeof p.currentStatePath === 'string' && p.currentStatePath).map((p) => [p.slug, p.currentStatePath]));
 const unaccounted = unaccountedPlanned(plannedEntries({ state: STATE ? stateDoc : defaultState, crawlLog }), pages, excludedRows)
-  .map((e) => ({ slug: e.slug, path: e.path, sourceUrl: e.url, status: 'excluded', reason: e.reason || (captureOf.has(e.slug) && existsSync(captureOf.get(e.slug)) ? 'captured, not migrated' : 'not captured'), at: e.at }));
+  .filter((e) => e.reason)
+  .map((e) => ({ slug: e.slug, path: e.path, sourceUrl: e.url, status: 'excluded', reason: e.reason, at: e.at }));
 excludedRows.push(...unaccounted);
 excludedRows.sort((a, b) => byStr(a.slug, b.slug));
 
@@ -650,7 +654,7 @@ console.log(`Pages       ${counts.total} total · ${counts.verified} verified ·
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
 if (excludedRows.length) console.log(`Excluded    ${excludedRows.length} (the source no longer serves them; state.mjs exclude), never counted: ${excludedRows.map((e) => e.slug).join(', ')}`);
-if (unaccounted.length) console.log(`Unaccounted ${unaccounted.length} planned URL(s) with no page row, written to excluded[] (${[...new Set(unaccounted.map((e) => e.reason))].join('; ')}): ${unaccounted.map((e) => e.slug).join(', ')} — migrate or update-coverage.mjs --new each, or state.mjs exclude <slug> --reason "<why>"`);
+if (unaccounted.length) console.log(`Unaccounted ${unaccounted.length} planned URL(s) recorded as failed with no page row, written to excluded[] (${[...new Set(unaccounted.map((e) => e.reason))].join('; ')}): ${unaccounted.map((e) => e.slug).join(', ')} — update-coverage.mjs --new each once built, or state.mjs exclude <slug> --reason "<why>"`);
 if (notCompared.length) {
   const names = notCompared.sort();
   console.log(`Kept        ${names.length} delivered row(s) whose hash basis changed (roster → document), not compared: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ' …' : ''}`);

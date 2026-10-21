@@ -89,7 +89,8 @@ On every `inventory.mjs` run:
 ## Rows added outside the migrated tree (`update-coverage.mjs --new`)
 
 A slug or path the roster (`stardust/state.json`) knows keeps its `source.sourceUrl`: a hand-authored planned page is
-a real page, not a synthesized one; only a page no roster names is synthesized.
+a real page, not a synthesized one; only a page no roster names is synthesized. A re-record (a roster row, or the same
+slug again) takes the `--template` given — pass the row's `templateId` to keep it, another id re-types the page.
 
 A page built during delivery rather than captured — a search results page from
 the dynamics phase, a landing page for a redirect — has no migrated HTML and no

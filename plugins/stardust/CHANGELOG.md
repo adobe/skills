@@ -10,19 +10,24 @@ Four export-truth defects from a recorded hands-off run, each fixed where the ro
 `update-coverage.mjs --new` keeps `source.sourceUrl` for a slug or path the roster (`stardust/state.json`, or a prior
 roster row — now updated, not refused as captured) knows, and retires the page's `excluded[]` row: nine planned pages
 re-created by hand were exported as synthesized rows (`unique:<slug>`, no URL) and a client keyed on source URLs
-skipped every one; `synthesized_pages` now counts only pages with no source at all. (2) `inventory.mjs` derives
-`excluded[]` from the plan minus the pages — `state.json` pages and `excluded[]`, the crawl's failures — with the
-reason on record (`crawl: HTTP 404`), else `captured, not migrated` / `not captured`; `done-check.mjs` prints
-`plan_vs_pages:<n>` for planned URLs with neither a row nor an exclusion (lib.mjs `plannedEntries`,
-`unaccountedPlanned`): the tenth planned URL of that run lived in prose only. (3) `done-check.mjs` `blocks_pending`
+skipped every one; `synthesized_pages` now counts only pages with no source at all (a re-record takes the
+`--template` given: pass the row's `templateId` to keep it). (2) `inventory.mjs` writes an `excluded[]` row for a
+planned URL the project recorded as failed (a `_crawl-log.json` failure, reason `crawl: HTTP 404`) that no row or
+exclusion covers; `done-check.mjs` prints `plan_vs_pages:<n>` for planned URLs with neither a row nor an exclusion
+(lib.mjs `plannedEntries`, `unaccountedPlanned`): the tenth planned URL of that run lived in prose only. A planned
+page never migrated is NOT excluded (a verification replay showed a derived exclusion would let `unit_unproven`
+drop the nine captured, hand-authored pages from their unit and read complete) — it stays `plan_vs_pages` and in
+`unit_unproven`, and `unitGaps` refuses a derived reason as an exclusion regardless. (3) `done-check.mjs` `blocks_pending`
 names every pending module row, the 0-instance planned ones (workspace-manifest.mjs `plannedUndelivered`) with the
 exit `update-coverage.mjs --block <id> --status not-delivered --reason "<why>"`; `blocks.mjs` prints an `Undelivered`
 hint for a planned block with neither code nor an instance once its planning pages are verified — a hint, not a
 derived `not-delivered`: that status is the owner's decision with a reason the schema requires, and deriving it would
 settle a row the check should keep naming. (4) `workspace-manifest.mjs encodeRecordOf` falls back to the record a
 re-type orphaned (`<old-id>.json` whose `template` or `pages[]` names one of the template's pages) and the manifest's
-`byTemplate[].encode` carries `recordedAs: <old-id>` (schema: optional); `encode_unrecorded` follows. Read side only —
-`encode-attempt.mjs` is untouched. Tests in the five rollout test files; no version bump.
+`byTemplate[].encode` carries `recordedAs: <old-id>` (schema: optional) — the disclosure a client needs: the decision
+was recorded for another id, and after a split re-type the first record by file name whose pages overlap is read;
+`encode_unrecorded` follows. Read side only — `encode-attempt.mjs` is untouched. Tests in the five rollout test files;
+no version bump.
 
 ## 0.36.x (stardust/s57-index-cap) — the scripts index fits the shipped cap again: rows name purposes, flags live in `--help` (#180)
 
