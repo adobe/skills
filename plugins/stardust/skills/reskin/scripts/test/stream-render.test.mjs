@@ -224,6 +224,23 @@ check('cards layout: items wrapped in .card inside .cards with columns; intro an
   assert.equal(flat.warnings.length, 2);
   assert.doesNotMatch(flat.html, /class="cards"/);
 });
+check('cards layout: a list of structured items (image, link, text per li) is one card per item, not a bullet list', () => {
+  const li = (n) => ({ kind: 'listItem', text: n, children: [
+    { kind: 'image', currentSrc: `https://cdn.example.test/${n}.jpg`, alt: '' },
+    { kind: 'cta', text: n, href: `/${n}`, absHref: `https://example.test/${n}` },
+    { kind: 'paragraph', text: `About ${n}` }] });
+  const h2 = { kind: 'heading', level: 'h2', text: 'Why us' };
+  assert.deepEqual(findRepeat([h2, li('a'), li('b'), li('c')]), { start: 1, period: 1, count: 3 }, 'three single-node items');
+  assert.deepEqual(findRepeat([h2, ...'abcdef'.split('').map(li)]), { start: 1, period: 1, count: 6 }, 'six items beat a false 2-node run');
+  const plain = { kind: 'listItem', text: 'x' };
+  assert.equal(findRepeat([h2, plain, plain, plain]), null, 'a bare bullet list is not cards');
+  const m2 = { metadata: {}, sections: [{ slot: 's01', ordered: [h2, li('a'), li('b'), li('c')] }] };
+  const { html, warnings } = render({ ...base, slug: 't', model: m2, mapping: { pages: { t: { slots: { s01: { layout: 'cards' } } } } } });
+  assert.equal((html.match(/<div class="card">/g) || []).length, 3);
+  assert.doesNotMatch(html, /<ul class="list">/);
+  assert.match(html, /<div class="card"><figure class="media"><img [^>]+><\/figure>/);
+  assert.deepEqual(warnings, []);
+});
 check('content-driven: 3+ consecutive images are one logo row; split puts the first image beside the text', () => {
   const ordered = ['a', 'b', 'c'].map((n) => ({ kind: 'image', currentSrc: `https://cdn.example.test/${n}.svg`, alt: n }));
   const m2 = { metadata: {}, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, ...ordered] }] };

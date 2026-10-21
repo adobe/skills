@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.38.0 — reskin holds the chrome to a bar (deployed A6)
+
+A migration whose every page gate passed still shipped a header that stacked its nav inline and covered the page,
+a footer that lost its social links, and card lists rendered as bullets. The gates before this read `main` only and
+compared against the prototype, so chrome and card-list regressions passed them, and an agent could waive what was left.
+
+- **`deployed-gate.mjs chrome` (A6), in `all` before figma.** At 1440 and 360 the `<header>` and `<footer>` against
+  `mapping.json` `chrome` and its content model: present and decorated, a logo when mapped, header ≤ 240px with the
+  menu closed, covering `main` by ≤ 4px with a band ≤ 48px, every mapped link rendered and visible (at 360 a toggle that
+  shows the hidden ones, `aria-expanded` "true" after), no icon-font ligature word as text, every mapped footer text.
+  Hard like `sanity`: the fragment is `chrome: { verdict, hard: true }`; with no chrome in the mapping its contract rows
+  are `n/a`. A mapped chrome slot that is absent or empty in the model (captured before it rendered) is exit 2, not a
+  vacuous pass.
+- **`reskin-ledger.mjs`.** `deployed.chrome` joins `deployed.sanity` as never accepted; a header, footer or nav residual
+  is accepted only with `--by <owner>` naming a person, never an agent; `eyeball --verdict pass` is refused while
+  `deployed.chrome` fails. `reskin-preflight` applies the same rule, and a deployed fragment without `chrome` is NOT-RUN.
+- **`capture-content.mjs` `iconLinks`.** Visible links with no text (social icons, logo links), named by aria-label,
+  title, `img` alt, svg title or host. `ctas` dropped them, so a footer's social links never reached the model.
+- **`stream-render.mjs` card lists.** A run of 2+ structured list items (an image or link beside other content) is a
+  repeat of period 1, so a list of cards renders as the cards layout. It needed a repeat of 2+ nodes before: three cards
+  fell back to a bulleted list and six became three two-card panels. The footer emits `iconLinks` as `ul.icon-links`.
+
 ## 0.37.0 — reskin takes content from Figma (Figma-only sites)
 
 A site with no live origin, whose pages exist only as Figma frames, can now be reskinned: content comes

@@ -42,6 +42,7 @@ It complements — does not replace — extract's design-oriented capture
       "paragraphs": [ "…" ],
       "listItems":  [ "…" ],
       "ctas":       [ { "text": "…", "href": "…", "absHref": "https://…", "classes": "…" } ],
+      "iconLinks":  [ { "label": "Facebook", "href": "…", "absHref": "https://…" } ],
       "images":     [ { "currentSrc": "https://…", "alt": "…", "w": 1200, "h": 675 } ],
       "formControls": [ { "control": "select", "name": "classType", "text": "Select a Class Type Online Classes …",
                           "options": [ "Select a Class Type", "Online Classes & Training", "…" ], "selectedIndex": 0 },
@@ -98,6 +99,10 @@ Within a slot:
   absolute URL) is the identity the gate matches on; `href` is kept
   for provenance; `classes` help the mapping brief distinguish CTA
   kinds (button vs text link vs pagination).
+- **iconLinks** — every visible `a` with an href and no text (a social
+  icon, a logo link), which `ctas` drops. `label` is its aria-label,
+  title, `img` alt or svg title, else its host. `deployed-gate chrome`
+  expects them in the header and footer.
 - **images** — **ordered, visible** `img` elements (`loading="lazy"`
   admitted even when not yet intersected). `currentSrc` is the
   responsive-resolved URL; the gate compares URL-normalized

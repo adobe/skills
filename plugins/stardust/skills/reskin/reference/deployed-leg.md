@@ -54,8 +54,8 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
-   pages) and the applicable header-behavior checks. Record each result, or `unresolved: <why>`, under `gates.step10`
-   (§ The ledger).
+   pages) and the header-behavior checks `chrome` (A6) does not cover. Record each result, or `unresolved: <why>`, under
+   `gates.step10` (§ The ledger). An eyeball `pass` is refused while `deployed.chrome` fails.
 
 A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
 `auth: true`). It takes `--auth-header "<value>"` or `--token-env <NAME>` on every step (a value starting with neither
@@ -109,7 +109,8 @@ Applied entries are reported (a "Declared deltas" section, a `deltas applied:` l
 
 ```json
 { "regime": "preview", "url": "<preview url>", "content": "PASS", "tokens": "PASS", "parity": "FAIL 1/8",
-  "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "figma": { "regime": "preview" },
+  "sanity": { "verdict": "PASS", "hard": true }, "inherited": "PASS", "chrome": { "verdict": "PASS", "hard": true },
+  "figma": { "regime": "preview" },
   "invocation": "deployed-gate.mjs all --page <slug> …" }
 ```
 
@@ -126,18 +127,19 @@ measured nothing: the step fails and the run goes on, `sanity` records its own h
 `ADVISORY <gates> (deltas.blocking false)`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
 `invocation` is the exact argument list, `--auth-header`'s value `[redacted]` (`--token-env`'s is a variable name, kept). A residual's `class` is
-`deployed.content`, `.tokens`, `.parity`, `.sanity` or `.inherited` (M2b's are `figma.*`); a `deployed.sanity`
-residual is never `accepted`.
+`deployed.content`, `.tokens`, `.parity`, `.sanity`, `.inherited` or `.chrome` (M2b's are `figma.*`); a
+`deployed.sanity` or `deployed.chrome` residual is never `accepted`, and a header or footer one (`step10.header`, …)
+only with `--by <owner>`, never an agent's name (`reskin-ledger.mjs` refuses; a hands-off run records `needs-owner`).
 
 ## The fix budget
 
 One reconcile round per family on the preview: content (`content`, `inherited`), design (`tokens`, `parity`,
-`sanity`), Figma fidelity. A round costs a push, a Code Sync, a re-preview and a propagation poll, so a fix re-runs
+`sanity`, `chrome`), Figma fidelity. A round costs a push, a Code Sync, a re-preview and a propagation poll, so a fix re-runs
 only what it can move; what still fails afterwards is logged as a residual.
 
 | Fix | Re-run |
 |---|---|
-| CSS or block | push, Code Sync, then `parity`, `tokens`, `sanity`, `figma` |
+| CSS or block | push, Code Sync, then `parity`, `tokens`, `sanity`, `chrome`, `figma` |
 | content page | `deploy-batch`, then `content`, `inherited`, `figma` |
 
 Each step is `deployed-gate <step> --page <slug>`; `figma` is `node stardust/scripts/reskin/figma-gate.mjs all --page <slug> --url <preview url>

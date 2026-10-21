@@ -30,7 +30,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gateVerdicts, NEVER_ACCEPTED, residualCovers } from './reskin-ledger.mjs';
+import { gateVerdicts, NEVER_ACCEPTED, ownerAccepted, residualCovers } from './reskin-ledger.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
 
@@ -73,7 +73,7 @@ export function preflight(read, { dir = 'stardust' } = {}) {
   // The flow: reskin predicate (spec § 4.6): each type's archetype is gated in reskin/ledger.json —
   // every gate PASS or a residual accepted, no needs-owner/blocked residual, the eyeball recorded and
   // passing, the recorded prototype still the file on disk, and M2's gates.figma / gates.deployed families PASS
-  // (or a residual accepted; never deployed.sanity) when recorded.
+  // (or a residual accepted; never deployed.sanity or deployed.chrome, a header/footer one only by the owner).
   const ledger = json(`${dir}/reskin/ledger.json`);
   if (types.size && !missing.length) {
     if (!ledger) fail('archetype-gates', `${dir}/reskin/ledger.json ${ledger === undefined ? 'is missing' : 'is not valid JSON'} — run reskin-ledger.mjs record <archetype> after the Phase 5 gates`);
@@ -83,8 +83,8 @@ export function preflight(read, { dir = 'stardust' } = {}) {
         const a = ledger.handoff?.[t]?.archetype || ps.find((p) => p.status === 'approved' || p.status === 'migrated').slug;
         const e = ledger.pages?.[a]; const page = state.pages.find((p) => p.slug === a);
         if (!e || !ledger.handoff?.[t]) { problems.push(`${t}/${a}: not recorded (reskin-ledger.mjs record ${a})`); continue; }
-        const accepted = (g) => !NEVER_ACCEPTED.includes(g) && (e.residuals || []).some((r) => residualCovers(r, g) && r.verdict === 'accepted');
-        // reskin's gates plus M2's fragments (gates.figma B0/B1/B3, gates.deployed A1–A5 + its figma re-run)
+        const accepted = (g) => !NEVER_ACCEPTED.includes(g) && (e.residuals || []).some((r) => residualCovers(r, g) && ownerAccepted(r));
+        // reskin's gates plus M2's fragments (gates.figma B0/B1/B3, gates.deployed A1–A6 + its figma re-run)
         const bad = gateVerdicts(e.gates).filter((v) => v.verdict !== 'PASS' && !accepted(v.gate)).map((v) => `${v.gate} ${v.verdict}`);
         if (e.status !== 'gated' || bad.length) problems.push(`${t}/${a}: ${bad.join(', ') || e.status}`);
         const open = (e.residuals || []).filter((r) => r.verdict !== 'accepted');

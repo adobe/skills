@@ -33,7 +33,8 @@
  *   layout stack: the stream in order; grid-2: form fields two-up; media-band: the slot's first image as a
  *   cover backdrop behind a panel; split: the first image beside the text; cards: the stream's repeating
  *   run (findRepeat — same node-kind sequence back to back, heading levels ignored when that covers more,
- *   e.g. image+h3+p per team member) as a grid of
+ *   e.g. image+h3+p per team member; or 2+ list items each holding an image or link and text, one card
+ *   per item) as a grid of
  *   cards, `columns` wide (default 3 when the count divides by 3, else 2), intro above and tail below.
  *   tone paints the panel from palette.darkBandBg/Fg, lightBandBg or accent ("bleed": true paints the
  *   whole full-width band instead, for frames whose tone band spans the viewport); align: center centres
@@ -116,11 +117,26 @@ export const modelHasButton = (model) => (model?.sections || []).some((s) => (s.
 // Nodes before it are the intro, nodes after it the tail. Null when nothing repeats twice. Pure; exported.
 // Card titles often carry drifting heading levels in a design file (h3/h4/h5 for visually equal titles), so a
 // level-blind run wins when it covers more of the stream than the level-exact one.
+// A source card list (ul > li, each li an image/link + text) is one listItem node per card: a run of 2+ such
+// structured listItems is the run, period 1, when it covers at least as much as any node-level run.
 export function findRepeat(ordered, opts = {}) {
   const exact = repeatRun(ordered, opts, true);
   const loose = repeatRun(ordered, opts, false);
-  if (!loose || (exact && exact.covered >= loose.covered)) return exact && { start: exact.start, period: exact.period, count: exact.count };
-  return { start: loose.start, period: loose.period, count: loose.count };
+  const best = !loose || (exact && exact.covered >= loose.covered) ? exact : loose;
+  const items = itemRun(ordered, opts);
+  if (items && (!best || items.count >= best.covered)) return items;
+  return best && { start: best.start, period: best.period, count: best.count };
+}
+export const isCardItem = (n) => n?.kind === 'listItem' && (n.children || []).length >= 2
+  && n.children.some((c) => c.kind === 'image' || c.kind === 'cta');
+function itemRun(ordered, { maxStart = 6 } = {}) {
+  let best = null;
+  for (let start = 0; start <= Math.min(maxStart, ordered.length - 2); start++) {
+    let count = 0;
+    while (isCardItem(ordered[start + count])) count++;
+    if (count >= 2 && (!best || count > best.count)) best = { start, period: 1, count };
+  }
+  return best;
 }
 function repeatRun(ordered, { maxStart = 6, maxPeriod = 12 } = {}, levels = true) {
   const sig = ordered.map((n) => [n.kind, levels ? n.level || '' : '', n.kind === 'text' ? n.parentClass || n.parentTag || '' : ''].join(':'));
@@ -384,7 +400,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       const texts = footerTexts(s);
       return `<div class="container chrome-footer">
       <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
-      <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>
+      <ul>${s.ctas.map((c) => `<li><a href="${url(c)}">${esc(c.text)}</a></li>`).join('')}</ul>${(s.iconLinks || []).length ? `
+      <ul class="icon-links">${s.iconLinks.map((c) => `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`).join('')}</ul>` : ''}
     </div>`;
     })())).join('\n  ');
   }
@@ -402,7 +419,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       const cols = Number.isInteger(m.columns) && m.columns > 0 ? m.columns : (rep.count % 3 === 0 ? 3 : 2);
       inner = [
         streamHtml(s.ordered.slice(0, rep.start), ctx),
-        `<div class="cards" style="--cards-columns: ${cols}">${items.map((it) => `<div class="card">${streamHtml(it, { ...ctx, band: false, split: false })}</div>`).join('')}</div>`,
+        `<div class="cards" style="--cards-columns: ${cols}">${items.map((it) => `<div class="card">${streamHtml(it.length === 1 && isCardItem(it[0]) ? it[0].children : it, { ...ctx, band: false, split: false })}</div>`).join('')}</div>`,
         streamHtml(s.ordered.slice(end), ctx),
       ].filter(Boolean).join('\n        ');
     } else {

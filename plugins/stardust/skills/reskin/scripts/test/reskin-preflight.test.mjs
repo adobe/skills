@@ -103,10 +103,10 @@ check('the reskin predicate: missing ledger, failing gate, open residual, no eye
   assert.equal(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': proto }).level, 'ok');
   assert.match(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': '<html>v2</html>' }).detail, /prototype changed/);
 });
-check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A5 + figma re-run, D7 sanity', () => {
+check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A6 + figma re-run, D7 sanity and chrome', () => {
   const ag = (page) => preflight(project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: page }, handoff: { form: { archetype: 'login', gates: {} } } }) })).find((x) => x.check === 'archetype-gates');
   const fig = { regime: 'local', join: 'PASS', geometry: 'PASS 12/12', ramp: 'PASS', pixel: 'ADVISORY 4.1%', register: { a: 1 } };
-  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'ADVISORY 2%', sanity: 'PASS', inherited: 'n/a: no contract', figma: { ...fig, regime: 'preview' } };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'ADVISORY 2%', sanity: 'PASS', inherited: 'n/a: no contract', chrome: { verdict: 'PASS', hard: true }, figma: { ...fig, regime: 'preview' } };
   assert.equal(ag(gated({ gates: { figma: fig, deployed: dep } })).level, 'ok');
   assert.match(ag(gated({ gates: { figma: { ...fig, geometry: 'FAIL 3/12' } } })).detail, /figma\.geometry FAIL/);
   assert.match(ag(gated({ gates: { figma: { missing: 'figma-gate all not run' } } })).detail, /figma\.join NOT-RUN/);
@@ -114,6 +114,15 @@ check('the reskin predicate reads M2 fragments: figma B0/B1/B3, deployed A1–A5
   assert.match(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } } })).detail, /deployed\.figma\.join FAIL/);
   assert.equal(ag(gated({ gates: { deployed: { ...dep, figma: { ...fig, join: 'FAIL 1/5' } } }, residuals: [{ gate: 'figma.join', verdict: 'accepted' }] })).level, 'ok');
   assert.match(ag(gated({ gates: { deployed: { ...dep, sanity: 'FAIL 1/9' } }, residuals: [{ gate: 'deployed.sanity', verdict: 'accepted' }] })).detail, /deployed\.sanity FAIL/);
+  const { chrome, ...noChrome } = dep;
+  assert.match(ag(gated({ gates: { deployed: noChrome } })).detail, /deployed\.chrome NOT-RUN/, 'a deployed fragment without chrome is not run');
+  assert.match(ag(gated({ gates: { deployed: { ...dep, chrome: { verdict: 'FAIL 2/9', hard: true } } }, residuals: [{ gate: 'deployed.chrome', verdict: 'accepted', by: 'site owner' }] })).detail, /deployed\.chrome FAIL/, 'chrome is never accepted');
+});
+check('a header or footer residual counts only when the owner accepted it, never an agent', () => {
+  const ag = (residuals) => preflight(project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: gated({ gates: { 'step10.header': 'FAIL', ok: 'PASS' }, residuals }) }, handoff: { form: { archetype: 'login', gates: {} } } }) })).find((x) => x.check === 'archetype-gates');
+  assert.match(ag([{ gate: 'step10.header', verdict: 'accepted' }]).detail, /step10\.header FAIL/, 'no --by');
+  assert.match(ag([{ gate: 'step10.header', verdict: 'accepted', by: 'copilot' }]).detail, /step10\.header FAIL/, 'an agent');
+  assert.equal(ag([{ gate: 'step10.header', verdict: 'accepted', by: 'site owner' }]).level, 'ok');
 });
 check('approval: an agent approval fails unless the run is hands-off and says so', () => {
   const st = (by, handsOff) => JSON.stringify({ flow: 'reskin', handsOff, pages: [{ slug: 'login', type: 'form', status: 'approved', history: [{ status: 'approved', approvedBy: by }] }] });

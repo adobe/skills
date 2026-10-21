@@ -335,7 +335,7 @@ letter spacing a style is keyed by.
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
 Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
 lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. `content`, `tokens`, `sanity` and `figma` first
+`deployed-gate.mjs --help`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
 settle the EDS decoration (`body.appear`, every section and block `loaded`,
 within 20 s) and name a stall; in `all` a stall is that step's FAIL and the
 run goes on. `parity`'s captures wait a fixed 3 s instead, and `inherited`
@@ -348,6 +348,7 @@ fetches `.plain.html` without a browser.
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a token the preview refuses is exit 2, any other page answering HTTP 400 or more no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `chrome` A6 | **hard**, as `sanity`; a header/footer residual (`step10.header`, …) is accepted only `--by` the site owner | at 1440 and 360 the `<header>` and `<footer>` against `mapping.json` `chrome` and its model (ctas, `iconLinks`, images, footer text) | present and decorated; a logo ≥ 16px when mapped; header ≤ 240px closed, covering main ≤ 4px, band above it ≤ 48px; every mapped link rendered and visible (at 360 a toggle shows the hidden ones); no icon-font ligature word as text; every mapped footer text. No chrome in the mapping: those rows `n/a`; a mapped slot empty in the model is exit 2 |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`):

@@ -2,14 +2,14 @@
 // skills/reskin/scripts/test/reskin-ledger.test.mjs — the ledger writer. Pure part: overall-verdict
 // parsing, the mobile-adapt static rules, applyRecord (status, accepted residuals, handoff archetype
 // and tier, PASS-only gates for migrate, sibling stage). CLI part on a temp project: --help, usage
-// errors, refusal on missing reports, record → eyeball → residual → show. Run: node <this file>.
+// errors, refusal on missing reports, record → eyeball → residual → show, the chrome refusals. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { applyRecord, fragmentVerdict, gateVerdicts, mobileStatic, overall, WAIVED } from '../reskin-ledger.mjs';
+import { applyRecord, fragmentVerdict, gateVerdicts, mobileStatic, overall, ownerAccepted, WAIVED } from '../reskin-ledger.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'reskin-ledger.mjs');
 let failed = 0;
@@ -76,6 +76,20 @@ check('M2 fragments: verdict strings, flattening, figmaRequired, kept fragment, 
   const withClass = applyRecord({ pages: { login: { residuals: [{ gate: 'figma', class: 'figma.geometry', verdict: 'accepted' }] } } }, { ...base, m2: { figma: fig } });
   assert.equal(withClass.pages.login.status, 'gated', 'a residual names its family by class (M2b SKILL)');
 });
+check('chrome: deployed.chrome is never accepted; a header or footer residual counts only --by a non-agent owner', () => {
+  assert.equal(ownerAccepted({ gate: 'mobile-adapt-runtime', verdict: 'accepted' }), true, 'not a chrome gate: no owner needed');
+  for (const gate of ['step10.header', 'footer', 'deployed.chrome', 'header-nav']) assert.equal(ownerAccepted({ gate, verdict: 'accepted' }), false, gate);
+  for (const by of ['copilot', 'Claude', 'agent', 'hands-off-agent', 'stardust', ' ']) assert.equal(ownerAccepted({ gate: 'footer', verdict: 'accepted', by }), false, by);
+  assert.equal(ownerAccepted({ gate: 'footer', verdict: 'accepted', by: 'site owner' }), true);
+  assert.equal(ownerAccepted({ gate: 'footer', verdict: 'needs-owner', by: 'site owner' }), false);
+  const base = { state, slug: 'login', reports: R('PASS'), mobile: mob(), prototypeSha: 'x', at: 't' };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', chrome: { verdict: 'FAIL 2/9', hard: true } };
+  const owned = { pages: { login: { residuals: [{ gate: 'deployed.chrome', verdict: 'accepted', by: 'site owner' }] } } };
+  assert.equal(applyRecord(owned, { ...base, m2: { deployed: dep } }).pages.login.status, 'failing', 'a chrome FAIL stays failing');
+  assert.equal(applyRecord({}, { ...base, m2: { deployed: { ...dep, chrome: { verdict: 'PASS', hard: true } } } }).pages.login.status, 'gated');
+  const { chrome, ...old } = dep;
+  assert.equal(applyRecord({}, { ...base, m2: { deployed: { ...old, sanity: 'PASS' } } }).pages.login.status, 'failing', 'a fragment without chrome is NOT-RUN');
+});
 const run = (args, cwd) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' });
 check('--help exits 0; usage errors exit 2', () => {
   const r = run(['--help'], mkdtempSync(join(tmpdir(), 'rl-'))); assert.equal(r.status, 0); assert.match(r.stdout, /usage: node reskin-ledger\.mjs/);
@@ -109,6 +123,29 @@ check('CLI: a Figma-sourced page records figma-text.json as its content gate', (
   w('stardust/reskin/gates/login/figma-text.json', JSON.stringify({ gate: 'figma-text', verdict: 'PASS' }));
   assert.equal(run(['record', 'login'], root).status, 0);
   assert.match(JSON.parse(readFileSync(join(root, 'stardust/reskin/ledger.json'), 'utf8')).pages.login.gates['reskin-dom-equality'].report, /figma-text\.json$/);
+});
+
+check('CLI: chrome residuals and the eyeball refuse what an agent may not waive', () => {
+  const root = mkdtempSync(join(tmpdir(), 'rl-'));
+  const w = (rel, s) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), s); };
+  w('stardust/state.json', JSON.stringify(state)); w('stardust/prototypes/login-proposed.html', MOBILE_OK);
+  for (const f of ['dom-equality', 'slot-coverage', 'donor-probe']) w(`stardust/reskin/gates/login/${f}.md`, `# ${f}\n\n**Overall: PASS**\n`);
+  assert.equal(run(['record', 'login'], root).status, 0);
+  const res = (...a) => run(['residual', 'login', '--cause', 'c', ...a], root);
+  assert.match(res('--gate', 'deployed.chrome', '--verdict', 'accepted', '--by', 'site owner').stderr, /cannot be accepted/);
+  const noBy = res('--gate', 'step10.header', '--verdict', 'accepted'); assert.equal(noBy.status, 1); assert.match(noBy.stderr, /site owner's to accept/);
+  assert.equal(res('--gate', 'step10.header', '--verdict', 'accepted', '--by', 'copilot').status, 1);
+  assert.equal(res('--gate', 'step10.header', '--verdict', 'needs-owner').status, 0, 'an agent records needs-owner');
+  assert.equal(res('--gate', 'step10.header', '--verdict', 'accepted', '--by', 'site owner').status, 0);
+  assert.equal(run(['residual', 'login', '--gate', 'footer', '--by'], root).status, 2);
+  const file = join(root, 'stardust/reskin/ledger.json');
+  const L = JSON.parse(readFileSync(file, 'utf8'));
+  assert.deepEqual(L.pages.login.residuals.map((r) => [r.gate, r.verdict, r.by]), [['step10.header', 'accepted', 'site owner']]);
+  L.pages.login.gates.deployed = { regime: 'preview', chrome: { verdict: 'FAIL 1/9', hard: true } }; writeFileSync(file, JSON.stringify(L));
+  const eye = run(['eyeball', 'login', '--verdict', 'pass'], root); assert.equal(eye.status, 1); assert.match(eye.stderr, /deployed\.chrome fails/);
+  assert.equal(run(['eyeball', 'login', '--verdict', 'fail'], root).status, 0, 'a fail is always recorded');
+  L.pages.login.gates.deployed.chrome = { verdict: 'PASS', hard: true }; writeFileSync(file, JSON.stringify(L));
+  assert.equal(run(['eyeball', 'login', '--verdict', 'pass'], root).status, 0);
 });
 
 if (failed) { console.log(`\n${failed} check(s) failed`); process.exit(1); }

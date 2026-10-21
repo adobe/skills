@@ -426,8 +426,8 @@ On a protected preview give the `all` command `--token-env <NAME>`, never
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124
 and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 `all` replaces only `deploy` Step 10's automated reconcile: its deployed
-desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and applicable
-header-behavior checks stay mandatory before handoff, their results or an
+desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and the
+header-behavior checks `chrome` (A6) does not cover stay mandatory before handoff, their results or an
 explicit `unresolved` in the ledger (`reference/deployed-leg.md` § Recipe, step 7).
 
 **One fix iteration per gate family** (content; design-adoption/sanity;
@@ -441,7 +441,7 @@ Figma fidelity): fix once, re-run all gates; (e) has its own budget
 ```bash
 node stardust/scripts/reskin/reskin-ledger.mjs record <slug>
 node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
-node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <owner>]
 ```
 
 `record` reads the three gate reports (`reports/<slug>-{content-gate,
@@ -452,7 +452,10 @@ reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json` into
 `gates.figma` (and M2a's `…/deployed/summary.json` into
 `gates.deployed`), and sets the page `gated` or `failing`. A Figma donor
 with no figma fragment records `figma.*` NOT-RUN. A residual's `--gate`
-for a Figma family is its class (`figma.geometry`, …). On an approved page it fills
+for a Figma family is its class (`figma.geometry`, …). Chrome is never waived by an
+agent: `deployed.sanity`/`deployed.chrome` residuals are refused, a header or footer
+one needs `--by <owner>`, and `eyeball --verdict pass` is refused while
+`deployed.chrome` fails. On an approved page it fills
 `handoff.<type>` — the archetype, its prototype sha and the tier record
 (gates passed, prototype gates waived) — which `reskin-preflight` and
 `migrate` read. Re-run `record` after the approval and after every fix.

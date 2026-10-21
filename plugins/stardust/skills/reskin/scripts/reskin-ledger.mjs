@@ -20,11 +20,15 @@
  *       gates.deployed; without fresh evidence a fragment already in the ledger is kept. A Figma donor
  *       (reskin/curation-rules.json) with scripts/reskin/figma-gate.mjs installed and no figma fragment
  *       records figma.* NOT-RUN. Blocking: figma join/geometry/ramp; deployed content/tokens/parity/
- *       sanity/inherited and its figma re-run. A deployed.sanity residual is never accepted (M2a D7).
+ *       sanity/inherited/chrome and its figma re-run. A deployed.sanity or deployed.chrome residual is never
+ *       accepted (M2a D7): a broken page or broken chrome is fixed, not waived.
  *       migrated: reads <dir>/reskin/gates/<slug>/migrated/*.md — the sibling gate on migrate's output —
  *       into pages[slug].migratedGates and handoff.<type>.siblings.<slug>.
- *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5)
- *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"]
+ *   eyeball <slug> --verdict pass|fail [--note "…"]     the side-by-side donor judgment (Phase 5); pass is
+ *       refused while the page's deployed.chrome fragment fails
+ *   residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
+ *       a header, footer or chrome gate (step10.header, footer, …) is accepted only with --by naming the site
+ *       owner, never an agent; a hands-off run records it needs-owner
  *   show [<slug>]
  *
  * Exit 0 ok, 1 refused (missing page, report or prototype), 2 usage.
@@ -41,8 +45,10 @@ Writes stardust/reskin/ledger.json from evidence (gate reports, the mobile-adapt
 human judgments. reskin-preflight and migrate read it.
 
   record <slug> [--stage prototype|migrated]   gate verdicts → pages[slug], handoff.<type>
-  eyeball <slug> --verdict pass|fail [--note "…"]
-  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"]
+  eyeball <slug> --verdict pass|fail [--note "…"]   pass refused while deployed.chrome fails
+  residual <slug> --gate <g> --cause <c> --verdict accepted|needs-owner|blocked [--note "…"] [--by <owner>]
+      deployed.sanity and deployed.chrome are never accepted; a header, footer or chrome gate
+      (step10.header, footer, …) is accepted only --by the site owner, never an agent
   show [<slug>]
 
 Exit 0 ok, 1 refused, 2 usage.`;
@@ -62,9 +68,13 @@ const VERDICTS = ['accepted', 'needs-owner', 'blocked'];
 // pages.<slug>.gates.figma / gates.deployed. Their values are 'PASS' | 'FAIL k/n' | 'ADVISORY …' |
 // 'n/a: …' | 'not run: …' | 'CRASH: …'. Blocking families: figma B0 join, B1 geometry, B3 ramp (B2 pixel
 // is advisory, B4 register informational); deployed A1 content … A5 inherited, plus its figma re-run.
-export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited'] };
-// A residual that may never be accepted (M2a D7: a deployed hard-sanity failure is fixed, not waived).
-export const NEVER_ACCEPTED = ['deployed.sanity'];
+export const M2_FAMILIES = { figma: ['join', 'geometry', 'ramp'], deployed: ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome'] };
+// A residual that may never be accepted (M2a D7: a deployed hard-sanity or chrome failure is fixed, not waived).
+export const NEVER_ACCEPTED = ['deployed.sanity', 'deployed.chrome'];
+// Every page inherits the chrome, so a header or footer residual is the site owner's to accept, never an agent's.
+export const CHROME_GATE = /(^|\.)(header|footer|chrome|nav)(\b|$)/i;
+export const AGENT = /\b(agents?|assistant|stardust|claude|codex|copilot|gpt[\w.-]*|gemini|bot|auto|autopilot|auto-mode|hands-off|ai)\b/i;
+export const ownerAccepted = (r) => r.verdict === 'accepted' && (!CHROME_GATE.test(r.gate || '') || (typeof r.by === 'string' && r.by.trim() !== '' && !AGENT.test(r.by)));
 export function fragmentVerdict(v) {
   const s = typeof v === 'string' ? v : v?.verdict;
   if (s == null) return 'NOT-RUN';
@@ -126,7 +136,7 @@ export function applyRecord(ledger, { state, slug, stage = 'prototype', reports,
     const dep = m2.deployed ?? entry.gates?.deployed;
     if (dep) gates.deployed = dep;
   }
-  const accepted = (g) => entry.residuals.some((r) => residualCovers(r, g) && r.verdict === 'accepted' && !NEVER_ACCEPTED.includes(g));
+  const accepted = (g) => entry.residuals.some((r) => residualCovers(r, g) && ownerAccepted(r) && !NEVER_ACCEPTED.includes(g));
   const ok = gateVerdicts(gates).every(({ gate, verdict }) => verdict === 'PASS' || accepted(gate));
   if (stage === 'migrated') { entry.migratedGates = gates; entry.migratedStatus = ok ? 'gated' : 'failing'; } else {
     entry.gates = gates; entry.status = ok ? 'gated' : 'failing'; entry.prototypeSha = prototypeSha; entry.prototypePath = page.prototypePath || null;
@@ -151,7 +161,7 @@ function parse(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--help' || a === '-h') o.help = true;
-    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause'].includes(a)) {
+    else if (['--dir', '--stage', '--verdict', '--note', '--gate', '--cause', '--by'].includes(a)) {
       const v = argv[++i]; if (v === undefined || v.startsWith('--')) throw new Error(`${a} needs a value`); o[a.slice(2)] = v;
     } else if (a.startsWith('--')) throw new Error(`unknown option ${a}`);
     else o.pos.push(a);
@@ -205,14 +215,18 @@ export function main(argv) {
 
   if (cmd === 'eyeball') {
     if (!['pass', 'fail'].includes(o.verdict)) { console.error('reskin-ledger: eyeball needs --verdict pass|fail'); return 2; }
+    const chrome = fragmentVerdict(ledger.pages[slug]?.gates?.deployed?.chrome);
+    if (o.verdict === 'pass' && chrome === 'FAIL') { console.error(`reskin-ledger: eyeball pass refused: deployed.chrome fails for ${slug} (${JSON.stringify(ledger.pages[slug].gates.deployed.chrome)}); fix the header or footer and re-run deployed-gate`); return 1; }
     ledger.pages[slug] = { ...(ledger.pages[slug] || {}), eyeball: { verdict: o.verdict, note: o.note || null, at } };
     save(ledgerFile, ledger); console.log(`eyeball ${slug}: ${o.verdict}`); return 0;
   }
   if (cmd === 'residual') {
     if (!o.gate || !o.cause || !VERDICTS.includes(o.verdict)) { console.error(`reskin-ledger: residual needs --gate, --cause and --verdict ${VERDICTS.join('|')}`); return 2; }
-    if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard sanity): fix the page and re-run deployed-gate`); return 1; }
+    if (o.verdict === 'accepted' && NEVER_ACCEPTED.includes(o.gate)) { console.error(`reskin-ledger: a ${o.gate} residual cannot be accepted (hard): fix the page and re-run deployed-gate`); return 1; }
+    if (o.verdict === 'accepted' && !ownerAccepted({ gate: o.gate, verdict: o.verdict, by: o.by })) { console.error(`reskin-ledger: a ${o.gate} residual is the site owner's to accept: pass --by <owner> (never an agent), or record it needs-owner`); return 1; }
     const cls = /^(figma|deployed)\./.test(o.gate) ? { class: o.gate } : {};
-    const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, note: o.note || null, at }];
+    const by = o.by ? { by: o.by } : {};
+    const e = { ...(ledger.pages[slug] || {}) }; e.residuals = [...(e.residuals || []).filter((r) => r.gate !== o.gate), { gate: o.gate, ...cls, cause: o.cause, verdict: o.verdict, ...by, note: o.note || null, at }];
     ledger.pages[slug] = e; save(ledgerFile, ledger); console.log(`residual ${slug}: ${o.gate} ${o.verdict}`); return 0;
   }
 

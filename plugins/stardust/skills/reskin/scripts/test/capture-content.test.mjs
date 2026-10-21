@@ -2,7 +2,8 @@
 // skills/reskin/scripts/test/capture-content.test.mjs — capture-content.mjs: --help answers before any I/O, and the
 // slots of a scope never include a <script>, <style>, <noscript> or <template> child (a JSON-LD <script> in `main` is
 // metadata, not a section), though JSON-LD still reaches metadata.jsonLd. The page cases run the CLI on a local file in
-// plain Chromium (needs playwright; prints a skip line otherwise). Run: node <this file>.
+// plain Chromium (needs playwright; prints a skip line otherwise), with the text-less links a slot keeps as iconLinks.
+// Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -61,6 +62,27 @@ if (playwrightOk) {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.equal(r.model.sections.length, 2);
     assert.deepEqual(r.model.sections.map((s) => s.headings[0].text), ['First section', 'Second section']);
+  });
+
+  await check('a text-less link is an iconLink named by aria-label, title, img alt, svg title or its host; ctas keep the texted ones', () => {
+    const svg = (t) => `<svg width="24" height="24" viewBox="0 0 24 24">${t ? `<title>${t}</title>` : ''}<rect width="24" height="24"/></svg>`;
+    const icons = [
+      `<a href="https://www.facebook.com/sample" aria-label="Facebook">${svg()}</a>`,
+      `<a href="https://x.example/sample" title="X">${svg()}</a>`,
+      '<a href="/crest"><img alt="Crest" width="24" height="24" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>',
+      `<a href="https://www.instagram.com/sample">${svg('Instagram')}</a>`,
+      `<a href="https://www.youtube.com/sample">${svg()}</a>`,
+      `<a href="https://hidden.example/" style="display:none">${svg()}</a>`,
+    ].join('');
+    const r = capture('icon-links', page(`<footer><section><h2>Follow us</h2><p><a href="/contact">Contact</a></p>${icons}</section></footer>`), ['--scope', 'footer!']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const [s] = r.model.sections;
+    assert.deepEqual(s.ctas.map((a) => a.text), ['Contact']);
+    assert.deepEqual(s.iconLinks.map((a) => [a.label, a.href]), [
+      ['Facebook', 'https://www.facebook.com/sample'], ['X', 'https://x.example/sample'], ['Crest', '/crest'],
+      ['Instagram', 'https://www.instagram.com/sample'], ['youtube.com', 'https://www.youtube.com/sample'],
+    ]);
+    assert.match(s.iconLinks[2].absHref, /^file:.*\/crest$/);
   });
 }
 

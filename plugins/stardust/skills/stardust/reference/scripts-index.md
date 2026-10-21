@@ -71,14 +71,14 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
 - `reskin/canon-from-reskin.mjs` — reskin → migrate bridge — `<archetype-slug> [--force] [--visual-threshold 10]`
-- `reskin/capture-content.mjs` — source content model — `--url <u> --out <dir> [--scope 'a,b']`
-- `reskin/deployed-gate.mjs` — deployed preview checks — `preview --org --repo --branch --path | all` `--page <slug>`; exit 124 = no verdict
+- `reskin/capture-content.mjs` — content model — `--url <u> --out <dir> [--scope 'a,b']`
+- `reskin/deployed-gate.mjs` — preview checks — `preview --org --repo --branch --path | chrome | all` `--page <slug>`; exit 124 = no verdict
 - `reskin/dom-equality.mjs` — content gate — `--source <u|f> --rendered <u|f> --report <p>`
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <f> --rendered <u|f> [--spec] [--viewport] [--no-sanity] [--json]`
 - `reskin/figma-donor.mjs` — Figma donor/content — `capture|curate|stamp|init|content|blocklist|ack`; exit 3 = blocked
 - `reskin/figma-text-gate.mjs` — Figma text gate — `--model <f> --rendered <u|f>`
 - `reskin/figma-gate.mjs` — Figma checks — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
-- `reskin/reskin-ledger.mjs` — ledger from gates — `record <slug> [--stage] | eyeball | residual | show`
+- `reskin/reskin-ledger.mjs` — gate ledger — `record <slug> [--stage] | eyeball | residual [--by] | show`
 - `reskin/reskin-preflight.mjs` — ready to migrate? 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <f> --rendered <u|f> [--deltas]`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags

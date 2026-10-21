@@ -336,6 +336,16 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         classes: (typeof a.className === 'string' ? a.className : ''),
       }))
       .filter((a) => a.text);
+    // An icon-only link (a social icon, a logo link) has no text, so ctas drops it; keep it by its accessible name.
+    const iconLinks = q('a')
+      .filter((a) => isVisible(a) && !norm(a.innerText) && (a.getAttribute('href') || '').trim())
+      .map((a) => {
+        const named = a.getAttribute('aria-label') || a.getAttribute('title')
+          || a.querySelector('img[alt]')?.getAttribute('alt') || a.querySelector('svg title')?.textContent || '';
+        let host = '';
+        try { host = new URL(a.href).hostname.replace(/^www\./, ''); } catch { /* not a URL */ }
+        return { label: norm(named) || host, href: a.getAttribute('href'), absHref: a.href || '' };
+      });
     const paragraphs = q('p')
       .filter(isVisible)
       .map((p) => norm(p.innerText))
@@ -496,7 +506,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       rootTag: sec.tagName.toLowerCase(),
       rootClass: (typeof sec.className === 'string' ? sec.className : ''),
       visibleText,
-      headings, paragraphs, listItems, ctas, images, formControls, leftovers,
+      headings, paragraphs, listItems, ctas, iconLinks, images, formControls, leftovers,
       ordered, orderedVerified,
     };
   });
