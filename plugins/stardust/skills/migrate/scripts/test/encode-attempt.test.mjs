@@ -315,13 +315,29 @@ check('usage: --reason with --not-attempted (which carries its own), an empty --
   }
   assert.ok(!has(P(REC('guides'))));
 });
+check('whole-template --hand-authored on ≥ 2 siblings (no --pages, or --pages naming every sibling) needs a recorded refusal reason: free text → exit 2, nothing written; a --pages subset and a one-sibling template keep a free-text reason; the library keeps its default', () => {
+  const brief = 'the siblings are authored by hand per the cluster brief';
+  for (const extra of [[], ['--pages', 'guide-c,guide-a,guide-b']]) {
+    const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', brief, ...extra]);
+    assert.equal(r.status, 2, `${extra.join(' ')}: ${r.out}${r.err}`); assert.equal(r.out, '');
+    assert.equal(r.err, `encode-attempt guides: --hand-authored "${brief}" covers all 3 siblings (no --pages subset) — whole-template hand-authoring needs a recorded refusal reason: --reason "re-typed|no-repeatable-structure: <why the encoder cannot serve this template>" (encode-attempt --help), or name the exception page(s): --pages <slug,…>; otherwise the map is due: author stardust/import/guides/vocabulary.json (migrate/reference/importer-recipe.md § Encoder contract)\n`);
+    assert.ok(!has(P(REC('guides'))), 'nothing written');
+  }
+  const page = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'a new block: the legal table', '--pages', 'guide-b']); assert.equal(page.status, 0, page.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-b']); assert.equal(json(P(REC('guides'))).reason, 'a new block: the legal table'); rmSync(join(ROOT, REC('guides')));
+  const one = run(['record', '--template', 'notes', '--root', ROOT, '--hand-authored', '--reason', 'the one note page is written by hand']); assert.equal(one.status, 0, one.err);
+  assert.deepEqual(json(P(REC('notes'))).pages, ['note-a']); rmSync(join(ROOT, REC('notes')));
+  const tagged = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'RE-TYPED: the guides moved to the handbook templates']); assert.equal(tagged.status, 0, tagged.err);
+  assert.deepEqual(json(P(REC('guides'))).pages, ['guide-a', 'guide-b', 'guide-c']); rmSync(join(ROOT, REC('guides')));
+  assert.equal(recordAttempt(ROOT, 'guides', { handAuthored: true, reason: 'free text: the library does not enforce the vocabulary, the CLI does' }).verdict, 'hand-authored'); rmSync(join(ROOT, REC('guides')));
+});
 check('--hand-authored --reason: verdict hand-authored, nothing run, pages = the template\'s siblings, the earlier run\'s roundtrip and lint kept as evidence', () => {
   map('guides'); rec('guides'); const tried = json(P(REC('guides'))); assert.equal(tried.verdict, 'no-roundtrip');
   const before = runs().length;
-  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
-  assert.equal(r.out, 'encode-attempt guides: hand-authored — the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
+  const r = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'no-repeatable-structure: the map cannot express the per-page legal tables']); assert.equal(r.status, 0, r.err);
+  assert.equal(r.out, 'encode-attempt guides: hand-authored — no-repeatable-structure: the map cannot express the per-page legal tables (3 page(s): guide-a, guide-b, guide-c)\n');
   const j = json(P(REC('guides')));
-  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'the map cannot express the per-page legal tables');
+  assert.equal(j.verdict, 'hand-authored'); assert.equal(j.reason, 'no-repeatable-structure: the map cannot express the per-page legal tables');
   assert.deepEqual(j.pages, ['guide-a', 'guide-b', 'guide-c']); assert.deepEqual(j.roundtrip, tried.roundtrip); assert.deepEqual(j.lint, tried.lint);
   assert.equal(runs().length, before, 'nothing run');
   const some = run(['record', '--template', 'guides', '--root', ROOT, '--hand-authored', '--reason', 'two exception pages', '--pages', 'guide-c,guide-a']); assert.equal(some.status, 0, some.err);

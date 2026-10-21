@@ -43,7 +43,12 @@
  *                                           the encoder cannot); nothing run, the reason required, pages = --pages
  *                                           <slug,…> (sorted) else the template's siblings, an earlier record's
  *                                           roundtrip and lint kept as the evidence; never with --encoder or
- *                                           --not-attempted; --pages needs --hand-authored
+ *                                           --not-attempted; --pages needs --hand-authored. On a template with ≥ 2
+ *                                           siblings and no --pages subset (no --pages, or --pages naming every
+ *                                           sibling: whole-template hand-authoring) the reason must begin with a
+ *                                           recorded refusal reason, as for --reason (`re-typed:` |
+ *                                           `no-repeatable-structure:`) — else exit 2, nothing written; a --pages
+ *                                           subset (the `major` variance page) keeps a free-text reason
  *   Encoder first (migrate SKILL.md § Encoder first): on the CLI the two automatic not-attempted outcomes (encoder
  *   absent, no map) are REFUSED for a template with ≥ 1 sibling unless --reason "<tag>: <why>" names a recorded
  *   refusal reason (`re-typed:`, `no-repeatable-structure:`) the encoder cannot serve — or, below two siblings,
@@ -296,6 +301,12 @@ export function recordAttempt(root, template, opts = {}) {
   if (encoder && !isFile(encoderFile)) throw new UsageError(`--encoder ${encoder} does not exist`);
   if (handAuthored) {
     // The siblings are written by hand: nothing runs; an earlier attempt's roundtrip and lint stay as the evidence.
+    // Whole-template hand-authoring (no --pages subset) on a template with ≥ 2 siblings is the encoder refused, not a
+    // page exception: on the CLI its reason is a recorded refusal reason, as for --reason (a recorded hands-off run's
+    // clusters recorded "the siblings are authored by hand per the brief" on nine-sibling templates). A --pages subset
+    // — the major-variance page — keeps a free-text reason.
+    const whole = !Array.isArray(named) || sibs.every((s) => named.includes(s));
+    if (enforceReasonVocabulary && whole && sibs.length >= 2 && !isRecordedRefusalReason(given)) throw new Refusal(`encode-attempt ${template}: --hand-authored "${given.trim()}" covers all ${sibs.length} siblings (no --pages subset) — whole-template hand-authoring needs a recorded refusal reason: --reason "${REASON_TAGS.join('|')}: <why the encoder cannot serve this template>" (encode-attempt --help), or name the exception page(s): --pages <slug,…>; otherwise the map is due: author ${mapRel(template)} (migrate/reference/importer-recipe.md § Encoder contract)`);
     const prev = readAttempt(rootAbs, template);
     verdict = 'hand-authored'; reason = given.trim(); roundtrip = prev?.roundtrip ?? null; lint = prev?.lint ?? null;
     pages = Array.isArray(named) ? [...new Set(named)].sort() : sibs;
