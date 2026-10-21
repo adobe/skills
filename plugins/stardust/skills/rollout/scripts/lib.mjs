@@ -888,3 +888,52 @@ export function writeCoverage(path, doc) {
   writeJSON(path, doc);
   return true;
 }
+
+/**
+ * The plan's URL list as the project records it — [{slug, url, path, reason, at}] by delivered path, the first record
+ * of a path winning: state.json pages[] (a page's own excluded.reason / at when it carries one), its top-level
+ * excluded[] (the recorded reason / at), then the crawl's failures (<stardust>/current/_crawl-log.json
+ * crawl.failures[]: reason `crawl: <message>`, `crawl: failed` without one); a later source's reason (and at) fills an
+ * entry recorded without one. `slug` = the entry's, else the path
+ * folded (`/a/b` → a-b, `/` → home). Malformed sources add nothing. Pure.
+ */
+export function plannedEntries({ state = null, crawlLog = null } = {}) {
+  const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  const str = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
+  const rows = (v) => (Array.isArray(v) ? v.filter(isMap) : []);
+  const out = new Map();
+  const add = ({ slug, url, reason, at }) => {
+    const u = str(url);
+    if (!u) return;
+    const path = urlToDeliveredPath(u);
+    if (out.has(path)) { const e = out.get(path); if (!e.reason && str(reason)) { e.reason = str(reason); e.at = str(at); } return; }
+    out.set(path, { slug: str(slug) || (path === '/' ? 'home' : path.replace(/^\//, '').replace(/\//g, '-')), url: u, path, reason: str(reason), at: str(at) });
+  };
+  for (const p of rows(isMap(state) ? state.pages : [])) add({ slug: p.slug, url: p.url, reason: isMap(p.excluded) ? p.excluded.reason : null, at: isMap(p.excluded) ? p.excluded.at : null });
+  for (const e of rows(isMap(state) ? state.excluded : [])) add({ slug: e.slug, url: e.url, reason: e.reason, at: e.at });
+  for (const f of rows(isMap(crawlLog) && isMap(crawlLog.crawl) ? crawlLog.crawl.failures : [])) add({ slug: f.slug, url: f.url, reason: `crawl: ${str(f.message) || 'failed'}`, at: f.at });
+  return [...out.values()].sort((a, b) => byStr(a.path, b.path));
+}
+
+/**
+ * The planned entries (plannedEntries) with neither a pages[] row (sharing the slug, the delivered path, or the
+ * delivered path of its source.sourceUrl) nor an excluded[] row (sharing the slug or the path) — a planned URL that
+ * never became a page and that nobody recorded: inventory.mjs writes each to excluded[] (a recorded hands-off run kept
+ * one only in prose), done-check.mjs names any still unaccounted as plan_vs_pages. Pure.
+ */
+export function unaccountedPlanned(planned, pages = [], excluded = []) {
+  const isMap = (v) => !!v && typeof v === 'object' && !Array.isArray(v);
+  const known = new Set();
+  for (const p of (Array.isArray(pages) ? pages : []).filter(isMap)) {
+    if (typeof p.slug === 'string') known.add(`slug:${p.slug}`);
+    if (typeof p.path === 'string') known.add(`path:${p.path}`);
+    const u = p.source && p.source.sourceUrl;
+    if (typeof u === 'string' && u) known.add(`path:${urlToDeliveredPath(u)}`);
+  }
+  for (const e of (Array.isArray(excluded) ? excluded : []).filter(isMap)) {
+    if (typeof e.slug === 'string') known.add(`slug:${e.slug}`);
+    if (typeof e.path === 'string') known.add(`path:${e.path}`);
+    if (typeof e.sourceUrl === 'string' && e.sourceUrl) known.add(`path:${urlToDeliveredPath(e.sourceUrl)}`);
+  }
+  return (Array.isArray(planned) ? planned : []).filter((e) => isMap(e) && !known.has(`slug:${e.slug}`) && !known.has(`path:${e.path}`));
+}

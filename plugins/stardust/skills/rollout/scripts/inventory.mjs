@@ -80,7 +80,10 @@
  * stardust/state.json) is no row of pages[] — matched by slug or delivered path, a
  * migrated or roster page included — but a pages.json `excluded[]` row
  * `{slug, path, sourceUrl, status: "excluded", reason, at}` (the key only when there is
- * one), never in a denominator, a pass or a fail; the report names them.
+ * one), never in a denominator, a pass or a fail; the report names them. A planned URL with no row and
+ * no exclusion recorded — a state page never migrated, a crawl failure (<stardust>/current/_crawl-log.json
+ * crawl.failures[]) — is an excluded[] row too (reason `crawl: <message>`, `captured, not migrated` or
+ * `not captured`; `at` null): never only in prose. `update-coverage.mjs --new` retires it once the page exists.
  *
  * Delivered structure: every row's `delivered` holds what the page's content file (<content>/index.html
  * for /, else <path>.html or <path>/index.html) is made of — blocks and default content in document
@@ -109,6 +112,7 @@ import { pathToFileURL } from 'node:url';
 import {
   COVERAGE_FORMAT_VERSION, byStr, sha256, parseDelivered, contentFileMatch, variantIdentity, variantId, priorVariantIds,
   identityTokens, scrubIdentity, applyTemplateJudgement, writeCoverage, acquireLock, urlToDeliveredPath, pageWidgets,
+  plannedEntries, unaccountedPlanned,
 } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
@@ -215,6 +219,8 @@ function readJSON(path, fallback = null) {
 }
 
 /** The page that IS the template: migrate's Path A (fidelityTier `archetype`, renderBranch `A`). */
+// update-coverage.mjs --new's origin marker in source.migratedHtml (`<origin>:<slug>`, never a path with a slash)
+const isOriginMarker = (s) => typeof s === 'string' && /^[a-z][a-z0-9-]*:[^/]+$/.test(s);
 const isArchetype = (meta) => meta.fidelityTier === 'archetype' || meta.renderBranch === 'A';
 const nonEmpty = (v) => (typeof v === 'string' && v.trim() ? v.trim() : null);
 
@@ -426,10 +432,15 @@ if (STATE) {
   const archetypeBySlug = new Map(pages.map((p) => [p.slug, p]));
   const coveredPaths = new Set(pages.map((p) => p.path));
   const usedSlugs = new Set(pages.map((p) => p.slug));
+  // a roster page a prior update-coverage.mjs --new row records (built by hand outside migrate; kept below) is that
+  // row — never re-seeded content-pending over it
+  const newRows = (priorPages.pages || []).filter((p) => p && p.source && isOriginMarker(p.source.migratedHtml));
+  const newKeys = new Set(newRows.flatMap((p) => [`slug:${p.slug}`, `path:${p.path}`]));
   for (const sp of stateDoc.pages) {
     if (exclusions.has(sp.slug)) continue; // the source no longer serves it: an excluded[] row, never content-pending
     const path = urlToDeliveredPath(sp.url);
     if (coveredPaths.has(path)) continue; // the archetype itself — already inventoried
+    if (newKeys.has(`slug:${sp.slug}`) || newKeys.has(`path:${path}`)) continue; // a --new row owns it
     if (encodedSlugs.has(sp.slug)) continue; // an encoded page, listed from its sidecar at its delivered (sanitised) path
     // A roster sibling names the archetype it clones via `representative` (preferred)
     // or its `type`; that archetype supplies the template grouping + block set.
@@ -462,7 +473,6 @@ if (STATE) {
 // The origin marker in source.migratedHtml (`<origin>:<slug>`, never a path with a slash) identifies
 // them. A prior row with the marker whose slug has no migrated file — and whose path no migrated page
 // owns — is carried over untouched (status included); otherwise the migrated row wins.
-const isOriginMarker = (s) => typeof s === 'string' && /^[a-z][a-z0-9-]*:[^/]+$/.test(s);
 const migratedSlugs = new Set(pages.map((p) => p.slug));
 const migratedPaths = new Set(pages.map((p) => p.path));
 const kept = [];
@@ -481,6 +491,20 @@ const excludedRows = [...exclusions].map(([slug, e]) => {
   return { slug, path: e.url ? urlToDeliveredPath(e.url) : (row ? row.path : null), sourceUrl: e.url || (row && row.source && row.source.sourceUrl) || null, status: 'excluded', reason: e.reason, at: e.at };
 }).sort((a, b) => byStr(a.slug, b.slug));
 for (let i = pages.length - 1; i >= 0; i -= 1) if (exclusionOf(pages[i])) pages.splice(i, 1);
+
+// --- Planned URLs that never became a page and that nobody recorded: excluded[] rows too, never only in prose ---
+// The plan as the project records it (lib.mjs plannedEntries: the state file's pages[] and excluded[], the crawl's
+// failures in <stardust>/current/_crawl-log.json) minus the rows above and the exclusions recorded: each gets a row
+// `{slug, path, sourceUrl, status: "excluded", reason, at}` — the reason the record carries (`crawl: HTTP 404`), else
+// `captured, not migrated` when its state page names a capture on disk, else `not captured`; `at` null when nothing
+// recorded a time. A recorded hands-off run kept its tenth planned URL (the source answered 404 at capture) in the
+// lead's prose only: no row anywhere a client reads. `update-coverage.mjs --new` retires the row once the page exists.
+const crawlLog = readJSON(join(dirname(OUT), 'current', '_crawl-log.json'), null);
+const captureOf = new Map(stateRows.filter((p) => p && p.slug && typeof p.currentStatePath === 'string' && p.currentStatePath).map((p) => [p.slug, p.currentStatePath]));
+const unaccounted = unaccountedPlanned(plannedEntries({ state: STATE ? stateDoc : defaultState, crawlLog }), pages, excludedRows)
+  .map((e) => ({ slug: e.slug, path: e.path, sourceUrl: e.url, status: 'excluded', reason: e.reason || (captureOf.has(e.slug) && existsSync(captureOf.get(e.slug)) ? 'captured, not migrated' : 'not captured'), at: e.at }));
+excludedRows.push(...unaccounted);
+excludedRows.sort((a, b) => byStr(a.slug, b.slug));
 
 // --- Delivered structure: what each page's content file is made of (null while it has none) ---
 // A block record's variantId is minted from its identity (block + classes), unless the prior pages.json
@@ -626,6 +650,7 @@ console.log(`Pages       ${counts.total} total · ${counts.verified} verified ·
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
 if (excludedRows.length) console.log(`Excluded    ${excludedRows.length} (the source no longer serves them; state.mjs exclude), never counted: ${excludedRows.map((e) => e.slug).join(', ')}`);
+if (unaccounted.length) console.log(`Unaccounted ${unaccounted.length} planned URL(s) with no page row, written to excluded[] (${[...new Set(unaccounted.map((e) => e.reason))].join('; ')}): ${unaccounted.map((e) => e.slug).join(', ')} — migrate or update-coverage.mjs --new each, or state.mjs exclude <slug> --reason "<why>"`);
 if (notCompared.length) {
   const names = notCompared.sort();
   console.log(`Kept        ${names.length} delivered row(s) whose hash basis changed (roster → document), not compared: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ' …' : ''}`);
