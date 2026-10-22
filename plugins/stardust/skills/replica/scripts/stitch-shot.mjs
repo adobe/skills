@@ -69,23 +69,31 @@
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --freeze-baseline   origin baseline (opt-in, default OFF): the capture is
+ *                         frozen as <dir>/baseline.png + baseline.json beside
+ *                         <out.png>, for gate.sh --gate-against-baseline (below)
+ *     --check-baseline    print a fresh shot's Δheight vs the frozen baseline
+ *     --force             re-freeze over an existing baseline
+ *   node skills/replica/scripts/stitch-shot.mjs baseline <dir> [--url <u>] [--width <px>]
+ *   node skills/replica/scripts/stitch-shot.mjs record <live.json> --origin live|baseline …
+ *                         the gate's bookkeeping, no browser (HELP § Origin baseline)
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
  *     stardust/replica/gates/home-1440/live.png --width 1440 --settle
  *
- * Requires: playwright, pngjs (project devDependencies), and the diff skill's
+ * Requires: playwright, pngjs (project devDependencies — imported lazily, so
+ * --help and the two subcommands answer without them), and the diff skill's
  * scripts dir alongside (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail
- * loud, never captured).
+ * Exit codes: 0 written, 1 error, 2 a baseline refusal (exists without --force,
+ * fonts failed, a check aimed at baseline.png), 3 bot challenge (live side
+ * blocked — fail loud, never captured).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
-import { dirname, resolve as resolvePath } from 'path';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync } from 'fs';
+import { basename, dirname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
 // live-session.mjs lives in the diff skill's scripts dir. Two layouts exist:
@@ -114,16 +122,39 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
+  --freeze-baseline freeze this capture as the origin baseline (opt-in; default OFF): it is ALWAYS written as
+                    baseline.png in <out.png>'s dir (+ baseline.json: capturedAt, url, width, vh, height, settle,
+                    chunks, fontsFailed), both atomic — <out.png> names the dir only; a freeze aimed at live.png
+                    writes baseline.png beside it and never touches live.png (one stderr line). Refused (exit 2,
+                    nothing written) when a baseline exists (pass --force) or the capture's fonts failed.
+  --check-baseline  capture a fresh shot to <out.png> and print its Δheight vs the frozen baseline in <out.png>'s
+                    dir — no verdict; never writes baseline.png: <out.png> named baseline.png is refused (exit 2)
+  --force           re-freeze over an existing baseline (with --freeze-baseline)
   --help            this text
 
-Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+Origin baseline (opt-in, default OFF — gate.sh --gate-against-baseline): one frozen origin per page and width,
+so the live site changing between rounds cannot move the pixel gate's target. Two subcommands carry the gate's
+bookkeeping — no browser, no network:
+  node stitch-shot.mjs baseline <dir> [--url <u>] [--width <px>]
+                    is a usable frozen baseline there? baseline.png AND baseline.json (a lone PNG is not one),
+                    readable, frozen for this URL and width when given → its capturedAt on stdout, exit 0;
+                    else the one-line reason (missing, lone file, unreadable, stale: another URL or width) on
+                    stdout, exit 1 — a caller captures one line either way
+  node stitch-shot.mjs record <live.json> --origin live|baseline --url <u> --width <px>
+                    [--baseline <baseline.json>] [--at <iso>]
+                    write the round's live.json beside live.png (atomic): writtenBy, origin, url, width, at —
+                    "baseline" (the frozen origin copied over live.png: --baseline required, at = its capturedAt,
+                    plus originBaseline { capturedAt, height }) or "live" (a fresh capture, at = --at).
+                    A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
-function parseArgs(argv) {
+Run the SAME command shape against the live page and the served prototype.
+Exit codes: 0 written, 1 error, 2 baseline refusal, 3 bot challenge (live side blocked — fail loud).`;
+
+export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -136,6 +167,9 @@ function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--freeze-baseline') { opts.freezeBaseline = true; }
+    else if (a === '--check-baseline') { opts.checkBaseline = true; }
+    else if (a === '--force') { opts.force = true; }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -143,6 +177,158 @@ function parseArgs(argv) {
   if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   return { url, out, opts };
+}
+
+// ── Origin baseline (opt-in, default OFF) ─────────────────────────────────────────────────────
+// One frozen, provenance-stamped origin capture per page × width (baseline.png + baseline.json in the gate
+// dir), so a gate round can compare against it instead of a live site that may have changed since the
+// last round. The capture itself is the stitch flow in main(); everything here is pure bookkeeping — no
+// browser — shared by --freeze-baseline / --check-baseline, the `baseline` and `record` subcommands and
+// the tests. Without the flags stitch-shot behaves exactly as before.
+export const BASELINE_PNG = 'baseline.png';
+export const BASELINE_JSON = 'baseline.json';
+export const BASELINE_SCHEMA = 1;
+export const BASELINE_WRITER = 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline';
+export const LIVE_RECORD_WRITER = { live: 'gate.sh', baseline: 'gate.sh --gate-against-baseline' };
+
+// --freeze-baseline / --check-baseline resolve their targets from <out.png>: a freeze ALWAYS lands in
+// <dir>/baseline.png whatever <out.png> was named (a freeze aimed at live.png would otherwise leave the
+// round's live shot as the only copy and nothing for baselineExists to find), and a check NEVER writes
+// baseline.png (its fresh shot would overwrite the very baseline it compares against — refused before any
+// capture). → { out, baselineDir, redirected, refusal }; baselineDir is null without the flags.
+export function baselineTargets(out, { freezeBaseline = false, checkBaseline = false } = {}) {
+  if (!freezeBaseline && !checkBaseline) return { out, baselineDir: null, redirected: false, refusal: null };
+  const baselineDir = dirname(out);
+  if (freezeBaseline) {
+    const target = join(baselineDir, BASELINE_PNG);
+    return { out: target, baselineDir, redirected: target !== out, refusal: null };
+  }
+  if (basename(out) === BASELINE_PNG) {
+    return { out, baselineDir, redirected: false, refusal: `--check-baseline captures a fresh shot to compare against ${BASELINE_PNG} and never writes it — name another output (e.g. ${join(baselineDir, 'live.png')})` };
+  }
+  return { out, baselineDir, redirected: false, refusal: null };
+}
+
+// Both files must exist — a lone baseline.png (an interrupted freeze) is not a baseline.
+export function baselineExists(dir) {
+  return Boolean(dir) && existsSync(join(dir, BASELINE_PNG)) && existsSync(join(dir, BASELINE_JSON));
+}
+export function readBaselineProvenance(dir) {
+  try { const p = JSON.parse(readFileSync(join(dir, BASELINE_JSON), 'utf8')); return p && typeof p === 'object' ? p : null; } catch { return null; }
+}
+
+// baseline.json: when the origin was frozen, for which page (url, width) and under which capture settings
+// (vh, settle), what it measured (height, chunks) and whether every declared font face loaded.
+export function baselineProvenance({ url, width, vh, height, settle = false, chunks = null, fontsFailed = [], capturedAt = new Date().toISOString() }) {
+  return {
+    writtenBy: BASELINE_WRITER,
+    schema: BASELINE_SCHEMA,
+    capturedAt,
+    url,
+    width: Number(width),
+    vh: vh == null ? null : Number(vh),
+    height: Number(height),
+    settle: Boolean(settle),
+    chunks: chunks == null ? null : Number(chunks),
+    fontsFailed: Array.isArray(fontsFailed) ? fontsFailed : [],
+  };
+}
+
+// A JSON file written atomically (sibling temp + rename, pretty, trailing newline): a crash mid-write never
+// leaves a half-written record for a later round to read. Used for baseline.json and the round's live.json.
+export function writeJsonAtomic(file, obj) {
+  mkdirSync(dirname(file), { recursive: true });
+  const tmp = `${file}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`);
+  renameSync(tmp, file);
+  return file;
+}
+
+// Two URLs name the same page when they parse to the same href (a missing trailing slash on an origin, host
+// case); unparseable ones compare as strings.
+const sameUrl = (a, b) => { try { return new URL(a).href === new URL(b).href; } catch { return a === b; } };
+
+// Is there a usable frozen baseline in `dir` for this round? → { ok: true, provenance } or { ok: false, why }
+// — the one line gate.sh prints when it refuses: missing, a lone file, unreadable, or stale (frozen for
+// another URL or width than the round's, when those are given). A frozen baseline is meant to be old;
+// "stale" is only ever "not this page at this width".
+export function baselineStatus(dir, { url = null, width = null } = {}) {
+  const png = join(dir, BASELINE_PNG); const json = join(dir, BASELINE_JSON);
+  const hasPng = existsSync(png); const hasJson = existsSync(json);
+  if (!hasPng && !hasJson) return { ok: false, why: `no frozen baseline in ${dir} (${BASELINE_PNG} + ${BASELINE_JSON})` };
+  if (!hasJson) return { ok: false, why: `${png} has no ${BASELINE_JSON} beside it (an interrupted freeze) — re-freeze with --force` };
+  if (!hasPng) return { ok: false, why: `${json} has no ${BASELINE_PNG} beside it — re-freeze with --force` };
+  const provenance = readBaselineProvenance(dir);
+  if (!provenance) return { ok: false, why: `${json} is unreadable — re-freeze with --force` };
+  if (url && typeof provenance.url === 'string' && !sameUrl(provenance.url, url)) return { ok: false, why: `stale: ${json} was frozen for ${provenance.url}, this round's live URL is ${url} — re-freeze with --force` };
+  if (width != null && provenance.width != null && Number(provenance.width) !== Number(width)) return { ok: false, why: `stale: ${json} was frozen at ${provenance.width}px, this round is ${width}px — re-freeze with --force` };
+  return { ok: true, provenance };
+}
+
+// --check-baseline: a fresh shot's height against the frozen baseline. No verdict — it only says how far the
+// origin moved.
+export function compareBaseline(baseline, fresh) {
+  const bh = typeof baseline?.height === 'number' ? baseline.height : null;
+  const fh = typeof fresh?.height === 'number' ? fresh.height : null;
+  return { baselineHeight: bh, freshHeight: fh, dHeight: bh != null && fh != null ? fh - bh : null };
+}
+
+// The round's live.json — gate.sh's record of which origin live.png is: "baseline" (the frozen origin copied
+// over live.png; at = its capturedAt, originBaseline carries its figures) or "live" (a fresh capture). A round
+// without --gate-against-baseline retakes a live.png whose record says "baseline"; a live.png with no record is a
+// live capture, as it always was.
+export function liveRecord({ origin, url, width, at = null, baseline = null }) {
+  const rec = { writtenBy: LIVE_RECORD_WRITER[origin], origin, url, width: Number(width) };
+  if (origin === 'baseline') {
+    const b = baseline && typeof baseline === 'object' ? baseline : {};
+    return { ...rec, at: b.capturedAt ?? null, originBaseline: { capturedAt: b.capturedAt ?? null, height: typeof b.height === 'number' ? b.height : null } };
+  }
+  return { ...rec, at };
+}
+
+// `stitch-shot.mjs baseline <dir> [--url <u>] [--width <px>]` (HELP § Origin baseline): the capturedAt or the
+// one-line reason on stdout; exit 0 usable, 1 not.
+export function baselineCommand(argv) {
+  const [dir, ...rest] = argv;
+  const usage = (msg) => { console.error(`stitch-shot baseline: ${msg}\n\n${HELP}`); return 1; };
+  if (!dir || dir.startsWith('--')) return usage('needs <dir>');
+  const o = { url: null, width: null };
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i]; const v = rest[i + 1];
+    if (v === undefined || v.startsWith('--')) return usage(`${a} needs a value`);
+    if (a === '--url') o.url = v; else if (a === '--width') o.width = v; else return usage(`unknown flag ${a}`);
+    i += 1;
+  }
+  if (o.width != null && !/^\d+$/.test(o.width)) return usage('--width needs a whole number of px');
+  const s = baselineStatus(dir, o);
+  process.stdout.write(`${s.ok ? String(s.provenance.capturedAt || 'unknown') : s.why}\n`);
+  return s.ok ? 0 : 1;
+}
+
+// `stitch-shot.mjs record <live.json> --origin live|baseline --url <u> --width <px> [--baseline <json>] [--at <iso>]`
+// (HELP § Origin baseline): the round's live.json, written atomically. Exit 0 written; 1 usage.
+export function recordCommand(argv) {
+  const [file, ...rest] = argv;
+  const usage = (msg) => { console.error(`stitch-shot record: ${msg}\n\n${HELP}`); return 1; };
+  if (!file || file.startsWith('--')) return usage('needs <live.json>');
+  const o = { origin: null, url: null, width: null, baseline: null, at: null };
+  for (let i = 0; i < rest.length; i += 1) {
+    const a = rest[i]; const v = rest[i + 1];
+    if (v === undefined || v.startsWith('--')) return usage(`${a} needs a value`);
+    if (a === '--origin') o.origin = v; else if (a === '--url') o.url = v; else if (a === '--width') o.width = v;
+    else if (a === '--baseline') o.baseline = v; else if (a === '--at') o.at = v;
+    else return usage(`unknown flag ${a}`);
+    i += 1;
+  }
+  if (!LIVE_RECORD_WRITER[o.origin]) return usage('--origin must be live or baseline');
+  if (!o.url || !o.width || !/^\d+$/.test(o.width)) return usage('--url <u> and --width <px> are required');
+  if (o.origin === 'baseline' && !o.baseline) return usage('--origin baseline needs --baseline <baseline.json>');
+  let baseline = null;
+  if (o.baseline) {
+    try { baseline = JSON.parse(readFileSync(o.baseline, 'utf8')); } catch (e) { return usage(`cannot read ${o.baseline} (${e.message})`); }
+  }
+  writeJsonAtomic(file, liveRecord({ origin: o.origin, url: o.url, width: o.width, at: o.at, baseline }));
+  return 0;
 }
 
 // Dismiss both overlay classes (consent + timed marketing modals) via
@@ -160,7 +346,26 @@ async function dismissAndLog(page, url, opts) {
 }
 
 async function main() {
-  const { url, out, opts } = parseArgs(process.argv);
+  // The browserless subcommands gate.sh calls (HELP § Origin baseline) — before parseArgs, which needs <url> <out.png>.
+  const sub = process.argv[2];
+  if ((sub === 'record' || sub === 'baseline') && !process.argv.includes('--help') && !process.argv.includes('-h')) {
+    process.exit(sub === 'record' ? recordCommand(process.argv.slice(3)) : baselineCommand(process.argv.slice(3)));
+  }
+  const { url, out: given, opts } = parseArgs(process.argv);
+  // --freeze-baseline / --check-baseline: the targets are settled before any capture — a freeze always lands in
+  // <dir>/baseline.png (never the given live.png), a check never writes baseline.png (refused, exit 2), a
+  // re-freeze over an existing baseline refuses without --force. Without the flags `out` is the given path.
+  const targets = baselineTargets(given, opts);
+  if (targets.refusal) { console.error(`stitch-shot: ${targets.refusal}`); process.exit(2); }
+  if (targets.redirected) console.error(`stitch-shot: --freeze-baseline writes the frozen origin baseline to ${targets.out}, not ${given} (live.png is a round's live shot, never a freeze target)`);
+  const { out, baselineDir } = targets;
+  if (opts.freezeBaseline && baselineExists(baselineDir) && !opts.force) {
+    const prev = readBaselineProvenance(baselineDir);
+    console.error(`stitch-shot: a frozen baseline already exists in ${baselineDir} (captured ${prev?.capturedAt ?? 'unknown'}) — pass --force to re-freeze`);
+    process.exit(2);
+  }
+  // Lazy: --help, the subcommands and the refusals above answer without playwright / pngjs installed.
+  const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
@@ -260,6 +465,13 @@ async function main() {
     if (failedFonts.length) {
       console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
     }
+    // --freeze-baseline never freezes a capture whose fonts failed: a baseline in fallback type would bake the
+    // wrong wraps and heights into every later round. Nothing is written — fix the capture, then re-freeze.
+    if (opts.freezeBaseline && failedFonts.length) {
+      console.error(`stitch-shot: not freezing a baseline — the capture's font load failed (${failedFonts.join(', ')}); fix the capture, then re-freeze`);
+      process.exitCode = 2;
+      return;
+    }
 
     // Height is measured AFTER the settle pass, never before: entrance-
     // animated sites inflate scrollHeight until elements go inview (their
@@ -317,7 +529,24 @@ async function main() {
       }
     }
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, PNG.sync.write(outPng));
+    const pngBuf = PNG.sync.write(outPng);
+    // --freeze-baseline writes baseline.png atomically (sibling temp + rename): a crash mid-write never leaves a
+    // torn PNG a gate round would read as the origin. A normal capture keeps the plain write.
+    if (opts.freezeBaseline) { const tmp = `${out}.${process.pid}.tmp`; writeFileSync(tmp, pngBuf); renameSync(tmp, out); }
+    else writeFileSync(out, pngBuf);
+    if (opts.freezeBaseline) {
+      writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: failedFonts }));
+      console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
+    }
+    if (opts.checkBaseline) {
+      const base = readBaselineProvenance(baselineDir);
+      if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);
+      else {
+        const d = compareBaseline(base, { height: totalH });
+        const dh = d.dHeight === null ? 'unknown' : `${d.dHeight >= 0 ? '+' : ''}${d.dHeight}px`;
+        console.log(`check-baseline ${baselineDir}: Δheight ${dh} (baseline ${d.baselineHeight ?? '?'} → fresh ${d.freshHeight}; frozen ${base.capturedAt ?? 'unknown'})`);
+      }
+    }
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
   } finally {
     await browser.close();
@@ -326,4 +555,8 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// Main-module guard: importing the module (the tests) runs nothing.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}
