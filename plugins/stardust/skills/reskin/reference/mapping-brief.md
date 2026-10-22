@@ -16,14 +16,17 @@ judgment arbitrary enough to require a human.
 
 ## Entry schema
 
-One table row (or block) per slot, for **every** slot in the content
-model — no slot may be absent from the brief:
+One table row per slot, for **every** slot in the content model — no
+slot may be absent from the brief. For a Figma donor the table form is
+required: the section join reads the first table whose header has
+`Donor module` and `Status`, slot ids (`s01`, `s07-news`) in the first
+column:
 
 | Field | Contract |
 |---|---|
 | `#` / slot id | The content-model slot (`s01`), or split sub-slot (`s07-news`, `s07-events`) |
 | Content | One-line anatomy: what the slot carries (eyebrow / h-level / body / CTAs / media) |
-| Donor module | A module id from `donor-modules.md` (`M4`), or `—` for new-module |
+| Donor module | A module id from `donor-modules.md` (`M4`), or `—` for new-module; the module's name may follow in parentheses (`M4 (Card Row)`) |
 | Rationale | One line grounding the assignment: slot anatomy vs module anatomy |
 | Status | `mapped` \| `new-module` \| `chrome` \| `carried-invisible` |
 
@@ -141,7 +144,10 @@ page and the gated comparison:
   the ledger executes them.
 
 If a delta is not in this block, it does not exist: any other
-source↔render difference is a gate failure, not a delta.
+source↔render difference is a gate failure, not a delta. The block
+covers source → local render changes; a page's source → deployed preview
+differences are declared in `reskin/deltas/<slug>.json`
+(`reference/deployed-leg.md` § The delta file).
 
 ## Flag, don't fix
 

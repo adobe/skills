@@ -70,9 +70,11 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
 - `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
+- `reskin/deployed-gate.mjs` — checks a deployed reskin preview: content, tokens, parity, sanity, deploy's gates — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
 - `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
-- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
+- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>] [--viewport <w>] [--no-sanity] [--json <p>]`
 - `reskin/figma-donor.mjs` — Figma donor capture/curate/stamp — `capture <url> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
+- `reskin/figma-gate.mjs` — Figma checks on a reskin page: join, geometry, type ramp, pixels, register — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
