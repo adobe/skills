@@ -7,11 +7,13 @@
 # the verdict lines that drive the loop (size / height delta / differing % /
 # hot bands / overflow). The prototype/build side is re-captured every round;
 # the live side only when live.png is absent — delete it explicitly to re-take
-# (site changed, capture hardening changed).
+# (site changed, capture hardening changed) — or, opt-in, never: a frozen
+# origin baseline (--gate-against-baseline, below) holds the origin still.
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
-#       [--marker <string>] [--full] [--main <selector>] [--no-dismiss] [--help]
+#       [--marker <string>] [--full] [--main <selector>] [--no-dismiss]
+#       [--gate-against-baseline] [--help]
 #
 # Horizontal-overflow assert (every round, build side only — no live hit):
 #   after the build capture, measure.mjs reads document.documentElement's
@@ -72,13 +74,28 @@
 #            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
 #   --no-dismiss        do not dismiss consent/marketing overlays on the probes
+#   --gate-against-baseline  Origin baseline (opt-in, default OFF). The frozen origin for this
+#            page and width — baseline.png + baseline.json in the evidence dir, written once by
+#            `stitch-shot.mjs <live-url> <dir>/baseline.png --freeze-baseline --width <w> --settle`
+#            — is the origin side of the SAME pixel-compare instead of a live capture, so a live
+#            site that changes between rounds cannot move the gate's target: baseline.png is copied
+#            over live.png (sibling temp + rename), live.json records `origin: "baseline"` and
+#            `originBaseline { capturedAt, height }`, one stdout line names the capture time, no
+#            live navigation. The precondition is checked BEFORE any capture through
+#            `stitch-shot.mjs baseline <dir> --url --width`: a missing, lone, unreadable or stale
+#            baseline (frozen for another URL or width) ends the round with that one line on
+#            stderr and exit 125 — never a live shot in its place. Flag OFF: the round is the one
+#            it always was; a live.png whose live.json says origin "baseline" was a flagged
+#            round's copy and is retaken (one line; the record goes with it), a live.png with no
+#            record is a live capture and is reused as before.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt).
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt; under
+# --gate-against-baseline also live.json, beside the frozen baseline.png + baseline.json).
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
@@ -87,7 +104,8 @@
 # retry — re-queue, not a verdict), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
-# 125 unknown argument (usage).
+# 125 unknown argument (usage) or --gate-against-baseline without a usable
+# frozen baseline (freeze one, or drop the flag).
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -122,6 +140,7 @@ MARKER="$SLUG"
 FULL=0
 MAIN=main
 DISMISS=--dismiss
+BASELINE=0
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -130,6 +149,7 @@ while [ $# -gt 0 ]; do
     --full) FULL=1; shift ;;
     --main) MAIN=${2:?--main needs a selector}; shift 2 ;;
     --no-dismiss) DISMISS=""; shift ;;
+    --gate-against-baseline) BASELINE=1; shift ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
@@ -145,6 +165,17 @@ PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
+# --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
+# reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's
+# capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then the round ends with that line: the flag
+# exists so the origin cannot move under the run, so a live shot is never taken in the baseline's place.
+BASE_AT=""
+if [ "$BASELINE" = 1 ]; then
+  if ! BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then
+    echo "gate.sh: --gate-against-baseline set but ${BASE_AT:-no usable frozen baseline for $SLUG@$W} — not gating against a live shot in its place: freeze one (stitch-shot.mjs \"$LIVE_URL\" $DIR/baseline.png --freeze-baseline --width $W --settle) or drop the flag" >&2
+    exit 125
+  fi
+fi
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
 # final. $1 names the step for the log line; the rest is the command (a function or a program).
@@ -218,12 +249,36 @@ fi
 # Live side: captured once per breakpoint per full gate run and reused
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
-if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle; }
-  retry_once "live capture" capture_live
-  rc=$?
-  [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
-  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+# --gate-against-baseline: the frozen baseline is the origin side instead — baseline.png copied over live.png
+# (sibling temp + rename, so a crash never leaves a torn origin) and live.json written by `stitch-shot.mjs record`
+# (origin "baseline", originBaseline { capturedAt, height }), so a later round can tell the frozen copy from a live
+# capture; no live navigation. The previous round's record goes first, and a copy or record that fails removes
+# live.png and ends the round (exit 1, one line): baseline bytes never sit under a missing or stale record.
+# Flag OFF: a live.png whose live.json says origin "baseline" was a flagged round's copy — retaken with one line,
+# its record removed with it; a live.png with no record is a live capture and is reused as before.
+if [ "$BASELINE" = 1 ]; then
+  rm -f "$DIR/live.json"
+  if ! { cp -f "$DIR/baseline.png" "$DIR/live.png.$$.tmp" && mv -f "$DIR/live.png.$$.tmp" "$DIR/live.png"; }; then
+    rm -f "$DIR/live.png.$$.tmp" "$DIR/live.png"
+    echo "gate.sh: could not copy $DIR/baseline.png over live.png — not comparing (re-run the round)" >&2; exit 1
+  fi
+  if ! node "$HERE/stitch-shot.mjs" record "$DIR/live.json" --origin baseline --baseline "$DIR/baseline.json" --url "$LIVE_URL" --width "$W"; then
+    rm -f "$DIR/live.png"
+    echo "gate.sh: could not write $DIR/live.json for the frozen origin — not comparing (a later round would read the copy as a live shot); re-run the round" >&2; exit 1
+  fi
+  echo "gate.sh: gating against the frozen origin baseline (captured $BASE_AT) — origin side from baseline.png, no fresh live shot"
+else
+  if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ] && grep -qE '"origin": *"baseline"' "$DIR/live.json"; then
+    echo "gate.sh: live.png is the frozen origin baseline (a --gate-against-baseline round); this round gates against the live origin — retaking it" >&2
+    rm -f "$DIR/live.png" "$DIR/live.json"
+  fi
+  if [ ! -f "$DIR/live.png" ]; then
+    capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle; }
+    retry_once "live capture" capture_live
+    rc=$?
+    [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+    [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+  fi
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).

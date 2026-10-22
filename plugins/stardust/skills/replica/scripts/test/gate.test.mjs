@@ -4,7 +4,7 @@
 // --full probe fan-out and its exit-code rules, with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -36,8 +36,18 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // STUB_STITCH_COUNT so a test can count attempts. measure: the root line gate.sh reads (STUB_OVERFLOW px over the
 // viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
+// The stub captures; the browserless bookkeeping subcommands (\`baseline\`, \`record\`) are the real stitch-shot's, so
+// gate.sh's baseline check and live.json go through the plugin's own reader and writer. STUB_RECORD_FAIL makes
+// \`record\` exit 1 (a failed write).
+const REAL_STITCH = join(scripts, 'stitch-shot.mjs');
 stub(replica, 'stitch-shot.mjs', `
   import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
+  if (process.argv[2] === 'record' && process.env.STUB_RECORD_FAIL) { console.error('stitch-shot record: stub failure (STUB_RECORD_FAIL)'); process.exit(1); }
+  if (process.argv[2] === 'record' || process.argv[2] === 'baseline') {
+    const { spawnSync } = await import('node:child_process');
+    const r = spawnSync(process.execPath, [${JSON.stringify(REAL_STITCH)}, ...process.argv.slice(2)], { stdio: 'inherit' });
+    process.exit(r.status ?? 1);
+  }
   const url = process.argv[2]; const out = process.argv[3];
   const side = /^https:\\/\\/live\\.example/.test(url) ? 'LIVE' : 'BUILD';
   if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, side + '\\n');
@@ -246,8 +256,96 @@ r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'u2', '--full
 check('a required unit off (unit-geometry exit 2) fails the round', r.status === 2 && /^unit-geometry: Units: 1 compared/m.test(r.stdout), `status ${r.status} ${r.stdout}`);
 unlinkSync(join(root, 'stardust/replica/units.json'));
 
-process.exit(failures ? 1 : 0);server.close();
+// --gate-against-baseline (the opt-in origin baseline; default OFF). Flag ON with a frozen baseline: no live capture,
+// baseline.png is the origin side (copied over live.png), live.json says origin "baseline", one stdout line names the
+// capture time. Flag ON without a usable baseline (missing, lone PNG, frozen for another width or URL): exit 125 with
+// one stderr line BEFORE any capture — never a live shot in its place. Flag OFF: a round is the one it always was —
+// a baseline beside it changes nothing, a baseline-derived live.png is retaken with one line, a live.png with no
+// record is reused. The bookkeeping goes through the real stitch-shot (the stub forwards `baseline` / `record`).
+const gdir = (slug, w = 1440) => join('stardust/replica/gates', `${slug}-${w}`);
+const liveJson = (slug) => { const f = join(root, gdir(slug), 'live.json'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
+const livePng = (slug) => { const f = join(root, gdir(slug), 'live.png'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
+const noTmp = (slug) => !readdirSync(join(root, gdir(slug))).some((f) => f.endsWith('.tmp'));
+const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: [] };
+const freezeBaseline = (slug, prov = PROV) => {
+  const d = join(root, gdir(slug));
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'baseline.png'), 'baseline-png-bytes');
+  writeFileSync(join(d, 'baseline.json'), `${JSON.stringify(prov, null, 2)}\n`);
+};
+r = await gate(['--help']);
+check('--help names --gate-against-baseline and its exit-125 precondition', /--gate-against-baseline/.test(r.stdout) && /without a usable\s+frozen baseline/.test(r.stdout), r.stdout.slice(0, 200));
+
+resetCount();
+freezeBaseline('blon');
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl1', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('flag ON with a frozen baseline: the round passes with no live capture — only the build side stitches', r.status === 0 && attempts().join(',') === 'BUILD', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr.slice(0, 300)}`);
+check('the baseline is the pixel-compare origin: live.png is a copy of baseline.png, no temp file left', livePng('blon') === 'baseline-png-bytes' && noTmp('blon'));
+check('live.json records origin "baseline", at = the capture time and originBaseline { capturedAt, height }, written by gate.sh --gate-against-baseline', (() => {
+  const lj = JSON.parse(liveJson('blon') || '{}');
+  return lj.writtenBy === 'gate.sh --gate-against-baseline' && lj.origin === 'baseline' && lj.url === 'https://live.example/' && lj.width === 1440 && lj.at === PROV.capturedAt
+    && JSON.stringify(lj.originBaseline) === JSON.stringify({ capturedAt: PROV.capturedAt, height: PROV.height });
+})(), liveJson('blon'));
+check('one stdout line names the frozen baseline and its capture time, before the verdict lines', /^gate\.sh: gating against the frozen origin baseline \(captured 2026-10-19T08:00:00\.000Z\) — origin side from baseline\.png, no fresh live shot\n[^]*differing/m.test(r.stdout), r.stdout);
+check('the pixel verdict and the overflow assert still print (the rest of the round is unchanged)', /differing 1\.20%/.test(r.stdout) && /overflow assert at 1440/.test(r.stdout), r.stdout);
+
+resetCount();
+r = await gate(['blmiss', 'https://live.example/', buildUrl, '1440', 'bl2', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('flag ON with no baseline: exit 125 before any capture (no live, no build), one stderr line naming what is missing and the two ways out', r.status === 125 && attempts().length === 0
+  && /^gate\.sh: --gate-against-baseline set but no frozen baseline in stardust\/replica\/gates\/blmiss-1440 \(baseline\.png \+ baseline\.json\) — not gating against a live shot in its place: freeze one \(stitch-shot\.mjs "https:\/\/live\.example\/" stardust\/replica\/gates\/blmiss-1440\/baseline\.png --freeze-baseline --width 1440 --settle\) or drop the flag$/m.test(r.stderr)
+  && (r.stderr.match(/^gate\.sh: /gm) || []).length === 1, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+check('… and nothing was written: no live.png, no live.json, no verdict lines', livePng('blmiss') === null && liveJson('blmiss') === null && !/differing|overflow assert/.test(r.stdout), r.stdout);
+resetCount();
+freezeBaseline('blstale', { ...PROV, width: 360 });
+r = await gate(['blstale', 'https://live.example/', buildUrl, '1440', 'bl3', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('flag ON with a baseline frozen at another width: exit 125, no capture, the one line says stale and names both widths', r.status === 125 && attempts().length === 0
+  && /^gate\.sh: --gate-against-baseline set but stale: stardust\/replica\/gates\/blstale-1440\/baseline\.json was frozen at 360px, this round is 1440px — re-freeze with --force — not gating against a live shot in its place/m.test(r.stderr) && livePng('blstale') === null, `status ${r.status} ${r.stderr}`);
+resetCount();
+freezeBaseline('blurl', { ...PROV, url: 'https://live.example/other' });
+r = await gate(['blurl', 'https://live.example/', buildUrl, '1440', 'bl4', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('flag ON with a baseline frozen for another URL: exit 125, no capture, the one line names both URLs', r.status === 125 && attempts().length === 0
+  && /was frozen for https:\/\/live\.example\/other, this round's live URL is https:\/\/live\.example\/ — re-freeze with --force/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+resetCount();
+mkdirSync(join(root, gdir('bllone')), { recursive: true }); writeFileSync(join(root, gdir('bllone'), 'baseline.png'), 'baseline-png-bytes');
+r = await gate(['bllone', 'https://live.example/', buildUrl, '1440', 'bl5', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('flag ON with a lone baseline.png (no provenance): exit 125, no capture, the line names the interrupted freeze', r.status === 125 && attempts().length === 0 && /baseline\.png has no baseline\.json beside it \(an interrupted freeze\) — re-freeze with --force/.test(r.stderr), `status ${r.status} ${r.stderr}`);
+
+resetCount();
+freezeBaseline('bloff');
+r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl6', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('flag OFF (the default) with a baseline beside the round: unchanged — a fresh live shot, then the build; no live.json, no baseline line, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
+  && liveJson('bloff') === null && livePng('bloff') === 'png' && !/frozen origin baseline/.test(r.stdout + r.stderr), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl7', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('… and the next round reuses that live.png (BUILD only), as on every round before this flag existed', r.status === 0 && attempts().join(',') === 'BUILD' && liveJson('bloff') === null, `attempts ${attempts().join(',')}`);
+
+resetCount();
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('flag dropped after a flagged round: the baseline-derived live.png is retaken with one line — LIVE then BUILD, live.json removed, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
+  && /^gate\.sh: live\.png is the frozen origin baseline \(a --gate-against-baseline round\); this round gates against the live origin — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
+  && liveJson('blon') === null && livePng('blon') === 'png', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr} ${liveJson('blon')}`);
+resetCount();
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl9', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('… the next unflagged round reuses that fresh live.png (BUILD only, no retake line)', r.status === 0 && attempts().join(',') === 'BUILD' && !/retaking/.test(r.stderr), `attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl10', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
+check('a flagged round after a live one takes the baseline again: BUILD only, live.png is baseline.png, live.json origin "baseline", no temp file', r.status === 0 && attempts().join(',') === 'BUILD'
+  && livePng('blon') === 'baseline-png-bytes' && JSON.parse(liveJson('blon') || '{}').origin === 'baseline' && noTmp('blon'), `attempts ${attempts().join(',')} ${liveJson('blon')}`);
+
+// A record that cannot be written (STUB_RECORD_FAIL): the round ends (exit 1, one line) with live.png removed, so the
+// baseline bytes never sit under a missing record for the next unflagged round to reuse as a live shot.
+resetCount();
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl11', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile, STUB_RECORD_FAIL: '1' });
+check('a flagged round whose live.json write fails: exit 1 with one line, no capture spent, neither live.png nor live.json left', r.status === 1 && attempts().length === 0
+  && /^gate\.sh: could not write stardust\/replica\/gates\/blon-1440\/live\.json for the frozen origin — not comparing \(a later round would read the copy as a live shot\); re-run the round$/m.test(r.stderr)
+  && livePng('blon') === null && liveJson('blon') === null, `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
+resetCount();
+r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl12', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
+check('… so the next unflagged round captures live (LIVE,BUILD) instead of reusing baseline bytes', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && livePng('blon') === 'png', `attempts ${attempts().join(',')} ${r.stderr}`);
+check('the frozen baseline itself is untouched by every round above', readFileSync(join(root, gdir('blon'), 'baseline.png'), 'utf8') === 'baseline-png-bytes' && JSON.parse(readFileSync(join(root, gdir('blon'), 'baseline.json'), 'utf8')).capturedAt === PROV.capturedAt);
+
+server.close();
 if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url was ${buildUrl})`);
 else rmSync(root, { recursive: true, force: true });
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
-
+process.exit(failures ? 1 : 0);
