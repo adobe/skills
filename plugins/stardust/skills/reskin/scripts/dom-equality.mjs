@@ -8,7 +8,8 @@
  * Adaptations for the reskin profile (validated in experiment UC2-E1):
  *   - PRIMARY (gating) checks: visible text (whitespace-normalized,
  *     BYTE-identical) and the visible-image src list (ORDER-sensitive,
- *     URL-normalized to host+path — query strings carry cache-busters).
+ *     URL-normalized to host+path — query strings carry cache-busters; a
+ *     localized image is compared by its data-source-src).
  *   - INFORMATIONAL (non-gating): element count, tag+class sequence — a
  *     reskin intentionally re-structures markup, so structure cannot gate.
  *   - Multi-scope SOURCE: comma-separated selectors captured in order and
@@ -209,7 +210,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
       elementCount: all.length,
       tagSequence: all.map((e) => e.tagName.toLowerCase() + ((typeof e.className === 'string' && e.className.trim()) ? '.' + e.className.trim().split(/\s+/)[0] : '')),
       visibleText: norm(scopes.map((sc) => sc.innerText || '').join(' ')),
-      imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.currentSrc || i.src || '')),
+      imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.dataset.sourceSrc || i.currentSrc || i.src || '')),
       images: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => ({ alt: i.getAttribute('alt') ?? '', width: Math.round(i.getBoundingClientRect().width) }))),
     };
   }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE });

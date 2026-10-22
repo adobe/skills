@@ -485,17 +485,21 @@ await check('--confidential in a repo that ignores nothing → exit 2, lists fou
   assert.equal(r.code, 2, r.stderr);
   const lines = printedLines(r.stderr);
   for (const l of ['canon-source/foundation/', 'canon-source/role-candidates.json', 'canon-source/module-candidates.json', 'canon-source/spec-tables.json', 'canon-source/assets/screenshots/', 'canon-source/_crawl-log.json', '.work/']) assert.ok(lines.includes(l), `missing ${l}`);
+  // curate's outputs are listed up front, so one .gitignore edit covers the pipeline
+  for (const l of ['reskin/curation-rules.json', 'reskin/donor-tokens.json', 'reskin/donor-modules.md', 'canon-source/DESIGN.md', 'canon-source/DESIGN.json', 'canon-source/_brand-extraction.json']) assert.ok(lines.includes(l), `missing ${l}`);
   assert.match(r.stderr, /stardust\/\.gitignore/);
   assert.deepEqual(walk(PC).filter((f) => !f.includes('/.git/')), []);
   assert.equal(fake.requests.length, 0);
 });
-await check('--confidential with the printed lines added → capture succeeds; a plain curate inherits it (sticky)', async () => {
+await check('--confidential: only capture lines added → capture succeeds with a curate warning; curate refuses until its lines are added (sticky)', async () => {
   reset();
   const first = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
   mkdirSync(join(PC, 'stardust'), { recursive: true });
-  writeFileSync(join(PC, 'stardust', '.gitignore'), `${printedLines(first.stderr).join('\n')}\n`);
+  const captureOnly = printedLines(first.stderr).filter((l) => !l.startsWith('reskin/') && !/DESIGN\.|_brand-extraction/.test(l));
+  writeFileSync(join(PC, 'stardust', '.gitignore'), `${captureOnly.join('\n')}\n`);
   const cap = await run(['capture', URL_PAGE, '--confidential'], { cwd: PC, env: NOGLOBAL });
   assert.equal(cap.code, 0, cap.stderr);
+  assert.match(cap.stderr, /curate will refuse until stardust\/\.gitignore also has: .*reskin\/donor-tokens\.json/);
   mkdirSync(join(PC, 'stardust', 'reskin'), { recursive: true });
   cpSync(join(KIT, 'curation-rules.json'), join(PC, 'stardust', 'reskin', 'curation-rules.json'));
   assert.equal(json(join(PC, 'stardust', '.work', 'reskin', 'figma', 'current.json')).confidential, true);
@@ -510,6 +514,18 @@ await check('--confidential with the printed lines added → capture succeeds; a
   assert.equal(cur.code, 0, cur.stderr);
   const st = spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: PC, encoding: 'utf8', env: { ...process.env, ...NOGLOBAL } }).stdout;
   assert.deepEqual(st.trim().split('\n'), ['?? stardust/.gitignore'], st);
+});
+await check('--confidential: the capture refusal\'s lines alone are enough for capture and curate', async () => {
+  reset();
+  const P1 = gitProject();
+  const first = await run(['capture', URL_PAGE, '--confidential'], { cwd: P1, env: NOGLOBAL });
+  mkdirSync(join(P1, 'stardust', 'reskin'), { recursive: true });
+  writeFileSync(join(P1, 'stardust', '.gitignore'), `${printedLines(first.stderr).join('\n')}\n`);
+  const cap = await run(['capture', URL_PAGE, '--confidential'], { cwd: P1, env: NOGLOBAL });
+  assert.equal(cap.code, 0, cap.stderr); assert.doesNotMatch(cap.stderr, /curate will refuse/);
+  cpSync(join(KIT, 'curation-rules.json'), join(P1, 'stardust', 'reskin', 'curation-rules.json'));
+  const cur = await run(['curate'], { cwd: P1, token: '', env: NOGLOBAL });
+  assert.equal(cur.code, 0, cur.stderr);
 });
 await check('a plain stamp after capture --confidential → designSource.url is "figma:redacted"; state.json stays tracked', async () => {
   cpSync(PHRASE, join(PC, 'stardust'), { recursive: true, force: false, errorOnExist: false });

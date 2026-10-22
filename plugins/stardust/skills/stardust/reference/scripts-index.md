@@ -24,12 +24,12 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `diff/chrome-explore.mjs` — header behaviour: states, close paths, motion — `<url> <out.json> [--width 1440,390]`
 - `diff/clip-probe.mjs` — text/controls clipped by overflow — `<url> [--width 1440] [--json [f]] [--advisory]`; exit 2 = clipped
 - `diff/content-diff.mjs` — structural diff, main + chrome — `<protoURL> <edsURL> [--main <sel>] [--no-chrome] [--json]`
-- `diff/content-presence.mjs` — visible content per band, origin vs served — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
+- `diff/content-presence.mjs` — visible content per band — `<originURL> <servedURL> [--variable <selO=selE,…>] [--json [f]]`; exit 2 = MISSING/HIDDEN
 - `diff/content-inventory.mjs` — library (classifier), no CLI
 - `diff/diff-profiles.mjs` — library (profiles), no CLI
 - `diff/live-session.mjs` — library (hardened browser session), no CLI
 - `diff/measure-live.mjs` — library (settle + measurement), no CLI
-- `diff/unit-geometry.mjs` — repeated-unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>)`; exit 2 = unit off/hidden
+- `diff/unit-geometry.mjs` — unit geometry Δ — `<originURL> <servedURL> (--unit <selO>=<selE> | --families <units.json> --slug <s>)`; exit 2 = unit off/hidden
 - `diff/visual-diff.mjs` — screenshot diff + flags — `<protoURL> <edsURL> [--out <dir>] [--width <px>]`
 - `dynamics/dynamics-check.mjs` — replay parity checks vs source — `--origin <h> [--parity <json>] [--out stardust/qa]`
 - `dynamics/dynamics-detect.mjs` — detect dynamic features — `--urls a,b [--from-state stardust/state.json]`
@@ -69,14 +69,18 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `replica/section.mjs` — one Markdown section / outline — `<doc.md> --list | "<heading re>" [--all] [--max-lines]`
 - `replica/sibling-variance.mjs` — template deltas across siblings — `<archetypeURL> <siblingURL>… --probe name=<sel>`
 - `replica/stitch-shot.mjs` — stitched full-page capture — `<url> <out.png> [--width] [--vh 900] [--settle]`
-- `reskin/capture-content.mjs` — capture source content model — `--url <u> --out <dir> [--scope 'a,b']`
-- `reskin/deployed-gate.mjs` — checks a deployed reskin preview: content, tokens, parity, sanity, deploy's gates — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
-- `reskin/dom-equality.mjs` — content gate, source vs rendered — `--source <u|f> --rendered <u|f> --report <p>`
-- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>] [--viewport <w>] [--no-sanity] [--json <p>]`
-- `reskin/figma-donor.mjs` — Figma donor capture/curate/stamp — `capture <url> [--list] [--frames a,b] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
-- `reskin/figma-gate.mjs` — Figma checks on a reskin page: join, geometry, type ramp, pixels, register — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
+- `reskin/canon-from-reskin.mjs` — reskin → migrate bridge — `<archetype-slug> [--force] [--visual-threshold 10]`
+- `reskin/capture-content.mjs` — source content model — `--url <u> --out <dir> [--scope 'a,b']`
+- `reskin/deployed-gate.mjs` — deployed preview checks — `preview --page <slug> --org --repo --branch --path | all --page <slug>`; exit 124 = no verdict
+- `reskin/dom-equality.mjs` — content gate — `--source <u|f> --rendered <u|f> --report <p>`
+- `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <f> --rendered <u|f> [--spec] [--viewport] [--no-sanity] [--json]`
+- `reskin/figma-donor.mjs` — Figma donor — `capture <url> [--list] [--frames] [--refresh] | curate | stamp [--confidential]`; exit 3 = blocked
+- `reskin/figma-gate.mjs` — Figma checks — `boxes [--module Mn] | all --page <slug> --url <u|f>`; exit 124 = no verdict
+- `reskin/reskin-ledger.mjs` — ledger from gate evidence — `record <slug> [--stage] | eyeball | residual | show`
+- `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
+- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`

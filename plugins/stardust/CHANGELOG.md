@@ -4,6 +4,131 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.1 — renderer fidelity fixes measured on a 52-page school site
+
+Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a
+multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 with the 0.42.0 table padding); all are generic.
+
+- **Card listings survive uneven items.** `findRepeat` needed byte-identical item shapes, so an event with one extra
+  paragraph broke the run part-way: two cards, then stacked full-width images. It now falls back to an anchored
+  run (each item starts at the same anchor — image or heading — and may carry a different number of paragraphs) and
+  returns per-item `bounds`, which the card grid and `captureSmells` ("N items") use. Events/home +1.1.
+- **Header brand zone + menu toggle.** The branded row groups logos with the header's text items (school name,
+  motto) in `.brand` / `.brand-text`, and always emits `.nav-actions` with a menu toggle. At ≤900px the nav hides,
+  the toggle shows and the row stays one 64px line, as the EDS header does — the target no longer wraps the nav to
+  ~230px at 390. +3.0, mostly at 390.
+- **Desktop header sizing from tokens.** At ≥901px the row height is `--header-row-height` (80px fallback) and the
+  nav takes `--type-nav-font-family` / `--type-nav-font-size` (inherit fallback) with a 24px gap.
+- **Mobile split image** stretches to the column width (`justify-self: stretch`) at ≤900px instead of shrinking to
+  its intrinsic width. +0.3.
+- **Footer zones.** A footer stream with headings and list items renders as a Figma footer does: brand (logo,
+  top-level heading, prose), one column per titled list run, and a social row (a list-less heading beside the
+  icon links — `iconLinks` when captured, else the stream's icon-only links). One centred column at ≤900px. Was
+  one long column of `<p>`. +0.4.
+- **Embed placeholder.** A runtime embed that normalize removed (ledger `why` "disposition: embed", `what` naming
+  the section heading "under …") keeps its space: a neutral placeholder after that section, as the live page
+  holds a map. Contact-style pages +5, overall +0.7.
+- **Header utility bar.** A header link whose label is only screen-reader text (`sr-only`, `visually-hidden`,
+  `screen-reader-text`; a parent-org link whose mark was not captured) shows as a small text link in a bar above
+  the row on desktop, hidden at ≤900px. +0.4 with the desktop sizing above.
+- **Icon-font glyphs.** A lone lowercase word in an icon-font span (`material-icons|symbols`, `icon`) renders as
+  a drawn glyph (word kept at font-size 0), so "east" no longer prints in a card. A card's trailing arrow is drawn
+  at 28px in the accent; a card whose first line is only a link takes the h4 heading style.
+
+## 0.36.0 — reskin → migrate hardened on two end-to-end runs
+
+Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
+gaps below. Every fix is generic; per-site choices stay in config.
+
+- **Chrome never drops visible text.** `stream-render` built the header from the section's links only and the footer
+  from paragraphs and links, so link-less mega-menu parents, a Figma-only header's language codes and a footer's
+  contact heading and text runs vanished — unseen, as the content gates measure `<main>`. Header items now render in
+  source order (links, `.nav-menu` triggers for link-less list items, `.nav-text` otherwise); footer prose takes every
+  non-link text leaf. `chromeTextMissing` checks each chrome section after render and `render()` throws on a drop.
+- **Header zones.** A branded header row (logo + a menu list) renders brand | menu | actions (links outside the
+  list, e.g. Login) instead of one right-aligned link run. The menu's placement is measured from the Figma donor:
+  capture records each desktop screen's header row (`headerRows`, footers skipped) and curate writes the majority
+  as `layout.navAlign` (`start|center|end`) with its evidence. `chrome.navAlign` in the mapping overrides it; a
+  URL-only donor has no geometry and defaults to `end`.
+
+- **Renders gated by figma-gate (0.34.0).** All three runs (two Figma donors, one URL donor) re-gated on M2b's checks:
+  join, geometry and ramp pass on every Figma-donor page, with one accepted `figma.ramp` residual (a hero intro style
+  the donor tokens have no role for). What it took, generic throughout:
+  - `stream-render` opens its style with the `render/root-tokens` contract `:root` block that the ramp asserts.
+    `.container` is content-box: `--max-width` is the content width and the padding sits outside it, as in a Figma
+    container. Grid-2, split and cards share `layout.columnGap` (default 40px). Card titles take the h3 role whatever
+    their tag. The accent label follows the h2 role, not the h2 tag.
+  - New `mapping.json` slot options: `heading` (display | h2 | h3 | h4), `inset` (a frame padded from the viewport
+    edge) and `split` (two column tracks). Invalid values warn and are ignored. See `reference/mapping-brief.md`
+    § Frame fit.
+  - `figma-gate` reads one page's rows from a multi-page `mapping.md` (a `Page` column with `--page <slug>`).
+    Composition variants (`M1b`) join through `curation-rules.json` `modules[]` with `variantOf` (§ Composition
+    variants); canon's mixed-composition finding points there.
+  - `donor-probe` spec entries take `exclude`: the container check skips `.inset` bands and SKIPs when every band is
+    inset, since figma-gate geometry measures them instead.
+- **Renderer layouts.** `stream-render` renders card grids, split media, tone bands, logo rows, label pills, a footer
+  tone and true heading levels, and emits `img.icon` inside links. Ctas render as `.btn` when capture flags them
+  `inButton` (text inside a `<button>`) or `buttonLike` (a link painted as a button with utility CSS: background or
+  visible border plus padding).
+- **Localized image collisions.** `--localize-images` keeps the query as an 8-hex hash in the file name, so image
+  proxies (`/_image?href=…`) no longer collapse onto one file. `localize` also refuses to give two URLs one path.
+- **Multi-archetype canon.** `canon-from-reskin` merges modules from every approved archetype, not just the named one,
+  and the split layout's skeleton blanks its media. `reskin-preflight` adds a `canon-modules` FAIL when a mapping uses
+  a module missing from the canon, or composes layout/width/tone inconsistently.
+- **donor-probe `--model`.** Probe entries marked `needs: 'button'` SKIP when the content has no button, so a page
+  with no buttons passes.
+- **Required marker weight.** A label's `*` keeps the label's weight unless the donor's curation rules give it a
+  `type.required` role (a donor whose asterisk is regular after bold labels); figma-gate's coverage floor asks for it.
+- **Confidential hint.** Under `--confidential`, capture warns which `.gitignore` lines curate will need too, instead
+  of letting curate refuse later.
+- **Fewer false capture warnings.** All-whole (`!`) scopes skip the h1 and granularity checks, and a mega-slot that is
+  a repeating card grid is reported as a note, not a wrapper-scope warning (`captureSmells`).
+- **Gates re-pass on migrated pages.** `migrate` keeps `data-source-href` (the absolute source URL) on every link it
+  rewrites and marks the JSON-LD block it inserts with `data-migrate-default`. `slot-coverage` matches links by the
+  former and does not count the latter, so a migrated page passes the same content gates as its prototype.
+- **Reskin handoff predicate.** New `reskin-ledger` (`record`, `eyeball`, `residual`, `show`) writes
+  `stardust/reskin/ledger.json` from gate reports, the static and runtime mobile-adapt checks and the two human
+  judgments; `handoff.<type>` names the archetype, its prototype sha, the claimed/passed/waived tier and the PASS-only
+  gates migrate merges into sidecars. `reskin-preflight` is now the predicate: `approval` (an agent approval FAILs unless
+  hands-off), `archetype-gates` (gates PASS or residual accepted, eyeball pass, prototype unchanged) and a
+  `sibling-gates` WARN for migrated pages without migrated-stage gates. Contract in `reskin/reference/handoff.md`.
+- **Flow guards.** `replica` and `direct` refuse under `flow: reskin`; master routing recognises donor phrases and
+  `reskin --switch-flow`; `state-machine.md` names the writers of `approved`/`designSource`, stales reskin-registered
+  approvals on a switch and adds a reskin State-report branch; `migrate`/`rollout` require `reskin-preflight` exit 0.
+  `ledger.mjs` knows the reskin phases. The eval `standard_handoff_no_core_changes` is rescoped.
+- **M2 gates in the predicate.** `reskin-ledger record` ingests 0.34.0's `figma-gate all` and M2a's `deployed-gate all`
+  `summary.json` fragments into `gates.figma` / `gates.deployed`; `reskin-preflight` requires figma join/geometry/ramp
+  and the deployed families (plus its figma re-run) to pass; a `deployed.sanity` residual is never accepted.
+- **Contrast-aware accent.** `stream-render` keeps an accent that fails 4.5:1 on the page or light band as an underline
+  colour only (links and required markers take body ink); compact tone-band padding and fixed-size checkboxes at 640px.
+- **Canon across archetypes.** `canon-from-reskin` takes another type's archetype from the ledger's handoff (else the
+  type's first approved page with a prototype, instead of dropping the type) and compares a re-approval's capture
+  only with the same archetype's previous capture, so two archetypes no longer diff against each other.
+- **Third run, URL donor.** A bounded URL donor (sampled live site) reskinned the forms-only site end to end: prototype
+  and migrated gates PASS, preflight ready, no donor-specific code.
+
+## 0.35.0 — reskin hands off to migrate: generic renderer, canon bridge, preflight
+
+Reskin produced gated pages but none of the inputs `migrate` reads. Three scripts close that gap for any donor (URL or
+Figma) and any content site; every per-site choice stays in `mapping.json` and the content models.
+
+- **`reskin/stream-render.mjs`** renders a page from its content model's ordered stream and the donor tokens. It replaces
+  the per-archetype renderer as the default. `--localize-images` downloads images into `prototypes/assets/img/` with
+  browser headers and keeps `data-source-src`, which `dom-equality` and `slot-coverage` now prefer, so the content gate
+  still compares source URLs.
+- **`reskin/canon-from-reskin.mjs`** derives `canon/` (header, footer, `canon.css` with `:root` first, module skeletons),
+  donor-sourced `DESIGN.{md,json}`, `direction.md` and `dynamic-features.md` from the approved archetype. A `--force`
+  re-run with identical content leaves every file untouched; a changed canon flags approved pages, and migrated pages
+  whose sidecar hashes no longer match, as stale. Each changed canon is captured with replica's `stitch-shot` and
+  pixel-compared with the previous approval; the % lands in the canon history and warns above `--visual-threshold`.
+- **`reskin/reskin-preflight.mjs`** is the read-only readiness check before `migrate` (exit 0 ready).
+  `prepare-migration` now refuses under `flow: reskin`, because its cascade rewrites the donor-sourced `DESIGN.*`.
+- **Fixes found on the way.** Migrate merges the reskin gate reports into its handoff gates and tags sections by
+  `data-slot`. The donor-probe heading probes cover h1–h3 (weight) and h1–h6 (colour), not h1 only. Crawl and the
+  default normalize remove cookie, consent and GDPR overlays by id or class inside a fixed, sticky or high-z ancestor,
+  outside `main article`. The Figma curation derives `type.display.textAlign` from the display role's text alignment,
+  weighted by characters, and the renderer aligns headings with it (left when absent).
+
 ## 0.34.0 — reskin checks a page against its Figma donor and on its aem.page preview
 
 A Figma-donor reskin stopped at the token probe: nothing compared the page with its frames. The new `reskin/figma-gate.mjs`

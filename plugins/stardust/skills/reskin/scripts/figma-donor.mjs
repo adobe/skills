@@ -73,9 +73,10 @@ stamp    sets <dir>/state.json designSource = { url, capturedAt, path: "<dir>/ca
          known) and refuse (exit 2, nothing written to it, no request for the fixed outputs) when
          one is not ignored or is already tracked, or when any file under foundation/, the
          screenshots or the cache is tracked; the message names the path and the exact lines to
-         add to <dir>/.gitignore (or the git rm --cached a tracked file needs); capture --list
-         writes nothing and is not checked; stamp stores designSource.url as "figma:redacted"
-         (state.json stays tracked).
+         add to <dir>/.gitignore (or the git rm --cached a tracked file needs; capture's refusal
+         also lists curate's lines, so one edit covers both, and a capture that passes warns when
+         curate's are still missing); capture --list writes nothing and is not checked; stamp
+         stores designSource.url as "figma:redacted" (state.json stays tracked).
          Sticky: after capture --confidential, curate, stamp and later captures in this dir apply it
          too. Needs a git repository.
 --dir <d>  the stardust directory (default stardust).
@@ -203,7 +204,11 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
       return 0;
     }
     const confidential = await confidentialMode(dir, opts, log);
-    if (confidential) { const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES }); }
+    if (confidential) {
+      const g = await helper('guard'); g.assertIgnored(g.CAPTURE_OUTPUTS, { dir, namespaces: g.CAPTURE_NAMESPACES, later: g.CURATE_OUTPUTS });
+      const missing = g.laterLines(g.CURATE_OUTPUTS, { dir });
+      if (missing.length) warn(`--confidential: curate will refuse until ${dir}/.gitignore also has: ${missing.join(' · ')}`);
+    }
     const client = createClient({ token: env.FIGMA_TOKEN || '', base: env.FIGMA_API_BASE || undefined, maxWaitSec });
     const { manifest, written, fromCache } = await runCapture({ url: positional[0], frames, maxFrames, refresh: Boolean(opts.refresh), confidential, dir, client, warn });
     const status = manifest.endpoints.map((e) => `${e.name} ${e.status}`).join(', ');

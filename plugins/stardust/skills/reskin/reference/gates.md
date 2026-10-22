@@ -27,6 +27,9 @@ siblings of `../reskin/`.
   `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
   `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
+- `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
+  mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
+  (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
 
 Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
@@ -183,14 +186,23 @@ trimmed padding overrides and would fail the button spec spuriously).
 A renderer that breaks a convention fails the probe with
 `selector matched nothing` — a missing selector is a **FAIL, not a
 skip**, because silent skips fake passes. A token path absent from
-`donor-tokens.json` is a reported SKIP.
+`donor-tokens.json` is a reported SKIP. The one content-aware
+exception: with `--model <content-model.json>`, spec entries marked
+`"needs": "button"` (the default `main .btn` entries) are a reported
+SKIP when the page's content has nothing the renderer turns into a
+button (`stream-render.mjs` `rendersButton`: a cta with a button class
+or captured `buttonLike`,
+a submit/button control, text inside a `<button>`). The decision reads
+the source content, not the rendered page, so a renderer that drops a
+real button still fails.
 
-One default-spec blind spot: when the source's only h1 is visually
-hidden (an sr-only landmark), the `main h1` display-weight assertion
-holds a token on an **invisible** element and says nothing about the
-page's display face. Add a `--spec` entry asserting the display tokens
-on the element that renders as the display headline (the hero h2,
-typically).
+One default-spec blind spot: when the source's only heading is visually
+hidden (an sr-only landmark), the display-weight assertion (the first
+`h1`–`h3` in `main`; the heading colour takes the first heading of any
+level, since form pages often carry no h1/h2) holds a token on an
+**invisible** element and says nothing about the page's display face.
+Add a `--spec` entry asserting the display tokens on the element that
+renders as the display headline (the hero h2, typically).
 
 #### Tolerances
 
