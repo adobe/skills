@@ -4,6 +4,18 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.42.0 — the 0.36.1 fidelity fixes on the 0.38–0.41 renderer
+
+0.36.1 landed the fidelity fixes on the M3 renderer (76.1 → 83.1 on a 52-page Figma-donor school site, target ↔
+EDS, 7 pages × 1440/390). This carries them onto the renderer 0.38–0.41 grew, using what it now captures:
+
+- **Utility bar** reads the `srOnly` flag (0.41): a header link whose rendered label is only sr-only spans.
+- **Glyphs** use the 0.41 `glyph` flag first; the icon-font class test stays as the fallback for older models.
+  Glyphs are 16px; header icon buttons hide nav glyphs and draw the search glyph's handle.
+- **Footer zones** take the social row from `iconLinks` (0.38).
+- **Card tones** (`cardTone` dark/accent/light, 0.41) and `tone-dark` cards drop the card border.
+- **Mobile tables** (0.41) pad cells 8px at ≤640px.
+
 ## 0.41.0 — the target keeps the source's structure
 
 A 52-page migration's design fidelity (stardust target against the delivered EDS page) sat at 66 % while a run whose

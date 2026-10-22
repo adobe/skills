@@ -88,7 +88,7 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   }] };
   const run = (chrome) => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], ...chrome } } }).html;
   const centred = run({ navAlign: 'center' });
-  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<img class="logo"[^>]*>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><\/div>/);
+  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu">/);
   assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
   assert.match(run({}), /<div class="chrome-row nav-align-end">/);
   assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
@@ -108,7 +108,7 @@ check('header row without a menu list: plain entries are the menu, source button
     ],
   }] };
   const html = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'center' } } }).html;
-  assert.match(html, /<nav><span class="nav-text">Products<\/span><\/nav>\s*<div class="nav-actions"><a class="btn btn-secondary" href="https:\/\/example\.test\/login">Login<\/a><button class="btn" type="button">Start free<\/button><\/div>/);
+  assert.match(html, /<nav><span class="nav-text">Products<\/span><\/nav>\s*<div class="nav-actions"><a class="btn btn-secondary" href="https:\/\/example\.test\/login">Login<\/a><button class="btn" type="button">Start free<\/button><button class="icon-btn nav-toggle"/);
   assert.match(html, /:is\(\.site-main, \.site-header\) \.btn \{/);
 });
 check('slot options: bleed paints the band, align centres, a leading image goes first, heading roles size sub-headings', () => {
@@ -200,11 +200,11 @@ check('split columns, content-box container, shared column gap, card titles and 
 check('findRepeat: intro, repeating items and tail; a shifted run loses the coverage tie; null when nothing repeats', () => {
   const h = (level, text = 'x') => ({ kind: 'heading', level, text });
   const p = { kind: 'paragraph', text: 'p' }; const im = { kind: 'image', src: 'i' }; const a = { kind: 'cta', text: 'c', href: '#' };
-  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3 });
-  assert.deepEqual(findRepeat([h('h2'), p, h('h3'), p, p, h('h5'), p, p, h('h4'), p, p]), { start: 2, period: 3, count: 3 }, 'drifting card heading levels still repeat');
+  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
+  assert.deepEqual(findRepeat([h('h2'), p, h('h3'), p, p, h('h5'), p, p, h('h4'), p, p]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] }, 'drifting card heading levels still repeat');
   const t = (cls) => ({ kind: 'text', text: 't', parentClass: cls });
   // intro (h2, p) then [num, title, p] x3: the run starting at the subtitle covers as many nodes but is shifted.
-  assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3 });
+  assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
   assert.equal(findRepeat([h('h2'), p, a, im]), null);
 });
 check('cards layout: items wrapped in .card inside .cards with columns; intro and tail outside; no repeat warns', () => {
@@ -230,8 +230,8 @@ check('cards layout: a list of structured items (image, link, text per li) is on
     { kind: 'cta', text: n, href: `/${n}`, absHref: `https://example.test/${n}` },
     { kind: 'paragraph', text: `About ${n}` }] });
   const h2 = { kind: 'heading', level: 'h2', text: 'Why us' };
-  assert.deepEqual(findRepeat([h2, li('a'), li('b'), li('c')]), { start: 1, period: 1, count: 3 }, 'three single-node items');
-  assert.deepEqual(findRepeat([h2, ...'abcdef'.split('').map(li)]), { start: 1, period: 1, count: 6 }, 'six items beat a false 2-node run');
+  assert.deepEqual(findRepeat([h2, li('a'), li('b'), li('c')]), { start: 1, period: 1, count: 3, bounds: [1, 2, 3, 4] }, 'three single-node items');
+  assert.deepEqual(findRepeat([h2, ...'abcdef'.split('').map(li)]), { start: 1, period: 1, count: 6, bounds: [1, 2, 3, 4, 5, 6, 7] }, 'six items beat a false 2-node run');
   const plain = { kind: 'listItem', text: 'x' };
   assert.equal(findRepeat([h2, plain, plain, plain]), null, 'a bare bullet list is not cards');
   const m2 = { metadata: {}, sections: [{ slot: 's01', ordered: [h2, li('a'), li('b'), li('c')] }] };
@@ -309,7 +309,7 @@ check('captureSmells: all-whole scopes and card-grid mega-slots are notes; a wra
   const small = (slot) => ({ slot, visibleText: 'y'.repeat(10), ordered: [{ kind: 'paragraph', text: 'p' }] });
   const base = { visibleTextNormalized: 'z'.repeat(100), coverage: { h1InScope: true }, scope: [{ sel: 'main', whole: false }] };
   let r = captureSmells({ ...base, sections: [small('s01'), grid, small('s03')] });
-  assert.deepEqual(r.warnings, []); assert.match(r.notes[0], /s02 .*repeating run \(4 × 2 nodes\)/);
+  assert.deepEqual(r.warnings, []); assert.match(r.notes[0], /s02 .*repeating run \(4 items\)/);
   const wrapper = { ...grid, ordered: [{ kind: 'heading', level: 'h2' }, { kind: 'paragraph' }, { kind: 'image' }, { kind: 'listItem' }, { kind: 'cta' }] };
   r = captureSmells({ ...base, sections: [small('s01'), wrapper, small('s03')] });
   assert.match(r.warnings[0], /wrapper-scope smell/);
@@ -375,6 +375,40 @@ check('0.41 header: a glyph or sr-only action is an icon button; nav link text k
   assert.match(header, /<a href="https:\/\/example\.test\/about">About<\/a>/);
   assert.ok(!header.includes('crest.png'), 'a nav link image is not repeated as an inline image');
   assert.match(header, /<span class="glyph glyph-search" aria-hidden="true">search<\/span>/);
+});
+check('0.42 chrome: a link with only sr-only text is the utility bar; a footer with headings is laid out in zones', () => {
+  const header = { slot: 'h1', images: [{ currentSrc: 'https://example.test/crest.svg', alt: 'Crest' }], ctas: [],
+    ordered: [
+      { kind: 'image', currentSrc: 'https://example.test/crest.svg' },
+      { kind: 'cta', text: 'NSW Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'NSW Government', srOnly: true }] },
+      { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about' }] },
+    ] };
+  const footer = { slot: 'f1', images: [], paragraphs: [], ctas: [], iconLinks: [{ label: 'Facebook', absHref: 'https://example.test/fb' }],
+    ordered: [
+      { kind: 'heading', level: 'h2', text: 'Hill School' },
+      { kind: 'paragraph', text: 'We acknowledge the land.' },
+      { kind: 'heading', level: 'h3', text: 'Contact' },
+      { kind: 'listItem', text: '1 Hill St' }, { kind: 'listItem', text: '02 1234' },
+      { kind: 'heading', level: 'h3', text: 'Follow us' },
+    ] };
+  const { html } = render({ ...base, chromeModel: { sections: [header, footer] }, mapping: { ...mapping, chrome: { header: ['h1'], footer: ['f1'] } } });
+  assert.match(html, /<div class="utility-bar"><div class="container"><a href="https:\/\/example\.test\/gov">NSW Government<\/a><\/div><\/div><div class="chrome-row/);
+  assert.doesNotMatch(html.match(/<div class="nav-actions">[\s\S]*?<\/div>/)[0], /NSW Government/);
+  assert.match(html, /<div class="footer-brand"><p class="footer-name">Hill School<\/p><p class="footer-prose">We acknowledge the land\.<\/p><\/div>/);
+  assert.match(html, /<div class="footer-col"><p class="footer-col-title">Contact<\/p><ul><li>1 Hill St<\/li><li>02 1234<\/li><\/ul><\/div>/);
+  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a href="https:\/\/example\.test\/fb" aria-label="Facebook">Facebook<\/a><\/li><\/ul><\/div>/);
+});
+check('0.42 main: an icon-font word is a glyph without the flag; a ledgered embed keeps its space after its section', () => {
+  const ordered = [
+    { kind: 'heading', level: 'h2', text: 'Find us' },
+    { kind: 'paragraph', text: 'Visit', children: [{ kind: 'text', text: 'Visit' }, { kind: 'text', text: 'east', parentClass: 'material-icons', sep: ' ' }] },
+  ];
+  const ledger = [{ what: 'map embed under "Find us"', why: 'dynamics disposition: embed' }];
+  const { html } = render({ ...base, slug: 'login', model: { _provenance: { normalize: { ledger } }, sections: [{ slot: 's01', ordered }] } });
+  assert.match(html, /<span class="glyph glyph-[a-z-]+" aria-hidden="true">east<\/span>/);
+  assert.match(html, /<div class="embed-placeholder" aria-hidden="true"><\/div>/);
+  const plain = render({ ...base, slug: 'login', model: { sections: [{ slot: 's01', ordered }] } }).html;
+  assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
