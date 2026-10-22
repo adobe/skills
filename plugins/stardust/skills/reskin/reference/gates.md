@@ -26,7 +26,7 @@ siblings of `../reskin/`.
   `crop-compare.mjs`, `chrome-parity.mjs`, `cap-probe.mjs` (`pixel-compare` and `run-bg` import `run-capped`;
   `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
-  `ai-readability.mjs`, `site-auth.mjs` (`qa-gate` and `ai-readability` import it): what `deployed-gate.mjs` resolves.
+  `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
 - `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
   mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
   (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
@@ -326,13 +326,12 @@ fetches `.plain.html` without a browser.
 | `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
-| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a token the preview refuses is exit 2, any other page answering HTTP 400 or more no verdict (exit 124), never a pass |
+| `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
-- **Protected preview** (`preview.json` `auth: true`, `deployed-leg.md`):
-  every step measures it with the site token, or stops with exit 2 without
-  one; no row is `n/a` for want of one.
+- **Protected preview.** Out of scope: the preview must be reachable without
+  auth. A 401 or 403 stops `preview` with exit 2 (`deployed-leg.md`).
 - **Step 10 stays.** The verdict replaces only `deploy` Step 10's automated
   reconcile; its eyeball, CLS and header-behavior checks stay mandatory before
   handoff (`deployed-leg.md` § Recipe, step 7).

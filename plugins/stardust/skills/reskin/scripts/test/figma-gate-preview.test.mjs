@@ -2,8 +2,8 @@
 // skills/reskin/scripts/test/figma-gate-preview.test.mjs — figma-gate on a deployed preview (M2a Tasks 10 and 11): the join of
 // the reskin page's data-slot sections to the preview's authored form (plainSections, plainJoin: pure), previewTarget, runJoin
 // and the CLI `join --target preview` against the fake preview of fixtures/deployed/, then previewSelector (selectorFor,
-// validateChecks, rampSpecs: pure) and geometry, ramp, pixel and all on that preview, with the site token and the settle
-// carried to donor-probe (needs playwright, pngjs and pixelmatch; prints a skip line otherwise). Run: node <this file>.
+// validateChecks, rampSpecs: pure) and geometry, ramp, pixel and all on that preview, with the settle carried to
+// donor-probe (needs playwright, pngjs and pixelmatch; prints a skip line otherwise). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
@@ -25,7 +25,7 @@ import { localAttributes, previewTarget } from '../figma-gate/target.mjs';
 import { plainUrl } from '../deployed/fetch.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { KEY, VERSION, makeProject } from './fixtures/figma-gate/setup.mjs';
-import { fixturePath, startPreviewServer, startSourceServer } from './fixtures/deployed/servers.mjs';
+import { fixturePath, startPreviewServer } from './fixtures/deployed/servers.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'figma-gate.mjs');
@@ -39,7 +39,7 @@ const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`)
 
 // One CLI run: { status, stdout, stderr, all }. Async: the fake preview lives in this process. The ambient hooks are cleared.
 const run = (args, { cwd = scratch, env = {} } = {}) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', SITE_TOKEN: '', ...env } });
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', ...env } });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
@@ -366,15 +366,11 @@ if (playwrightOk) {
     });
   });
 
-  await check('previewTarget: a protected preview is a usage error without the token; with it the page and its authored form are both read', async () => {
+  await check('previewTarget: a protected preview is a usage error (out of scope)', async () => {
     await withPreview({ token: TOKEN }, async (server) => {
       await withBrowser(async (browser) => {
-        const p = project('auth');
-        await assert.rejects(previewTarget(`${server.origin}/ns/home`, { reskin: p.page }).open(browser, 1440), (e) => e.name === 'UsageError' && /HTTP 401/.test(e.message) && /--auth-header/.test(e.message));
-        const target = previewTarget(`${server.origin}/ns/home`, { reskin: p.page, auth: `token ${TOKEN}` });
-        const page = await target.open(browser, 1440);
-        assert.equal((await target.join.collect(page)).html, PLAIN);
-        await page.context().close();
+        const p = project('protected');
+        await assert.rejects(previewTarget(`${server.origin}/ns/home`, { reskin: p.page }).open(browser, 1440), (e) => e.name === 'UsageError' && /HTTP 401/.test(e.message) && /out of scope/.test(e.message));
       });
     });
   });
@@ -523,47 +519,12 @@ if (playwrightOk) {
     });
   });
 
-  await check('CLI join --target preview on a protected preview: --token-env passes; the token is never printed; every request carried it', async () => {
-    await withPreview({ token: TOKEN }, async (server) => {
-      const p = project('cli-token');
-      const r = await run(joinArgs(p, `${server.origin}/ns/home`, ['--token-env', 'PREVIEW_TOKEN']), { cwd: p.root, env: { PREVIEW_TOKEN: TOKEN } });
-      assert.equal(r.status, 0, r.all.replaceAll(TOKEN, '[token]'));
-      assert.equal(r.all.includes(TOKEN), false, 'the token appears in the output');
-      const paths = server.requests.map((q) => q.path);
-      assert.ok(paths.includes('/ns/home') && paths.includes('/ns/home.plain.html'), 'the page and its authored form were both read');
-      assert.ok(server.requests.every((q) => q.headers.authorization === `token ${TOKEN}`), 'a request went out without the token');
-      assert.equal(joinJson(p).regime, 'preview');
-      assert.equal(readFileSync(join(workDir(p.dir, p.slug), 'join.json'), 'utf8').includes(TOKEN), false, 'the token is in join.json');
-      const direct = await run(joinArgs(p, `${server.origin}/ns/home`, ['--auth-header', `token ${TOKEN}`]), { cwd: p.root });
-      assert.equal(direct.status, 0, direct.all.replaceAll(TOKEN, '[token]'));
-      assert.equal(direct.all.includes(TOKEN), false, 'the token appears in the output');
-    });
-  });
-
-  await check('the token goes to the preview origin only: a cross-origin subresource of the page is fetched without it', async () => {
-    const source = await startSourceServer();
-    try {
-      const page = customPreview('cross', PLAIN, (html) => html.replace('</body>', `<img src="${source.origin}/images/hero.png" alt="">\n</body>`));
-      await withPreview({ token: TOKEN, pages: { '/ns/home': page } }, async (server) => {
-        const p = project('cli-cross');
-        const r = await run(joinArgs(p, `${server.origin}/ns/home`, ['--token-env', 'PREVIEW_TOKEN']), { cwd: p.root, env: { PREVIEW_TOKEN: TOKEN } });
-        assert.equal(r.status, 0, r.all.replaceAll(TOKEN, '[token]'));
-        assert.ok(source.requests.some((q) => q.path === '/images/hero.png'), 'the page did not load the cross-origin image');
-        assert.ok(source.requests.every((q) => q.headers.authorization === undefined), 'a request to another origin carried the token');
-      });
-    } finally { await source.close(); }
-  });
-
-  await check('CLI join --target preview: a protected preview with no token, or the wrong one, is exit 2 and prints no token', async () => {
+  await check('CLI join --target preview: a protected preview is exit 2 (out of scope)', async () => {
     await withPreview({ token: TOKEN }, async (server) => {
       const p = project('cli-401');
       const none = await run(joinArgs(p, `${server.origin}/ns/home`), { cwd: p.root });
       assert.equal(none.status, 2, none.all);
-      assert.match(none.stderr, /HTTP 401.*protected.*--auth-header or --token-env/);
-      const wrong = await run(joinArgs(p, `${server.origin}/ns/home`, ['--token-env', 'PREVIEW_TOKEN']), { cwd: p.root, env: { PREVIEW_TOKEN: 'hlxtok-wrong-0000' } });
-      assert.equal(wrong.status, 2, wrong.all);
-      assert.match(wrong.stderr, /HTTP 401.*not accepted/);
-      assert.equal(wrong.all.includes('hlxtok-wrong-0000'), false);
+      assert.match(none.stderr, /HTTP 401.*protected.*out of scope/);
     });
   });
 
@@ -580,7 +541,6 @@ if (playwrightOk) {
     assert.equal(ready.drift, false, ready.drift ? ready.join.problems.join('\n') : '');
     return ready;
   };
-  const walk = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
 
   await check('geometry on a preview: previewSelector measures the deployed card (560 vs 560); the same entry with only selector ".card" is unmeasurable there', async () => {
     await withPreview({}, async (server) => {
@@ -655,53 +615,38 @@ if (playwrightOk) {
     writeFileSync(stub, [
       'import { readFileSync, writeFileSync } from "node:fs";',
       'const arg = (n) => process.argv[process.argv.indexOf(n) + 1];',
-      `writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv: process.argv.slice(2), token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null }));`,
+      `writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv: process.argv.slice(2) }));`,
       body,
     ].join('\n'));
     return { stub, seen: () => JSON.parse(readFileSync(seen, 'utf8')) };
   };
   const pass = 'const spec = JSON.parse(readFileSync(arg("--spec"), "utf8")); writeFileSync(arg("--json"), JSON.stringify({ pass: true, results: spec.map((e) => ({ label: e.label, status: "PASS", detail: "x" })) }));';
 
-  await check('runRamp on a preview passes donor-probe --wait-eds and the token through its environment (--token-env), never argv; without a token an inherited variable is dropped', async () => {
+  await check('runRamp on a preview passes donor-probe --wait-eds and the preview URL', async () => {
     await withPreview({}, async (server) => {
       const url = `${server.origin}/ns/home`;
       const p = previewProject('ramp-stub');
       const ready = await readyOn(p, url);
       const probe = probeStub(p, pass);
-      const ramp = (extra) => runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, donorProbe: probe.stub, ...extra });
-      const inherited = process.env.DEPLOYED_GATE_SITE_TOKEN;
-      process.env.DEPLOYED_GATE_SITE_TOKEN = 'inherited-not-ours';
-      try {
-        await ramp({ auth: `token ${TOKEN}` });
-        const given = probe.seen();
-        assert.ok(given.argv.includes('--wait-eds'), given.argv.join(' '));
-        assert.deepEqual(given.argv.slice(given.argv.indexOf('--token-env'), given.argv.indexOf('--token-env') + 2), ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN']);
-        assert.equal(given.token, `token ${TOKEN}`);
-        assert.equal(given.argv.join(' ').includes(TOKEN), false, 'the token is in argv');
-        assert.equal(given.argv[given.argv.indexOf('--rendered') + 1], url);
-        await ramp({});
-        const none = probe.seen();
-        assert.ok(none.argv.includes('--wait-eds'));
-        assert.equal(none.argv.includes('--token-env'), false);
-        assert.equal(none.token, null, 'an inherited token variable reached the probe');
-      } finally {
-        if (inherited === undefined) delete process.env.DEPLOYED_GATE_SITE_TOKEN; else process.env.DEPLOYED_GATE_SITE_TOKEN = inherited;
-      }
+      await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, donorProbe: probe.stub });
+      const given = probe.seen();
+      assert.ok(given.argv.includes('--wait-eds'), given.argv.join(' '));
+      assert.equal(given.argv[given.argv.indexOf('--rendered') + 1], url);
     });
   });
 
-  await check('runRamp on a preview: a probe that stalls on the decoration is no verdict (code 124, not a usage error), its message redacted; a probe exit 3 stays code 3', async () => {
+  await check('runRamp on a preview: a probe that stalls on the decoration is no verdict (code 124, not a usage error); a probe exit 3 stays code 3; another exit 2 is a usage error', async () => {
     await withPreview({}, async (server) => {
       const url = `${server.origin}/ns/home`;
       const p = previewProject('ramp-stall');
       const ready = await readyOn(p, url);
       const ramp = (probe, extra = {}) => runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, donorProbe: probe.stub, ...extra });
-      const stalled = probeStub(p, 'console.error(`[donor-probe] stalled decoration: block cards ${process.env.DEPLOYED_GATE_SITE_TOKEN}`); process.exit(2);');
-      await assert.rejects(ramp(stalled, { auth: `token ${TOKEN}` }), (e) => e.code === 124 && e.name !== 'UsageError' && /stalled decoration: block cards/.test(e.message) && !e.message.includes(TOKEN));
+      const stalled = probeStub(p, 'console.error("[donor-probe] stalled decoration: block cards"); process.exit(2);');
+      await assert.rejects(ramp(stalled), (e) => e.code === 124 && e.name !== 'UsageError' && /stalled decoration: block cards/.test(e.message));
       const challenged = probeStub(p, 'console.error("[donor-probe] bot challenge"); process.exit(3);');
       await assert.rejects(ramp(challenged), (e) => e.code === 3 && /bot challenge/.test(e.message));
-      const setup = probeStub(p, `console.error(\`[donor-probe] no site token \${process.env.DEPLOYED_GATE_SITE_TOKEN}\`); process.exit(2);`);
-      await assert.rejects(ramp(setup, { auth: `token ${TOKEN}` }), (e) => e.name === 'UsageError' && /no site token/.test(e.message) && !e.message.includes(TOKEN));
+      const setup = probeStub(p, 'console.error("[donor-probe] --spec not readable"); process.exit(2);');
+      await assert.rejects(ramp(setup), (e) => e.name === 'UsageError' && /--spec not readable/.test(e.message));
     });
   });
 
@@ -795,35 +740,6 @@ if (playwrightOk) {
     });
   });
 
-  await check('CLI all --target preview on a protected preview: the probe and every request carry the token; no output and no file holds it', async () => {
-    await withPreview({ token: TOKEN }, async (server) => {
-      const url = `${server.origin}/ns/home`;
-      const p = previewProject('cli-all-token');
-      const r = await run(stepArgs('all', p, url, ['--token-env', 'PREVIEW_TOKEN']), { cwd: p.root, env: { PREVIEW_TOKEN: TOKEN } });
-      assert.equal(r.status, 0, r.all.replaceAll(TOKEN, '[token]'));
-      assert.equal(r.all.includes(TOKEN), false, 'the token appears in the output');
-      assert.ok(server.requests.filter((q) => q.path === '/ns/home').length >= 4, 'the join, the geometry, the probe and the pixel step each load the page');
-      assert.ok(server.requests.every((q) => q.headers.authorization === `token ${TOKEN}`), 'a request went out without the token');
-      assert.deepEqual(walk(workDir(p.dir, p.slug)).filter((f) => readFileSync(f).includes(TOKEN)), []);
-      assert.ok(!stepFile(p, 'summary.json').invocation.includes(TOKEN));
-    });
-  });
-
-  await check('all --target preview: what summary.json records of a step that logged or threw the token is redacted', async () => {
-    await withPreview({ token: TOKEN }, async (server) => {
-      const p = previewProject('all-redact');
-      const lines = [];
-      const steps = { geometry: async ({ log }) => { log(`saw ${TOKEN} and token ${TOKEN}`); throw new Error(`no good: ${TOKEN}`); } };
-      const code = await main(stepArgs('all', p, `${server.origin}/ns/home`, ['--auth-header', `token ${TOKEN}`]), { log: (m) => lines.push(m), steps });
-      assert.equal(code, 124);
-      assert.equal(lines.some((l) => l.includes(TOKEN)), false, 'the token was printed');
-      const s = stepFile(p, 'summary.json');
-      assert.deepEqual([s.steps.geometry.verdict, s.steps.geometry.detail], ['CRASH: no good: [redacted]', ['saw [redacted] and [redacted]']]);
-      assert.equal(s.invocation.includes('--auth-header <value>'), true);
-      assert.deepEqual(walk(workDir(p.dir, p.slug)).filter((f) => readFileSync(f).includes(TOKEN)), []);
-    });
-  });
-
   await check('CLI all --target preview on a page that never decorates: join is "ERROR (exit 124) … stalled decoration", exit 124, and the summary still records regime preview', async () => {
     await withPreview({ stallBlock: 'cards' }, async (server) => {
       const p = previewProject('cli-all-stall');
@@ -836,7 +752,7 @@ if (playwrightOk) {
   });
 }
 
-await check('CLI usage errors: --target preview needs --reskin; a blank secret, an unset variable, a bad --target and a missing --reskin file are exit 2', async () => {
+await check('CLI usage errors: --target preview needs --reskin; a bad --target and a missing --reskin file are exit 2', async () => {
   const p = makeProject(join(scratch, 'usage'));
   const url = 'http://127.0.0.1:9/ns/home';
   const base = ['join', '--page', p.slug, '--url', url, '--dir', p.dir];
@@ -844,15 +760,10 @@ await check('CLI usage errors: --target preview needs --reskin; a blank secret, 
   const withReskin = argsFor(url);
   const cases = [
     [[...base, '--target', 'preview'], /--target preview needs --reskin/],
-    [[...withReskin, '--auth-header', ' '], /--auth-header needs a value/],
-    [[...withReskin, '--auth-header'], /--auth-header needs a value/],
-    [[...withReskin, '--token-env', ' '], /--token-env needs a value/],
-    [[...withReskin, '--token-env', 'NO_SUCH_PREVIEW_TOKEN'], /no site token: the variable --token-env names is not set in the environment or \.env/],
+    [[...withReskin, '--reskin'], /--reskin needs a value/],
     [[...base, '--target', 'remote'], /--target is local or preview, got "remote"/],
     [[...base, '--target', 'preview', '--reskin', join(scratch, 'no-such.html')], /no-such\.html/],
     [[...base, '--reskin', p.page], /--reskin applies to --target preview/],
-    [[...base, '--auth-header', 'token x'], /--auth-header applies to --target preview/],
-    [[...base, '--token-env', 'X'], /--token-env applies to --target preview/],
     [['join', '--page', p.slug, '--target', 'preview', '--reskin', p.page, '--dir', p.dir], /join needs --url/],
     [argsFor('file:///x/page.html'), /http\(s\)/],
   ];
@@ -864,41 +775,14 @@ await check('CLI usage errors: --target preview needs --reskin; a blank secret, 
   assert.equal(existsSync(join(workDir(p.dir, p.slug), 'join.json')), false);
 });
 
-await check('a mistyped secret flag is never echoed: --auth-header=<value>, an unquoted header value, a token typed as the --token-env name', async () => {
-  const p = makeProject(join(scratch, 'secrets'));
-  const canary = 'hlxtok-canary-7f3a91';
-  const base = ['join', '--page', p.slug, '--url', 'http://127.0.0.1:9/ns/home', '--dir', p.dir, '--target', 'preview', '--reskin', p.page];
-  const clean = async (args, pattern, why, secrets = [canary]) => {
-    const r = await run(args, { cwd: p.root });
-    assert.equal(r.status, 2, `${why}\n${r.all.replaceAll(canary, '[canary]')}`);
-    for (const s of secrets) {
-      assert.equal(r.all.includes(s), false, `${why}: the secret is in the output:\n${r.all}`);
-      assert.equal(r.all.includes(s.slice(4, -2)), false, `${why}: part of the secret is in the output:\n${r.all}`);
-    }
-    assert.match(r.stderr, pattern, why);
-  };
-  await clean([...base, `--auth-header=token ${canary}`], /^figma-gate: unknown flag --auth-header for join: .*--auth-header <value>/m, '--auth-header=value');
-  await clean([...base, `--auth-header=${canary}`], /unknown flag --auth-header for join/, '--auth-header=bare token');
-  await clean([...base, `--token-env=${canary}`], /unknown flag --token-env for join: .*--token-env <value>/, '--token-env=value');
-  await clean([...base, `--auth-header:token ${canary}`], /unknown flag --auth-header for join: .*--auth-header <value>/, '--auth-header:value');
-  await clean([...base, `--token-env:${canary}`], /unknown flag --token-env for join: .*--token-env <value>/, '--token-env:value');
-  await clean([`--auth-header=token ${canary}`, ...base], /unknown command \(not echoed/, '--auth-header=value ahead of the step');
-  await clean([`--auth-header:token ${canary}`, ...base], /unknown command \(not echoed/, '--auth-header:value ahead of the step');
-  await clean([`token ${canary}`, ...base], /unknown command \(not echoed/, 'a header value ahead of the step');
-  await clean([...base, '--auth-header', 'token', canary], /unexpected argument: quote the value/, 'unquoted --auth-header value');
-  await clean([...base, '--token-env', 'NAME', canary], /unexpected argument: quote the value/, 'a stray argument after --token-env');
-  await clean(['join', canary, ...base.slice(1), '--token-env', 'NAME'], /unexpected argument: quote the value/, 'a stray argument before --token-env');
-  await clean([...base, '--token-env', canary], /--token-env takes the name of an environment variable/, 'a token typed as the --token-env name');
-  const bare = 'hlxtokcanary7f3a91';
-  await clean([...base, '--token-env', bare], /no site token: the variable --token-env names is not set/, 'a token typed as the --token-env name, shaped like a name', [bare]);
-  // Without a secret flag the message still names what it did not understand.
+await check('a usage error names what it did not understand: a stray argument, an unknown --x=… flag by its name', async () => {
+  const p = makeProject(join(scratch, 'usage-names'));
   const plainRun = await run(['join', 'stray-arg', '--page', p.slug], { cwd: p.root });
   assert.equal(plainRun.status, 2, plainRun.all);
   assert.match(plainRun.stderr, /unexpected argument "stray-arg"/);
   const other = await run(['join', `--dir=${join(scratch, 'x')}`, '--page', p.slug], { cwd: p.root });
   assert.equal(other.status, 2, other.all);
   assert.match(other.stderr, /unknown flag --dir for join: .*--dir <value>/);
-  assert.equal(other.all.includes(scratch), false, 'the value of an unknown --x=… flag is echoed');
   const known = await run(['join', '--bogus', '--page', p.slug], { cwd: p.root });
   assert.match(known.stderr, /unknown flag --bogus for join/);
 });
@@ -914,14 +798,11 @@ await check('geometry, ramp, pixel and all take --target preview like join: it n
     const local = await run([step, '--page', p.slug, '--url', url, '--reskin', p.page, '--dir', p.dir], { cwd: p.root });
     assert.equal(local.status, 2, `${step}\n${local.all}`);
     assert.match(local.stderr, /--reskin applies to --target preview/);
-    const secret = await run([step, '--page', p.slug, '--url', url, '--token-env', 'X', '--dir', p.dir], { cwd: p.root });
-    assert.equal(secret.status, 2, `${step}\n${secret.all}`);
-    assert.match(secret.stderr, /--token-env applies to --target preview/);
   }
   const r = await run(['register', '--page', p.slug, '--target', 'preview', '--dir', p.dir], { cwd: p.root });
   assert.equal(r.status, 2, r.all);
   assert.match(r.stderr, /no .*figma-preview[/\\]join\.json/, 'register --target preview looks in the preview run\'s directory');
-  for (const flag of [['--reskin', p.page], ['--token-env', 'X'], ['--auth-header', 'token x']]) {
+  for (const flag of [['--reskin', p.page]]) {
     const other = await run(['register', '--page', p.slug, '--target', 'preview', ...flag, '--dir', p.dir], { cwd: p.root });
     assert.equal(other.status, 2, other.all);
     assert.match(other.stderr, new RegExp(`unknown flag ${flag[0]} for register`));
@@ -929,20 +810,10 @@ await check('geometry, ramp, pixel and all take --target preview like join: it n
   assert.equal(existsSync(join(workDir(p.dir, p.slug, 'preview'), 'summary.json')), false);
 });
 
-await check('every line the gate prints and every error it throws has the token redacted', async () => {
-  const p = makeProject(join(scratch, 'redact'));
-  const secret = 'hlxtok-redact-me-42';
-  const lines = [];
-  const args = ['join', '--page', p.slug, '--url', 'http://127.0.0.1:9/ns/home', '--target', 'preview', '--reskin', p.page, '--auth-header', `token ${secret}`, '--dir', p.dir];
-  const steps = { join: async ({ log }) => { log(`saw ${secret} and token ${secret}`); throw new Error(`no good: ${secret}`); } };
-  await assert.rejects(main(args, { log: (m) => lines.push(m), steps }), (e) => e.message === 'no good: [redacted]');
-  assert.deepEqual(lines, ['saw [redacted] and [redacted]']);
-});
-
-await check('--help lists --target, --reskin, --auth-header and --token-env, the preview join, previewSelector and its exit codes; the preview is no longer join only', async () => {
+await check('--help lists --target and --reskin, the preview join, previewSelector and its exit codes; the preview is no longer join only', async () => {
   const r = await run(['--help']);
   assert.equal(r.status, 0, r.stderr);
-  for (const s of ['--target local|preview', '--reskin', '--auth-header', '--token-env', '.plain.html', 'plain section', 'stalled decoration', 'decorated main > div', 'note:', 'previewSelector', '--wait-eds']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
+  for (const s of ['--target local|preview', '--reskin', '.plain.html', 'plain section', 'stalled decoration', 'decorated main > div', 'note:', 'previewSelector', '--wait-eds']) assert.ok(r.stdout.includes(s), `help lacks ${s}`);
   assert.equal(r.stdout.includes('later task'), false);
 });
 

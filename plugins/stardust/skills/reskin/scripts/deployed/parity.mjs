@@ -17,18 +17,16 @@
 //   chrome-parity  computed-style parity of the regions the reskin page has: advisory, never a FAIL
 //   cap-probe      the reskin page's content caps captured to <deployed>/design.json, then compared with the
 //                  preview's: ✗ is a FAIL, caps within ±20px
-// A protected preview (preview.json says auth: true) is measured with the site token, `auth`, and without one is a setup
-// error: the preview side of each capture, chrome-parity and cap-probe's compare, and this step's own browser, send it
-// to the preview's origin only (--token-env and --auth-origin, the value by environment); the reskin page, the
-// pixel and crop comparisons and cap-probe's capture of the reskin page never get it. A public preview is sent none.
+// A protected preview (HTTP 401 or 403 to this step's browser) is a setup error: the leg measures a preview reachable
+// without auth.
 // The reskin page is served by a small static server on 127.0.0.1 for the run (serve.mjs: its own directory, so
 // relative assets resolve), never file://, which stitch-shot and cap-probe treat as live-unsafe.
-//   runParity({ dir, slug, preview, auth, reskinPage, widths, tools, env })  writes parity.json ({ verdict, rows }) and
+//   runParity({ dir, slug, preview, reskinPage, widths, tools, env })  writes parity.json ({ verdict, rows }) and
 //        returns { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, width, value, bar,
 //        status: 'PASS' | 'FAIL' | 'ADVISORY' | 'ERROR' | 'n/a', artifact, detail }. An instrument that gives no verdict
 //        (exit 124, 1 or any other unexpected exit, or a result without its number) makes its row "ERROR (exit N)",
 //        the verdict ERROR and the exit 124; a bot challenge (exit 3) throws an error with code 3; a preview that
-//        answers 401 or 403 to the step's own browser is a setup error (the token is missing, wrong or expired).
+//        answers 401 or 403 to the step's own browser is a setup error (a protected preview is out of scope).
 //        `tools` maps stitch, pixel, crop, chrome and cap to script paths (default: replicaTools()), for tests.
 //   replicaTools(from)  the five instruments in either layout of the scripts, or a UsageError naming what is missing
 //   previewExclusion(chrome)  which parts of the preview the pixel and height rows leave out, for one width's measured
@@ -42,8 +40,8 @@ import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { loadChromium } from '../figma-gate/target.mjs';
-import { callOnPreview, callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson, previewToken } from './child.mjs';
-import { authContextOptions, edsSettle, loadLiveSession } from './eds.mjs';
+import { callTool as call, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
+import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, stepLines, verdictOf } from './rows.mjs';
 import { serveReskinPage } from './serve.mjs';
@@ -113,8 +111,8 @@ const chromeHeights = () => {
 
 // { [width]: { reskin: { header, footer }, preview: { header, footer } } } as each side renders at that width: the
 // reskin page after networkidle, the preview once its EDS decoration has settled (a stall is A4's finding, not this one's).
-// The preview side carries the site token, for its origin; a 401 or 403 there measures nothing and is a setup error.
-async function measureChrome({ widths, urls, token }) {
+// A 401 or 403 on the preview side measures nothing and is a setup error.
+async function measureChrome({ widths, urls }) {
   const chromium = await loadChromium();
   const { newLiveContext } = await loadLiveSession();
   const browser = await chromium.launch();
@@ -123,12 +121,12 @@ async function measureChrome({ widths, urls, token }) {
     for (const width of widths) {
       heights[width] = {};
       for (const side of ['reskin', 'preview']) {
-        const ctx = await newLiveContext(browser, { viewport: { width, height: 900 }, ...(side === 'preview' ? authContextOptions(urls.preview, token) : {}) });
+        const ctx = await newLiveContext(browser, { viewport: { width, height: 900 } });
         try {
           const page = await ctx.newPage();
           const response = await page.goto(urls[side], { waitUntil: side === 'preview' ? 'domcontentloaded' : 'networkidle', timeout: NAV_TIMEOUT_MS });
           if (side === 'preview' && [401, 403].includes(response?.status())) {
-            throw new UsageError(`${urls.preview} answered HTTP ${response.status()}: ${token ? 'the site token was not accepted' : 'the preview is protected: run deployed-gate preview again with --auth-header or --token-env'}`);
+            throw new UsageError(`${urls.preview} answered HTTP ${response.status()}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
           }
           if (side === 'preview') await edsSettle(page, { timeoutMs: EDS_TIMEOUT_MS }); else await page.evaluate(() => document.fonts.ready);
           heights[width][side] = await page.evaluate(chromeHeights);
@@ -142,7 +140,7 @@ async function measureChrome({ widths, urls, token }) {
 const row = (check, width, status, value, { artifact = null, detail = null } = {}) => ({ check, width, value, bar: BAR_OF[check], status, artifact, detail });
 const naRow = (check, width, reason) => row(check, width, 'n/a', `n/a: ${reason}`);
 
-const errorRow = (check, width, name, r) => row(check, width, 'ERROR', `ERROR (exit ${exitOf(r)})`, { detail: firstLine(outputOf(r, null)) || `${name} exited ${exitOf(r)} without a message` });
+const errorRow = (check, width, name, r) => row(check, width, 'ERROR', `ERROR (exit ${exitOf(r)})`, { detail: firstLine(outputOf(r)) || `${name} exited ${exitOf(r)} without a message` });
 
 // The parts of the preview that pixel and height leave out at one width: those the reskin page does not render and the
 // preview does, so the rows compare `main` to `main` instead of a page shifted by a header the reskin page lacks.
@@ -153,14 +151,14 @@ export function previewExclusion(chrome) {
 }
 
 // The rows of one width that come from the two stitched captures: pixel, height, header crop, footer crop.
-async function captureRows({ width, urls, out, chrome, tools, env, token }) {
+async function captureRows({ width, urls, out, chrome, tools, env }) {
   const png = { reskin: join(out, `reskin-${width}.png`), preview: join(out, `preview-${width}.png`) };
   const excluded = previewExclusion(chrome);
   let broken = null;
   for (const side of ['reskin', 'preview']) {
     const extra = side === 'preview' ? ['--wait', String(PREVIEW_WAIT_MS), ...(excluded.hide ? ['--hide', excluded.hide] : [])] : [];
     const args = [urls[side], png[side], '--width', String(width), '--settle', ...extra];
-    const r = side === 'preview' ? await callOnPreview('stitch-shot', tools.stitch, args, env, { token, url: urls.preview }) : await call('stitch-shot', tools.stitch, args, env);
+    const r = await call('stitch-shot', tools.stitch, args, env);
     if (r.status !== 0) { broken = r; break; }
   }
   const rows = [];
@@ -202,10 +200,10 @@ async function captureRows({ width, urls, out, chrome, tools, env, token }) {
 }
 
 // chrome-parity of the regions the reskin page has, at 1440. Advisory: deltas are never a FAIL.
-async function chromeParityRow({ urls, out, chrome, tools, env, token }) {
+async function chromeParityRow({ urls, out, chrome, tools, env }) {
   const parts = ['header', 'footer'].filter((p) => chrome.reskin[p]);
   if (!parts.length) return naRow('chrome-parity', WIDE, NO_CHROME);
-  const r = await callOnPreview('chrome-parity', tools.chrome, [urls.reskin, urls.preview, '--width', String(WIDE), '--no-defaults', ...parts.flatMap((p) => ['--region', `${p}=${p}`]), '--json'], env, { token, url: urls.preview });
+  const r = await call('chrome-parity', tools.chrome, [urls.reskin, urls.preview, '--width', String(WIDE), '--no-defaults', ...parts.flatMap((p) => ['--region', `${p}=${p}`]), '--json'], env);
   const j = r.status === 0 || r.status === 2 ? parseJson(r.stdout) : null;
   if (!Array.isArray(j?.regions)) return errorRow('chrome-parity', WIDE, 'chrome-parity', r);
   const file = join(out, `chrome-parity-${WIDE}.json`);
@@ -217,14 +215,13 @@ async function chromeParityRow({ urls, out, chrome, tools, env, token }) {
   return row('chrome-parity', WIDE, 'ADVISORY', `${findings.length} delta(s): ${j.regions.map((g) => `${g.name} ${g.findings.length}`).join(', ')}`, { artifact: file, detail: shown.join('\n') });
 }
 
-// cap-probe at 1440: the reskin page's caps captured into <deployed>/design.json (the local page only: no token), then the
-// preview's compared with them.
-async function capProbeRow({ urls, out, deployed, tools, env, token }) {
+// cap-probe at 1440: the reskin page's caps captured into <deployed>/design.json, then the preview's compared with them.
+async function capProbeRow({ urls, out, deployed, tools, env }) {
   const design = join(deployed, 'design.json');
   const captured = await call('cap-probe', tools.cap, [urls.reskin, '--write-design', design], env);
   if (captured.status !== 0) return errorRow('cap-probe', WIDE, 'cap-probe', captured);
   const file = join(out, `cap-probe-${WIDE}.json`);
-  const r = await callOnPreview('cap-probe', tools.cap, [urls.reskin, '--against', urls.preview, '--design', design, '--tolerance', String(BARS.cap), '--json', '--out', file], env, { token, url: urls.preview });
+  const r = await call('cap-probe', tools.cap, [urls.reskin, '--against', urls.preview, '--design', design, '--tolerance', String(BARS.cap), '--json', '--out', file], env);
   const rows = r.status === 0 || r.status === 2 ? parseJson(r.stdout)?.compare?.rows : null;
   if (!Array.isArray(rows)) return errorRow('cap-probe', WIDE, 'cap-probe', r);
   const differing = rows.filter((x) => x.ok === false);
@@ -234,9 +231,9 @@ async function capProbeRow({ urls, out, deployed, tools, env, token }) {
   });
 }
 
-// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null (used only when the preview
-// is protected); reskinPage the file of the local reskin page (default <dir>/reskin/pages/<slug>.html).
-export async function runParity({ dir, slug, preview, auth = null, reskinPage = join(dir, 'reskin', 'pages', `${slug}.html`), widths = [1440, 360], tools = null, env = process.env }) {
+// preview is the record of `deployed-gate preview`; reskinPage the file of the local reskin page (default
+// <dir>/reskin/pages/<slug>.html).
+export async function runParity({ dir, slug, preview, reskinPage = join(dir, 'reskin', 'pages', `${slug}.html`), widths = [1440, 360], tools = null, env = process.env }) {
   const deployed = deployedDir(dir, slug);
   const out = join(deployed, 'parity');
   const record = join(deployed, 'parity.json');
@@ -248,7 +245,6 @@ export async function runParity({ dir, slug, preview, auth = null, reskinPage = 
   };
 
   if (typeof preview.url !== 'string' || !preview.url) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
-  const token = previewToken('parity', preview, auth);
   if (!existsSync(reskinPage)) throw new UsageError(`missing ${reskinPage}: the reskin page the preview is held to (deployed-gate parity --reskin <file>)`);
   const instruments = tools ? checkTools(tools) : replicaTools();
   mkdirSync(out, { recursive: true });
@@ -256,8 +252,8 @@ export async function runParity({ dir, slug, preview, auth = null, reskinPage = 
   const server = await serveReskinPage(reskinPage);
   try {
     const urls = { reskin: server.url, preview: preview.url };
-    const run = { urls, out, tools: instruments, env: childEnv(env, null), token };
-    const chrome = await measureChrome({ widths, urls, token });
+    const run = { urls, out, tools: instruments, env: childEnv(env) };
+    const chrome = await measureChrome({ widths, urls });
     const rows = [];
     for (const width of widths) {
       rows.push(...await captureRows({ ...run, width, chrome: chrome[width] }));

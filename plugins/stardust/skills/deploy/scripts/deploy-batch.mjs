@@ -48,21 +48,13 @@
  * re-run command, never written to the ledger or the log; the expiry and HALT
  * lines name the variable or the file, never the value.
  *
- * Site token (a protected preview): the delivered .plain.html check answers 401 without it. --site-token-env
- * <NAME> reads it from the environment variable NAME, else from a NAME= line of ./.env (exactly NAME=value, bare or
- * quoted: not `export NAME=`, not spaces round the `=`, not a trailing comment — the one grammar of every stardust
- * instrument, site-auth.mjs); a value starting with neither `token ` nor `bearer ` (any case) gets `token ` in front.
- * It is sent as Authorization on that check only, to the verify origin only — never to DA or the admin API — and
- * never printed, logged, written to the ledger or put in the re-run command (only the variable's name is). A
- * variable that is not set is a usage error (exit 2) naming it; so is a `.env` line for it in a form that is not read.
- *
  * Idempotent: PUT/preview/live are all safe to repeat. Safe to Ctrl-C and re-run.
  *
  * Usage:
  *   DA_TOKEN=… node deploy-batch.mjs --org <org> --repo <repo> --branch <branch> \
  *     --content content [--paths list.txt] [--concurrency 4] [--no-publish] \
  *     [--force] [--ledger path] [--log path] [--retries 4] [--backoff-ms 500] \
- *     [--token-env DA_TOKEN | --token-file <path>] [--site-token-env <NAME>]
+ *     [--token-env DA_TOKEN | --token-file <path>]
  *
  * --content   dir of *.html body-fragment files (default: content). Each file's
  *             path relative to this dir, minus .html, is its DA/web path.
@@ -76,8 +68,6 @@
  * --token-env  environment variable holding the token (default DA_TOKEN).
  * --token-file read the token from this file instead (one of the two flags, never
  *             both; a missing or empty file is a usage error, exit 2).
- * --site-token-env  environment variable (else ./.env line) holding the SITE token for a protected preview's
- *             delivered check; independent of the DA token (--token-env / --token-file).
  *
  * Test hooks (environment, read once at start; the production defaults are
  * unchanged when unset):
@@ -95,7 +85,6 @@ import { readFileSync } from 'node:fs';
 import { mergeLedger } from './file-lock.mjs';
 // The sibling uploader guards its CLI behind a main-module check, so the import runs nothing.
 import { jwtExpiry } from './da-media-upload.mjs';
-import { readSiteAuth, strayEnvLine, strayMessage } from './site-auth.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -109,19 +98,6 @@ const DA_SRC = process.env.DA_SOURCE_BASE || 'https://admin.da.live/source';
 const ADMIN = process.env.AEM_ADMIN_BASE || 'https://admin.hlx.page';
 const VERIFY_ORIGIN = process.env.DEPLOY_VERIFY_ORIGIN || '';
 const TOKEN_EXIT = 3;
-
-// The site token for a protected preview's delivered check, read by the one grammar every instrument shares
-// (site-auth.mjs): the variable `name`, else its `NAME=` line of ./.env. The name is checked first, so that a token
-// pasted where a name belongs is refused without being echoed.
-function siteAuthOf(name) {
-  const siteAuth = readSiteAuth(name, { flag: '--site-token-env' });
-  if (siteAuth) return siteAuth;
-  throw new Error(strayEnvLine(name) ? strayMessage('--site-token-env') : '--site-token-env: the variable it names is not set in the environment or in ./.env');
-}
-
-// The text with the site token (and the bare token under its `token ` / `bearer ` prefix) replaced.
-const redact = (text, secret) => [secret, secret.replace(/^(token|bearer) /i, '')].filter(Boolean).sort((x, y) => y.length - x.length)
-  .reduce((out, v) => out.split(v).join('[redacted]'), String(text));
 
 function parseArgs(argv) {
   const a = { content: 'content', concurrency: 4, publish: true, force: false, retries: 4, backoffMs: 500 };
@@ -142,7 +118,6 @@ function parseArgs(argv) {
     else if (k === '--force') a.force = true;
     else if (k === '--token-env') a.tokenEnv = next();
     else if (k === '--token-file') a.tokenFile = next();
-    else if (k === '--site-token-env') a.siteTokenEnv = next() ?? '';
     else throw new Error(`unknown arg: ${k}`);
   }
   if (!a.org || !a.repo || !a.branch) throw new Error('--org, --repo and --branch are required');
@@ -160,7 +135,6 @@ function parseArgs(argv) {
     a.token = process.env[a.tokenEnv];
     if (!a.token) throw new Error(`missing token in env ${a.tokenEnv}`);
   }
-  if (a.siteTokenEnv !== undefined) a.siteAuth = siteAuthOf(a.siteTokenEnv);
   a.ledger ||= path.join(a.content, '.deploy-ledger.json');
   a.log ||= path.join(a.content, '.deploy-log.jsonl');
   return a;
@@ -222,26 +196,19 @@ async function call(method, url, { token, body } = {}, { retries = 4, backoffMs 
   }
 }
 
-async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live', siteAuth }) {
+async function deliveredOk({ org, repo, branch, webPath, tld = 'aem.live' }) {
   // admin 200 != delivered; GET the rendered .plain.html on the delivery tree
-  // (live = aem.live; preview-only = aem.page). A protected preview answers 401 without its site token,
-  // which goes on this request only — never on a DA or admin call, and fetch drops it on a cross-origin redirect.
+  // (live = aem.live; preview-only = aem.page).
   const origin = VERIFY_ORIGIN || `https://${branch}--${repo}--${org}.${tld}`;
   const url = `${origin}${webPath}.plain.html`;
-  const headers = { 'accept-encoding': 'gzip' };
-  if (siteAuth) headers.authorization = siteAuth;
   try {
-    const res = await fetch(url, { headers });
-    if (res.status !== 200) {
-      const hint = [401, 403].includes(res.status) ? (siteAuth ? ' — the site token was refused' : ' — a protected preview needs --site-token-env <NAME>') : '';
-      return { ok: false, why: `plain.html ${res.status}${hint}` };
-    }
+    const res = await fetch(url, { headers: { 'accept-encoding': 'gzip' } });
+    if (res.status !== 200) return { ok: false, why: `plain.html ${res.status}` };
     const html = await res.text();
     if (html.includes('about:error')) return { ok: false, why: 'about:error in delivered html' };
     return { ok: true };
   } catch (err) {
-    const why = String(err.message || err);
-    return { ok: false, why: siteAuth ? redact(why, siteAuth) : why };
+    return { ok: false, why: String(err.message || err) };
   }
 }
 
@@ -299,7 +266,7 @@ async function deployOne(page, args, ledger, logLine) {
   }
 
   // 4. verify delivery (admin 200 != delivered)
-  const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page', siteAuth: args.siteAuth });
+  const v = await deliveredOk({ org, repo, branch, webPath: page.webPath, tld: publish ? 'aem.live' : 'aem.page' });
   rec.verify = v.ok ? 'ok' : v.why;
   rec.status = v.ok ? (publish ? 'live' : 'previewed') : 'verify-fail';
   if (!v.ok) rec.lastError = v.why;

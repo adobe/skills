@@ -62,9 +62,6 @@
  *                                  DEPLOY_VERIFY_ORIGIN). A stall exits 2
  *                                  "stalled decoration: …", nothing measured
  *       [--eds-timeout <ms>]       settle bound (default 20000)
- *       [--auth-header <value>]    Authorization header for the rendered origin
- *                                  only (a protected preview); never printed
- *       [--token-env <NAME>]       the same, read from the variable NAME
  *       [--deltas <json>]          the page's declared source → preview differences
  *                                  (reskin/deltas/<slug>.json, deployed/deltas.mjs):
  *                                  text.allow entries rewrite each slot's model text;
@@ -99,9 +96,7 @@ function parseArgs(argv) {
   const opts = { 'rendered-scope': 'main', paint: 'fail', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --rendered-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env', 'deltas']);
-  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
-  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
+  const VALUE_FLAGS = new Set(['model', 'rendered', 'rendered-scope', 'report', 'paint', 'ua', 'wait-until', 'locale', 'eds-timeout', 'deltas']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -109,16 +104,10 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--') || ((AUTH_FLAGS.has(a.slice(2)) || a === '--deltas') && !v.trim())) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (a === '--deltas' && !v.trim())) { console.error(`[slot-coverage] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else {
-      // Never echo the whole element: `--auth-header=<token>`, `--auth-header:<token>` or the stray half of an unquoted value is a secret.
-      const name = a.match(/^--[\w-]+/)?.[0] ?? null;
-      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
-      console.error(`[slot-coverage] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
-      process.exit(2);
-    }
+    else { console.error(`[slot-coverage] unknown arg: ${a}`); process.exit(2); }
   }
   if (!['fail', 'warn'].includes(opts.paint)) { console.error(`[slot-coverage] --paint must be fail|warn, got: ${opts.paint}`); process.exit(2); }
   return opts;
@@ -129,7 +118,7 @@ if (args.help || !args.model || !args.rendered) {
   console.log('usage: node slot-coverage.mjs --model <content-model.json> --rendered <url|file>');
   console.log('         [--rendered-scope main] [--report <path>] [--paint fail|warn]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
-  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>] [--deltas <json>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--deltas <json>]');
   console.log('Proves every model slot (text, CTAs, images) + all metadata present in the render,');
   console.log('and that every present content image actually PAINTS (naturalWidth > 0) — a URL-string');
   console.log('match can pass while an origin-locked source CDN 403s every image (gates.md § Image');
@@ -137,8 +126,7 @@ if (args.help || !args.model || !args.rendered) {
   console.log('Live --rendered targets get the shared live-session hardening (real-Chrome UA + standard');
   console.log('headers, domcontentloaded, challenge detection); escalate bot-managed sites with --headed.');
   console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
-  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing. --auth-header /');
-  console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
+  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing.');
   console.log('--deltas <json> applies the page\'s declared source → preview differences (text, images, localized links,');
   console.log('metadata) and reports each one applied or unused; "blocking": false in it makes a failure advisory (exit 0).');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live target (never measured).');
@@ -162,7 +150,7 @@ try {
   console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
   process.exit(2);
 }
-const { edsSettle, isEdsHost, siteAuth, authContextOptions, redact } = eds;
+const { edsSettle, isEdsHost } = eds;
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
 
 let chromium;
@@ -175,13 +163,7 @@ try { ({ chromium } = await import('playwright')); } catch {
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
 const renderedUrl = toUrl(args.rendered);
-// The preview's token: only when asked for (--auth-header / --token-env) and only for an http(s) rendered target.
-const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undefined || args['token-env'] !== undefined);
-const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
-// Anything printed passes through here, so the token cannot reach stderr by way of an error text.
-const die = (m, c = 2) => { console.error(`[slot-coverage] ${redact(m, auth)}`); process.exit(c); };
-// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
-if (wantsAuth && !auth) die('no site token: the variable --token-env names is not set in the environment or .env');
+const die = (m, c = 2) => { console.error(`[slot-coverage] ${m}`); process.exit(c); };
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 // --deltas: loaded here, after the --help guard, and validated before a browser starts.
@@ -204,7 +186,6 @@ const browser = args.headed ? await launchStealthHeaded(chromium) : await chromi
 // local/file targets, mandatory on live ones (F-G/F-R1).
 const ctx = await newLiveContext(browser, {
   ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
-  ...authContextOptions(renderedUrl, auth),
 });
 const page = await ctx.newPage();
 let navErr = null;
@@ -217,7 +198,7 @@ if (isLiveHttpUrl(renderedUrl)) {
   try {
     await gotoLive(page, renderedUrl, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
   } catch (e) {
-    console.error(`[slot-coverage] ${redact(e.message, auth)}`);
+    console.error(`[slot-coverage] ${e.message}`);
     await browser.close();
     process.exit(e.name === 'BotChallengeError' ? 3 : 2);
   }
@@ -282,7 +263,7 @@ const squash = (t) => t.replace(/\s+/g, ' ').trim();
 const paintCheck = (label, painted) => {
   const hint = painted ? '' : 'naturalWidth=0 — never painted; origin-locked source CDN? localize assets (Phase 6, gates.md § Image paint)';
   if (!painted && args.paint === 'warn') {
-    console.log(redact(`  WARN paint: ${label} — ${hint}`, auth));
+    console.log(`  WARN paint: ${label} — ${hint}`);
     R('paint', `${label} painted (WARN-downgraded)`, true, hint);
   } else {
     R('paint', `${label} painted`, painted, hint);
@@ -396,15 +377,15 @@ if (deltas) {
 }
 if (args.report) {
   mkdirSync(dirname(resolve(args.report)), { recursive: true });
-  writeFileSync(args.report, redact(md, auth));
+  writeFileSync(args.report, md);
 }
 const failLines = results.filter((r) => !r.pass);
-console.log(redact(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`, auth));
-for (const f of failLines.slice(0, 15)) console.log(redact(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`, auth));
+console.log(`[slot-coverage] ${allPass ? 'PASS' : 'FAIL'} — ${results.length - failLines.length}/${results.length} checks${args.report ? ` — report: ${args.report}` : ''}`);
+for (const f of failLines.slice(0, 15)) console.log(`  FAIL ${f.gate}: ${f.check}${f.detail ? ` — ${f.detail}` : ''}`);
 if (deltas) {
-  console.log(redact(`  deltas applied: ${applied.length ? applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`, auth));
-  if (ignoredKeys.length) console.log(redact(`  ignored by delta: ${ignoredKeys.join(', ')}`, auth));
-  for (const line of deltasLib.warningLines(deltas, unused)) console.log(redact(`  ${line}`, auth));
-  if (advisory) console.log(redact(`[slot-coverage] ${deltasLib.ADVISORY}: ${failLines.length} failed check(s) reported, not enforced — exit 0`, auth));
+  console.log(`  deltas applied: ${applied.length ? applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`);
+  if (ignoredKeys.length) console.log(`  ignored by delta: ${ignoredKeys.join(', ')}`);
+  for (const line of deltasLib.warningLines(deltas, unused)) console.log(`  ${line}`);
+  if (advisory) console.log(`[slot-coverage] ${deltasLib.ADVISORY}: ${failLines.length} failed check(s) reported, not enforced — exit 0`);
 }
 process.exit(allPass || advisory ? 0 : 1);

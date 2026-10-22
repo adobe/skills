@@ -8,20 +8,18 @@
 //                                         token verbatim. A token the sheet does not carry has no entry.
 //                                         layout.containerMaxWidth is not asserted here (A3's cap-probe measures it:
 //                                         EDS wrappers are full-width by design).
-//   runTokens({ dir, slug, preview, auth, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
+//   runTokens({ dir, slug, preview, env, donorProbe })  writes tokens-spec.json, runs donor-probe on the preview,
 //                                         writes tokens.json and returns { verdict, exit, report, json, total, failures,
 //                                         skipped }. A probe that cannot give a verdict throws: a UsageError (exit 2),
 //                                         an error with code 3 (bot challenge) or code 124 (no verdict).
 // The labels are donor-probe's DEFAULT_SPEC labels for the same token paths, so a failure reads as it does in Phase 5.
-// The site token reaches the probe by environment (never argv) and never appears in a message, report or record.
 import { rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { readJson, writeJson } from '../figma/io.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
-import { redact } from './eds.mjs';
-import { authHint, childEnv, coded, outputOf, runChild, setupError, tokenFlags } from './child.mjs';
+import { childEnv, coded, outputOf, runChild, setupError } from './child.mjs';
 import { deployedDir, readInput } from './io.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -83,10 +81,10 @@ export function edsSpec({ tokens, runtimeContract }) {
 
 const SELECTOR_NOTHING = /^selector ".*" matched nothing$/;
 
-// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null. The sheet is
+// preview is the record of `deployed-gate preview`. The sheet is
 // <dir>/reskin/donor-tokens.json, the runtime contract <parent of dir>/stardust/runtime-contract.json (as the
 // eligibility check reads it). Blocking: verdict FAIL is exit 1.
-export async function runTokens({ dir, slug, preview, auth = null, env = process.env, donorProbe = DONOR_PROBE }) {
+export async function runTokens({ dir, slug, preview, env = process.env, donorProbe = DONOR_PROBE }) {
   const out = deployedDir(dir, slug);
   const files = { record: join(out, 'tokens.json'), spec: join(out, 'tokens-spec.json'), report: join(out, 'tokens-probe.md'), json: join(out, 'tokens-probe.json') };
   for (const f of Object.values(files)) rmSync(f, { force: true });
@@ -100,10 +98,10 @@ export async function runTokens({ dir, slug, preview, auth = null, env = process
   const want = new Map(spec.map((e) => [e.label, e.value]));
   writeJson(files.spec, spec);
 
-  const args = [donorProbe, '--tokens', sheetPath, '--spec', files.spec, '--rendered', preview.url, '--wait-eds', '--no-sanity', '--report', files.report, '--json', files.json, ...tokenFlags(auth)];
+  const args = [donorProbe, '--tokens', sheetPath, '--spec', files.spec, '--rendered', preview.url, '--wait-eds', '--no-sanity', '--report', files.report, '--json', files.json];
   let r;
-  try { r = await runChild(process.execPath, args, { env: childEnv(env, auth) }); } catch (e) { throw coded(124, redact(`donor-probe did not start: ${e.message}`, auth)); }
-  const stop = setupError(r, { name: 'donor-probe', auth, hint: authHint(preview, auth) });
+  try { r = await runChild(process.execPath, args, { env: childEnv(env) }); } catch (e) { throw coded(124, `donor-probe did not start: ${e.message}`); }
+  const stop = setupError(r, { name: 'donor-probe' });
   if (stop) throw stop;
 
   let probe = null;
@@ -111,7 +109,7 @@ export async function runTokens({ dir, slug, preview, auth = null, env = process
   const scored = Array.isArray(probe?.results) ? probe.results.filter((x) => x.status === 'PASS' || x.status === 'FAIL') : null;
   const bad = scored?.filter((x) => x.status === 'FAIL') ?? [];
   if (!scored || (r.status === 0) !== (bad.length === 0)) {
-    throw coded(124, `donor-probe did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r, auth)}`);
+    throw coded(124, `donor-probe did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r)}`);
   }
   const failures = bad.map((x) => {
     const label = x.label ?? x.check;

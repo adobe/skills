@@ -41,28 +41,19 @@ site's own repo on its existing chrome (`nav`/`footer` left at `/nav`, `/footer`
    `<paths.txt>` is a file, one web path per line (the page and both namespaced chrome documents; in a sandbox the
    page), each without extension, like `/<ns>/<slug>`; `--force` because a page already live is skipped; the
    dedicated ledger keeps the run apart from `content/.deploy-ledger.json`. Exit 3 is a token halt: refresh the
-   token, re-run the same command; never a FAIL. On a protected preview add `--site-token-env <NAME>`: the delivered
-   check reads `.plain.html` from the preview (`--token-env` names the DA token).
+   token, re-run the same command; never a FAIL.
 4. **`deployed-gate preview`** polls until the preview answers, checks isolation and writes `preview.json`.
 5. **The delta file.** Run `deployed-gate content` with none, then write `reskin/deltas/<slug>.json` from what fails,
    one entry per real difference with its why, starting with `"blocking": false`: the text check stays advisory until
    the page's differences are measured.
-6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger. On a protected preview
-   give the command `--token-env <NAME>`, never `--auth-header` (`run-bg` saves and prints its command).
+6. **`deployed-gate all` under `run-bg`;** copy `summary.json`'s `ledgerFragment` into the ledger.
 7. **Step 10's deployed checks stay mandatory before handoff**, run as `deploy` specifies, not re-built here: the
    desktop and mobile eyeball, the delayed-font/nav CLS probe (CLS < 0.1; `deployed-gate` and `qa-gate` measure settled
    pages) and the applicable header-behavior checks. Record each result, or `unresolved: <why>`, under `gates.step10`
    (§ The ledger).
 
-A preview is protected when it refuses the first request `preview` makes, which carries no token (`preview.json`
-`auth: true`). It takes `--auth-header "<value>"` or `--token-env <NAME>` on every step (a value starting with neither
-`token ` nor `bearer ` gets `token ` put in front). Without one `preview` stops with exit 2 rather than poll, and every
-later step does before it measures anything; a token it refuses (401 or 403 once sent) is exit 2 too, not a poll to 124.
-The token goes to the preview
-origin only (not a font or image host, not the local reskin page), to child processes by environment (`--token-env`,
-`--auth-origin` the preview) and never argv, output, records or the ledger; a public preview is sent none
-(`tokenUnused: true` when one was offered). The token never crosses a redirect: one inside the preview's origin fails
-(measure the final URL), one to another origin is followed without it. A sandbox repo's preview is public by
+The preview must be reachable without auth: a protected preview is out of scope. `preview` stops with exit 2 on a
+401 or 403 rather than poll, and the gates send no Authorization header. A sandbox repo's preview is public by
 default.
 
 ## The delta file
@@ -122,7 +113,7 @@ A value is `PASS`, `PASS (n/a: <checks>)` (passed, those checks not measured; th
 measured nothing: the step fails and the run goes on, `sanity` records its own hard decoration FAIL),
 `ADVISORY <gates> (deltas.blocking false)`, `not run: <why>` or
 `ERROR (exit N): <why>`; `figma` is figma-gate's own fragment, or one of those (`not run: no figma checks`).
-`invocation` is the exact argument list, `--auth-header`'s value `[redacted]` (`--token-env`'s is a variable name, kept). A residual's `class` is
+`invocation` is the exact argument list. A residual's `class` is
 `deployed.content`, `.tokens`, `.parity`, `.sanity` or `.inherited` (M2b's are `figma.*`); a `deployed.sanity`
 residual is never `accepted`.
 
@@ -138,14 +129,12 @@ only what it can move; what still fails afterwards is logged as a residual.
 | content page | `deploy-batch`, then `content`, `inherited`, `figma` |
 
 Each step is `deployed-gate <step> --page <slug>`; `figma` is `node stardust/scripts/reskin/figma-gate.mjs all --page <slug> --url <preview url>
---target preview --reskin stardust/reskin/pages/<slug>.html [--auth-header "<value>" | --token-env <NAME>]`, where
+--target preview --reskin stardust/reskin/pages/<slug>.html`, where
 `<preview url>` is `preview.json`'s `url` (it needs `figma-checks/<slug>.json`; `deployed-gate all` runs it too).
 
 The matrix is for iterating: close each round with one `deployed-gate all` (step 6); a single step's verdict is never what
 the ledger records.
-A fix counts only once served: `curl --compressed <css url> | grep <marker>` finds it on the preview; on a protected
-one, with the token out of argv (bash, curl ≥ 7.55; `printf` is a builtin, so no process's argv holds the value):
-`curl --compressed -H @<(printf 'Authorization: token %s\n' "$SITE_TOKEN") <css url> | grep <marker>`. A run with no
+A fix counts only once served: `curl --compressed <css url> | grep <marker>` finds it on the preview. A run with no
 verdict (exit 124, or an instrument that did not run) does not count: re-run once; the same 124 twice is a
 `needs-owner` residual; exit 3 is neither a FAIL nor an iteration.
 

@@ -11,19 +11,15 @@
 //                       the inputs there are, and a missing one makes the row a FAIL ("incomplete: ..."), never a pass
 //   by deploy           localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own loop before the
 //                       push; recorded, never PASS or FAIL, never part of the verdict
-// A protected preview (preview.json says auth: true) needs the site token, `auth`, and without one is a setup error. It goes
-// to the preview origin and to no other: the .plain.html request carries it, and ai-readability and qa-gate get it by
-// environment and --token-env, aimed at that origin by --auth-origin (the token never travels in argv, and never appears in a
-// row, a line or a record). A record whose plain URL is elsewhere is a setup error. A public preview is sent none, whatever
-// token was given.
+// A protected preview (HTTP 401 or 403 on the .plain.html) is a setup error: the leg measures a preview reachable without
+// auth.
 //   plainAsserts(html)  the problems of an authored form, as strings; none is a pass
-//   runInherited({ dir, slug, preview, auth, tools, env })  writes inherited.json ({ verdict, rows }) and returns
+//   runInherited({ dir, slug, preview, tools, env })  writes inherited.json ({ verdict, rows }) and returns
 //        { verdict: 'PASS' | 'FAIL' | 'ERROR', exit, rows }. A row is { check, value, bar, status: 'PASS' | 'FAIL' |
 //        'ERROR' | 'by deploy', detail? }. A check that gave no verdict (no answer or a 5xx or 429 from the preview, an
 //        instrument exiting other than 0 or 1, no score in the report, no QA GATE line) is "ERROR (exit N)", the verdict
 //        ERROR and the exit 124; a bot challenge throws an error with code 3. A setup problem throws a UsageError: a record
-//        without its url or with a plain URL off its origin, a missing instrument, a protected preview and no token (or one
-//        it does not accept). `tools` maps readability and qa to script paths (default: deployTools()), for tests.
+//        without its url, a missing instrument, a protected preview. `tools` maps readability and qa to script paths (default: deployTools()), for tests.
 //   deployTools(from)   the two instruments in either layout of the scripts, or a UsageError naming what is missing
 //   inheritedLines(result)  the lines the CLI prints
 // Evidence: <deployed>/inherited/ (ai-readability.json, qa-gate.txt) and <deployed>/inherited.json.
@@ -32,8 +28,7 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { callOnPreview, exitOf, firstLine, outputOf, parseJson, previewToken } from './child.mjs';
-import { redact } from './eds.mjs';
+import { callTool, childEnv, exitOf, firstLine, outputOf, parseJson } from './child.mjs';
 import { fetchOnce } from './fetch.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
@@ -158,13 +153,12 @@ const row = (check, status, value, detail = null) => ({ check, value, bar: BAR_O
 const errorRow = (check, code, detail) => row(check, 'ERROR', `ERROR (exit ${code})`, detail);
 const counted = (r) => r.status === 0 || r.status === 1;
 const readJsonFile = (file) => { try { return parseJson(readFileSync(file, 'utf8')); } catch { return null; } };
-const sameOrigin = (url, origin) => { try { return new URL(url).origin === new URL(origin).origin; } catch { return false; } };
 
-async function plainRow({ preview, token }) {
-  const got = await fetchOnce(preview.plain, token, REQUEST_MS);
+async function plainRow({ preview }) {
+  const got = await fetchOnce(preview.plain, REQUEST_MS);
   if (got.status === 0 || got.status === 429 || got.status >= 500) return errorRow('.plain.html', EXIT.ERROR, got.last);
   if (got.status === 401 || got.status === 403) {
-    throw new UsageError(`${preview.plain} answered HTTP ${got.status}: ${token ? 'the site token was not accepted' : 'the preview is protected: run deployed-gate preview again with --auth-header or --token-env'}`);
+    throw new UsageError(`${preview.plain} answered HTTP ${got.status}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
   }
   if (got.status !== 200) return row('.plain.html', 'FAIL', `HTTP ${got.status}`);
   const problems = plainAsserts(got.body);
@@ -180,13 +174,13 @@ function gapDetail(page) {
   return lines.join('\n') || null;
 }
 
-async function readabilityRow({ preview, token, out, tools, env }) {
+async function readabilityRow({ preview, out, tools, env }) {
   const file = join(out, 'ai-readability.json');
-  const r = await callOnPreview('ai-readability', tools.readability, ['--origin', preview.origin, preview.path, '--min', String(MIN_READABILITY), '--json', file], env, { token, url: preview.url });
+  const r = await callTool('ai-readability', tools.readability, ['--origin', preview.origin, preview.path, '--min', String(MIN_READABILITY), '--json', file], env);
   const page = counted(r) ? readJsonFile(file)?.pages?.[0] : null;
   const score = page?.code?.score;
   if (!Number.isFinite(score)) {
-    const said = page?.error ? redact(`${page.path}: ${page.error}`, token) : firstLine(outputOf(r, null));
+    const said = page?.error ? `${page.path}: ${page.error}` : firstLine(outputOf(r));
     return errorRow('ai-readability', exitOf(r), said || `ai-readability exited ${exitOf(r)} without a score`);
   }
   return score < MIN_READABILITY ? row('ai-readability', 'FAIL', String(score), gapDetail(page)) : row('ai-readability', 'PASS', String(score));
@@ -194,17 +188,17 @@ async function readabilityRow({ preview, token, out, tools, env }) {
 
 // qa-gate runs on whatever inputs there are (its schema-free checks need neither). An input it is meant to read that is missing
 // makes the row a FAIL naming the step that writes it: the preview is not accepted on a partial run, and the fix is a step to run.
-async function qaRow({ preview, token, schema, design, out, tools, env }) {
+async function qaRow({ preview, schema, design, out, tools, env }) {
   const missing = [];
   const flags = [];
   if (existsSync(schema)) flags.push('--schema', schema); else missing.push(`no eds-schema/${basename(schema)} (run deploy Step 2b)`);
   if (existsSync(design)) flags.push('--design', design); else missing.push('no design.json (run deployed-gate parity first)');
   const incomplete = missing.length ? `incomplete: ${missing.join('; ')}` : null;
-  const r = await callOnPreview('qa-gate', tools.qa, [preview.url, ...flags], env, { token, url: preview.url });
+  const r = await callTool('qa-gate', tools.qa, [preview.url, ...flags], env);
   writeFileSync(join(out, 'qa-gate.txt'), r.stdout);
   const summary = r.stdout.match(/^QA GATE: (?:PASS|FAIL) — (.+)$/m)?.[1];
   if (!counted(r) || !summary) {
-    const said = firstLine(outputOf(r, null)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`;
+    const said = firstLine(outputOf(r)) || `qa-gate exited ${exitOf(r)} without a QA GATE line`;
     return errorRow('qa-gate', exitOf(r), incomplete ? `${said}\n${incomplete}` : said);
   }
   const fails = r.stdout.split('\n').filter((l) => /^\s*✗ /.test(l)).map((l) => l.replace(/^\s*✗ /, '').trim());
@@ -213,8 +207,8 @@ async function qaRow({ preview, token, schema, design, out, tools, env }) {
   return row('qa-gate', 'FAIL', summary, listed(fails));
 }
 
-// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null.
-export async function runInherited({ dir, slug, preview, auth = null, tools = null, env = process.env }) {
+// preview is the record of `deployed-gate preview`.
+export async function runInherited({ dir, slug, preview, tools = null, env = process.env }) {
   const deployed = deployedDir(dir, slug);
   const out = join(deployed, 'inherited');
   const record = join(deployed, 'inherited.json');
@@ -223,19 +217,14 @@ export async function runInherited({ dir, slug, preview, auth = null, tools = nu
   for (const key of ['url', 'origin', 'path', 'plain']) {
     if (typeof preview?.[key] !== 'string' || !preview[key]) throw new UsageError(`${join(deployed, 'preview.json')} has no ${key}: run deployed-gate preview --page ${slug} again`);
   }
-  if (!sameOrigin(preview.plain, preview.origin)) {
-    throw new UsageError(`preview.json plain URL is not on the preview origin (${preview.plain}, origin ${preview.origin}): the site token goes to the preview origin only; run deployed-gate preview --page ${slug} again`);
-  }
-  const token = previewToken('inherited', preview, auth);
   const instruments = tools ? checkTools(tools) : deployTools();
   mkdirSync(out, { recursive: true });
 
   const run = {
     preview,
-    token,
     out,
     tools: instruments,
-    env,
+    env: childEnv(env),
     schema: join(dir, 'eds-schema', `${slug}.json`),
     design: join(deployed, 'design.json'),
   };
