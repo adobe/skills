@@ -643,7 +643,15 @@ rather than erroring.
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
-    capture. On the warning, decide before gating: load the face in a real
+    capture. A face is dead when no loaded face of its family, weight and
+    style exists — a fetch that failed, or a `local()` source the gate's
+    Linux browser cannot resolve (`recreation-procedure.md` § Fonts policy)
+    — and the capture record (`--json`, gate.sh's `<side>-shot.json`) carries
+    them as `fontsFailed` (`[]` = every face loaded, `null` = the check could
+    not run, one stderr line): gate.sh prints one `fonts on the <side>
+    capture` line per side, gate-all fails the row (`font-not-loaded:<family>`,
+    `font-check-skipped:<side>`) — a check that could not run is never a
+    pass. On the warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
