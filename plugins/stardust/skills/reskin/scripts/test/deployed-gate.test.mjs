@@ -4,9 +4,9 @@
 // shared repo, and the preview.json the later steps read. Pure functions first, then the CLI against the fake
 // preview server of fixtures/deployed/ (DEPLOY_VERIFY_ORIGIN points the gate at it). No browser, no network.
 // Then `all`, the whole leg in one run: the verdict lines, summary.json and its ledger fragment, the exit mapping and
-// the figma-gate child against stand-in steps and stand-in figma-gate scripts (no browser), the secret scan, and — in
-// the part that needs playwright (a skip line when it does not resolve; slow: every step opens Chromium) — real runs
-// against the fake servers: a clean public preview, one with an overflow, a protected preview with the real figma-gate.
+// the figma-gate child against stand-in steps and stand-in figma-gate scripts (no browser), and — in the part that
+// needs playwright (a skip line when it does not resolve; slow: every step opens Chromium) — real runs against the
+// fake servers: a clean preview, one with an overflow, one with the real figma-gate.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -30,14 +30,13 @@ import { makeProject } from './fixtures/figma-gate/setup.mjs';
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATE = join(SCRIPTS, 'deployed-gate.mjs');
 const TOKEN = 'canary-456';
-const HEADER = `token ${TOKEN}`;
 const scratch = mkdtempSync(join(tmpdir(), 'deployed-gate-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 
 // One gate run: { status, stdout, stderr, all }. The ambient hooks are cleared so a run only sees what it is given.
 const run = (args, { cwd = scratch, env = {}, script = GATE } = {}) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', SITE_TOKEN: '', ...env } });
+  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', ...env } });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
@@ -63,7 +62,6 @@ const PAGE = ['--page', 'home', '--org', 'o', '--repo', 'r', '--branch', 'b', '-
 const preview = (root, origin, extra = ['--namespace', 'ns'], opts = {}) => run(['preview', ...PAGE, ...extra], { cwd: root, ...opts, env: { DEPLOY_VERIFY_ORIGIN: origin, ...opts.env } });
 const recordOf = (root) => JSON.parse(readFileSync(join(deployedDir(join(root, 'stardust'), 'home'), 'preview.json'), 'utf8'));
 const recordPath = (root) => join(deployedDir(join(root, 'stardust'), 'home'), 'preview.json');
-const noToken = (...texts) => { for (const t of texts) assert.ok(!t.includes(TOKEN), `the token leaked: …${t.slice(Math.max(0, t.indexOf(TOKEN) - 40), t.indexOf(TOKEN) + 40)}…`); };
 
 // The delivered fixture page with its head's nav and footer metas changed (null drops one), served from a file of its own.
 const pageWithChrome = (name, { nav = '/ns/nav', footer = '/ns/footer' } = {}) => {
@@ -171,7 +169,7 @@ await check('--help answers from a directory holding only the script: exit 0, us
     assert.equal(r.status, 0, r.all);
     assert.match(r.stdout, /usage/i);
     assert.match(r.stdout, /deployed-gate\.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path <\/ns\/slug>/);
-    for (const flagName of ['--namespace', '--sandbox', '--auth-header', '--token-env', '--max-wait', '--dir']) assert.ok(r.stdout.includes(flagName), `usage names ${flagName}`);
+    for (const flagName of ['--namespace', '--sandbox', '--max-wait', '--dir']) assert.ok(r.stdout.includes(flagName), `usage names ${flagName}`);
     for (const cmd of ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'all']) assert.match(r.stdout, new RegExp(`deployed-gate\\.mjs ${cmd} --page <slug>`), `usage names ${cmd}`);
   }
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
@@ -190,8 +188,8 @@ await check('usage errors exit 2: no or unknown command, unknown flag, a value f
     [[...base, '--frob', 'x'], /unknown flag --frob for preview/],
     [[...base, 'stray'], /unexpected argument "stray"/],
     [['preview', '--page', '--org', 'o'], /--page needs a value/],
-    [[...base, '--auth-header', '--sandbox'], /--auth-header needs a value/],
-    [[...base, '--token-env'], /--token-env needs a value/],
+    [[...base, '--max-wait', '--sandbox'], /--max-wait needs a value/],
+    [[...base, '--max-wait'], /--max-wait needs a value/],
     [without('--page'), /--page/],
     [without('--org'), /--org/],
     [without('--repo'), /--repo/],
@@ -238,7 +236,6 @@ await check('preview against the fake preview, in an eligible project: PASS <url
       plain: `${server.origin}/ns/home.plain.html`,
       namespace: 'ns',
       sandbox: false,
-      auth: false,
       originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin },
       checkedAt: 'string',
     });
@@ -385,7 +382,6 @@ await check('without stardust/runtime-contract.json the leg is skipped: SKIPPED 
       const rec = recordOf(root);
       assert.equal(rec.skipped, true);
       assert.ok(rec.reason.includes(rel));
-      assert.equal(rec.auth, false);
       assert.equal(rec.path, '/ns/home');
     }
     assert.equal(server.requests.length, 0, 'a skipped leg asks for nothing');
@@ -485,152 +481,40 @@ await check('a server that never answers cannot overrun --max-wait: each request
   } finally { hung.closeAllConnections(); await new Promise((resolve) => hung.close(resolve)); }
 });
 
-await check('--auth-header: the preview refuses the first, anonymous request and the header goes with the rest; preview.json holds auth: true, and the token is in no output or file', async () => {
+await check('a protected preview is out of scope: a 401 or 403 is exit 2 at once, never polled until 124, and leaves no preview.json; a 503 first still polls', async () => {
   const server = await startPreviewServer({ token: TOKEN });
   try {
-    const root = project('auth-header');
-    const r = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', HEADER]);
-    assert.equal(r.status, 0, r.all);
-    assert.equal(recordOf(root).auth, true);
-    assert.equal('tokenUnused' in recordOf(root), false);
-    noToken(r.stdout, r.stderr, readFileSync(recordPath(root), 'utf8'));
-    const [first, ...rest] = server.requests;
-    assert.equal(first.headers.authorization, undefined, 'the first request is the anonymous one that finds the preview protected');
-    assert.ok(rest.length > 0 && rest.every((q) => q.headers.authorization === HEADER), 'every request after it carried the header');
-    for (const f of readdirSync(deployedDir(join(root, 'stardust'), 'home'))) noToken(readFileSync(join(deployedDir(join(root, 'stardust'), 'home'), f), 'utf8'));
+    const root = project('protected');
+    const started = Date.now();
+    const r = await preview(root, server.origin, ['--namespace', 'ns', '--max-wait', '30']);
+    assert.equal(r.status, 2, r.all);
+    assert.match(r.stderr, /the preview refused an anonymous request \(HTTP 401\): a protected preview is out of scope/);
+    assert.ok(Date.now() - started < 10000, 'a refusal is no poll: it is not waited out until 124');
+    assert.ok(!existsSync(recordPath(root)), 'no preview.json without a verdict');
   } finally { await server.close(); }
-});
-
-await check('a token given for a public preview is recorded as unused: auth: false, tokenUnused: true, and the preview step never sends it', async () => {
-  const server = await startPreviewServer();
-  try {
-    for (const [name, extra, env] of [['unused-header', ['--auth-header', HEADER], {}], ['unused-env', ['--token-env', 'STARDUST_T4_TOKEN'], { STARDUST_T4_TOKEN: TOKEN }]]) {
-      const root = project(name);
-      const r = await preview(root, server.origin, ['--namespace', 'ns', ...extra], { env });
-      assert.equal(r.status, 0, `${name}: ${r.all}`);
-      assert.equal(r.stdout.trim(), `PASS preview ${server.origin}/ns/home${OVERRIDE}`);
-      const rec = recordOf(root);
-      assert.equal(rec.auth, false, `${name}: auth means the preview refused an anonymous request`);
-      assert.equal(rec.tokenUnused, true, name);
-      noToken(r.all, readFileSync(recordPath(root), 'utf8'));
-    }
-    assert.ok(server.requests.length > 0 && server.requests.every((q) => q.headers.authorization === undefined), 'no request carried the token');
-    const none = project('unused-none');
-    await preview(none, server.origin);
-    assert.equal('tokenUnused' in recordOf(none), false, 'no token given, nothing to call unused');
-  } finally { await server.close(); }
-});
-
-await check('a token still reaches a preview that refuses an anonymous request later than the first: a 503 first, then 401 without it, 200 with it: auth: true', async () => {
-  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
-  const page = readFileSync(fixturePath('home.html'), 'utf8');
   let seen = 0;
-  const server = createServer((req, res) => {
-    seen += 1;
-    if (seen === 1) { res.writeHead(503); return res.end('warming up'); }
-    if (req.headers.authorization !== HEADER) { res.writeHead(401); return res.end('unauthorized'); }
-    res.writeHead(200, { 'content-type': 'text/html' });
-    return res.end(req.url.endsWith('.plain.html') ? plain : page);
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  try {
-    const root = project('late-refusal');
-    const r = await preview(root, `http://127.0.0.1:${server.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '10']);
-    assert.equal(r.status, 0, r.all);
-    const rec = recordOf(root);
-    assert.equal(rec.auth, true);
-    assert.equal('tokenUnused' in rec, false);
-    noToken(r.all, readFileSync(recordPath(root), 'utf8'));
-  } finally { server.closeAllConnections(); await new Promise((resolve) => server.close(resolve)); }
-});
-
-await check('a token the preview refuses is exit 2 at once, naming the flag and never the value or the variable; no token on a protected preview, and a 404 with the right token, are as before', async () => {
-  const server = await startPreviewServer({ token: TOKEN });
-  try {
-    for (const [name, extra, env, flag] of [
-      ['wrong-header', ['--auth-header', 'token wrong-value-1'], {}, '--auth-header'],
-      ['wrong-env', ['--token-env', 'STARDUST_T14_WRONG'], { STARDUST_T14_WRONG: 'wrong-value-2' }, '--token-env'],
-    ]) {
-      const root = project(name);
-      const before = server.requests.length;
-      const started = Date.now();
-      const r = await preview(root, server.origin, ['--namespace', 'ns', ...extra, '--max-wait', '60'], { env });
-      assert.equal(r.status, 2, `${name}: ${r.all}`);
-      assert.match(r.stderr, new RegExp(`the preview refused the site token \\(HTTP 401\\) given by ${flag}: it is wrong or expired`), name);
-      assert.ok(Date.now() - started < 10000, `${name}: a refused token is no poll: it is not waited out until 124`);
-      assert.deepEqual(server.requests.slice(before).map((q) => q.headers.authorization), [undefined, extra[0] === '--auth-header' ? 'token wrong-value-1' : 'token wrong-value-2'], `${name}: the anonymous request, then the one with the token, and no more`);
-      for (const text of ['wrong-value-1', 'wrong-value-2', 'STARDUST_T14_WRONG']) assert.equal(r.all.includes(text), false, `${name}: ${text} was printed`);
-      assert.ok(!existsSync(recordPath(root)), `${name}: no verdict, no preview.json`);
-    }
-  } finally { await server.close(); }
-  // A page that is not there yet still polls with the right token: 404 twice, then 200.
-  const plain = readFileSync(fixturePath('home.plain.html'), 'utf8');
-  const page = readFileSync(fixturePath('home.html'), 'utf8');
-  let notYet = 2;
   const late = createServer((req, res) => {
-    if (req.headers.authorization !== HEADER) { res.writeHead(401); return res.end('unauthorized'); }
-    if (notYet > 0) { notYet -= 1; res.writeHead(404); return res.end('not found'); }
-    res.writeHead(200, { 'content-type': 'text/html' });
-    return res.end(req.url.endsWith('.plain.html') ? plain : page);
+    seen += 1;
+    res.writeHead(seen === 1 ? 503 : 403);
+    return res.end('no');
   });
   await new Promise((resolve) => late.listen(0, '127.0.0.1', resolve));
   try {
-    const root = project('protected-404');
-    const r = await preview(root, `http://127.0.0.1:${late.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '20']);
-    assert.equal(r.status, 0, r.all);
-    assert.equal(recordOf(root).auth, true);
-    assert.equal(notYet, 0, 'it polled past the 404s');
+    const root = project('late-refusal');
+    const r = await preview(root, `http://127.0.0.1:${late.address().port}`, ['--namespace', 'ns', '--max-wait', '10']);
+    assert.equal(r.status, 2, r.all);
+    assert.match(r.stderr, /HTTP 403/);
+    assert.equal(seen, 2, 'the 503 was polled past, the 403 stopped the poll');
   } finally { late.closeAllConnections(); await new Promise((resolve) => late.close(resolve)); }
 });
 
-await check('--token-env reads the token from the environment; without a token a protected preview is never a pass; an unset variable is a setup error', async () => {
-  const server = await startPreviewServer({ token: TOKEN });
-  try {
-    const root = project('auth-env');
-    const viaEnv = await preview(root, server.origin, ['--namespace', 'ns', '--token-env', 'STARDUST_T4_TOKEN'], { env: { STARDUST_T4_TOKEN: TOKEN } });
-    assert.equal(viaEnv.status, 0, viaEnv.all);
-    assert.equal(recordOf(root).auth, true);
-    noToken(viaEnv.stdout, viaEnv.stderr, readFileSync(recordPath(root), 'utf8'));
-    const started = Date.now();
-    const anon = await preview(root, server.origin, ['--namespace', 'ns', '--max-wait', '30']);
-    assert.equal(anon.status, 2, anon.all);
-    assert.match(anon.stderr, /the preview needs a site token: pass --token-env <NAME>/);
-    assert.ok(Date.now() - started < 10000, 'a refusal is no poll: it is not waited out until 124');
-    assert.ok(!existsSync(recordPath(root)), 'no preview.json without a verdict');
-    const unset = await preview(root, server.origin, ['--namespace', 'ns', '--token-env', 'STARDUST_T4_NO_SUCH_TOKEN']);
-    assert.equal(unset.status, 2, unset.all);
-    assert.match(unset.stderr, /no site token: the variable --token-env names is not set in the environment or \.env/);
-    assert.equal(unset.all.includes('STARDUST_T4_NO_SUCH_TOKEN'), false, 'the name is never printed: a token typed in its place would be echoed');
-  } finally { await server.close(); }
-});
-
-await check('an empty or blank --auth-header / --token-env is exit 2 "needs a value", never a fallback to $SITE_TOKEN or a .env', async () => {
-  const server = await startPreviewServer({ token: TOKEN });
-  try {
-    const root = project('auth-blank');
-    writeFileSync(join(root, '.env'), `SITE_TOKEN=${TOKEN}\n`);
-    for (const flag of ['--auth-header', '--token-env']) {
-      for (const blank of ['', ' ', '\t']) {
-        const r = await preview(root, server.origin, ['--namespace', 'ns', flag, blank, '--max-wait', '1'], { env: { SITE_TOKEN: TOKEN } });
-        assert.equal(r.status, 2, `${flag} ${JSON.stringify(blank)}: ${r.all}`);
-        assert.match(r.stderr, new RegExp(`${flag} needs a value`));
-        noToken(r.all);
-      }
-    }
-    assert.equal(server.requests.length, 0, 'nothing was asked: no fallback token was read');
-    assert.ok(!existsSync(recordPath(root)));
-  } finally { await server.close(); }
-});
-
-await check('the header never leaves the preview origin: a redirect elsewhere is not followed, for the authored form or the page, and is no verdict', async () => {
+await check('a redirect is not followed, for the authored form or the page, and is no verdict', async () => {
   const elsewhere = await startPreviewServer();
   const redirecting = createServer((req, res) => {
-    if (!req.headers.authorization) { res.writeHead(401); return res.end(); }
     res.writeHead(302, { location: `${elsewhere.origin}/ns/home.plain.html` });
     return res.end();
   });
   const pageRedirecting = createServer((req, res) => {
-    if (!req.headers.authorization) { res.writeHead(401); return res.end(); }
     if (req.url.endsWith('.plain.html')) { res.writeHead(200, { 'content-type': 'text/html' }); return res.end('<body><main><div></div></main></body>'); }
     res.writeHead(302, { location: `${elsewhere.origin}/ns/home` });
     return res.end();
@@ -639,17 +523,15 @@ await check('the header never leaves the preview origin: a redirect elsewhere is
   await new Promise((resolve) => pageRedirecting.listen(0, '127.0.0.1', resolve));
   try {
     const root = project('redirect');
-    const r = await preview(root, `http://127.0.0.1:${redirecting.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '1']);
+    const r = await preview(root, `http://127.0.0.1:${redirecting.address().port}`, ['--namespace', 'ns', '--max-wait', '1']);
     assert.equal(r.status, 124, r.all);
     assert.match(r.stdout, /last response: HTTP 302/);
     assert.equal(elsewhere.requests.length, 0, 'the redirect target was never asked');
-    noToken(r.all);
-    const p = await preview(root, `http://127.0.0.1:${pageRedirecting.address().port}`, ['--namespace', 'ns', '--auth-header', HEADER, '--max-wait', '1']);
+    const p = await preview(root, `http://127.0.0.1:${pageRedirecting.address().port}`, ['--namespace', 'ns', '--max-wait', '1']);
     assert.equal(p.status, 124, p.all);
     assert.match(p.stdout, /^ERROR \(exit 124\) preview: \/ns\/home not 200 after 1 s$/m);
     assert.match(p.stdout, /last response: HTTP 302/);
     assert.equal(elsewhere.requests.length, 0, 'the page\'s redirect target was never asked');
-    noToken(p.all);
   } finally {
     for (const s of [redirecting, pageRedirecting]) { s.closeAllConnections(); await new Promise((resolve) => s.close(resolve)); }
     await elsewhere.close();
@@ -673,7 +555,6 @@ const VERDICT_WORD = /^(PASS|FAIL|ADVISORY|ERROR \(exit \d+\)) /;
 const verdictLines = (lines) => lines.filter((l) => VERDICT_WORD.test(l));
 const stepOf = (line) => line.replace(VERDICT_WORD, '').split(/[ :]/)[0];
 const ALL_URL = 'http://127.0.0.1:9/ns/home';
-const ALL_TOKEN = 'canary-777';
 
 // A project root holding the record of the preview step, and the page's checks file when `checks` is set.
 const allRoot = (name, { record = {}, checks = false } = {}) => {
@@ -681,7 +562,7 @@ const allRoot = (name, { record = {}, checks = false } = {}) => {
   const dir = join(root, 'stardust');
   mkdirSync(deployedDir(dir, 'home'), { recursive: true });
   writeFileSync(join(deployedDir(dir, 'home'), 'preview.json'), `${JSON.stringify({
-    url: ALL_URL, origin: 'http://127.0.0.1:9', path: '/ns/home', plain: `${ALL_URL}.plain.html`, namespace: 'ns', sandbox: false, auth: false, checkedAt: new Date().toISOString(), ...record,
+    url: ALL_URL, origin: 'http://127.0.0.1:9', path: '/ns/home', plain: `${ALL_URL}.plain.html`, namespace: 'ns', sandbox: false, checkedAt: new Date().toISOString(), ...record,
   }, null, 2)}\n`);
   if (checks) {
     mkdirSync(join(dir, 'reskin', 'figma-checks'), { recursive: true });
@@ -715,7 +596,7 @@ const runAll = async (root, { over = {}, extra = [], figmaGate, env = {} } = {})
   return { code, error, lines, called: started.map((s) => s.name), args: Object.fromEntries(started.map((s) => [s.name, s.args])) };
 };
 
-// A stand-in for figma-gate.mjs: logs its argv and the token variable, writes `summary` where figma-gate writes a
+// A stand-in for figma-gate.mjs: logs its argv, writes `summary` where figma-gate writes a
 // preview run's (`dir`), prints stdout and stderr and exits with `exit`.
 const FRAGMENT = {
   regime: 'preview', figmaVersion: '100', join: 'PASS', geometry: 'PASS 10/10', ramp: 'PASS 8/8', pixel: 's01 0.00%, s02 0.00%',
@@ -731,7 +612,7 @@ const stubFigma = ({ exit = 0, summary = { regime: 'preview', ledgerFragment: FR
     "import { join } from 'node:path';",
     'const argv = process.argv.slice(2);',
     'const flag = (f) => argv[argv.indexOf(f) + 1];',
-    `appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv, token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null }) + '\\n');`,
+    `appendFileSync(${JSON.stringify(log)}, JSON.stringify({ argv }) + '\\n');`,
     `const summary = ${JSON.stringify(summary)};`,
     "if (summary) {",
     `  const out = join(flag('--dir'), '.work', 'reskin', 'gates', flag('--page'), ${JSON.stringify(dir)});`,
@@ -773,9 +654,7 @@ await check('all: content, tokens, parity, sanity, inherited, then figma-gate as
   });
   assert.deepEqual(figma.calls(), [{
     argv: ['all', '--page', 'home', '--url', ALL_URL, '--target', 'preview', '--reskin', join(dirOf(root), 'reskin', 'pages', 'home.html'), '--dir', dirOf(root)],
-    token: null,
   }]);
-  assert.equal(r.args.content.auth, null);
 });
 
 await check('all: an origin override in preview.json is carried into summary.json and the ledger fragment, and left out of both otherwise', async () => {
@@ -841,10 +720,9 @@ await check('all: failing steps are "FAIL k/n" in the fragment (sanity with hard
   assert.deepEqual(Object.values(summaryAt(root).steps).map((x) => x.exit).slice(0, 5), [1, 1, 1, 1, 1]);
 });
 
-await check('all: an advisory content gate is "ADVISORY …"; on a protected preview every step is handed the token and parity and sanity measure it: exit 0, every line still matches VERDICT_RE', async () => {
-  const root = allRoot('all-advisory', { record: { auth: true } });
+await check('all: an advisory content gate is "ADVISORY …": exit 0, every line still matches VERDICT_RE', async () => {
+  const root = allRoot('all-advisory');
   const r = await runAll(root, {
-    extra: ['--auth-header', `token ${ALL_TOKEN}`],
     over: {
       content: () => ({ verdict: 'ADVISORY', unusedDeltas: [], gates: [gateOf('dom-equality', 0, { advisory: true, lines: ['FAIL text diverges at char 12'] }), gateOf('slot-coverage')] }),
     },
@@ -858,16 +736,13 @@ await check('all: an advisory content gate is "ADVISORY …"; on a protected pre
   assert.ok(r.lines.includes('    FAIL text diverges at char 12'));
   const f = summaryAt(root).ledgerFragment;
   assert.deepEqual([f.content, f.parity, f.sanity, f.inherited], ['ADVISORY dom-equality (deltas.blocking false)', 'PASS', { verdict: 'PASS', hard: true }, 'PASS']);
-  assert.deepEqual(['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome'].map((name) => r.args[name].auth), Array(6).fill(`token ${ALL_TOKEN}`), 'every step that reads the preview gets the token');
-  assert.equal(JSON.stringify([r.lines, summaryAt(root)]).includes(ALL_TOKEN), false);
 });
 
-await check('all: a step that throws is "ERROR (exit 124) <step>: <message>" (redacted) and the run goes on; a step whose rows gave no verdict is the same; the exit is 124', async () => {
+await check('all: a step that throws is "ERROR (exit 124) <step>: <message>" and the run goes on; a step whose rows gave no verdict is the same; the exit is 124', async () => {
   const root = allRoot('all-error');
   const r = await runAll(root, {
-    extra: ['--auth-header', `token ${ALL_TOKEN}`],
     over: {
-      tokens: () => { throw new Error(`donor-probe did not start: ${ALL_TOKEN} is not a command`); },
+      tokens: () => { throw new Error('donor-probe did not start: x is not a command'); },
       sanity: () => ({ verdict: 'ERROR', exit: 124, hard: true, rows: [rowOf('overflow', 1440, 'ERROR', 'ERROR (exit 124)'), rowOf('decoration', 1440, 'PASS'), rowOf('clip-probe', 1440, 'ERROR', 'ERROR (exit 124)')] }),
       parity: () => ({ verdict: 'FAIL', exit: 1, rows: [rowOf('pixel', 1440, 'FAIL', '13%', '≤ 10%')] }),
     },
@@ -875,14 +750,13 @@ await check('all: a step that throws is "ERROR (exit 124) <step>: <message>" (re
   assert.equal(r.code, 124, r.lines.join('\n'));
   assert.deepEqual(r.called, ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome'], 'the run went on after the throw');
   const verdicts = verdictLines(r.lines);
-  assert.equal(verdicts[1], 'ERROR (exit 124) tokens: donor-probe did not start: [redacted] is not a command');
+  assert.equal(verdicts[1], 'ERROR (exit 124) tokens: donor-probe did not start: x is not a command');
   assert.equal(verdicts[3], 'ERROR (exit 124) sanity: 2 checks gave no verdict');
   for (const l of verdicts) assert.match(l, VERDICT_RE, l);
   const s = summaryAt(root);
-  assert.equal(s.ledgerFragment.tokens, 'ERROR (exit 124): donor-probe did not start: [redacted] is not a command');
+  assert.equal(s.ledgerFragment.tokens, 'ERROR (exit 124): donor-probe did not start: x is not a command');
   assert.deepEqual(s.ledgerFragment.sanity, { verdict: 'ERROR (exit 124): 2 checks gave no verdict', hard: true });
   assert.deepEqual([s.steps.tokens.verdict, s.steps.tokens.exit, s.steps.parity.exit], ['ERROR', 124, 1]);
-  assert.equal(JSON.stringify([r.lines, s]).includes(ALL_TOKEN), false, 'the token is in neither the lines nor summary.json');
 });
 
 await check('all: a bot challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge", the run exits 3 over a 124 or a 1', async () => {
@@ -975,21 +849,6 @@ await check('all: a step whose gate stalls on the decoration is that step\'s FAI
   const rampStall = await runAll(allRoot('all-stalled-ramp', { checks: true }), { figmaGate: ramp.file });
   assert.equal(rampStall.code, 1, rampStall.lines.join('\n'));
   assert.equal(verdictLines(rampStall.lines).at(-1), 'FAIL figma: stalled decoration: block cards');
-});
-
-await check('all: a protected preview with no token is exit 2 before anything starts: no step, no figma-gate, no summary.json', async () => {
-  const protectedRoot = allRoot('all-protected-no-token', { record: { auth: true }, checks: true });
-  const figma = stubFigma();
-  writeFileSync(join(deployedDir(dirOf(protectedRoot), 'home'), 'summary.json'), '{"stale":true}\n');
-  const missing = await runAll(protectedRoot, { figmaGate: figma.file });
-  assert.ok(missing.error instanceof UsageError && missing.error.code === 2, String(missing.error));
-  assert.match(missing.error.message, /^all needs the site token to read a protected preview\npreview\.json says .*pass --auth-header or --token-env/);
-  assert.deepEqual(missing.called, [], 'no step ran');
-  assert.deepEqual(figma.calls(), [], 'no figma-gate child started');
-  assert.ok(!existsSync(join(deployedDir(dirOf(protectedRoot), 'home'), 'summary.json')));
-  const served = await runAll(protectedRoot, { figmaGate: figma.file, extra: ['--auth-header', `token ${ALL_TOKEN}`] });
-  assert.equal(served.error, null, String(served.error));
-  assert.deepEqual(served.called, ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome'], 'with a token the run starts');
 });
 
 await check('all: a step that passed with n/a rows is "PASS (n/a: <checks>)" in the fragment, one without is "PASS"; the verdict line and the step record stay PASS and the reasons stay in the detail', async () => {
@@ -1092,46 +951,6 @@ await check('all: figma-gate\'s exit 1 is "FAIL figma" with its fragment; 3 and 
   assert.deepEqual(setup.called, ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome']);
 });
 
-await check('all: the site token reaches the figma-gate child by environment and --token-env, never argv, and is redacted from what the child prints', async () => {
-  const root = allRoot('all-figma-token', { checks: true, record: { auth: true } });
-  const figma = stubFigma({ exit: 3, summary: null, stdout: `ERROR (exit 3) join CHALLENGE: the preview answered token ${ALL_TOKEN}\n`, stderr: `warning ${ALL_TOKEN}\n` });
-  const r = await runAll(root, { figmaGate: figma.file, extra: ['--auth-header', `token ${ALL_TOKEN}`] });
-  assert.equal(r.code, 3);
-  const [call] = figma.calls();
-  assert.equal(call.token, `token ${ALL_TOKEN}`);
-  assert.deepEqual(call.argv.slice(call.argv.indexOf('--token-env')), ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN', '--dir', dirOf(root)]);
-  assert.equal(call.argv.some((a) => a.includes(ALL_TOKEN) || a === '--auth-header'), false, 'no token in argv');
-  assert.equal(JSON.stringify([r.lines, summaryAt(root)]).includes(ALL_TOKEN), false, 'the token is in neither the lines nor summary.json');
-  assert.equal(summaryAt(root).invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)} --auth-header [redacted]`);
-  assert.equal(summaryAt(root).ledgerFragment.figma, 'ERROR (exit 3): join CHALLENGE: the preview answered [redacted]');
-  process.env.STARDUST_T12_TOKEN = ALL_TOKEN;
-  try {
-    const viaEnv = await runAll(root, { figmaGate: stubFigma().file, extra: ['--token-env', 'STARDUST_T12_TOKEN'] });
-    assert.equal(viaEnv.code, 0, viaEnv.lines.join('\n'));
-    assert.equal(summaryAt(root).invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)} --token-env STARDUST_T12_TOKEN`);
-  } finally { delete process.env.STARDUST_T12_TOKEN; }
-});
-
-await check('all: the recorded invocation redacts --auth-header\'s value and keeps --token-env\'s variable name, so it can be run again; summary.json and the ledger fragment agree and hold no token', async () => {
-  const root = allRoot('all-invocation', { checks: true, record: { auth: true } });
-  const dir = dirOf(root);
-  process.env.STARDUST_T14_TOKEN = ALL_TOKEN;
-  try {
-    for (const [extra, want] of [
-      [['--token-env', 'STARDUST_T14_TOKEN'], `deployed-gate.mjs all --page home --dir ${dir} --token-env STARDUST_T14_TOKEN`],
-      [['--auth-header', `token ${ALL_TOKEN}`], `deployed-gate.mjs all --page home --dir ${dir} --auth-header [redacted]`],
-      [['--auth-header', `token ${ALL_TOKEN}`, '--token-env', 'STARDUST_T14_TOKEN'], `deployed-gate.mjs all --page home --dir ${dir} --auth-header [redacted] --token-env STARDUST_T14_TOKEN`],
-    ]) {
-      const r = await runAll(root, { figmaGate: stubFigma().file, extra });
-      assert.equal(r.code, 0, r.lines.join('\n'));
-      const s = summaryAt(root);
-      assert.equal(s.invocation, want);
-      assert.equal(s.ledgerFragment.invocation, want, 'the ledger fragment carries the same line');
-      assert.equal(JSON.stringify([s, r.lines]).includes(ALL_TOKEN), false, `${extra.join(' ')}: no token in the summary or the lines`);
-    }
-  } finally { delete process.env.STARDUST_T14_TOKEN; }
-});
-
 await check('all: setup errors are exit 2 and write nothing but the removal of the old summary: no --page, no record, a record with problems; --help documents all', async () => {
   const root = project('all-setup');
   const noPage = await run(['all', '--dir', 'stardust'], { cwd: root });
@@ -1157,52 +976,6 @@ await check('all: setup errors are exit 2 and write nothing but the removal of t
   for (const text of ['all --page <slug> [--reskin <file>]', 'run-bg.mjs start --name deployed-<slug>', 'ledgerFragment', 'summary.json', 'first present of 2, 3, 124, 1, 0']) assert.ok(help.stdout.includes(text), `the help says ${text}`);
 });
 
-await check('a site token never echoes in a usage error: not as --flag=value, not as --flag:value, not as the stray rest of an unquoted header, not as a "command" ahead of the real one', async () => {
-  const root = allRoot('all-echo');
-  const header = `token ${ALL_TOKEN}`;
-  const cases = [
-    [['all', '--page', 'home', `--auth-header=${ALL_TOKEN}`], /unknown flag --auth-header for all: a flag and its value are separate arguments/],
-    [['all', '--page', 'home', `--token-env=${ALL_TOKEN}`], /unknown flag --token-env for all/],
-    [['all', '--page', 'home', `--auth-header:${header}`], /unknown flag --auth-header for all: a flag and its value are separate arguments \(--auth-header <value>\)/],
-    [['all', '--page', 'home', `--token-env:${ALL_TOKEN}`], /unknown flag --token-env for all/],
-    [['all', '--page', 'home', '--auth-header', 'token', ALL_TOKEN], /unexpected argument: quote the value of --auth-header/],
-    [['content', '--page', 'home', '--auth-header', 'token', ALL_TOKEN], /unexpected argument: quote the value of --auth-header/],
-    [[`--auth-header=${header}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
-    [[`--auth-header:${header}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
-    [[`--token-env=${ALL_TOKEN}`, 'all', '--page', 'home'], /unknown command \(not echoed/],
-    [[header, 'all', '--page', 'home'], /unknown command \(not echoed/],
-    [[`secret:${ALL_TOKEN}`, '--page', 'home'], /unknown command \(not echoed/],
-  ];
-  for (const [args, re] of cases) {
-    const r = await run(args, { cwd: root, env: { SITE_TOKEN: '' } });
-    assert.equal(r.status, 2, `${args.join(' ')}: ${r.all}`);
-    assert.match(r.stderr, re);
-    assert.equal(r.all.includes(ALL_TOKEN), false, `the token was echoed for ${args.join(' ')}`);
-  }
-  const plain = await run(['frobnicate', '--page', 'home'], { cwd: root });
-  assert.match(plain.stderr, /unknown command "frobnicate"/, 'a plain word is still named');
-});
-
-await check('a token typed as the --token-env name is never echoed: not a name is exit 2 without the value, an unset name is reported without it, for every step that takes the flag', async () => {
-  const root = allRoot('all-token-name');
-  const notAName = 'hlxtok-canary-7f3a91';
-  const nameShaped = 'hlxtokcanary7f3a91';
-  const steps = [['preview', ...PAGE, '--namespace', 'ns'], ['content', '--page', 'home'], ['tokens', '--page', 'home'], ['parity', '--page', 'home'], ['sanity', '--page', 'home'], ['inherited', '--page', 'home'], ['all', '--page', 'home']];
-  const cases = [
-    [notAName, /--token-env takes the name of an environment variable \(letters, digits and underscores\), not the token/],
-    ['9starts-with-a-digit', /--token-env takes the name of an environment variable/],
-    [nameShaped, /no site token: the variable --token-env names is not set in the environment or \.env/],
-  ];
-  for (const step of steps) {
-    for (const [value, pattern] of cases) {
-      const r = await run([...step, '--token-env', value], { cwd: root, env: { DEPLOY_VERIFY_ORIGIN: 'http://127.0.0.1:9' } });
-      assert.equal(r.status, 2, `${step[0]} ${value}: ${r.all}`);
-      assert.match(r.stderr, pattern, `${step[0]} ${value}`);
-      assert.equal(r.all.includes(value) || r.all.includes(value.slice(4, -2)), false, `${step[0]}: the value of --token-env was echoed:\n${r.all}`);
-    }
-  }
-});
-
 // ---- all, for real: the fake servers, real browsers, the real instruments and the real figma-gate ---------------------------
 
 let playwrightOk = false;
@@ -1212,7 +985,6 @@ if (playwrightOk) {
   const TESTS = dirname(fileURLToPath(import.meta.url));
   const HOME = fixturePath('home.html');
   const FIGMA_FIXTURES = join(TESTS, 'fixtures', 'figma-gate');
-  const CANARY = 'canary-123';
   const walk = (dir) => readdirSync(dir, { recursive: true, withFileTypes: true }).filter((e) => e.isFile()).map((e) => join(e.parentPath, e.name));
   const read = (...p) => JSON.parse(readFileSync(join(...p), 'utf8'));
 
@@ -1390,79 +1162,28 @@ if (playwrightOk) {
     } finally { await server.close(); await source.close(); }
   });
 
-  await check('real run on a protected preview with a reskin page that matches it: all exits 0 and every step measures it, parity, sanity and inherited too (nothing is n/a), the fragment is PASS throughout, and no file, line or stream holds the token', async () => {
+  await check('real run with the real figma-gate (parity and sanity stand in as passed): PASS figma, and the figma fragment is the ledger\'s', async () => {
     const source = await startSourceServer();
-    const server = await startPreviewServer({ token: CANARY, pages: { '/ns/home': HOME } });
+    const server = await startPreviewServer({ pages: { '/ns/home': HOME } });
     try {
-      const root = realProject('real-protected-pass', source);
-      const header = `token ${CANARY}`;
-      const reskin = reskinPage();
-      const p = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', header]);
-      assert.equal(p.status, 0, p.all.replaceAll(CANARY, '[token]'));
-      const r = await allIn(root, server.origin, ['--reskin', reskin, '--token-env', 'STARDUST_T5_PREVIEW_TOKEN'], { STARDUST_T5_PREVIEW_TOKEN: CANARY });
-      assert.equal(r.status, 0, r.all.replaceAll(CANARY, '[token]'));
-      const verdicts = verdictLines(r.stdout.split('\n'));
-      assert.deepEqual(verdicts.map(stepOf), STEPS, r.stdout);
-      for (const l of verdicts) assert.match(l, VERDICT_RE, l);
-      assert.deepEqual(verdicts.slice(0, 6).map((l) => l.split(' ')[0]), Array(6).fill('PASS'), r.stdout);
-      assert.equal(/protected preview/.test(r.stdout), false, 'no row is n/a: protected preview');
-      const out = deployedDir(dirOf(root), 'home');
-      const measured = (file, check) => read(out, file).rows.find((x) => x.check === check)?.status;
-      assert.deepEqual([measured('parity.json', 'pixel'), measured('parity.json', 'cap-probe'), measured('sanity.json', 'overflow'), measured('sanity.json', 'clip-probe'), measured('sanity.json', 'content-presence'), measured('inherited.json', 'ai-readability')], Array(6).fill('PASS'), 'the rows that were n/a on a protected preview are measured');
-      const s = summaryAt(root);
-      assert.match(s.ledgerFragment.parity, /^PASS/);
-      assert.match(s.ledgerFragment.sanity.verdict, /^PASS/);
-      assert.equal(s.ledgerFragment.inherited, 'PASS', 'qa-gate ran: the schema and the design are there');
-      assert.ok(s.invocation.endsWith('--token-env STARDUST_T5_PREVIEW_TOKEN'), s.invocation);
-      const leaked = walk(join(dirOf(root), '.work')).filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
-      assert.deepEqual(leaked, [], 'no file holds the token');
-      assert.deepEqual([r.stdout, r.stderr].filter((text) => text.includes(CANARY)), [], 'stdout or stderr holds the token');
-      assert.deepEqual(server.requests.filter((q) => q.headers.authorization !== header).map((q) => q.path), ['/ns/home.plain.html'], 'only the preview step\'s anonymous first request lacked the token');
-    } finally { await server.close(); await source.close(); }
-  });
-
-  await check('real run on a protected preview with the real figma-gate (parity and sanity stand in as passed): --auth-header and --token-env both pass, every step is handed the token, the figma fragment is the ledger\'s, and no file or line holds the token', async () => {
-    const source = await startSourceServer();
-    const server = await startPreviewServer({ token: CANARY, pages: { '/ns/home': HOME } });
-    try {
-      const root = realProject('real-protected', source, { figma: true });
+      const root = realProject('real-figma', source, { figma: true });
       const page = join(root, 'page.html');
-      const header = `token ${CANARY}`;
-      const p = await preview(root, server.origin, ['--namespace', 'ns', '--auth-header', header]);
-      assert.equal(p.status, 0, p.all.replaceAll(CANARY, '[token]'));
+      const p = await preview(root, server.origin);
+      assert.equal(p.status, 0, p.all);
       capDesign(root);
-      const scanFiles = () => {
-        const files = walk(join(dirOf(root), '.work'));
-        assert.ok(files.some((f) => f.endsWith(join('deployed', 'summary.json'))) && files.some((f) => f.endsWith(join('figma-preview', 'summary.json'))), 'the scan covers deployed/ and figma-preview/');
-        return files.filter((f) => readFileSync(f).includes(CANARY)).map((f) => f.slice(root.length));
-      };
-      for (const [label, extra, envName] of [['--auth-header', ['--auth-header', header], null], ['--token-env', ['--token-env', 'STARDUST_T12_PREVIEW_TOKEN'], 'STARDUST_T12_PREVIEW_TOKEN']]) {
-        const handed = {};
-        const passedWith = (name, check) => async (a) => { handed[name] = a.auth; return { verdict: 'PASS', exit: 0, rows: passing(check) }; };
-        const lines = [];
-        if (envName) process.env[envName] = CANARY;
-        let code;
-        try {
-          code = await main(['all', '--page', 'home', '--dir', dirOf(root), '--reskin', page, ...extra], { env: { DEPLOY_VERIFY_ORIGIN: server.origin }, log: (m) => lines.push(m), runners: { parity: passedWith('parity', 'pixel'), sanity: passedWith('sanity', 'overflow') } });
-        } finally { if (envName) delete process.env[envName]; }
-        const text = lines.join('\n').replaceAll(CANARY, '[token]');
-        assert.equal(code, 0, `${label}: ${text}`);
-        const verdicts = verdictLines(lines);
-        assert.deepEqual(verdicts.map(stepOf), STEPS, text);
-        assert.deepEqual(verdicts.slice(0, 6).map((l) => l.split(' ')[0]), Array(6).fill('PASS'), text);
-        assert.equal(verdicts[6], 'PASS figma', verdicts[6]);
-        assert.deepEqual(handed, { parity: header, sanity: header }, `${label}: parity and sanity are handed the token`);
-        const s = summaryAt(root);
-        assert.equal(s.ledgerFragment.figma.regime, 'preview');
-        assert.equal(s.ledgerFragment.figma.join, 'PASS');
-        assert.equal(s.invocation.includes(CANARY), false);
-        assert.ok(s.invocation.endsWith(label === '--auth-header' ? '--auth-header [redacted]' : '--token-env STARDUST_T12_PREVIEW_TOKEN'), s.invocation);
-        // Scanned after each run: the next one rewrites the files, so a leak of the first would be gone by then.
-        assert.deepEqual(scanFiles(), [], `${label}: a file holds the token`);
-        assert.equal(lines.some((l) => l.includes(CANARY)), false, `${label}: a line holds the token`);
-      }
-      assert.ok(server.requests.some((q) => q.headers.authorization === header), 'the token went to the preview');
-      assert.deepEqual(server.requests.filter((q) => q.headers.authorization !== header).map((q) => q.path), ['/ns/home.plain.html'], 'only the preview step\'s anonymous first request lacked the token');
+      const passedWith = (check) => async () => ({ verdict: 'PASS', exit: 0, rows: passing(check) });
+      const lines = [];
+      const code = await main(['all', '--page', 'home', '--dir', dirOf(root), '--reskin', page], { env: { DEPLOY_VERIFY_ORIGIN: server.origin }, log: (m) => lines.push(m), runners: { parity: passedWith('pixel'), sanity: passedWith('overflow') } });
+      const text = lines.join('\n');
+      assert.equal(code, 0, text);
+      const verdicts = verdictLines(lines);
+      assert.deepEqual(verdicts.map(stepOf), STEPS, text);
+      assert.deepEqual(verdicts.slice(0, 6).map((l) => l.split(' ')[0]), Array(6).fill('PASS'), text);
+      assert.equal(verdicts[6], 'PASS figma', verdicts[6]);
+      const s = summaryAt(root);
+      assert.equal(s.ledgerFragment.figma.regime, 'preview');
+      assert.equal(s.ledgerFragment.figma.join, 'PASS');
+      assert.ok(walk(join(dirOf(root), '.work')).some((f) => f.endsWith(join('figma-preview', 'summary.json'))), 'figma-gate wrote its preview summary');
     } finally { await server.close(); await source.close(); }
   });
 }

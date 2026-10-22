@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// skills/reskin/scripts/test/deployed-eds.test.mjs — the deployed leg's base: edsSettle, site auth, isEdsHost
-// and redact (eds.mjs), and the fake preview and source servers with the fixtures every later deployed test
+// skills/reskin/scripts/test/deployed-eds.test.mjs — the deployed leg's base: edsSettle and isEdsHost
+// (eds.mjs), and the fake preview and source servers with the fixtures every later deployed test
 // reads (fixtures/deployed/). The pure parts run anywhere; the browser parts need playwright and print a skip
 // line when it does not resolve. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -8,7 +8,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { authContextOptions, edsSettle, isEdsHost, loadLiveSession, redact, siteAuth } from '../deployed/eds.mjs';
+import { edsSettle, isEdsHost, loadLiveSession } from '../deployed/eds.mjs';
 import { rootTokens } from '../render/root-tokens.mjs';
 import { fixturePath, loadSourceModel, startPreviewServer, startSourceServer } from './fixtures/deployed/servers.mjs';
 
@@ -20,14 +20,6 @@ const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`)
 const read = (name) => readFileSync(fixturePath(name), 'utf8');
 const json = (name) => JSON.parse(read(name));
 const squash = (s) => s.replace(/\s+/g, ' ').trim();
-
-await check('redact replaces the secret, the bare token of a header value too, and leaves text alone without a secret', () => {
-  assert.equal(redact('x canary-123 y', 'canary-123'), 'x [redacted] y');
-  assert.equal(redact('Authorization: token canary-123 / canary-123', 'token canary-123'), 'Authorization: [redacted] / [redacted]');
-  assert.equal(redact('a canary-123 a canary-123', 'canary-123'), 'a [redacted] a [redacted]');
-  assert.equal(redact('nothing here', null), 'nothing here');
-  assert.equal(redact('nothing here', ''), 'nothing here');
-});
 
 await check('isEdsHost: the four EDS suffixes, the DEPLOY_VERIFY_ORIGIN host read at call time, nothing else', () => {
   for (const u of ['https://b--r--o.aem.page/x', 'https://b--r--o.aem.live/', 'https://b--r--o.hlx.page', 'https://b--r--o.hlx.live/x?y=1']) assert.equal(isEdsHost(u), true, u);
@@ -44,21 +36,6 @@ await check('isEdsHost: the four EDS suffixes, the DEPLOY_VERIFY_ORIGIN host rea
   } finally { if (saved === undefined) delete process.env.DEPLOY_VERIFY_ORIGIN; else process.env.DEPLOY_VERIFY_ORIGIN = saved; }
 });
 
-await check('authContextOptions scopes the header to the origin of the URL; no header, no options', () => {
-  assert.deepEqual(authContextOptions('http://127.0.0.1:4000/ns/home?x=1', 'token t'), { authOrigin: 'http://127.0.0.1:4000', authHeader: 'token t' });
-  assert.deepEqual(authContextOptions('http://127.0.0.1:4000/', null), {});
-  assert.deepEqual(authContextOptions('http://127.0.0.1:4000/', ''), {});
-});
-
-await check('siteAuth needs live-session loaded, then answers like resolveSiteAuth: header, env variable, or null', async () => {
-  assert.throws(() => siteAuth({ authHeader: 'token a' }), /loadLiveSession/);
-  await loadLiveSession();
-  assert.equal(siteAuth({ authHeader: 'token a' }), 'token a');
-  process.env.STARDUST_TEST_SITE_TOKEN = 'tok-9';
-  try { assert.equal(siteAuth({ tokenEnv: 'STARDUST_TEST_SITE_TOKEN' }), 'token tok-9'); } finally { delete process.env.STARDUST_TEST_SITE_TOKEN; }
-  assert.equal(siteAuth({ tokenEnv: 'STARDUST_NO_SUCH_TOKEN' }), null);
-});
-
 await check('eds.mjs resolves live-session in the project-copy layout and loads it only when asked', async () => {
   const dir = join(scratch, 'copy');
   const reskin = join(dir, 'stardust', 'scripts', 'reskin');
@@ -72,8 +49,7 @@ await check('eds.mjs resolves live-session in the project-copy layout and loads 
   cpSync(join(SCRIPTS, '..', '..', 'diff', 'scripts', 'live-session.mjs'), join(dir, 'stardust', 'scripts', 'diff', 'live-session.mjs'));
   const copy = await import(`${join(reskin, 'deployed', 'eds.mjs')}?copy`);
   const live = await copy.loadLiveSession();
-  assert.equal(typeof live.resolveSiteAuth, 'function');
-  assert.equal(copy.siteAuth({ authHeader: 'token b' }), 'token b');
+  assert.equal(typeof live.newLiveContext, 'function');
 });
 
 await check('fixtures: deltas.json and runtime-contract.json carry the keys their readers expect', () => {
@@ -192,32 +168,13 @@ if (playwrightOk) {
     } finally { await ctx.close(); await server.close(); }
   });
 
-  await check('with a token: no header and a wrong header get 401, the exact header 200, and only the preview origin sees it', async () => {
+  await check('with a token (a protected preview): a request without the header gets 401', async () => {
     const server = await startPreviewServer({ token: 'canary-123', decorateDelayMs: 100 });
-    const source = await startSourceServer();
     try {
       const anon = await opened(server.origin, '/ns/home');
       assert.equal(anon.response.status(), 401);
       await anon.ctx.close();
-      const wrong = await opened(server.origin, '/ns/home', { extraHTTPHeaders: { authorization: 'token nope' } });
-      assert.equal(wrong.response.status(), 401);
-      await wrong.ctx.close();
-
-      const ctx = await live.newLiveContext(browser, { viewport: { width: 1440, height: 900 }, ...authContextOptions(server.origin, 'token canary-123') });
-      const page = await ctx.newPage();
-      const ok = await page.goto(`${server.origin}/ns/home`);
-      assert.equal(ok.status(), 200);
-      assert.deepEqual((await edsSettle(page)).stalled, []);
-      assert.equal((await page.goto(`${server.origin}/ns/home.plain.html`)).status(), 200);
-      assert.equal((await page.goto(`${source.origin}/`)).status(), 200);
-      await ctx.close();
-
-      const sent = server.requests.filter((r) => r.headers.authorization === 'token canary-123');
-      assert.ok(sent.length >= 3, 'the page, its image and its plain form carry the header');
-      assert.deepEqual(server.requests.filter((r) => r.headers.authorization !== 'token canary-123').map((r) => r.path), ['/ns/home', '/ns/home'], 'only the two unauthenticated tries lack it');
-      assert.ok(source.requests.length > 0);
-      assert.ok(source.requests.every((r) => !('authorization' in r.headers)), 'the source origin saw the token');
-    } finally { await server.close(); await source.close(); }
+    } finally { await server.close(); }
   });
 
   await check('the home page is the delivered DOM (R5): header, footer, three sections, default content, the cards block, one 560×240 card, a 24px icon, a rehosted image', async () => {

@@ -451,13 +451,11 @@ node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
 node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
 
-Re-run (a′) on the preview (`--target https://<branch>--<repo>--<org>.aem.page/<path>`,
-`--token-env <NAME>` when protected): a sidebar or a feed that is page chrome or a client-rendered block in EDS
-exists only there.
+Re-run (a′) on the preview (`--target https://<branch>--<repo>--<org>.aem.page/<path>`): a sidebar or a feed that is
+page chrome or a client-rendered block in EDS exists only there.
 
-On a protected preview give the `all` command `--token-env <NAME>`, never
-`--auth-header` (`run-bg` saves and prints its command); without the token
-`all` stops with exit 2.
+The preview must be reachable without auth: a protected preview is out of
+scope, and `preview` stops on it with exit 2.
 
 `all` writes `summary.json`; copy its
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124

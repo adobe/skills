@@ -3,9 +3,9 @@
 // plainUrl). A library, no CLI.
 //   plainUrl(url)                     the authored form of a preview page: <path>.plain.html, <folder>/index.plain.html for a
 //        folder (a path ending in /), a .html extension and the query and fragment dropped.
-//   fetchOnce(url, auth, timeoutMs)   { status: 200, body } when the page answers 200, { status, last: 'HTTP <n>' } for any
-//        other answer, { status: 0, last: 'no response (<code>)' } when there is none. The Authorization header (the
-//        value, or null) goes to `url` and to no other host: a redirect is never followed, it is a non-200 answer.
+//   fetchOnce(url, timeoutMs)   { status: 200, body } when the page answers 200, { status, last: 'HTTP <n>' } for any
+//        other answer, { status: 0, last: 'no response (<code>)' } when there is none. A redirect is never followed, it
+//        is a non-200 answer.
 export function plainUrl(url) {
   const u = new URL(url);
   u.search = '';
@@ -15,9 +15,9 @@ export function plainUrl(url) {
   return u.href;
 }
 
-export async function fetchOnce(url, auth, timeoutMs) {
+export async function fetchOnce(url, timeoutMs) {
   try {
-    const res = await fetch(url, { headers: auth ? { authorization: auth } : {}, redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
+    const res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) });
     if (res.status !== 200) {
       await res.body?.cancel();
       return { status: res.status, last: `HTTP ${res.status}` };

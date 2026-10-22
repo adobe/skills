@@ -5,12 +5,9 @@
 //   eligibility(root)                        { ok: true } | { ok: false, reason }: an aem-boilerplate project
 //   headMetadata(html)                       the delivered page's head metas nav and footer, { nav?, footer? }
 //   isolation({ path, meta, origin, namespace, sandbox })  the ways the page touches shared documents
-//   runPreview({ dir, slug, org, repo, branch, path, namespace, sandbox, auth, tokenFlag, maxWaitSec })  the PreviewRecord
-//        (tokenFlag names the flag that gave the token, for the error when the preview refuses it)
+//   runPreview({ dir, slug, org, repo, branch, path, namespace, sandbox, maxWaitSec })  the PreviewRecord
 // DEPLOY_VERIFY_ORIGIN (env) replaces the origin: the hook the fake-preview tests use. The record says so
-// (`originOverride`), since a page measured there was not measured on its branch preview. The Authorization header is
-// sent to the preview origin only (a redirect is never followed), only once the preview has refused a request without
-// it, and is never part of the record.
+// (`originOverride`), since a page measured there was not measured on its branch preview. A redirect is never followed.
 import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
@@ -106,31 +103,27 @@ export function isolation({ path, meta = {}, origin = BASE, namespace, sandbox =
 }
 
 // One request, ended by REQUEST_MS or by `budgetMs`, the time left of --max-wait, whichever is first (fetchOnce).
-const attemptOnce = (url, auth, budgetMs) => fetchOnce(url, auth, Math.max(1, Math.min(REQUEST_MS, budgetMs)));
+const attemptOnce = (url, budgetMs) => fetchOnce(url, Math.max(1, Math.min(REQUEST_MS, budgetMs)));
 
 const sleep = (ms) => new Promise((done) => { setTimeout(done, ms); });
 
-// preview.json: { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, originOverride?,
-// checkedAt, problems? }. `plain` is the authored form's URL, `problems` the isolation findings, `originOverride`
+// preview.json: { skipped?, reason?, url, origin, path, plain, namespace, sandbox, originOverride?, checkedAt,
+// problems? }. `plain` is the authored form's URL, `problems` the isolation findings, `originOverride`
 // { env: 'DEPLOY_VERIFY_ORIGIN', origin } the origin that stood in for the branch preview's (absent when none did).
-// `auth` is whether the preview refused a request without the site token (401 or 403): the page is protected and the
-// later steps treat it so. This step sends the token only after such a refusal, so the first request of the poll, the
-// authored form's, is the anonymous one; for a preview that never asked for one none is sent and the record says
-// `tokenUnused: true` (content, tokens and figma, later steps, send a token they are given regardless). With no token,
-// a refusal is a setup error (the token is missing), and so is the refusal of a token that was sent (it is wrong or
-// expired); neither is something to poll until 124.
+// A preview that refuses a request (401 or 403) is protected, and a protected preview is out of scope: a setup error,
+// never something to poll until 124.
 // Skipped (not an aem-boilerplate project) is recorded; a poll that never sees 200 for the authored form and then
 // for the delivered page (whose head says which nav and footer it loads) within maxWaitSec throws an error with
 // code 124 (and .last, the last response) and leaves no record, so no step reads a stale one.
 // A path that is not a plain path in a shared repo is refused before any request. Resolves the project root as
 // the parent of `dir`.
-export async function runPreview({ dir, slug, org, repo, branch, path, namespace = null, sandbox = false, auth = null, tokenFlag = '--auth-header or --token-env', maxWaitSec = 120, env = process.env }) {
+export async function runPreview({ dir, slug, org, repo, branch, path, namespace = null, sandbox = false, maxWaitSec = 120, env = process.env }) {
   const file = join(deployedDir(dir, slug), 'preview.json');
   rmSync(file, { force: true });
   const base = { path, namespace, sandbox: !!sandbox };
   const eligible = eligibility(dirname(resolve(dir)));
   if (!eligible.ok) {
-    const record = { skipped: true, reason: eligible.reason, url: null, origin: null, plain: null, ...base, auth: false, checkedAt: new Date().toISOString() };
+    const record = { skipped: true, reason: eligible.reason, url: null, origin: null, plain: null, ...base, checkedAt: new Date().toISOString() };
     writeJson(file, record);
     return record;
   }
@@ -142,9 +135,8 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
   } else origin = previewOrigin({ org, repo, branch });
   const url = `${origin}${path}`;
   const plain = plainUrl(url);
-  let using = null;
   const recorded = (problems) => {
-    const record = { url, origin, ...base, auth: !!using, ...(auth && !using ? { tokenUnused: true } : {}), ...(originOverride ? { originOverride } : {}), plain, checkedAt: new Date().toISOString(), ...(problems.length ? { problems } : {}) };
+    const record = { url, origin, ...base, ...(originOverride ? { originOverride } : {}), plain, checkedAt: new Date().toISOString(), ...(problems.length ? { problems } : {}) };
     writeJson(file, record);
     return record;
   };
@@ -160,14 +152,10 @@ export async function runPreview({ dir, slug, org, repo, branch, path, namespace
         err.last = last;
         throw err;
       }
-      const got = await attemptOnce(target, using, deadline - Date.now());
+      const got = await attemptOnce(target, deadline - Date.now());
       if (got.status === 200) return got.body;
       if (got.status === 401 || got.status === 403) {
-        // The token was sent and refused: wrong or expired, a setup error, not a page that is not served yet.
-        if (using) throw new UsageError(`the preview refused the site token (HTTP ${got.status}) given by ${tokenFlag}: it is wrong or expired`);
-        if (!auth) throw new UsageError('the preview needs a site token: pass --token-env <NAME>');
-        using = auth;
-        continue;
+        throw new UsageError(`the preview refused an anonymous request (HTTP ${got.status}): a protected preview is out of scope, make it reachable without auth`);
       }
       last = got.last;
       await sleep(Math.min(POLL_MS, Math.max(0, deadline - Date.now())));

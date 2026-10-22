@@ -8,10 +8,8 @@
 // any page or step halts the batch with exit 3 — nothing new starts, pages in flight finish, the ledger
 // is written, the halted page keeps its status and is never put-fail, one stderr HALT line with the
 // exact re-run command — and the same command with a fresh token resumes); a 5xx that persists is a
-// per-page FAIL with exit 1, not a halt; usage errors exit 2; --help; --site-token-env (a protected preview's
-// delivered check: 401 without the flag, delivered with it, from the environment or ./.env, on that request
-// only and not across a redirect to another origin, an unset variable or a pasted token refused unechoed);
-// and that no token value ever reaches stdout, stderr, a ledger or a log.
+// per-page FAIL with exit 1, not a halt; usage errors exit 2; --help; and that the token value never
+// reaches stdout, stderr, a ledger or a log.
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
@@ -32,8 +30,7 @@ const jwt = (claims) => `${Buffer.from('{"alg":"RS256"}').toString('base64url')}
 const EXPIRED_EXP = Math.floor(Date.now() / 1000) - 2 * 3600;
 const EXPIRED_JWT = jwt({ exp: EXPIRED_EXP, sub: 'x', client_id: 'test' });
 const FUTURE_JWT = jwt({ exp: Math.floor(Date.now() / 1000) + 3600, sub: 'x' });
-const SITE_TOKEN = `site-${randomBytes(12).toString('hex')}`; // a protected preview's site token: only the delivered check carries it
-const SECRETS = [TOKEN, FRESH_TOKEN, EXPIRED_JWT, FUTURE_JWT, SITE_TOKEN];
+const SECRETS = [TOKEN, FRESH_TOKEN, EXPIRED_JWT, FUTURE_JWT];
 const ORG = 'test-org'; const REPO = 'test-repo'; const BRANCH = 'main';
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -120,10 +117,9 @@ const site = (dir, names) => {
     writeFileSync(f, FRAG[`/${n}`]);
   }
 };
-const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN', verifyOrigin = BASE, env: extraEnv = {} } = {}) => new Promise((resolve) => {
-  const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: verifyOrigin };
+const run = (args, { token = TOKEN, tokenEnv = 'DA_TOKEN' } = {}) => new Promise((resolve) => {
+  const env = { ...process.env, DA_SOURCE_BASE: `${BASE}/source`, AEM_ADMIN_BASE: BASE, DEPLOY_VERIFY_ORIGIN: BASE };
   delete env.DA_TOKEN; if (token) env[tokenEnv] = token;
-  Object.assign(env, extraEnv);
   const p = spawn(process.execPath, [SCRIPT, '--org', ORG, '--repo', REPO, '--branch', BRANCH, '--backoff-ms', '1', ...args], { cwd: proj, env });
   let out = ''; let err = '';
   p.stdout.on('data', (d) => { out += d; }); p.stderr.on('data', (d) => { err += d; });
@@ -406,140 +402,6 @@ await check('--token-file usage errors exit 2 with nothing sent: together with -
   assert.equal(requests.length, from, 'no request left the process');
   const help = await run(['--help']); assert.equal(help.code, 0); assert.match(help.out, /--token-env DA_TOKEN \| --token-file <path>/); assert.match(help.out, /--token-file read the token from this file instead/);
 });
-
-// ---- (h) --site-token-env: the delivered check on a protected preview ------------------------------------
-// A second origin stands in for the protected preview: .plain.html answers 401 unless the site token is on the
-// request; /redir-* pages redirect (token accepted) to a third origin that records what reaches it.
-const protectedSeen = []; const elsewhereSeen = [];
-const elsewhere = createServer((req, res) => {
-  elsewhereSeen.push({ url: req.url, authorization: req.headers.authorization });
-  res.writeHead(200, { 'content-type': 'text/html' }); res.end('<div><p>elsewhere</p></div>');
-});
-await new Promise((r) => { elsewhere.listen(0, '127.0.0.1', r); });
-const ELSEWHERE = `http://127.0.0.1:${elsewhere.address().port}`;
-const protectedOrigin = createServer((req, res) => {
-  const { authorization } = req.headers;
-  protectedSeen.push({ url: req.url, authorization });
-  const p = req.url.slice(0, -'.plain.html'.length);
-  const answer = (status, text = '', headers = {}) => { res.writeHead(status, headers); res.end(text); };
-  if (!req.url.endsWith('.plain.html')) return answer(404);
-  if (authorization === undefined || authorization.replace(/^(token|bearer) /i, '') !== SITE_TOKEN) return answer(401, 'unauthorized', { 'x-error': 'unauthorized' });
-  if (p.startsWith('/redir-')) return answer(302, '', { location: `${ELSEWHERE}${req.url}` });
-  return putOk.has(p) ? answer(200, '<div><p>delivered</p></div>', { 'content-type': 'text/html' }) : answer(404, 'not found');
-});
-await new Promise((r) => { protectedOrigin.listen(0, '127.0.0.1', r); });
-const PROTECTED = `http://127.0.0.1:${protectedOrigin.address().port}`;
-const protectedRun = (args, opts = {}) => run(args, { verifyOrigin: PROTECTED, ...opts });
-const siteEnv = (value = SITE_TOKEN) => ({ env: { SITE_TEST_TOKEN: value } });
-const filesText = (dir) => ['.deploy-ledger.json', '.deploy-log.jsonl'].map((f) => readFileSync(join(proj, dir, f), 'utf8')).join('\n');
-
-await check('a protected preview without --site-token-env: the delivered check is answered 401, the page is not delivered (verify-fail, exit 1) and the message points at the flag', async () => {
-  site('site-h', ['h1']);
-  const from = protectedSeen.length;
-  const r = await protectedRun(['--content', 'site-h']);
-  assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.err, /^\[1\/1\] FAIL \/h1 \(verify-fail\)$/m);
-  assert.equal(protectedSeen.length - from, 1);
-  assert.equal(protectedSeen[from].authorization, undefined, 'no credentials without the flag');
-  const row = ledgerOf('site-h')['/h1'];
-  assert.equal(row.status, 'verify-fail');
-  assert.equal(row.verify, 'plain.html 401 — a protected preview needs --site-token-env <NAME>');
-});
-await check('--site-token-env <NAME>: the variable goes on the delivered check as `token <value>` and nowhere else; the page lands; the re-run re-verifies the live page with it; the value is in no output, ledger or log', async () => {
-  const from = requests.length; const pfrom = protectedSeen.length;
-  const args = ['--content', 'site-h', '--site-token-env', 'SITE_TEST_TOKEN'];
-  const r = await protectedRun(args, siteEnv());
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.match(r.err, /^\[1\/1\] OK {3}\/h1 \(live\)$/m);
-  assert.deepEqual(protectedSeen.slice(pfrom).map((q) => q.authorization), [`token ${SITE_TOKEN}`]);
-  const admin = since(from);
-  assert.equal(admin.length, 3, 'PUT, preview, live: the verify GET went to the protected origin');
-  for (const q of admin) assert.ok(!JSON.stringify(q.headers).includes(SITE_TOKEN), `the site token reached DA or the admin API: ${q.method} ${q.url}`);
-  assert.equal(ledgerOf('site-h')['/h1'].status, 'live'); assert.equal(ledgerOf('site-h')['/h1'].verify, 'ok');
-  for (const text of [r.out, r.err, filesText('site-h')]) assert.ok(!text.includes(SITE_TOKEN), 'the site token leaked');
-  assert.match(r.err, /^\[deploy-batch\] 1 pages, 0 already live, 1 to drive/m);
-  const from2 = requests.length; const pfrom2 = protectedSeen.length;
-  const again = await protectedRun(args, siteEnv());
-  assert.equal(again.code, 0, again.out + again.err);
-  assert.match(again.err, /1 pages, 1 already live, 0 to drive/);
-  assert.equal(requests.length, from2, 'a page already live is re-verified, not re-driven');
-  assert.deepEqual(protectedSeen.slice(pfrom2).map((q) => q.authorization), [`token ${SITE_TOKEN}`]);
-});
-await check('a value already starting with `bearer ` is sent as is; with the variable unset the NAME= line of ./.env is read (bare, double- or single-quoted, CRLF); `export NAME=` and `NAME = v` are not that line', async () => {
-  const send = async (opts, name = 'SITE_TEST_TOKEN') => {
-    const pfrom = protectedSeen.length;
-    const r = await protectedRun(['--content', 'site-h', '--site-token-env', name], opts);
-    assert.equal(r.code, 0, r.out + r.err);
-    assert.match(r.err, /1 already live/);
-    return protectedSeen.slice(pfrom).map((q) => q.authorization);
-  };
-  assert.deepEqual(await send(siteEnv(`Bearer ${SITE_TOKEN}`)), [`Bearer ${SITE_TOKEN}`]);
-  assert.deepEqual(await send(siteEnv(`TOKEN ${SITE_TOKEN}`)), [`TOKEN ${SITE_TOKEN}`]);
-  const dotenv = join(proj, '.env');
-  try {
-    for (const line of [`SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN="${SITE_TOKEN}"`, `SITE_ENV_TOKEN='${SITE_TOKEN}'`, `SITE_ENV_TOKEN=${SITE_TOKEN}\r`, `SITE_ENV_TOKEN="bearer ${SITE_TOKEN}"`]) {
-      writeFileSync(dotenv, `OTHER=1\nSITE_ENV_TOKEN_2=nope\n${line}\n`);
-      const sent = await send({}, 'SITE_ENV_TOKEN');
-      assert.deepEqual(sent, [line.includes('bearer ') ? `bearer ${SITE_TOKEN}` : `token ${SITE_TOKEN}`], line);
-    }
-    for (const line of [`export SITE_ENV_TOKEN=${SITE_TOKEN}`, `SITE_ENV_TOKEN = ${SITE_TOKEN}`, ` SITE_ENV_TOKEN=${SITE_TOKEN}`]) {
-      writeFileSync(dotenv, `OTHER=1\n${line}\n`);
-      const off = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-      assert.equal(off.code, 2, `${line}: ${off.out}${off.err}`); assert.match(off.err, /fatal: --site-token-env: the \.env line for the variable it names is not in a form that is read; it must be exactly NAME=value \(no export, no spaces round the =, no indent\)$/m);
-      assert.ok(!off.err.includes(SITE_TOKEN) && !off.out.includes(SITE_TOKEN), 'the value was printed');
-    }
-    writeFileSync(dotenv, `# SITE_ENV_TOKEN=${SITE_TOKEN}\nSITE_ENV_TOKEN_2=${SITE_TOKEN}\n`);
-    const other = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-    assert.equal(other.code, 2, other.out + other.err); assert.match(other.err, /fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m, 'a comment or another variable is not a NAME line');
-    writeFileSync(dotenv, `SITE_ENV_TOKEN=\nSITE_ENV_TOKEN_2="${SITE_TOKEN}"\n`);
-    const empty = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_ENV_TOKEN']);
-    assert.equal(empty.code, 2, empty.out + empty.err); assert.match(empty.err, /fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m);
-  } finally { rmSync(dotenv, { force: true }); }
-});
-await check('--site-token-env usage errors exit 2 with nothing sent: an unset variable is not named (and never a value), a token pasted where the name belongs is refused without being echoed, a dangling flag is refused', async () => {
-  const from = requests.length; const pfrom = protectedSeen.length;
-  const miss = await protectedRun(['--content', 'site-h', '--site-token-env', 'SITE_NOT_SET']);
-  assert.equal(miss.code, 2, miss.out + miss.err);
-  assert.match(miss.err, /^\[deploy-batch\] fatal: --site-token-env: the variable it names is not set in the environment or in \.\/\.env$/m);
-  assert.ok(!miss.err.includes('SITE_NOT_SET'), 'the variable name is not echoed either');
-  const shaped = await protectedRun(['--content', 'site-h', '--site-token-env', 'hlx_AbC123secretValue']);
-  assert.equal(shaped.code, 2, shaped.out + shaped.err);
-  assert.ok(!shaped.err.includes('hlx_AbC123secretValue') && !shaped.out.includes('hlx_AbC123secretValue'), 'a token shaped like a name was echoed');
-  const pasted = await protectedRun(['--content', 'site-h', '--site-token-env', `token ${SITE_TOKEN}`]);
-  assert.equal(pasted.code, 2, pasted.out + pasted.err);
-  assert.match(pasted.err, /^\[deploy-batch\] fatal: --site-token-env takes the name of an environment variable/m);
-  assert.ok(!pasted.err.includes(SITE_TOKEN) && !pasted.out.includes(SITE_TOKEN), 'the pasted token was echoed');
-  const dangling = await protectedRun(['--content', 'site-h', '--site-token-env']);
-  assert.equal(dangling.code, 2, dangling.out + dangling.err); assert.match(dangling.err, /fatal: --site-token-env takes the name of an environment variable/);
-  assert.equal(requests.length, from, 'no request left the process'); assert.equal(protectedSeen.length, pfrom);
-});
-await check('a site token the preview refuses is a per-page verify-fail whose message says so and never carries the value', async () => {
-  site('site-h2', ['h2']);
-  const wrong = `wrong-${randomBytes(8).toString('hex')}`;
-  const r = await protectedRun(['--content', 'site-h2', '--site-token-env', 'SITE_TEST_TOKEN'], siteEnv(wrong));
-  assert.equal(r.code, 1, r.out + r.err);
-  assert.match(r.err, /^\[1\/1\] FAIL \/h2 \(verify-fail\)$/m);
-  assert.equal(ledgerOf('site-h2')['/h2'].verify, 'plain.html 401 — the site token was refused');
-  for (const text of [r.out, r.err, filesText('site-h2')]) assert.ok(!text.includes(wrong), 'the refused token leaked');
-});
-await check('the site token follows no redirect off the verify origin', async () => {
-  site('site-h3', ['redir-1']);
-  const efrom = elsewhereSeen.length;
-  const r = await protectedRun(['--content', 'site-h3', '--site-token-env', 'SITE_TEST_TOKEN'], siteEnv());
-  assert.equal(r.code, 0, r.out + r.err);
-  assert.equal(elsewhereSeen.length - efrom, 1, 'the redirect was followed');
-  assert.equal(elsewhereSeen[efrom].authorization, undefined, 'the other origin got no credentials');
-});
-await check('--help documents --site-token-env: the variable, the .env fallback, the token prefix, the check it applies to', async () => {
-  const help = await run(['--help']);
-  assert.equal(help.code, 0);
-  assert.match(help.out, /\[--site-token-env <NAME>\]/);
-  assert.match(help.out, /--site-token-env\s+<NAME>\s+reads\s+it\s+from\s+the\s+environment\s+variable\s+NAME,\s+else\s+from\s+a\s+NAME=\s+line\s+of\s+\.\/\.env/);
-  assert.match(help.out, /`token `\s+in\s+front/); assert.match(help.out, /never\s+to\s+DA\s+or\s+the\s+admin\s+API/);
-  assert.match(help.out, /never printed, logged, written to the ledger or put in the re-run command/, 'the Site token paragraph has no orphan line');
-  assert.equal((help.out.match(/^Token: /gm) || []).length, 1, 'the Token: paragraph is printed once');
-});
-elsewhere.close(); protectedOrigin.close();
 
 // ---- (f) the token never leaks ---------------------------------------------------------------------------
 await check('the token value never appears on stdout, stderr, in any ledger or any log', () => {

@@ -3,8 +3,7 @@
 // lineHeight, letterSpacing, fontFamily, color) against the Figma TEXT node's style, passed through
 // M1's normalizers and the rules' weightMap and familyEquivalence. The :root block rootTokens() derives
 // from donor-tokens.json is asserted verbatim. The assertions run through donor-probe.mjs with a
-// generated --spec, one run per width; on a preview target it settles the EDS decoration and carries the site token
-// (see runRamp). tokenLiterals is advisory: it lists token values written as
+// generated --spec, one run per width; on a preview target it settles the EDS decoration (see runRamp). tokenLiterals is advisory: it lists token values written as
 // literals outside the :root block. textExpect, rampSpecs and tokenLiterals are pure.
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -139,12 +138,11 @@ export function tokenLiterals(html, rootEntries, { lengths = false } = {}) {
   return found.sort((a, b) => a.index - b.index).map(({ line, literal, token }) => ({ line, literal, token }));
 }
 
-// The page's HTML as served, for the advisory list of token literals. A protected preview gets the site token, on the
-// preview's own origin (a redirect to another origin drops it).
-async function pageSource(url, auth) {
+// The page's HTML as served, for the advisory list of token literals.
+async function pageSource(url) {
   try {
     if (url.startsWith('file:')) return readFileSync(fileURLToPath(url), 'utf8');
-    const res = await fetch(url, { headers: auth ? { authorization: auth } : {} });
+    const res = await fetch(url);
     return res.ok ? await res.text() : '';
   } catch { return ''; }
 }
@@ -156,13 +154,12 @@ const STALLED = /stalled decoration:/;
 // run (any exit other than 0 or 1, or exit 1 without a fresh JSON) throws with its stderr: no verdict,
 // never a ramp failure. Properties Figma gives no value for are listed as UNASSERTED results; they do
 // not fail the ramp. Every result carries root, the checks root its entry was measured against (null for a :root entry).
-// On a preview target the probe settles the page's EDS decoration (--wait-eds) and gets the site token (auth, the
-// Authorization header value) by environment and --token-env, never argv; a probe that stalls on the decoration is no
-// verdict (code 124), a bot challenge or token halt code 3. The probe runs as an async child, so a server in this process
+// On a preview target the probe settles the page's EDS decoration (--wait-eds); a probe that stalls on the decoration is
+// no verdict (code 124), a bot challenge code 3. The probe runs as an async child, so a server in this process
 // can answer it.
-export async function runRamp({ target, join: joined, checks, boxes, tokens, rules, out, auth = null, donorProbe = DONOR_PROBE }) {
+export async function runRamp({ target, join: joined, checks, boxes, tokens, rules, out, donorProbe = DONOR_PROBE }) {
   const preview = target.regime === 'preview';
-  const { childEnv, coded, outputOf, runChild, tokenFlags } = await import('../deployed/child.mjs');
+  const { childEnv, coded, outputOf, runChild } = await import('../deployed/child.mjs');
   const norm = parseNormalizations(rules?.normalizations, []);
   const rootEntries = rootTokens(tokens).entries;
   const unasserted = [];
@@ -175,8 +172,8 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
       rootOf.set(`${slot} ${t.id}`, section.roots[t.width]);
     }
   }
-  const settle = preview ? ['--wait-eds', '--eds-timeout', String(target.edsTimeoutMs ?? 20000), ...tokenFlags(auth)] : [];
-  const env = preview ? childEnv({}, auth) : process.env;
+  const settle = preview ? ['--wait-eds', '--eds-timeout', String(target.edsTimeoutMs ?? 20000)] : [];
+  const env = childEnv({});
 
   mkdirSync(out, { recursive: true });
   const tokensFile = join(out, 'ramp-tokens.json');
@@ -194,7 +191,7 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
     let probe = null;
     try { probe = JSON.parse(readFileSync(jsonFile, 'utf8')); } catch { /* reported below */ }
     if ((r.status !== 0 && r.status !== 1) || !probe) {
-      const why = outputOf(r, auth);
+      const why = outputOf(r);
       if (r.status === 2 && STALLED.test(why)) throw coded(124, `donor-probe at ${width}px: ${why}`);
       if (r.status === 2) throw new UsageError(`donor-probe at ${width}px: ${why}`);
       const message = `donor-probe at ${width}px did not give a verdict (exit ${r.status ?? r.signal}): ${why}`;
@@ -217,7 +214,7 @@ export async function runRamp({ target, join: joined, checks, boxes, tokens, rul
   }
 
   results.push(...unasserted);
-  const literals = tokenLiterals(await pageSource(target.url, preview ? auth : null), rootEntries);
+  const literals = tokenLiterals(await pageSource(target.url), rootEntries);
   const result = { pass: results.every((x) => x.status !== 'FAIL'), results, perWidth, literals };
   writeFileSync(join(out, 'ramp.json'), `${JSON.stringify({ url: target.url, regime: target.regime, checksStamp: stampsOf(checks), ...result }, null, 2)}\n`);
   return result;

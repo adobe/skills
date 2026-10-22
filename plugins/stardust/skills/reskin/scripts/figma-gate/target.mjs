@@ -75,30 +75,29 @@ export function localTarget(input) {
 
 const REQUEST_MS = 10000;
 const coded = (code, message) => Object.assign(new Error(message), { code });
-const refused = (url, status, auth) => new UsageError(`${url} answered HTTP ${status}: ${auth ? 'the site token was not accepted' : 'the preview is protected: pass --auth-header or --token-env'}`);
+const refused = (url, status) => new UsageError(`${url} answered HTTP ${status}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
 
-// The authored form, with the site token when there is one. A redirect is a non-200 answer, so the header never
-// follows one to another origin. A 401 or 403 is a usage error; no answer, or any other status, is no verdict (124).
-async function fetchPlain(url, auth) {
+// The authored form. A redirect is a non-200 answer. A 401 or 403 is a usage error; no answer, or any other status, is
+// no verdict (124).
+async function fetchPlain(url) {
   let res;
   try {
-    res = await fetch(url, { headers: auth ? { authorization: auth } : {}, redirect: 'manual', signal: AbortSignal.timeout(REQUEST_MS) });
+    res = await fetch(url, { redirect: 'manual', signal: AbortSignal.timeout(REQUEST_MS) });
   } catch (e) {
     throw coded(124, `${url} did not answer (${e.cause?.code || e.name})`);
   }
   if (res.status === 200) return res.text();
   await res.body?.cancel();
-  if (res.status === 401 || res.status === 403) throw refused(url, res.status, auth);
+  if (res.status === 401 || res.status === 403) throw refused(url, res.status);
   throw coded(124, `${url} answered HTTP ${res.status}: the authored form is not there; re-run once the page is previewed`);
 }
 
-// A deployed EDS page (--target preview). open() navigates it like any EDS page, with the site token sent to its
-// origin only, and waits for the decoration: a block that never decorates throws code 124 "stalled decoration: …",
+// A deployed EDS page (--target preview). open() navigates it like any EDS page and waits for the decoration: a block that never decorates throws code 124 "stalled decoration: …",
 // a bot challenge code 3, a 401 or 403 a usage error. Its sections are not marked, so join.collect reads what the
 // join needs: the authored form of the page, the text of each decorated `main > div` (the page is open) and the
 // data-slot sections of the reskin page (a file or URL, opened in a second page of the same browser); join.match is
 // plain-join.mjs's plainJoin over them. edsTimeoutMs, the settle bound, is on the target so the ramp's probe uses it too.
-export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000 } = {}) {
+export function previewTarget(input, { reskin, edsTimeoutMs = 20000 } = {}) {
   const url = toUrl(input);
   if (!/^https?:/i.test(url)) throw new UsageError(`--target preview needs the http(s) URL of the preview, got ${input}`);
   if (!reskin) throw new UsageError('--target preview needs --reskin <file>: the reskin page whose data-slot sections the preview is joined to');
@@ -112,7 +111,7 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
       name: '.plain.html',
       async collect(page) {
         const { plainUrl } = await import('../deployed/fetch.mjs');
-        const html = await fetchPlain(plainUrl(url), auth);
+        const html = await fetchPlain(plainUrl(url));
         const decorated = await page.evaluate(() => [...document.querySelectorAll('main > div')].map((el) => el.innerText));
         const local = await reskinPage.open(page.context().browser(), page.viewportSize()?.width ?? 1440);
         try { return { local: await localAttributes.collect(local), html, decorated }; } finally { await local.context().close(); }
@@ -125,7 +124,7 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
     async open(browser, width) {
       const eds = await import('../deployed/eds.mjs');
       const { gotoLive, newLiveContext } = await eds.loadLiveSession();
-      const ctx = await newLiveContext(browser, { locale: 'en-US', viewport: { width, height: 900 }, ...eds.authContextOptions(url, auth) });
+      const ctx = await newLiveContext(browser, { locale: 'en-US', viewport: { width, height: 900 } });
       try {
         const page = await ctx.newPage();
         await gotoLive(page, url, { waitUntil: 'networkidle', settleMs: 0 });
@@ -136,7 +135,7 @@ export function previewTarget(input, { reskin, auth = null, edsTimeoutMs = 20000
       } catch (e) {
         await ctx.close();
         if (e?.name === 'BotChallengeError') e.code = 3;
-        if (e?.name === 'LiveHTTPError' && (e.status === 401 || e.status === 403)) throw refused(url, e.status, auth);
+        if (e?.name === 'LiveHTTPError' && (e.status === 401 || e.status === 403)) throw refused(url, e.status);
         throw e;
       }
     },

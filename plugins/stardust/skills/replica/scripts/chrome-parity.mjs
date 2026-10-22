@@ -31,11 +31,6 @@
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
- *     --token-env <NAME> | --auth-header "<value>"  [--auth-origin <url>]
- *                        opt-in site auth for a protected origin: the token rides requests to ONE origin
- *                        only, never to any other origin a page loads and never unasked (a SITE_TOKEN in the
- *                        environment or .env is ignored); with two URLs of different origins --auth-origin
- *                        names it, else a usage error (exit 1; exit 2 stays "deltas printed")
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
  *                        exists for the same URL, width and region selectors; probe
@@ -73,7 +68,7 @@ if (!LIVE_SESSION) {
   console.error('chrome-parity error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { AUTH_HELP, instrumentAuth, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
+const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays, defaultWaitUntil } = await import(pathToFileURL(LIVE_SESSION).href);
 
 const HELP = `chrome-parity — computed-style + rect diff of matched chrome elements (live vs build)
 
@@ -90,16 +85,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --help             this text
 
-Site auth, for a protected origin (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):
-${AUTH_HELP.split('\n').map((l) => `  ${l}`).join('\n')}
-  The two URLs usually have two origins (the live page and a local build): with a token, name the one that
-  gets it with --auth-origin; the other side's origin never receives it.
-
-Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error (a usage error, a site-auth one included), 3 bot challenge (live side).`;
-
-// A flag's value, or '' when it is last or followed by another flag: a site-auth flag reaches instrumentAuth as
-// undefined only when absent, and a missing value is its usage error.
-const flagValue = (rest, i) => (i + 1 < rest.length && !rest[i + 1].startsWith('--') ? rest[i + 1] : '');
+Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
 
 function parseArgs(argv) {
   const rest = argv.slice(2);
@@ -123,11 +109,6 @@ function parseArgs(argv) {
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
     else if (a === '--live-cache') { opts.liveCache = rest[i += 1]; }
-    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
-      const v = flagValue(rest, i);
-      opts[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
-      if (v) i += 1;
-    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -264,7 +245,7 @@ async function settleTop(page) {
 }
 
 async function probeSide(browser, url, opts, isLive) {
-  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 }, ...opts.auth });
+  const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
   await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
@@ -290,11 +271,6 @@ function readLiveCache(file, live, opts) {
 
 async function main() {
   const { live, build, opts } = parseArgs(process.argv);
-  try { opts.auth = instrumentAuth({ tokenEnv: opts.tokenEnv, authHeader: opts.authHeader, authOrigin: opts.authOrigin, urls: [live, build] }); } catch (e) {
-    if (e.code !== 2) throw e;
-    console.error(`chrome-parity error: ${e.message}\n\n${HELP}`);
-    process.exit(1);
-  }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let total = 0;
   try {

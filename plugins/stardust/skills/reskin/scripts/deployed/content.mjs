@@ -1,7 +1,7 @@
 // skills/reskin/scripts/deployed/content.mjs — A1 of the deployed leg, `content`: the preview's content against the
 // live source and the page's content model, through dom-equality.mjs and slot-coverage.mjs (each a child process, run
 // one after the other, both with --wait-eds so the EDS decoration has settled).
-//   runContent({ dir, slug, preview, auth, env, run })  writes content.json and returns { verdict, domEquality: { exit,
+//   runContent({ dir, slug, preview, env, run })  writes content.json and returns { verdict, domEquality: { exit,
 //        report }, slotCoverage: { exit, report }, unusedDeltas, gates }. A gate that cannot give a verdict throws: a
 //        UsageError (exit 2: a setup problem, a stalled decoration), an error with code 3 (bot challenge) or code 124.
 //        `run(command, args, { env })` starts a gate and answers { status, signal, stdout, stderr } (a promise or not,
@@ -19,16 +19,13 @@
 // unusedDeltas is the union of the ids the gates warned of, read from their stdout "WARNING unused delta <id>: …" lines
 // (one line per entry, the format both print through deltas.mjs warningLines; the reports hold the same entries but in
 // Markdown for people): an allow id, or `metadata.ignore "<key>"` from slot-coverage.
-// The site token reaches the gates by environment (--token-env DEPLOYED_GATE_SITE_TOKEN), never argv, and never appears
-// in a message, report or record.
 import { existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
-import { authHint, childEnv, coded, outputOf, runChild, setupError, tokenFlags } from './child.mjs';
+import { childEnv, coded, outputOf, runChild, setupError } from './child.mjs';
 import { ADVISORY, loadDeltas } from './deltas.mjs';
-import { redact } from './eds.mjs';
 import { deployedDir, readInput } from './io.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -55,16 +52,13 @@ function unusedIds(stdout, deltas) {
   return ids;
 }
 
-// preview is the record of `deployed-gate preview`; auth the Authorization header value, or null.
-export async function runContent({ dir, slug, preview, auth = null, env = process.env, run = runChild }) {
+// preview is the record of `deployed-gate preview`.
+export async function runContent({ dir, slug, preview, env = process.env, run = runChild }) {
   const out = deployedDir(dir, slug);
   const files = { record: join(out, 'content.json'), domEquality: join(out, 'content-dom-equality.md'), figmaText: join(out, 'content-figma-text.json'), slotCoverage: join(out, 'content-slot-coverage.md') };
   for (const f of Object.values(files)) rmSync(f, { force: true });
 
   if (typeof preview?.url !== 'string' || !preview.url) throw new UsageError(`${join(out, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
-  // Before the live source is crawled: a protected preview cannot be read without the token, and a gate that finds out
-  // only after the capture has spent its hits on the source.
-  if (preview.auth && !auth) throw new UsageError(`content needs the site token to read a protected preview${authHint(preview, auth)}`);
   const modelPath = join(dir, 'reskin', 'content-model', slug, 'content-model.json');
   const provenance = readInput(modelPath, 'the content model the reskin captures from the live source')?._provenance;
   const figma = provenance?.source?.kind === 'figma';
@@ -96,17 +90,17 @@ export async function runContent({ dir, slug, preview, auth = null, env = proces
   const results = [];
   for (const { name, report, args } of gates) {
     let r;
-    try { r = await run(process.execPath, [...args, ...tokenFlags(auth)], { env: childEnv(env, auth), encoding: 'utf8' }); } catch (e) { throw coded(124, redact(`${name} did not start: ${e.message}`, auth)); }
-    const stop = setupError(r, { name, auth });
+    try { r = await run(process.execPath, args, { env: childEnv(env), encoding: 'utf8' }); } catch (e) { throw coded(124, `${name} did not start: ${e.message}`); }
+    const stop = setupError(r, { name });
     if (stop) throw stop;
-    if ((r.status !== 0 && r.status !== 1) || !existsSync(report)) throw coded(124, `${name} did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r, auth)}`);
-    const stdout = redact(r.stdout ?? '', auth);
+    if ((r.status !== 0 && r.status !== 1) || !existsSync(report)) throw coded(124, `${name} did not give a verdict (exit ${r.status ?? r.signal}): ${outputOf(r)}`);
+    const stdout = r.stdout ?? '';
     results.push({
       name,
       exit: r.status,
       report,
       advisory: r.status === 0 && stdout.includes(ADVISORY),
-      lines: redact(`${r.stderr ?? ''}\n${stdout}`, auth).split('\n').filter((l) => FINDING.test(l)).slice(0, MAX_FINDINGS),
+      lines: `${r.stderr ?? ''}\n${stdout}`.split('\n').filter((l) => FINDING.test(l)).slice(0, MAX_FINDINGS),
       unused: unusedIds(stdout, deltas),
     });
   }

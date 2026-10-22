@@ -15,14 +15,13 @@
 //            pre-delivery gates are recorded as run by deploy. Blocking.
 //   chrome   A6: the header and footer at 1440 and 360 against the mapped chrome (links, logo, text, menu toggle, no raw
 //            icon words, no header covering main). Blocking and never waivable.
-//            On a protected preview (preview.json auth: true) every step above measures it with the site token.
 //   all      The whole leg in one run: content, tokens, parity, sanity, inherited, chrome in this process, then figma-gate
 //            all --target preview as a child process when the page has a figma-checks file. One verdict line per
 //            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/ (and, for the figma-gate child, its own figma-preview/).
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
-// Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or token
-// halt · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
+// Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge
+// · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
 import { existsSync, realpathSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -33,18 +32,18 @@ const FIGMA_GATE = join(dirname(SELF), 'figma-gate.mjs');
 
 export const HELP = `Usage:
   node deployed-gate.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path </ns/slug>
-                         (--namespace <ns> | --sandbox) [--auth-header <value> | --token-env <NAME>]
-                         [--max-wait 120] [--dir stardust]
-  node deployed-gate.mjs content --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs tokens --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs inherited --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs chrome --page <slug> [--auth-header <value> | --token-env <NAME>] [--dir stardust]
-  node deployed-gate.mjs all --page <slug> [--reskin <file>] [--auth-header <value> | --token-env <NAME>] [--dir stardust]
+                         (--namespace <ns> | --sandbox) [--max-wait 120] [--dir stardust]
+  node deployed-gate.mjs content --page <slug> [--dir stardust]
+  node deployed-gate.mjs tokens --page <slug> [--dir stardust]
+  node deployed-gate.mjs parity --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs sanity --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs inherited --page <slug> [--dir stardust]
+  node deployed-gate.mjs chrome --page <slug> [--dir stardust]
+  node deployed-gate.mjs all --page <slug> [--reskin <file>] [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview. Run preview first, then the checks one by one or all
 at once; every step reads the record preview wrote and writes under <dir>/.work/reskin/gates/<slug>/deployed/.
+The preview must be reachable without auth: a protected preview is out of scope.
 
 preview  A0. Finds the preview and refuses a page that touches shared documents.
          Runs only in an aem-boilerplate project: stardust/runtime-contract.json (deploy's runtime probe),
@@ -55,15 +54,9 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          it answers 200, then the delivered page <path> the same way, at most --max-wait seconds in all (default 120;
          each request is cut off at the time left): no 200 is "ERROR (exit 124) preview: <path>[.plain.html] not 200
          after <n> s".
-         The first request, the authored form's, goes without the site token. A 401 or 403 to it says the preview is
-         protected: with a token (--auth-header or --token-env) the poll goes on with it and preview.json says
-         auth: true; without one it is exit 2 "the preview needs a site token: pass --token-env <NAME>", never polled
-         until 124. A 401 or 403 to a request that carried the token is exit 2 at once too ("the preview refused the
-         site token (HTTP 401) given by --token-env: it is wrong or expired", the flag named, never its value); a 404 or
-         a page not authored yet still polls. This step sends the token only after a refusal, so a preview that never
-         asked for one gets none: preview.json says auth: false, tokenUnused: true. Of the later steps, inherited,
-         parity and sanity send such a preview none; content, tokens and figma send the token they are given, to the
-         preview origin only.
+         A 401 or 403 says the preview is protected: exit 2 "the preview refused an anonymous request (HTTP 401): a
+         protected preview is out of scope, make it reachable without auth", never polled until 124; a 404 or a page
+         not authored yet still polls.
          Then, in a shared repo, the path must be a plain path (no %, \\, ., .. or empty segment) starting
          with /<ns>/, and the head of the delivered page must carry <meta name="nav"> and <meta name="footer">
          naming /<ns>/nav and /<ns>/footer (a full URL on the preview origin is the same path; EDS strips the
@@ -71,18 +64,14 @@ preview  A0. Finds the preview and refuses a page that touches shared documents.
          --sandbox (a repo of one's own) waives both and is recorded; give --namespace or --sandbox, not both.
          Prints "PASS preview <url>" (with DEPLOY_VERIFY_ORIGIN set, "… (origin override: DEPLOY_VERIFY_ORIGIN, not the
          branch preview)"). Writes <dir>/.work/reskin/gates/<slug>/deployed/preview.json:
-           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, auth, tokenUnused?, originOverride?,
-             checkedAt, problems? }
-         auth is whether the preview refused an anonymous request, the one fact the later steps read a protected
-         preview from (every later step needs the token on it: --auth-header or --token-env).
+           { skipped?, reason?, url, origin, path, plain, namespace, sandbox, originOverride?, checkedAt, problems? }
 content  A1. Checks the preview's content against the live source, through two gates run one after the other, each with the
          decoration settled first (--wait-eds): dom-equality (the text and images of the preview's main against the
          source page, <_provenance.url> and <_provenance.scope> of the content model, normalized by
          <dir>/reskin/normalize/<slug>.mjs when that file exists) and slot-coverage (the content model slot by slot,
          with the metadata). A Figma-sourced model (a Figma-only page, no live source) runs figma-text-gate in place
          of dom-equality (content-figma-text.json; content.json records figmaText). Reads preview.json (no record, or one with problems, is exit 2; a skipped leg prints
-         "not run: skipped", exit 0; a protected preview given no token is exit 2, before the live source is
-         captured), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
+         "not run: skipped", exit 0), <dir>/reskin/content-model/<slug>/content-model.json (missing is exit 2) and,
          when it exists, the page's declared differences <dir>/reskin/deltas/<slug>.json, handed to both gates as
          --deltas. Without that file nothing is allowed for and a failed check blocks; with it, "blocking": false
          makes a failed check advisory and the key left out means true. Prints "PASS content", "ADVISORY content:
@@ -91,8 +80,7 @@ content  A1. Checks the preview's content against the live source, through two g
          entry that matched nothing in either gate. Writes content-dom-equality.md, content-slot-coverage.md and
          content.json ({ verdict, domEquality: { exit, report }, slotCoverage: { exit, report }, unusedDeltas })
          beside preview.json. A gate that cannot run is exit 2 (a stalled decoration, an unreachable or protected
-         page, an invalid delta file), 3 (a bot challenge) or 124 (no verdict). The token reaches the gates by
-         environment, never argv.
+         page, an invalid delta file), 3 (a bot challenge) or 124 (no verdict).
 tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
          settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
          on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
@@ -105,8 +93,8 @@ tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through don
          cap-probe) is not asserted: it prints a SKIP line. Prints "PASS tokens n/n" or "FAIL tokens k/n" (k of the n
          assertions failing) plus one
          indented line per failing assertion (exit 1). Writes tokens-spec.json, tokens-probe.md,
-         tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. The
-         token reaches donor-probe by environment, never argv. A probe that cannot run is exit 2 (a stalled
+         tokens-probe.json and tokens.json ({ verdict, exit, report, json, skipped }) beside preview.json. A probe that
+         cannot run is exit 2 (a stalled
          decoration, an unreachable or protected page), 3 (a bot challenge) or 124 (no verdict).
 parity   A3. Holds the preview to the local reskin page with replica's instruments, as shipped, at 1440 and 360.
          The reskin page (--reskin, default <dir>/reskin/pages/<slug>.html) is served by a local server for the
@@ -125,13 +113,8 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
            chrome-parity  computed-style parity of the regions the reskin page has: ADVISORY, never a FAIL
            cap-probe      the reskin page's content caps, captured to design.json, against the preview's: a
                           cap outside ±20px, or missing, is a FAIL
-         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without) and
-         is measured as any other: the preview side of each stitch-shot, chrome-parity and cap-probe's compare, and
-         this step's own browser carry the token to the preview origin only (--token-env DEPLOYED_GATE_SITE_TOKEN and
-         --auth-origin <preview origin>, the value by environment, never argv); the reskin page, the two
-         comparisons of the captures and cap-probe's capture of the reskin page get none. A preview that answers
-         HTTP 401 or 403 to this step's browser is exit 2 (the token is missing, wrong or expired), never rows;
-         one that needs no token is sent none. The step prints "PASS parity", or "FAIL parity" and one indented line per
+         A preview that answers HTTP 401 or 403 to this step's browser is exit 2 (a protected preview is out of
+         scope), never rows. The step prints "PASS parity", or "FAIL parity" and one indented line per
          failing row (a finding of the instrument below it), then an "ADVISORY …" line per advisory row and one
          "n/a: <reason> (<rows>)" line per reason; "ERROR (exit 124) parity: <n> checks gave no verdict" and a line
          per row in error when an instrument gave no verdict (exit 124, 1 or another: re-run once). Writes
@@ -154,13 +137,7 @@ sanity   A4. The hard asserts on the preview, at 1440 and 360. Never waivable: n
            content-presence   the reskin page (--reskin, default <dir>/reskin/pages/<slug>.html, served by a
                               local server for the run) against the preview: HIDDEN + MISSING headings and
                               links 0
-         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without) and
-         is measured as any other: this step's browser and both instruments carry the token to the preview origin
-         only (the instruments by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin>, the
-         value by environment, never argv); the reskin page content-presence reads gets none. A token the
-         preview refuses (401 or 403 once sent) is exit 2 like parity's: nothing is measured or recorded. Any
-         other page that answers HTTP 400 or more is a row in error, never a pass; one that needs no token is
-         sent none. The step prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per failing row
+         A page that answers HTTP 400 or more is a row in error, never a pass. The step prints "PASS sanity", or "FAIL sanity (hard)" and one indented line per failing row
          ("overflow 240px > 4px @360", the instrument's findings below it); "ERROR (exit 124) sanity: <n> checks
          gave no verdict" and a line per row in error when a check gave no verdict (an instrument exiting 124,
          1 or another, a page the browser could not load, or one that answered HTTP 400 or more, "HTTP <n> at
@@ -187,12 +164,7 @@ inherited  A5. Deploy's own delivered-page gates, run on the preview. Reads prev
            by deploy       localize-links --check, davids-model-lint and block-roundtrip --ew run in deploy's own
                            loop before the push and are not re-run: recorded as "by deploy", never PASS or FAIL,
                            and no part of the verdict
-         A protected preview (preview.json says auth: true) needs --auth-header or --token-env (exit 2 without): the
-         .plain.html request carries the header to the preview origin only, and ai-readability and qa-gate get the
-         token by --token-env DEPLOYED_GATE_SITE_TOKEN and --auth-origin <preview origin> (the value by environment,
-         never argv), for that origin only. A record whose
-         plain URL is not on the preview origin is exit 2 ("preview.json plain URL is not on the preview origin")
-         before any request. A preview that needs no token is sent none by this step. HTTP 401 or 403 on the .plain.html is exit 2.
+         HTTP 401 or 403 on the .plain.html is exit 2 (a protected preview is out of scope).
          Prints "PASS inherited", or "FAIL inherited" and one indented line per failing row (".plain.html: 2 <h1>",
          "ai-readability 97 < 98", the findings below it) and one "by
          deploy (<rows>)" line; "ERROR (exit 124) inherited: <n> checks gave no verdict" and a line per row in error when
@@ -222,8 +194,7 @@ chrome   A6. The header and footer every page inherits, at 1440 and 360. Never w
 all      The whole leg: content, tokens, parity, sanity, inherited and chrome in turn, each as above and in this process,
          then figma-gate.mjs all --target preview as a child process (the one beside this script) when
          <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
-         preview.json once: no record, or one with problems, is exit 2, and so is a protected preview (auth: true)
-         given no token, before any step starts; a skipped leg is one "ADVISORY <step> not
+         preview.json once: no record, or one with problems, is exit 2, before any step starts; a skipped leg is one "ADVISORY <step> not
          run: skipped" line per step (figma included) and exit 0. First it deletes the previous content.json,
          tokens.json, parity.json, sanity.json, inherited.json, chrome.json and summary.json, so a stale file never feeds the
          ledger fragment. A setup error in a step (its own exit 2) stops the run with exit 2 and no summary.json,
@@ -232,8 +203,7 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
          run going on (sanity then records its own hard decoration FAIL).
          A step that throws anything else is "ERROR (exit 124) <step>: <message>" and the run goes on; a bot
          challenge (exit 3) in any step stops the rest: "ERROR (exit 3) <step> not run: bot challenge".
-         The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir, and the site
-         token as the variable DEPLOYED_GATE_SITE_TOKEN named by --token-env, never in argv. Its exit maps the
+         The figma-gate child gets --url (the preview URL), --target preview, --reskin and --dir. Its exit maps the
          same way: 2 a setup error (exit 2, no summary.json), 3 an ERROR line, 124 an ERROR line unless the
          line is a stalled decoration ("<step> CRASH: stalled decoration: <what>", how figma-gate says a preview
          never decorated), which is FAIL figma as it is for the other steps, 1 FAIL, 0 PASS; an exit 0 or 1 that
@@ -257,33 +227,12 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
          for content, assertions for tokens, rows for the rest), "FAIL stalled decoration: <what>", "ADVISORY <gates>
          (deltas.blocking false)", "not run: <why>" or "ERROR (exit N): <why>"; figma is figma-gate's own
          ledgerFragment (its regime is "preview"), or one of those strings. sanity is never waivable: no delta file
-         and no residual accepts its failure, nor chrome's. invocation is the exact argument list, the value of --auth-header
-         replaced by [redacted]; --token-env's value is a variable name and stays, so the line can be run again. No step
-         record, line or summary holds the site token.
+         and no residual accepts its failure, nor chrome's. invocation is the exact argument list, so the line can be run again.
          Run it under run-bg when it may exceed a shell's limit (parity, sanity and the figma-gate child each drive
          a browser):
            node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
            node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
-         On a protected preview add --token-env <NAME> to the command after the --, and never --auth-header: run-bg
-         saves the command it runs, argument values included, in its state file and prints it, so a header value would
-         be written to disk and to the log.
 --path         the page's delivered path, without .html (/ns/home)
---auth-header  Authorization header value for a protected preview, or --token-env <NAME>, the environment
-               variable (or .env entry) that holds the token; neither may be empty. Under run-bg use --token-env only
-               (run-bg saves the command's arguments, so a header value would be saved with it). Sent to the preview
-               origin only, by every step that reads a protected preview (the instruments by --token-env and
-               --auth-origin; a font or image host or the local reskin page never gets it), never printed or
-               recorded (preview.json says only whether the preview refused an
-               anonymous request: auth). tokens hands it
-               to donor-probe, content to dom-equality and slot-coverage, as the variable DEPLOYED_GATE_SITE_TOKEN,
-               which puts "token " in front of a value that starts with neither "token " nor "bearer ".
-               parity and sanity hand it to their instruments and browser, inherited to its .plain.html request and to
-               ai-readability and qa-gate. all hands it to every step and to the
-               figma-gate child (by that variable and --token-env). Write a flag and its value as two arguments,
-               the value quoted when it has a space: an unknown --flag=value or --flag:value, a command that starts
-               with - or holds a space, = or :, and a stray argument holding a space, = or : are never echoed.
-               The --token-env NAME must be a variable name (letters, digits, underscores) and is never printed,
-               set or not, so a token typed in its place is refused without being shown.
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
 --dir <d>      the stardust directory (default stardust).
@@ -297,38 +246,38 @@ tokens-probe.json; parity.json, parity/, design.json; sanity.json, sanity/; inhe
 chrome.json; summary.json (all). The figma-gate child writes its own files under <dir>/.work/reskin/gates/<slug>/figma-preview/.
 The tracked input is <dir>/reskin/deltas/<slug>.json.
 
-Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge or
-            token halt · 124 no verdict: the preview never answered; re-run once, the same 124 twice is a
+Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge
+            · 124 no verdict: the preview never answered; re-run once, the same 124 twice is a
             residual (needs-owner), never a fix iteration. all reports the first present of 2, 3, 124, 1, 0.`;
 
 const SPEC = {
   preview: {
-    values: ['--page', '--org', '--repo', '--branch', '--path', '--namespace', '--auth-header', '--token-env', '--max-wait', '--dir'],
+    values: ['--page', '--org', '--repo', '--branch', '--path', '--namespace', '--max-wait', '--dir'],
     bools: ['--sandbox'],
     positional: [],
   },
   content: {
-    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--dir'],
     bools: [],
     positional: [],
   },
   tokens: {
-    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--dir'],
     bools: [],
     positional: [],
   },
   parity: {
-    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--reskin', '--dir'],
     bools: [],
     positional: [],
   },
   sanity: {
-    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--reskin', '--dir'],
     bools: [],
     positional: [],
   },
   inherited: {
-    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--dir'],
     bools: [],
     positional: [],
   },
@@ -338,48 +287,38 @@ const SPEC = {
     positional: [],
   },
   all: {
-    values: ['--page', '--reskin', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--reskin', '--dir'],
     bools: [],
     positional: [],
   },
 };
 
-const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
-// What a usage error may print of an argument it did not understand: the word of a command, never one that starts with
-// `-` or holds a space, `=` or `:` (`--auth-header=<token>`, `token <value>` typed ahead of the command), and of a flag
-// its name alone, cut at the first character that cannot be part of one (`--flag=<value>`, `--flag:<value>`).
-const plainWord = (s) => !/^-|[\s=:]/.test(s);
-const flagName = (a) => a.match(/^--[\w-]+/)?.[0] ?? null;
+// The name of an unknown flag, cut at the first character that cannot be part of one (`--flag=<value>`).
+const flagName = (a) => a.match(/^--[\w-]+/)?.[0] ?? a;
 
 export function parseArgs(argv, UsageError) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError(`no command\n${HELP}`);
   const spec = SPEC[cmd];
-  if (!spec) throw new UsageError(`${plainWord(cmd) ? `unknown command "${cmd}"` : 'unknown command (not echoed: it starts with - or holds a space, = or :, and may be part of a secret; a command comes first, its flags after it)'}\n${HELP}`);
+  if (!spec) throw new UsageError(`unknown command "${cmd}"\n${HELP}`);
   const opts = {};
   const positional = [];
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (spec.values.includes(a)) {
       const val = rest[i + 1];
-      // A blank secret never falls back to $SITE_TOKEN or a .env: it is a missing value.
-      if (val === undefined || val.startsWith('--') || (AUTH_FLAGS.has(a.slice(2)) && !val.trim())) throw new UsageError(`${a} needs a value`);
+      if (val === undefined || val.startsWith('--')) throw new UsageError(`${a} needs a value`);
       opts[a.slice(2)] = val;
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
     else if (a.startsWith('--')) {
-      // An unknown --flag=value (or --flag:value) is named by its flag alone: the value may be a secret.
       const name = flagName(a);
-      if (!name) throw new UsageError(`unknown flag for ${cmd} (not echoed: it is not a flag name)`);
       throw new UsageError(name === a ? `unknown flag ${a} for ${cmd}` : `unknown flag ${name} for ${cmd}: a flag and its value are separate arguments (${name} <value>)`);
     } else positional.push(a);
   }
   if (positional.length < spec.positional.length) throw new UsageError(`${cmd} needs ${spec.positional.join(' ')}`);
   if (positional.length > spec.positional.length) {
-    // Next to a site-token flag the stray argument may be the rest of an unquoted header value: it is not printed.
-    throw new UsageError(rest.some((x) => AUTH_FLAGS.has(x.slice(2)))
-      ? 'unexpected argument: quote the value of --auth-header ("token <value>"), it has a space; the argument is not shown, it may be part of the secret'
-      : plainWord(positional[spec.positional.length]) ? `unexpected argument "${positional[spec.positional.length]}"` : 'unexpected argument (not shown: it holds a space, = or :, and may be part of a secret)');
+    throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
   }
   return { cmd, positional, opts };
 }
@@ -395,25 +334,6 @@ async function helper(name, sub = 'deployed') {
 }
 
 const NAME = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
-const ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
-
-// The site token the gate was given (--auth-header or --token-env), or null. `say` prints through redact, `redact` takes
-// the token out of a text and `scrub` out of an error's message, so no line the gate prints or records can carry it.
-async function siteToken(opts, log, UsageError) {
-  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return { auth: null, redact: (m) => m, say: log, scrub: (e) => e };
-  // The variable's name is never printed: a token typed in its place would be echoed.
-  if (opts['token-env'] !== undefined && !ENV_NAME.test(opts['token-env'])) throw new UsageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
-  const eds = await helper('eds');
-  await eds.loadLiveSession();
-  const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
-  if (!auth?.trim()) throw new UsageError('no site token: the variable --token-env names is not set in the environment or .env');
-  return {
-    auth,
-    redact: (m) => eds.redact(m, auth),
-    say: (m) => log(eds.redact(m, auth)),
-    scrub: (e) => { if (e?.message) e.message = eds.redact(e.message, auth); return e; },
-  };
-}
 
 async function previewStep({ dir, opts, env, log, UsageError }) {
   for (const flag of ['page', 'org', 'repo', 'branch', 'path']) {
@@ -429,20 +349,19 @@ async function previewStep({ dir, opts, env, log, UsageError }) {
   if (!Number.isInteger(maxWaitSec) || maxWaitSec < 1) throw new UsageError(`--max-wait needs a positive integer (seconds), got "${opts['max-wait']}"`);
 
   const { runPreview } = await helper('preview');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
   try {
-    const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, auth, tokenFlag: opts['auth-header'] !== undefined ? '--auth-header' : '--token-env', maxWaitSec, env });
-    if (record.skipped) { say(`SKIPPED deployed leg: ${record.reason}`); return 0; }
-    if (record.problems) { for (const p of record.problems) say(`FAIL preview: ${p}`); return 1; }
-    say(`PASS preview ${record.url}${record.originOverride ? ` (origin override: ${record.originOverride.env}, not the branch preview)` : ''}`);
+    const record = await runPreview({ dir, slug: opts.page, org: opts.org, repo: opts.repo, branch: opts.branch, path: opts.path, namespace: opts.namespace, sandbox: !!opts.sandbox, maxWaitSec, env });
+    if (record.skipped) { log(`SKIPPED deployed leg: ${record.reason}`); return 0; }
+    if (record.problems) { for (const p of record.problems) log(`FAIL preview: ${p}`); return 1; }
+    log(`PASS preview ${record.url}${record.originOverride ? ` (origin override: ${record.originOverride.env}, not the branch preview)` : ''}`);
     return 0;
   } catch (e) {
     if (e?.code === 124) {
-      say(`ERROR (exit 124) preview: ${e.message}`);
-      say(`  last response: ${e.last}`);
+      log(`ERROR (exit 124) preview: ${e.message}`);
+      log(`  last response: ${e.last}`);
       return 124;
     }
-    throw scrub(e);
+    throw e;
   }
 }
 
@@ -472,85 +391,60 @@ async function pageRecord(step, ctx) {
 }
 
 async function contentStep(ctx) {
-  const { dir, opts, env, log, UsageError } = ctx;
+  const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('content', ctx);
   if (!preview) return 0;
   const { runContent } = await helper('content');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runContent({ dir, slug: opts.page, preview, auth, env });
-    if (result.verdict === 'PASS') say('PASS content');
-    for (const g of result.gates.filter((x) => x.exit === 1 || x.advisory)) {
-      say(g.advisory ? `ADVISORY content: ${g.name} — report ${g.report} (deltas.blocking false: reported, not enforced)` : `FAIL content: ${g.name} — report ${g.report}`);
-      for (const line of g.lines) say(`  ${line.trim()}`);
-    }
-    for (const id of result.unusedDeltas) say(`WARNING unused delta ${id}`);
-    return result.verdict === 'FAIL' ? 1 : 0;
-  } catch (e) {
-    throw scrub(e);
+  const result = await runContent({ dir, slug: opts.page, preview, env });
+  if (result.verdict === 'PASS') log('PASS content');
+  for (const g of result.gates.filter((x) => x.exit === 1 || x.advisory)) {
+    log(g.advisory ? `ADVISORY content: ${g.name} — report ${g.report} (deltas.blocking false: reported, not enforced)` : `FAIL content: ${g.name} — report ${g.report}`);
+    for (const line of g.lines) log(`  ${line.trim()}`);
   }
+  for (const id of result.unusedDeltas) log(`WARNING unused delta ${id}`);
+  return result.verdict === 'FAIL' ? 1 : 0;
 }
 
 async function tokensStep(ctx) {
-  const { dir, opts, env, log, UsageError } = ctx;
+  const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('tokens', ctx);
   if (!preview) return 0;
   const { runTokens } = await helper('eds-spec');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runTokens({ dir, slug: opts.page, preview, auth, env });
-    say(result.verdict === 'PASS' ? `PASS tokens ${result.total}/${result.total}` : `FAIL tokens ${result.failures.length}/${result.total}`);
-    for (const f of result.failures) say(`  ${f}`);
-    for (const s of result.skipped) say(`SKIP ${s}`);
-    return result.exit;
-  } catch (e) {
-    throw scrub(e);
-  }
+  const result = await runTokens({ dir, slug: opts.page, preview, env });
+  log(result.verdict === 'PASS' ? `PASS tokens ${result.total}/${result.total}` : `FAIL tokens ${result.failures.length}/${result.total}`);
+  for (const f of result.failures) log(`  ${f}`);
+  for (const s of result.skipped) log(`SKIP ${s}`);
+  return result.exit;
 }
 
 async function parityStep(ctx) {
-  const { dir, opts, env, log, UsageError } = ctx;
+  const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('parity', ctx);
   if (!preview) return 0;
   const { runParity, parityLines } = await helper('parity');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runParity({ dir, slug: opts.page, preview, auth, reskinPage: opts.reskin, env });
-    for (const line of parityLines(result)) say(line);
-    return result.exit;
-  } catch (e) {
-    throw scrub(e);
-  }
+  const result = await runParity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  for (const line of parityLines(result)) log(line);
+  return result.exit;
 }
 
 async function sanityStep(ctx) {
-  const { dir, opts, env, log, UsageError } = ctx;
+  const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('sanity', ctx);
   if (!preview) return 0;
   const { runSanity, sanityLines } = await helper('sanity');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runSanity({ dir, slug: opts.page, preview, auth, reskinPage: opts.reskin, env });
-    for (const line of sanityLines(result)) say(line);
-    return result.exit;
-  } catch (e) {
-    throw scrub(e);
-  }
+  const result = await runSanity({ dir, slug: opts.page, preview, reskinPage: opts.reskin, env });
+  for (const line of sanityLines(result)) log(line);
+  return result.exit;
 }
 
 async function inheritedStep(ctx) {
-  const { dir, opts, env, log, UsageError } = ctx;
+  const { dir, opts, env, log } = ctx;
   const preview = await pageRecord('inherited', ctx);
   if (!preview) return 0;
   const { runInherited, inheritedLines } = await helper('inherited');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runInherited({ dir, slug: opts.page, preview, auth, env });
-    for (const line of inheritedLines(result)) say(line);
-    return result.exit;
-  } catch (e) {
-    throw scrub(e);
-  }
+  const result = await runInherited({ dir, slug: opts.page, preview, env });
+  for (const line of inheritedLines(result)) log(line);
+  return result.exit;
 }
 
 async function chromeStep(ctx) {
@@ -575,8 +469,6 @@ const ALL_STEPS = ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome
 const STALE_RECORDS = ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json', 'summary.json'];
 const HEADLINE = /^(PASS|FAIL|ERROR \(exit \d+\)) /;
 const ERROR_LINE = /^ERROR \(exit \d+\) /;
-// --token-env's value is a variable name, not a secret (siteToken refuses a name that is not one), so it stays replayable.
-const SECRET_FLAGS = ['--auth-header'];
 const MAX_WHY = 300;
 const MAX_WHY_LINES = 10;
 
@@ -655,15 +547,15 @@ function passLedger(rows) {
 
 // figma-gate all --target preview as a child process, its exit mapped as the other steps' are. Its ledgerFragment (the
 // summary.json of the preview regime it wrote) is the step's ledger value; a setup error (its exit 2) stops the run.
-async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, redact, UsageError }) {
-  const [{ childEnv, coded, firstLine, runChild, tokenFlags }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
+async function figmaOutcome({ dir, slug, preview, reskin, env, figmaGate, UsageError }) {
+  const [{ childEnv, coded, firstLine, runChild }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
   const summaryPath = join(workDir(dir, slug, 'preview'), 'summary.json');
   rmSync(summaryPath, { force: true });
-  const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, ...tokenFlags(auth), '--dir', dir];
+  const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, '--dir', dir];
   let r;
-  try { r = await runChild(process.execPath, args, { env: childEnv(env, auth) }); } catch (e) { throw coded(124, `figma-gate did not start: ${e.message}`); }
-  const out = redact(r.stdout);
-  const err = redact(r.stderr);
+  try { r = await runChild(process.execPath, args, { env: childEnv(env) }); } catch (e) { throw coded(124, `figma-gate did not start: ${e.message}`); }
+  const out = r.stdout;
+  const err = r.stderr;
   const exit = r.status ?? r.signal;
   // figma-gate all names the step that ended without a verdict on an "ERROR (exit N) <step> …" line of stdout.
   const because = (out.split('\n').find((l) => ERROR_LINE.test(l))?.replace(ERROR_LINE, '') || firstLine(err) || firstLine(out)).trim();
@@ -687,22 +579,19 @@ async function figmaOutcome({ dir, slug, preview, reskin, auth, env, figmaGate, 
 }
 
 const shellWord = (a) => (/^[\w@%+=:,./-]+$/.test(a) ? a : `'${a.replaceAll("'", "'\\''")}'`);
-// The argument list as it was given, the value of --auth-header replaced.
-const invocationOf = (argv) => ['deployed-gate.mjs', ...argv.map((a, i) => (SECRET_FLAGS.includes(argv[i - 1]) ? '[redacted]' : shellWord(a)))].join(' ');
+// The argument list as it was given.
+const invocationOf = (argv) => ['deployed-gate.mjs', ...argv.map(shellWord)].join(' ');
 
 // runners and figmaGate let a test replace a step's run function and the figma-gate script.
 async function allStep(ctx) {
   const { dir, opts, env, log, UsageError, argv, runners = {}, figmaGate = FIGMA_GATE } = ctx;
   const slug = pageSlug('all', opts, UsageError);
-  const [{ deployedDir }, { authHint }, { provenance, writeJson }] = await Promise.all([helper('io'), helper('child'), helper('io', 'figma')]);
+  const [{ deployedDir }, { provenance, writeJson }] = await Promise.all([helper('io'), helper('io', 'figma')]);
   const deployed = deployedDir(dir, slug);
   for (const f of STALE_RECORDS) rmSync(join(deployed, f), { force: true });
 
   const preview = await readRecord('all', ctx);
   if (!preview.skipped && (typeof preview.url !== 'string' || !preview.url)) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
-  const { auth, redact, say, scrub } = await siteToken(opts, log, UsageError);
-  // As runInherited does, and before any step crawls the live source: a protected preview cannot be read without the token.
-  if (!preview.skipped && preview.auth && !auth) throw new UsageError(`all needs the site token to read a protected preview${authHint(preview, auth)}`);
   const reskin = opts.reskin ?? join(dir, 'reskin', 'pages', `${slug}.html`);
 
   let run = {};
@@ -711,18 +600,17 @@ async function allStep(ctx) {
       helper('content'), helper('eds-spec'), helper('parity'), helper('sanity'), helper('inherited'), helper('chrome'),
     ]);
     const base = { dir, slug, preview, env };
-    const withToken = { ...base, auth };
-    const withPage = { ...withToken, reskinPage: opts.reskin };
+    const withPage = { ...base, reskinPage: opts.reskin };
     run = {
-      content: async () => contentOutcome(await (runners.content ?? runContent)(withToken)),
-      tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(withToken)),
+      content: async () => contentOutcome(await (runners.content ?? runContent)(base)),
+      tokens: async () => tokensOutcome(await (runners.tokens ?? runTokens)(base)),
       parity: async () => { const r = await (runners.parity ?? runParity)(withPage); return rowsOutcome('parity', r, parityLines(r)); },
       sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
-      inherited: async () => { const r = await (runners.inherited ?? runInherited)(withToken); return rowsOutcome('inherited', r, inheritedLines(r)); },
-      chrome: async () => { const r = await (runners.chrome ?? runChrome)(withToken); return rowsOutcome('chrome', r, chromeLines(r), 'chrome (hard)'); },
-      figma: () => figmaOutcome({ ...base, reskin, auth, figmaGate, redact, UsageError }),
+      inherited: async () => { const r = await (runners.inherited ?? runInherited)(base); return rowsOutcome('inherited', r, inheritedLines(r)); },
+      chrome: async () => { const r = await (runners.chrome ?? runChrome)(base); return rowsOutcome('chrome', r, chromeLines(r), 'chrome (hard)'); },
+      figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError }),
     };
-  } else say(`SKIPPED deployed leg: ${preview.reason}`);
+  } else log(`SKIPPED deployed leg: ${preview.reason}`);
 
   const recorded = {};
   const ledger = {};
@@ -736,20 +624,20 @@ async function allStep(ctx) {
     else {
       try { result = await run[step](); } catch (e) {
         if (e instanceof UsageError || e?.code === 2) {
-          result = stalled(step, redact(String(e.message ?? '')));
-          if (!result) throw scrub(e);
+          result = stalled(step, String(e.message ?? ''));
+          if (!result) throw e;
         } else {
-          result = thrown(step, e?.code, redact(String(e?.message ?? e)));
+          result = thrown(step, e?.code, String(e?.message ?? e));
           challenged = result.exit === 3;
         }
       }
     }
-    const detail = result.detail.map(redact);
+    const { detail } = result;
     recorded[step] = { verdict: result.verdict, exit: result.exit, detail };
     ledger[step] = result.ledger;
     if (result.exit !== null) exits.push(result.exit);
-    say(result.line);
-    for (const line of detail) say(line);
+    log(result.line);
+    for (const line of detail) log(line);
   }
 
   const invocation = invocationOf(argv);
@@ -761,9 +649,8 @@ async function allStep(ctx) {
     _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
     page: slug, url, regime: 'preview', ...override, steps: recorded, ledgerFragment, invocation,
   };
-  // The text of every step went through redact already; the whole record does once more, whatever a child put in its fragment.
-  writeJson(join(deployed, 'summary.json'), JSON.parse(redact(JSON.stringify(summary))));
-  say(`summary written: ${join(deployed, 'summary.json')} (its ledgerFragment is pages.${slug}.gates.deployed in ledger.json)`);
+  writeJson(join(deployed, 'summary.json'), summary);
+  log(`summary written: ${join(deployed, 'summary.json')} (its ledgerFragment is pages.${slug}.gates.deployed in ledger.json)`);
   // A setup error (exit 2) stopped the run above; of the rest the first present wins.
   return [3, 124, 1].find((c) => exits.includes(c)) ?? 0;
 }

@@ -279,12 +279,11 @@ deployed eyeball, the delayed-font/nav CLS probe and the header-behavior checks 
 the ledger. Phase 5 gains **(e)**; recipe, delta file and fix budget are in `reference/deployed-leg.md`, the bars in
 `gates.md`.
 
-Every step measures a protected preview with the site token, or stops with exit 2; nothing reports `n/a`. The token goes
-to one origin, fails closed, is never printed or recorded and never crosses a redirect.
+The preview must be reachable without auth: a protected preview is out of scope, and `preview` stops on its 401 or 403
+with exit 2. This release adds no site auth: the gates send no Authorization header, and no token flag is added to the
+`deploy`, `diff` or `replica` instruments.
 
-- **Instruments.** `stitch-shot --hide`; `stitch-shot`, `chrome-parity`, `cap-probe`, `clip-probe`, `content-presence`,
-  `qa-gate` and `ai-readability` take `--token-env`, `--auth-header`, `--auth-origin` (`diff/live-session.mjs`; deploy's
-  `site-auth.mjs`); `deploy-batch --site-token-env`; `donor-probe` `match: "all"` and `--wait-eds`; `dom-equality` and
+- **Instruments.** `stitch-shot --hide`; `donor-probe` `match: "all"` and `--wait-eds`; `dom-equality` and
   `slot-coverage` `--deltas`; `capture-content` skips script, style, noscript and template children; `qa-gate` finds a
   repeat group's block by order, not name; `build-harness` creates its output directory. Setup installs `pixelmatch` and
   `pngjs` and copies more scripts (`reference/gates.md` § Project copies).
@@ -292,12 +291,10 @@ to one origin, fails closed, is never printed or recorded and never crosses a re
   failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
   assessed" (`register.unassessable`), neither a class nor a PASS.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
-  checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`. `deploy-batch`'s `.env`
-  reader takes only `NAME=value` (a trailing `# comment` is part of the value and fails as a 401). `ai-readability
-  --token-env` with an unset variable is exit 2. A redirect inside a protected origin now fails: measure the final URL.
-- **Field.** Two blind runs took a component kit's home page to a protected preview with 0 blockers (44 and 60 min). The
+  checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
+- **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The
   first read geometry 41/41, ramp 291/291 and `parity` n/a while the deployed page was 21.05% off at 360; that drove the
-  floor and protected measurement. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
+  floor. The second: ramp 547/547 at widths 414 and 1440, coverage 78/80 with 2 waivers, parity
   0.05% at 1440 and 0.19% at 360, sanity PASS.
 
 ## 0.33.0 — reskin takes a Figma donor: headless capture and deterministic curation

@@ -22,18 +22,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
 const GATE = join(SCRIPTS, 'deployed-gate.mjs');
 const TOKEN = 'canary-456';
-const HEADER = `token ${TOKEN}`;
 const SOURCE = 'http://127.0.0.1:9';
 const scratch = mkdtempSync(join(tmpdir(), 'deployed-gate-content-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
-const noToken = (...texts) => { for (const t of texts) assert.ok(!t.includes(TOKEN), `the token leaked: …${t.slice(Math.max(0, t.indexOf(TOKEN) - 40), t.indexOf(TOKEN) + 40)}…`); };
 const attempt = async (fn) => { try { return { value: await fn() }; } catch (e) { return { error: e }; } };
 const fixtureDeltas = () => readJson(fixturePath('deltas.json'));
 
 // One gate run: { status, stdout, stderr, all }. The ambient hooks are cleared so a run only sees what it is given.
 const run = (args, { cwd = scratch, env = {}, script = GATE } = {}) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', SITE_TOKEN: '', ...env } });
+  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', ...env } });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
@@ -54,7 +52,7 @@ const project = (name, { previewUrl = `${SOURCE}/ns/home`, sourceOrigin = SOURCE
     const out = deployedDir(join(root, 'stardust'), 'home');
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, 'preview.json'), `${JSON.stringify({
-      url: previewUrl, origin: new URL(previewUrl).origin, path: '/ns/home', plain: `${previewUrl}.plain.html`, namespace: 'ns', sandbox: false, auth: false, checkedAt: new Date().toISOString(), ...record,
+      url: previewUrl, origin: new URL(previewUrl).origin, path: '/ns/home', plain: `${previewUrl}.plain.html`, namespace: 'ns', sandbox: false, checkedAt: new Date().toISOString(), ...record,
     }, null, 2)}\n`);
   }
   return root;
@@ -86,38 +84,30 @@ const go = (root, opts = {}) => runContent({ dir: dirOf(root), slug: 'home', pre
 
 // ---- runContent against a stub `run` ----------------------------------------------------------------------------
 
-await check('runContent starts dom-equality, then slot-coverage, beside the CLI with the brief\'s flags; the token goes by environment (to a public preview too: the record says auth: false), an inherited one is replaced, and no argv carries it', async () => {
+await check('runContent starts dom-equality, then slot-coverage, beside the CLI with the brief\'s flags', async () => {
   const root = project('stub-args', { normalize: true });
   const preview = previewOf(root);
-  assert.equal(preview.auth, false, 'a public preview: content sends the token it is given all the same');
   const { run: stub, calls } = stubRun();
-  const r = await go(root, { auth: HEADER, run: stub, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stale' } });
+  const r = await go(root, { run: stub });
   assert.equal(calls.length, 2);
   const out = outOf(root);
-  const tokenFlags = ['--token-env', 'DEPLOYED_GATE_SITE_TOKEN'];
   assert.deepEqual(calls[0].args, [join(SCRIPTS, 'dom-equality.mjs'), '--source', `${SOURCE}/`, '--source-scope', 'main', '--normalize', join(dirOf(root), 'reskin', 'normalize', 'home.mjs'),
-    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-dom-equality.md'), ...tokenFlags]);
+    '--rendered', preview.url, '--rendered-scope', 'main', '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-dom-equality.md')]);
   assert.deepEqual(calls[1].args, [join(SCRIPTS, 'slot-coverage.mjs'), '--model', modelPath(root),
-    '--rendered', preview.url, '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-slot-coverage.md'), ...tokenFlags]);
-  for (const c of calls) {
-    assert.equal(c.command, process.execPath);
-    assert.equal(c.env.DEPLOYED_GATE_SITE_TOKEN, HEADER, 'the token arrived by environment');
-    assert.ok(!c.args.includes('--auth-header'));
-    noToken(c.args.join(' '));
-  }
+    '--rendered', preview.url, '--deltas', deltasPath(root), '--wait-eds', '--report', join(out, 'content-slot-coverage.md')]);
+  for (const c of calls) assert.equal(c.command, process.execPath);
   assert.deepEqual(Object.keys(r).filter((k) => !['gates'].includes(k)), ['verdict', 'domEquality', 'slotCoverage', 'unusedDeltas']);
   assert.deepEqual(r.domEquality, { exit: 0, report: join(out, 'content-dom-equality.md') });
   assert.deepEqual(r.slotCoverage, { exit: 0, report: join(out, 'content-slot-coverage.md') });
 });
 
-await check('runContent without a token, a ledger or a delta file passes none of them: no --normalize, no --deltas, no token flag, and an inherited DEPLOYED_GATE_SITE_TOKEN is cleared', async () => {
+await check('runContent without a ledger or a delta file passes neither: no --normalize, no --deltas', async () => {
   const root = project('stub-bare', { deltas: null });
   const { run: stub, calls } = stubRun();
-  await go(root, { run: stub, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stray' } });
+  await go(root, { run: stub });
   for (const c of calls) {
-    for (const flag of ['--normalize', '--deltas', '--token-env', '--auth-header']) assert.ok(!c.args.includes(flag), `${flag} in ${c.args.join(' ')}`);
+    for (const flag of ['--normalize', '--deltas']) assert.ok(!c.args.includes(flag), `${flag} in ${c.args.join(' ')}`);
     assert.ok(c.args.includes('--wait-eds'));
-    assert.equal(c.env.DEPLOYED_GATE_SITE_TOKEN, undefined);
   }
 });
 
@@ -195,45 +185,34 @@ await check('unusedDeltas is the union of the ids the gates warned of, in the or
   assert.deepEqual(recordOf(root).unusedDeltas, r.unusedDeltas);
 });
 
-await check('runContent exit mapping: a gate exit 2 is a UsageError and stops there; exit 3 from either is code 3; any other exit, a missing report or a gate that cannot start is code 124; the gate\'s text is redacted and nothing stale is left', async () => {
+await check('runContent exit mapping: a gate exit 2 is a UsageError and stops there; exit 3 from either is code 3; any other exit, a missing report or a gate that cannot start is code 124; nothing stale is left', async () => {
   const root = project('stub-exits');
   const out = outOf(root);
   const FILES = ['content.json', 'content-dom-equality.md', 'content-slot-coverage.md'];
   const leave = () => { for (const f of FILES) writeFileSync(join(out, f), 'STALE\n'); };
-  const call = (opts, auth = HEADER) => { leave(); const stub = stubRun(opts); return attempt(() => go(root, { auth, run: stub.run })).then((r) => ({ ...r, calls: stub.calls })); };
+  const call = (opts) => { leave(); const stub = stubRun(opts); return attempt(() => go(root, { run: stub.run })).then((r) => ({ ...r, calls: stub.calls })); };
   // No record, and no report left from an earlier run (a gate that ran this time wrote its own).
   const staleGone = () => {
     assert.ok(!existsSync(join(out, 'content.json')), 'no record after a gate that gave no verdict');
     for (const f of FILES.slice(1)) assert.ok(!existsSync(join(out, f)) || readFileSync(join(out, f), 'utf8') !== 'STALE\n', `stale ${f} was removed`);
   };
 
-  const setup = await call({ exits: [2, 0], stderr: [`[dom-equality] stalled decoration: body.appear (${HEADER})\n`, ''], report: false });
+  const setup = await call({ exits: [2, 0], stderr: ['[dom-equality] stalled decoration: body.appear\n', ''], report: false });
   assert.ok(setup.error instanceof UsageError && setup.error.code === 2, String(setup.error));
-  assert.match(setup.error.message, /stalled decoration: body\.appear \(\[redacted\]\)/);
-  noToken(setup.error.message);
+  assert.match(setup.error.message, /stalled decoration: body\.appear/);
   assert.equal(setup.calls.length, 1, 'slot-coverage did not run after a setup error');
   staleGone();
-  const protectedRecord = { ...previewOf(root), auth: true };
-  const never = stubRun({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''] });
-  const hint = await attempt(() => go(root, { run: never.run, preview: protectedRecord }));
-  assert.ok(hint.error instanceof UsageError && hint.error.code === 2, String(hint.error));
-  assert.match(hint.error.message, /^content needs the site token to read a protected preview\npreview\.json says .*pass --auth-header or --token-env/);
-  assert.equal(never.calls.length, 0, 'a protected preview with no token is refused before the live source is crawled');
-  const withToken = stubRun({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''], report: false });
-  const refused = await attempt(() => go(root, { auth: HEADER, run: withToken.run, preview: protectedRecord }));
-  assert.match(refused.error?.message ?? '', /^\[dom-equality\] HTTP 401$/, 'with a token the gates run and a refusal is theirs to report');
-  assert.equal(withToken.calls.length, 1);
+  const refused = await call({ exits: [2, 0], stderr: ['[dom-equality] HTTP 401\n', ''], report: false });
+  assert.match(refused.error?.message ?? '', /^\[dom-equality\] HTTP 401$/, 'a protected preview is the gate\'s to report');
 
-  const second = await call({ exits: [0, 2], stderr: ['', `[slot-coverage] ${TOKEN} refused\n`] });
+  const second = await call({ exits: [0, 2], stderr: ['', '[slot-coverage] refused\n'] });
   assert.ok(second.error instanceof UsageError, String(second.error));
-  noToken(second.error.message);
   staleGone();
 
   for (const [name, opts] of [['dom-equality', { exits: [3, 0] }], ['slot-coverage', { exits: [1, 3] }]]) {
-    const halt = await call({ ...opts, stderr: ['', ''].map((_, i) => (opts.exits[i] === 3 ? `[${i ? 'slot-coverage' : 'dom-equality'}] bot challenge (${TOKEN})\n` : '')) });
+    const halt = await call({ ...opts, stderr: ['', ''].map((_, i) => (opts.exits[i] === 3 ? `[${i ? 'slot-coverage' : 'dom-equality'}] bot challenge\n` : '')) });
     assert.ok(halt.error && halt.error.code === 3 && !(halt.error instanceof UsageError), `${name}: ${String(halt.error)}`);
-    assert.match(halt.error.message, /bot challenge \(\[redacted\]\)/, name);
-    noToken(halt.error.message);
+    assert.match(halt.error.message, /bot challenge/, name);
     staleGone();
   }
   const silent = await call({ exits: [3, 0], stderr: ['', ''] });
@@ -241,17 +220,16 @@ await check('runContent exit mapping: a gate exit 2 is a UsageError and stops th
   assert.match(silent.error.message, /^dom-equality exited 3: bot challenge$/);
 
   for (const [name, opts] of [
-    ['exit 7', { exits: [7, 0], stderr: [`crashed ${TOKEN}\n`, ''] }],
+    ['exit 7', { exits: [7, 0], stderr: ['crashed\n', ''] }],
     ['exit 124', { exits: [0, 124] }],
     ['no report', { exits: [0, 0], report: false }],
-    ['unable to start', { throws: new Error(`spawn failed ${TOKEN}`) }],
+    ['unable to start', { throws: new Error('spawn failed') }],
   ]) {
     const crash = await call(opts);
     assert.ok(crash.error && crash.error.code === 124 && !(crash.error instanceof UsageError), `${name}: ${String(crash.error)}`);
-    noToken(crash.error.message);
     staleGone();
   }
-  assert.match((await call({ exits: [7, 0], stderr: [`crashed ${TOKEN}\n`, ''] })).error.message, /^dom-equality did not give a verdict \(exit 7\): crashed \[redacted\]$/);
+  assert.match((await call({ exits: [7, 0], stderr: ['crashed\n', ''] })).error.message, /^dom-equality did not give a verdict \(exit 7\): crashed$/);
 });
 
 await check('runContent setup errors, each before any gate starts: no content model, no _provenance.url, an invalid delta file, a preview record without a url', async () => {
@@ -271,25 +249,12 @@ await check('runContent setup errors, each before any gate starts: no content mo
 
 // ---- the CLI --------------------------------------------------------------------------------------------------
 
-await check('content on a protected preview with no token is exit 2 before the live source is asked for anything, and writes no record', async () => {
-  const source = await startSourceServer();
-  try {
-    const root = project('cli-protected-no-token', { sourceOrigin: source.origin, previewUrl: 'http://127.0.0.1:9/ns/home', record: { auth: true } });
-    const r = await content(root);
-    assert.equal(r.status, 2, r.all);
-    assert.match(r.stderr, /content needs the site token to read a protected preview/);
-    assert.match(r.stderr, /pass --auth-header or --token-env/);
-    assert.equal(source.requests.length, 0, 'the live source was not crawled');
-    assert.ok(!existsSync(join(outOf(root), 'content.json')));
-  } finally { await source.close(); }
-});
-
 await check('--help documents content beside preview and tokens; the usage errors of content exit 2 and write nothing', async () => {
   const dir = mkdtempSync(join(scratch, 'help-'));
   copyFileSync(GATE, join(dir, 'deployed-gate.mjs'));
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /deployed-gate\.mjs content --page <slug> \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
+  assert.match(r.stdout, /deployed-gate\.mjs content --page <slug> \[--dir stardust\]/);
   for (const re of [/dom-equality/, /slot-coverage/, /reskin\/content-model\/<slug>\/content-model\.json/, /reskin\/deltas\/<slug>\.json/, /reskin\/normalize\/<slug>\.mjs/, /"blocking": false/, /ADVISORY content:/, /FAIL content:/, /PASS content/, /WARNING unused delta/, /content\.json/, /not run: skipped/]) assert.match(r.stdout, re);
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
 
@@ -301,9 +266,7 @@ await check('--help documents content beside preview and tokens; the usage error
     [['content', '--page', 'home', '--deltas', 'x.json'], /unknown flag --deltas for content/],
     [['content', '--page', 'home', 'stray'], /unexpected argument "stray"/],
     [['content', '--page'], /--page needs a value/],
-    [['content', '--page', 'home', '--auth-header', '--dir', 'x'], /--auth-header needs a value/],
-    [['content', '--page', 'home', '--token-env', ' '], /--token-env needs a value/],
-    [['content', '--page', 'home', '--auth-header', ''], /--auth-header needs a value/],
+    [['content', '--page', 'home', '--dir'], /--dir needs a value/],
   ]) {
     const got = await run(args, { cwd: root });
     assert.equal(got.status, 2, `${args.join(' ')}: ${got.all}`);
@@ -345,7 +308,7 @@ await check('main dispatches content to a replaceable step and returns its exit 
   assert.equal(await main(['content', '--help'], { log: () => {}, steps: { content: async () => { throw new Error('must not run'); } } }), 0);
 });
 
-await check('the project copy of the scripts finds the gates beside deployed-gate.mjs: a gate exit 3 is exit 3, 2 is 2, an unknown exit 124; FAIL and ADVISORY name the gate and its findings; the token is redacted throughout and reaches the gates by environment', async () => {
+await check('the project copy of the scripts finds the gates beside deployed-gate.mjs: a gate exit 3 is exit 3, 2 is 2, an unknown exit 124; FAIL and ADVISORY name the gate and its findings', async () => {
   const copy = join(scratch, 'copy');
   cpSync(SCRIPTS, join(copy, 'reskin'), { recursive: true, filter: (src) => src !== join(SCRIPTS, 'test') });
   cpSync(join(SCRIPTS, '..', '..', 'diff', 'scripts'), join(copy, 'diff'), { recursive: true });
@@ -354,7 +317,7 @@ await check('the project copy of the scripts finds the gates beside deployed-gat
     writeFileSync(join(copy, 'reskin', `${gate}.mjs`), `import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 const argv = process.argv.slice(2);
-writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv, token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null }));
+writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv }));
 const report = argv[argv.indexOf('--report') + 1];
 mkdirSync(dirname(report), { recursive: true });
 writeFileSync(report, '# stub\\n');
@@ -366,23 +329,23 @@ process.exit(${exit});
   };
   const gates = (dom, slot) => {
     const seen = [stubGate('dom-equality', dom), stubGate('slot-coverage', slot)];
-    return run(['content', '--page', 'home', '--auth-header', HEADER], { cwd: project('copy-proj'), script: join(copy, 'reskin', 'deployed-gate.mjs') }).then((r) => ({ ...r, seen }));
+    return run(['content', '--page', 'home'], { cwd: project('copy-proj'), script: join(copy, 'reskin', 'deployed-gate.mjs') }).then((r) => ({ ...r, seen }));
   };
 
-  const challenge = await gates({ exit: 3, stderr: `[dom-equality] bot challenge at x (${HEADER})\n` });
+  const challenge = await gates({ exit: 3, stderr: '[dom-equality] bot challenge at x\n' });
   assert.equal(challenge.status, 3, challenge.all);
-  assert.match(challenge.stderr, /^deployed-gate: \[dom-equality\] bot challenge at x \(\[redacted\]\)/);
-  const setup = await gates({}, { exit: 2, stderr: `[slot-coverage] ${TOKEN} unreachable\n` });
+  assert.match(challenge.stderr, /^deployed-gate: \[dom-equality\] bot challenge at x/);
+  const setup = await gates({}, { exit: 2, stderr: '[slot-coverage] unreachable\n' });
   assert.equal(setup.status, 2, setup.all);
-  const crash = await gates({ exit: 9, stderr: `crashed ${TOKEN}\n` });
+  const crash = await gates({ exit: 9, stderr: 'crashed\n' });
   assert.equal(crash.status, 124, crash.all);
-  assert.match(crash.stderr, /dom-equality did not give a verdict \(exit 9\): crashed \[redacted\]/);
+  assert.match(crash.stderr, /dom-equality did not give a verdict \(exit 9\): crashed/);
 
-  const fail = await gates({ exit: 1, stderr: `[dom-equality] FAIL — report: x\n  text diverges @12: src="a ${TOKEN}" rnd="b"\n` }, { exit: 1, stdout: `[slot-coverage] FAIL — 17/18 checks — report: y\n  FAIL slot-coverage: s02 text present — missing\n  WARNING unused delta T2: "zzz" matched nothing (why)\n` });
+  const fail = await gates({ exit: 1, stderr: '[dom-equality] FAIL — report: x\n  text diverges @12: src="a" rnd="b"\n' }, { exit: 1, stdout: `[slot-coverage] FAIL — 17/18 checks — report: y\n  FAIL slot-coverage: s02 text present — missing\n  WARNING unused delta T2: "zzz" matched nothing (why)\n` });
   assert.equal(fail.status, 1, fail.all);
   const lines = fail.stdout.split('\n');
   assert.equal(lines[0], `FAIL content: dom-equality — report ${join('stardust', '.work', 'reskin', 'gates', 'home', 'deployed', 'content-dom-equality.md')}`);
-  assert.ok(lines.includes('  text diverges @12: src="a [redacted]" rnd="b"'), fail.stdout);
+  assert.ok(lines.includes('  text diverges @12: src="a" rnd="b"'), fail.stdout);
   assert.ok(lines.some((l) => /^FAIL content: slot-coverage — report .*content-slot-coverage\.md$/.test(l)), fail.stdout);
   assert.ok(lines.includes('  FAIL slot-coverage: s02 text present — missing'), fail.stdout);
   assert.ok(lines.includes('WARNING unused delta T2'), fail.stdout);
@@ -395,12 +358,7 @@ process.exit(${exit});
   const pass = await gates();
   assert.equal(pass.status, 0, pass.all);
   assert.equal(pass.stdout.trim(), 'PASS content');
-  for (const seen of pass.seen) {
-    const { argv, token } = seen();
-    assert.equal(token, HEADER, 'the copy\'s gate ran with the token in its environment');
-    noToken(argv.join(' '));
-  }
-  noToken(challenge.all, setup.all, crash.all, fail.all, advisory.all, pass.all);
+  for (const seen of pass.seen) assert.ok(seen().argv.includes('--wait-eds'), 'the copy\'s gate ran');
 });
 
 // ---- the CLI with the real gates, against the fake preview and the fake source ----------------------------------
@@ -420,14 +378,12 @@ if (playwrightOk) {
   const source = await startSourceServer();
   const live = (server, path = '/ns/home') => ({ previewUrl: `${server.origin}${path}`, sourceOrigin: source.origin });
   const withDeltas = (change) => { const d = fixtureDeltas(); change(d); return d; };
-  const noAuthorization = (server) => server.requests.every((q) => q.headers.authorization === undefined);
 
   try {
     // Every real run starts together: each is slow, none shares anything with another.
     const runs = {
       pass: content(project('cli-pass', live(preview))),
-      guarded: content(project('cli-guarded', { ...live(guarded), record: { auth: true } }), ['--auth-header', HEADER]),
-      guardedEnv: content(project('cli-guarded-env', { ...live(guarded), record: { auth: true } }), ['--token-env', 'CONTENT_TEST_TOKEN'], { env: { CONTENT_TEST_TOKEN: TOKEN } }),
+      guarded: content(project('cli-guarded', live(guarded))),
       advisory: content(project('cli-advisory', live(preview, '/ns/changed'))),
       blocking: content(project('cli-blocking', { ...live(preview, '/ns/changed'), deltas: withDeltas((d) => { d.blocking = true; }) })),
       undeclared: content(project('cli-undeclared', { ...live(preview), deltas: null })),
@@ -458,17 +414,11 @@ if (playwrightOk) {
       assert.ok(source.requests.some((q) => q.path === '/') && preview.requests.some((q) => q.path === '/ns/home'), 'both pages were read');
     });
 
-    await check('a protected preview: --auth-header and --token-env both pass; the token reached the preview only, and is in no output, report or record', () => {
-      for (const [name, r] of [['cli-guarded', done.guarded], ['cli-guarded-env', done.guardedEnv]]) {
-        assert.equal(r.status, 0, `${name}: ${r.all}`);
-        assert.equal(r.stdout.trim(), 'PASS content', name);
-        noToken(r.all);
-        for (const f of readdirSync(outOf(root(name)))) noToken(readFileSync(join(outOf(root(name)), f), 'utf8'));
-        assert.equal(recordOf(root(name)).verdict, 'PASS');
-      }
-      assert.ok(guarded.requests.some((q) => q.headers.authorization === HEADER), 'the preview received the header');
-      assert.ok(guarded.requests.every((q) => q.headers.authorization === HEADER), 'every request to the preview carried it: none was refused');
-      assert.ok(noAuthorization(source), 'the source never received an Authorization header');
+    await check('a protected preview (401 without a header) is a setup error (exit 2): no PASS, no record', () => {
+      const r = done.guarded;
+      assert.equal(r.status, 2, r.all);
+      assert.ok(!/^PASS/m.test(r.stdout), r.all);
+      assert.ok(!existsSync(join(outOf(root('cli-guarded')), 'content.json')));
     });
 
     await check('changed text with "blocking": false is ADVISORY: exit 0, one ADVISORY line per failed gate with its findings, the verdict in content.json', () => {
