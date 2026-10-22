@@ -31,9 +31,8 @@ export async function openBrowser(chromium, { tier = 'stealth' } = {}) {
   return launchStealthHeaded(chromium); // the best available: Chrome, else Chromium (tagged 'chromium-fallback')
 }
 
-// authOrigin / authHeader (instrumentAuth's result): the site token rides requests to that one origin only.
-export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = REAL_CHROME_UA, authOrigin, authHeader } = {}) {
-  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height }, authOrigin, authHeader });
+export async function openPage(browser, { width = 1440, height = 900, locale = 'en-US', ua = REAL_CHROME_UA } = {}) {
+  const ctx = await newLiveContext(browser, { ua, locale, viewport: { width, height } });
   const page = await ctx.newPage();
   return { ctx, page };
 }

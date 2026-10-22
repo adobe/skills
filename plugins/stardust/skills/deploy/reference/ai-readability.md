@@ -106,12 +106,10 @@ driver in the hand-off.
 
 ```bash
 node skills/deploy/scripts/ai-readability.mjs --origin https://main--site--org.aem.live \
-     [--paths stardust/rollout/pages.txt | /path …] [--min 98] [--token-env SITE_TOKEN] [--auth-origin <url>] \
+     [--paths stardust/rollout/pages.txt | /path …] [--min 98] [--token-env SITE_TOKEN] \
      [--exclude-blocks client-app,widget,form] [--allowlist stardust/ai-readability-allowlist.json] \
      [--json stardust/qa/ai-readability.json] [--verbose]
 ```
-
-A protected preview takes `--token-env <NAME>` or `--auth-header "<value>"`: opt-in, sent to `--origin` only (`--auth-origin` names another).
 
 Per page it prints three numbers and a cause table:
 

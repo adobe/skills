@@ -4,10 +4,7 @@
 // cross-archetype aggregate and register items, the live-vs-build rows), argument parsing and the
 // DESIGN.json merge — no browser. Part (b): end-to-end against fixture pages served from this process
 // (a live-like page with a 1920 shell + 1600 article + 1180 module, a fluid build, a fixed build) —
-// runs only where playwright is importable, prints a skip line otherwise. Site auth (--token-env / --auth-header /
-// --auth-origin) is tested both ways: pure (parseArgs leaves an absent flag undefined, --help lists the flags) and
-// against a two-origin fixture whose protected origin loads its stylesheet and image from a second one — through the
-// local path (127.0.0.1) and the live path (a *.localhost host the probe does not treat as local). Run: node <this file>.
+// runs only where playwright is importable, prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -19,7 +16,6 @@ import {
   isCapped, capVia, classifyCaps, deriveProbeWidth, groupPx, aggregateCaps, compareCaps, formatCompare, formatCapture,
   parseArgs, UsageError, mergeDesign, readDesignSizing, MIN_PROBE_WIDTH,
 } from '../cap-probe.mjs';
-import { startTwoOriginServer } from './fixtures/two-origin-server.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'cap-probe.mjs');
@@ -28,13 +24,11 @@ let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${String(e.message).split('\n').join('\n  ')}`); } };
 const run = (args, cwd = root) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { encoding: 'utf8', cwd }); return { code: r.status, out: r.stdout, err: r.stderr }; };
 // The e2e runs must not block the event loop — the fixture server answers from THIS process.
-const runAsync = (args, cwd = root, env = process.env) => new Promise((done) => {
-  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd, env }); let out = ''; let err = '';
+const runAsync = (args, cwd = root) => new Promise((done) => {
+  const child = spawn(process.execPath, [SCRIPT, ...args], { cwd }); let out = ''; let err = '';
   child.stdout.on('data', (d) => { out += d; }); child.stderr.on('data', (d) => { err += d; });
   child.on('close', (code) => done({ code, out, err }));
 });
-// The child env never carries a site token of the runner's.
-const cleanEnv = (extra = {}) => { const env = { ...process.env, ...extra }; for (const k of ['SITE_TOKEN', 'DEPLOYED_GATE_SITE_TOKEN']) if (!(k in extra)) delete env[k]; return env; };
 
 // ---- fixture pass (the shape probePassInPage returns) -----------------------------------------------
 // w3 (the 0.9 × probe read) defaults to a scaled width for a full-width box and to w2 for anything narrower — i.e. capped.
@@ -193,29 +187,6 @@ await check('CLI: --help answers without a browser; a usage error exits 125', ()
   const h = run(['--help']); assert.equal(h.code, 0); assert.match(h.out, /Usage:/); assert.match(h.out, /--probe-width/);
   const u = run([]); assert.equal(u.code, 125); assert.match(u.err, /need <url>/);
 });
-await check('--help lists the three site-auth flags, in the header and in the shared lines', () => {
-  const h = run(['--help']); assert.equal(h.code, 0);
-  for (const flag of ['--token-env <NAME>', '--auth-header <value>', '--auth-origin <url>']) assert.ok(h.out.includes(flag), flag);
-  assert.match(h.out, /Site auth \(opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds\)/);
-  assert.match(h.out, /125 usage \(a site-auth usage error included\)/);
-});
-await check('a site-auth usage error is the usage error (exit 125, UsageError path) and needs no browser: it is raised before playwright is imported or any page loaded', () => {
-  for (const [flags, re] of [[['--token-env', 'NO_SUCH_FIXTURE_VAR'], /no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env/], [['--token-env'], /--token-env takes the name of an environment variable/], [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/]]) {
-    const r = run(['http://127.0.0.1:9/page', ...flags]);
-    assert.equal(r.code, 125, `${flags.join(' ')}: ${r.out}${r.err}`); assert.match(r.err, re); assert.match(r.err, /^cap-probe: /); assert.equal(r.out, '');
-  }
-});
-await check('parseArgs: an absent site-auth flag stays undefined (never ""), a given one is read, a missing value is ""', () => {
-  const none = parseArgs(['https://s/']);
-  for (const k of ['tokenEnv', 'authHeader', 'authOrigin']) assert.equal(none[k], undefined, k);
-  const all = parseArgs(['https://s/', '--token-env', 'MY_TOKEN', '--auth-header', 'token abc', '--auth-origin', 'https://s']);
-  assert.deepEqual([all.tokenEnv, all.authHeader, all.authOrigin], ['MY_TOKEN', 'token abc', 'https://s']);
-  assert.deepEqual(all.urls, ['https://s/']);
-  const bare = parseArgs(['https://s/', '--token-env']);
-  assert.equal(bare.tokenEnv, ''); assert.deepEqual(bare.urls, ['https://s/']);
-  const next = parseArgs(['https://s/', '--auth-header', '--json']);
-  assert.equal(next.authHeader, ''); assert.equal(next.json, true);
-});
 
 // ---- (b) end-to-end, where playwright resolves from the script's location ---------------------------
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "import('playwright').then(() => process.exit(0), () => process.exit(1))"], { cwd: dirname(SCRIPT) });
@@ -262,93 +233,6 @@ if (pwProbe.status !== 0) {
       assert.equal(ok.code, 0, ok.out + ok.err);
       assert.match(ok.out, /probe 2560 \(from .*DESIGN.json\)/); assert.match(ok.out, /✓ wrapper cap: live 1600px = build 1600px/); assert.match(ok.out, /cap-probe: PASS at 2560/);
     });
-
-    // ---- site auth: a protected origin A whose page loads its stylesheet and image from an open origin B ----
-    const fixture = async (fn, hosts) => { const fx = await startTwoOriginServer(hosts); try { await fn(fx); } finally { await fx.stop(); } };
-    const noLeak = (fx, r) => {
-      assert.deepEqual(fx.authorizations('B'), [], 'origin B (the third party and the local build) saw no Authorization');
-      assert.ok(!`${r.out}${r.err}`.includes(fx.token), 'the token is never printed');
-    };
-    const cappedByB = /shell +948px +max-width body > main/; // B's stylesheet (main { max-width: 900px }) was applied: the sub-resource loaded
-    const subResources = (fx) => ['/style.css', '/pic.png'].every((p) => fx.b.log.some((e) => e.path === p && e.status === 200));
-    const withToken = (fx, args, env = {}) => runAsync(args, root, cleanEnv({ FIXTURE_SITE_TOKEN: fx.token, ...env }));
-
-    await check('capture --token-env on the local path (127.0.0.1): the token reaches the measured origin and not the origin of its stylesheet and image', () => fixture(async (fx) => {
-      const r = await withToken(fx, [`${fx.originA}/page`, '--token-env', 'FIXTURE_SITE_TOKEN']);
-      assert.equal(r.code, 0, r.out + r.err);
-      assert.match(r.out, cappedByB);
-      assert.ok(fx.a.log.some((e) => e.path === '/page' && e.status === 200 && e.authorization === fx.authorization), 'origin A answered the page 200 to the token');
-      assert.ok(subResources(fx), 'the sub-resources were fetched from origin B');
-      noLeak(fx, r);
-    }));
-    await check('capture --auth-header on the live path (a host the probe does not treat as local): same, and a bare value is sent as "token <value>"', () => fixture(async (fx) => {
-      const r = await runAsync([`${fx.originA}/page`, '--auth-header', fx.token], root, cleanEnv());
-      assert.equal(r.code, 0, r.out + r.err);
-      assert.match(r.out, cappedByB);
-      assert.ok(fx.a.log.some((e) => e.path === '/page' && e.status === 200 && e.authorization === fx.authorization));
-      assert.ok(subResources(fx));
-      noLeak(fx, r);
-    }, { hostA: 'protected.localhost' }));
-    await check('compare with --auth-origin: the protected live page against the open local build — only the context loading the protected origin carries the token', () => fixture(async (fx) => {
-      const r = await withToken(fx, [`${fx.originA}/page`, '--against', `${fx.originB}/page`, '--token-env', 'FIXTURE_SITE_TOKEN', '--auth-origin', fx.originA]);
-      assert.equal(r.code, 0, r.out + r.err);
-      assert.match(r.out, /cap-probe: PASS at 2560/);
-      assert.ok(fx.a.log.some((e) => e.path === '/page' && e.status === 200 && e.authorization === fx.authorization));
-      assert.ok(fx.b.log.some((e) => e.path === '/page' && e.status === 200), 'the build page was measured');
-      noLeak(fx, r);
-    }, { hostA: 'protected.localhost' }));
-
-    await check('a token and two origins without --auth-origin: usage error (exit 125, not the FAIL code) before any request, in compare and in capture', () => fixture(async (fx) => {
-      for (const args of [[`${fx.originA}/page`, '--against', `${fx.originB}/page`], [`${fx.originA}/page`, `${fx.originB}/page`]]) {
-        const r = await withToken(fx, [...args, '--token-env', 'FIXTURE_SITE_TOKEN']);
-        assert.equal(r.code, 125, r.out + r.err);
-        assert.match(r.err, /^cap-probe: .*one origin only and these URLs have 2.*--auth-origin/);
-        assert.equal(r.out, '');
-        noLeak(fx, r);
-      }
-      assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
-    }));
-
-    await check('no flag: nothing is sent — a SITE_TOKEN in the environment and in .env included — and the 401 fails as before (capture: exit 1 naming it; compare: exit 1)', () => fixture(async (fx) => {
-      const cwd = mkdtempSync(join(root, 'cwd-'));
-      writeFileSync(join(cwd, '.env'), `SITE_TOKEN=${fx.token}\n`);
-      const env = cleanEnv({ SITE_TOKEN: fx.token });
-      const capture = await runAsync([`${fx.originA}/page`], cwd, env);
-      assert.deepEqual([capture.code, capture.out, capture.err], [1, '\n', `cap-probe: ${fx.originA}/page failed to load — HTTP 401\n`]);
-      const compare = await runAsync([`${fx.originA}/page`, '--against', `${fx.originB}/page`], cwd, env);
-      assert.deepEqual([compare.code, compare.out, compare.err], [1, '', 'cap-probe: HTTP 401\n']);
-      assert.ok(fx.a.log.length > 0 && fx.a.log.every((e) => e.authorization === null && e.status === 401), 'origin A saw requests and none carried an Authorization');
-      noLeak(fx, capture); noLeak(fx, compare);
-    }));
-    await check('no flag on the live path: the 401 is refused as before (exit 1), nothing sent', () => fixture(async (fx) => {
-      const r = await runAsync([`${fx.originA}/page`], root, cleanEnv({ SITE_TOKEN: fx.token }));
-      assert.equal(r.code, 1, r.out + r.err);
-      assert.equal(r.err, `cap-probe: ${fx.originA}/page failed to load — HTTP 401 at ${fx.originA}/page — not a challenge marker, but not the page either; refusing to measure it\n`);
-      assert.ok(fx.a.log.length > 0 && fx.a.log.every((e) => e.authorization === null));
-      noLeak(fx, r);
-    }, { hostA: 'protected.localhost' }));
-    await check('no auth flag on an open page is unaffected: the same capture, nothing sent anywhere', () => fixture(async (fx) => {
-      const r = await runAsync([`${fx.originB}/page`], root, cleanEnv({ SITE_TOKEN: fx.token }));
-      assert.equal(r.code, 0, r.out + r.err);
-      assert.equal(r.err, '');
-      assert.equal(r.out, `${fx.originB}/page  base 1440 → probe 2560 (derived: max(2560, largest cap × 1.25))\n  shell      948px  max-width body > main  (tier 0, holds 100% of the text)\n  modules  5 sections: none capped · full-bleed ×5\n  contentMaxWidth 948px (shell) · shellMaxWidth 948px · root body > main\ncontentMaxWidth: 948px  shellMaxWidth: 948px  probeWidth: 2560  consistent: yes\n`);
-      assert.equal(fx.a.log.length, 0, 'origin A was never asked');
-      noLeak(fx, r);
-    }));
-    await check('auth usage errors exit 125 (not the FAIL code) before any request: an unset variable, a flag without its value, a malformed origin', () => fixture(async (fx) => {
-      const cases = [
-        [['--token-env', 'NO_SUCH_FIXTURE_VAR'], /no site token: the variable --token-env names is not set \(or is empty\) in the environment or in \.env/],
-        [['--token-env'], /--token-env takes the name of an environment variable/],
-        [['--auth-header'], /--auth-header needs a value/],
-        [['--auth-header', 'x', '--auth-origin', 'not a url'], /--auth-origin needs an http\(s\) URL/],
-      ];
-      for (const [flags, re] of cases) {
-        const r = await runAsync([`${fx.originA}/page`, ...flags], root, cleanEnv());
-        assert.equal(r.code, 125, `${flags.join(' ')}: ${r.out}${r.err}`);
-        assert.match(r.err, re); assert.match(r.err, /^cap-probe: /);
-      }
-      assert.equal(fx.a.log.length + fx.b.log.length, 0, 'no request was made');
-    }));
   } finally {
     server.close();
   }

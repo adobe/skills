@@ -46,11 +46,6 @@
  *                            cap-<label>.json (+ .txt), like the pixel rounds (--label default iter)
  *     --json / --out <file>  the JSON on stdout / written to <file>
  *     --timeout-ms, --ua, --consent <sel>, --dismiss <sel,…>, --headed, --locale <tag>  as measure.mjs
- *     --token-env <NAME>, --auth-header "<value>", --auth-origin <url>  opt-in site auth for a protected origin
- *                            (what each does: the site-auth lines at the end of this text). The token rides
- *                            requests to ONE origin — --auth-origin, else the origin the URL(s) share; two
- *                            origins without it is a usage error — and only on the context that loads a URL of
- *                            that origin; no other origin a page loads receives it.
  *
  * Output (capture): per URL the probe width and its derivation, one line per cap origin (kind, px,
  * via, selector, tier, share), a modules line (capped values × count, full-bleed count); then across
@@ -65,7 +60,7 @@
  * (deploy Step 3 scaffold); never iterate pixels on it.
  *
  * Exit codes: 0 pass / measured, 2 compare FAIL, 1 a page failed to load or playwright missing,
- * 3 bot challenge on the live side (escalate --headed), 125 usage (a site-auth usage error included). probePage and the pure
+ * 3 bot challenge on the live side (escalate --headed), 125 usage. probePage and the pure
  * functions (classifyCaps, deriveProbeWidth, aggregateCaps, compareCaps, formatCapture,
  * formatCompare, parseArgs) are exported — the contract test runs them without a browser.
  * Requires playwright importable from this file's location and the diff skill's live-session.mjs
@@ -74,6 +69,14 @@
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 export const DEFAULT_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 export const BASE_WIDTH = 1440;
@@ -92,17 +95,6 @@ async function loadLiveSession() {
   const found = LIVE_SESSION_CANDIDATES.map((p) => resolvePath(HERE, p)).find((p) => existsSync(p));
   if (!found) throw new UsageError('live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   return import(pathToFileURL(found).href);
-}
-
-// --help prints this file's usage header, so an agent never reads the source to learn the flags, then the shared
-// site-auth lines (read from live-session.mjs; the header names the flags when it is missing).
-if (process.argv.includes('--help') || process.argv.includes('-h')) {
-  const src = readFileSync(new URL(import.meta.url), 'utf8');
-  const header = src.match(/\/\*\*[\s\S]*?\*\//);
-  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
-  const authHelp = await loadLiveSession().then((s) => s.AUTH_HELP, () => null);
-  if (authHelp) console.log(`\nSite auth (opt-in: without a flag nothing is sent, whatever SITE_TOKEN holds):\n${authHelp.split('\n').map((l) => `  ${l}`).join('\n')}`);
-  process.exit(0);
 }
 
 const splitList = (s) => String(s || '').split(',').map((x) => x.trim()).filter(Boolean);
@@ -131,12 +123,6 @@ export function parseArgs(argv) {
     else if (a === '--dismiss') { o.dismiss.push(...splitList(need(i, a))); i += 1; }
     else if (a === '--headed') { o.headed = true; }
     else if (a === '--locale') { o.locale = need(i, a); i += 1; }
-    else if (a === '--token-env' || a === '--auth-header' || a === '--auth-origin') {
-      // absent stays undefined; a missing value is '' — instrumentAuth's usage error, not a parse error
-      const v = i + 1 < argv.length && !argv[i + 1].startsWith('--') ? argv[i + 1] : '';
-      o[{ '--token-env': 'tokenEnv', '--auth-header': 'authHeader', '--auth-origin': 'authOrigin' }[a]] = v;
-      if (v) i += 1;
-    }
     else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a} (see --help)`); }
     else { o.urls.push(a); }
   }
@@ -412,7 +398,6 @@ export function formatCompare(result) {
 }
 
 // ---- browser ---------------------------------------------------------------------------------------
-const originOf = (url) => { try { return new URL(url).origin; } catch { return null; } };
 export function isLiveHttpUrl(url) {
   try { const u = new URL(url); return /^https?:$/.test(u.protocol) && !/^(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0)$/.test(u.hostname); } catch { return false; }
 }
@@ -454,16 +439,13 @@ export async function probePage(page, { rootSel = null, baseWidth = BASE_WIDTH, 
   return { ...model, probeNote: note, candidates: base.candidates };
 }
 
-async function openAndProbe(browser, url, o, session, { rootSel, probeWidth, auth = null }) {
+async function openAndProbe(browser, url, o, session, { rootSel, probeWidth }) {
   const live = isLiveHttpUrl(url);
   const viewport = { width: o.width, height: VIEWPORT_H };
   const common = { reducedMotion: 'reduce', colorScheme: 'light', ignoreHTTPSErrors: true };
-  // The token goes only to the context that loads a URL of its origin (the local page of a compare gets none).
-  const carries = auth && originOf(url) === auth.authOrigin ? auth : null;
   const context = live
-    ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common, ...carries })
+    ? await session.newLiveContext(browser, { ua: o.ua, locale: o.locale, viewport, ...common })
     : await browser.newContext({ userAgent: o.ua, viewport, locale: 'en-US', ...common });
-  if (carries && !live) await session.attachOriginAuth(context, carries.authOrigin, carries.authHeader);
   const page = await context.newPage();
   try {
     if (live) {
@@ -504,12 +486,9 @@ export function mergeDesign(text, aggregate, provenance) {
 
 async function main(argv) {
   const o = parseArgs(argv);
-  // Usage first: a site-auth usage error must not be hidden by a missing playwright.
-  const session = await loadLiveSession();
-  let auth;
-  try { auth = session.instrumentAuth({ tokenEnv: o.tokenEnv, authHeader: o.authHeader, authOrigin: o.authOrigin, urls: o.against ? [o.urls[0], o.against] : o.urls }); } catch (e) { throw e.code === 2 ? new UsageError(e.message) : e; }
   let chromium;
   try { ({ chromium } = await import('playwright')); } catch (e) { throw Object.assign(new Error(`playwright is not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`), { code: 1 }); }
+  const session = await loadLiveSession();
   const provenance = { writtenBy: 'skills/replica/scripts/cap-probe.mjs', writtenAt: new Date().toISOString(), baseWidth: o.width };
   const browser = o.headed ? await session.launchStealthHeaded(chromium) : await chromium.launch({ headless: true });
   let result; let code = 0;
@@ -518,8 +497,8 @@ async function main(argv) {
       const design = readDesignSizing(o.design);
       if (o.design && !design) console.error(`cap-probe: --design ${o.design} not found — deriving the probe width from the live side`);
       const pinned = o.probeWidth || (design && design.probeWidth) || null;
-      const live = await openAndProbe(browser, o.urls[0], o, session, { rootSel: o.main, probeWidth: pinned, auth });
-      const build = await openAndProbe(browser, o.against, o, session, { rootSel: o.buildMain, probeWidth: live.probeWidth, auth });
+      const live = await openAndProbe(browser, o.urls[0], o, session, { rootSel: o.main, probeWidth: pinned });
+      const build = await openAndProbe(browser, o.against, o, session, { rootSel: o.buildMain, probeWidth: live.probeWidth });
       const compare = compareCaps(live, build, o.tolerance);
       const probeNote = o.probeWidth ? 'pinned by --probe-width' : (design && design.probeWidth ? `from ${o.design}` : live.probeNote);
       result = { _provenance: { ...provenance, urls: [o.urls[0], o.against], probeWidth: live.probeWidth, probeNote, tolerance: o.tolerance }, urls: [o.urls[0], o.against], probeNote, live, build, compare };
@@ -535,7 +514,7 @@ async function main(argv) {
     } else {
       const pages = {}; const failed = [];
       for (const url of o.urls) {
-        try { pages[url] = await openAndProbe(browser, url, o, session, { rootSel: o.main, probeWidth: o.probeWidth, auth }); } catch (e) {
+        try { pages[url] = await openAndProbe(browser, url, o, session, { rootSel: o.main, probeWidth: o.probeWidth }); } catch (e) {
           if (e.name === 'BotChallengeError') { e.code = 3; throw e; }
           const msg = String(e.message || e).split('\n')[0]; failed.push({ url, error: msg }); console.error(`cap-probe: ${url} failed to load — ${msg}`);
         }
