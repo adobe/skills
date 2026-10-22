@@ -303,6 +303,13 @@ falls short. Either way the renderer:
   flattened to prose and never dropped: a select's option text is
   part of the byte reference (`reference/content-model.md` § Slot
   taxonomy, formControls);
+- keeps the structure the stream carries (`reference/content-model.md`
+  § Structure the stream keeps): `table` nodes as tables, disclosures
+  at the source's rest state (closed panels `hidden="until-found"`),
+  icon-font ligatures as glyphs and visually hidden text as `.sr-only`
+  (both still in innerText), content-sized images at their size — a
+  renderer that flattens them passes the byte gate and loses design
+  fidelity;
 - carries the metadata block verbatim into `<head>` (title,
   description, canonical, OG, Twitter, JSON-LD — including source
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**

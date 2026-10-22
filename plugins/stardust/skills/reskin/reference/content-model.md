@@ -163,7 +163,7 @@ reconstruct order by matching the per-type arrays against
 Node shape:
 
 - `kind` ∈ `heading | paragraph | listItem | cta | image |
-  formControl | text`.
+  formControl | table | text` (§ Structure the stream keeps).
   `text` nodes are the stream's leftovers — bare text runs
   (eyebrows, dates, photo credits) with `parentTag`/`parentClass`
   for context, and `inButton: true` when the run sits inside a
@@ -202,6 +202,30 @@ Node shape:
   inline with no separator, and the reskin must too or the byte gate
   fails). First child is always `''`.
 
+### Structure the stream keeps (0.41)
+
+A renderer that sees only the kind of each run flattens what the source structured, and design fidelity pays for it
+(a table as a column of paragraphs, every accordion open with its icon word printed, a 768 px figure as a 24 px icon).
+The stream therefore carries:
+
+- **`table`** — `{ kind: 'table', text, rows: [[{ text, header?, colspan?, children? }]] }`; `children` is the cell's
+  own stream when it holds more than plain text (a link). `text` is the table's innerText, so the node tiles
+  `visibleText` like any other.
+- **Disclosures** — a toggle is `[aria-expanded][aria-controls]` (its target must exist) or a `<summary>` of a
+  `<details>`. Every node inside a toggle carries `toggle: <panel id>`, plus `toggleOpen: true` when the source had it
+  open **at rest**; every node inside a controlled panel or a `<details>` body carries `panels: [<id>, …]` (inner first).
+  The rest state is read before the normalization ledger runs, so a ledger that expands accordions (N3) to read their
+  text no longer decides how they render. The renderer emits `div.disclosure > button.disclosure-toggle +
+  div.disclosure-panel`, closed panels as `hidden="until-found"` (dom-equality reveals them and compares the rest-state
+  count). A toggle inside a heading (`h3 > button`) is the heading's children. A toggle with no adjacent panel in the
+  stream renders as plain text.
+- **`glyph: true`** on a text run that is an icon-font ligature: a lower-case `[a-z0-9_]` word under
+  `aria-hidden="true"` set in an `icon`/`symbol` font family. The renderer keeps the word (font-size 0, for the byte
+  gate) and draws a CSS glyph (chevron, search, close, menu).
+- **`srOnly: true`** on a text run or cta that is visually hidden (≤ 1×1 px, clipped, `clip-path: inset(50%)`, or above
+  or left of the page). It renders `.sr-only`, still in innerText.
+- **`rw`** on an image: its rendered width. A paragraph holding only images, one of them ≥ 200 px wide, renders as a
+  full-width figure; an inline image ≥ 200 px is `.inline-media`. A model without `rw` keeps the inline-icon rendering.
 ### The consistency guarantee
 
 The stream and the byte gate share ONE definition of "visible text":

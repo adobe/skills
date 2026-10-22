@@ -113,8 +113,10 @@ option in `mapping.json`. Never edit the renderer for one site:
 | `inset: "<n>px\|rem\|%"` | the frame is padded from the viewport edge, not centred |
 | `split: "<track> <track>"` | a split's text column is not half the row (`531px 1fr`) |
 | `columns: <n>` | the card count per row differs from the default |
+| `cardTone: dark\|light\|accent` | the frame paints its cards in a band colour other than the default light card (`cards-<tone>` on the band). Set it only when the frame shows it: a dark tone the frame does not use lowers design fidelity |
 
-Card titles always take the h3 role, whatever their tag.
+Card titles always take the h3 role, whatever their tag. A card that opens with an image renders it full-bleed
+at 16:9 above the text.
 
 ## Casing / text-transform policy
 

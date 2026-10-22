@@ -199,6 +199,12 @@ const settle = { firstLen: await textLen(), waitedMs: 0, stable: false };
   settle.lateChars = Math.max(0, last - settle.firstLen);
 }
 
+// Each disclosure's rest state, read before the ledger opens it (an accordion expanded by N3 renders closed
+// again only when the source had it closed).
+await page.evaluate(() => {
+  document.querySelectorAll('[aria-expanded][aria-controls]').forEach((b) => { b.dataset.sdRest = b.getAttribute('aria-expanded') === 'true' ? 'open' : 'closed'; });
+  document.querySelectorAll('details').forEach((d) => { d.dataset.sdRest = d.open ? 'open' : 'closed'; });
+});
 // Apply the declared source normalizations (shared with the gates).
 await page.evaluate(NORMALIZE);
 await page.waitForTimeout(300);
@@ -302,6 +308,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     if (t === 'li') return 'listItem';
     if (t === 'a') return 'cta';
     if (t === 'img') return 'image';
+    if (t === 'table') return 'table';
     // Form controls are stream nodes (F-R3): a <select>'s option text is
     // part of innerText — the byte-gate reference — but getComputedStyle on
     // <option> is display:none, so without an explicit kind the options are
@@ -341,6 +348,44 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       .filter((el) => norm(el.innerText).length > 0 || el.querySelector('img'))
       .forEach((el) => sectionEls.push(el));
   });
+
+  // Disclosures: a toggle (button[aria-expanded][aria-controls], or a <summary>) and the panel it controls.
+  const detailsIds = new Map();
+  const detailsId = (d) => { if (!detailsIds.has(d)) detailsIds.set(d, `details-${detailsIds.size + 1}`); return detailsIds.get(d); };
+  const controlled = new Set(Array.from(document.querySelectorAll('[aria-expanded][aria-controls]'))
+    .map((b) => (b.getAttribute('aria-controls') || '').trim().split(/\s+/)[0]).filter((id) => id && document.getElementById(id)));
+  const toggleOf = (el) => {
+    const b = el.closest('[aria-expanded][aria-controls], summary');
+    if (!b) return null;
+    if (b.tagName === 'SUMMARY') {
+      const d = b.parentElement;
+      return d?.tagName === 'DETAILS' ? { id: detailsId(d), open: d.dataset.sdRest === 'open' } : null;
+    }
+    const id = (b.getAttribute('aria-controls') || '').trim().split(/\s+/)[0];
+    return controlled.has(id) ? { id, open: b.dataset.sdRest === 'open' } : null;
+  };
+  const panelsOf = (el) => {
+    const out = [];
+    for (let e = el; e && e !== document.body; e = e.parentElement) {
+      if (e.id && controlled.has(e.id)) out.push(e.id);
+      else if (e.tagName === 'DETAILS' && !el.closest('summary')?.parentElement?.isSameNode(e)) out.push(detailsId(e));
+    }
+    return out;
+  };
+  // An icon-font ligature ("keyboard_arrow_down" drawn as a chevron) is a glyph, not prose.
+  const isGlyph = (el, t) => /^[a-z][a-z0-9_]*$/.test(t) && !!el.closest('[aria-hidden="true"]')
+    && /icon|symbol/i.test(getComputedStyle(el).fontFamily);
+  // Visually hidden (sr-only / skip link): rendered, so in innerText, but painted at ≤ 1px or clipped away.
+  const isSrOnly = (el) => {
+    const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+    return (r.width <= 1 && r.height <= 1) || r.bottom + window.scrollY < 0 || r.right + window.scrollX < 0 || /rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)/.test(cs.clip) || cs.clipPath === 'inset(50%)';
+  };
+  const discl = (n, el) => {
+    const tg = toggleOf(el);
+    if (tg) { n.toggle = tg.id; if (tg.open) n.toggleOpen = true; }
+    const ps = panelsOf(el); if (ps.length) n.panels = ps;
+    return n;
+  };
 
   const sections = sectionEls.map((sec, i) => {
     // querySelectorAll never matches the root element itself — a slot root
@@ -425,7 +470,19 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       const kind = kindOf(el);
       if (kind === 'image') {
         if (!imgVisible(el)) return null;
-        return { kind: 'image', currentSrc: el.currentSrc || el.src || '', alt: el.getAttribute('alt') || '' };
+        return { kind: 'image', currentSrc: el.currentSrc || el.src || '', alt: el.getAttribute('alt') || '', rw: Math.round(el.getBoundingClientRect().width) };
+      }
+      if (kind === 'table') {
+        if (!isVisible(el)) return null;
+        const rows = Array.from(el.rows).filter(isVisible).map((tr) => Array.from(tr.cells).map((c) => {
+          const cell = { text: norm(c.innerText) };
+          if (c.tagName === 'TH') cell.header = true;
+          if (c.colSpan > 1) cell.colspan = c.colSpan;
+          const kids = streamOf(c);
+          if (kids.length && !(kids.length === 1 && kids[0].kind === 'text' && kids[0].text === cell.text)) { cell.children = kids; assignSeps(cell.text, kids); }
+          return cell;
+        }));
+        return { kind: 'table', text: norm(el.innerText), rows };
       }
       if (kind === 'formControl') {
         if (!isVisible(el)) return null;
@@ -442,6 +499,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         n.href = el.getAttribute('href') || '';
         n.absHref = el.href || '';
         n.classes = (typeof el.className === 'string' ? el.className : '');
+        if (isSrOnly(el)) n.srOnly = true;
         // Styled as a button whatever its class names (utility-CSS sites): a painted background or a
         // visible border, plus button-sized padding.
         const cs = getComputedStyle(el); const px = (v) => parseFloat(v) || 0;
@@ -487,7 +545,10 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
                 parentClass: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
                 // An icon button's label sits in a nested span (often sr-only): the node is still the button.
                 ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
+                ...(isGlyph(el, t) ? { glyph: true } : {}),
+                ...(isSrOnly(el) ? { srOnly: true } : {}),
               });
+              discl(out[out.length - 1], el);
             }
             continue;
           }
@@ -495,7 +556,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
           if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
           if (kindOf(node)) {
             const n = nodeFor(node);
-            if (n) out.push(n);
+            if (n) out.push(discl(n, node));
             continue;
           }
           walk(node); // transparent wrapper — descend

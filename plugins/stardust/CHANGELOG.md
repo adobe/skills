@@ -4,6 +4,28 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.41.0 — the target keeps the source's structure
+
+A 52-page migration's design fidelity (stardust target against the delivered EDS page) sat at 66 % while a run whose
+agent hand-wrote renderers reached 81 %. The EDS blocks were right; the targets were not, and the cause was one
+pattern: the capture recorded each run's kind but not the structure around it, so the generic renderer flattened it —
+tables became a column of paragraphs, accordions rendered open with their icon-font word ("keyboard_arrow_down")
+printed, skip links showed in the header, and a 768 px figure inside a `<p>` shrank to a 24 px icon. Measured on the
+benchmark's 7 pages × 2 viewports: 66.3 % → 76.1 % (1440: 82.4 %, 390: 69.8 %), dom-equality still PASS.
+
+- **capture-content: structure in the stream.** `table` nodes with rows and cells; disclosure `toggle` / `panels` /
+  `toggleOpen` (rest state read before the ledger runs); `glyph` for icon-font ligatures; `srOnly` for visually hidden
+  text and links; `rw` (rendered width) on images. content-model § Structure the stream keeps.
+- **stream-render: renders it.** Tables (donor light-band rules and header cells); disclosures at the source's rest
+  state, closed as `hidden="until-found"`, with a small toggle script; CSS glyphs with the word kept for the byte gate;
+  `.sr-only`; full-width figures and `.inline-media` for content-sized images; header glyph actions as icon buttons;
+  header nav links no longer repeat their image (the logo) inline.
+- **Cards.** A card that opens with an image shows it full-bleed at 16:9; mapping slot option `cardTone`
+  (`dark | light | accent`), opt-in from the frame (mapping-brief § Frame fit).
+- **Tests.** capture-content: tables, rest state through an expanding ledger, glyph, sr-only, `rw`. stream-render:
+  tables, open and closed disclosures, panel-less toggles, figures, pre-0.41 models without `rw`, `cardTone`, header
+  icon buttons and nav links.
+
 ## 0.40.0 — source coverage: what the content reference did not take in
 
 A 52-page migration passed every content gate while its deployed pages had no breadcrumb and no section sidebar, no

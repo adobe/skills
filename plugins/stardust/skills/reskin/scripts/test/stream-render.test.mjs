@@ -330,5 +330,52 @@ check('contrast: WCAG ratio; a low-contrast accent stays an underline, never lin
   assert.match(mk('#1a4d8f'), /\.link \{ color: var\(--palette-accent\)/);
 });
 
+check('0.41 structure: tables, disclosures at their rest state, glyphs, sr-only, content-sized images, cardTone', () => {
+  const ordered = [
+    { kind: 'text', text: 'Skip note', srOnly: true },
+    { kind: 'table', text: 'Year Count 2024 12', rows: [[{ text: 'Year', header: true }, { text: 'Count', header: true }], [{ text: '2024' }, { text: '12', children: [{ kind: 'cta', text: '12', absHref: 'https://example.test/c' }] }]] },
+    { kind: 'heading', level: 'h3', text: 'Closed one keyboard_arrow_down', children: [{ kind: 'text', text: 'Closed one', toggle: 'p1' }, { kind: 'text', text: 'keyboard_arrow_down', glyph: true, toggle: 'p1', sep: ' ' }] },
+    { kind: 'paragraph', text: 'Closed body', panels: ['p1'] },
+    { kind: 'text', text: 'Open one', toggle: 'p2', toggleOpen: true },
+    { kind: 'paragraph', text: 'Open body', panels: ['p2'] },
+    { kind: 'text', text: 'Show filters', toggle: 'p3' },
+    { kind: 'paragraph', text: '', children: [{ kind: 'image', currentSrc: 'https://example.test/hero.jpg', alt: 'Hero', rw: 768 }] },
+    { kind: 'paragraph', text: '', children: [{ kind: 'image', currentSrc: 'https://example.test/old.png', alt: 'Old' }] },
+    { kind: 'paragraph', text: 'Badge', children: [{ kind: 'image', currentSrc: 'https://example.test/b.png', alt: 'B', rw: 24 }, { kind: 'text', text: 'Badge', sep: ' ' }] },
+  ];
+  const m = { pages: { p: { slots: { s01: { module: 'M2', layout: 'cards', cardTone: 'dark' } } } } };
+  const { html, warnings } = render({ ...base, slug: 'p', mapping: m, model: { sections: [{ slot: 's01', ordered }] } });
+  assert.match(html, /<span class="sr-only">Skip note<\/span>/);
+  assert.match(html, /<table class="table"><tbody><tr><th>Year<\/th><th>Count<\/th><\/tr><tr><td>2024<\/td><td><p class="aux"><a class="link" href="https:\/\/example\.test\/c">12<\/a><\/p><\/td><\/tr><\/tbody><\/table>/);
+  assert.match(html, /<button class="disclosure-toggle" type="button" aria-expanded="false" aria-controls="(disclosure-\d+)">Closed one <span class="glyph glyph-down" aria-hidden="true">keyboard_arrow_down<\/span><\/button><div class="disclosure-panel" id="\1" hidden="until-found"><p class="lead">Closed body<\/p><\/div>/);
+  assert.match(html, /aria-expanded="true" aria-controls="(disclosure-\d+)">Open one<\/button><div class="disclosure-panel" id="\1"><p class="lead">Open body<\/p>/);
+  assert.match(html, /<p class="text">Show filters<\/p>/, 'a toggle with no panel in the stream stays plain text');
+  assert.match(html, /<figure class="media media-wide"><img src="https:\/\/example\.test\/hero\.jpg" alt="Hero"><\/figure>/);
+  assert.match(html, /<img class="icon" src="https:\/\/example\.test\/old\.png" alt="Old">/, 'a pre-0.41 model (no rw) keeps the inline icon');
+  assert.match(html, /<img class="icon" src="https:\/\/example\.test\/b\.png" alt="B"> Badge/);
+  assert.match(html, /class="band layout-cards cards-dark /);
+  assert.match(html, /\.disclosure-toggle'\); if \(!b\) return;/, 'the toggle script ships with a disclosure');
+  assert.deepEqual(warnings.filter((w) => /cardTone/.test(w)), []);
+  const bad = render({ ...base, slug: 'p', mapping: { pages: { p: { slots: { s01: { module: 'M2', cardTone: 'neon' } } } } }, model: { sections: [{ slot: 's01', ordered: [{ kind: 'paragraph', text: 'x' }] }] } });
+  assert.ok(bad.warnings.some((w) => /unknown cardTone "neon"/.test(w)));
+  assert.ok(!/disclosure-toggle'\)/.test(bad.html), 'no script without a disclosure');
+});
+check('0.41 header: a glyph or sr-only action is an icon button; nav link text keeps glyph/sr-only runs, never the link image', () => {
+  const chromeModel = { sections: [{
+    slot: 'h1', images: [], ctas: [{ text: 'Skip to content', absHref: 'https://example.test/#main' }, { text: 'About', absHref: 'https://example.test/about' }],
+    ordered: [
+      { kind: 'cta', text: 'Skip to content', absHref: 'https://example.test/#main', srOnly: true },
+      { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about', children: [{ kind: 'image', currentSrc: 'https://example.test/crest.png', alt: '' }, { kind: 'text', text: 'About', sep: '' }] }] },
+      { kind: 'text', text: 'search', glyph: true, parentTag: 'span' },
+    ],
+  }] };
+  const { html } = render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'] } } });
+  const header = html.slice(html.indexOf('<header'), html.indexOf('</header>'));
+  assert.match(header, /<a class="sr-only" href="https:\/\/example\.test\/#main">Skip to content<\/a>/);
+  assert.match(header, /<a href="https:\/\/example\.test\/about">About<\/a>/);
+  assert.ok(!header.includes('crest.png'), 'a nav link image is not repeated as an inline image');
+  assert.match(header, /<span class="glyph glyph-search" aria-hidden="true">search<\/span>/);
+});
+
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exit(failed ? 1 : 0);

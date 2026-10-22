@@ -234,15 +234,33 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const val = n.value && /checkbox|radio|submit|button/.test(type) ? ` value="${esc(n.value)}"` : '';
     return `<input id="${id}" type="${esc(type)}"${name}${n.placeholder ? ` placeholder="${esc(n.placeholder)}"` : ''}${val}>`;
   }
+  // An icon-font ligature is drawn as its glyph (its word stays in the DOM for the byte gate, at font-size 0);
+  // visually hidden source text (sr-only, skip links) stays visually hidden.
+  const GLYPHS = [[/search/, 'search'], [/close|clear/, 'close'], [/menu/, 'menu'], [/left|back/, 'left'], [/up|less/, 'up'], [/down|expand_more|more/, 'down'], [/./, 'right']];
+  const glyphHtml = (t) => `<span class="glyph glyph-${GLYPHS.find(([re]) => re.test(t))[1]}" aria-hidden="true">${esc(t)}</span>`;
+  function leafHtml(n) {
+    if (n.glyph) return glyphHtml(n.text);
+    if (n.srOnly) return `<span class="sr-only">${txt(n)}</span>`;
+    return txt(n);
+  }
+  const toggleId = (n) => n.toggle || (n.kind === 'heading' ? n.children?.find((c) => c.toggle)?.toggle : null) || null;
   function inlineHtml(nodes) {
     return nodes.map((n) => {
       const sep = n.sep ?? '';
-      if (n.kind === 'cta') return `${sep}<a class="link" href="${url(n)}">${n.children ? inlineHtml(n.children) : txt(n)}</a>`;
-      // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline.
-      if (n.kind === 'image') return `${sep}<img class="icon" ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}">`;
+      if (n.kind === 'cta') return `${sep}<a class="link${n.srOnly ? ' sr-only' : ''}" href="${url(n)}">${n.children ? inlineHtml(n.children) : txt(n)}</a>`;
+      // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline; a content-sized
+      // one (rendered ≥ 200px wide) keeps its size.
+      if (n.kind === 'image') return `${sep}<img class="${n.rw >= 200 ? 'inline-media' : 'icon'}" ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}">`;
       if (n.children) return `${sep}${inlineHtml(n.children)}`;
-      return `${sep}${txt(n)}`;
+      return `${sep}${leafHtml(n)}`;
     }).join('');
+  }
+  function tableHtml(n, ctx) {
+    const rows = (n.rows || []).map((r) => `<tr>${r.map((c) => {
+      const tag = c.header ? 'th' : 'td';
+      return `<${tag}${c.colspan > 1 ? ` colspan="${c.colspan}"` : ''}>${c.children ? streamHtml(c.children, ctx) : esc(c.text)}</${tag}>`;
+    }).join('')}</tr>`).join('');
+    return `<div class="table-wrap"><table class="table"><tbody>${rows}</tbody></table></div>`;
   }
   // Figma-sourced text (content-model.md § Figma-sourced models): the model's text is the rendered case;
   // the page carries the design's characters with the case as CSS, so innerText equals text and the
@@ -259,14 +277,37 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const out = [];
     for (let i = 0; i < ordered.length; i++) {
       const n = ordered[i]; const next = ordered[i + 1];
+      // A disclosure (toggle + the panel it controls) keeps the source's rest state: closed, the panel is
+      // hidden="until-found" (findable, and revealed by dom-equality before it reads the text). The toggle is
+      // the stream node itself or the button inside a heading (h3 > button).
+      const tid = toggleId(n);
+      if (tid) {
+        const title = []; let j = i;
+        while (ordered[j] && toggleId(ordered[j]) === tid) title.push(ordered[j++]);
+        const panel = [];
+        while (ordered[j] && (ordered[j].panels || []).includes(tid)) panel.push(ordered[j++]);
+        if (panel.length) {
+          i = j - 1;
+          const pid = `disclosure-${++uid}`; const open = title.some((t) => t.toggleOpen || t.children?.some((c) => c.toggleOpen));
+          out.push(`<div class="disclosure"><button class="disclosure-toggle" type="button" aria-expanded="${open}" aria-controls="${pid}">${title.map((t, k) => `${k ? t.sep ?? ' ' : ''}${t.children ? inlineHtml(t.children) : leafHtml(t)}`).join('')}</button><div class="disclosure-panel" id="${pid}"${open ? '' : ' hidden="until-found"'}>${streamHtml(panel, ctx)}</div></div>`);
+          continue;
+        }
+      }
       switch (n.kind) {
+        case 'table': out.push(tableHtml(n, ctx)); break;
         case 'heading': {
           // A sub-heading whose donor type role differs from display is sized by that role, so drifting DOM
           // levels (h3/h4/h5 on visually equal card titles) render alike.
           const r = /^h[2-6]$/.test(n.role || '') && has(`--type-${n.role}-font-size`) ? ` role-${n.role}` : '';
           out.push(`<${n.level || 'h2'} class="heading${r}">${txt(n)}</${n.level || 'h2'}>`); break;
         }
-        case 'paragraph': out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
+        case 'paragraph':
+          // A paragraph holding only images, one of them content-sized, is a figure (a model captured
+          // before 0.41 has no rw and keeps the inline-icon rendering).
+          if (n.children?.length && n.children.every((c) => c.kind === 'image') && n.children.some((c) => c.rw >= 200)) {
+            out.push(...n.children.map((c) => `<figure class="media media-wide"><img ${img(c.currentSrc || c.src)} alt="${esc(c.alt)}"></figure>`)); break;
+          }
+          out.push(`<p class="${n.children?.some((c) => c.kind === 'cta') ? 'aux' : 'lead'}">${n.children ? inlineHtml(n.children) : txt(n)}</p>`); break;
         case 'listItem': {
           const items = [n]; while (ordered[i + 1]?.kind === 'listItem') items.push(ordered[++i]);
           out.push(`<ul class="list">${items.map((li) => `<li>${li.children ? inlineHtml(li.children) : txt(li)}</li>`).join('')}</ul>`); break;
@@ -297,6 +338,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           if (n.parentTag === 'label' && next?.kind === 'formControl' && !/checkbox|radio/.test(next.inputType || '')) {
             const id = `f${++uid}`; out.push(`<div class="field"><label for="${id}">${n.textCase ? txt(n) : labelHtml(n.text)}</label>${controlHtml(next, id)}</div>`); i++;
           } else if (n.parentTag === 'button' || n.inButton) out.push(`<div class="actions"><button class="${btnClass(ctx)}" type="submit">${txt(n)}</button></div>`);
+          else if (n.glyph || n.srOnly) out.push(leafHtml(n));
           else out.push(`<p class="text">${txt(n)}</p>`);
           break;
         default: throw new Error(`unhandled stream node kind "${n.kind}" in ${slug} — extend stream-render, never drop content`);
@@ -316,13 +358,14 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   function navItem(s, n) {
     const ctasIn = (x) => (x.kind === 'cta' ? [x] : (x.children || []).flatMap(ctasIn));
     const links = ctasIn(n).filter((c) => (c.text || '').trim());
-    if (links.length) return links.map((c) => `<a href="${url(c)}">${esc(c.text)}</a>`);
+    if (links.length) return links.map((c) => `<a${c.srOnly ? ' class="sr-only"' : ''} href="${url(c)}">${c.children ? inlineHtml(c.children.filter((k) => k.kind !== 'image').map((k) => ({ ...k, kind: k.kind === 'cta' ? 'text' : k.kind }))) : esc(c.text)}</a>`);
     const text = (n.text || '').trim();
     if (!text || n.kind === 'image') return [];
     // a Figma-only capture lists its links as ctas and their text as plain stream nodes
     const cta = s.ctas.find((c) => (c.text || '').trim() === text);
     if (cta) return [`<a href="${url(cta)}">${esc(text)}</a>`];
     if (n.kind === 'listItem') return [`<button class="nav-menu" type="button" aria-expanded="false">${esc(text)}</button>`];
+    if (n.glyph || n.srOnly) return [leafHtml(n)];
     return [`<span class="nav-text">${esc(text)}</span>`];
   }
 
@@ -350,7 +393,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       const cls = () => (btn++ === 0 ? 'btn btn-secondary' : 'btn');
       if (!items.length) return [];
       return items.map((h) => (h.startsWith('<a ') ? h.replace('<a ', `<a class="${cls()}" `)
-        : `<button class="${cls()}" type="button">${esc((n.text || '').trim())}</button>`));
+        : n.glyph || n.srOnly ? `<button class="${n.glyph ? 'icon-btn' : 'sr-only'}" type="button">${leafHtml(n)}</button>` : `<button class="${cls()}" type="button">${esc((n.text || '').trim())}</button>`));
     });
     const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
     const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
@@ -441,7 +484,9 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const split = typeof m.split === 'string' && /^(\d+(\.\d+)?(px|fr|%) ?){2}$/.test(m.split.trim()) ? m.split.trim() : null;
     if (m.split && !split) warnings.push(`${s.slot}: split "${m.split}" is not two column tracks (px | fr | %) — ignored`);
     const vars = [...(inset ? [`--band-inset: ${inset}`] : []), ...(split ? [`--split-columns: ${split}`] : [])];
-    const cls = ['band', ...layout.map((l) => `layout-${l}`), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
+    const cardTone = ['dark', 'light', 'accent'].includes(m.cardTone) ? m.cardTone : null;
+    if (m.cardTone && !cardTone) warnings.push(`${s.slot}: unknown cardTone "${m.cardTone}" (dark | light | accent) — ignored`);
+    const cls = ['band', ...layout.map((l) => `layout-${l}`), ...(cardTone ? [`cards-${cardTone}`] : []), `width-${m.width || 'narrow'}`, ...(tone ? [`tone-${tone}`] : []), ...(role ? [`heading-${role}`] : []), ...(inset ? ['inset'] : []), ...(tone && m.bleed === true ? ['bleed'] : []), ...(m.align === 'center' ? ['align-center'] : []), ...(mediaFirst ? ['media-first'] : [])].join(' ');
     const media = ctx.bandImage ? `<img class="${ctx.split ? 'split-img' : 'band-img'}" ${img(ctx.bandImage.currentSrc || ctx.bandImage.src)} alt="${esc(ctx.bandImage.alt)}">` : '';
     return `<section class="${cls}"${vars.length ? ` style="${vars.join('; ')}"` : ''} data-slot="${esc(s.slot || `s${String(i + 1).padStart(2, '0')}`)}"${m.module ? ` data-module="${esc(m.module)}"` : ''}>
       ${ctx.split ? '' : media}
@@ -519,6 +564,29 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   :is(.site-main, .site-header) .btn-secondary { background: ${v('--buttons-secondary-background', 'transparent')}; color: ${v('--buttons-secondary-color', 'inherit')}; border: ${v('--buttons-secondary-border', '1px solid currentColor')}; }
   .site-main .width-narrow .btn { width: 100%; }
 
+  .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+  .glyph { display: inline-flex; align-items: center; justify-content: center; width: 1em; height: 1em; font-size: 0; vertical-align: middle; }
+  .glyph::before { content: ""; width: 7px; height: 7px; border: solid currentcolor; border-width: 0 2px 2px 0; }
+  .glyph-right::before { transform: rotate(-45deg); } .glyph-left::before { transform: rotate(135deg); }
+  .glyph-down::before { transform: translateY(-2px) rotate(45deg); } .glyph-up::before { transform: translateY(2px) rotate(-135deg); }
+  .glyph-search::before { width: 9px; height: 9px; border: 2px solid currentcolor; border-radius: 50%; }
+  .glyph-close::before { content: "×"; width: auto; height: auto; border: 0; font-size: 20px; line-height: 1; }
+  .glyph-menu::before { width: 16px; height: 2px; border: 0; background: currentcolor; box-shadow: 0 -5px 0 currentcolor, 0 5px 0 currentcolor; }
+  .site-header .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+  .site-header .icon-btn .glyph { width: 20px; height: 20px; }
+  .site-main .disclosure { border-bottom: 1px solid ${v('--palette-light-band-bg', '#ddd')}; }
+  .site-main .disclosure:first-of-type, .site-main :not(.disclosure) + .disclosure { border-top: 1px solid ${v('--palette-light-band-bg', '#ddd')}; }
+  .site-main .disclosure-toggle { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 24px; padding: 20px 0; border: 0; background: none; color: ${v('--palette-heading-fg', 'inherit')}; font-family: ${v('--type-display-font-family', 'inherit')}; font-size: ${v('--type-h3-font-size', '1.25em')}; line-height: ${v('--type-h3-line-height', '1.3')}; font-weight: ${v('--type-h3-font-weight', '600')}; text-align: left; cursor: pointer; }
+  .site-main .disclosure-toggle .glyph { color: ${v('--palette-accent', 'currentColor')}; width: 24px; height: 24px; }
+  .site-main .disclosure-toggle[aria-expanded="true"] .glyph::before { transform: translateY(2px) rotate(-135deg); }
+  .site-main .disclosure-panel { padding: 0 0 24px; }
+  .site-main .table-wrap { overflow-x: auto; margin: 0 0 24px; }
+  .site-main .table { width: 100%; border-collapse: collapse; }
+  .site-main .table :is(th, td) { padding: 16px; border-bottom: 1px solid ${v('--palette-light-band-bg', '#ddd')}; text-align: left; vertical-align: top; }
+  .site-main .table th { background: ${v('--palette-light-band-bg', '#f3f3f3')}; color: ${v('--palette-heading-fg', 'inherit')}; }
+  .site-main .table :is(th, td) p { margin: 0; }
+  .site-main .media-wide img { width: 100%; max-height: none; }
+  .site-main .inline-media { display: block; width: 100%; height: auto; margin: 0 0 16px; }
   .site-main .list { padding-left: 1.2em; }
   .site-main .media img { max-height: 360px; width: auto; }
   .site-main .icon { display: inline-block; height: 1.6em; width: auto; vertical-align: middle; margin-right: 0.5em; }
@@ -536,6 +604,14 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
   .site-main .card > :last-child { margin-bottom: 0; }
+  .site-main .card:has(> .media:first-child) { padding: 0 0 32px; overflow: hidden; }
+  .site-main .card:has(> .media:first-child) > :not(.media:first-child) { margin-inline: 24px; }
+  .site-main .card > .media:first-child { margin: 0 0 24px; }
+  .site-main .card > .media:first-child img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; max-height: none; }
+  .site-main .cards-dark .card { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .cards-accent .card { background: ${v('--palette-accent', 'transparent')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
+  .site-main .cards-light .card { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
+  .site-main :is(.cards-dark, .cards-accent) .card :is(h1, h2, h3, h4, .heading, .link) { color: inherit; }
   .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { border-radius: ${v('--radii-card', '0')}; padding: 50px 60px; }
   .site-main .bleed.tone-dark, .site-main .bleed.tone-light, .site-main .bleed.tone-accent { padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .bleed.tone-dark { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
@@ -607,7 +683,8 @@ ${css}
 </main>
 <footer class="site-footer${['dark', 'light', 'accent'].includes(mapping.chrome?.footerTone) ? ` tone-${mapping.chrome.footerTone}` : ''}" data-canon="footer">
   ${chromeHtml(mapping.chrome?.footer || [], 'footer')}
-</footer>
+</footer>${sections.some((h) => h.includes('class="disclosure"')) ? `
+<script>document.addEventListener('click', (e) => { const b = e.target.closest('.disclosure-toggle'); if (!b) return; const p = document.getElementById(b.getAttribute('aria-controls')); const open = b.getAttribute('aria-expanded') !== 'true'; b.setAttribute('aria-expanded', String(open)); if (open) p.removeAttribute('hidden'); else p.setAttribute('hidden', 'until-found'); });</script>` : ''}
 </body>
 </html>
 `;
