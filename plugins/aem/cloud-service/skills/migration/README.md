@@ -23,6 +23,8 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
   - `dialog/` — Classic UI (ExtJS `cq:Dialog`) → Coral 3 `_cq_dialog`; Coral 2 in-place upgrade. BPA `lui` pattern (dialog sub-types only). Handles listeners, optionsProvider, namePrefix, filter.xml.
   - `cdw/` — Custom ExtJS widget (`cq:Widget` with unknown xtype) → known Coral 3 mapping or scaffolded Granite UI form component. BPA `cdw` pattern.
   - Future: `foundation-component/`, `cf-template/` sub-folders.
+- **Dispatcher conversion (Branch E):** AMS / on-prem Dispatcher → Cloud Service via Adobe's `dispatcher-converter` (`references/dispatcher/`)
+- **Asset workflow migration (Branch F):** DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) → processing profiles + post-processing workflows via Adobe's [`aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration) `wf-migrator`, with a removed-step gate, follow-up fixes, verification and a post-deploy checklist (`references/asset-workflow/`). Needs Java 11+; the pinned JAR is downloaded on first use.
 
 **First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `SKILL.md` for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
 
