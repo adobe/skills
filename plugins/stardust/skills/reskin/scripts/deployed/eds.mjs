@@ -1,11 +1,7 @@
 // skills/reskin/scripts/deployed/eds.mjs — what a gate needs to read an EDS preview (aem.page) rather than a
-// local file: settle on the decoration, authenticate on the preview origin only, and keep the token out of
-// every line the gate prints. A library, no CLI: the gates import it after their --help guard.
+// local file: settle on the decoration. A library, no CLI: the gates import it after their --help guard.
 //   edsSettle(page, { timeoutMs })  wait for `body.appear` and every data-section-status / data-block-status
 //                                   to read "loaded"; a stall is reported, never thrown
-//   siteAuth, authContextOptions    the Authorization header value and the newLiveContext options that attach it
-//                                   to ONE origin (live-session's resolveSiteAuth / attachOriginAuth)
-//   redact(text, secret)            the text with the token replaced
 //   isEdsHost(url)                  an aem.page / aem.live / hlx.page / hlx.live host, or the host of the
 //                                   DEPLOY_VERIFY_ORIGIN test hook (read at call time)
 // live-session.mjs comes from the diff skill and is loaded when first needed (loadLiveSession), never at import.
@@ -23,34 +19,13 @@ const POLL_MS = 50;
 
 let liveSession = null;
 
-// live-session.mjs, imported once. siteAuth answers synchronously, so it needs this to have run.
+// live-session.mjs, imported once.
 export async function loadLiveSession() {
   if (liveSession) return liveSession;
   const path = LIVE_SESSION.map((p) => resolve(HERE, p)).find((p) => existsSync(p));
   if (!path) throw new UsageError('live-session.mjs not found (looked in ../../../diff/scripts/ and ../../diff/): copy the diff skill\'s scripts beside the reskin scripts (stardust/scripts/diff/)');
   liveSession = await import(pathToFileURL(path).href);
   return liveSession;
-}
-
-// The Authorization header value for the preview, from --auth-header or the --token-env variable (live-session
-// reads both from process.argv as well), or null. Await loadLiveSession() once before the first call.
-export function siteAuth({ authHeader, tokenEnv } = {}) {
-  if (!liveSession) throw new Error('siteAuth: await loadLiveSession() first');
-  return liveSession.resolveSiteAuth({ authHeader, tokenEnv });
-}
-
-// The newLiveContext options that send the header to the origin of `url` and to no other.
-export function authContextOptions(url, header) {
-  if (!header) return {};
-  return { authOrigin: new URL(url).origin, authHeader: header };
-}
-
-// The text with the secret removed: the whole value and, for "token <t>" / "bearer <t>", the bare token too.
-export function redact(text, secret) {
-  const s = String(secret ?? '');
-  const bare = s.replace(/^(token|bearer) /i, '');
-  return [s, bare].filter(Boolean).sort((a, b) => b.length - a.length)
-    .reduce((out, v) => out.split(v).join('[redacted]'), String(text));
 }
 
 export function isEdsHost(url) {

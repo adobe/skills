@@ -50,9 +50,6 @@
  *                                    host (aem.page/live, hlx.page/live, DEPLOY_VERIFY_ORIGIN).
  *                                    A stall exits 2 "stalled decoration: …" and measures nothing
  *     [--eds-timeout <ms>]           settle bound (default 20000)
- *     [--auth-header <value>]        Authorization header for the RENDERED origin only
- *                                    (a protected preview); never printed
- *     [--token-env <NAME>]           the same, read from the environment variable NAME
  *     [--deltas <json>]              the page's declared source → preview differences
  *                                    (reskin/deltas/<slug>.json, deployed/deltas.mjs): text.allow
  *                                    entries rewrite the SOURCE text before it is compared, and
@@ -77,9 +74,7 @@ function parseArgs(argv) {
   const opts = { 'source-scope': 'main', 'rendered-scope': 'main', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --source-scpoe) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'auth-header', 'token-env', 'deltas']);
-  // A blank value here would fall back to $SITE_TOKEN / .env and send a token nobody asked for.
-  const AUTH_FLAGS = new Set(['auth-header', 'token-env']);
+  const VALUE_FLAGS = new Set(['source', 'rendered', 'report', 'source-scope', 'rendered-scope', 'normalize', 'ua', 'wait-until', 'locale', 'eds-timeout', 'deltas']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -87,16 +82,10 @@ function parseArgs(argv) {
     else if (a === '--wait-eds') opts.waitEds = true;
     else if (a.startsWith('--') && VALUE_FLAGS.has(a.slice(2))) {
       const v = argv[i + 1];
-      if (v === undefined || v.startsWith('--') || ((AUTH_FLAGS.has(a.slice(2)) || a === '--deltas') && !v.trim())) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
+      if (v === undefined || v.startsWith('--') || (a === '--deltas' && !v.trim())) { console.error(`[dom-equality] ${a} needs a value`); process.exit(2); }
       opts[a.slice(2)] = v; i += 1;
     }
-    else {
-      // Never echo the whole element: `--auth-header=<token>`, `--auth-header:<token>` or the stray half of an unquoted value is a secret.
-      const name = a.match(/^--[\w-]+/)?.[0] ?? null;
-      const hint = name && name !== a && VALUE_FLAGS.has(name.slice(2)) ? ` (write "${name} <value>")` : '';
-      console.error(`[dom-equality] ${name ? `unknown arg: ${name}${hint}` : 'unknown arg (not a --flag, not echoed): a value flag takes its value as the next argument'}`);
-      process.exit(2);
-    }
+    else { console.error(`[dom-equality] unknown arg: ${a}`); process.exit(2); }
   }
   return opts;
 }
@@ -106,14 +95,13 @@ if (args.help || !args.source || !args.rendered || !args.report) {
   console.log('usage: node dom-equality.mjs --source <url|file> --rendered <url|file> --report <path>');
   console.log('         [--source-scope selA,selB] [--rendered-scope main] [--normalize ledger.mjs]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
-  console.log('         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value>] [--token-env <NAME>] [--deltas <json>]');
+  console.log('         [--wait-eds] [--eds-timeout <ms>] [--deltas <json>]');
   console.log('Gates on byte-equal normalized visible text + ordered visible-image set.');
   console.log('Structure (element count, tag sequence) is reported but informational.');
   console.log('Live targets get the shared live-session hardening (real-Chrome UA + standard headers,');
   console.log('domcontentloaded, challenge detection); escalate bot-managed sites with --headed.');
   console.log('--wait-eds settles the rendered page\'s EDS decoration first (default on for an EDS host,');
-  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing. --auth-header /');
-  console.log('--token-env authenticate on the rendered origin only (a protected preview) and are never printed.');
+  console.log('bounded by --eds-timeout, 20000 ms); a stall exits 2 and measures nothing.');
   console.log('--deltas <json> applies the page\'s declared source → preview differences (text, images) and reports each one');
   console.log('applied or unused; "blocking": false in it makes a failure advisory (exit 0, ADVISORY on stdout).');
   console.log('Exit: 0 pass, 1 fail, 2 setup error, 3 bot challenge / blocked live source (never measured).');
@@ -138,7 +126,7 @@ try {
   console.error('Copy skills/reskin/scripts/* (deployed/ and figma/ included) and the diff skill\'s scripts into the project (SKILL.md § Setup).');
   process.exit(2);
 }
-const { edsSettle, isEdsHost, siteAuth, authContextOptions, redact } = eds;
+const { edsSettle, isEdsHost } = eds;
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
 const { loadNormalize, IMG_VISIBLE } = normalizeLib;
 
@@ -152,14 +140,7 @@ try { ({ chromium } = await import('playwright')); } catch {
 
 const toUrl = (p) => (/^(https?|file):/.test(p) ? p : pathToFileURL(resolve(p)).href);
 const renderedUrl = toUrl(args.rendered);
-// The preview's token: only when asked for (--auth-header / --token-env) and only for an http(s) rendered
-// target. The source side never gets it.
-const wantsAuth = /^https?:/.test(renderedUrl) && (args['auth-header'] !== undefined || args['token-env'] !== undefined);
-const auth = wantsAuth ? siteAuth({ authHeader: args['auth-header'], tokenEnv: args['token-env'] }) : null;
-// Anything printed passes through here, so the token cannot reach stderr by way of an error text.
-const die = (m, c = 2) => { console.error(`[dom-equality] ${redact(m, auth)}`); process.exit(c); };
-// Only --token-env can come up empty: a non-blank --auth-header is the header, and a blank one never gets here.
-if (wantsAuth && !auth) die('no site token: the variable --token-env names is not set in the environment or .env');
+const die = (m, c = 2) => { console.error(`[dom-equality] ${m}`); process.exit(c); };
 const waitEds = !!args.waitEds || isEdsHost(renderedUrl);
 const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 // --deltas: loaded here, after the --help guard, and validated before a browser starts.
@@ -179,11 +160,9 @@ const browser = args.headed ? await launchStealthHeaded(chromium) : await chromi
 
 async function capture(url, scopeList, normalize, rendered = false) {
   // UA + standard headers + webdriver spoof (live-session) — harmless on
-  // local/file targets, mandatory on live ones (F-G/F-R1). Site auth rides
-  // the rendered origin only.
+  // local/file targets, mandatory on live ones (F-G/F-R1).
   const ctx = await newLiveContext(browser, {
     ua: args.ua, locale: args.locale, viewport: { width: 1440, height: 900 },
-    ...(rendered ? authContextOptions(url, auth) : {}),
   });
   const page = await ctx.newPage();
   let navErr = null;
@@ -196,7 +175,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
     try {
       await gotoLive(page, url, { waitUntil: args['wait-until'], timeoutMs: 60000, settleMs: 0, solveWindow: !!args.headed });
     } catch (e) {
-      console.error(`[dom-equality] ${redact(e.message, auth)}`);
+      console.error(`[dom-equality] ${e.message}`);
       await browser.close();
       process.exit(e.name === 'BotChallengeError' ? 3 : 2);
     }
@@ -241,7 +220,7 @@ async function capture(url, scopeList, normalize, rendered = false) {
 
 console.error(`[dom-equality] capturing source ${args.source} scope=${args['source-scope']} normalize=${normalizeSource}`);
 const src = await capture(toUrl(args.source), args['source-scope'], true);
-console.error(redact(`[dom-equality] capturing rendered ${args.rendered} scope=${args['rendered-scope']}`, auth));
+console.error(`[dom-equality] capturing rendered ${args.rendered} scope=${args['rendered-scope']}`);
 const rnd = await capture(renderedUrl, args['rendered-scope'], false, true);
 await browser.close();
 
@@ -323,12 +302,12 @@ if (deltas) {
 }
 
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
-writeFileSync(args.report, redact(md, auth));
-console.error(redact(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`, auth));
-if (textDiff) console.error(redact(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`, auth));
+writeFileSync(args.report, md);
+console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
+if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
 if (deltas) {
-  console.log(redact(`  deltas applied: ${textDeltas.applied.length ? textDeltas.applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`, auth));
-  for (const line of deltasLib.warningLines(deltas, textDeltas.unused)) console.log(redact(`  ${line}`, auth));
-  if (advisory) console.log(redact(`[dom-equality] ${deltasLib.ADVISORY}: the failed checks are reported, not enforced — exit 0`, auth));
+  console.log(`  deltas applied: ${textDeltas.applied.length ? textDeltas.applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`);
+  for (const line of deltasLib.warningLines(deltas, textDeltas.unused)) console.log(`  ${line}`);
+  if (advisory) console.log(`[dom-equality] ${deltasLib.ADVISORY}: the failed checks are reported, not enforced — exit 0`);
 }
 process.exit(pass || advisory ? 0 : 1);

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // skills/reskin/scripts/test/deployed-gate-tokens.test.mjs — A2 of the deployed leg, `deployed-gate tokens`: the
 // donor tokens asserted on the EDS DOM of the preview. edsSpec (pure) first, then runTokens against stub probes
-// (the exit mapping, the token handed over by environment), then the CLI against the fake preview of
+// (the exit mapping), then the CLI against the fake preview of
 // fixtures/deployed/ with the real donor-probe. The pure and stub checks run anywhere; the browser checks need
 // playwright and print a skip line when it does not resolve. Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -22,18 +22,16 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPTS = join(HERE, '..');
 const GATE = join(SCRIPTS, 'deployed-gate.mjs');
 const TOKEN = 'canary-789';
-const HEADER = `token ${TOKEN}`;
 const scratch = mkdtempSync(join(tmpdir(), 'deployed-gate-tokens-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
-const noToken = (...texts) => { for (const t of texts) assert.ok(!t.includes(TOKEN), `the token leaked: …${t.slice(Math.max(0, t.indexOf(TOKEN) - 40), t.indexOf(TOKEN) + 40)}…`); };
 
 const sheet = () => readJson(join(HERE, 'fixtures', 'figma-gate', 'donor-tokens.json'));
 const contract = () => readJson(fixturePath('runtime-contract.json'));
 
 // One gate run: { status, stdout, stderr, all }. The ambient hooks are cleared so a run only sees what it is given.
 const run = (args, { cwd = scratch, env = {}, script = GATE } = {}) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', SITE_TOKEN: '', ...env } });
+  const child = spawn(process.execPath, [script, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', ...env } });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
@@ -57,7 +55,7 @@ const project = (name, { origin = 'http://127.0.0.1:9', skip = [], preview = tru
     const out = deployedDir(join(root, 'stardust'), 'home');
     mkdirSync(out, { recursive: true });
     writeFileSync(join(out, 'preview.json'), `${JSON.stringify({
-      url: `${origin}/ns/home`, origin, path: '/ns/home', plain: `${origin}/ns/home.plain.html`, namespace: 'ns', sandbox: false, auth: false, checkedAt: new Date().toISOString(), ...record,
+      url: `${origin}/ns/home`, origin, path: '/ns/home', plain: `${origin}/ns/home.plain.html`, namespace: 'ns', sandbox: false, checkedAt: new Date().toISOString(), ...record,
     }, null, 2)}\n`);
   }
   return root;
@@ -187,7 +185,7 @@ const stubProbe = (name, { exit = 0, stderr = '', json = null, at = join(scratch
   const seen = join(scratch, `${name}.seen.json`);
   writeFileSync(file, `import { writeFileSync } from 'node:fs';
 const argv = process.argv.slice(2);
-writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv, token: process.env.DEPLOYED_GATE_SITE_TOKEN ?? null, siteToken: process.env.SITE_TOKEN ?? null }));
+writeFileSync(${JSON.stringify(seen)}, JSON.stringify({ argv }));
 ${json ? `writeFileSync(argv[argv.indexOf('--json') + 1], ${JSON.stringify(JSON.stringify(json))});` : ''}
 process.stderr.write(${JSON.stringify(stderr)});
 process.exit(${exit});
@@ -197,39 +195,25 @@ process.exit(${exit});
 const PASSING = { pass: true, results: [{ check: 'page bg = rgb(255, 255, 255)', label: 'page bg', status: 'PASS', detail: 'rgb(255, 255, 255)' }] };
 const attempt = async (fn) => { try { return { value: await fn() }; } catch (e) { return { error: e }; } };
 
-await check('runTokens hands donor-probe the spec, the preview URL and --wait-eds; the token goes by environment (to a public preview too: the record says auth: false), never argv', async () => {
+await check('runTokens hands donor-probe the spec, the preview URL and --wait-eds', async () => {
   const root = project('stub-args');
   const dir = join(root, 'stardust');
   const preview = readJson(join(outOf(root), 'preview.json'));
-  assert.equal(preview.auth, false, 'a public preview: tokens sends the token it is given all the same');
   const stub = stubProbe('probe-args', { exit: 0, json: PASSING });
-  const r = await runTokens({ dir, slug: 'home', preview, auth: HEADER, donorProbe: stub.file, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stale' } });
-  const { argv, token } = stub.seen();
+  const r = await runTokens({ dir, slug: 'home', preview, donorProbe: stub.file });
+  const { argv } = stub.seen();
   const arg = (flag) => argv[argv.indexOf(flag) + 1];
   assert.equal(arg('--tokens'), join(dir, 'reskin', 'donor-tokens.json'));
   assert.equal(arg('--spec'), join(outOf(root), 'tokens-spec.json'));
   assert.equal(arg('--rendered'), preview.url);
-  assert.equal(arg('--token-env'), 'DEPLOYED_GATE_SITE_TOKEN');
   assert.ok(argv.includes('--wait-eds') && argv.includes('--no-sanity'));
   assert.equal(arg('--json'), r.json);
   assert.equal(arg('--report'), r.report);
-  assert.equal(token, HEADER, 'the token arrived by environment');
-  noToken(argv.join(' '));
-  assert.ok(!argv.includes('--auth-header'));
   assert.deepEqual(readJson(join(outOf(root), 'tokens-spec.json')), edsSpec({ tokens: sheet(), runtimeContract: contract() }));
   assert.equal(r.verdict, 'PASS');
   assert.equal(r.exit, 0);
   assert.equal(r.total, 1);
   assert.deepEqual(recordOf(root), { verdict: 'PASS', exit: 0, report: r.report, json: r.json, skipped: r.skipped });
-});
-
-await check('runTokens without a token passes no token flag and clears an inherited DEPLOYED_GATE_SITE_TOKEN', async () => {
-  const root = project('stub-noauth');
-  const stub = stubProbe('probe-noauth', { exit: 0, json: PASSING });
-  await runTokens({ dir: join(root, 'stardust'), slug: 'home', preview: readJson(join(outOf(root), 'preview.json')), donorProbe: stub.file, env: { ...process.env, DEPLOYED_GATE_SITE_TOKEN: 'stray' } });
-  const { argv, token } = stub.seen();
-  assert.ok(!argv.includes('--token-env') && !argv.includes('--auth-header'), argv.join(' '));
-  assert.equal(token, null);
 });
 
 await check('runTokens: donor-probe exit 1 with its JSON is the FAIL verdict with one line per failing assertion; the record says so', async () => {
@@ -252,33 +236,25 @@ await check('runTokens: donor-probe exit 1 with its JSON is the FAIL verdict wit
   assert.equal(recordOf(root).exit, 1);
 });
 
-await check('runTokens exit mapping: probe exit 2 is a UsageError, exit 3 a challenge (code 3), no verdict is code 124; the probe\'s text is redacted and no stale JSON or record survives', async () => {
+await check('runTokens exit mapping: probe exit 2 is a UsageError, exit 3 a challenge (code 3), no verdict is code 124; no stale JSON or record survives', async () => {
   const root = project('stub-exits');
   const dir = join(root, 'stardust');
   const preview = readJson(join(outOf(root), 'preview.json'));
-  const call = (stub, auth = HEADER) => attempt(() => runTokens({ dir, slug: 'home', preview, auth, donorProbe: stub.file }));
-  const setup = await call(stubProbe('probe-2', { exit: 2, stderr: `[donor-probe] HTTP 401 at ${preview.url}: sent ${HEADER}\n` }));
+  const call = (stub) => attempt(() => runTokens({ dir, slug: 'home', preview, donorProbe: stub.file }));
+  const setup = await call(stubProbe('probe-2', { exit: 2, stderr: `[donor-probe] HTTP 401 at ${preview.url}\n` }));
   assert.ok(setup.error instanceof UsageError && setup.error.code === 2, String(setup.error));
   assert.match(setup.error.message, /HTTP 401/);
-  assert.match(setup.error.message, /\[redacted\]/);
-  noToken(setup.error.message);
-  assert.ok(!/pass --auth-header/.test(setup.error.message), 'no hint when the record says no token was used');
-  const protectedRecord = { ...preview, auth: true };
-  const unauthenticated = await attempt(() => runTokens({ dir, slug: 'home', preview: protectedRecord, auth: null, donorProbe: stubProbe('probe-2b', { exit: 2, stderr: '[donor-probe] stalled decoration: body.appear\n' }).file }));
-  assert.match(unauthenticated.error?.message ?? '', /stalled decoration: body\.appear\npreview\.json says .*pass --auth-header or --token-env/);
 
-  const challenge = await call(stubProbe('probe-3', { exit: 3, stderr: `[donor-probe] bot challenge at ${preview.url} (${TOKEN})\n` }));
+  const challenge = await call(stubProbe('probe-3', { exit: 3, stderr: `[donor-probe] bot challenge at ${preview.url}\n` }));
   assert.ok(challenge.error && challenge.error.code === 3 && !(challenge.error instanceof UsageError), String(challenge.error));
   assert.match(challenge.error.message, /bot challenge/);
-  noToken(challenge.error.message);
 
-  for (const [name, stub] of [['exit 1, no JSON', stubProbe('probe-1', { exit: 1, stderr: `boom ${TOKEN}\n` })], ['exit 0, no JSON', stubProbe('probe-0', { exit: 0 })], ['exit 7', stubProbe('probe-7', { exit: 7, json: PASSING })]]) {
+  for (const [name, stub] of [['exit 1, no JSON', stubProbe('probe-1', { exit: 1, stderr: 'boom\n' })], ['exit 0, no JSON', stubProbe('probe-0', { exit: 0 })], ['exit 7', stubProbe('probe-7', { exit: 7, json: PASSING })]]) {
     writeFileSync(join(outOf(root), 'tokens-probe.json'), JSON.stringify(PASSING));
     writeFileSync(join(outOf(root), 'tokens.json'), JSON.stringify({ verdict: 'PASS' }));
     const crash = await call(stub);
     assert.ok(crash.error && crash.error.code === 124 && !(crash.error instanceof UsageError), `${name}: ${String(crash.error)}`);
     assert.match(crash.error.message, /did not give a verdict/, name);
-    noToken(crash.error.message);
     assert.ok(!existsSync(join(outOf(root), 'tokens.json')), `${name}: no record from an earlier run`);
     if (!/JSON/.test(name)) continue;
     assert.ok(!existsSync(join(outOf(root), 'tokens-probe.json')), `${name}: the earlier JSON was removed before the probe ran, so it is not read as this run's`);
@@ -316,33 +292,30 @@ await check('runTokens: the sheet and the runtime contract are read from <dir>/r
   assert.ok(noClass.error instanceof UsageError && /buttonClasses/.test(noClass.error.message), String(noClass.error));
 });
 
-await check('the project copy of the scripts finds donor-probe beside the gate: a probe exit 3 is gate exit 3, no verdict is 124, exit 2 is 2, and the verdict lines come from the probe\'s JSON; the token is redacted throughout', async () => {
+await check('the project copy of the scripts finds donor-probe beside the gate: a probe exit 3 is gate exit 3, no verdict is 124, exit 2 is 2, and the verdict lines come from the probe\'s JSON', async () => {
   const copy = join(scratch, 'copy');
   cpSync(SCRIPTS, join(copy, 'reskin'), { recursive: true, filter: (src) => src !== join(SCRIPTS, 'test') });
   cpSync(join(SCRIPTS, '..', '..', 'diff', 'scripts'), join(copy, 'diff'), { recursive: true });
   const at = join(copy, 'reskin', 'donor-probe.mjs');
   const gate = (name, probe) => {
     stubProbe(name, { at, ...probe });
-    return run(['tokens', '--page', 'home', '--auth-header', HEADER], { cwd: project('copy-proj'), script: join(copy, 'reskin', 'deployed-gate.mjs') });
+    return run(['tokens', '--page', 'home'], { cwd: project('copy-proj'), script: join(copy, 'reskin', 'deployed-gate.mjs') });
   };
-  const challenge = await gate('copy-3', { exit: 3, stderr: `[donor-probe] bot challenge at x (${HEADER})\n` });
+  const challenge = await gate('copy-3', { exit: 3, stderr: '[donor-probe] bot challenge at x\n' });
   assert.equal(challenge.status, 3, challenge.all);
-  assert.match(challenge.stderr, /^deployed-gate: \[donor-probe\] bot challenge at x \(\[redacted\]\)/);
-  const crash = await gate('copy-1', { exit: 1, stderr: `crashed ${TOKEN}\n` });
+  assert.match(challenge.stderr, /^deployed-gate: \[donor-probe\] bot challenge at x/);
+  const crash = await gate('copy-1', { exit: 1, stderr: 'crashed\n' });
   assert.equal(crash.status, 124, crash.all);
-  assert.match(crash.stderr, /did not give a verdict \(exit 1\): crashed \[redacted\]/);
-  const setup = await gate('copy-2', { exit: 2, stderr: `[donor-probe] ${TOKEN} unreachable\n` });
+  assert.match(crash.stderr, /did not give a verdict \(exit 1\): crashed/);
+  const setup = await gate('copy-2', { exit: 2, stderr: '[donor-probe] unreachable\n' });
   assert.equal(setup.status, 2, setup.all);
-  const fail = await gate('copy-fail', { exit: 1, json: { pass: false, results: [{ check: 'page bg = rgb(255, 255, 255)', label: 'page bg', status: 'FAIL', detail: TOKEN }] } });
+  const fail = await gate('copy-fail', { exit: 1, json: { pass: false, results: [{ check: 'page bg = rgb(255, 255, 255)', label: 'page bg', status: 'FAIL', detail: 'rgb(0, 0, 0)' }] } });
   assert.equal(fail.status, 1, fail.all);
   assert.equal(fail.stdout.split('\n')[0], 'FAIL tokens 1/1');
-  assert.ok(fail.stdout.includes('  page bg: got [redacted], want rgb(255, 255, 255)'), fail.stdout);
+  assert.ok(fail.stdout.includes('  page bg: got rgb(0, 0, 0), want rgb(255, 255, 255)'), fail.stdout);
   const pass = await gate('copy-0', { exit: 0, json: PASSING });
   assert.equal(pass.status, 0, pass.all);
   assert.equal(pass.stdout.split('\n')[0], 'PASS tokens 1/1');
-  const { token } = readJson(join(scratch, 'copy-0.seen.json'));
-  assert.equal(token, HEADER, 'the copy\'s probe ran with the token in its environment');
-  noToken(challenge.all, crash.all, setup.all, fail.all, pass.all);
 });
 
 await check('--help documents tokens beside preview; the usage errors of tokens exit 2 and write nothing', async () => {
@@ -350,7 +323,7 @@ await check('--help documents tokens beside preview; the usage errors of tokens 
   copyFileSync(GATE, join(dir, 'deployed-gate.mjs'));
   const r = await run(['--help'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
   assert.equal(r.status, 0, r.all);
-  assert.match(r.stdout, /deployed-gate\.mjs tokens --page <slug> \[--auth-header <value> \| --token-env <NAME>\] \[--dir stardust\]/);
+  assert.match(r.stdout, /deployed-gate\.mjs tokens --page <slug> \[--dir stardust\]/);
   assert.match(r.stdout, /layout\.containerMaxWidth/);
   assert.match(r.stdout, /layout\.sectionPaddingY, when the sheet carries it \(a px length, else exit\s+2\), is asserted as the top and bottom padding of every non-empty main > \.section/);
   assert.ok(!/layout\.sectionPaddingY \(EDS section rhythm/.test(r.stdout), 'no longer said to be skipped');
@@ -365,9 +338,7 @@ await check('--help documents tokens beside preview; the usage errors of tokens 
     [['tokens', '--page', 'home', '--sandbox'], /unknown flag --sandbox for tokens/],
     [['tokens', '--page', 'home', 'stray'], /unexpected argument "stray"/],
     [['tokens', '--page'], /--page needs a value/],
-    [['tokens', '--page', 'home', '--auth-header', '--dir', 'x'], /--auth-header needs a value/],
-    [['tokens', '--page', 'home', '--token-env', ' '], /--token-env needs a value/],
-    [['tokens', '--page', 'home', '--auth-header', ''], /--auth-header needs a value/],
+    [['tokens', '--page', 'home', '--dir'], /--dir needs a value/],
   ]) {
     const got = await run(args, { cwd: root });
     assert.equal(got.status, 2, `${args.join(' ')}: ${got.all}`);
@@ -497,39 +468,13 @@ if (playwrightOk) {
     } finally { await server.close(); }
   });
 
-  await check('a protected preview: --auth-header and --token-env authenticate (every request carries the header), and the token is in no output or file; without it nothing is measured (exit 2, naming the flags)', async () => {
+  await check('a protected preview (401 without a header) is never a pass: the probe measures nothing, exit 2', async () => {
     const server = await startPreviewServer({ token: TOKEN });
     try {
-      const root = project('cli-auth', { origin: server.origin, record: { auth: true } });
-      const viaHeader = await tokens(root, ['--auth-header', HEADER]);
-      assert.equal(viaHeader.status, 0, viaHeader.all);
-      assert.match(viaHeader.stdout, new RegExp(`^PASS tokens ${total}/${total}$`, 'm'));
-      assert.ok(server.requests.length > 0 && server.requests.every((q) => q.headers.authorization === HEADER), 'every request carried the header');
-      const viaEnv = await tokens(root, ['--token-env', 'STARDUST_T6_TOKEN'], { env: { STARDUST_T6_TOKEN: TOKEN } });
-      assert.equal(viaEnv.status, 0, viaEnv.all);
+      const root = project('cli-protected', { origin: server.origin });
       const anon = await tokens(root);
       assert.equal(anon.status, 2, anon.all);
-      assert.match(anon.stderr, /stalled decoration|HTTP 401/, 'the probe measured nothing');
-      assert.match(anon.stderr, /pass --auth-header or --token-env/, 'the record says a token was used: the error says so');
-      const unset = await tokens(root, ['--token-env', 'STARDUST_T6_NO_SUCH_TOKEN']);
-      assert.equal(unset.status, 2, unset.all);
-      assert.match(unset.stderr, /no site token: the variable --token-env names is not set/);
-      assert.equal(unset.all.includes('STARDUST_T6_NO_SUCH_TOKEN'), false, 'the name is never printed');
-      noToken(viaHeader.all, viaEnv.all, anon.all, unset.all);
-      for (const f of readdirSync(outOf(root))) noToken(readFileSync(join(outOf(root), f), 'utf8'));
-    } finally { await server.close(); }
-  });
-
-  await check('a failing assertion on a protected preview never prints the token either', async () => {
-    const page = variant('page-auth-fail', ['a.button.primary { background: rgb(31, 58, 95);', 'a.button.primary { background: rgb(200, 30, 30);']);
-    const server = await startPreviewServer({ token: TOKEN, pages: { '/ns/home': page } });
-    try {
-      const root = project('cli-auth-fail', { origin: server.origin, record: { auth: true } });
-      const r = await tokens(root, ['--auth-header', HEADER]);
-      assert.equal(r.status, 1, r.all);
-      assert.match(r.stdout, /^FAIL tokens 1\//m);
-      noToken(r.all);
-      for (const f of readdirSync(outOf(root))) noToken(readFileSync(join(outOf(root), f), 'utf8'));
+      assert.ok(!/^PASS/m.test(anon.stdout), anon.all);
     } finally { await server.close(); }
   });
 

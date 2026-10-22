@@ -28,14 +28,13 @@ const SELF = fileURLToPath(import.meta.url);
 export const HELP = `Usage:
   node figma-gate.mjs boxes [--module Mn | --node <id>] [--depth 3] [--dir stardust]
   node figma-gate.mjs join --page <slug> --url <url|file> [--dir stardust]
-  node figma-gate.mjs join --page <slug> --url <preview url> --target preview --reskin <file>
-                           [--auth-header <value> | --token-env <NAME>] [--dir stardust]
+  node figma-gate.mjs join --page <slug> --url <preview url> --target preview --reskin <file> [--dir stardust]
   node figma-gate.mjs geometry --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs ramp --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs pixel --page <slug> --url <url|file> [--dir stardust]
   node figma-gate.mjs register --page <slug> [--target preview] [--dir stardust]
   node figma-gate.mjs all --page <slug> --url <url|file> [--dir stardust]
-  (geometry, ramp, pixel and all take --target preview --reskin <file> [--auth-header <value> | --token-env <NAME>] like join;
+  (geometry, ramp, pixel and all take --target preview --reskin <file> like join;
    register takes --target preview alone, to read the preview run's files)
 
 Figma checks on a reskin page, against the capture figma-donor.mjs made (offline: no token, no network).
@@ -98,7 +97,7 @@ ramp     B3. Runs the join first (drift stops here, exit 1), validates the check
          one "advisory" line and never change the exit code. A probe that cannot run is exit 124; one that exits 2 (its own setup error) is exit 2 with its message,
          and a bot challenge is exit 3. Every result carries root (null for a :root entry), the checks root its entry was
          measured against. On --target preview the probe is given --wait-eds (the preview's decoration settles first; a
-         stall is exit 124) and the site token in its environment (DEPLOYED_GATE_SITE_TOKEN with --token-env), never in argv.
+         stall is exit 124).
 pixel    B2, advisory. Runs the join first (drift stops here, exit 1), validates the checks file, then for
          every section crops its slice out of the cached frame image (the PNG figma-donor.mjs captured,
          taken at 1×; a size within 1px of the frame box fits, Figma rounds a fractional box up; any
@@ -161,7 +160,7 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
              ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.figma (never a file key); with
          --target preview its regime is "preview" and it goes to pages.<slug>.gates.deployed.figma, and the recorded
-         invocation names --target preview and --reskin (a site token flag only as a placeholder, never its value):
+         invocation names --target preview and --reskin:
            { regime, figmaVersion, join: PASS | FAIL, geometry: "PASS n/n" | "FAIL k/n", ramp (the same over
              asserted results, " (k unasserted)" appended), pixel: "<slot> <pct>%, <slot> n/a: <why>, ...",
              register: the counts line, coverage: "text styles <covered>/<total> · widths <w1>,<w2> · waived <n>"
@@ -178,13 +177,8 @@ all      The whole run: join, geometry, ramp, pixel, register. The page is joine
          measured by its previewSelector, else its selector, scoped to that section: a selector that matches nothing there
          is "unmeasurable", a FAIL, never a skip. Each of those steps opens the preview and waits for the EDS decoration
          first (a stall is exit 124), and every step file records regime "preview". preview needs --reskin <file>;
-         local takes neither --reskin nor a site token.
---auth-header <value> | --token-env <NAME>  (preview only) the Authorization header value for a protected preview, or the
-         environment variable (or .env entry) holding the token; neither may be empty. Sent to the preview origin only, on
-         the page and on its .plain.html, never printed (every line the gate prints has it redacted, and a usage error
-         never quotes a flag's value or a stray argument next to one: write the value as a separate argument, quoted if it
-         has a space: --auth-header "token <value>") and never written. --token-env takes a variable NAME.
-         HTTP 401 or 403 from the preview is exit 2.
+         local does not take --reskin. The preview must be reachable without auth: HTTP 401 or 403 from it is exit 2
+         (a protected preview is out of scope).
 
 Checks file <dir>/reskin/figma-checks/<slug>.json (written by the agent from the boxes outlines):
   { "version": 1, "page": "<slug>", "sections": { "<slot>": {
@@ -227,9 +221,8 @@ Exit codes: 0 pass · 1 a blocking check failed · 2 usage or setup (missing inp
             · 3 bot challenge on a live target · 124 no verdict: a step crashed or timed out; re-run once, the
             same 124 twice is a residual (needs-owner), never a fix iteration.`;
 
-// The regime and site-token flags of the steps that take a --url.
-const TARGET_VALUES = ['--target', '--reskin', '--auth-header', '--token-env'];
-const SECRET_FLAGS = new Set(['--auth-header', '--token-env']);
+// The regime flags of the steps that take a --url.
+const TARGET_VALUES = ['--target', '--reskin'];
 
 const SPEC = {
   boxes: { values: ['--module', '--node', '--depth', '--dir'], bools: [], positional: [] },
@@ -241,41 +234,32 @@ const SPEC = {
   all: { values: ['--page', '--url', ...TARGET_VALUES, '--dir'], bools: [], positional: [] },
 };
 
-// What a usage error may print of an argument it did not understand: the word of a command, never one that starts with
-// `-` or holds a space, `=` or `:` (`--auth-header=<token>`, `token <value>` typed ahead of the command), and of a flag
-// its name alone, cut at the first character that cannot be part of one (`--flag=<value>`, `--flag:<value>`).
-const plainWord = (s) => !/^-|[\s=:]/.test(s);
-const flagName = (a) => a.match(/^--[\w-]+/)?.[0] ?? null;
+// The name of an unknown flag, cut at the first character that cannot be part of one (`--flag=<value>`).
+const flagName = (a) => a.match(/^--[\w-]+/)?.[0] ?? a;
 
 export function parseArgs(argv, UsageError) {
   const [cmd, ...rest] = argv;
   if (!cmd) throw new UsageError(`no command\n${HELP}`);
   const spec = SPEC[cmd];
-  if (!spec) throw new UsageError(`${plainWord(cmd) ? `unknown command "${cmd}"` : 'unknown command (not echoed: it starts with - or holds a space, = or :, and may be part of a secret; a command comes first, its flags after it)'}\n${HELP}`);
+  if (!spec) throw new UsageError(`unknown command "${cmd}"\n${HELP}`);
   const opts = {};
   const positional = [];
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (spec.values.includes(a)) {
       const val = rest[i + 1];
-      // A blank secret never falls back to $SITE_TOKEN or a .env entry: it is a missing value.
-      if (val === undefined || val.startsWith('--') || (SECRET_FLAGS.has(a) && !val.trim())) throw new UsageError(`${a} needs a value`);
+      if (val === undefined || val.startsWith('--')) throw new UsageError(`${a} needs a value`);
       opts[a.slice(2)] = val;
       i += 1;
     } else if (spec.bools.includes(a)) opts[a.slice(2)] = true;
     else if (a.startsWith('--')) {
-      // An unknown --flag=value (or --flag:value) is named by its flag alone: the value may be a secret.
       const name = flagName(a);
-      if (!name) throw new UsageError(`unknown flag for ${cmd} (not echoed: it is not a flag name)`);
       throw new UsageError(name === a ? `unknown flag ${a} for ${cmd}` : `unknown flag ${name} for ${cmd}: a flag and its value are separate arguments (${name} <value>)`);
     } else positional.push(a);
   }
   if (positional.length < spec.positional.length) throw new UsageError(`${cmd} needs ${spec.positional.join(' ')}`);
   if (positional.length > spec.positional.length) {
-    // Next to a site-token flag the stray argument may be the rest of an unquoted header value: it is not printed.
-    throw new UsageError(rest.some((x) => SECRET_FLAGS.has(x))
-      ? 'unexpected argument: quote the value of --auth-header ("token <value>"), it has a space; the argument is not shown, it may be part of the secret'
-      : plainWord(positional[spec.positional.length]) ? `unexpected argument "${positional[spec.positional.length]}"` : 'unexpected argument (not shown: it holds a space, = or :, and may be part of a secret)');
+    throw new UsageError(`unexpected argument "${positional[spec.positional.length]}"`);
   }
   return { cmd, positional, opts };
 }
@@ -333,28 +317,28 @@ function logJoin(result, log) {
   for (const n of result.notes ?? []) log(`  note: ${n}`);
 }
 
-// The Target of a step's --url: the reskin page (local) or a deployed preview, which carries the site token.
-async function targetFor(opts, auth) {
+// The Target of a step's --url: the reskin page (local) or a deployed preview.
+async function targetFor(opts) {
   const { localTarget, previewTarget } = await helper('target');
-  return opts.target === 'preview' ? previewTarget(opts.url, { reskin: opts.reskin, auth }) : localTarget(opts.url);
+  return opts.target === 'preview' ? previewTarget(opts.url, { reskin: opts.reskin }) : localTarget(opts.url);
 }
 
-async function joinStep({ dir, opts, log, UsageError, auth }) {
+async function joinStep({ dir, opts, log, UsageError }) {
   if (!opts.page) throw new UsageError('join needs --page <slug>');
   if (!opts.url) throw new UsageError('join needs --url <url|file>: the page to join');
   const [{ readInputs, workDir }, { runJoin }] = await Promise.all([helper('io'), helper('join')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
-  const target = await targetFor(opts, auth);
+  const target = await targetFor(opts);
   const result = await runJoin({ target, inputs, out: workDir(dir, opts.page, target.regime) });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
 
-async function geometryStep({ dir, opts, log, UsageError, ready: given, auth }) {
+async function geometryStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('geometry needs --page <slug>');
   if (!opts.url) throw new UsageError('geometry needs --url <url|file>: the page to measure');
   const [{ prepare }, { runGeometry }] = await Promise.all([helper('prepare'), helper('geometry')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -366,16 +350,16 @@ async function geometryStep({ dir, opts, log, UsageError, ready: given, auth }) 
   return pass ? 0 : 1;
 }
 
-async function rampStep({ dir, opts, log, UsageError, ready: given, auth }) {
+async function rampStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('ramp needs --page <slug>');
   if (!opts.url) throw new UsageError('ramp needs --url <url|file>: the page to probe');
   const [{ prepare }, { runRamp }] = await Promise.all([helper('prepare'), helper('ramp')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
   }
-  const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out, auth });
+  const { pass, results, literals } = await runRamp({ target: ready.target, join: ready.join, checks: ready.checks, boxes: ready.boxes, tokens: ready.tokens, rules: ready.rules, out: ready.out });
   const failing = results.filter((r) => r.status === 'FAIL');
   const unasserted = results.filter((r) => r.status === 'UNASSERTED');
   const asserted = results.length - unasserted.length;
@@ -390,11 +374,11 @@ async function rampStep({ dir, opts, log, UsageError, ready: given, auth }) {
   return pass ? 0 : 1;
 }
 
-async function pixelStep({ dir, opts, log, UsageError, ready: given, auth }) {
+async function pixelStep({ dir, opts, log, UsageError, ready: given }) {
   if (!opts.page) throw new UsageError('pixel needs --page <slug>');
   if (!opts.url) throw new UsageError('pixel needs --url <url|file>: the page to screenshot');
   const [{ prepare }, { pixelHeadline, runPixel }] = await Promise.all([helper('prepare'), helper('pixel')]);
-  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts, auth) });
+  const ready = given ?? await prepare({ dir, slug: opts.page, url: opts.url, target: await targetFor(opts) });
   if (ready.drift) {
     logDrift(ready.join, log);
     return 1;
@@ -481,15 +465,14 @@ function pixelFragment(file) {
   }).join(', ');
 }
 
-async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, redact }) {
+async function allStep({ dir, opts, env, log, warn, UsageError, steps }) {
   if (!opts.page) throw new UsageError('all needs --page <slug>');
   if (!opts.url) throw new UsageError('all needs --url <url|file>: the page to check');
   const [{ prepare }, { workDir }, { countsLine, coverageLine }, { readCurrent }, { provenance, readJsonIf, writeJson }] = await Promise.all([
     helper('prepare'), helper('io'), helper('register'), helper('cache', 'figma'), helper('io', 'figma'),
   ]);
-  const target = await targetFor(opts, auth);
+  const target = await targetFor(opts);
   const regime = target.regime;
-  const scrub = (m) => (redact ? redact(m) : m);
   const out = workDir(dir, opts.page, regime);
   for (const f of STALE_FILES) rmSync(join(out, f), { force: true });
   if (existsSync(out)) for (const f of readdirSync(out)) if (RAMP_WIDTH_FILE.test(f)) rmSync(join(out, f), { force: true });
@@ -507,17 +490,16 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
     log(`${prefix} ${name} ${why}`);
   };
   // A step that threw: a bot challenge (code 3) is deterministic for the target, anything else but a setup error is a crash.
-  // What is recorded in summary.json passes through scrub: it never holds the site token.
   const failureLine = (name, verdict, exit) => `ERROR (exit ${exit}) ${name} ${verdict}`;
   const failure = (e) => (e?.code === 3
-    ? { verdict: scrub(`CHALLENGE: ${e.message}`), exit: 3 }
-    : { verdict: scrub(`CRASH: ${e?.message ?? e}`), exit: 124 });
+    ? { verdict: `CHALLENGE: ${e.message}`, exit: 3 }
+    : { verdict: `CRASH: ${e?.message ?? e}`, exit: 124 });
   // Runs one step function; its own log lines are kept as the step's detail.
   const exec = async (name, fn, extra = {}, { hide } = {}) => {
     const detail = [];
-    const stepLog = (m) => { detail.push(scrub(m)); if (m !== hide) log(m); };
+    const stepLog = (m) => { detail.push(m); if (m !== hide) log(m); };
     try {
-      const exit = await fn({ dir, opts, env, log: stepLog, warn, UsageError, auth, ...extra });
+      const exit = await fn({ dir, opts, env, log: stepLog, warn, UsageError, ...extra });
       record(name, VERDICT_WORDS[name]?.[exit] ?? `exit ${exit}`, exit, detail);
     } catch (e) {
       if (isSetup(e)) throw e;
@@ -531,7 +513,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
   try {
     ready = await prepare({ dir, slug: opts.page, url: opts.url, target });
     const detail = [];
-    logJoin(ready.join, (m) => { detail.push(scrub(m)); log(m); });
+    logJoin(ready.join, (m) => { detail.push(m); log(m); });
     record('join', ready.join.pass ? 'PASS' : 'FAIL', ready.join.pass ? 0 : 1, detail);
   } catch (e) {
     if (isSetup(e)) throw e;
@@ -556,8 +538,7 @@ async function allStep({ dir, opts, env, log, warn, UsageError, steps, auth, red
   const files = { geometry: read('geometry.json'), ramp: read('ramp.json'), pixel: read('pixel.json'), register: read('register.json') };
   const fragmentOf = (name, make) => (/^(CRASH|CHALLENGE)/.test(recorded[name].verdict) || recorded[name].exit === null || !files[name] ? recorded[name].verdict : make(files[name]));
   const current = readCurrent(dir);
-  // A site token flag is named in the invocation, never its value.
-  const preview = regime === 'preview' ? ` --target preview --reskin ${opts.reskin}${opts['auth-header'] !== undefined ? ' --auth-header <value>' : ''}${opts['token-env'] !== undefined ? ' --token-env <NAME>' : ''}` : '';
+  const preview = regime === 'preview' ? ` --target preview --reskin ${opts.reskin}` : '';
   const invocation = `figma-gate.mjs all --page ${opts.page} --url ${opts.url}${preview} --dir ${dir}`;
   const ledgerFragment = {
     regime: ready?.join.regime ?? regime,
@@ -592,21 +573,7 @@ function checkTarget(opts, UsageError) {
   const regime = opts.target ?? 'local';
   if (regime !== 'local' && regime !== 'preview') throw new UsageError(`--target is local or preview, got "${opts.target}"`);
   if (regime === 'preview') return;
-  const flag = ['reskin', 'auth-header', 'token-env'].find((f) => opts[f] !== undefined);
-  if (flag) throw new UsageError(`--${flag} applies to --target preview`);
-}
-
-// The site token the run was given (--auth-header or --token-env), or null, with the function that takes it out of a
-// text: nothing the gate prints or throws may carry it. The token goes to the preview origin through previewTarget only.
-async function siteToken(opts, UsageError) {
-  if (opts['auth-header'] === undefined && opts['token-env'] === undefined) return null;
-  // The variable's name is never printed: a token typed in its place would be echoed.
-  if (opts['token-env'] !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(opts['token-env'])) throw new UsageError('--token-env takes the name of an environment variable (letters, digits and underscores), not the token');
-  const eds = await helper('eds', 'deployed');
-  await eds.loadLiveSession();
-  const auth = eds.siteAuth({ authHeader: opts['auth-header'], tokenEnv: opts['token-env'] });
-  if (!auth?.trim()) throw new UsageError('no site token: the variable --token-env names is not set in the environment or .env');
-  return { auth, redact: (text) => eds.redact(text, auth) };
+  if (opts.reskin !== undefined) throw new UsageError('--reskin applies to --target preview');
 }
 
 // steps lets a test replace a step function.
@@ -619,14 +586,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const table = { boxes: boxesStep, join: joinStep, geometry: geometryStep, ramp: rampStep, pixel: pixelStep, register: registerStep, all: allStep, ...steps };
   const { confidentialGuard } = await helper('io');
   confidentialGuard(dir);
-  const site = await siteToken(opts, UsageError);
-  if (!site) return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
-  try {
-    return await table[cmd]({ dir, opts, env, log: (m) => log(site.redact(m)), warn: (m) => warn(site.redact(m)), UsageError, steps: table, auth: site.auth, redact: site.redact });
-  } catch (e) {
-    if (e?.message) e.message = site.redact(e.message);
-    throw e;
-  }
+  return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table });
 }
 
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }

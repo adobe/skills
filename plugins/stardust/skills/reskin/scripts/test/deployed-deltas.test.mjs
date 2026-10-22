@@ -15,7 +15,6 @@ import { fixturePath, loadSourceModel, startPreviewServer, startSourceServer } f
 
 const SCRIPTS = join(dirname(fileURLToPath(import.meta.url)), '..');
 const GATES = ['dom-equality', 'slot-coverage'];
-const TOKEN = 'canary-123';
 const scratch = mkdtempSync(join(tmpdir(), 'deployed-deltas-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
@@ -417,26 +416,6 @@ else {
       assert.match(md, /Visible text[^\n]*PASS/, 'the text still matches after T1');
     });
 
-    await check('a delta file never puts the site token on stdout, stderr or in a report, whatever its entries say', async () => {
-      const protectedPreview = await startPreviewServer({ token: TOKEN });
-      try {
-        const protectedUrl = `${protectedPreview.origin}/ns/home?t=${TOKEN}`;
-        const deltas = variant('leak.json', (d) => { d.text.allow.push({ id: 'T9', from: `${TOKEN}-never`, to: '', why: `nobody typed ${TOKEN}` }); return d; });
-        const auth = ['--auth-header', `token ${TOKEN}`, ...EDS, '--deltas', deltas];
-        const [sc, de] = await Promise.all([
-          run('slot-coverage', ['--model', model, '--rendered', protectedUrl, '--report', join(scratch, 'leak-sc.md'), ...auth]),
-          run('dom-equality', ['--source', `${source.origin}/`, '--rendered', protectedUrl, '--report', join(scratch, 'leak-de.md'), ...auth]),
-        ]);
-        for (const [gate, r] of [['slot-coverage', sc], ['dom-equality', de]]) {
-          assert.equal(r.status, 0, `${gate}: ${r.all}`);
-          assert.match(r.stdout, /WARNING unused delta T9: "\[redacted\]-never" matched nothing \(nobody typed \[redacted\]\)/, gate);
-        }
-        for (const text of [sc.all, de.all, report('leak-sc'), report('leak-de')]) {
-          assert.ok(!text.includes(TOKEN), `the token leaked: ${text.slice(Math.max(0, text.indexOf(TOKEN) - 40), text.indexOf(TOKEN) + 40)}`);
-        }
-        assert.ok(report('leak-sc').includes('[redacted]-never'), 'the report shows the unused entry, redacted');
-      } finally { await protectedPreview.close(); }
-    });
   } finally { await preview.close(); await source.close(); }
 }
 
