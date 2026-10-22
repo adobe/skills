@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.4 — replica: the source-fidelity gate can measure against a frozen origin baseline (opt-in, default off)
+
+Field learning (a multi-day hands-off replica): the live site changed between rounds — a hero rotated, a banner
+appeared — and the gate's target moved under the fix rounds: a pixel FAIL measured the origin's movement, not the
+build, and each move burned a round. The gate captured the live side fresh whenever `live.png` was absent and had no
+way to hold the origin still. Nothing below changes a round unless asked for.
+
+- **`replica/scripts/stitch-shot.mjs --freeze-baseline [--force]`** freezes one origin per page and width: the capture
+  always lands as `baseline.png` beside `baseline.json` { capturedAt, url, width, vh, height, settle, chunks,
+  fontsFailed } in `<out.png>`'s dir, both written atomically; a freeze aimed at `live.png` is redirected there (one
+  line) and never touches it; an existing baseline is refused without `--force`; a capture whose fonts failed is not
+  frozen. `--check-baseline` captures a fresh shot and prints its Δheight vs the baseline — no verdict; `<out.png>`
+  named `baseline.png` is refused before any capture. Two browserless subcommands carry the gate's bookkeeping:
+  `baseline <dir> [--url] [--width]` (the capturedAt, exit 0 — or the one-line reason, exit 1: missing, a lone file,
+  unreadable, frozen for another URL or width) and `record <live.json> --origin live|baseline …` (the round's
+  `live.json`, atomic). `playwright` and `pngjs` load lazily, so `--help` and the subcommands answer without them.
+  Tests: `test/stitch-shot.test.mjs` (new).
+- **`replica/scripts/gate.sh --gate-against-baseline`** makes the frozen baseline the origin side of the same
+  pixel-compare: `baseline.png` is copied over `live.png` (sibling temp + rename), `live.json` records
+  `origin: "baseline"` and `originBaseline { capturedAt, height }`, one stdout line names the capture time, no live
+  navigation. A missing or stale baseline ends the round before any capture with one stderr line and exit 125 —
+  never a fresh live shot in its place. Without the flag the round is the one it was: a `live.png` whose record says
+  it is the frozen copy is retaken with one line (the record goes with it); a `live.png` with no record is a live
+  capture, reused as before. A copy or record that fails removes `live.png` and ends the round (exit 1, one line), so
+  baseline bytes never pass as a live shot. Tests: `test/gate.test.mjs`.
+- **Docs.** `replica/reference/source-fidelity-gate.md` § Iteration discipline states the rule once (its chrome-parity
+  cost anecdote folded); the scripts index names the flags.
+
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
 
 Field learning (a Magento marketplace replica): the source home slider is PageBuilder, and each of its three slides
