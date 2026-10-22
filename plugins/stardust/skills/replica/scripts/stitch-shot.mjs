@@ -44,11 +44,21 @@
  *     sides capture slide 1 deterministically. All symmetric — applied
  *     identically to live and prototype, so it cannot bias the diff.
  *   - FONT-LOAD assertion before capture (F-B2 companion): a webfont that
- *     failed to fetch renders the whole capture in fallback type — the same
+ *     failed to load renders the whole capture in fallback type — the same
  *     silent-false-measurement class as capturing a challenge page. After
- *     document.fonts.ready, any declared FontFace with status 'error' is
- *     reported LOUDLY with the family names; the operator must decide
- *     whether the failure is instrument-induced (a capture defect — fix the
+ *     document.fonts.ready, every declared face with FontFace status 'error'
+ *     and no LOADED face of the same family, weight and style is a DEAD FACE
+ *     (deadFontFaces): a file that failed to fetch, or a local() source
+ *     naming a font this browser does not have (recorded: metric fallback
+ *     faces declared as local() platform fonts the gate's Linux browser
+ *     lacks — the build rendered another face than the live site, and the
+ *     type metrics forked). Reported LOUDLY with the family names and
+ *     recorded as the --json record's fontsFailed; a failed declaration
+ *     beside a loaded twin is not dead (that weight and style renders in the
+ *     family), an 'unloaded' face was never needed. A check that could not
+ *     run is recorded as fontsFailed null (fontCheck says why) with one
+ *     stderr line — never as "every face loaded". The operator decides
+ *     whether a dead face is instrument-induced (a capture defect — fix the
  *     instrument) or real on the live site (capture-state — log it).
  *   - page height is measured AFTER the settle pass: entrance-animated
  *     sites inflate scrollHeight until elements go inview, so the
@@ -69,22 +79,27 @@
  *     --ua <string>       user agent                        (default real-Chrome)
  *     --wait <ms>         initial post-load wait            (default 1200; 3000 with --settle)
  *     --timeout <ms>      goto timeout                      (default 60000)
+ *     --json <file>       after the PNG, write the capture record: url, out,
+ *                         width, vh, settle, fontsFailed ([] = every declared
+ *                         face loaded; the dead faces' families; null = the
+ *                         check could not run, then fontCheck "failed: <msg>"),
+ *                         height — gate.sh / gate-all read fontsFailed
  *
  * Example:
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
  *     stardust/replica/gates/home-1440/live.png --width 1440 --settle
  *
- * Requires: playwright, pngjs (project devDependencies), and the diff skill's
- * scripts dir alongside (live-session.mjs — the replica Setup copies both).
- * Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail
- * loud, never captured).
+ * Requires: playwright, pngjs (project devDependencies; imported lazily, so
+ * --help and the pure helpers need neither), and the diff skill's scripts dir
+ * alongside (live-session.mjs — the replica Setup copies both).
+ * Exit codes: 0 written (dead faces included — gate.sh / gate-all decide),
+ * 1 error, 3 bot challenge (live side blocked — fail loud, never captured). A
+ * capture that fails writes no --json record (an earlier one is removed first).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, realpathSync, rmSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -114,16 +129,24 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
   --wait <ms>       initial post-load wait (default 1200; 3000 with --settle)
   --timeout <ms>    goto timeout (default 60000)
+  --json <file>     after the PNG, write the capture record (JSON, 2-space): url, out, width, vh, settle,
+                    fontsFailed ([] = every declared face loaded, or the dead faces' families — a face with status
+                    'error' and no loaded face of its family, weight and style: a file that failed to fetch, or a
+                    local() source this browser cannot resolve; null = the check could not run, then fontCheck
+                    "failed: <msg>" follows), height. gate.sh / gate-all read fontsFailed.
   --help            this text
 
+A dead face is one stderr WARNING naming the families (the capture renders fallback type for them); a font check that
+could not run is one stderr line and fontsFailed: null — never "every face loaded". Exit stays 0 either way: gate.sh
+prints the check per side, gate-all fails the row (font-not-loaded:<family>, font-check-skipped:<side>).
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, json: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -136,6 +159,11 @@ function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
+    else if (a === '--json') {
+      const v = rest[i += 1];
+      if (v === undefined || v.startsWith('--')) { console.error(`--json needs a file\n\n${HELP}`); process.exit(1); }
+      opts.json = v;
+    }
     else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
     else pos.push(a);
   }
@@ -143,6 +171,62 @@ function parseArgs(argv) {
   if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   return { url, out, opts };
+}
+
+// ── The font check (header § FONT-LOAD assertion) — pure, no browser: the tests read these ──────────────────────────
+
+/** Family names for the record: surrounding quotes stripped, trimmed, empties dropped, unique, sorted. */
+export function fontFamilies(list) {
+  const names = (list || []).map((f) => String(f ?? '').trim().replace(/^(["'])(.*)\1$/, '$2').trim());
+  return [...new Set(names.filter(Boolean))].sort();
+}
+
+/**
+ * A face's identity for the dead-face rule: family (unquoted, case-folded) + weight + style — normal = 400, bold = 700,
+ * an absent descriptor is the default. `f` is { family, weight, style } (a FontFace's descriptors) or a bare family.
+ */
+export function faceKey(f) {
+  const face = typeof f === 'string' ? { family: f } : f || {};
+  const family = fontFamilies([face.family])[0] || '';
+  const w = String(face.weight ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const weight = !w || w === 'normal' ? '400' : w === 'bold' ? '700' : w;
+  const style = String(face.style ?? '').trim().toLowerCase() || 'normal';
+  return `${family.toLowerCase()}|${weight}|${style}`;
+}
+
+/**
+ * The dead faces of a capture. `faces` = every FontFace of document.fonts after document.fonts.ready, as
+ * { family, weight, style, status }. A face is dead when its status is 'error' and no face with the same key (faceKey:
+ * family + weight + style) has status 'loaded' — a file that failed to fetch, or a local() source naming a font this
+ * browser does not have (a FontFace does not say which; the family is what the fix needs). A failed declaration beside
+ * a loaded twin is not dead (the text in that weight and style renders in the family); an 'unloaded' face was never
+ * needed by any text and is not dead either. → the dead faces' families: unquoted, unique, sorted (fontFamilies).
+ */
+export function deadFontFaces(faces) {
+  const list = Array.isArray(faces) ? faces.filter((f) => f && typeof f === 'object') : [];
+  const loaded = new Set(list.filter((f) => f.status === 'loaded').map(faceKey));
+  return fontFamilies(list.filter((f) => f.status === 'error' && !loaded.has(faceKey(f))).map((f) => f.family));
+}
+
+/**
+ * The font check's outcome for the --json record: a face list → { fontsFailed } (checked; [] = every declared face
+ * loaded, else the dead faces); an evaluate error, or no list → { fontsFailed: null, fontCheck: 'failed: <first line>' }
+ * — a check that could not run is recorded as not checked, never as [].
+ */
+export function fontCheckOutcome(faces, error) {
+  if (error == null && Array.isArray(faces)) return { fontsFailed: deadFontFaces(faces) };
+  const why = error != null ? String((error && error.message) || error).split('\n')[0] : 'no face list returned';
+  return { fontsFailed: null, fontCheck: `failed: ${why}` };
+}
+
+/**
+ * The stderr lines for a font check's outcome (fontCheckOutcome): one WARNING naming the dead faces, or one saying the
+ * check could not run (the record says fontsFailed: null); none when every declared face loaded.
+ */
+export function fontCheckLines({ fontsFailed, fontCheck } = {}) {
+  if (!Array.isArray(fontsFailed)) return [`stitch-shot WARNING: font-load check failed (${String(fontCheck || 'failed: unknown').replace(/^failed: /, '')}) — the record says fontsFailed: null (not checked): no face is known to have loaded`];
+  if (!fontsFailed.length) return [];
+  return [`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${fontsFailed.join(', ')} — this capture renders fallback type for them (silent false measurement, F-B2 class): the file failed to fetch, or a local() source names a font this browser does not have (recreation-procedure.md § Fonts policy). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`];
 }
 
 // Dismiss both overlay classes (consent + timed marketing modals) via
@@ -161,6 +245,10 @@ async function dismissAndLog(page, url, opts) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  // Before anything can fail: a failed capture never leaves an earlier run's record beside a newer PNG.
+  if (opts.json) rmSync(opts.json, { force: true });
+  // Lazy: --help (inside parseArgs) and the pure helpers above need neither playwright nor pngjs.
+  const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
@@ -242,24 +330,31 @@ async function main() {
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.waitForTimeout(800);
 
-    // Font-load assertion (F-B2 companion): a webfont that failed to fetch
+    // Font-load assertion (F-B2 companion): a webfont that failed to load
     // renders the ENTIRE capture in fallback type — wrong wraps, wrong
     // heights, wrong doc height — with no error anywhere, the same silent
-    // false-measurement class as capturing a challenge page. Report failed
-    // faces loudly. Not a hard exit: the instrument can't tell an
-    // instrument-induced failure (a capture defect — recorded F-B2: forced
-    // request headers killed the Typekit CORS fetch, live doc height moved
-    // 6669→6518 after the fix) from a face that genuinely fails for real
-    // browsers too (capture-state — fallback is then the truthful capture).
-    // The gate doc (source-fidelity-gate.md § Hardening rule 14) owns the
-    // decision procedure; this warning is what triggers it.
-    const failedFonts = await page.evaluate(async () => {
+    // false-measurement class as capturing a challenge page. Every declared
+    // face is read with its descriptors and status; deadFontFaces (header)
+    // names the faces that failed with no loaded twin of the same family,
+    // weight and style — a fetch that failed, or a local() source this
+    // browser cannot resolve. Reported loudly, recorded as fontsFailed. Not a
+    // hard exit: the instrument can't tell an instrument-induced failure (a
+    // capture defect — recorded F-B2: forced request headers killed the
+    // Typekit CORS fetch, live doc height moved 6669→6518 after the fix) from
+    // a face that genuinely fails for real browsers too (capture-state —
+    // fallback is then the truthful capture). The gate doc
+    // (source-fidelity-gate.md § Hardening rule 14) owns the decision
+    // procedure; the warning is what triggers it. A check that could not run
+    // (the evaluate threw) is recorded as not checked — fontsFailed null +
+    // fontCheck in the --json record, its own stderr line — never as "every
+    // face loaded".
+    let fontError = null;
+    const faces = await page.evaluate(async () => {
       await document.fonts.ready;
-      return [...new Set([...document.fonts].filter((f) => f.status === 'error').map((f) => f.family))];
-    }).catch(() => []);
-    if (failedFonts.length) {
-      console.error(`stitch-shot WARNING: FONT LOAD FAILED for declared face(s) ${failedFonts.join(', ')} — this capture renders fallback type (silent false measurement, F-B2 class). Verify the face loads in a real browser: instrument-induced → fix the capture before gating; genuinely broken on the live site → log as capture-state.`);
-    }
+      return [...document.fonts].map((f) => ({ family: f.family, weight: f.weight, style: f.style, status: f.status }));
+    }).catch((e) => { fontError = e; return null; });
+    const fonts = fontCheckOutcome(faces, fontError);
+    for (const line of fontCheckLines(fonts)) console.error(line);
 
     // Height is measured AFTER the settle pass, never before: entrance-
     // animated sites inflate scrollHeight until elements go inview (their
@@ -318,6 +413,12 @@ async function main() {
     }
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
+    // --json: the capture record, only once the PNG is written (a failed capture leaves none). fontCheck follows
+    // fontsFailed and appears only when the check could not run.
+    if (opts.json) {
+      mkdirSync(dirname(opts.json), { recursive: true });
+      writeFileSync(opts.json, `${JSON.stringify({ url, out, width: opts.width, vh: opts.vh, settle: opts.settle, ...fonts, height: totalH }, null, 2)}\n`);
+    }
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
   } finally {
     await browser.close();
@@ -326,4 +427,8 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+// Main-module guard: importing the module (the tests) runs nothing.
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}
