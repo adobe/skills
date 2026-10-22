@@ -21,6 +21,16 @@
  * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
  * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
  * recorded beside it per page and in the totals — every run is calibration data.
+ * FONTS (source-fidelity-gate.md § Hardening rule 14): every stitch writes its --json capture record
+ * (<slug>/<side>-shot.json, removed before each stitch) and the origin / eds meta carries its `fontsFailed` —
+ * the dead faces (a declared face with no loaded face of its family, weight and style: a file that failed to
+ * fetch, or a local() source the browser cannot resolve), [] when every face loaded, null when the check could
+ * not run (`fontCheck` says why; no readable record reads the same — an older stitch-shot copy, or a reused
+ * archetype live.png with no live-shot.json beside it). A dead face on either side fails the row — one
+ * `font-not-loaded:<family>` reason each (`fontsNotLoaded`, sorted); so does a side whose check could not
+ * run — `font-check-skipped:<origin|build>` (`fontChecksSkipped`): a check that could not run is never a
+ * pass. Explicit null only: a meta from before the check (no key, --skip-existing) is not flagged — recapture
+ * to check. totals.fontsNotLoaded / fontChecksSkipped count the rows; the calibration line names the faces.
  *
  * Sidecars in <out>/, each entry documented: masks.json (printed on the verdict), overrides.json
  * (shown BESIDE the number, never replacing it), clip-allow.json, presence.json (session-variable
@@ -36,10 +46,11 @@
  *        [--compare-only] [--warmup <url>] [--vh <px>]
  * Requires playwright, pixelmatch, pngjs (project devDependencies); stitch-shot.mjs and
  * pixel-compare.mjs next to this file; the diff skill's scripts dir alongside. Exit: 0 all PASS
- * (overrides count), 2 any FAIL, 1 error. `verdict`, `formatSummary`, `parseArgs` are exported.
+ * (overrides count), 2 any FAIL, 1 error. `verdict`, `fontsNotLoaded`, `fontChecksSkipped`, `shotFonts`,
+ * `formatSummary`, `parseArgs` are exported.
  */
 import { spawn } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -69,6 +80,8 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --vh <px>                 stitch chunk height
   --help                    this text
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
+  A dead font face on either side (the stitch --json record's fontsFailed, <slug>/<side>-shot.json) fails the row:
+  font-not-loaded:<family>; so does a font check that could not run (fontsFailed null, or no record): font-check-skipped:<origin|build>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
 
@@ -95,12 +108,41 @@ export function parseArgs(argv) {
   return o;
 }
 
+// ---- pure: the font check of a capture ----------------------------------------------------------------
+/**
+ * shotFonts(record, { missing }) → the font check of a stitch-shot --json record for the side's meta: { fontsFailed }
+ * (checked — the dead faces, [] when every face loaded) or { fontsFailed: null, fontCheck } — null when the record says
+ * so (its check could not run), when it predates the check (no fontsFailed key) or when there is no readable record at
+ * all (`missing` names why; default: an older stitch-shot copy). Unchecked is never "all loaded".
+ */
+export function shotFonts(record, { missing = 'no readable capture record (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)' } = {}) {
+  if (!record || typeof record !== 'object') return { fontsFailed: null, fontCheck: `failed: ${missing}` };
+  if (Array.isArray(record.fontsFailed)) return { fontsFailed: record.fontsFailed.filter((f) => typeof f === 'string' && f) };
+  if (!('fontsFailed' in record)) return { fontsFailed: null, fontCheck: 'failed: the capture record predates the font check — re-copy stitch-shot.mjs' };
+  return { fontsFailed: null, fontCheck: typeof record.fontCheck === 'string' ? record.fontCheck : 'failed: the check could not run' };
+}
+/** fontsNotLoaded(originMeta, edsMeta) → the dead faces of either side (the metas' `fontsFailed`), sorted, unique. */
+export function fontsNotLoaded(originMeta, edsMeta) {
+  return [...new Set([originMeta, edsMeta].flatMap((m) => (m && Array.isArray(m.fontsFailed) ? m.fontsFailed : [])).filter((f) => typeof f === 'string' && f))].sort();
+}
+/**
+ * fontChecksSkipped(originMeta, edsMeta) → the sides ('origin', then 'build' for the EDS side) whose stitch-live meta
+ * says `fontsFailed: null` — the font check could not run, so no face is known to have loaded. Explicit null only: an
+ * absent key is a meta from before the check and adds nothing; another instrument (a crawl shot) has no check.
+ */
+export function fontChecksSkipped(originMeta, edsMeta) {
+  return [['origin', originMeta], ['build', edsMeta]].filter(([, m]) => m && m.instrument === 'stitch-live' && m.fontsFailed === null).map(([side]) => side);
+}
+
 // ---- pure: the verdict --------------------------------------------------------------------------------
 /**
- * verdict({ pixel, clip, content, units, override, allowance }, opts) → row fields. `pixel` = pixel.json,
- * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null.
+ * verdict({ pixel, clip, content, units, override, allowance, capture }, opts) → row fields. `pixel` = pixel.json,
+ * `clip` = { counts } (served side) or null, `content` = { totals } | { error } | null, `units` = { verdict } | null,
+ * `capture` = { fonts: fontsNotLoaded(…), fontsSkipped: fontChecksSkipped(…) } — a dead face fails the row with one
+ * `font-not-loaded:<family>` reason each (`fontsNotLoaded`), a side whose font check could not run with one
+ * `font-check-skipped:<side>` (`fontChecksSkipped`); the pixel-only calibration verdict is unchanged.
  */
-export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0 }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true } = {}) {
+export function verdict({ pixel = {}, clip = null, content = null, units = null, override = null, allowance = 0, capture = { fonts: [], fontsSkipped: [] } }, { threshold = 10, heightTol = 0.05, clipMax = 0, clipOn = true, contentOn = true } = {}) {
   const compared = pixel.compared && Number.isFinite(pixel.heightDelta);
   const originH = compared ? pixel.compared.height + Math.max(0, pixel.heightDelta) : null;
   const edsH = compared ? pixel.compared.height + Math.max(0, -pixel.heightDelta) : null;
@@ -118,20 +160,26 @@ export function verdict({ pixel = {}, clip = null, content = null, units = null,
   if (clipPass === false) reasons.push(`clipped ${clipped}${allowance ? ` > allowance ${allowance}` : ''}${clip.counts ? ` (text ${clip.counts.textClipped + clip.counts.textHidden}, controls ${clip.counts.controlHidden + clip.counts.controlClipped})` : ''}`);
   if (contentPass === false) reasons.push(`content MISSING ${cTot.missing} / HIDDEN ${cTot.hidden}${cTot.controlState ? ` (+${cTot.controlState} control state)` : ''}`);
   if (unitPass === false) reasons.push(`units off ${units.verdict.off} hidden ${units.verdict.hidden} missing ${units.verdict.missing}`);
+  const fonts = (capture && capture.fonts) || []; const skipped = (capture && capture.fontsSkipped) || [];
+  const fontReasons = [...fonts.map((f) => `font-not-loaded:${f}`), ...skipped.map((side) => `font-check-skipped:${side}`)];
+  reasons.push(...fontReasons);
   const pixelOnlyPass = !!(pixelPass && heightPass);
-  const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false;
-  return { originH, edsH, pixelPass: !!pixelPass, heightPass: !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!override, reasons };
+  const pass = pixelOnlyPass && clipPass !== false && contentPass !== false && unitPass !== false && !fontReasons.length;
+  return { originH, edsH, pixelPass: !!pixelPass, heightPass: !!heightPass, clipped, clipPass, clipAllowance: allowance, contentPass, contentNA: contentOn && !cTot ? (content && content.error) || 'not probed' : null, unitPass, pixelOnlyPass, pass, passWithOverride: pass || !!override, fontsNotLoaded: fonts, fontChecksSkipped: skipped, reasons };
 }
 
 const cell = (v, suffix = '') => (v == null ? 'n/a' : `${v}${suffix}`);
 export function formatSummary(summary) {
   const t = summary.totals; const p = summary._provenance;
-  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
+  // the dead faces, named once across the table (the calibration line)
+  const fonts = [...new Set(summary.rows.flatMap((r) => r.fontsNotLoaded || []))].sort();
+  const head = [`# ${p.stage === 'prototype' ? 'Prototype gate — every crafted prototype' : 'Published-origin gate — all deployed pages'}, ${p.breakpoint}px`, '', `${p.writtenAt} · **${t.pass} PASS / ${t.fail} FAIL / ${t.error} error of ${t.pages}**${t.overridePass ? ` (+${t.overridePass} documented override${t.overridePass > 1 ? 's' : ''} → ${t.passWithOverrides} delivered)` : ''}`, '', `Verdict: ${p.verdict}`, '', `Calibration — pixel-only verdict (criteria 1+2): **${t.pixelOnlyPass} PASS**; full verdict (1–4): **${t.pass} PASS**. Failing by criterion: pixel ${t.failPixel}, height ${t.failHeight}, clip ${t.failClip}, content ${t.failContent}${t.failUnits ? `, units ${t.failUnits}` : ''}${t.fontsNotLoaded ? `, fonts not loaded ${t.fontsNotLoaded}${fonts.length ? ` (${fonts.join(', ')})` : ''}` : ''}${t.fontChecksSkipped ? `, font check skipped ${t.fontChecksSkipped}` : ''}; content n/a (origin not probed) ${t.contentNA}${t.degradedTier ? `; **${t.degradedTier} page(s) probed on a degraded browser tier** (Chrome elected, Chromium used — install Chrome for bot-managed origins)` : ''}${t.asymmetricOrigins ? `; ${t.asymmetricOrigins} asymmetric origin(s)` : ''}.`, ''];
   const rows = ['| page | template | tier | origin | browser | pixel % (text %) | Δh px | clipped | content | units | verdict | reasons |', '|---|---|---|---|---|---|---|---|---|---|---|---|'];
   for (const r of [...summary.rows].sort((a, b) => Number(b.pass) - Number(a.pass) || (a.pct ?? 999) - (b.pct ?? 999))) {
     const content = r.contentNA ? `n/a (${r.contentNA})` : r.content ? `MISSING ${r.content.missing} / HIDDEN ${r.content.hidden}${r.content.controlState ? ` / state ${r.content.controlState}` : ''}` : 'n/a';
     const units = r.units ? `off ${r.units.off} hidden ${r.units.hidden} missing ${r.units.missing}${r.unitsRequired ? '' : ' (advisory)'}` : '-';
-    const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
+    const fontsOnly = r.pixelOnlyPass && Array.isArray(r.reasons) && r.reasons.length > 0 && r.reasons.every((x) => /^font-(not-loaded|check-skipped):/.test(x));
+    const verdictCell = r.error && r.pct == null ? `ERROR ${r.error}` : r.pass ? 'PASS' : fontsOnly ? 'FAIL (fonts)' : r.pixelOnlyPass ? 'FAIL (elements)' : 'FAIL';
     rows.push(`| \`${r.path}\` | ${r.template ?? '-'} | ${r.tier ?? '-'} | ${r.origin || '-'}${r.origin === 'crawl-fullpage' ? ' ⚠asym' : ''} | ${r.browser || '-'} | ${cell(r.pct)}${r.textPct != null ? ` (${r.textPct})` : ''} | ${cell(r.heightDelta)} | ${cell(r.clipped)}${r.clipAllowance ? ` (allow ${r.clipAllowance})` : ''} | ${content} | ${units} | ${verdictCell}${r.masked ? ` (masked ${r.maskedRows} rows: ${r.maskReason})` : ''}${r.override && !r.pass ? ` → ${r.override.verdict}: ${r.override.reason}` : ''} | ${r.reasons.join('; ') || '-'} |`);
   }
   return `${head.join('\n')}${rows.join('\n')}\n`;
@@ -145,6 +193,7 @@ const PIXEL = join(HERE, 'pixel-compare.mjs');
 const DIFF_DIR = firstExisting(['../../diff/scripts', '../diff']);
 const { unitsFor } = DIFF_DIR ? await import(pathToFileURL(join(DIFF_DIR, 'unit-geometry.mjs')).href) : { unitsFor: () => [] };
 const readJson = (p, d = null) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : d);
+const tryJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
 
 function run(cmd, args, { timeoutMs = 480000 } = {}) {
   return new Promise((res) => {
@@ -180,7 +229,11 @@ async function main() {
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
-  const stitchArgs = (url, out) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
+  const stitchArgs = (url, out, json) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
+  // stitch-shot's --json capture record (<slug>/<side>-shot.json, removed before each stitch) → the meta's fontsFailed
+  // (+ fontCheck when it says why): shotFonts — no readable record is unchecked (null), never "all loaded".
+  const shotFile = (p, side) => join(dir(p), `${side}-shot.json`);
+  const stitch = (p, side, url, out, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out, shotFile(p, side)), ...tail]); };
 
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -189,13 +242,15 @@ async function main() {
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     let r;
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)` }; }
+    // the archetype round's live.png: its font check is gate.sh's live-shot.json beside it — none (a round before the
+    // check) is unchecked, never "all loaded"
+    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(tryJson(join(dirname(cachedLive), 'live-shot.json')), { missing: `no live-shot.json beside ${cachedLive} (a gate round before the font check) — delete live.png to re-take it` }) }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };
     } else {
-      const s = await run('node', [...stitchArgs(p.url, out), '--headed']);
-      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, log: s.out.trim().split('\n').slice(-2) };
+      const s = await stitch(p, 'origin', p.url, out, ['--headed']);
+      if (s.code === 0) r = { instrument: 'stitch-live', url: p.url, log: s.out.trim().split('\n').slice(-2), ...shotFonts(tryJson(shotFile(p, 'origin'))) };
       else if (existsSync(out) && existsSync(meta) && opts.recaptureOrigin) r = { ...readJson(meta), note: `re-shoot failed (exit ${s.code}: ${lastLine(s.err)}) — previous origin kept` };
       else if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `stitch exit ${s.code}: ${lastLine(s.err)} — crawl screenshot used` }; }
       else r = { instrument: 'none', error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
@@ -207,8 +262,8 @@ async function main() {
     const d = dir(p); mkdirSync(d, { recursive: true });
     const out = join(d, 'eds.png'); const meta = join(d, 'eds.json');
     if (opts.skip && !opts.recaptureEds && existsSync(out) && existsSync(meta)) { rec(p, 'eds', readJson(meta)); return; }
-    const s = await run('node', stitchArgs(edsUrl(p), out));
-    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
+    const s = await stitch(p, 'eds', edsUrl(p), out);
+    const r = s.code === 0 ? { instrument: 'stitch-live', url: edsUrl(p), ...shotFonts(tryJson(shotFile(p, 'eds'))) } : { instrument: 'none', url: edsUrl(p), error: `stitch exit ${s.code}: ${lastLine(s.err)}` };
     r.at = new Date().toISOString(); writeFileSync(meta, JSON.stringify(r, null, 2)); rec(p, 'eds', r);
     log(`eds ${p.slug} → ${r.instrument}${r.error ? ` ERROR ${r.error}` : ''}`);
   }
@@ -273,7 +328,7 @@ async function main() {
 
   const rows = pages.map((p) => {
     const r = results[p.slug] || {}; const px = r.pixel || {};
-    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0 }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
+    const v = verdict({ pixel: px, clip: r.clip && r.clip.counts ? r.clip : null, content: r.content || null, units: r.units || null, override: OVERRIDES[p.slug] || null, allowance: (CLIP_ALLOW[p.slug] || {}).max || 0, capture: { fonts: fontsNotLoaded(r.origin, r.eds), fontsSkipped: fontChecksSkipped(r.origin, r.eds) } }, { threshold: opts.threshold, heightTol: opts.heightTol, clipMax: opts.clipMax, clipOn: opts.clip, contentOn: opts.content });
     return { slug: p.slug, path: p.deployedPath || new URL(p.liveUrl).pathname, template: p.template, tier: p.fidelityTier, origin: r.origin && r.origin.instrument, originAsymmetric: !!(r.origin && r.origin.asymmetric), eds: r.eds && r.eds.instrument,
       pct: px.pct ?? null, textPct: px.textPct ?? null, heightDelta: px.heightDelta ?? null, ...v,
       clipGroups: r.clip && r.clip.groups ? r.clip.groups.filter((g) => !g.advisory).slice(0, 6) : [], clipAllowReason: (CLIP_ALLOW[p.slug] || {}).reason || null,
@@ -285,7 +340,7 @@ async function main() {
   });
   const n = (f) => rows.filter(f).length;
   const totals = { pages: rows.length, pass: n((r) => r.pass), pixelOnlyPass: n((r) => r.pixelOnlyPass), overridePass: n((r) => !r.pass && r.override), fail: n((r) => !r.pass && r.pct != null), error: n((r) => r.pct == null),
-    failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome') };
+    failPixel: n((r) => r.pct != null && !r.pixelPass), failHeight: n((r) => r.pct != null && !r.heightPass), failClip: n((r) => r.clipPass === false), failContent: n((r) => r.contentPass === false), failUnits: n((r) => r.unitPass === false), fontsNotLoaded: n((r) => r.fontsNotLoaded && r.fontsNotLoaded.length > 0), fontChecksSkipped: n((r) => r.fontChecksSkipped && r.fontChecksSkipped.length > 0), contentNA: n((r) => r.contentNA), asymmetricOrigins: n((r) => r.originAsymmetric), degradedTier: n((r) => r.browser && r.browser !== 'chrome') };
   totals.passWithOverrides = totals.pass + totals.overridePass;
   const originHost = (() => { try { return new URL(pages[0].url).origin; } catch { return null; } })();
   const summary = { _provenance: { writtenBy: 'gate-all.mjs', writtenAt: new Date().toISOString(), stage: opts.stage, breakpoint: opts.width, threshold: opts.threshold, heightTolerance: opts.heightTol, clipMax: opts.clipMax, unitTol: opts.unitTol, criteria: { pixel: true, height: true, clip: opts.clip, content: opts.content }, verdict: `overlap pixel % ≤ ${opts.threshold} AND |Δh| ≤ ${Math.round(opts.heightTol * 100)}% of origin height${opts.clip ? ` AND clipped ≤ ${opts.clipMax} (+ documented allowance)` : ''}${opts.content ? ' AND content MISSING + HIDDEN links/headings = 0' : ''}`, origin: originHost, eds: opts.edsHost || (() => { try { return new URL(pages[0].liveUrl).origin; } catch { return null; } })(), edsHostOverride: opts.edsHost || null, only: opts.only }, totals, rows };

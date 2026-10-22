@@ -78,7 +78,21 @@
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt).
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt, and each
+# capture's record: live-shot.json, build-shot.json — stitch-shot --json).
+#
+# Fonts (every round, both sides — source-fidelity-gate.md § Hardening rule
+#   14): after the overflow line, one `gate.sh: fonts on the <live|build>
+#   capture — …` line per side from the capture records — the DEAD FACE(S)
+#   (the record's fontsFailed: a declared face with no loaded face of its
+#   family, weight and style — a file that failed to fetch, or a local()
+#   source this browser cannot resolve; the capture renders fallback type for
+#   them), `every declared face loaded`, or NOT CHECKED (fontsFailed null —
+#   the check could not run — or no readable record: an older stitch-shot
+#   copy, or a live.png from a round before the check — delete it to re-take).
+#   Information for the loop, never a verdict: the pixel number already
+#   measures a face that forked; the line says which face to fix (gate-all
+#   fails its rows on the same records). live-shot.json goes with live.png.
 #
 # Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
 # aborts the round — a missing/blocked side must never be compared. Exit
@@ -218,16 +232,18 @@ fi
 # Live side: captured once per breakpoint per full gate run and reused
 # (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
+# Each capture writes its record (--json <side>-shot.json: fontsFailed, header § Fonts); the live record lives and dies
+# with live.png — a cached live.png from a round before the check has none, and the fonts line says so.
 if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle; }
+  capture_live() { rm -f "$DIR/live.png" "$DIR/live-shot.json"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --json "$DIR/live-shot.json"; }
   retry_once "live capture" capture_live
   rc=$?
-  [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+  [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live-shot.json"   # never leave a partial live capture (or its record) to be reused
   [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).
-capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"; }
+capture_build() { rm -f "$DIR/build-shot.json"; capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --json "$DIR/build-shot.json"; }
 retry_once "build capture" capture_build
 rc=$?
 [ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
@@ -265,6 +281,20 @@ elif [ -n "$OVER" ]; then
 else
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW = viewport → ok"
 fi
+
+# Fonts (header § Fonts): one line per side from the capture records, after the overflow line — the dead faces, every
+# face loaded, or NOT CHECKED (the record's fontsFailed null, or no readable record). Information, never a verdict.
+fonts_line() { # $1 side, $2 record
+  node -e 'const [side, rec] = process.argv.slice(1); let j = null;
+    try { j = JSON.parse(require("fs").readFileSync(rec, "utf8")); } catch (e) { j = null; }
+    const hint = side === "live" ? " — delete live.png to re-take it with the check" : " — re-copy stitch-shot.mjs (replica SKILL.md § Setup)";
+    if (!j || typeof j !== "object" || !("fontsFailed" in j)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (no readable capture record at ${rec}${hint})`);
+    else if (!Array.isArray(j.fontsFailed)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (${String(j.fontCheck || "the check could not run").replace(/^failed: /, "")}) — no face is known to have loaded`);
+    else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)`);
+    else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded`);' "$1" "$2"
+}
+fonts_line live "$DIR/live-shot.json"
+fonts_line build "$DIR/build-shot.json"
 [ "$FULL" = 1 ] || exit $PIXEL_RC
 # No pixel verdict (124 deadline, 1 error, 3 bot challenge, 4 identity): the probes would spend three
 # Chromiums on a round that already has to be re-run — say so in one line and exit with the pixel rc.

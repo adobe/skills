@@ -1,7 +1,10 @@
 #!/usr/bin/env node
 // gate.sh contract test: argument parsing, --help, the horizontal-overflow assert (measure.mjs root line → exit 2
 // over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final), the
-// --full probe fan-out and its exit-code rules, with stub instruments (no browser, no network).
+// --full probe fan-out and its exit-code rules, the font check per side (both captures write their --json record;
+// one `gate.sh: fonts on the <side> capture` line each after the overflow line — the dead faces, every face loaded,
+// or NOT CHECKED for a record whose fontsFailed is null or no readable record; information, the exit code unchanged;
+// a failed live capture removes its record with live.png), with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -33,8 +36,10 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // Stubs read their behaviour from environment variables so one sandbox covers every case. stitch-shot: per side
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
 // marker file (STUB_FAIL_ONCE_<side>: exit 1 while the marker is absent, create it); every call appends its side to
-// STUB_STITCH_COUNT so a test can count attempts. measure: the root line gate.sh reads (STUB_OVERFLOW px over the
-// viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
+// STUB_STITCH_COUNT so a test can count attempts. A successful capture writes its --json record (fontsFailed = the
+// comma list STUB_FONTS_<side>, or null + fontCheck "failed: …" under STUB_FONTS_NULL_<side> — a font check that could
+// not run; STUB_NO_JSON_<side> writes none, STUB_BAD_JSON_<side> an unreadable one). measure: the root line gate.sh
+// reads (STUB_OVERFLOW px over the viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 stub(replica, 'stitch-shot.mjs', `
   import { appendFileSync, existsSync, writeFileSync } from 'node:fs';
@@ -45,7 +50,13 @@ stub(replica, 'stitch-shot.mjs', `
   if (once && !existsSync(once)) { writeFileSync(once, '1'); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
   const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
   if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
-  writeFileSync(out, 'png'); console.log('stitched ' + out);`);
+  writeFileSync(out, 'png');
+  const json = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
+  const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' }
+    : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
+  if (json && process.env['STUB_BAD_JSON_' + side]) writeFileSync(json, '{ "url": ');
+  else if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: process.argv.includes('--settle'), ...fonts, height: 2000 }, null, 2) + '\\n');
+  console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
   if (process.env.STUB_MEASURE_COUNT) appendFileSync(process.env.STUB_MEASURE_COUNT, 'M\\n');
@@ -177,6 +188,36 @@ check('an overflow probe that exits 1 twice is exit 1 (no verdict) after one ret
 // Unknown flag
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', '--bogus']);
 check('unknown flag exits 125', r.status === 125);
+
+// The font check per side (header § Fonts): both captures write their --json record; one line per side after the
+// overflow line — information for the loop, never a verdict.
+const fontsLine = (side, rest) => new RegExp(`^gate\\.sh: fonts on the ${side} capture — ${rest}$`, 'm');
+const gdir = (slug) => `stardust/replica/gates/${slug}-1440`;
+r = await gate(['fonts1', 'https://live.example/fonts1', buildUrl, '1440', 'f1', '--marker', 'home-proposed']);
+check('both captures are asked for their --json record (<side>-shot.json in the evidence dir) and the records exist', r.status === 0
+  && existsSync(join(root, gdir('fonts1'), 'live-shot.json')) && existsSync(join(root, gdir('fonts1'), 'build-shot.json')), `status ${r.status} ${r.stderr.slice(0, 300)}`);
+check('the live record was written by a --settle capture, the build record by a plain one', JSON.parse(readFileSync(join(root, gdir('fonts1'), 'live-shot.json'), 'utf8')).settle === true
+  && JSON.parse(readFileSync(join(root, gdir('fonts1'), 'build-shot.json'), 'utf8')).settle === false);
+check('a clean round prints "every declared face loaded" for both sides, after the overflow line', fontsLine('live', 'every declared face loaded').test(r.stdout) && fontsLine('build', 'every declared face loaded').test(r.stdout)
+  && /overflow assert[^\n]*\n[^]*fonts on the live capture[^\n]*\n[^]*fonts on the build capture/.test(r.stdout), r.stdout);
+r = await gate(['fonts1', 'https://live.example/fonts1', buildUrl, '1440', 'f2', '--marker', 'home-proposed'], { STUB_FONTS_BUILD: 'Brand Sans,Brand Serif Fallback' });
+check('dead faces on the build side are named on its line — DEAD FACE(S) with both causes — and the round still passes (information, not a verdict)', r.status === 0
+  && fontsLine('build', 'DEAD FACE\\(S\\) Brand Sans, Brand Serif Fallback: the capture renders fallback type for them \\(a file that failed to fetch, or a local\\(\\) source this browser cannot resolve — recreation-procedure\\.md § Fonts policy\\)').test(r.stdout)
+  && fontsLine('live', 'every declared face loaded').test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['fonts1', 'https://live.example/fonts1', buildUrl, '1440', 'f3', '--marker', 'home-proposed'], { STUB_FONTS_BUILD: 'X', STUB_PIXEL_RC: '2' });
+check('the fonts lines are printed on a failing round too, before the exit', r.status === 2 && fontsLine('build', 'DEAD FACE\\(S\\) X: .*').test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['fonts2', 'https://live.example/fonts2', buildUrl, '1440', 'f4', '--marker', 'home-proposed'], { STUB_FONTS_NULL_LIVE: '1' });
+check('a live record whose font check could not run (fontsFailed null) prints NOT CHECKED with the record\'s reason — never "every face loaded"; exit 0', r.status === 0
+  && fontsLine('live', 'NOT CHECKED \\(Execution context was destroyed\\) — no face is known to have loaded').test(r.stdout) && !fontsLine('live', 'every declared face loaded').test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['fonts3', 'https://live.example/fonts3', buildUrl, '1440', 'f5', '--marker', 'home-proposed'], { STUB_NO_JSON_LIVE: '1', STUB_BAD_JSON_BUILD: '1' });
+check('no record (an older stitch-shot) or an unreadable one prints NOT CHECKED naming the record path and the fix, per side', r.status === 0
+  && fontsLine('live', `NOT CHECKED \\(no readable capture record at ${gdir('fonts3')}/live-shot\\.json — delete live\\.png to re-take it with the check\\)`).test(r.stdout)
+  && fontsLine('build', `NOT CHECKED \\(no readable capture record at ${gdir('fonts3')}/build-shot\\.json — re-copy stitch-shot\\.mjs \\(replica SKILL\\.md § Setup\\)\\)`).test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['fonts2', 'https://live.example/fonts2', buildUrl, '1440', 'f6', '--marker', 'home-proposed']);
+check('a later round reuses live.png AND its record: the live line still reads the cached capture\'s check (NOT CHECKED), the build side is fresh', r.status === 0
+  && fontsLine('live', 'NOT CHECKED \\(Execution context was destroyed\\).*').test(r.stdout) && fontsLine('build', 'every declared face loaded').test(r.stdout), `status ${r.status} ${r.stdout}`);
+r = await gate(['fonts4', 'https://live.example/fonts4', buildUrl, '1440', 'f7', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '1' });
+check('a failed live capture leaves neither live.png nor live-shot.json behind', r.status === 1 && !existsSync(join(root, gdir('fonts4'), 'live.png')) && !existsSync(join(root, gdir('fonts4'), 'live-shot.json')), `status ${r.status}`);
 
 // --full, everything green
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter2', '--full']);
