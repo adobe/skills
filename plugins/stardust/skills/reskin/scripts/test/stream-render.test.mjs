@@ -88,7 +88,7 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   }] };
   const run = (chrome) => render({ ...base, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], ...chrome } } }).html;
   const centred = run({ navAlign: 'center' });
-  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<img class="logo"[^>]*>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><\/div>/);
+  assert.match(centred, /<div class="chrome-row nav-align-center">[\s\S]*<div class="brand"><img class="logo"[^>]*><\/div>\s*<nav><button class="nav-menu"[^>]*>Our medicines<\/button><a href="https:\/\/example\.test\/contact">Contact us<\/a><\/nav>\s*<div class="nav-actions"><a href="https:\/\/example\.test\/login">Login<\/a><button class="icon-btn nav-toggle" type="button" aria-label="Menu">/);
   assert.match(centred, /\.nav-align-center \.container \{ display: grid; grid-template-columns: 1fr auto 1fr; \}/);
   assert.match(run({}), /<div class="chrome-row nav-align-end">/);
   assert.match(run({ navAlign: 'bogus' }), /<div class="chrome-row nav-align-end">/);
@@ -96,6 +96,12 @@ check('branded header row: brand | menu | actions zones; navAlign centres the me
   assert.match(fromDonor, /<div class="chrome-row nav-align-center">/);
   const overridden = render({ ...base, tokens: { ...tokens, layout: { navAlign: 'center' } }, chromeModel, mapping: { ...mapping, chrome: { header: ['h1'], navAlign: 'start' } } }).html;
   assert.match(overridden, /<div class="chrome-row nav-align-start">/);
+  // plain texts (name, tagline) join the logo in the brand zone; below 900px the menu folds behind the toggle
+  chromeModel.sections[0].ordered.splice(1, 0, { kind: 'text', text: 'Hill School' }, { kind: 'text', text: 'Learn well' });
+  const branded = run({});
+  assert.match(branded, /<div class="brand"><img class="logo"[^>]*><div class="brand-text"><span class="nav-text">Hill School<\/span><span class="nav-text">Learn well<\/span><\/div><\/div>/);
+  assert.doesNotMatch(branded.match(/<div class="nav-actions">.*?<\/div>/)[0], /Hill School/);
+  assert.match(branded, /@media \(max-width: 900px\) \{[\s\S]*\.site-header nav \{ display: none; \}[\s\S]*\.site-header \.nav-toggle \{ display: inline-flex; \}/);
 });
 check('renderer contract: chrome/main classes, data-slot, data-module, data-slot-body, template', () => {
   const { html, slots } = render(base);
@@ -171,11 +177,16 @@ check('split columns, content-box container, shared column gap, card titles and 
 check('findRepeat: intro, repeating items and tail; a shifted run loses the coverage tie; null when nothing repeats', () => {
   const h = (level, text = 'x') => ({ kind: 'heading', level, text });
   const p = { kind: 'paragraph', text: 'p' }; const im = { kind: 'image', src: 'i' }; const a = { kind: 'cta', text: 'c', href: '#' };
-  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3 });
+  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, im, h('h3'), p, a]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
   const t = (cls) => ({ kind: 'text', text: 't', parentClass: cls });
   // intro (h2, p) then [num, title, p] x3: the run starting at the subtitle covers as many nodes but is shifted.
-  assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3 });
+  assert.deepEqual(findRepeat([h('h2'), p, t('n'), t('t'), p, t('n'), t('t'), p, t('n'), t('t'), p]), { start: 2, period: 3, count: 3, bounds: [2, 5, 8, 11] });
   assert.equal(findRepeat([h('h2'), p, a, im]), null);
+  // items of uneven length that share an opening (image + heading) are one listing; the tail stays outside
+  const ev = findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, p, im, h('h3'), p, p, p, a]);
+  assert.deepEqual({ start: ev.start, count: ev.count, bounds: ev.bounds }, { start: 2, count: 3, bounds: [2, 5, 9, 13] });
+  // two openings stay with the exact repeat (an anchored listing needs three)
+  assert.deepEqual(findRepeat([h('h2'), p, im, h('h3'), p, im, h('h3'), p, p, a]), { start: 2, period: 3, count: 2, bounds: [2, 5, 8] });
 });
 check('cards layout: items wrapped in .card inside .cards with columns; intro and tail outside; no repeat warns', () => {
   const p = { kind: 'paragraph', text: 'Bio' };
@@ -262,7 +273,7 @@ check('captureSmells: all-whole scopes and card-grid mega-slots are notes; a wra
   const small = (slot) => ({ slot, visibleText: 'y'.repeat(10), ordered: [{ kind: 'paragraph', text: 'p' }] });
   const base = { visibleTextNormalized: 'z'.repeat(100), coverage: { h1InScope: true }, scope: [{ sel: 'main', whole: false }] };
   let r = captureSmells({ ...base, sections: [small('s01'), grid, small('s03')] });
-  assert.deepEqual(r.warnings, []); assert.match(r.notes[0], /s02 .*repeating run \(4 × 2 nodes\)/);
+  assert.deepEqual(r.warnings, []); assert.match(r.notes[0], /s02 .*repeating run \(4 items\)/);
   const wrapper = { ...grid, ordered: [{ kind: 'heading', level: 'h2' }, { kind: 'paragraph' }, { kind: 'image' }, { kind: 'listItem' }, { kind: 'cta' }] };
   r = captureSmells({ ...base, sections: [small('s01'), wrapper, small('s03')] });
   assert.match(r.warnings[0], /wrapper-scope smell/);
@@ -281,6 +292,41 @@ check('contrast: WCAG ratio; a low-contrast accent stays an underline, never lin
   assert.match(mk('#b9ff66'), /\.link \{ color: inherit;[^}]*text-decoration-color: var\(--palette-accent\)/);
   assert.match(mk('#b9ff66'), /\.req \{ color: inherit; font-weight: inherit; \}/);
   assert.match(mk('#1a4d8f'), /\.link \{ color: var\(--palette-accent\)/);
+});
+
+check('0.36.1 chrome: a link with only sr-only text is the utility bar; a footer with headings is laid out in zones', () => {
+  const header = { slot: 'h1', images: [{ currentSrc: 'https://example.test/crest.svg', alt: 'Crest' }], ctas: [],
+    ordered: [
+      { kind: 'image', currentSrc: 'https://example.test/crest.svg' },
+      { kind: 'cta', text: 'NSW Government', absHref: 'https://example.test/gov', children: [{ kind: 'text', text: 'NSW Government', parentClass: 'sr-only' }] },
+      { kind: 'listItem', text: 'About', children: [{ kind: 'cta', text: 'About', absHref: 'https://example.test/about' }] },
+    ] };
+  const footer = { slot: 'f1', images: [], paragraphs: [], ctas: [], iconLinks: [{ label: 'Facebook', absHref: 'https://example.test/fb' }],
+    ordered: [
+      { kind: 'heading', level: 'h2', text: 'Hill School' },
+      { kind: 'paragraph', text: 'We acknowledge the land.' },
+      { kind: 'heading', level: 'h3', text: 'Contact' },
+      { kind: 'listItem', text: '1 Hill St' }, { kind: 'listItem', text: '02 1234' },
+      { kind: 'heading', level: 'h3', text: 'Follow us' },
+    ] };
+  const { html } = render({ ...base, chromeModel: { sections: [header, footer] }, mapping: { ...mapping, chrome: { header: ['h1'], footer: ['f1'] } } });
+  assert.match(html, /<div class="utility-bar"><div class="container"><a href="https:\/\/example\.test\/gov">NSW Government<\/a><\/div><\/div><div class="chrome-row/);
+  assert.doesNotMatch(html.match(/<div class="nav-actions">[\s\S]*?<\/div>/)[0], /NSW Government/);
+  assert.match(html, /<div class="footer-brand"><p class="footer-name">Hill School<\/p><p class="footer-prose">We acknowledge the land\.<\/p><\/div>/);
+  assert.match(html, /<div class="footer-col"><p class="footer-col-title">Contact<\/p><ul><li>1 Hill St<\/li><li>02 1234<\/li><\/ul><\/div>/);
+  assert.match(html, /<div class="footer-social"><p class="footer-social-label">Follow us<\/p><ul class="icon-links"><li><a href="https:\/\/example\.test\/fb" aria-label="Facebook">Facebook<\/a><\/li><\/ul><\/div>/);
+});
+check('0.36.1 main: an icon-font word is a glyph without the flag; a ledgered embed keeps its space after its section', () => {
+  const ordered = [
+    { kind: 'heading', level: 'h2', text: 'Find us' },
+    { kind: 'paragraph', text: 'Visit', children: [{ kind: 'text', text: 'Visit' }, { kind: 'text', text: 'east', parentClass: 'material-icons', sep: ' ' }] },
+  ];
+  const ledger = [{ what: 'map embed under "Find us"', why: 'dynamics disposition: embed' }];
+  const { html } = render({ ...base, slug: 'login', model: { _provenance: { normalize: { ledger } }, sections: [{ slot: 's01', ordered }] } });
+  assert.match(html, /<span class="glyph glyph-[a-z-]+" aria-hidden="true">east<\/span>/);
+  assert.match(html, /<div class="embed-placeholder" aria-hidden="true"><\/div>/);
+  const plain = render({ ...base, slug: 'login', model: { sections: [{ slot: 's01', ordered }] } }).html;
+  assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

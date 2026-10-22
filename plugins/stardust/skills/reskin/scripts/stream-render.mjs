@@ -126,7 +126,38 @@ export function findRepeat(ordered, { maxStart = 6, maxPeriod = 12 } = {}) {
       if (better) best = { start, period, count, covered };
     }
   }
-  return best && { start: best.start, period: best.period, count: best.count };
+  const anchored = anchorRun(ordered, { maxStart });
+  if (anchored && (!best || anchored.covered > best.covered)) return anchored;
+  return best && withBounds({ start: best.start, period: best.period, count: best.count });
+}
+// bounds: each item's start index in the stream, then the run's end (item k is bounds[k]..bounds[k + 1]).
+const withBounds = (r) => ({ ...r, bounds: Array.from({ length: r.count + 1 }, (_, k) => r.start + k * r.period) });
+// A listing whose items share an opening (image + heading, or a heading of one level) but differ in how many
+// paragraphs follow: each item runs from one opening to the next. The last item keeps only the body kinds the
+// others carry, up to the longest item's length, so a trailing stray node stays in the tail. Three or more items.
+function anchorRun(ordered, { maxStart = 6 } = {}) {
+  const sig = ordered.map((n) => `${n.kind}:${n.level || ''}`);
+  let best = null;
+  for (let start = 0; start <= Math.min(maxStart, sig.length - 6); start++) {
+    for (const plen of [2, 1]) {
+      const head = sig.slice(start, start + plen);
+      if (plen === 1 && !/^heading:/.test(head[0])) continue;
+      if (plen === 2 && !/^(image|heading):/.test(head[0])) continue;
+      const at = (i) => head.every((h, j) => sig[i + j] === h);
+      const starts = [];
+      for (let i = start; i < sig.length; i++) if (at(i)) starts.push(i);
+      if (starts.length < 3) continue;
+      const bodies = new Set();
+      for (let k = 0; k + 1 < starts.length; k++) sig.slice(starts[k] + plen, starts[k + 1]).forEach((x) => bodies.add(x));
+      if ([...bodies].some((x) => x === head[0] || /^heading:/.test(x))) continue;
+      const maxLen = Math.max(...starts.slice(1).map((x, k) => x - starts[k]));
+      let end = starts[starts.length - 1] + plen;
+      while (end < sig.length && bodies.has(sig[end]) && end - starts[starts.length - 1] < maxLen) end++;
+      const covered = end - starts[0];
+      if (!best || covered > best.covered) best = { start: starts[0], count: starts.length, covered, bounds: [...starts, end] };
+    }
+  }
+  return best && { start: best.start, count: best.count, covered: best.covered, bounds: best.bounds };
 }
 
 // WCAG contrast of two CSS colours (#rgb, #rrggbb, rgb()/rgba()); null when either is unparseable.
@@ -205,6 +236,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     const val = n.value && /checkbox|radio|submit|button/.test(type) ? ` value="${esc(n.value)}"` : '';
     return `<input id="${id}" type="${esc(type)}"${name}${n.placeholder ? ` placeholder="${esc(n.placeholder)}"` : ''}${val}>`;
   }
+  // An icon-font ligature ("east", "search") is drawn as its glyph; its word stays in the DOM at font-size 0.
+  const GLYPHS = [[/search/, 'search'], [/close|clear/, 'close'], [/menu/, 'menu'], [/left|back/, 'left'], [/up|less/, 'up'], [/down|expand_more|more/, 'down'], [/./, 'right']];
+  const glyphHtml = (t) => `<span class="glyph glyph-${GLYPHS.find(([re]) => re.test(t))[1]}" aria-hidden="true">${esc(t)}</span>`;
+  const isGlyphLeaf = (n) => n.glyph || (n.kind === 'text' && /material-(icons|symbols)|\bicons?\b/i.test(n.parentClass || '') && /^[a-z_]+$/.test((n.text || '').trim()));
+  const isSrOnlyLeaf = (n) => n.srOnly || (n.kind === 'text' && /\b(sr-only|visually-hidden|screen-reader-text)\b/.test(n.parentClass || ''));
   function inlineHtml(nodes) {
     return nodes.map((n) => {
       const sep = n.sep ?? '';
@@ -212,7 +248,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       // An image inside a link or paragraph (arrow, social badge) is content: it stays, inline.
       if (n.kind === 'image') return `${sep}<img class="icon" ${img(n.currentSrc || n.src)} alt="${esc(n.alt)}">`;
       if (n.children) return `${sep}${inlineHtml(n.children)}`;
-      return `${sep}${esc(n.text)}`;
+      return `${sep}${isGlyphLeaf(n) ? glyphHtml(n.text) : esc(n.text)}`;
     }).join('');
   }
   // The first button of a slot is primary; later ones take the donor's secondary spec (when it exists).
@@ -254,6 +290,7 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
           if (n.parentTag === 'label' && next?.kind === 'formControl' && !/checkbox|radio/.test(next.inputType || '')) {
             const id = `f${++uid}`; out.push(`<div class="field"><label for="${id}">${labelHtml(n.text)}</label>${controlHtml(next, id)}</div>`); i++;
           } else if (n.parentTag === 'button' || n.inButton) out.push(`<div class="actions"><button class="${btnClass(ctx)}" type="submit">${esc(n.text)}</button></div>`);
+          else if (isGlyphLeaf(n)) out.push(glyphHtml(n.text));
           else out.push(`<p class="text">${esc(n.text)}</p>`);
           break;
         default: throw new Error(`unhandled stream node kind "${n.kind}" in ${slug} — extend stream-render, never drop content`);
@@ -294,14 +331,24 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       <nav>${navItems(s).join('')}</nav>
     </div></div>`;
     }
+    // A link whose label is only screen-reader text (a parent-org link whose mark was not captured) is the
+    // Figma header's utility bar: a small text link above the row on desktop.
+    const isUtil = (n) => n.kind === 'cta' && n.children?.length > 0 && n.children.every((c) => c.kind === 'text' && isSrOnlyLeaf(c));
+    const util = ordered.filter(isUtil).map((n) => `<a href="${url(n)}">${esc((n.text || '').trim())}</a>`);
     const menu = ordered.filter((n) => n.kind === 'listItem').flatMap((n) => navItem(s, n));
-    const actions = ordered.filter((n) => n.kind !== 'listItem').flatMap((n) => navItem(s, n));
+    const actions = ordered.filter((n) => n.kind !== 'listItem' && !isUtil(n)).flatMap((n) => navItem(s, n));
     const navAlign = mapping.chrome?.navAlign ?? tokens.layout?.navAlign;
     const align = ['start', 'center', 'end'].includes(navAlign) ? navAlign : 'end';
-    return `<div class="chrome-row nav-align-${align}"><div class="container">
-      ${logos}
-      <nav>${menu.join('')}</nav>${actions.length ? `
-      <div class="nav-actions">${actions.join('')}</div>` : ''}
+    // The row's plain (non-link) texts are the brand's name and tagline: they sit with the logo, as a
+    // Figma header's brand zone does, not among the actions. Below 900px the menu folds behind a toggle.
+    const brandTexts = actions.filter((h) => h.startsWith('<span class="nav-text">'));
+    const rest = actions.filter((h) => !brandTexts.includes(h));
+    const brand = `<div class="brand">${logos}${brandTexts.length ? `<div class="brand-text">${brandTexts.join('')}</div>` : ''}</div>`;
+    const toggle = menu.length ? '<button class="icon-btn nav-toggle" type="button" aria-label="Menu"><span class="glyph glyph-menu" aria-hidden="true"></span></button>' : '';
+    return `${util.length ? `<div class="utility-bar"><div class="container">${util.join('')}</div></div>` : ''}<div class="chrome-row nav-align-${align}"><div class="container">
+      ${brand}
+      <nav>${menu.join('')}</nav>
+      <div class="nav-actions">${rest.join('')}${toggle}</div>
     </div></div>`;
   }
 
@@ -324,6 +371,44 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     return out;
   }
 
+  // A footer whose stream has headings is laid out in zones, as a Figma footer is: the brand (logos, the
+  // top-level heading and the prose), one column per titled run of list items (an untitled run is its own
+  // column), and a social row (a heading with no list of its own, beside the icon links).
+  function footerZones(s) {
+    const ordered = Array.isArray(s.ordered) ? s.ordered : [];
+    const heads = ordered.filter((n) => n.kind === 'heading');
+    if (!heads.length || !ordered.some((n) => n.kind === 'listItem')) return null;
+    const lvl = (n) => Number(String(n.level || 'h6').slice(1)) || 6;
+    const top = Math.min(...heads.map(lvl));
+    const brand = []; const cols = []; let social = null; let col = null;
+    const leaf = (n) => (n.children?.length ? inlineHtml(n.children) : esc((n.text || '').trim()));
+    for (let i = 0; i < ordered.length; i += 1) {
+      const n = ordered[i];
+      if (n.kind === 'heading') {
+        col = null;
+        if (lvl(n) === top && !brand.some((b) => b.startsWith('<p class="footer-name"'))) { brand.push(`<p class="footer-name">${leaf(n)}</p>`); continue; }
+        const next = ordered.slice(i + 1).find((m) => m.kind !== 'image');
+        if (next?.kind === 'listItem') { col = { title: leaf(n), items: [] }; cols.push(col); continue; }
+        social = leaf(n); continue;
+      }
+      if (n.kind === 'listItem') {
+        if (!col) { col = { title: null, items: [] }; cols.push(col); }
+        col.items.push(`<li>${leaf(n)}</li>`); continue;
+      }
+      col = null;
+      if (n.kind === 'image' || (n.kind === 'cta' && !(n.text || '').trim())) continue;
+      if (n.kind === 'cta') { cols.push({ title: null, items: [`<li>${leaf(n)}</li>`] }); continue; }
+      if ((n.text || '').trim()) brand.push(`<p class="footer-prose">${leaf(n)}</p>`);
+    }
+    const logos = s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('');
+    const icons = (s.iconLinks?.length ? s.iconLinks.map((c) => `<li><a href="${url(c)}" aria-label="${esc(c.label)}">${esc(c.label)}</a></li>`)
+      : ordered.filter((n) => n.kind === 'cta' && !(n.text || '').trim() && n.children?.length).map((n) => `<li><a href="${url(n)}">${inlineHtml(n.children)}</a></li>`)).join('');
+    return `<div class="container chrome-footer footer-zoned">
+      <div class="footer-main"><div class="footer-brand">${logos}${brand.join('')}</div>
+      ${cols.map((c) => `<div class="footer-col">${c.title ? `<p class="footer-col-title">${c.title}</p>` : ''}<ul>${c.items.join('')}</ul></div>`).join('\n      ')}</div>
+      ${social || icons ? `<div class="footer-social">${social ? `<p class="footer-social-label">${social}</p>` : ''}${icons ? `<ul class="icon-links">${icons}</ul>` : ''}</div>` : ''}
+    </div>`;
+  }
   // Every visible text leaf of a chrome section must survive the render: the content gates measure
   // <main> only, so a silent drop here would ship unnoticed.
   function assertChromeText(s, html) {
@@ -341,6 +426,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       return slots.map((s) => checked(s, headerRow(s))).join('\n  ');
     }
     return slots.map((s) => checked(s, (() => {
+      const zoned = footerZones(s);
+      if (zoned) return zoned;
       const texts = footerTexts(s);
       return `<div class="container chrome-footer">
       <div>${s.images.map((im) => `<img class="logo" ${img(im.currentSrc || im.src)} alt="${esc(im.alt)}">`).join('')}${texts.map((t) => `<p>${esc(t)}</p>`).join('')}</div>
@@ -350,6 +437,11 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   }
 
   // ---- page -------------------------------------------------------------------------------------------
+  // A runtime embed the normalize step removed (dynamics disposition: embed) still occupies space on the live page:
+  // hold that space with a neutral placeholder after the section whose heading the ledger names.
+  const embedAfter = new Set((model._provenance?.normalize?.ledger || [])
+    .filter((e) => /disposition:\s*embed/i.test(e.why || '') && /embed/i.test(e.what || ''))
+    .map((e) => (e.what.match(/under\s+["“]([^"”]+)["”]/) || [])[1]?.trim().toLowerCase()).filter(Boolean));
   const sections = model.sections.map((s, i) => {
     const m = pageMap.slots?.[s.slot] || {};
     const layout = (m.layout || 'stack').split(/\s+/);
@@ -357,8 +449,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     let inner;
     const rep = layout.includes('cards') ? findRepeat(s.ordered) : null;
     if (rep) {
-      const end = rep.start + rep.period * rep.count;
-      const items = Array.from({ length: rep.count }, (_, k) => s.ordered.slice(rep.start + k * rep.period, rep.start + (k + 1) * rep.period));
+      const end = rep.bounds[rep.count];
+      const items = Array.from({ length: rep.count }, (_, k) => s.ordered.slice(rep.bounds[k], rep.bounds[k + 1]));
       const cols = Number.isInteger(m.columns) && m.columns > 0 ? m.columns : (rep.count % 3 === 0 ? 3 : 2);
       inner = [
         streamHtml(s.ordered.slice(0, rep.start), ctx),
@@ -369,6 +461,8 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
       if (layout.includes('cards')) warnings.push(`${s.slot}: layout "cards" but no repeating run in the stream — rendered as a stack`);
       inner = streamHtml(s.ordered, ctx);
     }
+    const head = s.ordered.find((n) => n.kind === 'heading');
+    if (head && embedAfter.has(String(head.text || '').trim().toLowerCase())) inner += '\n        <div class="embed-placeholder" aria-hidden="true"></div>';
     const tone = ['dark', 'light', 'accent'].includes(m.tone) ? m.tone : null;
     if (m.tone && !tone) warnings.push(`${s.slot}: unknown tone "${m.tone}" (dark | light | accent) — ignored`);
     const role = ['display', 'h2', 'h3', 'h4'].includes(m.heading) ? m.heading : null;
@@ -425,6 +519,28 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
     .site-header .nav-align-center .nav-actions { grid-column: 3; justify-self: end; }
   }
   .logo { height: 32px; width: auto; }
+  .site-header .brand { display: flex; align-items: center; gap: 12px; min-width: 0; }
+  .site-header .brand .logo { height: ${v('--header-logo-height', '56px')}; width: auto; }
+  .site-header .brand-text { display: flex; flex-direction: column; white-space: nowrap; }
+  .site-header .brand-text .nav-text:first-child { font-family: ${v('--type-display-font-family', 'inherit')}; color: ${v('--palette-heading-fg', 'inherit')}; font-size: 1.25em; line-height: 1.2; }
+  .site-header .brand-text .nav-text + .nav-text { font-size: 0.875em; font-style: italic; line-height: 1.3; }
+  .site-header .nav-actions { flex-wrap: nowrap; }
+  .site-header .nav-toggle { display: none; align-items: center; justify-content: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: inherit; cursor: pointer; }
+  .glyph { display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px; font-size: 0; vertical-align: middle; }
+  .glyph::before { content: ""; width: 7px; height: 7px; border: solid currentcolor; border-width: 0 2px 2px 0; }
+  .glyph-right::before { transform: rotate(-45deg); } .glyph-left::before { transform: rotate(135deg); }
+  .glyph-down::before { transform: translateY(-2px) rotate(45deg); } .glyph-up::before { transform: translateY(2px) rotate(-135deg); }
+  .glyph-search::before { width: 9px; height: 9px; border: 2px solid currentcolor; border-radius: 50%; }
+  .glyph-close::before { content: "×"; width: auto; height: auto; border: 0; font-size: 20px; line-height: 1; }
+  .glyph-menu::before { width: 16px; height: 2px; border: 0; background: currentcolor; box-shadow: 0 -5px 0 currentcolor, 0 5px 0 currentcolor; }
+  .site-header .icon-btn .glyph { width: 20px; height: 20px; }
+  .site-header .utility-bar { border-bottom: 1px solid ${v('--palette-light-band-bg', '#eee')}; font-size: 12px; line-height: 1; }
+  .site-header .utility-bar .container { display: flex; justify-content: flex-end; gap: 16px; padding-top: 10px; padding-bottom: 10px; }
+  .site-header .utility-bar a { text-decoration: underline; }
+  @media (min-width: 901px) {
+    .site-header .chrome-row .container { min-height: ${v('--header-row-height', '80px')}; }
+    .site-header nav { gap: 24px; font-family: ${v('--type-nav-font-family', 'inherit')}; font-size: ${v('--type-nav-font-size', 'inherit')}; }
+  }
   .site-main section { position: relative; padding-top: ${v('--layout-section-padding-y', '64px')}; padding-bottom: ${v('--layout-section-padding-y', '64px')}; }
   .site-main .layout-media-band { background: ${v('--palette-light-band-bg', 'transparent')}; overflow: hidden; }
   .site-main .band-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
@@ -463,6 +579,13 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-main .cards { display: grid; grid-template-columns: repeat(var(--cards-columns, 3), minmax(0, 1fr)); gap: ${v('--layout-column-gap', '40px')}; margin: 16px 0; }
   .site-main .card { background: ${v('--palette-light-band-bg', 'transparent')}; border-radius: ${v('--radii-card', '0')}; box-shadow: ${v('--shadows-card', 'none')}; padding: 40px; }
   .site-main .card > :last-child { margin-bottom: 0; }
+  .site-main .card > p.aux:first-child:has(> .link:only-child) .link { font-family: ${v('--type-heading-family', 'inherit')}; font-size: ${v('--type-h4-font-size', '1.5em')}; line-height: 1.25; color: ${v('--palette-accent', 'inherit')}; text-decoration: none; }
+  .site-main .card > .glyph:last-child { display: flex; width: 28px; height: 28px; margin-top: 12px; color: ${v('--palette-accent', 'currentColor')}; position: relative; }
+  .site-main .card > .glyph-right:last-child::before { position: absolute; right: 6px; width: 9px; height: 9px; transform: rotate(-45deg); }
+  .site-main .card > .glyph-right:last-child::after { content: ""; position: absolute; left: 4px; right: 5px; top: 13px; height: 2px; background: currentcolor; }
+  .site-main .embed-placeholder { position: relative; height: 440px; margin-top: 48px; background: ${v('--palette-light-band-bg', '#eee')}; }
+  .site-main .embed-placeholder::after { content: ""; position: absolute; left: 50%; top: 50%; width: 36px; height: 36px; margin: -18px 0 0 -18px; border-radius: 50%; background: ${v('--palette-accent', '#888')}; }
+  @media (max-width: 640px) { .site-main .embed-placeholder { height: 280px; margin-top: 32px; } }
   .site-main .tone-dark .panel, .site-main .tone-light .panel, .site-main .tone-accent .panel { border-radius: ${v('--radii-card', '0')}; padding: 50px 60px; }
   .site-main .tone-dark .panel { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; }
   .site-main .tone-dark :is(h1, h2, h3, h4) { color: inherit; }
@@ -479,11 +602,38 @@ export function render({ slug, model, tokens, mapping, chromeModel = null, now =
   .site-footer.tone-dark { background: ${v('--palette-dark-band-bg', '#111')}; color: ${v('--palette-dark-band-fg', '#fff')}; border-radius: ${v('--radii-card', '0')} ${v('--radii-card', '0')} 0 0; }
   .site-footer.tone-light { background: ${v('--palette-light-band-bg', '#f3f3f3')}; }
   .site-footer.tone-accent { background: ${v('--palette-accent', 'transparent')}; }
+  .site-footer .footer-zoned { display: block; font-size: 0.889em; }
+  .site-footer .footer-main { display: flex; gap: 40px; }
+  .site-footer .footer-main > * { flex: 1 1 0; min-width: 0; }
+  .site-footer .footer-zoned a { color: inherit; }
+  .site-footer .footer-zoned ul { columns: 1; }
+  .site-footer .footer-zoned p { margin: 0 0 16px; }
+  .site-footer .footer-brand > p { max-width: 300px; }
+  .site-footer .footer-brand .logo { display: block; height: ${v('--header-logo-height', '40px')}; width: auto; margin-bottom: 24px; }
+  .site-footer .footer-name { font-family: ${v('--type-heading-family', 'inherit')}; color: ${v('--palette-heading-fg', 'inherit')}; font-size: 1.25em; }
+  .site-footer .footer-col-title { font-weight: 700; }
+  .site-footer .footer-social { margin-top: 40px; display: flex; align-items: center; gap: 16px; font-size: 0.875em; }
+  .site-footer .footer-social p { margin: 0; }
+  .site-footer .footer-social ul { display: flex; gap: 16px; }
+  .site-footer .footer-social li { margin: 0; }
   @media (max-width: 900px) {
     .site-main .layout-grid-2 .flow { grid-template-columns: 1fr; }
     .site-main .layout-split .panel { grid-template-columns: 1fr; }
+    .site-main .split-img { justify-self: stretch; width: 100%; }
     .site-main .cards { grid-template-columns: 1fr; }
     .site-footer .chrome-footer { grid-template-columns: 1fr; }
+    .site-footer .footer-main { flex-direction: column; gap: 24px; }
+    .site-footer .footer-zoned { text-align: center; line-height: 1.4; }
+    .site-footer .footer-brand > p { max-width: none; }
+    .site-footer .footer-brand .logo { margin: 0 auto 24px; }
+    .site-footer .footer-social { justify-content: center; margin-top: 24px; white-space: nowrap; }
+    .site-footer .footer-zoned li { margin-bottom: 12px; }
+    .site-header nav { display: none; }
+    .site-header .utility-bar { display: none; }
+    .site-header .nav-toggle { display: inline-flex; }
+    .site-header .chrome-row .container { flex-wrap: nowrap; min-height: 64px; }
+    .site-header .brand .logo { height: ${v('--header-logo-height-mobile', '40px')}; }
+    .site-header .brand-text { font-size: 14px; }
   }
   @media (max-width: 640px) {
     .site-main section { padding-top: 24px; padding-bottom: 24px; }
@@ -555,8 +705,8 @@ export function captureSmells(model) {
   } else if (sections.length < 3) warnings.push(smell);
   else if (share > 0.5) {
     const ord = largest.ordered || []; const rep = findRepeat(ord);
-    const cover = rep && ord.length ? (rep.period * rep.count) / ord.length : 0;
-    if (cover >= 0.6) notes.push(`${largest.slot} carries ${Math.round(share * 100)}% of the scope text but is a repeating run (${rep.count} × ${rep.period} nodes) — a card grid, not a wrapper`);
+    const cover = rep && ord.length ? (rep.bounds[rep.count] - rep.start) / ord.length : 0;
+    if (cover >= 0.6) notes.push(`${largest.slot} carries ${Math.round(share * 100)}% of the scope text but is a repeating run (${rep.count} items) — a card grid, not a wrapper`);
     else warnings.push(smell);
   }
   return { warnings, notes };

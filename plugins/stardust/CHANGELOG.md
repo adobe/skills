@@ -4,6 +4,37 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.1 — renderer fidelity fixes measured on a 52-page school site
+
+Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a
+multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 with the 0.42.0 table padding); all are generic.
+
+- **Card listings survive uneven items.** `findRepeat` needed byte-identical item shapes, so an event with one extra
+  paragraph broke the run part-way: two cards, then stacked full-width images. It now falls back to an anchored
+  run (each item starts at the same anchor — image or heading — and may carry a different number of paragraphs) and
+  returns per-item `bounds`, which the card grid and `captureSmells` ("N items") use. Events/home +1.1.
+- **Header brand zone + menu toggle.** The branded row groups logos with the header's text items (school name,
+  motto) in `.brand` / `.brand-text`, and always emits `.nav-actions` with a menu toggle. At ≤900px the nav hides,
+  the toggle shows and the row stays one 64px line, as the EDS header does — the target no longer wraps the nav to
+  ~230px at 390. +3.0, mostly at 390.
+- **Desktop header sizing from tokens.** At ≥901px the row height is `--header-row-height` (80px fallback) and the
+  nav takes `--type-nav-font-family` / `--type-nav-font-size` (inherit fallback) with a 24px gap.
+- **Mobile split image** stretches to the column width (`justify-self: stretch`) at ≤900px instead of shrinking to
+  its intrinsic width. +0.3.
+- **Footer zones.** A footer stream with headings and list items renders as a Figma footer does: brand (logo,
+  top-level heading, prose), one column per titled list run, and a social row (a list-less heading beside the
+  icon links — `iconLinks` when captured, else the stream's icon-only links). One centred column at ≤900px. Was
+  one long column of `<p>`. +0.4.
+- **Embed placeholder.** A runtime embed that normalize removed (ledger `why` "disposition: embed", `what` naming
+  the section heading "under …") keeps its space: a neutral placeholder after that section, as the live page
+  holds a map. Contact-style pages +5, overall +0.7.
+- **Header utility bar.** A header link whose label is only screen-reader text (`sr-only`, `visually-hidden`,
+  `screen-reader-text`; a parent-org link whose mark was not captured) shows as a small text link in a bar above
+  the row on desktop, hidden at ≤900px. +0.4 with the desktop sizing above.
+- **Icon-font glyphs.** A lone lowercase word in an icon-font span (`material-icons|symbols`, `icon`) renders as
+  a drawn glyph (word kept at font-size 0), so "east" no longer prints in a card. A card's trailing arrow is drawn
+  at 28px in the accent; a card whose first line is only a link takes the h4 heading style.
+
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 
 Two full runs, a Figma donor reskinning each of two content sites (forms-only and multi-page marketing), surfaced the
