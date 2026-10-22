@@ -448,9 +448,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   <gates-dir>/chrome-live.json` and `anchor.mjs --cache
   <gates-dir>/anchor-live.json` (live URL only) write the live measurement
   on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. Recorded without it: a chrome-parity round
-  on an AEM site cost 5½ minutes of live settle per iteration, ×3
-  iterations ×4 archetypes. On hard-CDN sites
+  delete the file to re-probe. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
@@ -459,6 +457,21 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Origin baseline (opt-in, default off): gate every round against ONE
+  frozen origin.** When the live site changes between rounds (a hero
+  rotates, a banner appears) the gate's target moves under the fix rounds and
+  a pixel FAIL measures the origin, not the build. Freeze the origin once per
+  archetype and width — `stitch-shot.mjs "$LIVE" "$GATE/baseline.png"
+  --freeze-baseline --width $W --settle` writes `baseline.png` +
+  `baseline.json` (capturedAt, url, width, height, fontsFailed), refuses a
+  capture whose fonts failed and refuses to re-freeze without `--force` — then
+  pass `--gate-against-baseline` to every `gate.sh` round: the baseline is the
+  origin side of the same pixel-compare (`live.png` is its copy, `live.json`
+  says `origin: "baseline"`), no live navigation. A missing or stale baseline
+  (another URL or width) ends the round in one line, exit 125 — never a live
+  shot in its place. Without the flag nothing changes; a round without it
+  retakes a `live.png` that was the frozen copy. `--check-baseline` prints a
+  fresh shot's Δheight vs the baseline, no verdict.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
