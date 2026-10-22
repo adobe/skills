@@ -4,6 +4,34 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.5 — replica: a capture names its dead font faces; a font check that could not run is never a pass
+
+Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a
+`local()` source naming a platform font the gate's Linux browser does not have. The build rendered a different face
+than the live site, the first archetype gate failed on type metrics, and the agent spent the better part of an hour
+finding the cause — the capture's font-load assertion reported only a face whose file failed to fetch, so an
+unresolved `local()` looked like a clean capture, and a check that threw was recorded as "every face loaded". In a
+later run the capture named the failed families and the fix took seconds: locally available metric-compatible faces
+(Liberation Sans / Arimo, Liberation Serif / Tinos) as the local fallbacks.
+
+- **`stitch-shot.mjs`:** after `document.fonts.ready` every declared face with status `error` and no loaded face of the
+  same family, weight and style is a dead face — a file that failed to fetch or a `local()` source this browser cannot
+  resolve; a failed declaration beside a loaded twin is not, an unloaded face was never needed. The WARNING names the
+  families and both causes; `--json <file>` writes the capture record with `fontsFailed` (`[]` = every face loaded;
+  `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). playwright and
+  pngjs load lazily, so `--help` and the pure helpers (`deadFontFaces`, `fontCheckOutcome`) need neither.
+- **`gate.sh` / `gate-all.mjs`:** both captures write their record (`<side>-shot.json` in the evidence dir; the live
+  one lives and dies with `live.png`). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
+  after the overflow line — the dead faces, every face loaded, or NOT CHECKED — as information for the loop (exit codes
+  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live-shot.json`
+  beside the reused archetype `live.png`; none is unchecked) and fails the row: `font-not-loaded:<family>`,
+  `font-check-skipped:<origin|build>` (`fontsNotLoaded`, `fontChecksSkipped`; totals, the calibration line, `FAIL
+  (fonts)`). A meta from before the check (no key, `--skip-existing`) is not flagged — recapture to check.
+- **Fonts policy** (`recreation-procedure.md`): self-host the source's own faces; brand family first, a metric-matched
+  substitute only as the fallback entry after it; a `local()` source only for a face the gate's browser has, the
+  Linux-available metric fallbacks named; proprietary faces raise deploy's licensing alert (#80). Gate rule 14 names
+  `fontsFailed` and `font-check-skipped`. Tests: `replica/stitch-shot` (new), `replica/gate`, `replica/gate-all`.
+
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
 
 Field learning (a Magento marketplace replica): the source home slider is PageBuilder, and each of its three slides
