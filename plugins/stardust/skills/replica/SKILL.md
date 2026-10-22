@@ -331,8 +331,8 @@ blocked step (reference doc § Iteration discipline).
 **Hardening (each is a recorded false-measurement trap — see the reference
 doc for the full list):** real-Chrome UA **plus the standard request
 headers** on every capture (built into the shared
-`diff/scripts/live-session.mjs`); a challenge/blocked
-interstitial **fails loud (exit 3)**, never measured — escalate with
+`diff/scripts/live-session.mjs`); a challenge/blocked interstitial or a
+2xx denial page **fails loud (exit 3)**, never measured — escalate with
 `--headed`, and a site that still blocks needs crawl.mjs-class capture;
 `domcontentloaded` on live targets, never `networkidle`;
 symmetric `--main` scoping on both sides (`--main body` is never valid);

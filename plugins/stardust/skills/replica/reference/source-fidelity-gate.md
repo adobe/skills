@@ -607,15 +607,23 @@ rather than erroring.
     including its scroll-state trigger; any height delta turns the seam
     repeats into ghost bands in the diff. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
-12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
+    live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker.
+    exits **3** with a `BotChallengeError` naming the URL and the marker.
     Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
-    the block page as the source and diffed it cleanly, wrongly. The
-    escalation ladder: default (UA + standard headers) → `--headed`
+    the block page as the source and diffed it cleanly, wrongly. A **2xx
+    denial page** — a vendor wall answering 200 with its denial text, so no
+    header classifies it — fails the same way: after the settle `gotoLive`
+    reads the page (`pageDenial`) for a vendor signature (a phrase pair such
+    as "Access Denied" + "Reference #" anywhere; a single phrase in the
+    title, or in the text or an iframe src only under 2 KB of text) or for
+    under 2 KB of text beneath exactly one error heading, and throws the
+    same error (marker `HTTP <status> denial page — …`, "origin blocked");
+    stitch-shot reads once more after its dismissal sweeps and leaves no PNG
+    and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`
     (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
