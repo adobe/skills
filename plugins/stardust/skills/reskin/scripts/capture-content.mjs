@@ -175,6 +175,36 @@ await page.evaluate(async () => {
 });
 await page.waitForTimeout(2000);
 
+// Settle (source-coverage S2): content a page renders after first paint (a feed fetched over XHR, a
+// listing hydrated by a widget) is content. Capturing before it lands makes the byte gate pass
+// against an incomplete reference. Wait until the rendered text stops growing; each growth re-scrolls
+// so lazily observed sections get their turn.
+const SETTLE_CAP_MS = Number(process.env.CAPTURE_SETTLE_CAP_MS || 15000);
+const textLen = () => page.evaluate(() => (document.body.innerText || '').replace(/\s+/g, ' ').trim().length);
+const settle = { firstLen: await textLen(), waitedMs: 0, stable: false };
+{
+  let last = settle.firstLen; let still = 0; const t0 = Date.now();
+  while (Date.now() - t0 < SETTLE_CAP_MS) {
+    await page.waitForTimeout(500);
+    const now = await textLen();
+    if (now === last) { still += 1; if (still >= 3) { settle.stable = true; break; } continue; }
+    still = 0; last = now;
+    await page.evaluate(async () => {
+      for (let y = 0; y < document.body.scrollHeight; y += 700) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 100)); }
+      window.scrollTo(0, 0);
+    });
+  }
+  settle.waitedMs = Date.now() - t0;
+  settle.settledLen = last;
+  settle.lateChars = Math.max(0, last - settle.firstLen);
+}
+
+// Each disclosure's rest state, read before the ledger opens it (an accordion expanded by N3 renders closed
+// again only when the source had it closed).
+await page.evaluate(() => {
+  document.querySelectorAll('[aria-expanded][aria-controls]').forEach((b) => { b.dataset.sdRest = b.getAttribute('aria-expanded') === 'true' ? 'open' : 'closed'; });
+  document.querySelectorAll('details').forEach((d) => { d.dataset.sdRest = d.open ? 'open' : 'closed'; });
+});
 // Apply the declared source normalizations (shared with the gates).
 await page.evaluate(NORMALIZE);
 await page.waitForTimeout(300);
@@ -278,6 +308,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
     if (t === 'li') return 'listItem';
     if (t === 'a') return 'cta';
     if (t === 'img') return 'image';
+    if (t === 'table') return 'table';
     // Form controls are stream nodes (F-R3): a <select>'s option text is
     // part of innerText — the byte-gate reference — but getComputedStyle on
     // <option> is display:none, so without an explicit kind the options are
@@ -318,6 +349,44 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       .forEach((el) => sectionEls.push(el));
   });
 
+  // Disclosures: a toggle (button[aria-expanded][aria-controls], or a <summary>) and the panel it controls.
+  const detailsIds = new Map();
+  const detailsId = (d) => { if (!detailsIds.has(d)) detailsIds.set(d, `details-${detailsIds.size + 1}`); return detailsIds.get(d); };
+  const controlled = new Set(Array.from(document.querySelectorAll('[aria-expanded][aria-controls]'))
+    .map((b) => (b.getAttribute('aria-controls') || '').trim().split(/\s+/)[0]).filter((id) => id && document.getElementById(id)));
+  const toggleOf = (el) => {
+    const b = el.closest('[aria-expanded][aria-controls], summary');
+    if (!b) return null;
+    if (b.tagName === 'SUMMARY') {
+      const d = b.parentElement;
+      return d?.tagName === 'DETAILS' ? { id: detailsId(d), open: d.dataset.sdRest === 'open' } : null;
+    }
+    const id = (b.getAttribute('aria-controls') || '').trim().split(/\s+/)[0];
+    return controlled.has(id) ? { id, open: b.dataset.sdRest === 'open' } : null;
+  };
+  const panelsOf = (el) => {
+    const out = [];
+    for (let e = el; e && e !== document.body; e = e.parentElement) {
+      if (e.id && controlled.has(e.id)) out.push(e.id);
+      else if (e.tagName === 'DETAILS' && !el.closest('summary')?.parentElement?.isSameNode(e)) out.push(detailsId(e));
+    }
+    return out;
+  };
+  // An icon-font ligature ("keyboard_arrow_down" drawn as a chevron) is a glyph, not prose.
+  const isGlyph = (el, t) => /^[a-z][a-z0-9_]*$/.test(t) && !!el.closest('[aria-hidden="true"]')
+    && /icon|symbol/i.test(getComputedStyle(el).fontFamily);
+  // Visually hidden (sr-only / skip link): rendered, so in innerText, but painted at ≤ 1px or clipped away.
+  const isSrOnly = (el) => {
+    const r = el.getBoundingClientRect(); const cs = getComputedStyle(el);
+    return (r.width <= 1 && r.height <= 1) || r.bottom + window.scrollY < 0 || r.right + window.scrollX < 0 || /rect\(0(px)?,? 0(px)?,? 0(px)?,? 0(px)?\)/.test(cs.clip) || cs.clipPath === 'inset(50%)';
+  };
+  const discl = (n, el) => {
+    const tg = toggleOf(el);
+    if (tg) { n.toggle = tg.id; if (tg.open) n.toggleOpen = true; }
+    const ps = panelsOf(el); if (ps.length) n.panels = ps;
+    return n;
+  };
+
   const sections = sectionEls.map((sec, i) => {
     // querySelectorAll never matches the root element itself — a slot root
     // that IS an h1..h6/p/li/a (an sr-only h2 scoped with "!") must be
@@ -336,6 +405,16 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         classes: (typeof a.className === 'string' ? a.className : ''),
       }))
       .filter((a) => a.text);
+    // An icon-only link (a social icon, a logo link) has no text, so ctas drops it; keep it by its accessible name.
+    const iconLinks = q('a')
+      .filter((a) => isVisible(a) && !norm(a.innerText) && (a.getAttribute('href') || '').trim())
+      .map((a) => {
+        const named = a.getAttribute('aria-label') || a.getAttribute('title')
+          || a.querySelector('img[alt]')?.getAttribute('alt') || a.querySelector('svg title')?.textContent || '';
+        let host = '';
+        try { host = new URL(a.href).hostname.replace(/^www\./, ''); } catch { /* not a URL */ }
+        return { label: norm(named) || host, href: a.getAttribute('href'), absHref: a.href || '' };
+      });
     const paragraphs = q('p')
       .filter(isVisible)
       .map((p) => norm(p.innerText))
@@ -391,7 +470,19 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       const kind = kindOf(el);
       if (kind === 'image') {
         if (!imgVisible(el)) return null;
-        return { kind: 'image', currentSrc: el.currentSrc || el.src || '', alt: el.getAttribute('alt') || '' };
+        return { kind: 'image', currentSrc: el.currentSrc || el.src || '', alt: el.getAttribute('alt') || '', rw: Math.round(el.getBoundingClientRect().width) };
+      }
+      if (kind === 'table') {
+        if (!isVisible(el)) return null;
+        const rows = Array.from(el.rows).filter(isVisible).map((tr) => Array.from(tr.cells).map((c) => {
+          const cell = { text: norm(c.innerText) };
+          if (c.tagName === 'TH') cell.header = true;
+          if (c.colSpan > 1) cell.colspan = c.colSpan;
+          const kids = streamOf(c);
+          if (kids.length && !(kids.length === 1 && kids[0].kind === 'text' && kids[0].text === cell.text)) { cell.children = kids; assignSeps(cell.text, kids); }
+          return cell;
+        }));
+        return { kind: 'table', text: norm(el.innerText), rows };
       }
       if (kind === 'formControl') {
         if (!isVisible(el)) return null;
@@ -408,6 +499,13 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
         n.href = el.getAttribute('href') || '';
         n.absHref = el.href || '';
         n.classes = (typeof el.className === 'string' ? el.className : '');
+        if (isSrOnly(el)) n.srOnly = true;
+        // Styled as a button whatever its class names (utility-CSS sites): a painted background or a
+        // visible border, plus button-sized padding.
+        const cs = getComputedStyle(el); const px = (v) => parseFloat(v) || 0;
+        const painted = !/^(transparent|rgba\(\d+,\s*\d+,\s*\d+,\s*0\))$/.test(cs.backgroundColor)
+          || (cs.borderStyle !== 'none' && px(cs.borderTopWidth) > 0 && px(cs.borderLeftWidth) > 0);
+        if (painted && px(cs.paddingLeft) >= 8 && px(cs.paddingRight) >= 8 && px(cs.paddingTop) >= 4) n.buttonLike = true;
       }
       const children = streamOf(el);
       // Pure-text leaves need no children; keep them only when they add
@@ -445,7 +543,12 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
                 text: t,
                 parentTag: el.tagName.toLowerCase(),
                 parentClass: (typeof el.className === 'string' ? el.className : '').slice(0, 60),
+                // An icon button's label sits in a nested span (often sr-only): the node is still the button.
+                ...(el.tagName !== 'BUTTON' && el.closest('button') ? { inButton: true } : {}),
+                ...(isGlyph(el, t) ? { glyph: true } : {}),
+                ...(isSrOnly(el) ? { srOnly: true } : {}),
               });
+              discl(out[out.length - 1], el);
             }
             continue;
           }
@@ -453,7 +556,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
           if (['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(node.tagName)) continue;
           if (kindOf(node)) {
             const n = nodeFor(node);
-            if (n) out.push(n);
+            if (n) out.push(discl(n, node));
             continue;
           }
           walk(node); // transparent wrapper — descend
@@ -488,7 +591,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       rootTag: sec.tagName.toLowerCase(),
       rootClass: (typeof sec.className === 'string' ? sec.className : ''),
       visibleText,
-      headings, paragraphs, listItems, ctas, images, formControls, leftovers,
+      headings, paragraphs, listItems, ctas, iconLinks, images, formControls, leftovers,
       ordered, orderedVerified,
     };
   });
@@ -496,6 +599,95 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
   // Scope-coverage diagnostic (reference/content-model.md § Scope discovery):
   // the whole-body normalized text is the ceiling; the h1 must live in scope.
   const scopeText = norm(scopes.map((s) => s.innerText || '').join(' '));
+
+  // Measured band tone (source-coverage S3): the painted background behind a slot — the opaque
+  // background of the largest box inside it (≥ 50% of its area, 3 levels down), else of its nearest
+  // painted ancestor. dark = relative luminance < 0.2, tinted = painted but not the page colour.
+  const rgba = (c) => { const m = (c || '').match(/[\d.]+/g); return m ? m.map(Number) : null; };
+  const opaque = (el) => { const c = rgba(getComputedStyle(el).backgroundColor); return c && (c[3] === undefined || c[3] > 0.5) ? c : null; };
+  const lum = ([r, g, b]) => { const f = (v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+  const pageBg = (() => { for (const el of [document.body, document.documentElement]) { const c = opaque(el); if (c) return c; } return [255, 255, 255]; })();
+  const selPath = (el) => {
+    const parts = [];
+    for (let e = el; e && e !== document.body && parts.length < 4; e = e.parentElement) {
+      const cls = (typeof e.className === 'string' && e.className.trim()) ? `.${e.className.trim().split(/\s+/).slice(0, 2).join('.')}` : '';
+      parts.unshift(e.id ? `${e.tagName.toLowerCase()}#${e.id}` : `${e.tagName.toLowerCase()}${cls}`);
+      if (e.id) break;
+    }
+    return parts.join(' > ');
+  };
+  const paintedBy = (el) => {
+    const r = el.getBoundingClientRect(); const area = r.width * r.height;
+    let best = null;
+    (function down(e, depth) {
+      if (depth > 3) return;
+      for (const k of e.children) {
+        const kr = k.getBoundingClientRect();
+        if (area && kr.width * kr.height >= area * 0.5) { if (opaque(k)) best = k; down(k, depth + 1); }
+      }
+    }(el, 0));
+    if (best) return best;
+    for (let e = el; e && e !== document.documentElement; e = e.parentElement) if (opaque(e)) return e;
+    return null;
+  };
+  const toneOf = (el) => {
+    const painter = paintedBy(el);
+    const c = painter ? opaque(painter) : pageBg;
+    const same = c.slice(0, 3).every((v, i) => Math.abs(v - pageBg[i]) < 6);
+    const tone = lum(c) < 0.2 ? 'dark' : (same ? 'page' : 'tinted');
+    return { tone, bg: `rgb(${c.slice(0, 3).map(Math.round).join(', ')})`, ...(painter && tone !== 'page' ? { toneEl: selPath(painter) } : {}) };
+  };
+  sections.forEach((s, i) => Object.assign(s, toneOf(sectionEls[i])));
+
+  // Residue inventory (source-coverage S1): every visible, text-bearing region OUTSIDE the scopes —
+  // the siblings of each scope's ancestor chain that hold no scope. A sidebar, a breadcrumb, a
+  // utility bar: none of it is in the byte-gate reference, so a gate can only see its loss here.
+  const inScope = (e) => scopes.some((s) => s === e || s.contains(e) || e.contains(s));
+  const residueEls = new Set();
+  scopes.forEach((s) => {
+    for (let e = s; e && e !== document.body; e = e.parentElement) {
+      for (const sib of (e.parentElement ? e.parentElement.children : [])) {
+        if (sib !== e && !inScope(sib) && !['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE'].includes(sib.tagName)) residueEls.add(sib);
+      }
+    }
+  });
+  const regionKind = (el) => {
+    const is = (sel) => el.matches(sel) || !!el.closest(sel);
+    if (is('header, footer, [role="banner"], [role="contentinfo"]')) return 'chrome';
+    const label = `${el.getAttribute('aria-label') || ''} ${typeof el.className === 'string' ? el.className : ''} ${el.id}`.toLowerCase();
+    if (/breadcrumb/.test(label) || el.querySelector('[aria-label*="readcrumb" i], [class*="breadcrumb" i]')) return 'breadcrumb';
+    if (is('aside, [role="complementary"]') || /sidebar|side-nav|sidenav|subnav|local-nav|in-page/.test(label) || el.querySelector('aside, [role="complementary"]')) return 'aside';
+    if (is('nav, [role="navigation"]') || el.querySelector('nav, [role="navigation"]')) return 'nav';
+    return 'other';
+  };
+  // One line per rendered text node (a breadcrumb's inline items are separate lines, not one run).
+  const textLines = (el) => {
+    const out = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n && out.length < 60; n = walker.nextNode()) {
+      const t = norm(n.nodeValue);
+      const host = n.parentElement;
+      if (t.length < 2 || !host || !host.getClientRects().length) continue;
+      if (getComputedStyle(host).visibility === 'hidden') continue;
+      if (out[out.length - 1] !== t) out.push(t);
+    }
+    return out;
+  };
+  const residue = [...residueEls]
+    .filter((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden'; })
+    .map((el) => {
+      const text = norm(el.innerText);
+      const r = el.getBoundingClientRect();
+      return {
+        sel: selPath(el),
+        kind: regionKind(el),
+        textLen: text.length,
+        lines: textLines(el),
+        rect: { x: Math.round(r.x), y: Math.round(r.y + window.scrollY), w: Math.round(r.width), h: Math.round(r.height) },
+      };
+    })
+    .filter((r) => r.textLen > 0)
+    .sort((a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x);
   const bodyText = norm(document.body.innerText || '');
   const h1 = document.querySelector('h1');
   const h1Text = h1 ? norm(h1.innerText) : null;
@@ -510,6 +702,7 @@ const model = await page.evaluate(({ scopeSelList, imgVisibleSrc }) => {
       h1InScope: h1Text ? scopeText.includes(h1Text) : null,
     },
     sections,
+    residue,
   };
 }, { scopeSelList: opts.scope, imgVisibleSrc: IMG_VISIBLE });
 
@@ -541,6 +734,7 @@ writeFileSync(out, JSON.stringify({
     viewport: '1440x900',
     scope: opts.scope,
     normalize: { source: normalizeSource, ledger },
+    settle,
     nav: {
       live: isLiveHttpUrl(opts.url),
       waitUntil: isLiveHttpUrl(opts.url) ? opts.waitUntil : 'networkidle',
@@ -556,23 +750,33 @@ writeFileSync(out, JSON.stringify({
 const imgCount = model.sections.reduce((n, s) => n + s.images.length, 0);
 console.log(`[capture-content] slots=${model.sections.length} textLen=${model.visibleTextNormalized.length} images=${imgCount}`);
 console.log(`[capture-content] coverage: scope ${model.coverage.scopeTextLen} / body ${model.coverage.bodyTextLen} chars (ratio ${model.coverage.ratio}) — h1 in scope: ${model.coverage.h1InScope}`);
-if (model.coverage.h1InScope === false) {
-  console.log('[capture-content] WARNING: the page h1 is OUTSIDE the declared scope — the top failure mode (hero living in <header>). Widen --scope.');
-}
+
 // Slot-granularity smell (content-model.md § Scope discovery step 3b): a
 // whole page collapsing to ~2 slots, or one slot carrying most of the scope
 // text, means the scope sits on a page-wide wrapper (CMS parsys), not on
 // the real sections. Coverage ratio and h1InScope both pass in that state.
+// stream-render's captureSmells drops the known false positives (all-whole
+// scopes, a mega-slot that is a repeating card grid) to notes.
 const largestSlot = model.sections.reduce((m, s) => Math.max(m, s.visibleText.length), 0);
 const largestShare = model.visibleTextNormalized.length ? largestSlot / model.visibleTextNormalized.length : 0;
 console.log(`[capture-content] granularity: ${model.sections.length} slots — largest slot carries ${Math.round(largestShare * 100)}% of scope text`);
-if (model.sections.length < 3 || largestShare > 0.5) {
-  console.log('[capture-content] WARNING: wrapper-scope smell — fewer slots than visible sections, or one mega-slot. Scope DEEPER so the real sections become the scope\'s children (content-model.md § Scope discovery step 3b).');
-}
+const { captureSmells } = await import(pathToFileURL(resolvePath(dirname(fileURLToPath(import.meta.url)), 'stream-render.mjs')).href);
+const smells = captureSmells(model);
+for (const w of smells.warnings) console.log(`[capture-content] WARNING: ${w}`);
+for (const n of smells.notes) console.log(`[capture-content] note: ${n}`);
 const unverified = model.sections.filter((s) => !s.orderedVerified).map((s) => s.slot);
 if (unverified.length) {
   console.log(`[capture-content] WARNING: ordered stream did not tile visibleText for ${unverified.join(', ')} — renderers must not trust sep flags on those slots; inspect before rendering.`);
   console.log('[capture-content] sanctioned resolution: drop stream text absent from the slot\'s visibleText and record the drop in the model\'s provenance (content-model.md § The ordered stream — orderedVerified:false fallback).');
 }
+// Source-coverage evidence (reference/gates.md § (a′)): what the reference did NOT take in.
+console.log(`[capture-content] settle: ${settle.stable ? 'stable' : 'NOT stable'} after ${settle.waitedMs}ms — ${settle.lateChars} chars rendered after the fixed waits${settle.lateChars ? ' (captured)' : ''}`);
+if (!settle.stable) console.log(`[capture-content] WARNING: page text still growing at the ${SETTLE_CAP_MS}ms settle cap — a feed or widget may be incomplete in the reference; re-capture or raise CAPTURE_SETTLE_CAP_MS.`);
+const tones = model.sections.filter((s) => s.tone !== 'page').map((s) => `${s.slot}:${s.tone}`);
+console.log(`[capture-content] tones: ${tones.length ? tones.join(' ') : 'all slots on the page colour'}`);
+for (const r of model.residue.filter((x) => x.kind !== 'chrome')) {
+  console.log(`[capture-content] residue (${r.kind}) ${r.sel} — ${r.textLen} chars outside the scope: "${r.lines.slice(0, 4).join(' | ').slice(0, 100)}"`);
+}
+if (model.residue.some((x) => x.kind !== 'chrome')) console.log('[capture-content] each residue region is carried to the target or declared dropped — source-coverage.mjs gates it (gates.md § (a′)).');
 console.log(`[capture-content] wrote ${out} + ${shot}`);
 await browser.close();

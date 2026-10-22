@@ -1,6 +1,6 @@
 ---
 name: reskin
-description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
+description: Rebuild an existing site's pages with byte-faithful content on a separately-defined donor design system — another live site, local static HTML prototypes, or a Figma file read headlessly over the REST API. Content fidelity is gated byte-level (text, ordered images, SEO metadata); design application is flexible (content re-laid-out onto donor modules). Use when the user says "reskin my site with this design", "apply this design system to my content", "restyle my site to look like <other site>", "new design, same content", "rebrand my site using these prototypes", "use this Figma design for my site", "build my site from these Figma pages" (Figma-only: the frames hold the content, no live site), or names a content site plus a design donor. NOT for redesigning from intent (that's the stardust core extract/direct/prototype chain) and NOT for keeping the current design while migrating (that's the replica flow).
 license: Apache-2.0
 compatibility: Requires Node 22+, Playwright with Chromium resolvable from the project, playwright-cli on PATH, and the impeccable skill (github.com/pbakaus/impeccable) installed alongside stardust.
 ---
@@ -22,6 +22,10 @@ The two halves have different contracts:
   explicitly declared, executable normalization ledger.
 - **Design is flexible.** Content is re-laid-out onto donor modules; a
   carousel may become a static card grid, a sidebar may become a band.
+  "May become" is never "may vanish": every region of the source page
+  (inside the scope or not), every late-rendered block and every dark
+  band lands on the target or is declared dropped with a why — gate
+  (a′), `source-coverage.mjs`.
   Structure (element counts, tag sequences) is informational, never
   gating — a reskin re-structures markup by design.
 
@@ -34,7 +38,11 @@ regression check instead of a debugging tool.
 
 ## Inputs
 
-- `<content-url>` — required. The site whose content is preserved.
+- `<content-url>` — the site whose content is preserved. Required unless
+  the project is **Figma-only** (no live site: the content is in the
+  page frames of a Figma file). Then run `figma-donor.mjs init <url>`
+  instead (writes `state.json` with `flowSource: "figma-only"`) and take
+  the content in Phase 2′.
 - Donor, exactly one of:
   - `--donor <url>` — a live site whose design system is adopted.
   - `--donor-dir <path>` — a directory of local static HTML
@@ -74,8 +82,8 @@ regression check instead of a debugging tool.
 3. **Copy the scripts into the project and run the copies.** ESM
    resolves `import('playwright')` from the *script's* directory and
    the plugin tree ships no `node_modules`. Copy, byte-identical, into
-   `stardust/scripts/{reskin,stardust,diff,replica,deploy}/`, the
-   directories siblings: the exact script list and what each one
+   `stardust/scripts/{reskin,stardust,diff,replica,deploy,prototype}/`,
+   the directories siblings: the exact script list and what each one
    imports are in `reference/gates.md` § Project copies.
 4. **Origin collision** — if `stardust/state.json` records a different
    `site.originUrl`, stop and ask before mixing sites, per
@@ -190,6 +198,46 @@ experiment's top two failure modes:
    (`--normalize`), so the gate measures exactly the normalization the
    capture declared. The ledger is code, not prose. Format in
    `reference/content-model.md` § Normalization ledger.
+3. **WHAT THE SCOPE DID NOT TAKE IN.** The capture records it so it
+   cannot be lost silently: `residue[]` (every region beside the
+   scope's ancestor chain — a breadcrumb, a section sidebar, a utility
+   bar — with its text lines), `_provenance.settle` (it waits until the
+   page text stops growing, so an XHR feed is in the model) and each
+   slot's measured band `tone` (`dark | tinted | page`). Read the
+   `residue` and `tones:` console lines: each non-chrome residue region
+   and each dark band is a Phase 3 mapping decision — carry it (a block,
+   page chrome such as a breadcrumb/section-nav layout, a tone variant)
+   or declare it dropped in `stardust/reskin/coverage/<slug>.json`.
+   Gate (a′) holds the decision.
+
+### Phase 2′ — CONTENT FROM FIGMA (Figma-only projects)
+
+No live site, so no `capture-content`. Per page frame:
+
+```bash
+node stardust/scripts/reskin/figma-donor.mjs content <figma-url> \
+  --frame <page-frame-id> --slug <slug> [--responsive <id>] \
+  [--pages <id>=<slug>,...] [--confidential]
+```
+
+It writes `reskin/content-model/<slug>/` — `content-model.json`
+(`source.kind: "figma"`, same shape as a live capture), `text-ops.json`,
+`flags.json`, `assets/` — plus the shared `_chrome` model and, unless one
+exists, the page's delta file `reskin/deltas/<slug>.json` — and adds the
+page to `state.json`. Image bytes come from the REST image endpoints
+when `FIGMA_TOKEN` is set, else from a supplied file; a missing image is
+a block flag. Rules (visibility, reading order, segmentation, casing,
+headings, links, placeholders) and file shapes:
+`reference/content-model.md` § Figma-sourced models. A placeholder-only
+page exits 1: the design holds no content to reskin.
+
+Review `figma-donor.mjs blocklist` before deploy: every open `block` or
+`review` flag (missing alt, unresolved links, derived title, kit copy)
+is fixed in Figma and `content` re-run, or acknowledged with
+`figma-donor.mjs ack <slug> --flag <key> --why "…"`. Phases 3–5 run
+unchanged except the content gate (Phase 5). Deploy goes to an isolated
+preview, never over an existing DA document; there is no origin, so
+`migrate` is skipped.
 
 ### Phase 3 — MAPPING BRIEF
 
@@ -229,9 +277,11 @@ regions) are split into atomic slots in the brief — section ≠ slot.
 ### Phase 4 — PROGRAMMATIC RENDER
 
 The decisive validated rule: **the page is GENERATED from
-`content-model.json` — never retyped by hand.** Write a renderer
-script per archetype (`stardust/reskin/renderers/<archetype>.mjs`,
-modeled on the experiment's `render-reskin.mjs`) that:
+`content-model.json` — never retyped by hand.** The generic renderer
+`scripts/stream-render.mjs <slug> [--mapping <mapping.json>]
+[--localize-images]` covers any donor and site; write a per-archetype
+renderer (`stardust/reskin/renderers/<archetype>.mjs`) only where it
+falls short. Either way the renderer:
 
 - reads the page's `content-model.json` and interpolates **every**
   visible string, href, and image URL from the model (HTML-escaped) —
@@ -253,6 +303,13 @@ modeled on the experiment's `render-reskin.mjs`) that:
   flattened to prose and never dropped: a select's option text is
   part of the byte reference (`reference/content-model.md` § Slot
   taxonomy, formControls);
+- keeps the structure the stream carries (`reference/content-model.md`
+  § Structure the stream keeps): `table` nodes as tables, disclosures
+  at the source's rest state (closed panels `hidden="until-found"`),
+  icon-font ligatures as glyphs and visually hidden text as `.sr-only`
+  (both still in innerText), content-sized images at their size — a
+  renderer that flattens them passes the byte gate and loses design
+  fidelity;
 - carries the metadata block verbatim into `<head>` (title,
   description, canonical, OG, Twitter, JSON-LD — including source
   garbage like broken JSON-LD URLs: fidelity over repair; **flag**
@@ -290,7 +347,10 @@ deployed page; commands,
 pass bars, tolerances, and failure modes in `reference/gates.md`. Serve or `file://`-address the
 rendered page and run:
 
-**(a) CONTENT GATE** — all three must pass:
+**(a) CONTENT GATE** — all three must pass (a Figma-sourced page has no
+source DOM: run `figma-text-gate.mjs` in place of `dom-equality` and
+`slot-coverage --deltas reskin/deltas/<slug>.json`; see
+`reference/gates.md` § figma-text-gate.mjs):
 
 ```bash
 node stardust/scripts/reskin/dom-equality.mjs \
@@ -302,6 +362,17 @@ node stardust/scripts/reskin/slot-coverage.mjs \
   --model stardust/reskin/content-model/<slug>/content-model.json \
   --rendered stardust/reskin/pages/<slug>.html \
   --report stardust/reskin/reports/<slug>-slot-coverage.md
+```
+
+Then **(a′) SOURCE COVERAGE** — what the content reference above did
+not take in (`reference/gates.md` § (a′)):
+
+```bash
+node stardust/scripts/reskin/source-coverage.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --target stardust/reskin/pages/<slug>.html \
+  --declared stardust/reskin/coverage/<slug>.json \
+  --out stardust/reskin/reports/<slug>-source-coverage.json
 ```
 
 `dom-equality.mjs` gates on whitespace-normalized visible-text **byte
@@ -316,8 +387,12 @@ href) and image present and asserts metadata carry-over
 node stardust/scripts/reskin/donor-probe.mjs \
   --tokens stardust/reskin/donor-tokens.json \
   --rendered stardust/reskin/pages/<slug>.html \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
   --report stardust/reskin/reports/<slug>-donor-probe.md
 ```
+
+`--model` lets the button probes SKIP on a page whose content has no
+button (a sibling with only cards and links); without it they FAIL.
 
 Computed-style assertions of donor token values on the rendered page —
 bg/fg, font-family token string, display weight, button spec,
@@ -355,8 +430,8 @@ B0 (join), B1 (geometry) and B3 (`:root` tokens, type ramp)
 block; B2 (frame pixels) is advisory and B4 (the divergence register,
 `.work/reskin/gates/<slug>/figma/register.md`) informational. Exit 124
 is no verdict: re-run once, never a fix iteration (the other exits and
-the residual classes: `reference/gates.md` § (d)). Copy
-`summary.json`'s `ledgerFragment` into `ledger.json`
+the residual classes: `reference/gates.md` § (d)). `reskin-ledger.mjs
+record` (e) copies `summary.json`'s `ledgerFragment` into `ledger.json`
 `pages.<slug>.gates.figma`.
 
 **(e) DEPLOYED ACCEPTANCE** (any donor; skipped outside an aem-boilerplate
@@ -376,6 +451,9 @@ node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> \
 node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg   # repeat while it exits 75
 ```
 
+Re-run (a′) on the preview (`--target https://<branch>--<repo>--<org>.aem.page/<path>`): a sidebar or a feed that is
+page chrome or a client-rendered block in EDS exists only there.
+
 The preview must be reachable without auth: a protected preview is out of
 scope, and `preview` stops on it with exit 2.
 
@@ -383,8 +461,8 @@ scope, and `preview` stops on it with exit 2.
 `ledgerFragment` into `ledger.json` `pages.<slug>.gates.deployed`. Exits 124
 and 3 and the fix budget: `reference/deployed-leg.md` § The fix budget.
 `all` replaces only `deploy` Step 10's automated reconcile: its deployed
-desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and applicable
-header-behavior checks stay mandatory before handoff, their results or an
+desktop/mobile eyeball, delayed-font/nav CLS probe (CLS < 0.1) and the
+header-behavior checks `chrome` (A6) does not cover stay mandatory before handoff, their results or an
 explicit `unresolved` in the ledger (`reference/deployed-leg.md` § Recipe, step 7).
 
 **One fix iteration per gate family** (content; design-adoption/sanity;
@@ -393,11 +471,55 @@ Figma fidelity): fix once, re-run all gates; (e) has its own budget
 `stardust/reskin/ledger.json` under `residuals[]`, never absorbed
 (`reference/gates.md` § One fix iteration per gate family).
 
+**(e) Record — the ledger is written by script, never by hand:**
+
+```bash
+node stardust/scripts/reskin/reskin-ledger.mjs record <slug>
+node stardust/scripts/reskin/reskin-ledger.mjs eyeball <slug> --verdict pass --note "…"
+node stardust/scripts/reskin/reskin-ledger.mjs residual <slug> --gate <g> --cause "…" --verdict accepted|needs-owner|blocked [--by <owner>]
+```
+
+`record` reads the three gate reports (`reports/<slug>-{content-gate,
+slot-coverage,donor-probe}.md` or `gates/<slug>/{dom-equality,
+slot-coverage,donor-probe}.md`, `**Overall: PASS|FAIL**`), runs the
+prototype's mobile-adapt audit (static rules + `mobile-nav-audit.mjs`),
+reads (d)'s `.work/reskin/gates/<slug>/figma/summary.json` into
+`gates.figma` (and M2a's `…/deployed/summary.json` into
+`gates.deployed`), and sets the page `gated` or `failing`. A Figma donor
+with no figma fragment records `figma.*` NOT-RUN. A residual's `--gate`
+for a Figma family is its class (`figma.geometry`, …). Chrome is never waived by an
+agent: `deployed.sanity`/`deployed.chrome` residuals are refused, a header or footer
+one needs `--by <owner>`, and `eyeball --verdict pass` is refused while
+`deployed.chrome` fails. On an approved page it fills
+`handoff.<type>` — the archetype, its prototype sha and the tier record
+(gates passed, prototype gates waived) — which `reskin-preflight` and
+`migrate` read. Re-run `record` after the approval and after every fix.
+
 ### Phase 6 — HANDOFF
 
 Reskin owns the archetype pages; scale and shipping are the existing
 pipeline:
 
+- **Approve honestly.** The user approves the archetype
+  (`state.mjs advance <slug> --to approved --by user --skill reskin`;
+  `--history-only` on an already-migrated page); an agent may approve
+  only in a hands-off run (`state.json` `handsOff: true`, `--by
+  hands-off`) and only once Phase 5 (d) shows every gate PASS or
+  accepted and the eyeball recorded. Then `reskin-ledger.mjs record
+  <archetype>` again so the handoff entry exists.
+- **Bridge, then check.** After the archetype is approved, run
+  `scripts/canon-from-reskin.mjs <archetype-slug>` — it writes
+  migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
+  `dynamic-features.md`) and, on a re-run with `--force`, flags
+  approved/migrated pages stale where the canon change reaches them.
+  A changed canon is captured to `stardust/reskin/approvals/` and
+  pixel-compared with the previous approval (warn above
+  `--visual-threshold`, default 10 %; recorded in the canon history).
+  Then `scripts/reskin-preflight.mjs` must exit 0 — it is the
+  `flow: reskin` predicate migrate and rollout require
+  (`reference/handoff.md`). Never run
+  `prepare-migration` or `direct` under `flow: reskin` — they rewrite
+  the donor-sourced DESIGN.*.
 - **Scale via the stardust `migrate` skill** (`../migrate/SKILL.md`) with the
   donor-pinned target (the `state.json.designSource` stamp Phase 1
   wrote is what `direct` reads for donor pinning;
@@ -405,7 +527,9 @@ pipeline:
   in the handoff instead, `reference/donor-sources.md` § Two
   first-class token-sourcing paths).
   Same-type sibling pages render at the **sibling tier** against the
-  gated archetype. Content rules are the ones reskin already
+  gated archetype; gate each migrated page (the three gates on
+  migrate's output, reports in `reskin/gates/<slug>/migrated/`) and
+  `reskin-ledger.mjs record <slug> --stage migrated`. Content rules are the ones reskin already
   enforces — `../migrate/reference/content-preservation.md` is
   inherited wholesale.
 - **Ship via the stardust `deploy` and `rollout` skills.** An archetype
@@ -418,11 +542,14 @@ pipeline:
   gate (`block-roundtrip --ew`) before they are done.
 
 Reskin writes its own state under `stardust/reskin/` — `ledger.json`
-holds per-page status (`captured → mapped → rendered → gated`), gate
-results, and residuals. It makes **no changes to the core state
-machine** (`../stardust/reference/state-machine.md`): the only
-`state.json` touches are Setup's `flow` and Phase 1's `designSource`
-stamp (`extract --design-source`, or `figma-donor.mjs stamp`).
+(written by `reskin-ledger.mjs`) holds per-page status (`gated |
+failing`), gate results, eyeball, residuals and the `handoff` record. In
+the core state machine (`../stardust/reference/state-machine.md`) it
+only stamps `flow` (Setup) and `designSource` (Phase 1: `extract
+--design-source` for URL and directory donors, `figma-donor.mjs stamp`
+for Figma) and writes `approved` on the archetype (Phase 6). The full
+handoff contract — predicate, approval, tier record, bounded inventory,
+sibling gate — is `reference/handoff.md`.
 
 ## What reskin never does
 
@@ -469,12 +596,16 @@ stamp (`extract --design-source`, or `figma-donor.mjs stamp`).
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
 | `stardust/reskin/figma-checks/<slug>.json` | Figma donor: the authored geometry, type and pixel checks (git-ignored under `--confidential`) |
 | `stardust/reskin/deltas/<slug>.json` | Deployed leg: the page's declared source → preview differences (`--deltas`) |
-| `stardust/reskin/ledger.json` | Per-page status, gate results, residuals |
+| `stardust/reskin/gates/<slug>/` | Gate reports (alternate layout), `migrated/` for the sibling gate on migrate's output |
+| `stardust/reskin/ledger.json` | Per-page status, gate results, eyeball, residuals, handoff record (`reskin-ledger.mjs`) |
 | `stardust/scripts/reskin/` | Project-local copies of the skill scripts |
 | `stardust/.work/reskin/{figma,gates/<slug>/{figma,figma-preview,deployed}}/` | Git-ignored evidence: the Figma REST cache and frame PNGs; each leg's checks, `summary.json`, divergence register and preview record |
+| `stardust/reskin/content-model/<slug>/{text-ops,flags}.json`, `assets/` | Figma-only projects: figma-text-gate's text ops, the flags (deploy blocklist) and image bytes beside the Figma-sourced model; the page's `reskin/deltas/<slug>.json` is seeded with `metadata.absent` |
 
 ## References
 
+- `reference/handoff.md` — reskin → migrate/rollout: the predicate,
+  approval (D3), tier record (D4), bounded inventory, sibling gate.
 - `reference/donor-sources.md` — the three donor types and their
   capture recipes; pin-one-reference-page; `donor-tokens.json` and
   `donor-modules.md` contracts; the Figma adapter (REST).

@@ -8,7 +8,8 @@
  *
  * Reads stardust/reskin/donor-tokens.json (shape documented in
  * skills/reskin/reference/donor-sources.md § donor-tokens.json) and asserts
- * each spec entry: querySelector(selector) → getComputedStyle()[property]
+ * each spec entry: querySelector(selector) → getComputedStyle()[property]; an optional `exclude`
+ *   selector skips elements that carry a declared override (SKIP when every match does)
  * compared to the token value.
  *
  * Comparison modes (see reference/gates.md § Tolerances):
@@ -35,6 +36,10 @@
  * spuriously). A selector that resolves to nothing is a FAIL,
  * not a skip — silent skips fake passes. A token path absent from
  * donor-tokens.json is a SKIP (reported). Override or extend with --spec.
+ * With --model, a spec entry marked `"needs": "button"` (the default
+ * `main .btn` entries) is a SKIP when the page's content model has nothing
+ * the renderer turns into a button (stream-render's rendersButton) — a
+ * page with no button is not drift; without --model it stays a FAIL.
  *
  * Usage:
  *   node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>
@@ -42,8 +47,10 @@
  *              { "label": "...", "selector": "...", "property": "backgroundColor",
  *                "token": "buttons.primary.background" | "value": "rgb(...)",
  *                "tolerancePx": 2,         (property in camelCase, or a --custom-property)
- *                "compare": "firstFamily",
+ *                "compare": "firstFamily", "needs": "button",
  *                "match": "all" }          (every match of the selector, not the first)
+ *       [--model <content-model.json>] the page's content model: button
+ *                                    probes are SKIP when it has no button
  *       [--report <path>]            markdown report
  *       [--shot <path>]              full-page screenshot at 1440 for the
  *                                    side-by-side eyeball vs donor screenshots
@@ -83,13 +90,15 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
 
 function parseArgs(argv) {
   const opts = { widths: '1440,360', 'wait-until': 'domcontentloaded' };
   // Enumerated value-taking flags — an unknown --flag (e.g. a typo like
   // --tokns) must be rejected, not silently stored and defaulted.
-  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json', 'eds-timeout']);
+  const VALUE_FLAGS = new Set(['tokens', 'rendered', 'spec', 'model', 'report', 'shot', 'widths', 'ua', 'wait-until', 'locale', 'viewport', 'json', 'eds-timeout']);
   for (let i = 2; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') opts.help = true;
@@ -109,7 +118,7 @@ function parseArgs(argv) {
 const args = parseArgs(process.argv);
 if (args.help || !args.tokens || !args.rendered) {
   console.log('usage: node donor-probe.mjs --tokens <donor-tokens.json> --rendered <url|file>');
-  console.log('         [--spec <probe-spec.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
+  console.log('         [--spec <probe-spec.json>] [--model <content-model.json>] [--report <path>] [--shot <path>] [--widths 1440,360]');
   console.log('         [--viewport <w>] [--no-sanity] [--json <path>]');
   console.log('         [--ua <string>] [--wait-until domcontentloaded] [--headed] [--locale <tag>]');
   console.log('         [--wait-eds] [--eds-timeout <ms>]');
@@ -165,25 +174,31 @@ const edsTimeoutMs = args['eds-timeout'] ? Number(args['eds-timeout']) : 20000;
 const tokens = JSON.parse(readFileSync(resolve(args.tokens), 'utf8'));
 const get = (obj, path) => path.split('.').reduce((o, k) => (o == null ? undefined : o[k]), obj);
 
-// Default spec — donor-tokens.json paths × rendered-page conventions.
+// Default spec — donor-tokens.json paths × rendered-page conventions. Heading probes take the first heading
+// of any level: form and auth pages often have no h1/h2 (a card titled with an h3).
 const DEFAULT_SPEC = [
   { label: 'page bg', selector: 'body', property: 'backgroundColor', token: 'palette.pageBg' },
   { label: 'body fg', selector: 'body', property: 'color', token: 'palette.bodyFg' },
   { label: 'font-family token string', selector: 'body', property: 'fontFamily', token: 'type.family' },
   { label: 'body font size', selector: 'body', property: 'fontSize', token: 'type.body.fontSize' },
-  { label: 'display weight', selector: 'main h1', property: 'fontWeight', token: 'type.display.fontWeight' },
-  { label: 'heading color', selector: 'main h2', property: 'color', token: 'palette.headingFg' },
-  { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background' },
-  { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color' },
-  { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius' },
-  { label: 'primary button padding (±2px)', selector: 'main .btn', property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2 },
-  { label: 'primary button font size', selector: 'main .btn', property: 'fontSize', token: 'buttons.primary.fontSize' },
-  { label: 'container max-width (±20px)', selector: 'main .container', property: 'maxWidth', token: 'layout.containerMaxWidth', tolerancePx: 20 },
+  { label: 'display weight', selector: 'main :is(h1, h2, h3)', property: 'fontWeight', token: 'type.display.fontWeight' },
+  { label: 'heading color', selector: 'main :is(h1, h2, h3, h4, h5, h6)', exclude: '.tone-dark *', property: 'color', token: 'palette.headingFg' },
+  { label: 'primary button bg', selector: 'main .btn', property: 'backgroundColor', token: 'buttons.primary.background', needs: 'button' },
+  { label: 'primary button fg', selector: 'main .btn', property: 'color', token: 'buttons.primary.color', needs: 'button' },
+  { label: 'primary button radius', selector: 'main .btn', property: 'borderRadius', token: 'buttons.primary.borderRadius', needs: 'button' },
+  { label: 'primary button padding (±2px)', selector: 'main .btn', property: 'padding', token: 'buttons.primary.padding', tolerancePx: 2, needs: 'button' },
+  { label: 'primary button font size', selector: 'main .btn', property: 'fontSize', token: 'buttons.primary.fontSize', needs: 'button' },
+  { label: 'container max-width (±20px)', selector: 'main .container', exclude: '.inset > .container', property: 'maxWidth', token: 'layout.containerMaxWidth', tolerancePx: 20 },
   { label: 'section rhythm (±16px)', selector: 'main section', property: 'paddingTop', token: 'layout.sectionPaddingY', tolerancePx: 16 },
 ];
 const spec = args.spec ? JSON.parse(readFileSync(resolve(args.spec), 'utf8')) : DEFAULT_SPEC;
 for (const entry of spec) {
   if (entry.match !== undefined && entry.match !== 'all' && entry.match !== 'first') die(`spec entry "${entry.label}": match must be "all" (every match) or "first" (the default), got ${JSON.stringify(entry.match)}`);
+}
+let noButton = false;
+if (args.model) {
+  const { modelHasButton } = await import(pathToFileURL(resolve(HERE, 'stream-render.mjs')).href);
+  noButton = !modelHasButton(JSON.parse(readFileSync(resolve(args.model), 'utf8')));
 }
 
 const normFamily = (s) => (s || '').replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
@@ -256,12 +271,24 @@ for (const entry of spec) {
     results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `token path "${entry.token}" absent from ${args.tokens}` });
     continue;
   }
+  if (entry.needs === 'button' && noButton) {
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `the page's content (${args.model}) has no button` });
+    continue;
+  }
   const every = entry.match === 'all';
-  const gots = await page.evaluate(([sel, prop, all]) => {
-    const els = all ? [...document.querySelectorAll(sel)] : [document.querySelector(sel)].filter(Boolean);
-    if (!els.length) return null;
+  const gots = await page.evaluate(([sel, prop, all, exclude]) => {
+    const found = [...document.querySelectorAll(sel)];
+    const kept = exclude ? found.filter((e) => !e.matches(exclude)) : found;
+    if (!kept.length) return found.length ? { excluded: found.length } : null;
+    const els = all ? kept : [kept[0]];
     return els.map((el) => (String(prop ?? '').startsWith('--') ? getComputedStyle(el).getPropertyValue(prop).trim() : getComputedStyle(el)[prop]));
-  }, [entry.selector, entry.property, every]);
+  }, [entry.selector, entry.property, every, entry.exclude]);
+  if (gots && !Array.isArray(gots)) {
+    // Every match carries a declared per-slot override (e.g. mapping.json `inset`), which
+    // figma-gate geometry measures instead; the token has no undeclared surface to check.
+    results.push({ check: entry.label, label: entry.label, status: 'SKIP', detail: `all ${gots.excluded} match(es) declare an override (${entry.exclude})` });
+    continue;
+  }
   if (gots === null) {
     // A missing selector is a FAIL: either the renderer broke the documented
     // conventions or the spec is stale — both need a human, not a silent skip.

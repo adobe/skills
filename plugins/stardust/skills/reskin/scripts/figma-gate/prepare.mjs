@@ -38,7 +38,7 @@ export function checksFor({ dir, slug, inputs, join, out = null }) {
 export async function prepare({ dir, slug, url, target = localTarget(url) }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug, target.regime);
-  const join = await runJoin({ target, inputs, out });
+  const join = await runJoin({ target, inputs, out, page: slug });
   if (!join.pass) return { drift: true, join, out };
   const { boxes, checks, coverage } = checksFor({ dir, slug, inputs, join, out });
   return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, out };

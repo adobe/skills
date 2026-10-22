@@ -6,8 +6,11 @@
 //        UsageError (exit 2: a setup problem, a stalled decoration), an error with code 3 (bot challenge) or code 124.
 //        `run(command, args, { env })` starts a gate and answers { status, signal, stdout, stderr } (a promise or not,
 //        as spawnSync's result is shaped); the default is async, so a server in this process can answer a gate.
+// A Figma-sourced model (_provenance.source.kind "figma", a Figma-only site: no live source) runs figma-text-gate.mjs
+// in place of dom-equality (the frame's text, re-read from the cached Figma nodes, against the preview's main) and
+// records figmaText: { exit, report } instead of domEquality.
 // Inputs: <dir>/reskin/content-model/<slug>/content-model.json (required: its _provenance.url is the live source and
-// _provenance.scope the source scope), <dir>/reskin/normalize/<slug>.mjs (optional: the source-side ledger the capture
+// _provenance.scope the source scope, unless the model is Figma-sourced), <dir>/reskin/normalize/<slug>.mjs (optional: the source-side ledger the capture
 // used) and <dir>/reskin/deltas/<slug>.json (optional: the declared differences, handed to both gates as --deltas;
 // without one no difference is allowed for and a failed check blocks).
 // The verdict is read from the exits alone, except that "advisory" is the gate's own ADVISORY line on stdout
@@ -29,10 +32,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 // Both gates sit beside deployed-gate.mjs in both layouts (plugin tree and project copy).
 const DOM_EQUALITY = resolve(HERE, '..', 'dom-equality.mjs');
 const SLOT_COVERAGE = resolve(HERE, '..', 'slot-coverage.mjs');
+const FIGMA_TEXT = resolve(HERE, '..', 'figma-text-gate.mjs');
 const UNUSED = /^\s*WARNING unused delta (.+)$/;
 const IGNORE_KEY = /^(metadata\.ignore "(?:[^"\\]|\\.)*"): /;
 // What a failed gate says on stdout or stderr about the failure itself, for the CLI to quote.
-const FINDING = /^\s*(FAIL |text diverges )/;
+const FINDING = /^\s*(FAIL |text diverges |(missing|order|case|duplicate|extra|placeholder missing|placeholder extra): )/;
 const MAX_FINDINGS = 15;
 
 // The ids in a gate's stdout WARNING lines. An allow id may hold ": ", so the declared ids are matched first.
@@ -51,13 +55,14 @@ function unusedIds(stdout, deltas) {
 // preview is the record of `deployed-gate preview`.
 export async function runContent({ dir, slug, preview, env = process.env, run = runChild }) {
   const out = deployedDir(dir, slug);
-  const files = { record: join(out, 'content.json'), domEquality: join(out, 'content-dom-equality.md'), slotCoverage: join(out, 'content-slot-coverage.md') };
+  const files = { record: join(out, 'content.json'), domEquality: join(out, 'content-dom-equality.md'), figmaText: join(out, 'content-figma-text.json'), slotCoverage: join(out, 'content-slot-coverage.md') };
   for (const f of Object.values(files)) rmSync(f, { force: true });
 
   if (typeof preview?.url !== 'string' || !preview.url) throw new UsageError(`${join(out, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
   const modelPath = join(dir, 'reskin', 'content-model', slug, 'content-model.json');
   const provenance = readInput(modelPath, 'the content model the reskin captures from the live source')?._provenance;
-  if (typeof provenance?.url !== 'string' || !provenance.url.trim()) throw new UsageError(`${modelPath} has no _provenance.url: the live source this page is compared with`);
+  const figma = provenance?.source?.kind === 'figma';
+  if (!figma && (typeof provenance?.url !== 'string' || !provenance.url.trim())) throw new UsageError(`${modelPath} has no _provenance.url: the live source this page is compared with`);
   const normalizePath = join(dir, 'reskin', 'normalize', `${slug}.mjs`);
   const deltasPath = join(dir, 'reskin', 'deltas', `${slug}.json`);
   const deltas = existsSync(deltasPath) ? loadDeltas(deltasPath) : null;
@@ -65,7 +70,11 @@ export async function runContent({ dir, slug, preview, env = process.env, run = 
   const scope = typeof provenance.scope === 'string' && provenance.scope.trim() ? provenance.scope : null;
 
   const gates = [
-    {
+    figma ? {
+      name: 'figma-text-gate',
+      report: files.figmaText,
+      args: [FIGMA_TEXT, '--model', modelPath, '--rendered', preview.url, '--dir', dir, '--wait-eds', '--report', files.figmaText],
+    } : {
       name: 'dom-equality',
       report: files.domEquality,
       args: [DOM_EQUALITY, '--source', provenance.url, ...(scope ? ['--source-scope', scope] : []), ...optional('--normalize', normalizePath, existsSync(normalizePath)),
@@ -99,7 +108,7 @@ export async function runContent({ dir, slug, preview, env = process.env, run = 
   const [dom, slot] = results;
   const record = {
     verdict: results.some((g) => g.exit === 1) ? 'FAIL' : results.some((g) => g.advisory) ? 'ADVISORY' : 'PASS',
-    domEquality: { exit: dom.exit, report: dom.report },
+    [figma ? 'figmaText' : 'domEquality']: { exit: dom.exit, report: dom.report },
     slotCoverage: { exit: slot.exit, report: slot.report },
     unusedDeltas: [...new Set(results.flatMap((g) => g.unused))],
   };

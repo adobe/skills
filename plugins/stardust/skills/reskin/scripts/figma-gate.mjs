@@ -329,7 +329,7 @@ async function joinStep({ dir, opts, log, UsageError }) {
   const [{ readInputs, workDir }, { runJoin }] = await Promise.all([helper('io'), helper('join')]);
   const inputs = readInputs(dir, opts.page, ['mapping', 'contentModel', 'rules']);
   const target = await targetFor(opts);
-  const result = await runJoin({ target, inputs, out: workDir(dir, opts.page, target.regime) });
+  const result = await runJoin({ target, inputs, out: workDir(dir, opts.page, target.regime), page: opts.page });
   logJoin(result, log);
   return result.pass ? 0 : 1;
 }
@@ -425,7 +425,7 @@ async function registerStep({ dir, opts, log, UsageError, ready: given }) {
       geometry: read('geometry.json'),
       ramp: read('ramp.json'),
       pixel: read('pixel.json'),
-      mapping: (await helper('mapping')).parseMapping(inputs.mapping),
+      mapping: (await helper('mapping')).parseMapping(inputs.mapping, opts.page),
       boxes,
       flags: inputs.ledger?.pages?.[opts.page]?.flags || [],
       link,

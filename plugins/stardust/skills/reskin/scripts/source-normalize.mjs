@@ -10,7 +10,8 @@
  *
  * Default entries (generic, safe on most pages):
  *   N-D1  cookie/consent chrome removal (OneTrust, Cookiebot, Usercentrics,
- *         generic cookie-banner ids/classes) — overlay chrome, not content.
+ *         generic cookie-banner ids/classes, cookie/consent/gdpr-named overlay
+ *         elements) — overlay chrome, not content.
  *   N-D2  de-carousel (slick / swiper / splide / glide): remove CLONE slides
  *         (they duplicate text), force real slides visible + static (hidden
  *         slides are absent from innerText), drop pager dots and arrows
@@ -43,7 +44,7 @@ import { resolve } from 'node:path';
 export const DEFAULT_LEDGER = [
   {
     id: 'N-D1',
-    what: 'remove cookie/consent chrome (OneTrust, Cookiebot, Usercentrics, generic cookie-banner ids/classes)',
+    what: 'remove cookie/consent chrome (OneTrust, Cookiebot, Usercentrics, generic cookie-banner ids/classes, any cookie/consent/gdpr-named element inside a fixed/sticky/high-z overlay)',
     why: 'overlay chrome injected by a CMP, not page content; re-added at deploy time',
   },
   {
@@ -60,6 +61,26 @@ export const DEFAULT_NORMALIZE = `(() => {
   document.querySelector('#usercentrics-root')?.remove();
   document.querySelectorAll('[id*="cookie" i][id*="banner" i],[id*="cookie" i][id*="consent" i],[class*="cookie-banner" i],[class*="cookie-consent" i],[aria-label*="cookie" i][role="dialog"]')
     .forEach((e) => e.remove());
+  // Overlay heuristic (field finding, M3 spike: a CMP panel id'd like '#CookieReportsPanel'
+  // slipped every name pattern above): an element whose id/class names cookie/consent/gdpr
+  // AND that sits in a fixed/sticky or high-z overlay is chrome. The overlay guard keeps an
+  // in-content "cookie policy" section from being pruned.
+  {
+    const NAME = /cookie|consent|gdpr/i;
+    const overlay = (el) => {
+      for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
+        const cs = getComputedStyle(n);
+        if (cs.position === 'fixed' || cs.position === 'sticky') return true;
+        if (cs.position !== 'static' && +cs.zIndex >= 100) return true;
+      }
+      return false;
+    };
+    for (const el of [...document.querySelectorAll('[id], [class]')]) {
+      if (!el.isConnected || el.closest('main article')) continue;
+      const name = (el.id || '') + ' ' + (typeof el.className === 'string' ? el.className : '');
+      if (NAME.test(name) && overlay(el)) el.remove();
+    }
+  }
   // N-D2 — de-carousel
   document.querySelectorAll('.slick-cloned, .swiper-slide-duplicate, .splide__slide--clone, .glide__slide--clone')
     .forEach((e) => e.remove());
@@ -73,6 +94,34 @@ export const DEFAULT_NORMALIZE = `(() => {
   });
   document.querySelectorAll('.slick-dots, .slick-arrow, .swiper-pagination, .swiper-button-prev, .swiper-button-next, .splide__pagination, .splide__arrows, .glide__bullets, .glide__arrows')
     .forEach((e) => e.remove());
+})()`;
+
+/**
+ * Disclosure rest state — the SINGLE definition of "collapsed at rest" both content gates use.
+ * DISCLOSURE_STATE is a function-source string (run inside page.evaluate() on a scope element) that
+ * counts the disclosures in it BEFORE any normalization or reveal: collapsed = a trigger with
+ * aria-expanded="false", a closed <details>, or a hidden="until-found" region; expanded = a trigger
+ * with aria-expanded="true" or an open <details>.
+ *
+ * REVEAL_DISCLOSURES is the RENDERED side's counterpart of a source ledger's "expand every
+ * accordion" entry: it opens every <details> and every hidden="until-found" region so the gate reads
+ * the panel text. It runs only after the rest state was recorded. A normalization is capture-only:
+ * it never describes how the delivered block behaves at rest (reference/content-model.md
+ * § Normalization ledger). A delivered block hides a collapsed panel with hidden="until-found" or a
+ * closed <details> — text hidden any other way (display:none on a class) stays unread and fails the
+ * text check, which is the point.
+ */
+export const DISCLOSURE_STATE = `((root) => {
+  const n = (sel) => root.querySelectorAll(sel).length;
+  return {
+    collapsed: n('[aria-expanded="false"]') + n('details:not([open])') + n('[hidden="until-found"]'),
+    expanded: n('[aria-expanded="true"]') + n('details[open]'),
+  };
+})`;
+
+export const REVEAL_DISCLOSURES = `(() => {
+  document.querySelectorAll('details:not([open])').forEach((d) => { d.open = true; });
+  document.querySelectorAll('[hidden="until-found"]').forEach((e) => { e.removeAttribute('hidden'); });
 })()`;
 
 /**
@@ -118,7 +167,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
   if (arg === '--help' || arg === '-h') {
     console.log('source-normalize.mjs — shared executable normalization ledger (reskin).');
     console.log('Usage: node source-normalize.mjs        # print default ledger entries + script');
-    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE } from it.');
+    console.log('As a module: import { DEFAULT_NORMALIZE, DEFAULT_LEDGER, loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES } from it.');
     console.log('Page ledgers: export NORMALIZE (string) and LEDGER; pass via --normalize to');
     console.log('capture-content.mjs and dom-equality.mjs — the SAME file to both.');
     process.exit(0);

@@ -27,6 +27,9 @@ siblings of `../reskin/`.
   `stitch-shot`, `chrome-parity` and `cap-probe` need `diff/live-session.mjs`).
 - `skills/deploy/scripts/` → `deploy/`: `eds-path.mjs`, `qa-gate.mjs` (finds `replica/cap-probe.mjs`),
   `ai-readability.mjs`: what `deployed-gate.mjs` resolves.
+- `skills/prototype/fixtures/mobile-nav-audit.mjs` → `prototype/`: `reskin-ledger.mjs record` runs it as the runtime
+  mobile-adapt check; without it that check is `NOT-RUN`, which blocks the archetype until a residual is accepted.
+  (`canon-from-reskin.mjs`'s visual record uses `replica/stitch-shot.mjs` and `pixel-compare.mjs`, listed above.)
 
 Every gate script (`capture-content`, `dom-equality`, `donor-probe`, `slot-coverage`) needs `diff/live-session.mjs`
 and exits 2 without it, even for a local file; only `capture-content` also fails `--help`.
@@ -60,6 +63,19 @@ executed identically by `capture-content.mjs` and this gate: hidden
 by style → out; rendered above 1×1px → in (tracking pixels are not
 content); `loading="lazy"` and still zero-size → in. One definition,
 two callers — capture and gate cannot drift on image counts.
+(3) **disclosure rest state**: the collapsed and open disclosures in
+scope (`aria-expanded`, `<details>`, `hidden="until-found"`, the shared
+`DISCLOSURE_STATE` in `source-normalize.mjs`) are counted on both sides
+**before** the ledger runs. A source that starts any collapsed against a
+render that starts none collapsed FAILS: a ledger entry that expands
+accordions is capture-only and never makes the delivered block start
+open. The rendered side then runs `REVEAL_DISCLOSURES` (opens `<details>`,
+unhides `hidden="until-found"`) before its text is read, so a correctly
+collapsed panel is still measured; a panel hidden any other way
+(`display:none` on a class) stays unread and fails (1). `slot-coverage`
+and `figma-text-gate` run the same reveal. A page whose redesign starts
+every disclosure open says so in its deltas file:
+`"disclosures": { "restState": "open", "why": "…" }`.
 **Informational only:** element count and tag+class
 sequence — a reskin re-structures markup by design; a tag-sequence
 divergence at position 0 is expected and healthy.
@@ -153,6 +169,63 @@ Defenses, in order:
   broken *now*, in the gated artifact (see § Failure modes,
   Hotlinked source images).
 
+### figma-text-gate.mjs — content gate for Figma-sourced pages
+
+A Figma-sourced page has no source DOM, so `dom-equality` cannot run. The Figma text gate replaces it:
+
+```bash
+node stardust/scripts/reskin/figma-text-gate.mjs \
+  --model stardust/reskin/content-model/<slug>/content-model.json \
+  --rendered stardust/prototypes/<slug>-proposed.html
+```
+
+The reference is every effectively-visible TEXT node of the frame's body sections, in reading order and
+rendered case, re-read from the cached nodes response — never from the model it checks. Each string must
+appear exactly once, in order, in `<main>` innerText; drawn-field placeholders must appear as
+`placeholder` attributes. Findings: missing, order, case (TITLE is caseless: CSS `capitalize` is not
+Figma TITLE), duplicate, extra. `text-ops.json` beside the model declares what not to expect. PASS only
+with zero findings; exit 0 / 1 / 2 (setup). Run `slot-coverage.mjs --deltas reskin/deltas/<slug>.json`
+beside it: `figma-donor.mjs content` seeds that file (the deployed leg's schema, `deployed/deltas.mjs`)
+with `metadata.absent: [description, canonical]`, asserted not carried; the model's empty OG/Twitter
+maps and JSON-LD list make the gate expect none, and images keep the host+path comparison.
+
+## (a′) Source coverage
+
+Every gate above compares the target with the captured model, so what the
+capture did not observe is invisible to all of them and its loss passes.
+`source-coverage.mjs` gates the three blind spots — space, time, attribute —
+against the local reskin page (Phase 5) and again on the aem.page preview
+(after (e)'s `preview`), where page chrome and client-rendered blocks exist.
+
+| Check | Reads | Bar |
+|---|---|---|
+| S1 residue carried | `residue[]` (not `chrome`) | each region ≥ `--min-chars` (20): one target element outside header/footer, ≤ 3× its text, holds ≥ 60% of its text lines — else declared, else **FAIL**; shorter regions are `info` |
+| S2 settled | `_provenance.settle` | missing (pre-0.40 model) or `stable: false` is **WARN**: re-capture; never fails |
+| S3 tone carried | `sections[].tone` | a `dark` slot's first heading (else text) sits on a dark background in the target — else declared, else **FAIL** (also when the probe text is gone); `tinted` → other is WARN; `page` is not checked |
+
+The target is settled the same way as the source (scroll, then text stable
+3 × 500 ms, ≤ 15 s) before it is measured. Declared drops,
+`stardust/reskin/coverage/<slug>.json`:
+
+```json
+{ "version": 1,
+  "residue": [ { "match": "<substring of the sel or the first line>", "why": "…" } ],
+  "tones":   [ { "slot": "s01", "to": "tinted", "why": "donor hero module is a light band" } ],
+  "blocking": true }
+```
+
+Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
+every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
+Exit 0 PASS, 1 FAIL, 2 setup (a protected preview, 401 or 403, is out of scope).
+
+**Why it exists.** A 52-page school-site migration passed every content gate
+while the deployed pages had no breadcrumb or section sidebar (outside
+`main`, so never in the model), no Facebook posts on the home page (rendered
+by XHR after the capture read the page) and light bands where the source's
+callouts were dark (tone was a mapping judgment nothing measured). (a′)
+FAILs all three on the original render, PASSes the fixed preview, and PASSes
+a declared hero change.
+
 ## (b) Design-adoption gate
 
 ### donor-probe.mjs — computed-style token assertions
@@ -183,14 +256,23 @@ trimmed padding overrides and would fail the button spec spuriously).
 A renderer that breaks a convention fails the probe with
 `selector matched nothing` — a missing selector is a **FAIL, not a
 skip**, because silent skips fake passes. A token path absent from
-`donor-tokens.json` is a reported SKIP.
+`donor-tokens.json` is a reported SKIP. The one content-aware
+exception: with `--model <content-model.json>`, spec entries marked
+`"needs": "button"` (the default `main .btn` entries) are a reported
+SKIP when the page's content has nothing the renderer turns into a
+button (`stream-render.mjs` `rendersButton`: a cta with a button class
+or captured `buttonLike`,
+a submit/button control, text inside a `<button>`). The decision reads
+the source content, not the rendered page, so a renderer that drops a
+real button still fails.
 
-One default-spec blind spot: when the source's only h1 is visually
-hidden (an sr-only landmark), the `main h1` display-weight assertion
-holds a token on an **invisible** element and says nothing about the
-page's display face. Add a `--spec` entry asserting the display tokens
-on the element that renders as the display headline (the hero h2,
-typically).
+One default-spec blind spot: when the source's only heading is visually
+hidden (an sr-only landmark), the display-weight assertion (the first
+`h1`–`h3` in `main`; the heading colour takes the first heading of any
+level, since form pages often carry no h1/h2) holds a token on an
+**invisible** element and says nothing about the page's display face.
+Add a `--spec` entry asserting the display tokens on the element that
+renders as the display headline (the hero h2, typically).
 
 #### Tolerances
 
@@ -303,7 +385,7 @@ letter spacing a style is keyed by.
 page and the donor, on `https://<branch>--<repo>--<org>.aem.page`.
 Recipe, delta file, ledger, fix budget: `deployed-leg.md`; command
 lines: SKILL.md Phase 5 (e); flags, evidence, exit codes:
-`deployed-gate.mjs --help`. `content`, `tokens`, `sanity` and `figma` first
+`deployed-gate.mjs --help`. `content`, `tokens`, `sanity`, `chrome` and `figma` first
 settle the EDS decoration (`body.appear`, every section and block `loaded`,
 within 20 s) and name a stall; in `all` a stall is that step's FAIL and the
 run goes on. `parity`'s captures wait a fixed 3 s instead, and `inherited`
@@ -311,11 +393,12 @@ fetches `.plain.html` without a browser.
 
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
-| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas` | both exit 0; unused deltas warn |
+| `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas`; a Figma-sourced model runs `figma-text-gate` in place of `dom-equality` | both exit 0; unused deltas warn |
 | `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
 | `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
+| `chrome` A6 | **hard**, as `sanity`; a header/footer residual (`step10.header`, …) is accepted only `--by` the site owner | at 1440 and 360 the `<header>` and `<footer>` against `mapping.json` `chrome` and its model (ctas, `iconLinks`, images, footer text) | present and decorated; a logo ≥ 16px when mapped; header ≤ 240px closed, covering main ≤ 4px, band above it ≤ 48px; every mapped link rendered and visible (at 360 a toggle shows the hidden ones); no icon-font ligature word as text; every mapped footer text. No chrome in the mapping: those rows `n/a`; a mapped slot empty in the model is exit 2 |
 | figma B | as (d) | `figma-gate all --target preview`, when `figma-checks/<slug>.json` exists | as (d) |
 
 - **Protected preview.** Out of scope: the preview must be reachable without
@@ -374,6 +457,11 @@ each names the gate, the check, and a human-readable verdict (`accepted` | `need
 `blocked`). The Phase 6 handoff report lists every residual and flag.
 
 ## Failure modes
+
+- **The reference was smaller than the page.** A region beside the scope
+  (sidebar, breadcrumb), a block rendered after the capture read the page,
+  or a band tone the mapping recoloured — no byte gate can see these,
+  because they compare against the model. (a′) `source-coverage.mjs`.
 
 - **Content-root drop (the top one).** Byte equality "passes" against
   an incomplete reference because the scope missed content (the 30%

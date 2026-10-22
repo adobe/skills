@@ -2,7 +2,8 @@
 // skills/reskin/scripts/test/capture-content.test.mjs — capture-content.mjs: --help answers before any I/O, and the
 // slots of a scope never include a <script>, <style>, <noscript> or <template> child (a JSON-LD <script> in `main` is
 // metadata, not a section), though JSON-LD still reaches metadata.jsonLd. The page cases run the CLI on a local file in
-// plain Chromium (needs playwright; prints a skip line otherwise). Run: node <this file>.
+// plain Chromium (needs playwright; prints a skip line otherwise), with the text-less links a slot keeps as iconLinks.
+// Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -61,6 +62,57 @@ if (playwrightOk) {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     assert.equal(r.model.sections.length, 2);
     assert.deepEqual(r.model.sections.map((s) => s.headings[0].text), ['First section', 'Second section']);
+  });
+
+  await check('a text-less link is an iconLink named by aria-label, title, img alt, svg title or its host; ctas keep the texted ones', () => {
+    const svg = (t) => `<svg width="24" height="24" viewBox="0 0 24 24">${t ? `<title>${t}</title>` : ''}<rect width="24" height="24"/></svg>`;
+    const icons = [
+      `<a href="https://www.facebook.com/sample" aria-label="Facebook">${svg()}</a>`,
+      `<a href="https://x.example/sample" title="X">${svg()}</a>`,
+      '<a href="/crest"><img alt="Crest" width="24" height="24" src="data:image/gif;base64,R0lGODlhAQABAAAAACw="></a>',
+      `<a href="https://www.instagram.com/sample">${svg('Instagram')}</a>`,
+      `<a href="https://www.youtube.com/sample">${svg()}</a>`,
+      `<a href="https://hidden.example/" style="display:none">${svg()}</a>`,
+    ].join('');
+    const r = capture('icon-links', page(`<footer><section><h2>Follow us</h2><p><a href="/contact">Contact</a></p>${icons}</section></footer>`), ['--scope', 'footer!']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const [s] = r.model.sections;
+    assert.deepEqual(s.ctas.map((a) => a.text), ['Contact']);
+    assert.deepEqual(s.iconLinks.map((a) => [a.label, a.href]), [
+      ['Facebook', 'https://www.facebook.com/sample'], ['X', 'https://x.example/sample'], ['Crest', '/crest'],
+      ['Instagram', 'https://www.instagram.com/sample'], ['youtube.com', 'https://www.youtube.com/sample'],
+    ]);
+    assert.match(s.iconLinks[2].absHref, /^file:.*\/crest$/);
+  });
+
+  await check('0.41 structure: tables as rows, disclosures with rest state (read before the ledger opens them), glyphs, sr-only, image width', () => {
+    const ledger = join(scratch, 'open-all.mjs');
+    writeFileSync(ledger, `export const NORMALIZE = \`(() => { document.querySelectorAll('[aria-expanded]').forEach((b) => { b.setAttribute('aria-expanded', 'true'); const p = document.getElementById(b.getAttribute('aria-controls')); if (p) p.removeAttribute('hidden'); }); })()\`;\nexport const LEDGER = [{ id: 'N1', what: 'open every accordion', why: 'test' }];\n`);
+    const acc = (id, open, title, body) => `<h3><button aria-expanded="${open}" aria-controls="${id}">${title} <span aria-hidden="true" style="font-family: 'Material Icons'">keyboard_arrow_down</span></button></h3><div id="${id}"${open ? '' : ' hidden'}><p>${body}</p></div>`;
+    const body = `<main><section>
+      <span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Skip note</span>
+      <h2>Facts</h2>
+      <table><tr><th>Year</th><th>Count</th></tr><tr><td>2024</td><td><a href="/c">12</a></td></tr></table>
+      ${acc('p1', false, 'Closed one', 'Closed body')}${acc('p2', true, 'Open one', 'Open body')}
+      <p><img alt="Hero" width="640" height="320" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></p>
+    </section></main>`;
+    const r = capture('structure', page(body), ['--normalize', ledger, '--scope', 'main section!']);
+    assert.equal(r.status, 0, r.stdout + r.stderr);
+    const [s] = r.model.sections;
+    assert.equal(s.orderedVerified, true, 'the stream still tiles visibleText');
+    const flat = (ns) => ns.flatMap((n) => [n, ...flat(n.children || [])]);
+    const all = flat(s.ordered);
+    const table = s.ordered.find((n) => n.kind === 'table');
+    assert.deepEqual(table.rows.map((row) => row.map((c) => c.text)), [['Year', 'Count'], ['2024', '12']]);
+    assert.equal(table.rows[0][0].header, true);
+    assert.equal(table.rows[1][1].children[0].kind, 'cta');
+    assert.ok(all.some((n) => n.text === 'Skip note' && n.srOnly), 'sr-only text is marked');
+    const glyphs = all.filter((n) => n.text === 'keyboard_arrow_down');
+    assert.equal(glyphs.length, 2); assert.ok(glyphs.every((g) => g.glyph && g.toggle), 'ligature is a glyph inside its toggle');
+    assert.ok(all.some((n) => n.text === 'Closed one' && n.toggle === 'p1' && !n.toggleOpen), 'closed at rest');
+    assert.ok(all.some((n) => n.text === 'Open one' && n.toggle === 'p2' && n.toggleOpen), 'open at rest');
+    assert.deepEqual(s.ordered.find((n) => n.text === 'Closed body').panels, ['p1']);
+    assert.equal(all.find((n) => n.kind === 'image').rw, 640);
   });
 }
 

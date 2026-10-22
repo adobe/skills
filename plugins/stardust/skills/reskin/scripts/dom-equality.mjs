@@ -8,7 +8,8 @@
  * Adaptations for the reskin profile (validated in experiment UC2-E1):
  *   - PRIMARY (gating) checks: visible text (whitespace-normalized,
  *     BYTE-identical) and the visible-image src list (ORDER-sensitive,
- *     URL-normalized to host+path — query strings carry cache-busters).
+ *     URL-normalized to host+path — query strings carry cache-busters; a
+ *     localized image is compared by its data-source-src).
  *   - INFORMATIONAL (non-gating): element count, tag+class sequence — a
  *     reskin intentionally re-structures markup, so structure cannot gate.
  *   - Multi-scope SOURCE: comma-separated selectors captured in order and
@@ -21,6 +22,13 @@
  *     responsive duplicate menus poison raw img lists), using the SHARED
  *     predicate capture-content.mjs uses (source-normalize.mjs IMG_VISIBLE)
  *     so capture and gate can never drift on image counts.
+ *   - Disclosure rest state (gating): the scopes' collapsed/expanded disclosures are counted on both
+ *     sides BEFORE the ledger runs (source-normalize.mjs DISCLOSURE_STATE). A source with collapsed
+ *     disclosures against a render with none collapsed FAILS — a capture ledger that expands every
+ *     accordion is capture-only, it never makes the delivered block start open. The rendered side
+ *     then runs REVEAL_DISCLOSURES (open <details>, unhide hidden="until-found") before its text is
+ *     read, so a correctly collapsed panel still counts as present. Waived per page by the deltas
+ *     file's "disclosures": { "restState": "open", "why": … }.
  *   - Live navigation via the shared diff live-session module (F-G/F-R1):
  *     real-Chrome UA + the standard request headers (UA alone still 403s on
  *     Akamai), domcontentloaded on live targets, webdriver spoof, challenge
@@ -58,12 +66,14 @@
  *                                    "Declared deltas" section (applied with counts; unused = a
  *                                    declared entry that matched nothing, also a WARNING line on
  *                                    stdout). "blocking": false makes a failed check exit 0 with an
- *                                    ADVISORY line on stdout. Absent, nothing above changes.
+ *                                    ADVISORY line on stdout. "disclosures": { "restState": "open",
+ *                                    "why": … } waives the rest-state check. Absent, nothing above
+ *                                    changes.
  *
  * Writes: the markdown report to --report <path> (parent directories are created);
  * nothing else. The PASS/FAIL line goes to stderr.
  *
- * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error (incl. a stalled decoration, an invalid
+ * Exit: 0 PASS (text + images + disclosure rest state), 1 FAIL, 2 setup error (incl. a stalled decoration, an invalid
  *       --deltas file), 3 bot challenge / blocked live source (fail loud, never measured).
  */
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -128,7 +138,7 @@ try {
 }
 const { edsSettle, isEdsHost } = eds;
 const { isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive } = live;
-const { loadNormalize, IMG_VISIBLE } = normalizeLib;
+const { loadNormalize, IMG_VISIBLE, DISCLOSURE_STATE, REVEAL_DISCLOSURES } = normalizeLib;
 
 let chromium;
 try { ({ chromium } = await import('playwright')); } catch {
@@ -195,7 +205,14 @@ async function capture(url, scopeList, normalize, rendered = false) {
     window.scrollTo(0, 0);
   });
   await page.waitForTimeout(1500);
+  // Rest state first: the ledger (source) and the reveal (rendered) both change it.
+  const rest = await page.evaluate(({ sl, stateSrc }) => {
+    const state = (0, eval)(stateSrc);
+    return sl.split(',').map((s) => document.querySelector(s.trim().replace(/!$/, ''))).filter(Boolean)
+      .map(state).reduce((a, b) => ({ collapsed: a.collapsed + b.collapsed, expanded: a.expanded + b.expanded }), { collapsed: 0, expanded: 0 });
+  }, { sl: scopeList, stateSrc: DISCLOSURE_STATE });
   if (normalize) { await page.evaluate(NORMALIZE); await page.waitForTimeout(300); }
+  if (rendered) { await page.evaluate(REVEAL_DISCLOSURES); await page.waitForTimeout(100); }
   const data = await page.evaluate(({ sl, imgVisibleSrc }) => {
     const sels = sl.split(',').map((s) => s.trim().replace(/!$/, ''));
     const scopes = sels.map((s) => document.querySelector(s));
@@ -209,13 +226,13 @@ async function capture(url, scopeList, normalize, rendered = false) {
       elementCount: all.length,
       tagSequence: all.map((e) => e.tagName.toLowerCase() + ((typeof e.className === 'string' && e.className.trim()) ? '.' + e.className.trim().split(/\s+/)[0] : '')),
       visibleText: norm(scopes.map((sc) => sc.innerText || '').join(' ')),
-      imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.currentSrc || i.src || '')),
+      imageSrcs: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => i.dataset.sourceSrc || i.currentSrc || i.src || '')),
       images: scopes.flatMap((sc) => Array.from(sc.querySelectorAll('img')).filter(imgVisible).map((i) => ({ alt: i.getAttribute('alt') ?? '', width: Math.round(i.getBoundingClientRect().width) }))),
     };
   }, { sl: scopeList, imgVisibleSrc: IMG_VISIBLE });
   await page.close();
   if (data.error) die(`${data.error} (page: ${url}${navErr ? ` — navigation failed: ${navErr.message.split('\n')[0]}` : ''})`);
-  return data;
+  return { ...data, rest };
 }
 
 console.error(`[dom-equality] capturing source ${args.source} scope=${args['source-scope']} normalize=${normalizeSource}`);
@@ -264,7 +281,14 @@ let firstTagDivergence = -1;
 const minT = Math.min(src.tagSequence.length, rnd.tagSequence.length);
 for (let i = 0; i < minT; i += 1) if (src.tagSequence[i] !== rnd.tagSequence[i]) { firstTagDivergence = i; break; }
 
-const pass = textMatch && imageMatch;
+// --- PRIMARY: disclosure rest state ------------------------------------------
+// The source starts (some) disclosures collapsed; the render must too. Everything open at rest means a capture-only
+// "expand every accordion" ledger entry leaked into the delivered block.
+const restWaived = deltas?.disclosures?.restState === 'open';
+const restLeak = src.rest.collapsed > 0 && rnd.rest.collapsed === 0;
+const restMatch = !restLeak || restWaived;
+
+const pass = textMatch && imageMatch && restMatch;
 const tick = (b) => (b ? 'PASS' : 'FAIL');
 let md = `# Content gate — DOM equality report (reskin profile)\n\n`;
 md += `- Source: ${args.source} (scopes: \`${args['source-scope']}\`, normalize: \`${normalizeSource}\`)\n`;
@@ -273,7 +297,8 @@ md += `- Generated: ${new Date().toISOString()}\n\n`;
 md += `## Primary checks (gating)\n\n`;
 md += `| Check | Source | Rendered | Status |\n|---|---|---|---|\n`;
 md += `| Visible text (normalized chars) | ${src.visibleText.length} | ${rnd.visibleText.length} | ${tick(textMatch)} |\n`;
-md += `| ${imageCheck ? `Visible images (${deltas.images})` : 'Visible image srcs (ordered)'} | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n\n`;
+md += `| ${imageCheck ? `Visible images (${deltas.images})` : 'Visible image srcs (ordered)'} | ${srcImgs.length} | ${rndImgs.length} | ${tick(imageMatch)} |\n`;
+md += `| Disclosures collapsed at rest${restLeak && restWaived ? ' (waived: deltas disclosures.restState "open")' : ''} | ${src.rest.collapsed} (${src.rest.expanded} open) | ${rnd.rest.collapsed} (${rnd.rest.expanded} open) | ${tick(restMatch)} |\n\n`;
 md += `**Overall: ${pass ? 'PASS' : 'FAIL'}**\n\n`;
 // deltas: blocking false turns a failure into an advisory (the exit code stays 0).
 const advisory = !!deltas && !pass && !deltasLib.isBlocking(deltas);
@@ -281,6 +306,10 @@ if (advisory) md += `${deltasLib.ADVISORY}: the failed checks are reported, the 
 if (textDiff) {
   md += `### Text divergence\n\nFirst divergent char at ${textDiff.firstDivergence} (source ${textDiff.sourceLen} / rendered ${textDiff.renderedLen} chars).\n\n`;
   md += `Source:\n\n> …${textDiff.sourceSnippet}…\n\nRendered:\n\n> …${textDiff.renderedSnippet}…\n\n`;
+}
+if (!restMatch) {
+  md += `### Disclosure rest state\n\nThe source starts ${src.rest.collapsed} disclosure(s) collapsed; the render starts none collapsed (${rnd.rest.expanded} open). `;
+  md += 'A ledger entry that expands accordions is capture-only: the delivered block starts closed like the source, its panels `hidden="until-found"` (or a closed `<details>`), which this gate reveals before reading the text.\n\n';
 }
 if (!imageMatch) {
   md += `### Image divergences\n\n`;
@@ -304,6 +333,7 @@ if (deltas) {
 mkdirSync(dirname(resolve(args.report)), { recursive: true });
 writeFileSync(args.report, md);
 console.error(`[dom-equality] ${pass ? 'PASS' : 'FAIL'} — report: ${args.report}`);
+if (!restMatch) console.error(`  disclosures: source ${src.rest.collapsed} collapsed at rest, rendered 0 collapsed (${rnd.rest.expanded} open) — the delivered block must start closed like the source`);
 if (textDiff) console.error(`  text diverges @${textDiff.firstDivergence}: src="…${textDiff.sourceSnippet.slice(30, 90)}…" rnd="…${textDiff.renderedSnippet.slice(30, 90)}…"`);
 if (deltas) {
   console.log(`  deltas applied: ${textDeltas.applied.length ? textDeltas.applied.map((a) => `${a.id} ×${a.count}`).join(', ') : 'none'}`);

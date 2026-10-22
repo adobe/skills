@@ -1,0 +1,21 @@
+{
+  "context": "Routing between figma-to-content (one Figma page onto an existing EDS project's blocks) and stardust reskin's Figma-only path (a whole site whose content and design system both live in Figma, content gated byte-level).",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "Recognises Figma-only multi-page",
+      "max_score": 30,
+      "description": "Identifies that there is no live site, several page frames, and the design system in the same Figma file."
+    },
+    {
+      "name": "Routes to reskin Figma-only",
+      "max_score": 40,
+      "description": "Chooses stardust reskin (figma-donor.mjs init/content, Figma text gate) or, when unavailable, says so explicitly instead of running figma-to-content per page."
+    },
+    {
+      "name": "States the distinction",
+      "max_score": 30,
+      "description": "Explains that figma-to-content builds one page against existing blocks while reskin gates content against the frames and applies the Figma design system across pages."
+    }
+  ]
+}

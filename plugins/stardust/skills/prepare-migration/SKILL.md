@@ -58,7 +58,9 @@ this site" a conscious gesture and keeps idempotency obvious.
    `prepare-migration` before or after `replica`" and the switch
    command (`$stardust prepare-migration --switch-flow`, which marks
    the replica artefacts stale — master skill § Two migration flows).
-   If `flow` is absent, resolve it first: only an explicit redesign
+   If `flow` is `reskin`, refuse too: the cascade would overwrite the
+   donor-sourced DESIGN.* — route to `reskin/scripts/reskin-preflight.mjs`
+   (reskin SKILL Phase 6). If `flow` is absent, resolve it first: only an explicit redesign
    phrase ("redesign", "modernise", "refresh", "new look") selects this
    skill — stamp `flow: "redesign"`
    (`skills/stardust/reference/state-machine.md` § Flow keys). Any other
