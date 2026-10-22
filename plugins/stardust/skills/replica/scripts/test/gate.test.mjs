@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // gate.sh contract test: argument parsing, --help, the horizontal-overflow assert (measure.mjs root line → exit 2
-// over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final), the
+// over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final — 3 is the
+// BLOCKED line: a bot challenge or 2xx denial page, no verdict, on either side), the
 // --full probe fan-out and its exit-code rules, with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
@@ -163,6 +164,10 @@ check('no overflow line, no pixel verdict after a failed capture', !/overflow as
 resetCount();
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry3'], { STUB_STITCH_RC_BUILD: '3', STUB_STITCH_COUNT: countFile });
 check('exit 3 (bot challenge) is final on the first attempt — not retried', r.status === 3 && attempts().join(',') === 'BUILD' && !/retrying/.test(r.stderr), `status ${r.status} attempts ${attempts().join(',')}`);
+check('the blocked class is named — BLOCKED (exit 3), a bot challenge or 2xx denial page, no verdict, escalate --headed — never "failed"', /^gate\.sh: build capture BLOCKED \(exit 3\) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed$/m.test(r.stderr) && !/build capture failed/.test(r.stderr), r.stderr);
+resetCount();
+r = await gate(['wall', 'https://live.example/wall', buildUrl, '1440', 'retry3b', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '3', STUB_STITCH_COUNT: countFile });
+check('a live capture that exits 3 ends the round with exit 3 on the first attempt: the live BLOCKED line, no build attempt, no live.png left to be reused as the source', r.status === 3 && attempts().join(',') === 'LIVE' && /^gate\.sh: live capture BLOCKED \(exit 3\) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed$/m.test(r.stderr) && !/retrying/.test(r.stderr) && !existsSync(join(root, 'stardust/replica/gates/wall-1440/live.png')), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
 r = await gate(['about', 'https://live.example/about', buildUrl, '1440', 'retry4', '--marker', 'home-proposed'], { STUB_FAIL_ONCE_LIVE: join(root, 'once-live'), STUB_STITCH_COUNT: countFile });
 check('a live capture that exits 1 once is retried; the round passes and live.png is kept', r.status === 0 && existsSync(join(root, 'stardust/replica/gates/about-1440/live.png')), `status ${r.status} ${r.stderr.slice(0, 300)}`);

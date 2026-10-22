@@ -80,10 +80,12 @@
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
 # (live.png, build.png, diff-<label>.png, overflow-<label>.txt).
 #
-# Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
-# aborts the round — a missing/blocked side must never be compared. Exit
-# codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
-# the build side), 3 bot challenge, 1 capture/compare error (after the one
+# Fail-loud contract: a stitch-shot bot challenge (exit 3 — an edge
+# interstitial or a 2xx denial page; the capture's one-line reason precedes
+# this script's BLOCKED line on stderr) or capture error aborts the round — a
+# missing/blocked side must never be compared, and a blocked round has no
+# verdict. Exit codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal
+# overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
 # retry — re-queue, not a verdict), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
@@ -157,6 +159,16 @@ retry_once() {
   fi
   return "$rc"
 }
+# A capture that did not exit 0 ends the round without a verdict. 3 is the blocked class — a bot challenge or a 2xx
+# denial page (stitch-shot's reason line precedes this one): never a pixel number, escalate --headed. $1 side, $2 rc.
+capture_failed() {
+  if [ "$2" -eq 3 ]; then
+    echo "gate.sh: $1 capture BLOCKED (exit 3) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed" >&2
+  else
+    echo "gate.sh: $1 capture failed (exit $2) — not comparing$([ "$2" -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2
+  fi
+  exit "$2"
+}
 
 # Stale-instrument reap (own user, node processes running a replica instrument
 # only, by basename so the plugin tree and the project copy both match; nothing
@@ -223,14 +235,14 @@ if [ ! -f "$DIR/live.png" ]; then
   retry_once "live capture" capture_live
   rc=$?
   [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
-  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+  [ $rc -ne 0 ] && capture_failed live "$rc"
 fi
 
 # Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).
 capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W"; }
 retry_once "build capture" capture_build
 rc=$?
-[ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+[ $rc -ne 0 ] && capture_failed build "$rc"
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
 # no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
@@ -323,7 +335,7 @@ verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
     0|2) echo "$2: $3" ;;
     124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
-    3) echo "$2: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed" ;;
+    3) echo "$2: BLOCKED (exit 3) — bot challenge or 2xx denial page on the live side, escalate --headed" ;;
     *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
   esac
 }
