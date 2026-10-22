@@ -1,0 +1,6 @@
+rollout inventory → stardust/rollout
+============================================================
+Pages       3 total · 0 verified · 0 deployed · 3 pending · 0 content-pending · 0 stale
+Templates   2 (docs:2, home:1)
+Widgets     1 distinct (site-search) on 1 pages — code only, one /widgets/ link per page
+To deliver  3: docs, docs-getting-started, home
