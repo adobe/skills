@@ -117,12 +117,12 @@ await check('a Figma-sourced model (no live source) runs figma-text-gate in plac
   model._provenance.source = { kind: 'figma', figma: { node: '1:1' } };
   const root = project('stub-figma', { model, deltas: { version: 1, metadata: { absent: ['description', 'canonical'] } } });
   const { run: stub, calls } = stubRun();
-  const r = await go(root, { auth: HEADER, run: stub });
+  const r = await go(root, { run: stub });
   const out = outOf(root);
   const preview = previewOf(root);
   assert.equal(calls.length, 2);
   assert.deepEqual(calls[0].args, [join(SCRIPTS, 'figma-text-gate.mjs'), '--model', modelPath(root), '--rendered', preview.url, '--dir', dirOf(root), '--wait-eds',
-    '--report', join(out, 'content-figma-text.json'), '--token-env', 'DEPLOYED_GATE_SITE_TOKEN']);
+    '--report', join(out, 'content-figma-text.json')]);
   assert.equal(calls[1].args[0], join(SCRIPTS, 'slot-coverage.mjs'));
   assert.ok(calls[1].args.includes('--deltas'));
   assert.equal(r.verdict, 'PASS');

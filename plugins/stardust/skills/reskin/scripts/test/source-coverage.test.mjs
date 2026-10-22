@@ -36,9 +36,10 @@ const MODEL = {
 };
 
 await check('parseArgs reads every flag and rejects an unknown one', () => {
-  const o = parseArgs(['--model', 'm.json', '--target', 't', '--declared', 'd.json', '--min-chars', '5', '--out', 'o.json', '--token-env', 'T']);
-  assert.deepEqual([o.model, o.target, o.declared, o.minChars, o.out, o.tokenEnv], ['m.json', 't', 'd.json', 5, 'o.json', 'T']);
+  const o = parseArgs(['--model', 'm.json', '--target', 't', '--declared', 'd.json', '--min-chars', '5', '--out', 'o.json']);
+  assert.deepEqual([o.model, o.target, o.declared, o.minChars, o.out], ['m.json', 't', 'd.json', 5, 'o.json']);
   assert.throws(() => parseArgs(['--nope']), /unknown argument/);
+  assert.throws(() => parseArgs(['--token-env', 'T']), /unknown argument/, 'no site auth: a protected preview is out of scope');
 });
 
 await check('readDeclared requires version 1, a why on every entry, a slot id and a known tone', () => {

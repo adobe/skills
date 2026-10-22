@@ -25,7 +25,7 @@
 //   footer text     every mapped footer heading, paragraph and list item in the footer's text (case and spacing aside)
 // Links compare by destination: on the source origin (and the preview origin, less a shared repo's /<ns> prefix) by path
 // (a trailing /, .html and /index aside), elsewhere by host (less www.) and path, mailto: and tel: by address.
-//   runChrome({ dir, slug, preview, auth, widths, env, edsTimeoutMs })  writes chrome.json ({ verdict, hard: true, rows })
+//   runChrome({ dir, slug, preview, widths, env, edsTimeoutMs })  writes chrome.json ({ verdict, hard: true, rows })
 //        and returns { verdict, exit, hard, rows }: rows as sanity's, { check, width, value, bar, status, artifact, detail }.
 //   chromeExpect({ mapping, model })   the contract: { mapped, header: { links, images }, footer: { links, images, texts } }
 //   evaluateChrome(facts, expect, { width, narrow, sourceOrigin, previewOrigin, namespace })  the rows of one width. Pure.
@@ -36,8 +36,8 @@ import { dirname, join, resolve } from 'node:path';
 import { UsageError } from '../figma/errors.mjs';
 import { writeJson } from '../figma/io.mjs';
 import { loadChromium, loadMeasureLive } from '../figma-gate/target.mjs';
-import { coded, firstLine, previewToken } from './child.mjs';
-import { authContextOptions, edsSettle, loadLiveSession } from './eds.mjs';
+import { coded, firstLine } from './child.mjs';
+import { edsSettle, loadLiveSession } from './eds.mjs';
 import { deployedDir } from './io.mjs';
 import { EXIT, listed, stepLines, verdictOf } from './rows.mjs';
 
@@ -308,8 +308,8 @@ const openedIn = () => {
   return { expandedAfter: t ? t.getAttribute('aria-expanded') : null, links: [...document.querySelectorAll('header a[href]')].map((a) => ({ href: a.href, visible: shown(a) })) };
 };
 
-async function measureWidth({ browser, openPage, gotoLive, width, url, token, edsTimeoutMs, expect, origins, namespace }) {
-  const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT, ...authContextOptions(url, token) });
+async function measureWidth({ browser, openPage, gotoLive, width, url, edsTimeoutMs, expect, origins, namespace }) {
+  const { ctx, page } = await openPage(browser, { width, height: VIEWPORT_HEIGHT });
   try {
     await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: NAV_TIMEOUT_MS, settleMs: 0 });
     await edsSettle(page, { timeoutMs: edsTimeoutMs });
@@ -332,7 +332,6 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, token, ed
     return evaluateChrome(facts, expect, { width, narrow, ...origins, namespace });
   } catch (e) {
     if (e?.name === 'BotChallengeError') throw coded(3, e.message);
-    if (e?.name === 'LiveHTTPError' && [401, 403].includes(e.status) && token) throw new UsageError(`${url} answered HTTP ${e.status}: the site token was not accepted`);
     const why = e?.name === 'LiveHTTPError' ? `HTTP ${e.status} at ${url}` : firstLine(String(e?.message ?? e)) || 'the page could not be read';
     return BROWSER_CHECKS.filter((c) => c !== 'menu toggle' || width < 1024).map((check) => row(check, width, 'ERROR', `ERROR (exit ${EXIT.ERROR})`, why));
   } finally { await ctx.close(); }
@@ -340,12 +339,11 @@ async function measureWidth({ browser, openPage, gotoLive, width, url, token, ed
 
 const originOf = (u) => { try { return new URL(u).origin; } catch { return null; } };
 
-export async function runChrome({ dir, slug, preview, auth = null, widths = [1440, NARROW], edsTimeoutMs = EDS_TIMEOUT_MS }) {
+export async function runChrome({ dir, slug, preview, widths = [1440, NARROW], edsTimeoutMs = EDS_TIMEOUT_MS }) {
   const deployed = deployedDir(dir, slug);
   const record = join(deployed, 'chrome.json');
   rmSync(record, { force: true });
   if (typeof preview.url !== 'string' || !preview.url) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
-  const token = previewToken('chrome', preview, auth);
   const expect = readChromeContract(dir);
   const origins = { sourceOrigin: originOf(expect.sourceUrl), previewOrigin: originOf(preview.url) };
 
@@ -355,7 +353,7 @@ export async function runChrome({ dir, slug, preview, auth = null, widths = [144
   const browser = await openBrowser(chromium, { tier: 'plain' });
   const rows = [];
   try {
-    for (const width of widths) rows.push(...await measureWidth({ browser, openPage, gotoLive, width, url: preview.url, token, edsTimeoutMs, expect, origins, namespace: preview.sandbox ? null : preview.namespace ?? null }));
+    for (const width of widths) rows.push(...await measureWidth({ browser, openPage, gotoLive, width, url: preview.url, edsTimeoutMs, expect, origins, namespace: preview.sandbox ? null : preview.namespace ?? null }));
   } finally { await browser.close(); }
   const verdict = verdictOf(rows);
   writeJson(record, { verdict, hard: true, mapped: expect.mapped, rows });

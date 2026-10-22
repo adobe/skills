@@ -190,7 +190,8 @@ chrome   A6. The header and footer every page inherits, at 1440 and 360. Never w
            footer text      every mapped footer text in the footer, case and spacing aside
          Prints "PASS chrome" or "FAIL chrome (hard)" and one indented line per failing row, the lost links below
          it. Writes chrome.json ({ verdict, hard: true, mapped, rows }) beside preview.json. Exit 1 on a FAIL
-         row, 3 on a bot challenge, 124 on a row in error. A protected preview is read with the token as sanity's.
+         row, 3 on a bot challenge, 124 on a row in error. A page that answers HTTP 400 or more is a row in error,
+         never a pass.
 all      The whole leg: content, tokens, parity, sanity, inherited and chrome in turn, each as above and in this process,
          then figma-gate.mjs all --target preview as a child process (the one beside this script) when
          <dir>/reskin/figma-checks/<slug>.json exists, else "ADVISORY figma not run: no figma checks". Reads
@@ -282,7 +283,7 @@ const SPEC = {
     positional: [],
   },
   chrome: {
-    values: ['--page', '--auth-header', '--token-env', '--dir'],
+    values: ['--page', '--dir'],
     bools: [],
     positional: [],
   },
@@ -448,18 +449,13 @@ async function inheritedStep(ctx) {
 }
 
 async function chromeStep(ctx) {
-  const { dir, opts, log, UsageError } = ctx;
+  const { dir, opts, log } = ctx;
   const preview = await pageRecord('chrome', ctx);
   if (!preview) return 0;
   const { runChrome, chromeLines } = await helper('chrome');
-  const { auth, say, scrub } = await siteToken(opts, log, UsageError);
-  try {
-    const result = await runChrome({ dir, slug: opts.page, preview, auth });
-    for (const line of chromeLines(result)) say(line);
-    return result.exit;
-  } catch (e) {
-    throw scrub(e);
-  }
+  const result = await runChrome({ dir, slug: opts.page, preview });
+  for (const line of chromeLines(result)) log(line);
+  return result.exit;
 }
 
 // ---- all: the whole leg in one run ---------------------------------------------------------------------------------------

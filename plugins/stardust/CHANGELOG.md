@@ -124,8 +124,7 @@ Figma tree. Every rule is generic; per-file choices live in `reskin/content-rule
   is M2's (`deployed/deltas.mjs`, version 1) unchanged, except that a Figma-sourced model's CTA also matches the
   raw href (`#` or page-relative). `stream-render` leaves out a meta tag the model declares absent (no empty
   description). `deployed-gate content` runs `figma-text-gate` in place of `dom-equality` for a Figma-sourced
-  model (`content.json` records `figmaText`); the text gate reads an aem.page preview: `--wait-eds`,
-  `--token-env` / `--auth-header` on the rendered origin only, never printed.
+  model (`content.json` records `figmaText`); the text gate reads an aem.page preview with `--wait-eds`.
 - **`stream-render`** renders Figma models: CSS casing on the raw characters, a line-clamp span for
   truncated text, and model-relative assets copied beside the page.
 - Docs: `reference/content-model.md` § Figma-sourced models, `reference/gates.md` § figma-text-gate.mjs,

@@ -23,10 +23,10 @@
  * Usage: node figma-text-gate.mjs --model <content-model.json> --rendered <file|url>
  *          [--text-ops <text-ops.json>] [--nodes <nodes.json>] [--dir stardust] [--scope main]
  *          [--report <out.json>] [--wait-until load|networkidle]
- *          [--wait-eds] [--eds-timeout <ms>] [--auth-header <value> | --token-env <NAME>]
+ *          [--wait-eds] [--eds-timeout <ms>]
  * On an aem.page preview (deployed-gate content, a Figma-only page): the EDS decoration is settled first
- * (--wait-eds, implied on an EDS host; a stall is exit 2) and the site token goes to the rendered origin only,
- * never printed (deployed/eds.mjs).
+ * (--wait-eds, implied on an EDS host; a stall is exit 2). The preview must be reachable without auth: a
+ * 401 or 403 is exit 2.
  * Exit: 0 PASS, 1 FAIL, 2 setup (no cached frame, playwright missing, bad args).
  */
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
@@ -37,7 +37,7 @@ import { textReference } from './figma/content.mjs';
 const HELP = `usage: node figma-text-gate.mjs --model <content-model.json> --rendered <file|url>
          [--text-ops <text-ops.json>] [--nodes <nodes.json>] [--dir stardust] [--scope main]
          [--report <out.json>] [--wait-until load|networkidle]
-         [--wait-eds] [--eds-timeout <ms>] [--auth-header <value> | --token-env <NAME>]
+         [--wait-eds] [--eds-timeout <ms>]
 
 The Figma text gate: every effectively-visible TEXT node of the page frame (body sections, reading
 order, rendered case) appears exactly once, in order, in the render's <main> innerText; drawn-field
@@ -45,7 +45,7 @@ placeholders appear as placeholder attributes. The reference is re-read from the
 response (the model's _provenance.source.figma.node), never from the model. Reports missing, order,
 case, duplicate and extra text. text-ops.json beside the model is read by default.
 On an http(s) preview: --wait-eds (implied on aem.page) settles the EDS decoration first, a stall is exit 2;
---auth-header / --token-env authenticate on the rendered origin only and are never printed.
+the preview must be reachable without auth (a 401 or 403 is exit 2).
 Exit 0 PASS, 1 FAIL, 2 setup error, 3 bot challenge.`;
 
 const norm = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
@@ -163,11 +163,10 @@ export function findFrame({ dir, model, nodesFile = null }) {
 
 async function main(argv) {
   if (argv.includes('--help') || argv.includes('-h')) { console.log(HELP); return 0; }
-  const VALUES = ['--model', '--rendered', '--text-ops', '--nodes', '--dir', '--scope', '--report', '--wait-until', '--eds-timeout', '--auth-header', '--token-env'];
+  const VALUES = ['--model', '--rendered', '--text-ops', '--nodes', '--dir', '--scope', '--report', '--wait-until', '--eds-timeout'];
   const o = {};
   for (let i = 0; i < argv.length; i += 1) {
     if (argv[i] === '--wait-eds') { o.waitEds = true; continue; }
-    if (['--auth-header', '--token-env'].includes(argv[i]) && (argv[i + 1] === undefined || !argv[i + 1].trim())) { console.error(`figma-text-gate: ${argv[i]} needs a value`); return 2; }
     if (!VALUES.includes(argv[i]) || argv[i + 1] === undefined) { console.error(`figma-text-gate: unknown or incomplete argument ${argv[i]}\n${HELP}`); return 2; }
     o[argv[i].slice(2)] = argv[++i];
   }
@@ -186,26 +185,21 @@ async function main(argv) {
   try { ({ chromium } = await import('playwright')); } catch { console.error('figma-text-gate: playwright is not importable here (npm i -D playwright --no-save)'); return 2; }
   const target = /^(https?|file):/.test(o.rendered) ? o.rendered : pathToFileURL(resolve(o.rendered)).href;
   const http = /^https?:/.test(target);
-  // A preview (http): deployed/eds.mjs settles the decoration and sends the token to this origin only.
-  let eds = null; let live = null; let auth = null;
+  // A preview (http): deployed/eds.mjs settles the decoration.
+  let eds = null; let live = null;
   if (http) {
     try { eds = await import('./deployed/eds.mjs'); live = await eds.loadLiveSession(); } catch (e) { console.error(`figma-text-gate: ${e.message.split('\n')[0]}`); return 2; }
-    if (o['auth-header'] !== undefined || o['token-env'] !== undefined) {
-      auth = eds.siteAuth({ authHeader: o['auth-header'], tokenEnv: o['token-env'] });
-      if (!auth) { console.error('figma-text-gate: no site token: the variable --token-env names is not set in the environment or .env'); return 2; }
-    }
   }
-  const say = (m) => (auth ? eds.redact(m, auth) : m);
   const browser = await chromium.launch();
   let measured;
   try {
     const viewport = { width: 1440, height: 900 };
-    const page = http ? await (await live.newLiveContext(browser, { viewport, ...eds.authContextOptions(target, auth) })).newPage() : await browser.newPage({ viewport });
+    const page = http ? await (await live.newLiveContext(browser, { viewport })).newPage() : await browser.newPage({ viewport });
     if (http) {
-      try { await live.gotoLive(page, target, { waitUntil: o['wait-until'] || 'load', timeoutMs: 60000, settleMs: 0 }); } catch (e) { console.error(say(`figma-text-gate: ${e.message}`)); return e.name === 'BotChallengeError' ? 3 : 2; }
+      try { await live.gotoLive(page, target, { waitUntil: o['wait-until'] || 'load', timeoutMs: 60000, settleMs: 0 }); } catch (e) { console.error(`figma-text-gate: ${e.message}`); return e.name === 'BotChallengeError' ? 3 : 2; }
       if (o.waitEds || eds.isEdsHost(target)) {
         const { stalled } = await eds.edsSettle(page, { timeoutMs: o['eds-timeout'] ? Number(o['eds-timeout']) : 20000 });
-        if (stalled.length) { console.error(say(`figma-text-gate: stalled decoration: ${stalled.join(', ')}`)); return 2; }
+        if (stalled.length) { console.error(`figma-text-gate: stalled decoration: ${stalled.join(', ')}`); return 2; }
       }
     } else await page.goto(target, { waitUntil: o['wait-until'] || 'load' });
     const scope = o.scope || 'main';

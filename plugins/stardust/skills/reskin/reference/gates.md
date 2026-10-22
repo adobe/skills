@@ -216,7 +216,7 @@ The target is settled the same way as the source (scroll, then text stable
 
 Every entry needs a `why`; an unknown key, a bad slot id or tone is exit 2,
 every problem listed. `"blocking": false` reports FAILs as ADVISORY (exit 0).
-Exit 0 PASS, 1 FAIL, 2 setup. `--token-env <NAME>` for a protected preview.
+Exit 0 PASS, 1 FAIL, 2 setup (a protected preview, 401 or 403, is out of scope).
 
 **Why it exists.** A 52-page school-site migration passed every content gate
 while the deployed pages had no breadcrumb or section sidebar (outside

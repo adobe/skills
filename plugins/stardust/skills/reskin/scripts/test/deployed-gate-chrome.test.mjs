@@ -22,7 +22,7 @@ const scratch = mkdtempSync(join(tmpdir(), 'deployed-gate-chrome-'));
 let failed = 0;
 const check = async (name, fn) => { try { await fn(); console.log(`✓ ${name}`); } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } };
 const run = (args, { cwd = scratch } = {}) => new Promise((resolve) => {
-  const child = spawn(process.execPath, [GATE, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '', SITE_TOKEN: '' } });
+  const child = spawn(process.execPath, [GATE, ...args], { cwd, env: { ...process.env, DEPLOY_VERIFY_ORIGIN: '' } });
   let stdout = ''; let stderr = '';
   child.stdout.on('data', (d) => { stdout += d; });
   child.stderr.on('data', (d) => { stderr += d; });
@@ -157,7 +157,7 @@ const project = (name, { origin = 'http://127.0.0.1:9', mapping = null, model = 
   const root = join(scratch, name);
   const dir = join(root, 'stardust');
   mkdirSync(deployedDir(dir, 'home'), { recursive: true });
-  writeFileSync(join(deployedDir(dir, 'home'), 'preview.json'), `${JSON.stringify({ url: `${origin}/ns/home`, origin, path: '/ns/home', plain: `${origin}/ns/home.plain.html`, namespace: 'ns', sandbox: false, auth: false, checkedAt: new Date().toISOString() })}\n`);
+  writeFileSync(join(deployedDir(dir, 'home'), 'preview.json'), `${JSON.stringify({ url: `${origin}/ns/home`, origin, path: '/ns/home', plain: `${origin}/ns/home.plain.html`, namespace: 'ns', sandbox: false, checkedAt: new Date().toISOString() })}\n`);
   if (mapping) { mkdirSync(join(dir, 'reskin'), { recursive: true }); writeFileSync(join(dir, 'reskin', 'mapping.json'), JSON.stringify(mapping)); }
   if (model) { const m = join(root, mapping.chrome.model); mkdirSync(m, { recursive: true }); writeFileSync(join(m, 'content-model.json'), JSON.stringify(model)); }
   return { root, dir };
@@ -213,6 +213,19 @@ if (playwrightOk) {
       assert.match(cli.stdout, /^FAIL chrome \(hard\)$/m);
       assert.match(cli.stdout, /MISSING Instagram → https:\/\/instagram\.com\/sample/);
       assert.ok(existsSync(join(deployedDir(lost.dir, 'home'), 'chrome.json')));
+    } finally { await server.close?.(); }
+  });
+
+  await check('a protected preview (401 without a header) gives no verdict: every row is "ERROR (exit 124)" with "HTTP 401 at <url>", never a pass', async () => {
+    const server = await startPreviewServer({ token: 'hlxtok-0123456789abcdef' });
+    try {
+      const guarded = project('real-protected', { origin: server.origin });
+      const preview = JSON.parse(readFileSync(join(deployedDir(guarded.dir, 'home'), 'preview.json'), 'utf8'));
+      const r = await runChrome({ dir: guarded.dir, slug: 'home', preview });
+      assert.equal(r.verdict, 'ERROR', chromeLines(r).join('\n'));
+      assert.equal(r.exit, 124);
+      assert.ok(r.rows.length > 0);
+      for (const row of r.rows) assert.deepEqual([row.status, row.detail], ['ERROR', `HTTP 401 at ${preview.url}`], `${row.check}@${row.width}`);
     } finally { await server.close?.(); }
   });
 }

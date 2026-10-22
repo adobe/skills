@@ -27,7 +27,7 @@
  *                                       "blocking": true }
  *       [--min-chars 20]              residue regions shorter than this are listed, never gated
  *       [--out <report.json>]
- *       [--token-env <NAME>]          Authorization for a protected preview (`token ` prefixed if bare)
+ * The target must be reachable without auth: a protected preview (401 or 403) is out of scope, exit 2.
  *
  * Exit: 0 PASS (or ADVISORY with "blocking": false), 1 FAIL, 2 usage / invalid declared file.
  */
@@ -35,10 +35,10 @@ import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 
-const USAGE = 'usage: node source-coverage.mjs --model <content-model.json> --target <url|file> [--declared <coverage.json>] [--min-chars 20] [--out <report.json>] [--token-env <NAME>]';
+const USAGE = 'usage: node source-coverage.mjs --model <content-model.json> --target <url|file> [--declared <coverage.json>] [--min-chars 20] [--out <report.json>]';
 
 export function parseArgs(argv) {
-  const o = { model: null, target: null, declared: null, minChars: 20, out: null, tokenEnv: null };
+  const o = { model: null, target: null, declared: null, minChars: 20, out: null };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     if (a === '--help' || a === '-h') o.help = true;
@@ -47,7 +47,6 @@ export function parseArgs(argv) {
     else if (a === '--declared') o.declared = argv[++i];
     else if (a === '--min-chars') o.minChars = Number(argv[++i]);
     else if (a === '--out') o.out = argv[++i];
-    else if (a === '--token-env') o.tokenEnv = argv[++i];
     else throw new Error(`unknown argument ${a}`);
   }
   return o;
@@ -119,16 +118,17 @@ export function probeOf(slot) {
   return (h || slot.visibleText || '').slice(0, 60).trim();
 }
 
-async function measureTarget(url, model, minChars, authHeader) {
+async function measureTarget(url, model, minChars) {
   const { chromium } = await import('playwright');
   const browser = await chromium.launch();
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  if (authHeader) {
-    const origin = new URL(url).origin;
-    await ctx.route(`${origin}/**`, (route) => route.continue({ headers: { ...route.request().headers(), authorization: authHeader } }));
-  }
   const page = await ctx.newPage();
-  await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => {});
+  const response = await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 }).catch(() => null);
+  if ([401, 403].includes(response?.status())) {
+    await browser.close();
+    console.error(`[source-coverage] ${url} answered HTTP ${response.status()}: a protected preview is out of scope, make it reachable without auth`);
+    process.exit(2);
+  }
   const len = () => page.evaluate(() => (document.body.innerText || '').length);
   let last = await len(); let still = 0; const t0 = Date.now();
   await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 700) { window.scrollTo(0, y); await new Promise((r) => setTimeout(r, 100)); } window.scrollTo(0, 0); });
@@ -194,14 +194,8 @@ async function main() {
     if (r.problems.length) { r.problems.forEach((p) => console.error(`[source-coverage] ${o.declared}: ${p}`)); process.exit(2); }
     ({ declared } = r);
   }
-  let authHeader = null;
-  if (o.tokenEnv) {
-    const v = process.env[o.tokenEnv];
-    if (!v) { console.error(`[source-coverage] --token-env ${o.tokenEnv} is not set`); process.exit(2); }
-    authHeader = /^(token|bearer) /i.test(v) ? v : `token ${v}`;
-  }
   const url = /^[a-z]+:/i.test(o.target) ? o.target : pathToFileURL(resolve(o.target)).href;
-  const target = await measureTarget(url, model, o.minChars, authHeader);
+  const target = await measureTarget(url, model, o.minChars);
   const res = judge(model, target, declared, o.minChars);
   res.rows.forEach((r) => {
     if (r.check === 'S1') console.log(`[source-coverage] S1 ${r.verdict.padEnd(8)} ${r.kind} ${r.sel} — ${r.textLen} chars, recall ${r.recall}${r.why ? ` (declared: ${r.why})` : ''} "${r.sample}"`);
