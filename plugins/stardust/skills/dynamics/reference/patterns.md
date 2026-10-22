@@ -131,7 +131,10 @@ the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth sc
 code, labels/ranges/options in its `.json` or as query params (`?rate=…` → `data-rate`); no
 authored rows. **Rule.** Never flatten a client-compute section into a prose block — the
 deploy/rollout block triage must refuse to convert a section the inventory marks `client-only` or
-modal-bearing into a generic block. **Verify.** Known input → known output.
+modal-bearing into a generic block. **Logic.** Recovered from the source's own JavaScript with
+`client-logic.mjs` (client-logic-recovery.md) — never guessed from screenshots or captured example
+values. **Verify.** Known input → known output: a `vectors` table recorded on the source, replayed on
+the target, `diff` clean.
 
 ## consent-gated-tags
 
