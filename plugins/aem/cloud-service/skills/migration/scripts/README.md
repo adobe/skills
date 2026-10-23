@@ -89,7 +89,7 @@ The `html-scan` strategy for `htlLint`. Pure-Node fs walk + regex over `.html` f
 
 The `java-scan` strategy for `inputStream` (BPA `DG` / `java.io.inputstream`), with the same precedence as the other BPA patterns: BPA findings first (CAM targets via `--bpa-json`, then a BPA CSV via `--csv`), and a scan of every `src/main/java` file only when BPA has no `inputStream` findings. With BPA rows, only the reported classes' files are scanned, since BPA names classes but not lines. It skips tests and `target/` and ignores comments and string literals. It finds each stream acquisition site and pre-classifies it:
 - **F** deserialization (any `*ObjectInputStream`)
-- **E** binary streamed or processed in the JVM: DAM binary reads, binaries copied to the response, client uploads into the repository, asset processing in workflow steps, classes that run native processes
+- **E** binary streamed or processed in the JVM: DAM binary reads, binaries copied to the response, client uploads into the repository, asset processing in workflow steps, streams in a method that starts a native process (other streams in the class get a file-level note instead)
 - **D** local filesystem (hard-coded paths always; per-request scratch files excluded), with local-filesystem writes in the same file listed
 - **C** unbounded in-memory read (only a stream-level limit counts; a Content-Length check doesn't)
 - **B** unclosed stream or undisposed JCR `Binary`
@@ -101,7 +101,7 @@ BPA rows resolve to their files (nested classes to the outer class's file). Rows
 
 ```bash
 node input-stream-runner.js <workspaceRoot> [--bpa-json <cam-targets.json>] [--csv <bpa.csv>] [--collections <dir>] [--json]
-node input-stream-runner.js <workspaceRoot> --files a/Foo.java,b/Bar.java --json   # verify after editing
+node input-stream-runner.js <workspaceRoot> --files a/Foo.java,b/Bar.java --json   # verify after editing; exits 2 (ok: false) if a requested file can't be read
 ```
 
 ### `osgi-config-runner.js`

@@ -623,3 +623,101 @@ test('CLI: --csv rebuilds a cached collection that predates inputStream instead 
   assert.strictEqual(out.source, 'csv');
   assert.deepStrictEqual(out.findings.filter(f => f.kind === 'source').map(f => path.basename(f.file)), ['Leaky.java']);
 });
+
+// ── Review follow-ups: incomplete --files scans and file-wide native context ─
+
+test('--files: a missing or unreadable path fails verification, is named, and is not counted as scanned', () => {
+  const root = fixtureWorkspace();
+  const good = 'core/src/main/java/com/acme/core/Leaky.java';
+  const r = runInputStreamScan(root, {
+    files: [good, 'core/src/main/java/com/acme/core/Typo.java', 'core/src/main/java'],
+  });
+  assert.strictEqual(r.ok, false, 'a rescan that skipped a requested file must not pass as clean');
+  assert.match(r.error, /2 of 3 requested file\(s\) could not be scanned/);
+  assert.match(r.error, /Typo\.java \(not found\)/);
+  assert.match(r.error, /core\/src\/main\/java \(unreadable \(EISDIR\)\)/);
+  assert.strictEqual(r.stats.filesRequested, 3);
+  assert.strictEqual(r.stats.filesScanned, 1, 'only the file that was read counts as scanned');
+  assert.deepStrictEqual(r.stats.skippedFiles.map(f => path.basename(f.file)), ['Typo.java', 'java']);
+  assert.ok(r.warnings.some(w => /Typo\.java was not scanned — not found/.test(w)));
+  assert.deepStrictEqual(r.rawFindings.map(f => path.basename(f.file)), ['Leaky.java'], 'the readable file is still reported');
+});
+
+test('--files: every requested file readable keeps verification ok', () => {
+  const root = fixtureWorkspace();
+  const r = runInputStreamScan(root, { files: ['core/src/main/java/com/acme/core/Leaky.java'] });
+  assert.strictEqual(r.ok, true);
+  assert.strictEqual(r.stats.filesRequested, 1);
+  assert.deepStrictEqual(r.stats.skippedFiles, []);
+});
+
+test('CLI --files with a mistyped path exits non-zero and reports ok:false in the JSON', () => {
+  const root = fixtureWorkspace();
+  const runner = path.join(__dirname, 'input-stream-runner.js');
+  const run = (args) => {
+    try {
+      return { code: 0, out: execFileSync(process.execPath, [runner, root, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }) };
+    } catch (err) {
+      return { code: err.status, out: err.stdout.toString(), err: err.stderr.toString() };
+    }
+  };
+  const bad = run(['--files', 'core/src/main/java/com/acme/core/Leaky.java,core/src/main/java/com/acme/core/Typo.java', '--json']);
+  assert.strictEqual(bad.code, 2);
+  const json = JSON.parse(bad.out);
+  assert.strictEqual(json.ok, false);
+  assert.match(json.error, /Typo\.java \(not found\)/);
+  assert.deepStrictEqual(json.stats.skippedFiles.map(f => path.basename(f.file)), ['Typo.java']);
+
+  const text = run(['--files', 'core/src/main/java/com/acme/core/Typo.java']);
+  assert.strictEqual(text.code, 2);
+  assert.match(text.err, /Incomplete scan/);
+
+  assert.strictEqual(run(['--files', 'core/src/main/java/com/acme/core/Leaky.java', '--json']).code, 0);
+});
+
+test('a native process marks only the streams in its own method as E; elsewhere in the file it is a file-level note', () => {
+  const sites = sitesOf([
+    'void run(File workingDir) throws Exception { new ProcessBuilder("ffmpeg").start(); File out = new File(workingDir, "o.mp3"); FileInputStream fis = new FileInputStream(out); use(fis); }',
+    'InputStream mem(byte[] b) { return new ByteArrayInputStream(b); }',
+    'void cfg(Resource r) throws Exception { try (InputStream in = r.adaptTo(InputStream.class)) { use(in); } }',
+    'void use(InputStream i) {}',
+  ].join('\n'));
+  assert.deepStrictEqual(sites.map(s => `${s.source}:${s.categories.join('+')}`), ['file:E+B', 'byte-array:A', 'repo-binary:A']);
+  assert.ok(/this method runs a native process/.test(sites[0].note));
+  assert.ok(sites.slice(1).every(s => s.fix === 'none' && s.severity === 'info'), 'unrelated sites keep their own severity and fix kind');
+});
+
+test('native process lines are reported at file level and do not inflate the decision counts', () => {
+  const root = mkworkspace();
+  write(root, 'core/src/main/java/com/acme/Mixed.java', [
+    'package com.acme;',
+    'import java.io.*;',
+    'public class Mixed {',
+    '    void transcode() throws Exception { new ProcessBuilder("ffmpeg").start(); }',
+    '    InputStream mem(byte[] b) { return new ByteArrayInputStream(b); }',
+    '    void load(Resource res) throws Exception { InputStream in = res.adaptTo(InputStream.class); use(in); }',
+    '    void use(InputStream i) {}',
+    '}',
+  ].join('\n'));
+  const r = runInputStreamScan(root);
+  const f = r.rawFindings.find(x => x.kind === 'source');
+  assert.deepStrictEqual(f.nativeProcessLines, [4]);
+  assert.ok(/starts a native process \(L4\)/.test(r.findings[0].detail));
+  assert.deepStrictEqual(f.sites.map(s => s.categories.join('+')), ['A', 'B'], 'the ByteArrayInputStream is not E, and the unclosed stream is only B');
+  assert.deepStrictEqual(r.stats.fix, { auto: 1, review: 0, decision: 0 });
+  assert.strictEqual(f.severity, 'medium');
+});
+
+test('importing an FFmpeg helper type is not a native process; its uses are', () => {
+  const r = scanJavaSource([
+    'package com.acme;',
+    'import java.io.*;',
+    'import com.day.cq.dam.handler.ffmpeg.FFMpegWrapper;',
+    'import com.day.cq.dam.handler.ffmpeg.ExecutableLocator;',
+    'public class T {',
+    '  InputStream mem(byte[] b) { return new ByteArrayInputStream(b); }',
+    '  void run(ExecutableLocator locator) { FFMpegWrapper w = FFMpegWrapper.fromProfile(null, null, null); }',
+    '}',
+  ].join('\n'));
+  assert.deepStrictEqual(r.nativeLines, [7], 'only the use on L7, not the imports on L3 and L4');
+});

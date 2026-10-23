@@ -456,3 +456,45 @@ test('an up-to-date cache is reused without re-reading the CSV', async () => {
   assert.equal(again.success, true, again.error);
   assert.equal(again.targets.length, 1);
 });
+
+test('default `all` with a legacy cache and no CSV returns the patterns the cache covers and names the missing ones', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('all', { collectionsDir, limit: null });
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(result.targets.map(t => t.className), ['com.acme.core.Job'], 'the scheduler findings the cache holds');
+  assert.deepEqual(result.staleCache.missingPatterns, ['inputStream']);
+  assert.match(result.message, /predates 'inputStream'/);
+  assert.match(result.message, /provide the BPA CSV/);
+  // The cache itself is left untouched.
+  const cache = JSON.parse(fs.readFileSync(path.join(collectionsDir, 'unified-collection.json'), 'utf8'));
+  assert.equal(cache.meta.parsedSubtypes, undefined);
+});
+
+test('default `all` with a legacy cache and a CSV rebuilds the cache and includes the new pattern', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('scheduler', { bpaFilePath: csv, collectionsDir, limit: null });
+  makeCacheLegacy(collectionsDir);
+
+  const result = await getBpaFindings('all', { bpaFilePath: csv, collectionsDir, limit: null });
+  assert.equal(result.success, true, result.error);
+  assert.deepEqual(result.targets.map(t => t.className).sort(), ['com.acme.core.Foo', 'com.acme.core.Job']);
+  assert.equal(result.staleCache, undefined);
+});
+
+test('default `all` with an up-to-date cache reports no stale-cache warning', async () => {
+  const dir = tempDir();
+  const csv = writeInputStreamAndSchedulerCsv(dir);
+  const collectionsDir = path.join(dir, 'uc');
+  await getBpaFindings('all', { bpaFilePath: csv, collectionsDir, limit: null });
+  const again = await getBpaFindings('all', { collectionsDir, limit: null });
+  assert.equal(again.success, true, again.error);
+  assert.equal(again.staleCache, undefined);
+  assert.equal(again.targets.length, 2);
+});

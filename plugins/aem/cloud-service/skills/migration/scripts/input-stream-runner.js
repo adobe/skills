@@ -668,7 +668,10 @@ function scanJavaSource(src) {
   const classNames = [...code.matchAll(/\b(?:class|enum|record)\s+([A-Za-z_$][\w$]*)/g)].map(m => m[1]);
   const fileCtx = {
     workflow: WORKFLOW_RE.test(code),
-    native: NATIVE_RE.test(code),
+    // Lines that start a native process, reported at file level; a site only
+    // gets category E when the process is started in its own method. Import
+    // lines are blanked so naming a type in an import doesn't count as a use.
+    nativeLines: [...new Set([...code.replace(/^\s*import\b[^;]*;/gm, m => m.replace(/[^\n]/g, ' ')).matchAll(new RegExp(NATIVE_RE.source, 'g'))].map(m => lineOf(starts, m.index)))],
     writeLines: [...new Set([...code.matchAll(FS_WRITE_RE)].map(m => lineOf(starts, m.index)))],
   };
 
@@ -800,9 +803,11 @@ function scanJavaSource(src) {
       handoff = /\bcreateAsset/.test(scopeCode) ? 'asset-manager' : null;
       notes.push(`client upload written into the repository${handoff ? ' via AssetManager.createAsset' : ''} — use direct binary upload on author; on publish, send it to an external store`);
     }
-    if (fileCtx.native) {
+    // A native process started in the same method as this stream (the process's own
+    // output, or a file it produced) — not every stream elsewhere in the class.
+    if (NATIVE_RE.test(scopeCode)) {
       if (!categories.includes('E')) categories.push('E');
-      notes.push('this class runs a native process (ProcessBuilder / Runtime.exec / FFmpeg helpers): native binaries can\'t be deployed to AEM as a Cloud Service, so confirm the command exists there or move the processing out of AEM (for assets, asset microservices)');
+      notes.push('this method runs a native process (ProcessBuilder / Runtime.exec / FFmpeg helpers): native binaries can\'t be deployed to AEM as a Cloud Service, so confirm the command exists there or move the processing out of AEM (for assets, asset microservices)');
     }
     const fixedPath = source === 'file' && FIXED_PATH_RE.test(codeWithStrings.slice(st.segStart + 1, st.segEnd));
     const scratch = TEMP_API_RE.test(codeWithStrings.slice(scope.open, scope.close)) || TEMP_IDENT_RE.test(scopeCode);
@@ -873,7 +878,7 @@ function scanJavaSource(src) {
     break;
   }
 
-  return { sites, typeRefLine };
+  return { sites, typeRefLine, nativeLines: fileCtx.nativeLines };
 }
 
 // ── Workspace scan + BPA merge ──────────────────────────────────────────────
@@ -936,22 +941,31 @@ function runInputStreamScan(workspaceRoot, options = {}) {
     ? onlyFiles.map(f => (path.isAbsolute(f) ? f : path.join(workspaceRoot, f)))
     : collectJavaFiles(workspaceRoot);
 
-  // Index every file (FQCN → file) so BPA classes can be resolved.
+  // Index every file (FQCN → file) so BPA classes can be resolved. A file that
+  // can't be read is recorded, never silently dropped.
   const index = new Map();
   const sources = new Map();
+  const skippedFiles = [];
   for (const file of files) {
     let src;
-    try { src = fs.readFileSync(file, 'utf8'); } catch { continue; }
+    try {
+      src = fs.readFileSync(file, 'utf8');
+    } catch (err) {
+      skippedFiles.push({ file, reason: err.code === 'ENOENT' ? 'not found' : `unreadable (${err.code || err.message})` });
+      continue;
+    }
     sources.set(file, src);
     const { pkg, types } = declaredTypes(stripCommentsAndStrings(src));
     for (const t of types) index.set(pkg ? `${pkg}.${t}` : t, file);
   }
 
   const scanCache = new Map();
+  const nativeLinesByFile = new Map();
   const sitesOfFile = (file) => {
     if (scanCache.has(file)) return scanCache.get(file);
     const src = sources.get(file);
-    const scan = src === undefined ? { sites: [], typeRefLine: null } : scanJavaSource(src);
+    const scan = src === undefined ? { sites: [], typeRefLine: null, nativeLines: [] } : scanJavaSource(src);
+    if (scan.nativeLines.length > 0) nativeLinesByFile.set(file, scan.nativeLines);
     if (scan.sites.length === 0 && scan.typeRefLine) {
       scan.sites.push({
         line: scan.typeRefLine,
@@ -1037,15 +1051,22 @@ function runInputStreamScan(workspaceRoot, options = {}) {
     const anchor = e.top || e.sites[0];
     const countStr = Object.keys(e.counts).sort((a, b) => CATEGORY[a].rank - CATEGORY[b].rank).map(c => `${c}×${e.counts[c]}`).join(' ');
     const fixStr = ['decision', 'review', 'auto'].filter(k => e.fix[k]).map(k => `${k} ${e.fix[k]}`).join(', ');
-    const detail = e.top
+    const nativeLines = nativeLinesByFile.get(e.file) || [];
+    // Reported at file level: a class that starts native processes is a migration
+    // concern of its own, separate from any one stream site in it.
+    const nativeNote = nativeLines.length > 0
+      ? ` · starts a native process (${nativeLines.slice(0, 3).map(l => `L${l}`).join(', ')}): native binaries can't be deployed to AEM as a Cloud Service`
+      : '';
+    const detail = (e.top
       ? `${countStr} · ${fixStr} · L${e.top.line} ${e.top.primary}: ${e.top.note.split('; ')[0]}${bpa ? ' · BPA ✓' : ''}`
-      : `benign (${e.sites.length} site${e.sites.length > 1 ? 's' : ''}): ${e.sites[0].note.split('; ')[0]}${bpa ? ' · BPA ✓' : ''}`;
+      : `benign (${e.sites.length} site${e.sites.length > 1 ? 's' : ''}): ${e.sites[0].note.split('; ')[0]}${bpa ? ' · BPA ✓' : ''}`) + nativeNote;
     const informational = e.actionable.length === 0;
     add(
       { location: `${e.file}:${anchor.line}`, detail, severity: informational ? 'info' : e.severity, ...(informational ? { informational: true } : {}) },
       {
         pattern: 'inputStream', file: e.file, line: anchor.line, snippet: anchor.snippet, kind: 'source',
         severity: informational ? 'info' : e.severity, fix: e.fix, sites: e.sites,
+        ...(nativeLines.length > 0 ? { nativeProcessLines: nativeLines } : {}),
         ...(bpa ? { bpa: { classes: [...bpa.classes].sort(), apis: [...bpa.apis].sort() } } : {}),
         ...(informational ? { informational: true } : {}),
       }
@@ -1102,8 +1123,10 @@ function runInputStreamScan(workspaceRoot, options = {}) {
   const missingSourceGroups = ordered.filter(g => g.kind === 'missing-source');
   const stats = {
     mode,
-    filesScanned: mode === 'bpa' ? scanCache.size : files.length,
-    filesIndexed: files.length,
+    filesRequested: files.length,
+    filesScanned: scanCache.size,
+    filesIndexed: sources.size,
+    skippedFiles: skippedFiles.map(f => ({ file: f.file, reason: f.reason })),
     filesWithStreams: fileEntries.length,
     actionableFiles: fileEntries.filter(e => e.actionable.length > 0).length,
     sites: allSites.length,
@@ -1121,6 +1144,9 @@ function runInputStreamScan(workspaceRoot, options = {}) {
   };
 
   const warnings = [];
+  for (const f of skippedFiles) {
+    warnings.push(`inputStream: ${path.relative(workspaceRoot, f.file) || f.file} was not scanned — ${f.reason}.`);
+  }
   if (mode === 'bpa' && files.length === 0) {
     warnings.push(`inputStream: BPA reports ${bpaTargets.length} java.io.inputstream rows but the workspace has no src/main/java sources — open the AEM project root so they can be resolved.`);
   } else if (mode === 'bpa' && bpaByFile.size === 0) {
@@ -1132,6 +1158,15 @@ function runInputStreamScan(workspaceRoot, options = {}) {
     warnings.push(`inputStream: ${g.classes.size} BPA-flagged ${one ? 'class' : 'classes'} from ${label} ${one ? 'looks' : 'look'} like customer code but ${one ? 'has' : 'have'} no source in this workspace (e.g. ${[...g.classes].sort()[0]}) — open the repository that builds ${one ? 'it' : 'them'} and re-scan.`);
   }
 
+  // A verification re-scan (--files) that couldn't read every requested file is
+  // incomplete, so it must not pass as clean.
+  if (onlyFiles && skippedFiles.length > 0) {
+    return {
+      ok: false, findings, rawFindings, warnings, stats,
+      error: `${skippedFiles.length} of ${files.length} requested file(s) could not be scanned: `
+        + skippedFiles.map(f => `${path.relative(workspaceRoot, f.file) || f.file} (${f.reason})`).join(', '),
+    };
+  }
   return { ok: true, findings, rawFindings, warnings, stats };
 }
 
@@ -1198,11 +1233,12 @@ async function main() {
   const rel = f => (f ? path.relative(root, f) : f);
   if (args.json) {
     const findings = result.rawFindings.map(r => ({ ...r, file: rel(r.file) }));
-    process.stdout.write(`${JSON.stringify({ workspaceRoot: root, source: bpa.source || 'local-scan', stats: result.stats, warnings: result.warnings, findings }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ ok: result.ok, ...(result.error ? { error: result.error } : {}), workspaceRoot: root, source: bpa.source || 'local-scan', stats: result.stats, warnings: result.warnings, findings }, null, 2)}\n`);
+    if (!result.ok) process.exitCode = 2;
     return;
   }
   const s = result.stats;
-  console.log(`inputStream scan (${bpa.source ? `BPA ${bpa.source === 'cam' ? 'from CAM' : 'CSV'} first` : 'local — no BPA findings'}) — ${s.filesScanned} Java files scanned, ${s.actionableFiles} actionable file(s), ${s.sites} stream site(s)`);
+  console.log(`inputStream scan (${bpa.source ? `BPA ${bpa.source === 'cam' ? 'from CAM' : 'CSV'} first` : 'local — no BPA findings'}) — ${s.filesScanned}${s.filesRequested !== s.filesScanned && args.files ? ` of ${s.filesRequested} requested` : ''} Java files scanned, ${s.actionableFiles} actionable file(s), ${s.sites} stream site(s)`);
   console.log(`  fix kinds: decision ${s.fix.decision}, review ${s.fix.review}, auto ${s.fix.auto}`);
   if (s.bpa.rows) {
     console.log(`  BPA: ${s.bpa.rows} rows → ${s.bpa.resolvedFiles} workspace file(s); outside the workspace: `
@@ -1215,6 +1251,10 @@ async function main() {
     }
   }
   result.warnings.forEach(w => console.log(`\n⚠️  ${w}`));
+  if (!result.ok) {
+    console.error(`\n❌ Incomplete scan — ${result.error}`);
+    process.exitCode = 2;
+  }
 }
 
 if (require.main === module) {

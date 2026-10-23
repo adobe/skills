@@ -58,7 +58,7 @@ The scanner's category is a **lead, not the verdict**. Read each site and confir
 | # | Category | What the scanner looks for | Action | Fix kind |
 |---|---|---|---|---|
 | **F** | **Java deserialization** | `new ObjectInputStream(…)` or any `*ObjectInputStream` subclass (`ValidatingObjectInputStream`, …). **Critical** when the same method reads request, parameter, cookie, header or Base64 input. | If you own the format, replace it. If you don't (data written by AEM, a product feature or a library), add an `ObjectInputFilter` allow-list (**R6**). Never deserialize untrusted input. | `decision` |
-| **E** | **Binary streamed or processed in the JVM** | DAM binary reads (`asset.getOriginal().getStream()`, `rendition.getStream()`, an asset resource adapted to `InputStream`); a repository binary copied to the response; a client upload written into the repository; asset processing in a workflow step; a class that runs a native process (`ProcessBuilder`, `Runtime.exec`, AEM's FFmpeg helpers) | Deliver through the CDN, upload with direct binary upload, move asset processing to asset microservices (**R5**) | `decision` |
+| **E** | **Binary streamed or processed in the JVM** | DAM binary reads (`asset.getOriginal().getStream()`, `rendition.getStream()`, an asset resource adapted to `InputStream`); a repository binary copied to the response; a client upload written into the repository; asset processing in a workflow step; a stream in a method that starts a native process (`ProcessBuilder`, `Runtime.exec`, AEM's FFmpeg helpers). Other streams in the same class aren't marked E: the process is reported on the file's finding (`nativeProcessLines`) instead. | Deliver through the CDN, upload with direct binary upload, move asset processing to asset microservices (**R5**) | `decision` |
 | **D** | **Local filesystem** | `FileInputStream`, `Files.newInputStream`, `FileUtils.openInputStream` on a hard-coded path, or without signs of per-request temp-file use (a temp file or directory, a working directory, the file deleted after use). The note lists local-filesystem writes in the same file. | Move the data **and the code that writes it** (**R4**) | `decision` |
 | **C** | **Unbounded in-memory read** | Whole-stream reads (`toByteArray`, `toString`, `readLines`, `readAllBytes`, `lines()`, a copy into a `ByteArrayOutputStream`, parsing a request body) of a source with unknown size and no read limit. A Content-Length check is not a limit. Only reported when F, E and D don't apply, because their fixes replace the read. | Stream it (**R2**) or limit the read (**R3**) | `review` |
 | **B** | **Unclosed stream or undisposed JCR `Binary`** | A stream opened in the method that isn't in try-with-resources, closed (directly or through a wrapper), returned, kept on a field, or handed to a callee that keeps it (a setter, map or builder), closes it (JCR `createBinary`) or is a same-file method that does either. A `Binary` from `getBinary()` that is never disposed. When the stream goes to an unknown callee, the note names it. An HTTP entity's content (`entity.getContent()`) belongs to the response, so an inline read of it isn't flagged. | Try-with-resources and `Binary.dispose()` (**R1**) | `auto` |
@@ -201,7 +201,7 @@ Make surgical, formatting-preserving edits. Do not reformat, reorder imports or 
 2. Apply **R1** to every confirmed **B** site. Apply **R2** or **R3** to **C** sites when the resolution contract allows.
 3. For **D, E, F**, determine the tier, write the proposal into the batch report and leave the code unchanged unless the user has already confirmed.
 4. Add imports (`java.nio.charset.StandardCharsets`, `org.apache.commons.io.IOUtils`, `javax.jcr.Binary`) only when they are used. Remove imports that become unused.
-5. **Verify** by re-scanning just the touched files. Each fixed site must drop to `A` (or disappear), and the file's `fix.auto` total must reach 0:
+5. **Verify** by re-scanning just the touched files. The re-scan fails (`ok: false`, exit code 2) when a requested file is missing or unreadable, naming it in `error` and `stats.skippedFiles`, so a mistyped path can't pass as clean; fix the path and re-run. Each fixed site must drop to `A` (or disappear), and the file's `fix.auto` total must reach 0:
    ```bash
    node scripts/input-stream-runner.js <workspaceRoot> --files core/src/main/java/…/Foo.java,core/src/main/java/…/Bar.java --json
    ```
@@ -220,7 +220,7 @@ Make surgical, formatting-preserving edits. Do not reformat, reorder imports or 
 ## Review checklist
 
 - [ ] Every site in the touched files is confirmed (A–F) and listed in the batch report.
-- [ ] The `--files` re-scan of the touched files shows no remaining `auto` sites.
+- [ ] The `--files` re-scan of the touched files completed (`ok: true`, nothing in `skippedFiles`) and shows no remaining `auto` sites.
 - [ ] Every stream the method opens is closed via try-with-resources, and every `Binary` from `getBinary()` is disposed. No stream the method doesn't own is closed.
 - [ ] No whole-stream read of an asset, repository binary, request body or remote response remains without a read limit (a Content-Length check doesn't count).
 - [ ] No DAM binary is read or proxied in the JVM without a recorded decision.
