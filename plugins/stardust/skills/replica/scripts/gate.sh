@@ -82,7 +82,7 @@
 #   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
 #                       reaches both captures, the diff probes and chrome-parity
 #   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
-#   --no-dismiss        do not dismiss consent/marketing overlays — on the captures or the probes (exit 125
+#   --no-dismiss        do not dismiss consent/marketing overlays — captures, probes and chrome-parity (exit 125
 #                       together with --consent / --dismiss: they contradict)
 #
 # Example (iteration 2 of the home archetype at 1440):
@@ -154,8 +154,8 @@ done
 if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
   echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
 fi
-# Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel> and
-# --dismiss <sel,…>; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
+# Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel>,
+# --dismiss <sel,…> and --no-dismiss; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
 # selectors are joined for them. Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array
 # under set -u is an unbound variable.
 STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
@@ -165,7 +165,7 @@ if [ "$DISMISS" = 1 ]; then
   EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
   if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
 else
-  STITCH_OPTS=(--no-dismiss)
+  STITCH_OPTS=(--no-dismiss); CHROME_OPTS=(--no-dismiss)
 fi
 
 HERE=$(cd "$(dirname "$0")" && pwd)

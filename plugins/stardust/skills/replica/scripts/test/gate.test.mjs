@@ -236,8 +236,8 @@ check('--no-dismiss drops the dismiss flag', !/--dismiss/.test(cd), cd);
 
 // Overlay dismissal, one vocabulary (header § Overlay dismissal): --consent / --dismiss reach BOTH stitched captures
 // (symmetric), the diff probes (joined into their one --dismiss value) and chrome-parity; a default round dismisses
-// with the built-in candidates (captures: no flag; probes: bare --dismiss); --no-dismiss reaches the captures as
-// stitch-shot's --no-dismiss and drops the probes' flag. Fresh slugs so the live capture runs (live.png is cached per
+// with the built-in candidates (captures: no flag; probes: bare --dismiss); --no-dismiss reaches the captures and
+// chrome-parity as --no-dismiss and drops the probes' flag. Fresh slugs so the live capture runs (live.png is cached per
 // slug × width); the selectors carry spaces and commas on purpose — the quoting through the arrays is the contract.
 const argsFile = join(root, 'stitch-args.txt');
 const stitchArgs = () => (existsSync(argsFile) ? readFileSync(argsFile, 'utf8').trim().split('\n') : []);
@@ -259,9 +259,9 @@ check('a default round dismisses with the built-in candidates: no overlay flag o
   && !/--consent|--dismiss/.test(evidence('consent2', 'chrome-parity-c2.txt')), `status ${r.status} | ${stitchArgs().join(' | ')} | ${evidence('consent2', 'content-diff-c2.txt')}`);
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c3', '--full', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGS: argsFile });
-check('--no-dismiss reaches both captures as stitch-shot --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2
+check('--no-dismiss reaches both captures and chrome-parity as --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2
   && stitchArgs().every((l) => / --no-dismiss$/.test(l) && !/--consent|--dismiss /.test(l))
-  && !/--dismiss/.test(evidence('consent3', 'content-diff-c3.txt')) && !/--dismiss/.test(evidence('consent3', 'visual-diff-c3.txt')) && !/--consent|--dismiss/.test(evidence('consent3', 'chrome-parity-c3.txt')), `status ${r.status} | ${stitchArgs().join(' | ')}`);
+  && !/--dismiss/.test(evidence('consent3', 'content-diff-c3.txt')) && !/--dismiss/.test(evidence('consent3', 'visual-diff-c3.txt')) && / --no-dismiss$/m.test(evidence('consent3', 'chrome-parity-c3.txt')) && !/--consent|--dismiss /.test(evidence('consent3', 'chrome-parity-c3.txt')), `status ${r.status} | ${stitchArgs().join(' | ')}`);
 resetArgs();
 r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c4', '--no-dismiss', '--consent', '#consent-yes'], { STUB_STITCH_ARGS: argsFile });
 check('--no-dismiss with --consent is a usage error (exit 125) before any capture', r.status === 125 && /contradicts/.test(r.stderr) && stitchArgs().length === 0, `status ${r.status} ${r.stderr}`);
