@@ -467,8 +467,8 @@ test('default `all` with a legacy cache and no CSV returns the patterns the cach
   const result = await getBpaFindings('all', { collectionsDir, limit: null });
   assert.equal(result.success, true, result.error);
   assert.deepEqual(result.targets.map(t => t.className), ['com.acme.core.Job'], 'the scheduler findings the cache holds');
-  assert.deepEqual(result.staleCache.missingPatterns, ['inputStream']);
-  assert.match(result.message, /predates 'inputStream'/);
+  assert.deepEqual(result.staleCache.missingPatterns, ['oakIndex', 'inputStream']);
+  assert.match(result.message, /predates 'oakIndex', 'inputStream'/);
   assert.match(result.message, /provide the BPA CSV/);
   // The cache itself is left untouched.
   const cache = JSON.parse(fs.readFileSync(path.join(collectionsDir, 'unified-collection.json'), 'utf8'));
