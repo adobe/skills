@@ -190,5 +190,6 @@ block's flattened-shape fallback, not the authoring.
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output, as deploy's Validate phase does on a served,
-decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags
-(unless justified) and every content-diff 🔴, confirm 🟡/🟠, loop until both are clean.
+decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP/
+HEADING FACE flags (unless justified — a font substitution is one `HEADING FACE ×N` line) and every content-diff 🔴,
+confirm 🟡/🟠, loop until both are clean.

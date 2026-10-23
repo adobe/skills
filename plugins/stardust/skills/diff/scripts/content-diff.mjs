@@ -224,8 +224,10 @@ export function attributeInventory(args) {
     const h = b.querySelector('h1, h2, h3, h4, h5, h6');
     return h ? norm(h.textContent).slice(0, 60) : '';
   };
-  // an element's text minus inline-svg <title>/<text>: an svg icon and an <img> icon leave the same anchor
-  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg')) t += ` ${n.textContent}`; return t; };
+  // an element's text minus inline-svg <title>/<text> and payloads (as content-inventory labelOf): an svg icon and an <img> icon leave the same anchor
+  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg, script, noscript, style, template')) t += ` ${n.textContent}`; return t; };
+  // the consent managers' banners, as content-inventory skips them (test/content-diff.test.mjs pins the copies)
+  const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
   const anchorOf = (el) => {
     const host = el.matches(INTERACTIVE) ? el : el.closest(INTERACTIVE);
     if (host && root.contains(host)) {
@@ -244,6 +246,7 @@ export function attributeInventory(args) {
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
     if (['script', 'style', 'template', 'noscript'].includes(tag) || el.closest('script, style, template, noscript')) return;
+    if (el.closest(CONSENT_UI)) return; // a consent banner's close / accept controls are not page content
     if (el.ownerSVGElement) return; // svg internals — the <svg> itself is the icon
     const interactive = Boolean(el.closest(INTERACTIVE)); // closest() includes the element itself
     for (const attr of ['placeholder', 'aria-label', 'title']) {

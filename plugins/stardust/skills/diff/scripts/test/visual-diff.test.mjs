@@ -3,7 +3,8 @@
 // build image stands for — rendered box + natural ratio, never the file name), headingFaceDiffers (size > 1 px, family
 // case-insensitive), redFlags (a stretch the source shares is no flag, a source crop the build distorts is one);
 // --help with no browser; then end to end against two fixture pages where playwright is importable (a skip line
-// otherwise). Run: node <this file>.
+// otherwise). Also normFamily (packaging suffixes are one face), pairHeadings (duplicates in document order), the
+// ×N HEADING FACE summary, and IMAGE FIT (info, the source distorts what the build crops). Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
@@ -11,7 +12,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { headingFaceDiffers, redFlags, sourceTwin } from '../visual-diff.mjs';
+import { headingFaceDiffers, normFamily, pairHeadings, redFlags, sourceTwin } from '../visual-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -49,7 +50,46 @@ await check('redFlags: a stretch the source shares is no flag; a source cover cr
 });
 await check('redFlags: a matched heading at another size is HEADING FACE; the same face in another case is not', () => {
   const flags = redFlags(page([], [heading('Pricing', '48px', 'manrope'), heading('Plans', '40px', 'Manrope')]), page([], [heading('Pricing', '48px', 'Manrope'), heading('Plans', '32px', 'Manrope')]), prof);
-  assert.deepEqual(flags, ['HEADING FACE: <h2> "Plans" is 40px Manrope in build vs 32px Manrope in source.']);
+  assert.deepEqual(flags, [`HEADING FACE: <h2> "Plans" is 40px Manrope in build vs 32px Manrope in source. ${prof.hints.HEADING_FACE}`]);
+});
+await check('normFamily: first family of the stack, unquoted, lowercased, without variable / VF / weight suffixes', () => {
+  assert.equal(normFamily('"Manrope Variable", sans-serif'), 'manrope');
+  assert.equal(normFamily('manrope'), 'manrope');
+  assert.equal(normFamily("'InterVF'"), 'inter');
+  assert.equal(normFamily('Inter Var'), 'inter');
+  assert.equal(normFamily('Lato-Bold'), 'lato');
+  assert.equal(normFamily('Montserrat Extra Bold'), 'montserrat');
+  assert.equal(normFamily('Helvetica Neue'), 'helvetica neue');
+  assert.equal(normFamily('Times New Roman'), 'times new roman');
+  assert.equal(normFamily('Bold'), 'bold', 'never empties a name');
+  assert.equal(headingFaceDiffers(heading('a', '40px', 'Manrope Variable'), heading('a', '40px', 'manrope')), false);
+});
+await check('pairHeadings: duplicate texts pair in document order, never all with the last', () => {
+  const src = [heading('Learn more', '20px', 'A'), heading('Learn more', '30px', 'A'), heading('Only source', '20px', 'A')];
+  const pairs = pairHeadings(src, [heading('learn more', '20px', 'A'), heading('Learn more', '30px', 'A'), heading('Learn more', '40px', 'A')]);
+  assert.deepEqual(pairs.map(([p, h]) => [p.fontSize, h.fontSize]), [['20px', '20px'], ['30px', '30px']]);
+  const flags = redFlags(page([], [heading('Learn more', '20px', 'A'), heading('Learn more', '30px', 'A')]), page([], src), prof);
+  assert.deepEqual(flags, [], flags.join('\n'));
+});
+await check('redFlags: one family pair on every differing heading is ONE ×N HEADING FACE line, plus any size difference', () => {
+  const texts = ['One', 'Two', 'Three'];
+  const src = page([], texts.map((t) => heading(t, '40px', 'Helvetica Neue')));
+  const build = page([], texts.map((t, k) => heading(t, k === 2 ? '30px' : '40px', 'inter')));
+  const flags = redFlags(build, src, prof);
+  assert.equal(flags.length, 2, flags.join('\n'));
+  assert.equal(flags[0], `HEADING FACE ×3: "Helvetica Neue" → "inter" on every differing heading (source → build). ${prof.hints.HEADING_FACE}`);
+  assert.match(flags[1], /^HEADING FACE: <h2> "Three" is 30px inter in build vs 40px Helvetica Neue in source\./);
+  const mixed = redFlags(page([], [heading('One', '40px', 'Inter'), heading('Two', '40px', 'Inter')]), page([], [heading('One', '40px', 'Arial'), heading('Two', '40px', 'Georgia')]), prof);
+  assert.equal(mixed.length, 2, 'two family pairs stay per heading');
+  assert.ok(mixed.every((f) => f.startsWith('HEADING FACE: <h2>')), mixed.join('\n'));
+});
+await check('redFlags: a fill twin under the stretch threshold is never named as the crop to copy; the source distorting what the build crops is IMAGE FIT (info)', () => {
+  const near = redFlags(page([img('b.jpg', '1000x1000', '105x100', 'fill', true)]), page([img('s.jpg', '1040x1000', '105x100', 'fill', false)]), prof);
+  assert.equal(near.length, 1, near.join('\n'));
+  assert.match(near[0], /\(source: undistorted fill at the same box, its ratio under the 4 % threshold\)/);
+  assert.doesNotMatch(near[0], /object-fit fill/);
+  const info = redFlags(page([img('b.jpg', '1200x774', '140x140', 'cover')]), page([img('s.jpg', '1200x774', '140x140', 'fill', true)]), prof);
+  assert.deepEqual(info, [`IMAGE FIT (info): b.jpg natural 1200x774 → rendered 140x140 is object-fit cover in build; source stretches it (fill) at the same box. ${prof.hints.IMAGE_FIT}`]);
 });
 await check('--help: exit 0 with the usage, no browser needed', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
