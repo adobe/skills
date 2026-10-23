@@ -118,8 +118,7 @@ def _subproject_dirs(root, has_reactor) -> list:
 
 
 def detect_shape(project_root, modules) -> str:
-    """Classify the project into one of CAM's four shapes
-    (`cam-repo-modernizer-analysis.md` §4):
+    """Classify the project into one of CAM's four project shapes:
 
     - **SINGLE** — reactor + its own bundle/content modules, NO sub-projects.
     - **NESTED** — reactor, NO own bundle/content, but HAS sub-projects.

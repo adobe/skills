@@ -1,64 +1,100 @@
 ---
 name: repo-modernize
-description: Restructure a legacy AEM (6.x / AMS / on-prem) Maven project into the AEM as a Cloud Service module layout (ui.apps + ui.apps.structure + ui.config + ui.content + all), separating immutable code (/apps, /libs, /oak:index) from mutable content/config. Reproduces the CAM Repository Modernizer outcome locally in the IDE — auto-inspection, immutable/mutable content + filter split, ui.apps.structure roots, OSGi→.cfg.json, uber-jar→aem-sdk-api, all-embedding, 3rd-party detection, findings by priority — as a reviewable git diff on a dedicated branch, targeting the current archetype, without the CAM tool's bugs. Use for "restructure my project for Cloud", "split apps/content packages", "my project isn't Cloud-restructured", or as a pre-step of the migration journey. Handles all four CAM project shapes — SINGLE, NESTED, MULTI, MONOLITHIC — via a shape-aware orchestrator (scripts/orchestrate.py) that runs the pipeline per code-bearing sub-project.
+description: "[BETA] Restructures a legacy AEM (6.x, AMS, on-prem) Maven project into the AEM as a Cloud Service package layout (ui.apps, ui.apps.structure, ui.config, ui.content, all) as a reviewable change on a git branch: the outcome of Adobe's CAM Repository Modernizer, produced locally. Splits immutable code (/apps, /libs, /oak:index) from mutable content, converts OSGi configs to typed .cfg.json, swaps uber-jar for aem-sdk-api, embeds bundles in all, and reports findings by priority, for single, nested, multi-project and monolithic layouts. Use for \"restructure my project for AEM as a Cloud Service\", \"split my apps and content packages\", or a project not yet in the Cloud Service layout. This skill is in beta. Verify all outputs before applying them to production projects."
 license: Apache-2.0
+compatibility: Requires git and Python 3.9+ with lxml (pip install -r requirements.txt). The optional build check needs Maven and JDK 11+.
 metadata:
+  status: beta
   version: "1.0"
   visibility: public
 ---
 
-# AEM as a Cloud Service — Repository Modernizer (in-IDE)
+# AEM as a Cloud Service — Repository Modernizer
 
-Scoped under `plugins/aem/cloud-service/skills/repo-modernize/`.
+> **Beta Skill**: This skill is in beta and under active development.
+> Results should be reviewed carefully before use in production.
+> Report issues at https://github.com/adobe/skills/issues
+
+Restructures a legacy AEM Maven project into the AEM as a Cloud Service package layout, as a reviewable change on a git branch — the outcome of Adobe's CAM Repository Modernizer, produced locally.
+
+**You run the workflow and make the decisions with the user.** The bundled scripts do the bulk edits that must be exact and repeatable — moving hundreds of files with their git history, splitting content and filters, converting OSGi configs, editing POMs — and check that nothing was lost. Do not hand-edit what the scripts produce; change the plan and re-run.
 
 ## When to use
-- A legacy project has a single content package spanning `/apps` and `/content`, or no ui.apps/ui.content split.
-- Migration detects "project not Cloud-restructured" and delegates here before per-finding fixes.
+- A content package deploys both `/apps` and mutable paths (`/content`, `/conf`, `/etc`, ...), or the project has no `ui.apps` / `ui.content` / `ui.config` / `all` split.
+- Before the `migration` skill's per-pattern fixes, when the project is not yet in the Cloud Service layout.
 
-## Precondition gate
-Clean git working tree. Create a dedicated branch (default `cloud-modernize`) and **abort if the tree is dirty**.
+Not for: Dispatcher configs (`migration`, Dispatcher branch), Java API fixes (`code-assessment`), Oak index definitions (Adobe's index converter).
 
 ## Prerequisites
-- **`lxml`** — Phase-2 POM refactoring (`refactor_poms.py`, via `pom_engine.py`) parses/rewrites POMs with `lxml`. Install it before Stage 6: `pip install -r requirements.txt` (or into a project venv).
-- **`runmode-restructure` companion skill** — *not required.* Run-mode folder **renaming/merging** is deliberately out of scope: `repo-modernize` reproduces the CAM Repository Modernizer, which is **detect-only** for run modes (it relocates config folders verbatim and flags non-Cloud ones as `RM-108`, never renaming or merging them). Renaming/merging is a separate, human-directed concern with a real data-loss hazard (two conflicting run modes — e.g. `config.test` and `config.preprod` holding different values — cannot both become one Cloud run mode without losing a value), so the standalone `runmode-restructure` skill owns it if a developer chooses to do it after this restructuring.
+- **git**, and **Python 3.9+ with `lxml`**: `python3 -m pip install -r requirements.txt` (from this skill's folder, or into a virtual environment). The apply step checks both and stops with instructions if anything is missing.
+- **Optional build check:** Maven and JDK 11+.
+- A **clean working tree on a new branch**: `git checkout -b cloud-modernize`.
 
-## Archetype & AEM SDK version
-The skill scaffolds from a **bundled, pinned** copy of the AEM project archetype templates (`assets/archetype-pom-templates/`, currently **archetype-56**) and bakes a **pinned AEM SDK API** version into the reactor. Pinning keeps every run deterministic and offline — a re-runnable, reviewable diff — and mirrors how the CAM tool itself works (it bakes `template_archetype_56` into its jar). Staying current is handled explicitly, not by a silent runtime download:
-- **Staleness notice (always on, offline-safe):** Stage 1 (`inspect_project.py`) checks Maven Central and prints a one-line notice when a newer archetype/SDK exists, so a run is never *silently* on a stale archetype. Disable with `--no-version-check` / `REPO_MODERNIZE_NO_VERSION_CHECK` (auto-disabled under pytest).
-- **Latest SDK on demand:** pass `--sdk-version latest` to `refactor_poms.py` (or `orchestrate.py`) to bake the newest `aem-sdk-api` from Maven Central into the reactor (falls back to the pin when offline). Default is `pinned` for determinism; an explicit `--sdk-version <version>` is also accepted.
-- **Refresh the pins:** `python3 scripts/refresh_archetype.py` bumps the pinned SDK to the latest (safe, version-string only) and reports whether a newer **archetype structure** (e.g. 57/58) is available. The template *structure* is intentionally **not** auto-swapped at runtime — the deterministic transforms are calibrated to the current template shapes, so a structure bump is regenerated under the full test suite as a gate (the model CAM uses in its weekly `archetype-auto-update` CI job). `--check` reports without changing anything.
+Run the scripts from this skill's folder (`scripts/...`), passing the project root.
 
-## Project shapes & orchestration
-`repo-modernize` handles all four CAM project shapes. `inspect_project.py` auto-detects the shape:
-- **SINGLE** — reactor + its own bundle/content modules, no sub-projects.
-- **NESTED** — reactor with no own code, but sub-projects (nested reactors), e.g. `globex-parent`.
-- **MONOLITHIC** — reactor + own code AND sub-projects.
-- **MULTI** — no root reactor pom; independent projects side by side.
+## Workflow
 
-A **sub-project** is a nested reactor that declares its own `<module>`s (a bare `pom` module like `dispatcher` is NOT one). The **modernization unit** = each code-bearing project the SINGLE pipeline runs on: for SINGLE it's the root; for NESTED it's each legacy sub-project; for MONOLITHIC it's the root itself + its sub-projects; for MULTI it's each child project. `inspect_project.py` writes the plan to `.modernize/units.json` (+ `subprojects.json`), classifying each unit `legacy` (modernize), `modern` (already Cloud-restructured — skip), or `empty` (nothing to do).
+### 1. Plan (read-only)
+`python3 scripts/orchestrate.py <project-root> --plan`
 
-**Orchestrator (single entry point, any shape):** `python3 scripts/orchestrate.py <root> [--git] [--verify] [--mvn]` runs the full Stage 1–6 pipeline (below) on every `legacy` unit, **in place**, in CAM's order (**sub-projects first, then the main project**), skips `modern`/`empty` units, isolates per-unit failures, and writes `.modernize/orchestration.json` + an aggregate summary. Unlike CAM (which copies into a fresh `modernized/` tree), each unit is modernized in place and is independently reviewable as its own git diff; the umbrella/root reactor keeps its own `<modules>` wiring. Run the orchestrator, **or** drive the stages below manually per unit.
+Detects the project shape (single, nested, multi-project or monolithic) and the code-bearing units to restructure, and writes for each unit `.modernize/config.json` (the plan), `inventory.json` (file checksums for the no-loss check) and `findings.json`. Nothing outside `.modernize/` changes. Units that are already restructured or have no code are skipped.
 
-## Workflow (the SINGLE pipeline — run per unit)
-1. **Inspect** (read-only): `python3 scripts/inspect_project.py <root>` → proposed `.modernize/config.json`, `inventory.json`, initial findings (+ `units.json`/`subprojects.json` for NESTED/MONOLITHIC/MULTI roots). Present the proposal.
-2. **Confirm (human gate):** show the dev `config.json`; they edit target-module mapping / naming collisions / ambiguous content. Nothing is written to the tree before this.
-3. **Scaffold:** `python3 scripts/scaffold_modules.py <root> --config .modernize/config.json` → only the needed target modules from pinned archetype-56 templates.
-4. **Split content:** `python3 scripts/split_content.py <root> --config .modernize/config.json --git` → `git mv` content by immutable/mutable, split filters, derive ui.apps.structure roots.
-5. **Convert OSGi:** `python3 scripts/convert_osgi.py <root> --config .modernize/config.json --git` → moves OSGi configs out of the (already-split) `ui.apps` module's `apps/<appId>/config*` folders (found recursively — nested `runmodes/`/per-site subtrees included; folders holding only non-OSGi files like `.scss` are skipped) into `ui.config/.../src/main/content/jcr_root/apps/<appId>/osgiconfig/<runmode>/`, **preserving each run-mode folder name verbatim**, converting `sling:OsgiConfig` `.xml` and Felix `.config`/`.cfg` files into `.cfg.json` along the way (repoinit configs are relocated but deliberately left as unconverted `.xml` — `RM-901`; an existing `.cfg.json` is copied through byte-for-byte; a same-PID duplicate across app subtrees is deduped or, if it conflicts, flagged `RM-906`). A run-mode folder whose name is not a valid AEMaaCS run mode (honored: `author`/`publish`/`dev`/`stage`/`prod`) is **flagged `RM-108`** but relocated as-is and never renamed/merged — matching CAM's detect-only behavior (no data loss).
-6. **Refactor POMs:** `python3 scripts/refactor_poms.py <root> --config .modernize/config.json` → per-module POM refactor, in order:
-   - **Bundle poms:** drop `com.adobe.aem:uber-jar`; a **scaffolded** bundle already has `aem-sdk-api` pre-seeded from the archetype template, while a **pre-existing** bundle (edited in place) gets a bare `aem-sdk-api` `<dependency>` added so it keeps its AEM API surface. The module's parent/own `<version>` is aligned to the reactor version. If the legacy Felix `maven-scr-plugin`/`maven-bundle-plugin` pair is present, those plugins are left untouched and `RM-902` (HIGH) is raised — porting Felix `<instructions>` into a `bnd-maven-plugin` `<bnd>` block is a manual/`code-assessment` job, not a mechanical one.
-   - **`ui.apps` / `ui.content` poms:** any legacy `com.adobe.aem:uber-jar` `<dependency>` is dropped and the module's parent/own `<version>` is aligned to the reactor; then content-package → filevault conversion, producing the archetype's own two-plugin shape — `com.day.jcr.vault:content-package-maven-plugin` is reshaped down to a bare `<extensions>true</extensions>` (kept, not removed or renamed, purely so `<packaging>content-package</packaging>` still has a lifecycle binding), and `org.apache.jackrabbit:filevault-package-maven-plugin` is added as a separate plugin carrying the real `packageType`/`cloudManagerTarget` configuration sourced from the archetype template. Legacy `autoInstallPackage`/`autoInstallPackagePublish` profiles are dropped. If the package's content has ACL authoring (`rep:policy`/`rep:ACL`), `accessControlHandling=merge_preserve` is added and noted (`RM-903`).
-   - **`all` pom:** ensures `packageType=container`, then embeds every project bundle plus `ui.config` (deduped by groupId+artifactId, additive only — nothing pre-existing is ever removed). A pre-existing 3rd-party `<embedded>` (e.g. one already hand-added by the legacy project) survives unchanged and is noted (`RM-904`).
-   - **Reactor/parent pom:** `uber-jar` → `aem-sdk-api` in `dependencyManagement` (+ the `aem.sdk.api` property); ensures **every** target module (`all`/`ui.apps.structure`/`ui.apps`/`ui.config`/`ui.content`) is a live `<module>` — including re-adding a `ui.content` a legacy reactor left commented out; ensures the reactor's FileVault `<pluginManagement>` entry declares `<extensions>true</extensions>` so the archetype-scaffolded content modules can bind the `content-package` packaging (a legacy reactor's filevault entry lacks it → `Unknown packaging: content-package`); adds `aemanalyser-maven-plugin` to `all/pom.xml` if it isn't already declared there; and, only when the modernized `ui.apps` filter has an `/oak:index` root, adds the `jackrabbit-packagetype` validator's index-definition settings to the reactor's FileVault `<pluginManagement>`.
+### 2. Review the plan with the user — required
+For each unit, show the shape, `appId`, bundles, content packages, target module names and the findings so far. Check with the user:
+- **`appId`** names `/apps/<appId>/osgiconfig` and `/apps/<appId>-packages`. Inspection proposes the reactor artifactId; if the legacy embed targets use a shorter app folder (e.g. `/apps/wknd/install` → `wknd`), propose that instead.
+- **`targetModules`**: rename any module that would collide with an existing directory.
+- **`bundles` / `testBundles`**: test bundles are not embedded in `all`.
+- **`contentPackages`**: every legacy content package must be listed.
 
-   **Must run after Stage 4's split** — `has_oak_index` (which gates the reactor's index-definition settings) is derived from the *modernized* `ui.apps` filter.xml, which only carries `/oak:index` roots once Stage 4 has merged them in from the legacy content packages.
-7. **Verify:** `python3 scripts/verify.py <root> --config .modernize/config.json --inventory .modernize/inventory.json --mvn` → the structural gate (`validate.py` run with `--check-pom-shape --check-embeds`, plus the no-content-loss oracle when `--inventory` is given) followed by an informational `mvn`/aem-analyser run. Exit codes:
-   - `0` — full success (structural PASS + analyser clean), **or** structural PASS where the *only* `mvn` problem is a Java compile failure attributable to a specific module and there are no aem-analyser `ERROR`-level findings — this is a `code-assessment` hand-off (Stage 8), not a Phase-2 failure.
-   - `3` — structural PASS, but aem-analyser reported a genuine `ERROR`-level finding — a real Phase-2 failure (spec anti-gaming: the analyser must stay green), even if a compile break also occurred.
-   - any other nonzero — the structural gate itself failed (filter-immutability / no-loss / pom-shape / embeds); `mvn` is never invoked in that case.
-8. **Triage & report:** residual Java/bundle breakage — legacy `core`'s Felix SCR/bundle-plugin pair (`RM-902`), or Java code that no longer compiles after the `uber-jar` → `aem-sdk-api` swap (Stage 7's compile-break hand-off) — is handed off to the `code-assessment` skill for triage and resolution. Dispatcher config conversion and Oak index-definition conversion remain detect-and-report only (out of scope for this skill). A pre-existing `oak:index` filter/content coverage gap — a source `_oak_index/.content.xml` index node with no matching filter root, flagged at Stage 1 as `RM-905` (HIGH) — is likewise a hand-off, not something the skill auto-resolves: see `references/manual-followups.md` §7.
+Edit `config.json` ([schema](references/config-schema.md)) and get explicit approval before applying.
 
-## Deterministic ↔ LLM boundary
-Scripts do all mechanical edits deterministically. The LLM proposes config, runs the confirm gate, and adjudicates only what a script *flags*. It never free-hand-edits POMs or content.
+### 3. Apply
+`python3 scripts/orchestrate.py <project-root> --apply --git --verify [--mvn] [--sdk-version latest]`
 
-See `references/transform-rules.md` for the code-verified rules and `references/manual-followups.md` for hand-offs.
+Uses each reviewed `config.json` as-is (never re-inspects). Per unit, sub-projects first:
+1. scaffold the missing modules from the bundled archetype templates;
+2. split content and filters: `/apps`, `/libs`, `/oak:index` → `ui.apps`; everything else → `ui.content`; repository roots → `ui.apps.structure`;
+3. move OSGi configs to `ui.config/.../apps/<appId>/osgiconfig/<run-mode>/` and convert them to `.cfg.json`, typed exactly as AEM read the legacy file (`{Long}5` → `5`, `{Boolean}true` → `true`; consistent with the `migration` skill's OSGi rules);
+4. refactor POMs: `uber-jar` → `aem-sdk-api`, FileVault packaging, `all` embeds, reactor modules, Java level 11, plugin versions;
+5. verify: no file lost, filter immutability, POM shape, embeds; `--mvn` adds a Maven build.
+
+| Exit | Meaning | Next step |
+|---|---|---|
+| 0 | Done; with `--mvn`, either a clean build or a break in a module's **legacy code** (Java compile, Felix SCR plugin, unit tests) | Review; hand legacy code breaks to `code-assessment` |
+| 1 | Structural check failed (violations listed) | Usually a wrong mapping in `config.json`: reset the branch, fix the plan, re-apply |
+| 2 | Prerequisite or plan missing | Follow the printed instructions |
+| 3 | aem-analyser ERROR | A real Cloud Service problem; investigate before continuing |
+| 4 | A restructured content module's POM can't be read by Maven | Report it as a bug with the printed lines |
+
+### 4. Review the result with the user
+- `git status` / `git diff --stat`: new modules, moved files (history kept), changed POMs.
+- Spot-check that `ui.apps`' filter holds only immutable roots, and compare a few `.cfg.json` files with their sources (in the diff).
+- Work through the findings below, then commit when the user agrees. `.modernize/` holds the plan and reports; leave it out of the commit unless the user wants the record.
+
+## Findings — what to do with each
+Findings are in each unit's `.modernize/findings.json`. Present them by priority, then:
+
+| Code | Meaning | Your action |
+|---|---|---|
+| RM-101 CRITICAL | Third-party dependency in a bundle or `ui.apps` | Decide with the user how it reaches Cloud Service: embed it in `all` (target `/apps/<appId>-packages/application/install`) or drop it if AEM provides it. [manual-followups §2](references/manual-followups.md) |
+| RM-107 CRITICAL | Content under `/libs` | Adobe owns `/libs`; customer code must not change it. With the user, move the customization to an `/apps` overlay or remove it. |
+| RM-108 HIGH | Run-mode folder Cloud Service ignores (e.g. `config.qa`) | Moved unchanged. Hand to the `migration` skill's OSGi branch (unsupported run modes): the user decides which Cloud run mode each maps to. Never merge folders silently — conflicting values would be lost. |
+| RM-901 NORMAL | Repoinit config moved without conversion | Nothing required. |
+| RM-902 HIGH | Bundle uses Felix SCR / `maven-bundle-plugin` | Hand to `code-assessment` (SCR → OSGi DS annotations, `bnd-maven-plugin`). |
+| RM-903 NORMAL | ACLs in a content package; `accessControlHandling=merge_preserve` set | Confirm with the user. |
+| RM-904 NORMAL | Existing third-party embed kept in `all` | Confirm it is still needed. |
+| RM-905 HIGH | Oak index defined but not covered by any filter root | If the user wants it deployed, add `<filter root="/oak:index/<name>"/>` to `ui.apps`' filter and review index naming. [manual-followups §7](references/manual-followups.md) |
+| RM-906 NORMAL / HIGH | Same OSGi PID in several app folders | NORMAL: identical copies, deduplicated. HIGH: conflicting copies — the second stayed in `ui.apps`; ask the user which values apply, then move it. |
+| RM-907 NORMAL / HIGH | OSGi value conversion note | NORMAL: a property AEM never applied (e.g. a `{Path}` value) was not carried over; the source value is in the finding — re-add only if wanted. HIGH: a value or whole file was invalid and left as-is — fix it with the user and convert per [transform-rules §10](references/transform-rules.md). |
+| RM-908 NORMAL | Java compiler level raised to 11 | Code that no longer compiles goes to `code-assessment`. |
+
+## Archetype and AEM SDK version
+Modules are scaffolded from bundled, pinned AEM archetype templates, so every run is deterministic and works offline. The plan step prints a notice when a newer archetype or SDK exists. `--sdk-version latest` writes the newest `aem-sdk-api` from Maven Central (falls back to the pinned version when offline); `scripts/refresh_archetype.py` updates the pins.
+
+## References
+- [references/config-schema.md](references/config-schema.md) — the plan file.
+- [references/transform-rules.md](references/transform-rules.md) — every transformation rule, and where it intentionally differs from CAM.
+- [references/manual-followups.md](references/manual-followups.md) — what is reported rather than changed, and how to resolve it.
+- [references/cam-validation.md](references/cam-validation.md) — results against CAM on four real projects.
+
+The stages can also be run one at a time per unit (`inspect_project.py`, `scaffold_modules.py`, `split_content.py`, `convert_osgi.py`, `refactor_poms.py`, `verify.py`); see each script's `--help`.

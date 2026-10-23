@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0" xmlns:jcr="http://www.jcp.org/jcr/1.0" xmlns:rep="internal"
+    jcr:primaryType="nt:unstructured"
+    desktopOnly="/sites.html/content/wknd/en"
+    desktopOnlyTitle="WKND web site"
+    href="/sites.html/content/wknd/en"
+    icon="starFill"
+    id="wknd-site-us-en"
+    jcr:title="WKND web site"
+    order="0"
+    />

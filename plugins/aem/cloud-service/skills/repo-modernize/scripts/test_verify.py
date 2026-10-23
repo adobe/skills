@@ -309,3 +309,32 @@ class Main(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class LegacyFelixPluginHandoff(unittest.TestCase):
+    """With the compiler level raised, legacy `core` compiles and then stops in the Felix
+    SCR plugin (RM-902) -- still the code hand-off, attributed to its module."""
+
+    def test_scr_plugin_failure_is_attributed_like_a_compile_break(self):
+        log = ("[INFO] wknd - Core ..... FAILURE [  3.3 s]\n"
+               "[ERROR] Failed to execute goal org.apache.felix:maven-scr-plugin:1.20.0:scr "
+               "(generate-scr-scrdescriptor) on project aem-guides-wknd.core: Execution "
+               "generate-scr-scrdescriptor of goal org.apache.felix:maven-scr-plugin:1.20.0:scr "
+               "failed: org.apache.felix.scrplugin.annotations.AnnotationProcessor is not an "
+               "ImageIO SPI class -> [Help 1]\n")
+        self.assertEqual(VF._compile_failed_module(log), "aem-guides-wknd.core")
+
+    def test_unit_test_failure_in_module_is_attributed(self):
+        log = ("[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:2.18.1:test "
+               "(default-test) on project aem-guides-wknd.core: There are test failures.\n")
+        self.assertEqual(VF._compile_failed_module(log), "aem-guides-wknd.core")
+
+    def test_dependency_resolution_is_not_attributed(self):
+        log = ("[ERROR] Failed to execute goal on project aem-guides-wknd.core: Could not resolve "
+               "dependencies for project com.x:core:bundle:1.0\n")
+        self.assertIsNone(VF._compile_failed_module(log))
+
+    def test_other_failures_are_not_attributed(self):
+        log = ("[ERROR] Failed to execute goal org.apache.jackrabbit:filevault-package-maven-plugin:"
+               "1.3.6:validate-files (default) on project x.ui.apps: failed\n")
+        self.assertIsNone(VF._compile_failed_module(log))

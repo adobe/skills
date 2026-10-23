@@ -44,12 +44,15 @@ import refactor_poms as RP
 import verify as VF
 import rm_common as C
 
-FIX = Path(os.environ["WKND_FIXTURE"])
+FIX = Path(os.environ.get("WKND_FIXTURE") or
+         Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
+if not FIX.is_dir():
+    raise unittest.SkipTest(f"test fixture not found at {FIX} (set WKND_FIXTURE)")
 TPL = Path(__file__).resolve().parent.parent / "assets/archetype-pom-templates"
 
 # Run-mode folder names the legacy wknd fixture ships that are NOT valid AEM as a
-# Cloud Service run modes. Per CAM parity (cam-repo-modernizer-analysis.md §11 --
-# "Run-mode handling is detect-only (RM-108) -- no user-directed rename/merge"),
+# Cloud Service run modes. Per CAM parity (the CAM tool is detect-only for run modes:
+# RM-108, no rename/merge),
 # `convert_osgi.flag_noncloud_runmodes` PRESERVES each of these folders verbatim and
 # raises an RM-108 finding for it -- it never renames/merges them (renaming/merging
 # is a data-loss hazard and a separate, human-directed concern; see SKILL.md). So

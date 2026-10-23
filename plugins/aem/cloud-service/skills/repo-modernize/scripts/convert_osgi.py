@@ -1,45 +1,26 @@
 # scripts/convert_osgi.py
-"""sling:OsgiConfig attribute value -> .cfg.json value conversion (CAM §6.3 rules).
+"""Relocate legacy OSGi configs into ui.config and convert them to `.cfg.json`.
 
-Reproduces the value-encoding CAM's Repository Modernizer uses when it turns a
-legacy sling:OsgiConfig node's typed attributes into Cloud Manager's flat
-.cfg.json format -- minus CAM's own formatter bug of blindly stripping leading
-and trailing characters off the whole string. Every strip/unescape here is
-targeted (a leading "{Type}" hint, an escape sequence) rather than positional.
-
-Encoding recap:
-- "[...]"      -> a multi/array value. The interior is split on commas that are
-                  NOT escaped (a backslash-comma "\\," is a literal comma inside
-                  one element, not a separator).
-- "[]"         -> an explicitly empty array.
-- anything else -> a scalar. Scalars stay JSON strings even when they carry a
-                  type hint like "{Boolean}true" or "{Long}5" -- only the hint
-                  is stripped, the value itself is not coerced to bool/int.
-
-Each element/scalar may carry a leading "{Type}" hint (e.g. "{Boolean}",
-"{Long}", "{String}") that gets dropped, and may contain the escapes
-"\\{" -> "{" / "\\}" -> "}" (braces are escaped because unescaped "{...}" at
-the start of a value looks like a type hint). Array elements additionally
-unescape "\\," -> "," (comma escaping only matters inside an array, so it is
-only undone there).
+The value conversion itself lives in `osgi_formats`, which reads each legacy format
+exactly as AEM 6.x loaded it (FileVault DocView + Sling's JCR installer for
+`sling:OsgiConfig`, Felix `ConfigurationHandler` for `.config`, `java.util.Properties`
+for `.cfg`), so the converted file gives Configuration Admin the same typed values:
+`{Boolean}true` -> `true`, `{Long}5` -> `5`, Felix `I"5"` -> `"key:Integer": 5`,
+`.cfg` values stay strings. This module owns the file mechanics: where each config
+goes, git history, de-duplication across app subtrees, and findings.
 """
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from xml.sax.saxutils import quoteattr
 
+import osgi_formats as F
 import rm_common as C
-
-# A type hint is one leading {Word} at position 0 -- e.g. {Boolean}, {Long}.
-# Anchored with ^ so it can only ever strip a *leading* hint, never a
-# coincidental "{Word}" substring elsewhere in the value.
-_TYPE_HINT = re.compile(r"^\{[A-Za-z]+\}")
 
 # The PID (factory PID prefix) Sling's repoinit OSGi service is registered
 # under. Matched as a substring so factory-config suffixes (e.g. the trailing
@@ -47,62 +28,11 @@ _TYPE_HINT = re.compile(r"^\{[A-Za-z]+\}")
 _REPOINIT_PID_MARKER = "org.apache.sling.jcr.repoinit.RepositoryInitializer"
 
 
-def _unescape_braces(s: str) -> str:
-    """Undo the "\\{" / "\\}" escaping used so a literal "{" doesn't get
-    mistaken for the start of a {Type} hint."""
-    return s.replace(r"\{", "{").replace(r"\}", "}")
-
-
-def _strip_type_hint(s: str) -> str:
-    """Drop one leading "{Type}" hint, if present. No-op otherwise."""
-    return _TYPE_HINT.sub("", s)
-
-
-def _decode_scalar(s: str) -> str:
-    """Decode a plain value or a single array element that has already been
-    comma-unescaped: strip a leading {Type} hint, then unescape braces."""
-    return _unescape_braces(_strip_type_hint(s))
-
-
-def _split_unescaped_commas(inner: str) -> list:
-    """Split `inner` on commas not preceded by a backslash.
-
-    A single left-to-right scan tracking whether the current char is escaped;
-    an escaped comma is kept (still escaped, as "\\,") in the current element
-    so the caller can unescape it once, consistently with brace-unescaping.
-    """
-    parts, buf, escaped = [], [], False
-    for ch in inner:
-        if escaped:
-            buf.append(ch)
-            escaped = False
-        elif ch == "\\":
-            escaped = True
-            buf.append(ch)
-        elif ch == ",":
-            parts.append("".join(buf))
-            buf = []
-        else:
-            buf.append(ch)
-    parts.append("".join(buf))
-    return parts
-
-
 def convert_value(raw: str):
-    """Convert one sling:OsgiConfig attribute value into its JSON equivalent.
-
-    See module docstring for the encoding rules. Returns a `list` for an
-    array value (`[]` for an explicitly empty one) or a `str` for a scalar.
-    """
-    if raw.startswith("[") and raw.endswith("]"):
-        inner = raw[1:-1]
-        if inner.strip() == "":
-            return []
-        elements = []
-        for part in _split_unescaped_commas(inner):
-            elements.append(_decode_scalar(part.replace(r"\,", ",")).strip())
-        return elements
-    return _decode_scalar(raw)
+    """Convert one sling:OsgiConfig attribute value to its `.cfg.json` value (typed per
+    `osgi_formats.docview_to_json`). Returns None for a value AEM never applied."""
+    _key, value, _notes = F.docview_to_json("value", raw)
+    return value
 
 
 def is_repoinit_pid(pid: str) -> bool:
@@ -136,55 +66,14 @@ def _is_osgi_config_file(name: str) -> bool:
     (real: the globex project), or any other `config` folder whose contents
     aren't OSGi configs. `.scss`/`.js`/`.less`/… match no suffix → the folder
     is skipped, and any stray non-config file inside a genuine run-mode folder
-    is left in place rather than crashing `_plan_move`."""
+    is left in place rather than crashing `_plan_file`."""
     return name != ".content.xml" and name.endswith(_CFG_FILE_SUFFIXES)
 
 
-def _local_name(tag: str) -> str:
-    """The local (unprefixed) part of an ElementTree tag/attribute key --
-    `{http://www.jcp.org/jcr/1.0}primaryType` -> `primaryType`; a key with no
-    namespace is returned unchanged."""
-    return tag.split("}", 1)[-1] if "}" in tag else tag
-
-
-def _is_namespaced(attr_key: str) -> bool:
-    """True for an ElementTree attribute key that carries a namespace --
-    Clark-notation `{uri}local` (e.g. `jcr:primaryType` parses to
-    `{http://www.jcp.org/jcr/1.0}primaryType`) -- or, defensively, a literal
-    `xmlns`/`xmlns:*` declaration. `ET`'s default (expat) parser never
-    actually surfaces namespace declarations as attributes -- they're
-    consumed to build the Clark-notation keys -- but checking costs nothing
-    and matches the brief's wording ("drop ... any namespace ... attr")
-    literally."""
-    return attr_key.startswith("{") or attr_key.startswith("xmlns")
-
-
 def xml_to_cfgjson(xml_path) -> dict:
-    """Parse a `sling:OsgiConfig` `jcr:root` element's attributes into a
-    `.cfg.json`-shaped dict.
-
-    Namespace-agnostic via local-name matching: every attribute is read by
-    its LOCAL name, not a hardcoded namespace URI, so this doesn't care which
-    prefix the source document happens to bind to the jcr/sling namespaces.
-    Two kinds of attributes are dropped rather than carried into the result:
-      - any NAMESPACED attribute at all (`jcr:primaryType`, or hypothetically
-        any other `jcr:`/`sling:`-prefixed structural attribute) -- these
-        describe the JCR node itself, never an OSGi config property;
-      - a bare (unnamespaced) attribute literally named `primaryType`, for
-        the same reason, in case it is ever present unprefixed.
-    Every remaining attribute is a genuine OSGi config property; its value is
-    run through `convert_value` (the `{Type}`-hint / `[...]`-array rules).
-    """
-    root = ET.parse(str(xml_path)).getroot()
-    cfg = {}
-    for key, value in root.attrib.items():
-        if _is_namespaced(key):
-            continue
-        local = _local_name(key)
-        if local == "primaryType":
-            continue
-        cfg[local] = convert_value(value)
-    return cfg
+    """The `.cfg.json` properties of a `sling:OsgiConfig` `.xml` file (see
+    `osgi_formats.read_osgiconfig_xml`)."""
+    return F.read_osgiconfig_xml(xml_path)[0]
 
 
 def pid_of(filename: str) -> str:
@@ -201,145 +90,66 @@ def pid_of(filename: str) -> str:
     return filename
 
 
-def _felix_props_to_cfgjson(path) -> dict:
-    """Parse a Felix `.config`/`.cfg` properties file -- one `key=value` pair
-    per line, blank lines and `#`/`!`-comment lines ignored -- into a
-    `.cfg.json`-shaped dict. Each value is run through `convert_value`, the
-    same `{Type}`-hint / `[...]`-array encoding a sling:OsgiConfig XML
-    attribute value uses, so a Felix-side `[a,b]` or `{Boolean}true` decodes
-    identically whether it arrived via XML or via this format. A line with no
-    `=` is ignored rather than raised on (defensive; not expected in a
-    well-formed export)."""
-    cfg = {}
-    with open(path, "r", encoding="utf-8") as fh:
-        for line in fh:
-            stripped = line.strip()
-            if not stripped or stripped.startswith("#") or stripped.startswith("!"):
-                continue
-            key, sep, value = stripped.partition("=")
-            if not sep:
-                continue
-            cfg[key.strip()] = convert_value(value.strip())
-    return cfg
+class _Plan:
+    """What happens to one source config file. `props` is set when it converts to
+    `.cfg.json`; otherwise the file is relocated byte-for-byte under its own name."""
+
+    def __init__(self, dest_name: str, kind: str, props=None, notes=None, error: Optional[str] = None):
+        self.dest_name, self.kind = dest_name, kind
+        self.props, self.notes, self.error = props, notes or [], error
+
+    @property
+    def converts(self) -> bool:
+        return self.props is not None
+
+
+def _plan_file(src: Path) -> _Plan:
+    """Decide (and, for a convertible file, compute) the outcome for `src`, reading it
+    but never writing anything -- so the git path can `git mv` straight to the right
+    final name while the file still holds its original bytes.
+
+    kinds: `cfgjson` (already target format, verbatim), `repoinit` (verbatim in any
+    format -- CAM leaves repoinit configs unconverted), `legacy` (converted, or verbatim
+    with `error` set when it cannot be read the way AEM read it)."""
+    name = src.name
+    if name.endswith(".cfg.json"):
+        return _Plan(name, "cfgjson")
+    if not name.endswith((".xml", ".config", ".cfg")):
+        raise ValueError(f"unrecognized OSGi config file extension: {name!r}")
+    if is_repoinit_pid(pid_of(name)):
+        return _Plan(name, "repoinit")
+    try:
+        props, notes = F.read_legacy_config(src)
+    except F.ConversionError as e:
+        return _Plan(name, "legacy", error=str(e))
+    return _Plan(pid_of(name) + ".cfg.json", "legacy", props=props, notes=notes)
 
 
 def convert_file(src_path, dest_dir) -> tuple:
-    """Handle one legacy OSGi config file: produce its `.cfg.json`-shaped (or
-    verbatim) counterpart inside `dest_dir`. Returns `(dest_filename,
-    converted)`:
-
-      - `sling:OsgiConfig` `.xml`, non-repoinit PID: parsed via
-        `xml_to_cfgjson` and written as `<pid>.cfg.json` (`rm_common.
-        save_json`, sorted keys) -- `converted=True`.
-      - `sling:OsgiConfig` `.xml`, REPOINIT PID (`is_repoinit_pid`): copied
-        byte-for-byte into `dest_dir` under its ORIGINAL filename (still
-        `.xml`) -- `converted=False`. Repoinit factory configs are never
-        rewritten -- CAM's own conversion leaves them alone too -- and in
-        every real project this PID ships as `sling:OsgiConfig` XML, never as
-        a bare Felix `.config`/`.cfg` file, so the repoinit check only
-        applies on the `.xml` branch.
-      - Felix `.config`/`.cfg` (`key=value` lines): parsed via
-        `_felix_props_to_cfgjson` and written as `<pid>.cfg.json` -- same
-        `rm_common.save_json`, sorted keys -- `converted=True`.
-      - an EXISTING `.cfg.json`: already in the target shape, copied
-        byte-for-byte under its original filename -- `converted=False`.
-
-    This never reads or writes anything at `src_path` other than the copy
-    itself -- the source file is left exactly where it is, untouched, never
-    deleted. Relocating/removing the now-superseded source (`git mv` when
-    history must be preserved, or dropping an emptied source folder) is the
-    ORCHESTRATION layer's job (Task A3's `move_and_convert`), not this
-    per-file primitive's.
-    """
-    src = Path(src_path)
-    dest = Path(dest_dir)
+    """Write one legacy OSGi config's counterpart into `dest_dir`; the source is never
+    touched. Returns `(dest_filename, converted)`: a readable `.xml`/`.config`/`.cfg`
+    becomes `<pid>.cfg.json` (`converted=True`); an existing `.cfg.json`, a repoinit
+    config, or a file that cannot be read is copied byte-for-byte (`converted=False`)."""
+    src, dest = Path(src_path), Path(dest_dir)
     dest.mkdir(parents=True, exist_ok=True)
-    name = src.name
-
-    if name.endswith(".cfg.json"):
-        shutil.copy2(src, dest / name)
-        return name, False
-
-    if name.endswith(".xml"):
-        pid = pid_of(name)
-        if is_repoinit_pid(pid):
-            shutil.copy2(src, dest / name)
-            return name, False
-        dest_name = pid + ".cfg.json"
-        C.save_json(dest / dest_name, xml_to_cfgjson(src))
-        return dest_name, True
-
-    if name.endswith(".config") or name.endswith(".cfg"):
-        dest_name = pid_of(name) + ".cfg.json"
-        C.save_json(dest / dest_name, _felix_props_to_cfgjson(src))
-        return dest_name, True
-
-    raise ValueError(f"convert_file: unrecognized OSGi config file extension: {src_path!r}")
+    plan = _plan_file(src)
+    if plan.converts:
+        C.save_json(dest / plan.dest_name, plan.props)
+        return plan.dest_name, True
+    shutil.copy2(src, dest / plan.dest_name)
+    return plan.dest_name, False
 
 
 # ---------------------------------------------------------------------------
-# Orchestration (Task A3): move OSGi configs from the (Phase-1-split) ui.apps
-# module into ui.config, converting as they go; ensure ui.config's single
-# fixed filter root; CLI. Reuses convert_value/is_repoinit_pid/pid_of/
-# xml_to_cfgjson/convert_file (Tasks A1/A2) for every actual conversion
-# decision -- this section only adds the FILE-RELOCATION mechanics (git
-# history, emptied-folder cleanup, filter-root bookkeeping) around them.
+# Orchestration: move OSGi configs from the (already split) ui.apps module into
+# ui.config, converting as they go; ensure ui.config's single fixed filter root.
 # ---------------------------------------------------------------------------
 
-# A skill-original finding code for the repoinit-left-unconverted note below.
-# Deliberately NOT one of CAM's own RM-1xx numbers: CAM's FindingsReporter
-# table only runs up to RM-108 (UNSUPPORTED_RUN_MODE -- reserved for Task A4 /
-# the runmode-restructure skill's own finding), and CAM's SEPARATE ErrorCode
-# (exception) enum independently reuses RM-100..122 for unrelated meanings
-# (cam-repo-modernizer-analysis.md notes the two enums "share the RM-1xx
-# numbers with different meanings"). A number well outside either range
-# avoids ever colliding with a real CAM code.
-_REPOINIT_NOTE_CODE = "RM-901"
-
-# Skill-original finding for the multi-app OSGi-config dedup/conflict case (see
-# `move_and_convert`): the next free RM-9xx after RM-905. Multi-brand projects
-# (e.g. globex: apps/brand-a/config + apps/globex/config) file the SAME PID
-# under several app subtrees; flattening them into one `apps/<appId>/osgiconfig/
-# <runmode>/` collides. Identical copies are deduplicated (NORMAL); a genuine
-# conflicting redefinition of the same PID+run-mode is surfaced (HIGH) rather
-# than silently overwritten (which is what CAM's own copy-based move does).
-_OSGI_DEDUP_CODE = "RM-906"
-
-
-def _plan_move(name: str):
-    """Decide a source OSGi config file's destination filename and, when
-    content conversion is needed, which raw format to re-parse it as.
-
-    Mirrors `convert_file`'s own 4-way suffix dispatch (deliberately kept in
-    sync with it -- see that function's docstring) but returns the decision
-    only, without reading or writing anything. `move_and_convert`'s
-    git-history-preserving path needs this decision BEFORE the file is
-    relocated -- so it can `git mv` straight to the final name/path while
-    the file still holds its ORIGINAL bytes (see that function's docstring)
-    -- `convert_file` can't serve that purpose itself, since it always
-    freshly writes into a given dest dir and never touches its source. The
-    non-git fallback path still calls `convert_file` directly for the actual
-    write, so this small duplication never becomes a second source of truth
-    for the conversion itself -- only for which of the 4 filename cases
-    applies, which is a handful of `endswith` checks.
-
-    Returns `(dest_name, kind)`:
-      - `kind == "xml"`      -- sling:OsgiConfig xml, needs `xml_to_cfgjson`.
-      - `kind == "felix"`    -- Felix `.config`/`.cfg`, needs
-                                `_felix_props_to_cfgjson`.
-      - `kind == "repoinit"` -- repoinit xml, verbatim, worth a finding.
-      - `kind == "cfgjson"`  -- already `.cfg.json`, verbatim, no finding.
-    """
-    if name.endswith(".cfg.json"):
-        return name, "cfgjson"
-    if name.endswith(".xml"):
-        pid = pid_of(name)
-        if is_repoinit_pid(pid):
-            return name, "repoinit"
-        return pid + ".cfg.json", "xml"
-    if name.endswith(".config") or name.endswith(".cfg"):
-        return pid_of(name) + ".cfg.json", "felix"
-    raise ValueError(f"move_and_convert: unrecognized OSGi config file extension: {name!r}")
+# Skill-original finding codes, kept outside CAM's RM-1xx ranges (CAM's findings table
+# and its separate error-code enum both use RM-1xx with different meanings).
+_REPOINIT_NOTE_CODE = "RM-901"   # repoinit config relocated, deliberately unconverted
+_OSGI_DEDUP_CODE = "RM-906"      # same PID+run-mode from several app subtrees
+_OSGI_VALUE_CODE = "RM-907"      # value-level conversion note / file left unconverted
 
 
 def _git_mv(src: Path, dst: Path, repo: Path) -> None:
@@ -371,21 +181,14 @@ def _remove_source(f: Path, repo: Path, use_git: bool) -> None:
         f.unlink()
 
 
-def _converted_matches_existing(src: Path, kind: str, dest_path: Path) -> bool:
-    """True iff converting `src` (per `kind`) yields content structurally
-    identical to the already-present `dest_path` -- i.e. `src` is a duplicate of
-    a config already relocated from a DIFFERENT source app subtree (multi-app/multi-brand
-    projects routinely copy-paste the same PID under each brand), safe to dedup
-    rather than a genuine conflicting redefinition of the same PID+run-mode.
-
-    For converted kinds (`xml`/`felix`) the comparison is on the parsed
-    `.cfg.json` value (a dict), so cosmetic source differences that convert to
-    the same config count as duplicates; for verbatim kinds
-    (`repoinit`/`cfgjson`) it is a raw byte compare."""
-    if kind in ("xml", "felix"):
-        produced = xml_to_cfgjson(src) if kind == "xml" else _felix_props_to_cfgjson(src)
+def _plan_matches_existing(src: Path, plan: _Plan, dest_path: Path) -> bool:
+    """True iff `src` produces exactly what is already at `dest_path` -- a duplicate of a
+    config relocated from a DIFFERENT app subtree (multi-brand projects copy the same
+    PID under each brand), safe to dedup rather than a conflicting redefinition.
+    Converted files compare as parsed properties, verbatim ones byte-for-byte."""
+    if plan.converts:
         try:
-            return produced == C.load_json(dest_path)
+            return plan.props == C.load_json(dest_path)
         except (OSError, ValueError):
             return False
     try:
@@ -491,27 +294,16 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
         descriptor -- e.g. an explicit `sling:Folder` primaryType -- never
         an OSGi PID file) is skipped/left in place; it doesn't belong in
         ui.config at all.
-      - everything else is planned via `_plan_move` (mirrors `convert_file`'s
-        own dispatch) and then, per `use_git`:
-          - `use_git=True` (default): `git mv` straight to the final
-            destination name/path -- history-preserving even across an
-            `.xml`/`.config`/`.cfg` -> `.cfg.json` rename, because at the
-            moment of the `git mv` the file still holds its ORIGINAL bytes;
-            a file needing conversion (`kind in ("xml", "felix")`) is then
-            re-parsed FROM that new location and overwritten in place with
-            its `.cfg.json` content (`rm_common.save_json`, reusing
-            `xml_to_cfgjson` / `_felix_props_to_cfgjson` from Task A2) and
-            re-staged (`git add`); a verbatim file (`kind in ("repoinit",
-            "cfgjson")`) needs no further write -- the moved bytes are
-            already the exact right content.
-          - `use_git=False`: copy-then-remove -- `convert_file` (Task A2)
-            writes the final content straight into the destination
-            directory, then the source file is deleted.
-      - a REPOINIT `.xml` (`kind == "repoinit"`) is relocated but
-        deliberately left UNCONVERTED (CAM Sec.6.2) -- recorded as a NORMAL
-        `Finding` (see `_REPOINIT_NOTE_CODE`) rather than silently dropped,
-        so a developer reviewing the diff knows it was a deliberate skip,
-        not a missed file.
+      - everything else is planned via `_plan_file` (parsed first, read-only), then
+        relocated: with `use_git` by `git mv` straight to its final name and, if it
+        converts, overwritten with its `.cfg.json` content and re-staged; without git
+        by writing the result and deleting the source. (`git log --follow` tracks files
+        moved verbatim; a converted file's content is rewritten, so git records it as
+        a new file -- its source path is in the RM-907/diff, not in rename detection.)
+      - a repoinit config is relocated but deliberately left unconverted (CAM parity;
+        RM-901 NORMAL); a file that cannot be read the way AEM read it is relocated
+        unconverted under its own name (RM-907 HIGH); value-level notes (a type AEM
+        ignored, a non-canonical boolean, ...) become one RM-907 finding per file.
     Every config folder this empties is removed (`_remove_if_empty`); an
     app folder that had NOTHING but config subfolders is removed too -- one
     that still holds other content (components, i18n, ...) is left in
@@ -523,8 +315,7 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
     per CAM Sec.6.2 ("only one filter root ... is added"), not something
     conditioned on finding actual files today.
 
-    Returns the findings collected along the way (currently just the
-    repoinit-left-unconverted notes).
+    Returns the findings collected along the way (RM-901 / RM-906 / RM-907).
     """
     root = Path(project_root)
     tm = config["targetModules"]
@@ -561,21 +352,14 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
                     # config files are relocated/converted.
                     if not _is_osgi_config_file(f.name):
                         continue
-                    dest_name, kind = _plan_move(f.name)
-                    dest_path = dest_dir / dest_name
+                    plan = _plan_file(f)
+                    dest_path = dest_dir / plan.dest_name
+                    rel = f.relative_to(root)
                     if dest_path.exists():
-                        # A config with this PID + run-mode-folder-name was
-                        # already relocated from a DIFFERENT source app subtree
-                        # (multi-app/multi-brand projects share PIDs). Never
-                        # crash on the collision, never silently overwrite:
-                        #  - identical converted content -> dedup (drop the
-                        #    duplicate source; the first copy already carries it).
-                        #  - different content -> a genuine conflicting
-                        #    redefinition of one PID+run-mode: keep the first,
-                        #    leave this source in place, and surface it HIGH so a
-                        #    human resolves which value wins.
-                        rel = f.relative_to(root)
-                        if _converted_matches_existing(f, kind, dest_path):
+                        # Same PID + run-mode folder already relocated from a DIFFERENT app
+                        # subtree (multi-brand projects share PIDs). Identical -> dedup;
+                        # different -> keep the first, leave this one in place, flag HIGH.
+                        if _plan_matches_existing(f, plan, dest_path):
                             findings.append(C.Finding(
                                 _OSGI_DEDUP_CODE, "NORMAL",
                                 f"duplicate OSGi config deduplicated: {rel} is identical to "
@@ -590,20 +374,31 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
                         continue
                     if use_git:
                         _git_mv(f, dest_path, root)
-                        if kind == "xml":
-                            C.save_json(dest_path, xml_to_cfgjson(dest_path))
-                            _git_add(dest_path, root)
-                        elif kind == "felix":
-                            C.save_json(dest_path, _felix_props_to_cfgjson(dest_path))
+                        if plan.converts:
+                            C.save_json(dest_path, plan.props)
                             _git_add(dest_path, root)
                     else:
-                        convert_file(f, dest_dir)
+                        dest_dir.mkdir(parents=True, exist_ok=True)
+                        if plan.converts:
+                            C.save_json(dest_path, plan.props)
+                        else:
+                            shutil.copy2(f, dest_path)
                         f.unlink()
-                    if kind == "repoinit":
+                    moved = f"{rel} -> {dest_path.relative_to(root)}"
+                    if plan.kind == "repoinit":
                         findings.append(C.Finding(
                             _REPOINIT_NOTE_CODE, "NORMAL",
-                            "repoinit OSGi config relocated but deliberately left "
-                            f"unconverted: {f.relative_to(root)} -> {dest_path.relative_to(root)}"))
+                            f"repoinit OSGi config relocated but deliberately left unconverted: {moved}"))
+                    if plan.error:
+                        findings.append(C.Finding(
+                            _OSGI_VALUE_CODE, "HIGH",
+                            f"OSGi config could not be converted ({plan.error}); relocated "
+                            f"unconverted: {moved} -- fix the source and convert it to .cfg.json"))
+                    if plan.notes:
+                        worst = "HIGH" if any(p == "HIGH" for p, _ in plan.notes) else "NORMAL"
+                        findings.append(C.Finding(
+                            _OSGI_VALUE_CODE, worst,
+                            f"{dest_path.relative_to(root)}: " + "; ".join(t for _, t in plan.notes)))
                 # Prune the emptied `config*` folder AND any now-empty
                 # intermediate grouping folder (e.g. `runmodes/`) up to the app
                 # dir -- not just the leaf folder the flat scan used to handle.
@@ -624,8 +419,7 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
 # config folders verbatim (preserving their original names) and raises an RM-108
 # (UNSUPPORTED_RUN_MODE) finding for any folder whose name is not a valid AEM as a
 # Cloud Service run mode -- it never renames or merges them
-# (cam-repo-modernizer-analysis.md Sec.11: "Run-mode handling is detect-only
-# (RM-108) -- no user-directed rename/merge"). This skill matches that exactly:
+# (RM-108). This skill matches that exactly:
 # `move_and_convert` (Task A3) already preserves each run-mode folder name
 # verbatim, and `flag_noncloud_runmodes` below only INSPECTS the relocated tree
 # and reports. Crucially this means NO customer config is ever lost by collapsing
@@ -637,9 +431,8 @@ def move_and_convert(project_root, config: dict, use_git: bool = True) -> List[C
 # the CAM tool's outcome, no more.
 # ---------------------------------------------------------------------------
 
-# CAM's own FindingsReporter code for a run-mode folder that is not Cloud Service
-# compatible (cam-repo-modernizer-analysis.md: "RM-108 UNSUPPORTED_RUN_MODE =
-# HIGH") -- reused verbatim, not skill-original.
+# CAM's own finding code for a run-mode folder that is not Cloud Service compatible
+# (RM-108 UNSUPPORTED_RUN_MODE, HIGH) -- reused verbatim, not skill-original.
 _RUNMODE_FINDING_CODE = "RM-108"
 
 # The run-mode tokens AEM as a Cloud Service actually honors: the two service run

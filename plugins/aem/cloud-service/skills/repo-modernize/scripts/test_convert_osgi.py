@@ -15,9 +15,10 @@ import convert_osgi as O
 class Values(unittest.TestCase):
     def test_plain_string(self):
         self.assertEqual(O.convert_value("/x"), "/x")
-    def test_typed_scalar_hint_stripped(self):        # {Boolean}true -> "true"
-        self.assertEqual(O.convert_value("{Boolean}true"), "true")
-        self.assertEqual(O.convert_value("{Long}5"), "5")
+    def test_typed_scalars_become_native_json(self):   # typed as the JCR installer applied them
+        self.assertIs(O.convert_value("{Boolean}true"), True)
+        self.assertEqual(O.convert_value("{Long}5"), 5)
+        self.assertEqual(O.convert_value("{Long}[1,2]"), [1, 2])
     def test_array(self):                              # [a,b] -> ["a","b"]
         self.assertEqual(O.convert_value("[wknd/components/page/page]"), ["wknd/components/page/page"])
         self.assertEqual(O.convert_value("[a,b]"), ["a", "b"])
@@ -85,8 +86,8 @@ class XmlToCfg(unittest.TestCase):
             fh.write('<jcr:root xmlns:jcr="http://www.jcp.org/jcr/1.0" '
               'jcr:primaryType="sling:OsgiConfig" enabled="{Boolean}true" count="{Long}5"/>')
         cfg = O.xml_to_cfgjson(p)
-        self.assertEqual(cfg["enabled"], "true")
-        self.assertEqual(cfg["count"], "5")
+        self.assertIs(cfg["enabled"], True)
+        self.assertEqual(cfg["count"], 5)
 
 
 class ConvertFileXml(unittest.TestCase):
@@ -126,13 +127,26 @@ class FelixConfig(unittest.TestCase):
         d = tempfile.mkdtemp(); dest = tempfile.mkdtemp()
         p = os.path.join(d, "com.x.Bar.config")
         with open(p, "w") as fh:
-            fh.write("# a comment\n\nfoo=bar\nbaz=[a,b]\nenabled={Boolean}true\n")
+            fh.write('# a comment\n\nfoo="bar"\nbaz=["a","b"]\nenabled=B"true"\ncount=I"5"\n')
         name, converted = O.convert_file(p, dest)
         self.assertTrue(converted)
         self.assertEqual(name, "com.x.Bar.cfg.json")
         with open(os.path.join(dest, name)) as fh:
             cfg = json.load(fh)
-        self.assertEqual(cfg, {"foo": "bar", "baz": ["a", "b"], "enabled": "true"})
+        self.assertEqual(cfg, {"foo": "bar", "baz": ["a", "b"], "enabled": True, "count:Integer": 5})
+
+    def test_unreadable_config_copied_verbatim_not_converted(self):
+        import tempfile, os
+        d = tempfile.mkdtemp(); dest = tempfile.mkdtemp()
+        p = os.path.join(d, "com.x.Bad.config")
+        content = "foo=bar\nenabled={Boolean}true\n"     # not Felix syntax (values must be quoted)
+        with open(p, "w") as fh:
+            fh.write(content)
+        name, converted = O.convert_file(p, dest)
+        self.assertFalse(converted)
+        self.assertEqual(name, "com.x.Bad.config")
+        with open(os.path.join(dest, name)) as fh:
+            self.assertEqual(fh.read(), content)
 
     def test_cfg_extension_converted(self):
         import tempfile, os, json
@@ -563,8 +577,8 @@ class MoveAndConvertNestedRunmodes(unittest.TestCase):
         author = osgi / "config.author/com.example.Author.cfg.json"
         self.assertTrue(svc.exists(), f"missing {svc}")
         self.assertTrue(author.exists(), f"missing {author}")
-        self.assertEqual(json.load(open(svc))["size"], "5")        # {Long} hint stripped
-        self.assertEqual(json.load(open(author))["enabled"], "true")  # {Boolean} hint stripped
+        self.assertEqual(json.load(open(svc))["size"], 5)            # {Long} -> JSON number
+        self.assertIs(json.load(open(author))["enabled"], True)      # {Boolean} -> JSON boolean
 
         # source config* folders AND the now-empty intermediate `runmodes/` are pruned
         self.assertFalse((d / "ui.apps/src/main/content/jcr_root/apps/digital/runmodes").exists())
@@ -641,6 +655,69 @@ class MoveAndConvertMultiAppGlobex(unittest.TestCase):
         self.assertEqual(len(conflict), 1)
         # the conflicting second source is left in place (not overwritten/lost)
         self.assertTrue((apps / "app-b/config/com.x.Foo.config.xml").exists())
+
+
+class MoveAndConvertTypedValuesAndFindings(unittest.TestCase):
+    """RM-907 / RM-901 at the move level: what a reviewer sees in findings.json."""
+
+    def _build(self):
+        d = Path(tempfile.mkdtemp())
+        conf = d / "ui.apps/src/main/content/jcr_root/apps/acme/config"
+        conf.mkdir(parents=True)
+        (conf / "com.x.Typed.xml").write_text(
+            '<jcr:root xmlns:sling="http://sling.apache.org/jcr/sling/1.0" '
+            'xmlns:jcr="http://www.jcp.org/jcr/1.0" jcr:primaryType="sling:OsgiConfig" '
+            'enabled="{Boolean}true" path="{Path}/content/x"/>')
+        (conf / "com.x.Felix.config").write_text('max=I"10"\nnames=["a","b"]\n')
+        (conf / "com.x.Props.cfg").write_text("port=8080\nflag=true\n")
+        (conf / "com.x.Broken.config").write_text("url=http://unquoted\n")
+        (conf / "org.apache.sling.jcr.repoinit.RepositoryInitializer-r.config").write_text(
+            'scripts=["create path /x"]\n')
+        (d / "ui.config").mkdir()
+        config = {"appId": "acme", "targetModules": {"uiApps": "ui.apps", "uiConfig": "ui.config"}}
+        return d, config
+
+    def test_typed_output_unconvertible_and_repoinit(self):
+        d, config = self._build()
+        _init_git(d)
+        findings = O.move_and_convert(str(d), config, use_git=True)
+        out = d / "ui.config/src/main/content/jcr_root/apps/acme/osgiconfig/config"
+        self.assertEqual(json.load(open(out / "com.x.Typed.cfg.json")), {"enabled": True})
+        self.assertEqual(json.load(open(out / "com.x.Felix.cfg.json")),
+                         {"max:Integer": 10, "names": ["a", "b"]})
+        self.assertEqual(json.load(open(out / "com.x.Props.cfg.json")),
+                         {"port": "8080", "flag": "true"})        # .cfg holds only Strings
+        # unreadable: relocated under its own name, unchanged, flagged HIGH
+        self.assertEqual((out / "com.x.Broken.config").read_text(), "url=http://unquoted\n")
+        self.assertFalse((out / "com.x.Broken.cfg.json").exists())
+        # repoinit stays unconverted in any format
+        self.assertTrue((out / "org.apache.sling.jcr.repoinit.RepositoryInitializer-r.config").exists())
+
+        by_code = {}
+        for f in findings:
+            by_code.setdefault(f.code, []).append(f)
+        self.assertEqual([f.priority for f in by_code["RM-901"]], ["NORMAL"])
+        rm907 = sorted(by_code["RM-907"], key=lambda f: f.priority)
+        self.assertEqual([f.priority for f in rm907], ["HIGH", "NORMAL"])
+        self.assertIn("com.x.Broken.config", rm907[0].detail)
+        self.assertIn("'path'", rm907[1].detail)                  # the ignored {Path} value is reported
+
+        # history follows files relocated verbatim (git rename detection); a converted
+        # file's content is rewritten, so git sees it as new -- the source path is in the diff
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qam", "m"],
+                       cwd=d, check=True)
+        log = subprocess.run(["git", "log", "--follow", "--oneline", "--",
+                              str((out / "com.x.Broken.config").relative_to(d))],
+                             cwd=d, capture_output=True, text=True, check=True).stdout
+        self.assertEqual(len(log.strip().splitlines()), 2)
+
+    def test_same_without_git(self):
+        d, config = self._build()
+        O.move_and_convert(str(d), config, use_git=False)
+        out = d / "ui.config/src/main/content/jcr_root/apps/acme/osgiconfig/config"
+        self.assertEqual(json.load(open(out / "com.x.Felix.cfg.json"))["max:Integer"], 10)
+        self.assertTrue((out / "com.x.Broken.config").exists())
+        self.assertFalse((d / "ui.apps/src/main/content/jcr_root/apps/acme").exists())
 
 
 if __name__ == "__main__":

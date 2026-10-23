@@ -12,9 +12,8 @@ Composition:
     level findings and a Java compile failure attributable to a specific module.
   - `main` orchestrates both and prints a verdict that distinguishes a full Phase-2 success
     from a legacy-core Java compile break, which is a `code-assessment` hand-off rather than a
-    Phase-2 failure (see the plan's wknd-success-bar ruling), from a genuine aemanalyser ERROR,
-    which IS a real Cloud-validity failure (spec Sec 3: no-content-loss and analyser must BOTH
-    stay green -- anti-gaming). The ruling's compile-break carve-out is narrow: it covers ONLY a
+    Phase-2 failure, from a genuine aemanalyser ERROR, which IS a real Cloud-validity failure
+    (no-content-loss and the analyser must BOTH stay green). The ruling's compile-break carve-out is narrow: it covers ONLY a
     legacy-`core` Java compile failure with no analyser errors. `main`'s exit-code contract is
     therefore three-way:
       0   = structural PASS, and either (a) `--mvn` wasn't run, (b) `--mvn` ran and analyser is
@@ -49,6 +48,15 @@ _ON_PROJECT_RE = re.compile(r"on project ([\w.\-]+)\s*:")
 _RESUME_RE = re.compile(r"-rf\s*:([\w.\-]+)")
 # The reactor summary line for a failed module: "core ..................... FAILURE [n s]".
 _REACTOR_FAILURE_RE = re.compile(r"^\[INFO\]\s+(\S+)\s+\.{2,}\s*FAILURE", re.MULTILINE)
+# Legacy code that compiles but then breaks later in its own module's build is the same
+# hand-off as a compile break: the Felix SCR / bundle plugins (flagged RM-902) failing on a
+# modern JDK (maven-scr-plugin: "AnnotationProcessor is not an ImageIO SPI class"), or the
+# module's own unit tests failing (e.g. Mockito 1.x / cglib on Java 17+). Dependency
+# resolution and POM-model errors are deliberately NOT matched -- those can be caused by
+# the restructuring and must surface as failures.
+_LEGACY_CODE_STEP_RE = re.compile(
+    r"Failed to execute goal (?:org\.apache\.felix:(?:maven-scr-plugin|maven-bundle-plugin)"
+    r"|org\.apache\.maven\.plugins:maven-surefire-plugin):\S*.*?on project ([\w.\-]+)\s*:")
 # A "[INFO] Building <module> <version> [n/m]" line, used only as a last-resort fallback:
 # the module name preceding the failure, per the brief.
 _BUILDING_RE = re.compile(r"^\[INFO\]\s+Building\s+(\S+)", re.MULTILINE)
@@ -85,7 +93,8 @@ def _compile_failed_module(text: str) -> Optional[str]:
     the fallback the brief explicitly calls out.
     """
     if "COMPILATION ERROR" not in text:
-        return None
+        m = _LEGACY_CODE_STEP_RE.search(text)
+        return m.group(1) if m else None
     for pattern in (_ON_PROJECT_RE, _RESUME_RE, _REACTOR_FAILURE_RE):
         m = pattern.search(text)
         if m:
@@ -156,7 +165,7 @@ def main(argv=None, run=subprocess.run) -> int:
           legacy-core compile break (`compile_failed_module` set AND no `analyser_errors`) --
           the code-assessment hand-off; the restructuring itself is correct.
       3 = structural PASS but `analyser_errors` is non-empty -- a genuine Cloud-validity
-          failure (spec Sec 3 anti-gaming: analyser must stay green), NOT a hand-off, even if a
+          failure (the analyser must stay green), NOT a hand-off, even if a
           compile break also occurred.
     `run` is accepted purely so tests can inject a fake Maven process; real CLI invocations
     never need to pass it.
@@ -208,7 +217,7 @@ def main(argv=None, run=subprocess.run) -> int:
 
     if analyser_errors:
         print("VERDICT: structural PASS, but aemanalyser reported ERROR-level findings -- "
-              "this IS a Phase-2 FAILURE (spec Sec 3: analyser must stay green; this is NOT "
+              "this IS a Phase-2 FAILURE (the analyser must stay green; this is NOT "
               "a code-assessment hand-off, even if a compile break also occurred):")
         for line in analyser_errors:
             print(f"  {line}")
@@ -225,10 +234,10 @@ def main(argv=None, run=subprocess.run) -> int:
         return 4
 
     if compile_failed_module:
-        print(f"VERDICT: structural PASS, but the core Java compile failed in module "
-              f"'{compile_failed_module}' -- the restructuring itself is correct; hand this "
-              "compile break off to the code-assessment skill (this is NOT a Phase-2 "
-              "failure).")
+        print(f"VERDICT: structural PASS, but the legacy code build (Java compile, Felix "
+              f"SCR/bundle plugin or unit tests) failed in module '{compile_failed_module}' -- the "
+              "restructuring itself is correct; hand this break off to the code-assessment "
+              "skill (this is NOT a Phase-2 failure).")
         return 0
 
     print("VERDICT: structural PASS; mvn did not succeed for a reason this gate could "

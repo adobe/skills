@@ -1,8 +1,8 @@
 # Transform rules (code-verified, minus the bugs)
 
 **Agent:** This is the rule set `inspect_project.py`, `split_content.py`, `convert_osgi.py`, and `refactor_poms.py`
-implement. It is distilled from the code-verified analysis of Adobe's CAM Repository Modernizer
-(`cam-repo-modernizer-analysis.md`) — **minus its bugs**. Where this doc's rule differs from CAM's actual
+implement. It reproduces the outcome of Adobe's CAM Repository Modernizer, verified against that tool's
+output on real projects (see `cam-validation.md`) — **minus its bugs**. Where this doc's rule differs from CAM's actual
 behavior, that is intentional; see §9. Every concrete example below is verified against this skill's own
 fixture, `aem-guides-wknd-legacy` (`groupId=com.adobe.aem.guides`, `appId=wknd`, `appTitle=WKND`), and
 against the pinned archetype-56 templates this skill scaffolds from. Do not re-derive these rules from
@@ -260,43 +260,39 @@ destination. Identical copies are **deduplicated** (NORMAL finding); a genuine c
 the same PID+run-mode is left in place and surfaced **HIGH** — never silently overwritten (which is what
 CAM's own copy-based move does). **Run-mode folder names are preserved verbatim** — a folder whose name is
 not a valid AEMaaCS run mode (honored tokens: `author`/`publish`/`dev`/`stage`/`prod`; so `config.test`,
-`config.preprod`, `config.qa`, `config.dev2`, … are invalid) is **flagged `RM-108`** (`flag_noncloud_
-runmodes`) but relocated as-is. This is deliberate CAM parity: CAM is detect-only for run modes
-(`cam-repo-modernizer-analysis.md` §11 — "no user-directed rename/merge"). Renaming/merging is NOT done
-here because it is a real data-loss hazard — two conflicting run modes (e.g. `config.test` and
+`config.preprod`, `config.qa`, `config.dev2`, … are invalid) is **flagged `RM-108`**
+(`flag_noncloud_runmodes`) but relocated as-is, matching CAM, which is detect-only for run modes.
+Renaming or merging run modes is not done here: two conflicting run modes (e.g. `config.test` and
 `config.preprod` holding different values for the same PID) cannot both collapse into one Cloud run mode
-without silently dropping a value — and is a separate, human-directed concern (the standalone
-`runmode-restructure` skill) outside this skill's "reproduce CAM's outcome" scope.
+without dropping a value. That decision belongs to the developer; the `migration` skill's OSGi branch
+(`references/osgi-cfg-json-cloud-manager.md`, unsupported run modes) is where it is handled.
 
-`convert_value` turns one raw `sling:OsgiConfig` XML attribute value, or one Felix `.config`/`.cfg`
-`key=value` line's value, into its `.cfg.json` equivalent — the actual encoding rules, minus CAM's own
-positional-stripping bug (§9 row 2):
+**Value conversion — typed, exactly as AEM read the legacy file** (`osgi_formats.py`). Each legacy format is
+read with the same grammar and type rules the AEM 6.x runtime used, so the `.cfg.json` gives Configuration
+Admin the same typed values (and stays consistent with the `migration` skill's Phase 0 rules, which also
+convert type hints to JSON types):
 
-- **`[...]` → array.** A value that starts with `[` and ends with `]` is a multi-value. Its interior is
-  split on commas that are **not** escaped — a backslash-comma (`\,`) is a literal comma inside one
-  element, not a separator — then each element is unescaped and has its own `{Type}` hint stripped.
-  `[]` (empty interior) → the explicit empty array `[]`.
-- **`{Type}` hint stripped, value NOT coerced.** A leading `{Word}` hint (`{Boolean}`, `{Long}`,
-  `{String}`, …) — anchored so only a genuinely *leading* hint is stripped, never a coincidental
-  `{...}` substring elsewhere — is dropped from a scalar or from each array element. The remaining text
-  stays a JSON **string**: `{Boolean}true` → `"true"`, not the JSON boolean `true`. This mirrors CAM's
-  own actual behavior, not a "helpful" type coercion.
-- **Brace escaping.** `\{` → `{` and `\}` → `}` (braces are escaped in the source because an unescaped
-  leading `{...}` looks like a type hint). Applied to every scalar and every array element.
-- **Comma escaping is array-only.** `\,` → `,` is unescaped only while splitting an array's interior —
-  it has no separate meaning on a bare scalar.
-- **Repoinit stays `.xml`, unconverted.** A `sling:OsgiConfig` `.xml` file whose PID names (or factory-
-  instantiates) Sling's `org.apache.sling.jcr.repoinit.RepositoryInitializer` service is relocated into
-  `ui.config`'s `osgiconfig/<runmode>/` tree like any other config file, but is copied byte-for-byte
-  under its **original `.xml` filename** — never parsed into `.cfg.json`. This is a deliberate skip
-  (CAM's own conversion leaves repoinit alone too), recorded as an `RM-901` finding (§12) rather than
-  silently dropped.
-- **An existing `.cfg.json` is already in the target shape** and is copied through byte-for-byte,
-  untouched — no re-parse, no re-serialization, no finding.
+| Source | Read like | Result |
+|---|---|---|
+| `sling:OsgiConfig` `.xml` | FileVault DocView parsing + Sling's JCR installer (`ConfigNodeConverter`) | `{Long}5` → `5`, `{Double}1.5` → `1.5`, `{Boolean}true` → `true`, `{Long}[1,2]` → `[1, 2]`; untyped / `{String}` → string; `[a,b]` → `["a", "b"]` (elements are not trimmed); escapes `\{`, `\,`, `\\`, `\uXXXX`, `[\0]` honored. `Name`/`Path`/`Reference`/`URI`/`Decimal`/`Date` values were ignored by the JCR installer at runtime, so they are not carried over (`RM-907` NORMAL, with the source value). An invalid value (e.g. `{Long}abc`) or unknown hint is kept as a string and flagged `RM-907` HIGH. |
+| Felix `.config` | Apache Felix `ConfigurationHandler` | `T`/no code → string, `L` → number, `D` → number (decoded from its raw IEEE-754 bits), `B` → boolean; `I`/`F`/`X`/`S`/`C`, primitive codes, and `(...)` collections keep their exact type with a `key:Type` hint (`"max:Integer": 10`, `"ids:Collection<Long>": [1]`). |
+| `.cfg` | `java.util.Properties` (ISO-8859-1, or XML when the file starts with `<`) | every value stays a string — the format only has strings, so coercing `8080` or `007` to a number would change what the component receives. |
 
-**Example.** Raw `[foo,bar\,baz]` → `["foo", "bar,baz"]` (the escaped comma inside the second element
-survives the split, then gets unescaped). Raw `{Boolean}true` → `"true"` (string). Raw `\{literal\}` →
-`"{literal}"`.
+Output follows the OSGi Configurator JSON that Sling's installer reads: plain JSON for String, Long,
+Double and Boolean (and arrays of them), a `key:Type` suffix only where plain JSON cannot express the type
+exactly. A file that is not valid in its own format (an unquoted Felix value, an unescaped `=` that would
+make Felix stop reading, malformed XML) is **relocated unconverted** under its own name and flagged
+`RM-907` HIGH — converting a guess would not be what AEM loaded.
+
+- **Repoinit stays unconverted.** A config whose PID names (or factory-instantiates) Sling's
+  `org.apache.sling.jcr.repoinit.RepositoryInitializer` is relocated byte-for-byte under its original name,
+  in any format (CAM leaves repoinit alone too), and recorded as `RM-901`.
+- **An existing `.cfg.json`** is copied through byte-for-byte.
+- **History:** files relocated unchanged keep their history (`git mv`); a converted file's content is
+  rewritten, so git records it as new — its source path is in the diff.
+
+**Example.** `sling:OsgiConfig` attributes `enabled="{Boolean}true" names="[a\,b,c]"
+pattern="\{0} [{3}]"` → `{"enabled": true, "names": ["a,b", "c"], "pattern": "{0} [{3}]"}`.
 
 Filename → PID mapping is a fixed 4-suffix table checked longest/most-specific first — `.cfg.json`,
 `.xml`, `.config`, `.cfg` — via literal `endswith`, never a generic "last dot" split (an OSGi PID is
@@ -468,12 +464,23 @@ Every add across all four steps is upsert-by-identity (groupId+artifactId, or mo
 `<modules>`) — re-running `refactor_poms.py` is idempotent and never duplicates anything it already
 added.
 
+**Build baseline (reactor and bundle poms).** Two more edits keep the restructured project buildable on a
+supported JDK, matching what CAM's regenerated (archetype) reactor provides:
+
+- **Java level.** A `maven-compiler-plugin` `<source>`/`<target>`/`<release>` (or `maven.compiler.*`
+  property, following a `${property}` reference) below 11 is raised to 11, the archetype's level. Legacy
+  6.x poms often still say 1.6–1.8, which current JDKs refuse to compile. Recorded as `RM-908`.
+- **Managed plugin versions.** The scaffolded `all` / `ui.config` / `ui.apps.structure` poms declare
+  `aemanalyser-maven-plugin`, `content-package-maven-plugin` and `filevault-package-maven-plugin` without
+  a `<version>` (as the archetype does), relying on the reactor's `<pluginManagement>`. Missing entries are
+  added with the archetype's versions; an existing entry keeps its own version.
+
 ## 12. Skill-original finding codes (`RM-9xx`)
 
 CAM's real `FindingsReporter` code table tops out at `RM-108` (`UNSUPPORTED_RUN_MODE`), and its separate
 `ErrorCode` (exception) enum independently reuses `RM-100`..`RM-122` for unrelated meanings. Neither has a
-code for the five skill-specific situations Phase 2's scripts detect-and-report rather than
-transform, so this skill mints its own `RM-9xx` numbers — deliberately outside both of CAM's real
+code for the skill-specific situations its scripts report, so this skill mints its own `RM-9xx`
+numbers — deliberately outside both of CAM's real
 `RM-1xx` ranges, so they can never collide with a real CAM code:
 
 | Code | Priority | Raised by | Meaning |
@@ -483,6 +490,8 @@ transform, so this skill mints its own `RM-9xx` numbers — deliberately outside
 | `RM-903` | NORMAL | `refactor_poms.py` (`refactor_content_pom`, §11) | ACL authoring (`rep:policy`/`rep:ACL`) detected in a converted content package; `accessControlHandling=merge_preserve` was added automatically. |
 | `RM-904` | NORMAL | `refactor_poms.py` (`refactor_all_pom`, §11) | A pre-existing 3rd-party `<embedded>` in `all/pom.xml` survived the refactor unchanged — informational. |
 | `RM-905` | HIGH | `inspect_project.py` (`find_oak_index_filter_gaps`, Phase-1 scan) | A source content package's `_oak_index/.content.xml` defines an `oak:QueryIndexDefinition` node with no matching `/oak:index/<name>` filter root anywhere in that package's `filter.xml` — a pre-existing customer-data gap that FileVault's `jackrabbit-filter` validator rejects once the content lands in the modernized `ui.apps`; see `manual-followups.md` §7. |
+| `RM-907` | NORMAL / HIGH | `convert_osgi.py` (`osgi_formats.py`, §10) | OSGi value conversion note. **NORMAL**: a property AEM never applied (e.g. a `{Name}`/`{Path}`/`{Date}` value the JCR installer ignored) was not carried over, or a non-canonical boolean was converted as AEM read it — the source value is in the finding. **HIGH**: an invalid value or unknown type hint was kept as a string, or a whole file that is not valid in its own format was relocated unconverted — fix the source and convert it. |
+| `RM-908` | NORMAL | `refactor_poms.py` (§11) | A legacy Java compiler level below 11 was raised to 11. Code relying on APIs removed after Java 8 (e.g. `javax.xml.bind`) is a `code-assessment` hand-off. |
 | `RM-906` | NORMAL / HIGH | `convert_osgi.py` (`move_and_convert`, §10) | A multi-app/multi-brand project filed the same OSGi PID+run-mode under several app subtrees, which flatten to one `ui.config` destination. **NORMAL** when the duplicate is byte/structure-identical and was deduplicated; **HIGH** when the copies genuinely differ (a conflicting redefinition) and the extra source was left in place for a human to resolve. |
 
 `RM-901` and `RM-902` are the two called out in `manual-followups.md`: `RM-901` is purely informational —
@@ -495,7 +504,7 @@ does NOT auto-add the missing filter root (see `manual-followups.md` §7's rulin
 
 ## Source
 
-Rules distilled from `cam-repo-modernizer-analysis.md` (code-verified against
-the CAM Repository Modernizer), cross-checked against its published behavior and
-`src/test/resources/aem-guides-wknd-legacy` fixture and `src/main/resources/template_archetype_56` templates.
+Rules reproduce the CAM Repository Modernizer's published behavior and its output on real projects
+(`cam-validation.md`), using the bundled archetype templates (`assets/archetype-pom-templates/`) and the
+in-repo test fixture (`plugins/aem/cloud-service/test/repo-modernize/fixtures/wknd-legacy`).
 See `manual-followups.md` for what this skill deliberately detects-and-reports rather than transforms.

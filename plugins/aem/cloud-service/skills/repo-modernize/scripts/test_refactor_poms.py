@@ -14,15 +14,13 @@ configuration, remove the now-dead `autoInstallPackage`/
 `autoInstallPackagePublish` profiles, and flag surviving ACL authoring with
 `accessControlHandling=merge_preserve`.
 
-Run under the lxml venv from the skill dir, with WKND_FIXTURE pointing at
-a read-only copy of the wknd legacy fixture
-(the public aem-guides-wknd sample, in its legacy pre-Cloud shape):
-
-    WKND_FIXTURE=<path> .venv/bin/python scripts/test_refactor_poms.py -v
+Uses the in-repo wknd legacy fixture (the public aem-guides-wknd sample in its
+legacy pre-Cloud shape, at plugins/aem/cloud-service/test/repo-modernize/fixtures/
+wknd-legacy; override with WKND_FIXTURE). Run the whole suite with
+plugins/aem/cloud-service/test/repo-modernize/run-tests.sh.
 
 The git-diff-locality harness (`_git_init_copy` / `_numstat` / `_diff`) is
-reused verbatim from scripts/test_pom_engine.py (itself ported from
-the Phase-0 prototype tests) -- a git-tracked
+reused verbatim from scripts/test_pom_engine.py -- a git-tracked
 copy is the only way to prove an edit's diff is confined to the lines it
 meant to touch, formatting elsewhere included.
 """
@@ -41,7 +39,10 @@ import scaffold_modules as SC
 import split_content as SP
 import validate as V
 
-FIXTURE = Path(os.environ["WKND_FIXTURE"])
+FIXTURE = Path(os.environ.get("WKND_FIXTURE") or
+         Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
+if not FIXTURE.is_dir():
+    raise unittest.SkipTest(f"test fixture not found at {FIXTURE} (set WKND_FIXTURE)")
 NS = "http://maven.apache.org/POM/4.0.0"
 TEMPLATES_DIR = Path(__file__).resolve().parent.parent / "assets" / "archetype-pom-templates"
 

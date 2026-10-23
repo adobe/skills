@@ -2,13 +2,11 @@
 
 `load`/`save` round-trip a POM byte-for-byte when nothing was edited, and
 keep edits localized to the touched element when something was. This is the
-load-bearing foundation the Phase-2 POM refactors (B2-B6) build on -- see
-the engine-decision rationale for why lxml + a save-normalization layer was
-chosen over a full re-serializing model library, and
-the Phase-0 prototype these primitives
-are ported from.
+load-bearing foundation the POM refactors build on. lxml + a save-normalization
+layer is used rather than a re-serializing POM model library, because the
+output must be a minimal, reviewable git diff.
 
-Normalization layer (mandatory per engine-decision.md, applied in `save`):
+Normalization layer (applied in `save`):
   (a) The original prolog + `<project ...>` start-tag is spliced back into
       the output verbatim (byte-for-byte from the source), instead of
       letting lxml re-serialize it. This is what kills the two systematic
@@ -28,7 +26,14 @@ Normalization layer (mandatory per engine-decision.md, applied in `save`):
 import copy
 import re
 
-from lxml import etree
+try:
+    from lxml import etree
+except ImportError:  # pragma: no cover - exercised via orchestrate's preflight test
+    import sys as _sys
+    from pathlib import Path as _Path
+    _req = _Path(__file__).resolve().parent.parent / "requirements.txt"
+    raise SystemExit("repo-modernize: lxml is not installed (needed to edit POMs). Install it with:\n"
+                     f"  {_sys.executable} -m pip install -r {_req}")
 
 _PARSER = etree.XMLParser(
     remove_blank_text=False, remove_comments=False,
@@ -345,7 +350,7 @@ def pretty_insert(parent, new_elem):
 
 
 # ---------------------------------------------------------------------------
-# Edit primitives (ported from the Phase-0 prototype)
+# Edit primitives
 # ---------------------------------------------------------------------------
 
 def drop_dependency(tree, group, artifact):
@@ -356,8 +361,7 @@ def drop_dependency(tree, group, artifact):
     is reset to whatever tail the old last child had (the whitespace that
     leads into `</dependencies>`) -- otherwise it would keep its old
     between-siblings tail and `</dependencies>` would come out reindented
-    by one level, a +1-line cosmetic diff the Phase-0 spike accepted
-    (engine-decision.md criterion 2) but that pom_engine does not need to."""
+    by one level -- a +1-line cosmetic diff pom_engine avoids."""
     root = tree.getroot() if hasattr(tree, "getroot") else tree
     removed = False
     for deps in root.iter():

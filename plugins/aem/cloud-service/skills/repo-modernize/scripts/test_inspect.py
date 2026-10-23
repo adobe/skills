@@ -6,7 +6,10 @@ from pathlib import Path
 # the docstring in inspect_project.py for the exact failure this caused.
 import inspect_project as I
 
-FIX = Path(os.environ["WKND_FIXTURE"])
+FIX = Path(os.environ.get("WKND_FIXTURE") or
+         Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
+if not FIX.is_dir():
+    raise unittest.SkipTest(f"test fixture not found at {FIX} (set WKND_FIXTURE)")
 
 
 class Classify(unittest.TestCase):

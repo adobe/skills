@@ -124,6 +124,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
@@ -138,7 +139,7 @@ _ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets" / "archetype-pom
 # `_REPOINIT_NOTE_CODE`): deliberately NOT `RM-108`, even though an earlier
 # shorthand for this task suggested it. `RM-108` is already a REAL CAM
 # FindingsReporter code -- UNSUPPORTED_RUN_MODE, HIGH
-# (cam-repo-modernizer-analysis.md's FindingsReporter table, RM-101..RM-108)
+# (CAM's findings table runs RM-101..RM-108)
 # -- reused verbatim by convert_osgi.py's `_RUNMODE_FINDING_CODE`. CAM's own
 # FindingsReporter never had a code for Felix-SCR/bundle-plugin -> BND
 # (`references/manual-followups.md` Sec.1 documents it as a skill-original
@@ -203,9 +204,8 @@ def _has_felix_plugin(root) -> bool:
 
 def _expected_bundle_artifact_id(pom_path, root, config: dict) -> Optional[str]:
     """The `<parentArtifactId>.<moduleDir>` identity a bundle pom's own
-    `<artifactId>` should hold (ports the Phase-0 prototype's
-    `set_bundle_identity` naming convention, minus the caller having to
-    already know the right answer).
+    `<artifactId>` should hold (CAM's `<parentArtifactId>.<moduleDir>` naming
+    convention).
 
     `<parentArtifactId>` is read from the pom's own `<parent>` block --
     self-contained, always present on a real bundle pom -- falling back to
@@ -342,6 +342,7 @@ def refactor_bundle_pom(pom_path, config: dict) -> List[C.Finding]:
             f"{pom_path}"))
 
     _fix_bundle_identity_if_mismatched(pom_path, root, config)
+    findings += _java_level_finding(pom_path, _raise_java_level(root))
 
     E.save(tree, pom_path, original)
     return findings
@@ -1270,7 +1271,7 @@ def _ensure_analyser_plugin_in_all_pom(reactor_pom_path) -> bool:
     """Add `com.adobe.aem:aemanalyser-maven-plugin` to the sibling
     `all/pom.xml`'s own `<build>/<plugins>` -- ONLY if that identity isn't
     already declared there (matched by groupId+artifactId ALONE, the same
-    de-dup key `cam-repo-modernizer-analysis.md`'s own POM-merge model uses
+    de-dup key CAM's own POM-merge model uses
     -- see `_find_plugin_by_identity`; the WKND fixture's own `all/pom.xml`
     already has this plugin with no `<version>` of its own at all, and that
     still counts as "already present": this is a presence check, not a
@@ -1311,6 +1312,95 @@ def _ensure_analyser_plugin_in_all_pom(reactor_pom_path) -> bool:
     E.ensure_plugin(build_el, *_AEMANALYSER_PLUGIN, config_xml)
     E.save(tree, all_pom_path, original)
     return True
+
+
+# Skill-original finding: a legacy compiler level that no supported JDK can build.
+JAVA_LEVEL_FINDING_CODE = "RM-908"
+# The archetype's own compiler level (`<release>11</release>` in its reactor) -- the floor
+# every AEM as a Cloud Service build needs.
+_MIN_JAVA_LEVEL = 11
+_COMPILER_PLUGIN = ("org.apache.maven.plugins", "maven-compiler-plugin")
+# Archetype pluginManagement versions the scaffolded all/ui.config/ui.apps.structure poms
+# rely on (they declare these plugins without a <version>).
+_ARCHETYPE_CONTENT_PACKAGE_VERSION = "1.0.6"
+
+
+def _java_major(text: str) -> Optional[int]:
+    """`1.6` -> 6, `1.8` -> 8, `11` -> 11; None when it isn't a plain Java level."""
+    m = re.fullmatch(r"1\.(\d+)|(\d+)", text.strip())
+    return int(m.group(1) or m.group(2)) if m else None
+
+
+def _raise_java_level(root) -> List[str]:
+    """Raise every maven-compiler-plugin `<source>`/`<target>`/`<release>` below Java 11
+    (and the `maven.compiler.*` properties) to 11, following a `${property}` reference to
+    the property defined in this pom. Legacy AEM 6.x poms often still say 1.6/1.7/1.8,
+    which current JDKs refuse (`Source option 6 is no longer supported`) and which the
+    archetype -- and therefore the CAM tool's regenerated reactor -- sets to 11.
+    Returns one human-readable line per change."""
+    props = _direct_child(root, "properties")
+    changes: List[str] = []
+
+    def raise_el(el, where: str, seen=()):
+        text = (el.text or "").strip()
+        ref = re.fullmatch(r"\$\{([^}]+)\}", text)
+        if ref:
+            name = ref.group(1)
+            target = _direct_child(props, name) if props is not None else None
+            if target is not None and name not in seen:
+                raise_el(target, f"property {name}", seen + (name,))
+            return
+        major = _java_major(text)
+        if major is not None and major < _MIN_JAVA_LEVEL:
+            el.text = str(_MIN_JAVA_LEVEL)
+            changes.append(f"{where} {text} -> {_MIN_JAVA_LEVEL}")
+
+    for el in root.iter():
+        if (isinstance(el.tag, str) and _local(el.tag) == "plugin"
+                and _direct_child_text(el, "artifactId") == _COMPILER_PLUGIN[1]
+                and _direct_child_text(el, "groupId") in (None, _COMPILER_PLUGIN[0])):
+            cfg = _direct_child(el, "configuration")
+            for tag in ("source", "target", "release"):
+                child = _direct_child(cfg, tag) if cfg is not None else None
+                if child is not None:
+                    raise_el(child, f"maven-compiler-plugin <{tag}>")
+    if props is not None:
+        for name in ("maven.compiler.source", "maven.compiler.target", "maven.compiler.release"):
+            child = _direct_child(props, name)
+            if child is not None:
+                raise_el(child, f"property {name}")
+    return changes
+
+
+def _java_level_finding(pom_path, changes: List[str]) -> List[C.Finding]:
+    if not changes:
+        return []
+    return [C.Finding(JAVA_LEVEL_FINDING_CODE, "NORMAL",
+                      f"Java compiler level raised to {_MIN_JAVA_LEVEL} (the archetype level; "
+                      f"current JDKs cannot build {', '.join(changes)}) in {pom_path} -- "
+                      "code that relied on APIs removed after Java 8 (e.g. javax.xml.bind) is a "
+                      "code-assessment hand-off")]
+
+
+def _ensure_managed_plugin_versions(root) -> None:
+    """The scaffolded `all` / `ui.config` modules declare aemanalyser-maven-plugin and
+    content-package-maven-plugin WITHOUT a `<version>`, relying on the archetype
+    reactor's `<pluginManagement>`. A legacy reactor lacks those entries, so Maven
+    warns and picks whatever version it resolves (a non-reproducible build). Add the
+    archetype's managed version for each plugin the reactor does not manage yet; an
+    existing entry -- and its version -- is left alone. A no-op without
+    `<build>/<pluginManagement>/<plugins>`."""
+    build_el = _direct_child(root, "build")
+    pm_el = _direct_child(build_el, "pluginManagement") if build_el is not None else None
+    plugins_el = _direct_child(pm_el, "plugins") if pm_el is not None else None
+    if plugins_el is None:
+        return
+    managed = {(_direct_child_text(pl, "groupId"), _direct_child_text(pl, "artifactId"))
+               for pl in plugins_el if isinstance(pl.tag, str) and _local(pl.tag) == "plugin"}
+    for (group, artifact), version in ((_AEMANALYSER_PLUGIN, "${aemanalyser.version}"),
+                                       (_LEGACY_CONTENT_PLUGIN, _ARCHETYPE_CONTENT_PACKAGE_VERSION)):
+        if (group, artifact) not in managed:
+            E.ensure_plugin(pm_el, group, artifact, f"<version>{version}</version>")
 
 
 def _ensure_filevault_extensions_binding(root) -> None:
@@ -1374,9 +1464,7 @@ def _ensure_index_definition_settings(root) -> None:
     allowIndexDefinitions>` and the `jackrabbit-packagetype` validator's
     `immutableRootNodeNames=apps,libs,oak:index` +
     `allowComplexFilterRulesInApplicationPackages=true` options
-    (`cam-repo-modernizer-analysis.md` Sec.7.1's `ReactorPomHandler` row;
-    Sec.7.4's own field table ties these specifically to "FileVault plugin
-    config"). Placed in `<pluginManagement>` (not the reactor's own bare
+    (what CAM's reactor-pom handler writes into the FileVault plugin config). Placed in `<pluginManagement>` (not the reactor's own bare
     `<plugins>`) because the reactor pom is `packaging=pom` -- it never
     builds a FileVault package itself; `<pluginManagement>` is what a real
     Cloud Service archetype root pom uses to hand every CHILD module
@@ -1398,8 +1486,20 @@ def _ensure_index_definition_settings(root) -> None:
     if pluginmgmt_el is None:
         return
 
+    # `ensure_plugin` re-specifies the whole entry, so carry its managed version across
+    # (the scaffolded modules declare this plugin without one).
+    existing = None
+    for pl in pluginmgmt_el.iter():
+        if (isinstance(pl.tag, str) and _local(pl.tag) == "plugin"
+                and _direct_child_text(pl, "groupId") == _FILEVAULT_PLUGIN[0]
+                and _direct_child_text(pl, "artifactId") == _FILEVAULT_PLUGIN[1]):
+            existing = pl
+            break
+    version = (_direct_child_text(existing, "version") if existing is not None else None) \
+        or _ARCHETYPE_FILEVAULT_VERSION
     config_xml = (
-        "<extensions>true</extensions>\n"
+        f"<version>{version}</version>\n"
+        "        <extensions>true</extensions>\n"
         "        <configuration>\n"
         "          <allowIndexDefinitions>true</allowIndexDefinitions>\n"
         "          <validatorsSettings>\n"
@@ -1417,8 +1517,7 @@ def _ensure_index_definition_settings(root) -> None:
 
 
 def refactor_reactor_pom(pom_path, config: dict, has_oak_index: bool) -> List[C.Finding]:
-    """Refactor the reactor/parent pom (Task B5, CAM's `ReactorPomHandler`,
-    `cam-repo-modernizer-analysis.md` Sec.7.1):
+    """Refactor the reactor/parent pom (the equivalent of CAM's reactor-pom handler):
 
     1. **uber-jar -> aem-sdk-api**: drop `com.adobe.aem:uber-jar` from
        `<dependencyManagement>` and add `com.adobe.aem:aem-sdk-api` (version
@@ -1481,6 +1580,8 @@ def refactor_reactor_pom(pom_path, config: dict, has_oak_index: bool) -> List[C.
     _ensure_filevault_extensions_binding(root)
 
     _ensure_analyser_plugin_in_all_pom(pom_path)
+    _ensure_managed_plugin_versions(root)
+    findings += _java_level_finding(pom_path, _raise_java_level(root))
     # Always ensure the `aemanalyser.version` property exists (idempotent -- a
     # project that already defines it keeps its own value). The property is
     # needed whenever the `all` build references the analyser plugin's version

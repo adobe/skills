@@ -175,3 +175,91 @@ class RemoveSupersededContentModules(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+def _pm(plugins_xml):
+    return (f"<project {_NS}><build><pluginManagement><plugins>\n{plugins_xml}"
+            "</plugins></pluginManagement></build></project>\n")
+
+
+class JavaLevel(unittest.TestCase):
+    """A legacy reactor's compiler level must not be left below what any supported JDK builds."""
+
+    def _run(self, text):
+        changes = []
+        out = _apply(text, lambda root: changes.extend(RP._raise_java_level(root)))
+        return out, changes
+
+    def test_literal_source_target_raised(self):
+        out, changes = self._run(
+            f"<project {_NS}><build><plugins><plugin>"
+            "<artifactId>maven-compiler-plugin</artifactId>"
+            "<configuration><source>1.6</source><target>1.6</target><encoding>UTF-8</encoding>"
+            "</configuration></plugin></plugins></build></project>\n")
+        self.assertIn("<source>11</source>", out)
+        self.assertIn("<target>11</target>", out)
+        self.assertIn("<encoding>UTF-8</encoding>", out)
+        self.assertEqual(len(changes), 2)
+
+    def test_property_reference_and_compiler_properties(self):
+        out, changes = self._run(
+            f"<project {_NS}><properties><java.version>1.8</java.version>"
+            "<maven.compiler.release>8</maven.compiler.release></properties>"
+            "<build><pluginManagement><plugins><plugin>"
+            "<groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId>"
+            "<configuration><source>${java.version}</source><target>${java.version}</target>"
+            "</configuration></plugin></plugins></pluginManagement></build></project>\n")
+        self.assertIn("<java.version>11</java.version>", out)
+        self.assertIn("<source>${java.version}</source>", out)        # reference kept
+        self.assertIn("<maven.compiler.release>11</maven.compiler.release>", out)
+        self.assertEqual(len(changes), 2)                             # property raised once
+
+    def test_modern_level_untouched(self):
+        out, changes = self._run(
+            f"<project {_NS}><build><plugins><plugin><artifactId>maven-compiler-plugin</artifactId>"
+            "<configuration><release>17</release></configuration></plugin></plugins></build></project>\n")
+        self.assertIn("<release>17</release>", out)
+        self.assertEqual(changes, [])
+
+    def test_finding_only_when_changed(self):
+        self.assertEqual(RP._java_level_finding("pom.xml", []), [])
+        f = RP._java_level_finding("pom.xml", ["maven-compiler-plugin <source> 1.6 -> 11"])
+        self.assertEqual((f[0].code, f[0].priority), ("RM-908", "NORMAL"))
+
+
+class ManagedPluginVersions(unittest.TestCase):
+    def test_adds_missing_managed_versions(self):
+        out = _apply(_pm("<plugin><groupId>org.apache.maven.plugins</groupId>"
+                         "<artifactId>maven-compiler-plugin</artifactId><version>3.2</version></plugin>\n"),
+                     RP._ensure_managed_plugin_versions)
+        self.assertIn("<artifactId>aemanalyser-maven-plugin</artifactId>", out)
+        self.assertIn("<version>${aemanalyser.version}</version>", out)
+        self.assertIn("<artifactId>content-package-maven-plugin</artifactId>", out)
+        self.assertIn("<version>1.0.6</version>", out)
+
+    def test_existing_entry_and_version_kept(self):
+        out = _apply(_pm("<plugin><groupId>com.day.jcr.vault</groupId>"
+                         "<artifactId>content-package-maven-plugin</artifactId><version>0.0.24</version>"
+                         "</plugin>\n"),
+                     RP._ensure_managed_plugin_versions)
+        self.assertIn("<version>0.0.24</version>", out)
+        self.assertNotIn("<version>1.0.6</version>", out)
+        self.assertEqual(out.count("content-package-maven-plugin"), 1)
+
+
+class IndexSettingsKeepFilevaultVersion(unittest.TestCase):
+    def test_existing_version_kept(self):
+        out = _apply(_pm("<plugin><groupId>org.apache.jackrabbit</groupId>"
+                         "<artifactId>filevault-package-maven-plugin</artifactId>"
+                         "<version>1.1.4</version></plugin>\n"),
+                     RP._ensure_index_definition_settings)
+        self.assertIn("<version>1.1.4</version>", out)
+        self.assertIn("<allowIndexDefinitions>true</allowIndexDefinitions>", out)
+
+    def test_archetype_version_when_entry_had_none(self):
+        def both(root):
+            RP._ensure_filevault_extensions_binding(root)
+            RP._ensure_index_definition_settings(root)
+        out = _apply(_pm(""), both)
+        self.assertIn("<version>1.3.6</version>", out)
+        self.assertEqual(out.count("filevault-package-maven-plugin"), 1)

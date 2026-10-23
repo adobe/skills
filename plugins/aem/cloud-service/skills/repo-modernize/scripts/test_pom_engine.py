@@ -3,9 +3,10 @@
 Run under the lxml venv from the skill dir:
     .venv/bin/python scripts/test_pom_engine.py -v
 
-Requires WKND_FIXTURE to point at the read-only wknd legacy fixture; the
-git-diff-locality harness (`_git_init_copy` + `git diff --numstat`) is
-reused from the Phase-0 prototype tests.
+Uses the in-repo wknd legacy fixture (plugins/aem/cloud-service/test/repo-modernize/
+fixtures/wknd-legacy; override with WKND_FIXTURE); the
+git-diff-locality harness (`_git_init_copy` + `git diff --numstat`) proves an
+edit's diff stays confined to the lines it meant to touch.
 """
 
 import os
@@ -19,7 +20,10 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import pom_engine as E  # noqa: E402
 
-FIXTURE = Path(os.environ["WKND_FIXTURE"])
+FIXTURE = Path(os.environ.get("WKND_FIXTURE") or
+         Path(__file__).resolve().parents[3] / "test/repo-modernize/fixtures/wknd-legacy")
+if not FIXTURE.is_dir():
+    raise unittest.SkipTest(f"test fixture not found at {FIXTURE} (set WKND_FIXTURE)")
 POM_RELPATHS = ["pom.xml", "core/pom.xml", "all/pom.xml", "ui.apps/pom.xml"]
 
 NS = "http://maven.apache.org/POM/4.0.0"

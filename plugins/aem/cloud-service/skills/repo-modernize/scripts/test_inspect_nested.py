@@ -233,7 +233,7 @@ class OrchestratorPlan(unittest.TestCase):
         try:
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf):
-                out = O.orchestrate(str(d), use_git=False)
+                out = O.orchestrate(str(d), mode="apply", use_git=False)
         finally:
             O._run_unit_pipeline = orig
         # only legacyA ran; modernB/emptyC skipped
@@ -253,7 +253,7 @@ class OrchestratorPlan(unittest.TestCase):
                                                           {"ok": True, "failed_stage": None, "findings": 0})
         try:
             with contextlib.redirect_stdout(io.StringIO()):
-                O.orchestrate(str(d), use_git=False)
+                O.orchestrate(str(d), mode="apply", use_git=False)
         finally:
             O._run_unit_pipeline = orig
         # sub-project appA runs BEFORE the main root ('.')
