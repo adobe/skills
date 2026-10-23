@@ -86,9 +86,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { PNG } from 'pngjs';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, realpathSync } from 'fs';
 import { dirname, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -123,10 +121,12 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
 
 Run the SAME command shape against the live page and the served prototype.
 Exit codes: 0 written, 1 error, 3 bot challenge (live side blocked — fail loud).`;
+export { HELP };
+if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(HELP); process.exit(0); }
+export class UsageError extends Error { constructor(msg) { super(msg); this.name = 'UsageError'; } }
 
-function parseArgs(argv) {
+export function parseArgs(argv) {
   const rest = argv.slice(2);
-  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
   const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000 };
   for (let i = 0; i < rest.length; i += 1) {
@@ -142,20 +142,40 @@ function parseArgs(argv) {
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
     else if (a === '--wait') { opts.wait = Number(rest[i += 1]); }
     else if (a === '--timeout') { opts.timeout = Number(rest[i += 1]); }
-    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
+    else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a}`); }
     else pos.push(a);
   }
   const [url, out] = pos;
-  if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
+  if (!url || !out) { throw new UsageError('need <url> and <out.png>'); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   return { url, out, opts };
+}
+
+// The extra selectors handed to dismissOverlays: the consent selector first, then the dismiss list.
+export const overlayExtras = (opts) => [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
+// Scroll target of the chunk starting at y, clamped so the last chunk ends at the document's bottom.
+export const chunkTarget = (y, totalH, vh) => Math.max(0, Math.min(y, totalH - vh));
+// Scroll-stall guard (chunk loop below): the window did not advance although the target is > 4 px away.
+export const scrollStalled = (prevActualY, actualY, target) => prevActualY !== null && actualY <= prevActualY && target - actualY > 4;
+// Copy each decoded chunk ({ y, img: { width, height, data } }) into one RGBA buffer of width × totalH;
+// rows past totalH and columns past width are dropped.
+export function stitchRows(chunks, width, totalH) {
+  const out = Buffer.alloc(width * totalH * 4);
+  for (const { y: cy, img } of chunks) {
+    for (let row = 0; row < img.height; row += 1) {
+      const destY = cy + row;
+      if (destY >= totalH) break;
+      img.data.copy(out, (destY * width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, width)) * 4);
+    }
+  }
+  return out;
 }
 
 // Dismiss both overlay classes (consent + timed marketing modals) via
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
 async function dismissAndLog(page, url, opts) {
-  const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
+  const extra = overlayExtras(opts);
   // late-modal poll window only on live targets — the served prototype's
   // overlays are not timed third-party scripts, they render immediately.
   const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
@@ -167,6 +187,8 @@ async function dismissAndLog(page, url, opts) {
 
 async function main() {
   const { url, out, opts } = parseArgs(process.argv);
+  let chromium; let PNG;
+  try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
@@ -281,7 +303,7 @@ async function main() {
     let y = 0;
     let prevActualY = null;
     while (y < totalH) {
-      const target = Math.max(0, Math.min(y, totalH - opts.vh));
+      const target = chunkTarget(y, totalH, opts.vh);
       await page.evaluate((ty) => window.scrollTo(0, ty), target);
       await page.waitForTimeout(450);
       // wait for in-viewport images to complete (max 3s per chunk)
@@ -306,7 +328,7 @@ async function main() {
       // actualY reaches the clamped target (the last chunk's totalH - vh is
       // reachable by construction), so the no-advance condition stays false;
       // the 4px slack absorbs fractional-pixel scroll rounding.
-      if (prevActualY !== null && actualY <= prevActualY && target - actualY > 4) {
+      if (scrollStalled(prevActualY, actualY, target)) {
         throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
       }
       prevActualY = actualY;
@@ -316,14 +338,7 @@ async function main() {
     }
 
     const outPng = new PNG({ width: opts.width, height: totalH });
-    for (const { y: cy, buf } of chunks) {
-      const img = PNG.sync.read(buf);
-      for (let row = 0; row < img.height; row += 1) {
-        const destY = cy + row;
-        if (destY >= totalH) break;
-        img.data.copy(outPng.data, (destY * opts.width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, opts.width)) * 4);
-      }
-    }
+    outPng.data = stitchRows(chunks.map(({ y: cy, buf }) => ({ y: cy, img: PNG.sync.read(buf) })), opts.width, totalH);
     mkdirSync(dirname(out), { recursive: true });
     writeFileSync(out, PNG.sync.write(outPng));
     console.log(`stitched ${out}: ${opts.width}x${totalH} from ${chunks.length} chunks`);
@@ -334,4 +349,10 @@ async function main() {
 
 // exit 3 = bot challenge on the live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "capture broke").
-main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => {
+    if (e instanceof UsageError) { console.error(`${e.message}\n\n${HELP}`); process.exit(1); }
+    console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1);
+  });
+}

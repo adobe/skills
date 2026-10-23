@@ -16,6 +16,9 @@ Fixes from a recorded hands-off replica run on a site with a consent manager, ve
   and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
   probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
   the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+  `stitch-shot.mjs` loads playwright and pngjs lazily and exports its pure parts (argument parsing, chunk targets, the
+  scroll-stall guard, row stitching); `test/stitch-shot.test.mjs` covers them, `--help` without a browser, and a
+  fixture capture where playwright is importable.
 - **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
   residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
   `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
