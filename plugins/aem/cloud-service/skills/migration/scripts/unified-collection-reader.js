@@ -19,7 +19,8 @@ const PATTERN_TO_SUBTYPE = {
   eventListener: "javax.jcr.observation.EventListener",
   resourceChangeListener: "org.apache.sling.api.resource.observation.ResourceChangeListener",
   eventHandler: "org.osgi.service.event.EventHandler",
-  guavaCache: "custom.guava.cache"
+  guavaCache: "custom.guava.cache",
+  inputStream: "java.io.inputstream"
 };
 
 // MongoDB-safe to pattern mapping
@@ -29,7 +30,8 @@ const MONGO_SAFE_TO_PATTERN = {
   "javax_jcr_observation_EventListener": "eventListener",
   "org_apache_sling_api_resource_observation_ResourceChangeListener": "resourceChangeListener",
   "org_osgi_service_event_EventHandler": "eventHandler",
-  "custom_guava_cache": "guavaCache"
+  "custom_guava_cache": "guavaCache",
+  "java_io_inputstream": "inputStream"
 };
 
 // Pattern → subtype(s), 1:many. Covers the Java patterns above plus the
@@ -48,6 +50,7 @@ const PATTERN_TO_SUBTYPES = {
   replication: ["forward.replication", "reverse.replication"],
   urc: ["unsupported.runmode"],
   guavaCache: ["custom.guava.cache"],
+  inputStream: ["java.io.inputstream"],
 };
 
 // Patterns whose findings are keyed by JCR path (raw keys, generic processor).
@@ -364,6 +367,43 @@ function processGuavaCacheFromUnified(subtypeData, targets) {
 }
 
 /**
+ * Process java.io.InputStream data from unified collection. Keyed by the
+ * referenced API (`java.io.FileInputStream`, …) → flagged class names, so each
+ * target carries the class to locate (`className`) and the API to classify by
+ * (`identifier`) — see migration/references/input-stream.md. When the parser
+ * recorded bundles (`meta.inputStreamBundles`), there is one target per
+ * (API, class, bundle), each with its `bundle`.
+ */
+function processInputStreamFromUnified(subtypeData, targets, meta = {}) {
+  let count = 0;
+  const bundlesByApi = meta.inputStreamBundles || {};
+
+  const identifierKeys = Object.keys(subtypeData || {}).sort();
+  for (const mongoSafeIdentifier of identifierKeys) {
+    const classNames = subtypeData[mongoSafeIdentifier] || [];
+    const identifier = fromMongoSafeFieldName(mongoSafeIdentifier);
+    const bundlesByClass = bundlesByApi[identifier] || {};
+
+    for (const className of classNames) {
+      for (const bundle of bundlesByClass[className] || [null]) {
+        count++;
+        const target = new BpaTarget(
+          "inputStream",
+          className,
+          identifier,
+          `Uses ${identifier} — triage per references/input-stream.md`,
+          "medium"
+        );
+        if (bundle) target.bundle = bundle;
+        targets.push(target);
+      }
+    }
+  }
+
+  return count;
+}
+
+/**
  * Process a content/legacy-UI subtype whose unified data is keyed by RAW JCR
  * path (no MongoDB round-trip). Emits one target per finding, with the JCR path
  * as `className` (so downstream `location`/`file` resolve to the path) and the
@@ -472,6 +512,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
     resourceChangeListener: processResourceChangeListenerFromUnified,
     eventHandler: processEventHandlerFromUnified,
     guavaCache: processGuavaCacheFromUnified,
+    inputStream: processInputStreamFromUnified,
   };
 
   // Process each pattern — a pattern may map to more than one subtype.
@@ -488,7 +529,7 @@ function fetchUnifiedBpaFindings(pattern = "all", collectionsDir = './unified-co
       if (!subtypeData) continue;
       count += CONTENT_PATTERNS.has(pat)
         ? processContentFromUnified(subtypeData, result.targets, pat, subtype)
-        : JAVA_PROCESSORS[pat](subtypeData, result.targets);
+        : JAVA_PROCESSORS[pat](subtypeData, result.targets, unifiedCollection.meta || {});
     }
     result.summary[`${pat}Count`] = count;
 
@@ -640,6 +681,7 @@ module.exports = {
   readUnifiedCollection,
   paginate,
   DEFAULT_BATCH_SIZE,
+  PATTERN_TO_SUBTYPES,
   BpaTarget,
   BpaResult
 };

@@ -44,8 +44,7 @@ LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
-# 1. structural — --dismiss keeps consent + timed marketing modals out of the
-#    inventory on both sides; add extra selectors for non-standard closers.
+# 1. structural — --dismiss: rule 6's overlay dismissal, both sides.
 #    The header and footer roots are compared beside --main BY DEFAULT — this is
 #    the whole command, no chrome flag; the report has one block per root and a
 #    finding reads "[header]" / "[footer]" where it sits (--no-chrome = main only)
@@ -57,7 +56,8 @@ node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic -
 node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
 
-# 3. pixel — stitched captures on BOTH sides (never fullPage:true)
+# 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
+#    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
 node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
@@ -448,9 +448,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   <gates-dir>/chrome-live.json` and `anchor.mjs --cache
   <gates-dir>/anchor-live.json` (live URL only) write the live measurement
   on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. Recorded without it: a chrome-parity round
-  on an AEM site cost 5½ minutes of live settle per iteration, ×3
-  iterations ×4 archetypes. On hard-CDN sites
+  delete the file to re-probe. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
@@ -459,6 +457,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Origin baseline (opt-in, default off): gate every round against ONE
+  frozen origin.** When the live site changes between rounds (a hero
+  rotates, a banner appears) the pixel target moves under the fix rounds and
+  a FAIL measures the origin, not the build. Freeze it once per archetype and
+  width (`stitch-shot.mjs "$LIVE" "$GATE/baseline.png" --freeze-baseline
+  --width $W --settle`), then pass `--gate-against-baseline` to every
+  `gate.sh` round. It holds the pixel-compare's origin still and nothing
+  else — a `--full` round's diff probes still read the live page. The two
+  `--help` texts own the refusals, the records and the exit codes.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
@@ -572,16 +579,17 @@ rather than erroring.
    Injection before the settle breaks some lazy loaders' swaps (recorded
    failure mode). stitch-shot.mjs orders this correctly.
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
-   layout settles as a real visit does). Two classes, both handled by the
-   shared `dismissOverlays` (stitch-shot always; diff probes via
-   `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
-   `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (fashion retailer): an
-   undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
-   baked a pixel-diff contributor into the LIVE capture, repeated at every
-   chunk seam, that no prototype fidelity could null out. These fire on a
-   timer, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass.
+   layout settles as a real visit does). Two classes, one shared
+   `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
+   carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
+   its probes, `--no-dismiss` turns it off everywhere in the round):
+   (a) cookie consent (clicked accept; the flags above for a banner the
+   built-in candidates miss); (b) **timed marketing/newsletter interstitials** —
+   recorded (fashion retailer): an undismissed "Sign up, stay updated!"
+   modal fired ~5–9s after load and baked a pixel-diff contributor into the
+   LIVE capture, repeated at every chunk seam, that no prototype fidelity
+   could null out. These fire on a timer, so the dismissal polls for late
+   arrivals and stitch-shot sweeps again after the settle pass.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -607,15 +615,20 @@ rather than erroring.
     including its scroll-state trigger; any height delta turns the seam
     repeats into ghost bands in the diff. Full treatment:
     `recreation-procedure.md` § Fixed and sticky chrome.
-12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
+    live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker.
+    exits **3** with a `BotChallengeError` naming the URL and the marker.
     Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
-    the block page as the source and diffed it cleanly, wrongly. The
-    escalation ladder: default (UA + standard headers) → `--headed`
+    the block page as the source and diffed it cleanly, wrongly. A **2xx
+    denial page** — a vendor wall answering 200 with its denial text, so no
+    header classifies it — fails the same way: after the settle `gotoLive`
+    reads the page (`pageDenial` owns what counts) and throws the
+    same error (marker `HTTP <status> denial page — …`, "origin blocked");
+    stitch-shot reads once more after its dismissal sweeps and leaves no PNG
+    and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`
     (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
@@ -643,15 +656,11 @@ rather than erroring.
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
-    capture. A face is dead when no loaded face of its family, weight and
-    style exists — a fetch that failed, or a `local()` source the gate's
-    Linux browser cannot resolve (`recreation-procedure.md` § Fonts policy)
-    — and the capture record (`--json`, gate.sh's `<side>-shot.json`) carries
-    them as `fontsFailed` (`[]` = every face loaded, `null` = the check could
-    not run, one stderr line): gate.sh prints one `fonts on the <side>
-    capture` line per side, gate-all fails the row (`font-not-loaded:<family>`,
-    `font-check-skipped:<side>`) — a check that could not run is never a
-    pass. On the warning, decide before gating: load the face in a real
+    capture. The capture record carries the dead faces as `fontsFailed`
+    (`null` = the check could not run — never a pass; stitch-shot's
+    `deadFontFaces` owns the rule, `recreation-procedure.md` § Fonts policy
+    the fix); gate.sh prints it per side, gate-all fails the row. On the
+    warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
@@ -679,10 +688,8 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
 #   --dismiss "#custom-close"    --locale en-GB    --headed
 ```
 
-Defaults when no flags are passed: real-Chrome UA + standard headers on
-every context; `domcontentloaded` for non-localhost http(s) URLs and
-`networkidle` for local ones (per side); no overlay dismissal (pass
-`--dismiss` for live pairs); exit 3 on a challenge (rule 12).
+Defaults without flags: rules 1, 2 and 12 as written; the diff probes
+dismiss no overlay unless passed `--dismiss` (gate.sh passes it for you).
 
 **A project copy re-implementing retired adaptations is a defect**, not
 diligence: the edits were 10 distinct changes across 2 files, and a partial
@@ -855,35 +862,50 @@ criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-block
 
 ## Residual logging format
 
-Per archetype per breakpoint, in `stardust/replica/progress.json`:
+`stardust/replica/progress.json` is ONE file for the whole run: the map of every archetype under
+`types` (this section's record per archetype, keyed by its slug) beside the `siblings` and `migrate`
+blocks `gate-evidence.mjs` writes and the `_provenance` block every stardust JSON artifact carries.
+Extend YOUR archetype's entry in place — read, merge, write back (`gate-evidence.mjs` preserves every
+key it does not own). Never write one archetype's record as the file; `gate-evidence.mjs` wraps such
+a file under `types.<archetype>` and refuses only a record that names no archetype. Per archetype per
+breakpoint:
 
 ```json
 {
-  "pageType": "landing",
-  "archetype": "home",
-  "breakpoints": {
-    "1440": {
-      "iterations": 3,
-      "result": { "structuralRed": 0, "visualFlags": "3 justified",
-                   "pixelPct": 1.31, "heightDelta": 0, "pass": true },
-      "justified": [
-        { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
-        { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
-      ],
-      "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
-        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
-      ],
-      "captureState": [
-        { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2", "restoreAtDelivery": null },
-        { "what": "hero video paused at frame 0, carousel-2 held on slide 1 (stitch-shot freeze)", "where": "hero, carousel-2",
-          "restoreAtDelivery": "hero: autoplay muted loop playsinline, paused under prefers-reduced-motion; carousel-2: auto-rotate 5 s, pause on hover" }
-      ]
+  "_provenance": { "writtenBy": "…", "writtenAt": "…" },
+  "types": {
+    "home": {
+      "pageType": "landing",
+      "archetype": "home",
+      "breakpoints": {
+        "1440": {
+          "iterations": 3,
+          "result": { "structuralRed": 0, "visualFlags": "3 justified",
+                       "pixelPct": 1.31, "heightDelta": 0, "pass": true },
+          "justified": [
+            { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
+            { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
+          ],
+          "residuals": [
+            { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+            { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
+          ],
+          "captureState": [
+            { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2", "restoreAtDelivery": null },
+            { "what": "hero video paused at frame 0, carousel-2 held on slide 1 (stitch-shot freeze)", "where": "hero, carousel-2",
+              "restoreAtDelivery": "hero: autoplay muted loop playsinline, paused under prefers-reduced-motion; carousel-2: auto-rotate 5 s, pause on hover" }
+          ]
+        },
+        "900": { "...": "...", "tierShift": [
+            { "band": "y 0–5200", "pct": 14.2, "register": "R-07", "why": "desktop header at 900 (source: 1024); uniform +40 px offset below it" } ] },
+        "360": { "...": "..." }
+      },
+      "motion": { "observed": "…", "implemented": "…", "dead": [] }
     },
-    "900": { "...": "...", "tierShift": [
-        { "band": "y 0–5200", "pct": 14.2, "register": "R-07", "why": "desktop header at 900 (source: 1024); uniform +40 px offset below it" } ] },
-    "360": { "...": "..." }
-  }
+    "<next archetype slug>": { "...": "..." }
+  },
+  "siblings": { "...": "written by gate-evidence.mjs" },
+  "migrate": { "...": "written by gate-evidence.mjs" }
 }
 ```
 
@@ -892,9 +914,7 @@ Rules: every residual names its band, its %, its cause, and who inherits it
 residual without a cause is not a residual — it's an unfinished iteration;
 either diagnose it or spend the remaining budget on it. Every `captureState`
 entry carries `restoreAtDelivery`: the live behaviour the freeze or mask hid,
-as observed (`null` only when live is static there too). A non-null entry is a
-PROMISE, not a closed item — C-deliver's brief carries the list verbatim and
-implements it, Phase E and qa's `video-not-playing` row assert it
-(`recreation-procedure.md § Carousels and animated sections`). The rollout phase's
+as observed (`null` only when live is static there too) — a promise C-deliver
+implements (`recreation-procedure.md § Carousels and animated sections`). The rollout phase's
 final report surfaces the residual list per page type so "gate passed"
 can't hide "passed with 6% unexplained".

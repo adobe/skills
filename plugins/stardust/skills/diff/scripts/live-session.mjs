@@ -37,7 +37,10 @@
  *     the navigation request, which still carries the full set.
  *   - A challenge/blocked interstitial FAILS LOUD (BotChallengeError), never
  *     silently measured as the source (the Access-Denied trap: an "Access Denied"
- *     page diffs cleanly — wrongly).
+ *     page diffs cleanly — wrongly). So does a 2xx DENIAL page (a vendor wall
+ *     answering 200 with its denial text — no header to classify): after the
+ *     settle the page itself is read (pageDenial / denialMarker own the
+ *     rule), and the message says "origin blocked" and names the --headed escalation.
  *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
  *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
  *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
@@ -240,6 +243,156 @@ export function isChallengeResponse(response) {
   return challengeMarker(response) !== null;
 }
 
+// ---- denial pages: a vendor wall that answers 200 ---------------------------------------------------
+// The header marker above only sees 4xx/5xx + an edge signature. A site behind a vendor wall answered a
+// headless instrument with HTTP 200 and its denial text ("can't process your request … Incident Number",
+// "Access Denied … Reference #", "System Down") — no header to classify, so the gate measured the denial
+// page as the source. The page itself is classified instead: a vendor signature in the title / visible
+// text / iframe srcs, or a tiny page whose only heading is an error. A single phrase counts only on a page
+// under DENIAL_TEXT_MAX_BYTES of text (title, text or iframe src): a full page that mentions "press & hold the
+// button", or an article titled "System Down", is no denial page; a pair ("Access Denied" + "Reference #") is
+// specific enough anywhere.
+export const DENIAL_TEXT_MAX_BYTES = 2048;
+// One probe read's deadline (pageDenial): page.evaluate has no timeout of its own, and a renderer stuck in a busy
+// loop never answers it — unbounded, the read inside gotoLive would undo the bounded navigation the callers rely on.
+export const DENIAL_PROBE_MS = 10000;
+
+const denialSignature = (id, label, all) => Object.freeze({ id, label, all: Object.freeze(all.map((p) => (Array.isArray(p) ? Object.freeze([...p]) : p))) });
+/**
+ * Vendor denial signatures, first match wins. `all` = phrases that must ALL occur (normalizeDenialText form);
+ * an element that is an array lists alternatives (any one occurs). `label` names the vendor text in the marker.
+ */
+export const DENIAL_SIGNATURES = Object.freeze([
+  denialSignature('cant-process', '"can\'t process your request" + "Incident Number"', ["can't process your request", 'incident number']),
+  denialSignature('access-denied', '"Access Denied" + "Reference #"', ['access denied', 'reference #']),
+  denialSignature('just-a-moment', '"Just a moment…"', ['just a moment...']),
+  denialSignature('press-and-hold', '"Press & Hold"', ['press & hold']),
+  denialSignature('incapsula', '"Incapsula"', ['incapsula']),
+  denialSignature('datadome', '"DataDome"', [['datadome', 'captcha-delivery.com']]),
+  denialSignature('request-unsuccessful', '"Request unsuccessful"', ['request unsuccessful']),
+  denialSignature('system-down', '"System Down"', ['system down']),
+]);
+
+// The generic rule's heading (matched against the normalised heading): the words a block / error / bot-check
+// page leads with. captcha is unbounded (recaptcha, hcaptcha); the rest are whole words.
+export const DENIAL_ERROR_HEADING = /\b(?:errors?|denied|forbidden|blocked|unavailable|sorry|can't|cannot|unable|went wrong|not found|rejected|robots?|are you (?:a )?human|verify you are|security check|system down)\b|captcha/i;
+
+/** Lower-case; curly apostrophes/quotes (’ ‘ ʼ) → ', … → ..., every whitespace run → one space; trimmed. */
+export function normalizeDenialText(s) {
+  return String(s ?? '').toLowerCase().replace(/[’‘ʼ]/g, "'").replace(/…/g, '...')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * page.evaluate(denialProbeInPage) → { title, text, bytes, headings, frames }: the title; the body's visible text,
+ * whitespace-collapsed, first 32768 chars; `bytes` = UTF-8 length of the FULL collapsed text; the collapsed texts
+ * of the displayed headings (h1–h6, [role=heading]; display, visibility and a ≥ 1×1 box), ≤ 10; iframe srcs, ≤ 10.
+ * Self-contained: playwright serialises it.
+ */
+/* eslint-disable no-undef */
+export function denialProbeInPage() {
+  const collapse = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+  const full = collapse(document.body ? document.body.innerText : '');
+  const headings = [];
+  for (const el of document.querySelectorAll('h1,h2,h3,h4,h5,h6,[role="heading"]')) {
+    if (headings.length >= 10) break;
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    if (cs.display !== 'none' && cs.visibility !== 'hidden' && r.width >= 1 && r.height >= 1) headings.push(collapse(el.innerText));
+  }
+  const frames = [...document.querySelectorAll('iframe[src]')].slice(0, 10).map((f) => f.src || f.getAttribute('src'));
+  return { title: document.title, text: full.slice(0, 32768), bytes: new TextEncoder().encode(full).length, headings, frames };
+}
+/* eslint-enable no-undef */
+
+/**
+ * The denial marker of a denialProbeInPage probe, or null (pure). A probe that is not { title: string,
+ * text: string, bytes: finite number, headings: array, frames: array } → null. Signatures in order: a pair
+ * (`all.length >= 2`) matches when every element occurs in the title + text; a single phrase only when bytes <
+ * DENIAL_TEXT_MAX_BYTES, in the title, the text or an iframe src (a title alone is no evidence on a full page).
+ * First match → 'denial page — <label>'.
+ * Else the generic rule: bytes < DENIAL_TEXT_MAX_BYTES, exactly ONE heading, matching DENIAL_ERROR_HEADING →
+ * 'denial page — <bytes> B of text under one error heading "<heading, ≤ 80 chars>"'.
+ */
+export function denialMarker(probe) {
+  if (!probe || typeof probe !== 'object' || typeof probe.title !== 'string' || typeof probe.text !== 'string'
+    || !Number.isFinite(probe.bytes) || !Array.isArray(probe.headings) || !Array.isArray(probe.frames)) return null;
+  const title = normalizeDenialText(probe.title);
+  const text = normalizeDenialText(probe.text);
+  const frames = probe.frames.map(normalizeDenialText);
+  const small = probe.bytes < DENIAL_TEXT_MAX_BYTES;
+  const has = (hay, el) => (Array.isArray(el) ? el : [el]).some((p) => hay.includes(p));
+  for (const sig of DENIAL_SIGNATURES) {
+    const hit = sig.all.length >= 2
+      ? sig.all.every((el) => has(`${title} ${text}`, el))
+      : small && (has(title, sig.all[0]) || has(text, sig.all[0]) || frames.some((f) => has(f, sig.all[0])));
+    if (hit) return `denial page — ${sig.label}`;
+  }
+  if (small && probe.headings.length === 1) {
+    const heading = String(probe.headings[0] ?? '').replace(/\s+/g, ' ').trim();
+    if (DENIAL_ERROR_HEADING.test(normalizeDenialText(heading))) return `denial page — ${probe.bytes} B of text under one error heading "${heading.slice(0, 80)}"`;
+  }
+  return null;
+}
+
+const MAX_TIMER_MS = 2 ** 31 - 1;
+/**
+ * Race `promise` against `ms`: on expiry reject with an Error named 'DeadlineError', message
+ * `${label}: deadline ${ms} ms exceeded`. The timer is cleared when the promise settles first; the abandoned
+ * promise gets a no-op catch (its late rejection is not an unhandled rejection). `ms` not a finite number > 0,
+ * or above setTimeout's 2^31 − 1 ms ceiling → `promise` itself, unchanged (no deadline).
+ */
+export function withDeadline(promise, ms, label = 'step') {
+  if (!(Number.isFinite(ms) && ms > 0 && ms <= MAX_TIMER_MS)) return promise;
+  const work = Promise.resolve(promise);
+  work.catch(() => {});
+  let timer;
+  const expiry = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error(`${label}: deadline ${ms} ms exceeded`);
+      err.name = 'DeadlineError';
+      reject(err);
+    }, ms);
+  });
+  return Promise.race([work, expiry]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The page's denial marker → { marker, skipped }. Each read races `probeMs` (withDeadline, label 'denial-page
+ * probe'): a wedged renderer never answers page.evaluate, so a read past the deadline is a failed read, like an
+ * evaluate error (a navigation under the probe). A failed read is retried once after 500 ms; failing twice →
+ * { marker: null, skipped: '<first line of the error>' } — the caller says the check was skipped, it never
+ * silently passes.
+ */
+export async function pageDenial(page, { probeMs = DENIAL_PROBE_MS } = {}) {
+  let last = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt) await page.waitForTimeout(500).catch(() => {});
+    try {
+      return { marker: denialMarker(await withDeadline(page.evaluate(denialProbeInPage), probeMs, 'denial-page probe')), skipped: null };
+    } catch (e) { last = e; }
+  }
+  return { marker: null, skipped: String(last && last.message ? last.message : last).split('\n')[0] };
+}
+
+/**
+ * The Error every instrument recognises as a blocked live side (exit 3): name 'BotChallengeError', `.marker`,
+ * `.url`. `denial` = the marker came from the page (denialMarker), not the response headers.
+ */
+export function botChallengeError(url, marker, { denial = false } = {}) {
+  const err = new Error(denial
+    ? `bot challenge at ${url}: ${marker} — origin blocked: the live side served a denial page, NOT the page; refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the gate cannot run against it headless.`
+    : `bot challenge at ${url}: ${marker} — the live side served an edge interstitial, NOT the page; `
+      + 'refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is '
+      + "still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the "
+      + 'gate cannot run against it headless.');
+  err.name = 'BotChallengeError';
+  err.marker = marker;
+  err.url = url;
+  return err;
+}
+
 /**
  * Navigate + settle, with the full fail-loud contract:
  *   - challenge/blocked interstitial → per `solveWindow`:
@@ -264,6 +417,16 @@ export function isChallengeResponse(response) {
  *         the diff probes' advisory contract (a 404 build side is normal on
  *         aem.page before preview propagation; the probe's flags carry the
  *         signal, exit stays 0).
+ *   - entry status < 400 on a live URL (isLiveHttpUrl — never localhost or
+ *     loopback), after the settle: a DENIAL page (pageDenial /
+ *     denialMarker) gets the same `solveWindow` treatment (each reload
+ *     settled like the entry; a reload answered by an edge challenge or a
+ *     >= 400, or one the probe cannot read, does not clear it), then THROWS
+ *     BotChallengeError, marker `HTTP <status> denial page — …`, message
+ *     "origin blocked" + the --headed escalation. Each probe read races
+ *     DENIAL_PROBE_MS (a wedged renderer never answers it), so the navigation
+ *     stays bounded; a probe that fails twice (an error or the deadline) is
+ *     one stderr line ("denial-page check skipped"), never a pass.
  * Returns the response.
  */
 export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', timeoutMs = 60000, settleMs = 1200, httpError = 'throw', solveWindow = false } = {}) {
@@ -285,18 +448,7 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     }
   }
   const marker = challengeMarker(resp);
-  if (marker) {
-    const err = new Error(
-      `bot challenge at ${url}: ${marker} — the live side served an edge interstitial, NOT the page; `
-      + 'refusing to measure it as the source. Escalate with --headed (stealth real Chrome); if that is '
-      + "still blocked, the site needs crawl.mjs-class capture (extract's bot-management ladder) and the "
-      + 'gate cannot run against it headless.',
-    );
-    err.name = 'BotChallengeError';
-    err.marker = marker;
-    err.url = url;
-    throw err;
-  }
+  if (marker) throw botChallengeError(url, marker);
   const status = resp.status();
   if (status >= 400) {
     if (httpError === 'measure') {
@@ -309,6 +461,26 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     }
   }
   if (settleMs > 0) await page.waitForTimeout(settleMs);
+  // a 2xx denial page (vendor wall): read after the settle; the same solve window as the header path. Live URLs
+  // only — localhost and loopback serve no vendor wall, and a tiny build page under an error heading is the page.
+  if (status < 400 && isLiveHttpUrl(url)) {
+    let d = await pageDenial(page);
+    for (let attempt = 0; solveWindow && attempt < 3 && d.marker; attempt += 1) {
+      await page.waitForTimeout(4000);
+      const reloaded = await page.reload({ waitUntil, timeout: timeoutMs }).catch(() => null);
+      if (reloaded) resp = reloaded;
+      if (settleMs > 0) await page.waitForTimeout(settleMs); // the reloaded page is read (and returned) settled, like the entry
+      // a reload answered by an edge challenge or an error status has not cleared the denial page
+      if (!challengeMarker(resp) && resp.status() < 400) {
+        const next = await pageDenial(page);
+        // nor has one the probe cannot read: only a verdict replaces the confirmed denial (fail closed)
+        if (next.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${next.skipped}`);
+        else d = next;
+      }
+    }
+    if (d.skipped) console.error(`[live-session] denial-page check skipped at ${url}: ${d.skipped}`);
+    if (d.marker) throw botChallengeError(url, `HTTP ${status} ${d.marker}`, { denial: true });
+  }
   return resp;
 }
 
@@ -356,8 +528,15 @@ export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.
-const CONSENT_CANDIDATES = [
+// Exported for the test that pins the list; every instrument goes through
+// dismissOverlays below.
+export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
+  // cmp-prefixed consent managers: the welcome box's "yes" button, its box
+  // variant and the button's text span
+  '#cmpwelcomebtnyes',
+  '.cmpboxbtnyes',
+  '#cmpbntyestxt',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
   'button:has-text("Accept")',

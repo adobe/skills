@@ -21,12 +21,12 @@
  * clip-allow.json allowance AND content MISSING + HIDDEN links / headings = 0 (n/a when the origin
  * could not be probed — never a fail) [+ required units within --unit-tol]. The pixel-only verdict is
  * recorded beside it per page and in the totals — every run is calibration data.
- * FONTS (source-fidelity-gate.md § Hardening rule 14): every stitch writes its --json capture record
- * (<slug>/<side>-shot.json, removed before each stitch) and the origin / eds meta carries its `fontsFailed` —
+ * FONTS (source-fidelity-gate.md § Hardening rule 14): every stitch writes its capture record
+ * (<slug>/<side>.capture.json beside the PNG) and the origin / eds meta carries its `fontsFailed` —
  * the dead faces (a declared face with no loaded face of its family, weight and style: a file that failed to
  * fetch, or a local() source the browser cannot resolve), [] when every face loaded, null when the check could
  * not run (`fontCheck` says why; no readable record reads the same — an older stitch-shot copy, or a reused
- * archetype live.png with no live-shot.json beside it). A dead face on either side fails the row — one
+ * archetype live.png with no live.capture.json beside it). A dead face on either side fails the row — one
  * `font-not-loaded:<family>` reason each (`fontsNotLoaded`, sorted); so does a side whose check could not
  * run — `font-check-skipped:<origin|build>` (`fontChecksSkipped`): a check that could not run is never a
  * pass. Explicit null only: a meta from before the check (no key, --skip-existing) is not flagged — recapture
@@ -80,7 +80,7 @@ Usage: node gate-all.mjs [options]   (from the project root)
   --vh <px>                 stitch chunk height
   --help                    this text
 Verdict = pixel % ≤ threshold AND |Δh| ≤ height-tol × origin height AND clipped ≤ clip-max(+allowance) AND content MISSING+HIDDEN = 0.
-  A dead font face on either side (the stitch --json record's fontsFailed, <slug>/<side>-shot.json) fails the row:
+  A dead font face on either side (the capture record's fontsFailed, <slug>/<side>.capture.json) fails the row:
   font-not-loaded:<family>; so does a font check that could not run (fontsFailed null, or no record): font-check-skipped:<origin|build>.
 Sidecars in <out>/: masks.json, overrides.json, clip-allow.json, presence.json, units.json (see the header).
 Exit: 0 all PASS (overrides count), 2 any FAIL, 1 error.`;
@@ -110,12 +110,12 @@ export function parseArgs(argv) {
 
 // ---- pure: the font check of a capture ----------------------------------------------------------------
 /**
- * shotFonts(record, { missing }) → the font check of a stitch-shot --json record for the side's meta: { fontsFailed }
+ * shotFonts(record, { missing }) → the font check of a stitch-shot capture record for the side's meta: { fontsFailed }
  * (checked — the dead faces, [] when every face loaded) or { fontsFailed: null, fontCheck } — null when the record says
  * so (its check could not run), when it predates the check (no fontsFailed key) or when there is no readable record at
  * all (`missing` names why; default: an older stitch-shot copy). Unchecked is never "all loaded".
  */
-export function shotFonts(record, { missing = 'no readable capture record (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)' } = {}) {
+export function shotFonts(record, { missing = 'no readable capture record (stitch-shot wrote no capture record — re-copy stitch-shot.mjs)' } = {}) {
   if (!record || typeof record !== 'object') return { fontsFailed: null, fontCheck: `failed: ${missing}` };
   if (Array.isArray(record.fontsFailed)) return { fontsFailed: record.fontsFailed.filter((f) => typeof f === 'string' && f) };
   if (!('fontsFailed' in record)) return { fontsFailed: null, fontCheck: 'failed: the capture record predates the font check — re-copy stitch-shot.mjs' };
@@ -229,11 +229,14 @@ async function main() {
   const edsUrl = (p) => (opts.edsHost ? p.liveUrl.replace(/^https?:\/\/[^/]+/, opts.edsHost) : p.liveUrl);
   const results = {};
   const rec = (p, k, v) => { results[p.slug] = { ...(results[p.slug] || {}), [k]: v }; };
-  const stitchArgs = (url, out, json) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--json', json, '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
-  // stitch-shot's --json capture record (<slug>/<side>-shot.json, removed before each stitch) → the meta's fontsFailed
+  const stitchArgs = (url, out) => [STITCH, url, out, '--width', String(opts.width), '--settle', '--locale', 'en-US', ...(opts.vh ? ['--vh', String(opts.vh)] : [])];
+  // stitch-shot's capture record (<side>.capture.json beside the PNG; stitch-shot removes it when a capture starts) → the meta's fontsFailed
   // (+ fontCheck when it says why): shotFonts — no readable record is unchecked (null), never "all loaded".
-  const shotFile = (p, side) => join(dir(p), `${side}-shot.json`);
-  const stitch = (p, side, url, out, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out, shotFile(p, side)), ...tail]); };
+  const shotFile = (p, side) => join(dir(p), `${side}.capture.json`);
+  const stitch = (p, side, url, out, tail = []) => { rmSync(shotFile(p, side), { force: true }); return run('node', [...stitchArgs(url, out), ...tail]); };
+  // the archetype round's live.png: its capture record beside it — or, after a --gate-against-baseline round (live.json
+  // says origin "baseline"), the frozen baseline's record; none is unchecked, never "all loaded"
+  const cachedLiveRecord = (cachedLive) => { const d = dirname(cachedLive); const rec = tryJson(join(d, 'live.capture.json')); if (rec) return rec; const lj = tryJson(join(d, 'live.json')); return lj && lj.origin === 'baseline' ? tryJson(join(d, 'baseline.json')) : null; };
 
   async function captureOrigin(p) {
     const d = dir(p); mkdirSync(d, { recursive: true });
@@ -242,9 +245,7 @@ async function main() {
     const crawlShot = join(opts.crawlShots, `${p.slug}.png`);
     const cachedLive = join('stardust/replica/gates', `${p.slug}-${opts.width}`, 'live.png');
     let r;
-    // the archetype round's live.png: its font check is gate.sh's live-shot.json beside it — none (a round before the
-    // check) is unchecked, never "all loaded"
-    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(tryJson(join(dirname(cachedLive), 'live-shot.json')), { missing: `no live-shot.json beside ${cachedLive} (a gate round before the font check) — delete live.png to re-take it` }) }; }
+    if (opts.stage === 'prototype' && existsSync(cachedLive)) { copyFileSync(cachedLive, out); r = { instrument: 'stitch-live', note: `reused ${cachedLive} (the archetype round's capture — hit minimisation)`, ...shotFonts(cachedLiveRecord(cachedLive), { missing: `no live.capture.json beside ${cachedLive} (a gate round before the font check) — delete live.png to re-take it` }) }; }
     else if (opts.blocked && opts.blocked.test(p.url) && !opts.tryBlocked) {
       if (existsSync(crawlShot)) { copyFileSync(crawlShot, out); r = { instrument: 'crawl-fullpage', asymmetric: true, note: `origin matches --blocked ${opts.blocked}; crawl screenshot used (lazy rails may be placeholders)` }; }
       else r = { instrument: 'none', error: `origin blocked and no crawl shot at ${crawlShot}` };

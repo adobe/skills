@@ -6,6 +6,7 @@
     "name": "Adobe"
   },
   "repository": "https://github.com/adobe/skills",
+  "privacyPolicyUrl": "https://www.adobe.com/privacy/policy.html",
   "license": "Apache-2.0",
   "keywords": ["adobe", "creative-cloud", "image-editing", "design"],
   "skills": "./skills"

@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.5 — replica: a capture names its dead font faces; a font check that could not run is never a pass
+## 0.34.6 — replica: a capture names its dead font faces; a font check that could not run is never a pass (#139)
 
 Field learning (a recorded hands-off replica run): the foundation CSS declared its metric fallback faces with a
 `local()` source naming a platform font the gate's Linux browser does not have. The build rendered a different face
@@ -17,20 +17,125 @@ later run the capture named the failed families and the fix took seconds: locall
 - **`stitch-shot.mjs`:** after `document.fonts.ready` every declared face with status `error` and no loaded face of the
   same family, weight and style is a dead face — a file that failed to fetch or a `local()` source this browser cannot
   resolve; a failed declaration beside a loaded twin is not, an unloaded face was never needed. The WARNING names the
-  families and both causes; `--json <file>` writes the capture record with `fontsFailed` (`[]` = every face loaded;
-  `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). playwright and
-  pngjs load lazily, so `--help` and the pure helpers (`deadFontFaces`, `fontCheckOutcome`) need neither.
-- **`gate.sh` / `gate-all.mjs`:** both captures write their record (`<side>-shot.json` in the evidence dir; the live
-  one lives and dies with `live.png`). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
+  families and both causes; the capture record (`<stem>.capture.json`, 0.34.4) carries `fontsFailed` (`[]` = every face
+  loaded; `null` + `fontCheck` when the check could not run, with one stderr line — never silently a pass). A
+  `--freeze-baseline` capture whose check could not run is refused like one with dead faces.
+- **`gate.sh` / `gate-all.mjs`:** both read the capture records (`<side>.capture.json`; the live one lives and dies with
+  `live.png`; under `--gate-against-baseline` the live side reads the frozen baseline's check). gate.sh prints one `gate.sh: fonts on the <side> capture — …` line per side
   after the overflow line — the dead faces, every face loaded, or NOT CHECKED — as information for the loop (exit codes
-  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live-shot.json`
-  beside the reused archetype `live.png`; none is unchecked) and fails the row: `font-not-loaded:<family>`,
+  unchanged). gate-all carries `fontsFailed` on the origin / eds meta (the prototype stage reads `live.capture.json`
+  beside the reused archetype `live.png`, or the baseline's record after a flagged round; none is unchecked) and fails the row: `font-not-loaded:<family>`,
   `font-check-skipped:<origin|build>` (`fontsNotLoaded`, `fontChecksSkipped`; totals, the calibration line, `FAIL
   (fonts)`). A meta from before the check (no key, `--skip-existing`) is not flagged — recapture to check.
 - **Fonts policy** (`recreation-procedure.md`): self-host the source's own faces; brand family first, a metric-matched
   substitute only as the fallback entry after it; a `local()` source only for a face the gate's browser has, the
   Linux-available metric fallbacks named; proprietary faces raise deploy's licensing alert (#80). Gate rule 14 names
   `fontsFailed` and `font-check-skipped`. Tests: `replica/stitch-shot` (new), `replica/gate`, `replica/gate-all`.
+- **Merged with 0.34.5.** The branch's `--json <file>` record was folded into the capture record every stitch already
+  writes since 0.34.4, so a capture has one record; one `stitch-shot` test file carries all four contracts.
+
+## 0.34.5 — replica: the source-fidelity gate can measure against a frozen origin baseline (opt-in, default off) (#138)
+
+Field learning (a multi-day hands-off replica): the live site changed between rounds — a hero rotated, a banner
+appeared — and the gate's target moved under the fix rounds: a pixel FAIL measured the origin's movement, not the
+build, and each move burned a round. The gate captured the live side fresh whenever `live.png` was absent and had no
+way to hold the origin still. Nothing below changes a round unless asked for.
+
+- **`replica/scripts/stitch-shot.mjs --freeze-baseline [--force]`** freezes one origin per page and width: the capture
+  always lands as `baseline.png` beside `baseline.json` { capturedAt, url, width, vh, height, settle, chunks,
+  fontsFailed } in `<out.png>`'s dir, both written atomically; a freeze aimed at `live.png` is redirected there (one
+  line) and never touches it; an existing baseline is refused without `--force`; a capture whose fonts failed is not
+  frozen. `--check-baseline` captures a fresh shot and prints its Δheight vs the baseline — no verdict; `<out.png>`
+  named `baseline.png` is refused before any capture. Two browserless subcommands carry the gate's bookkeeping:
+  `baseline <dir> [--url] [--width]` (the capturedAt, exit 0 — or the one-line reason, exit 1: missing, a lone file,
+  unreadable, frozen for another URL or width) and `record <live.json> --origin live|baseline …` (the round's
+  `live.json`, atomic). `playwright` and `pngjs` load lazily, so `--help` and the subcommands answer without them.
+  Tests: `test/stitch-shot.test.mjs` (new).
+- **`replica/scripts/gate.sh --gate-against-baseline`** makes the frozen baseline the origin side of the same
+  pixel-compare: `baseline.png` is copied over `live.png` (sibling temp + rename), `live.json` records
+  `origin: "baseline"` and `originBaseline { capturedAt, height }`, one stdout line names the capture time, no live
+  shot. It holds the pixel target still only: a `--full` round's diff probes still navigate the live URL. A missing or stale baseline ends the round before any capture with one stderr line and exit 125 —
+  never a fresh live shot in its place. Without the flag the round is the one it was: a `live.png` whose record says
+  it is the frozen copy is retaken with one line (the record goes with it); a `live.png` with no record is a live
+  capture, reused as before. A copy or record that fails removes `live.png` and ends the round (exit 1, one line), so
+  baseline bytes never pass as a live shot. Tests: `test/gate.test.mjs`.
+- **Docs.** `replica/reference/source-fidelity-gate.md` § Iteration discipline states the rule once (its chrome-parity
+  cost anecdote folded); the scripts index names the flags.
+- **One record per artefact.** A flagged round removes the capture record (`live.capture.json`, 0.34.4) beside the copied
+  `live.png`, and the unflagged retake removes it with the copy; a `--freeze-baseline` capture writes `baseline.json` and
+  no capture record. Merged with 0.34.4: one `stitch-shot` test file, both contracts.
+
+## 0.34.4 — a 2xx denial page is a bot challenge: the capture refuses it, the gate round has no verdict (#137)
+
+Field learning (a recorded hands-off replica run on a site behind a bot wall): the live origin answered the headless
+capture with status 200 and its denial text — about 900 px of "can't process your request … Incident Number" under one
+heading — and the gate accepted it as a normal capture: `stitch-shot.mjs` wrote the PNG and exited 0, no bot signal
+anywhere, and the pixel round measured the denial page as the source. The fail-loud rule (gate doc rule 12) read only
+the response headers, and a vendor wall that answers 200 leaves none to classify.
+
+- **A 2xx denial page is a bot challenge (`diff/scripts/live-session.mjs`).** After the settle `gotoLive` reads the
+  page (`pageDenial`): a vendor signature — a phrase pair such as "Access Denied" + "Reference #" or "can't process
+  your request" + "Incident Number" anywhere in the title and text; a single phrase ("Just a moment…", "Press & Hold",
+  "Incapsula", "DataDome", "Request unsuccessful", "System Down") in the title, the text or an iframe src, only on
+  a page under 2 KB of text — or a page under 2 KB of text under exactly one error heading. A match throws the same
+  `BotChallengeError` the header path throws (marker `HTTP <status> denial page — …`; the message says "origin blocked"
+  and names the `--headed` escalation); a full page that merely mentions a phrase is no denial page. Under `--headed`
+  the solve window reloads up to three times before declaring it, and a reload the probe cannot read keeps the denial.
+  Each probe read races a 10 s deadline; a probe that fails twice is one stderr line (`denial-page check skipped`),
+  never a pass. Every instrument on `gotoLive` inherits the rule.
+- **stitch-shot exits 3 on a denial page and records the check.** The page is read once more after the dismissal
+  sweep(s), before the capture (a denial page a script renders after `domcontentloaded`); a denial leaves no PNG and no
+  record. A written capture now carries `<stem>.capture.json` beside it — `{ writtenBy, url, width, vh, height,
+  chunks, denialCheck, at }`, `denialCheck` = `'ok'` or `'skipped: <reason>'` — so a round whose check could not run
+  says so in its evidence. playwright and pngjs load lazily (`--help` and the pure tests need neither).
+- **gate.sh names the blocked round.** A capture exit 3 ends the round with `… capture BLOCKED (exit 3) — a bot
+  challenge or 2xx denial page …: no verdict for this round; escalate --headed`, never a pixel number; the `--full`
+  probe verdict line says the same. Tests: `diff/live-session` (new — every signature, the 2 KB and one-heading rules,
+  an ordinary page, `gotoLive` on stub pages), `replica/stitch-shot` (new — the re-check, the exit code, the record,
+  `--help`; end to end where playwright is installed).
+- **Live URLs only.** The denial probe runs only where a vendor wall can exist (`isLiveHttpUrl`): a localhost or
+  loopback build side serving a tiny page under an error heading is captured as-is; with a test. A single phrase in the
+  title counts under the same 2 KB bound (an article titled "System Down" is no denial page). Merged with 0.34.3, so
+  the two new test files are one per script (`diff/live-session`, `replica/stitch-shot`).
+
+## 0.34.3 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape (#136)
+
+Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
+
+- **`replica/scripts/gate.sh` dismisses overlays on its captures the way its probes do.** The probes ran under
+  `--dismiss` while the stitched live capture had no way to receive a site-specific selector: the run captured
+  the live side with the consent banner and its scrim up, and the first pixel rounds measured them as page
+  difference (18–50 % hot bands) until `live.png` was re-taken by hand. Both captures now run the shared
+  dismissal by default, `--no-dismiss` turns it off everywhere in the round (new on `stitch-shot.mjs` as well),
+  and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
+  probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
+  the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+  `stitch-shot.mjs` loads playwright and pngjs lazily and exports its pure parts (argument parsing, chunk targets, the
+  scroll-stall guard, row stitching); `test/stitch-shot.test.mjs` covers them, `--help` without a browser, and a
+  fixture capture where playwright is importable.
+- **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
+  residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
+  `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
+  `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
+  and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` wraps a ledger whose top level
+  is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
+  that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
+  names the keys.
+
+## 0.34.2 — dynamics: a form's captcha is recorded and rendered, never silently dropped (#135)
+
+Field learning (a newsletter sign-up on a media site): the live form carried a checkbox reCAPTCHA under the email
+field; the replica rendered the field and the button and nothing else. The form definition had no place for it, so
+the parity report read the form as done and the pixel diff saw a shorter card. A captcha is two halves: a public
+site key in the DOM, migratable, and a secret-backed server verify at the endpoint, which is not.
+
+- **`snapshot-forms.mjs`:** the definition gains `protection` — `{ vendor, siteKey, widget }` from any
+  `[data-sitekey]` element or a reCAPTCHA / hCaptcha / Turnstile script (v3 and Enterprise keys read from `render=`),
+  `null` when absent; the per-URL stderr line flags `PROTECTION: <vendor>` next to `REGULATED-PII`.
+- **forms.md § 4:** a recorded `protection` renders the same widget in the same slot with the vendor's published
+  always-pass test key and posts its response field with the data; the owner's real key, domain allowlist and
+  server-side verify are one `needs-backend` decision row. Folded the "53 states / 260 countries" anecdote.
 
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
 

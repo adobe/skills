@@ -4,12 +4,12 @@
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag); parseArgs defaults and
 // --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff.
-// Fonts (gate rule 14): shotFonts reads a stitch --json record (a list = checked, null + fontCheck when the check
+// Fonts (gate rule 14): shotFonts reads a stitch capture record (a list = checked, null + fontCheck when the check
 // could not run, when the record predates the check or when there is none), fontsNotLoaded / fontChecksSkipped over
 // the two metas (explicit null only), verdict's font-not-loaded:<family> and font-check-skipped:<side> reasons failing
 // an otherwise passing row, the calibration line and the FAIL (fonts) cell; then the runner with stub instruments
 // (stitch-shot writes the record, pixel-compare the JSON): the meta carries fontsFailed, a dead face or a skipped
-// check fails the row (exit 2), the prototype stage reads live-shot.json beside the archetype round's live.png — none
+// check fails the row (exit 2), the prototype stage reads live.capture.json beside the archetype round's live.png — none
 // is unchecked, never "all loaded".
 // Run: node <this file>.
 import assert from 'node:assert/strict';
@@ -108,8 +108,8 @@ check('shotFonts: a record with a list is checked (strings only); null, an absen
   assert.deepEqual(shotFonts({ fontsFailed: null, fontCheck: 'failed: fonts unavailable' }), { fontsFailed: null, fontCheck: 'failed: fonts unavailable' });
   assert.deepEqual(shotFonts({ fontsFailed: null }), { fontsFailed: null, fontCheck: 'failed: the check could not run' });
   assert.deepEqual(shotFonts({ url: 'x', height: 10 }), { fontsFailed: null, fontCheck: 'failed: the capture record predates the font check — re-copy stitch-shot.mjs' });
-  assert.deepEqual(shotFonts(null), { fontsFailed: null, fontCheck: 'failed: no readable capture record (stitch-shot wrote no --json record — re-copy stitch-shot.mjs)' });
-  assert.deepEqual(shotFonts(undefined, { missing: 'no live-shot.json beside live.png' }), { fontsFailed: null, fontCheck: 'failed: no live-shot.json beside live.png' });
+  assert.deepEqual(shotFonts(null), { fontsFailed: null, fontCheck: 'failed: no readable capture record (stitch-shot wrote no capture record — re-copy stitch-shot.mjs)' });
+  assert.deepEqual(shotFonts(undefined, { missing: 'no live.capture.json beside live.png' }), { fontsFailed: null, fontCheck: 'failed: no live.capture.json beside live.png' });
 });
 check('fontsNotLoaded: the metas\' fontsFailed of both sides — sorted, unique; a meta without a list (null, absent, a crawl shot, a failed capture) adds none', () => {
   assert.deepEqual(fontsNotLoaded(live(['B', 'A']), live(['A'])), ['A', 'B']);
@@ -171,7 +171,7 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
     if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
     writeFileSync(out, 'png');
-    const json = process.argv.includes('--json') ? process.argv[process.argv.indexOf('--json') + 1] : null;
+    const json = out.replace(/\\.png$/i, '') + '.capture.json';
     const fonts = process.env['STUB_FONTS_NULL_' + side] ? { fontsFailed: null, fontCheck: 'failed: Execution context was destroyed' } : { fontsFailed: (process.env['STUB_FONTS_' + side] || '').split(',').filter(Boolean) };
     if (json && !process.env['STUB_NO_JSON_' + side]) writeFileSync(json, JSON.stringify({ url, out, width: 1440, vh: 900, settle: true, ...fonts, height: 2000 }, null, 2) + '\\n');
     console.log('overflow: scrollWidth=1440 viewport=1440 delta=0'); console.log('stitched ' + out);`);
@@ -185,10 +185,10 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     return { status: r.status, stdout: r.stdout, stderr: r.stderr, summary: read('summary.json'), origin: read('a/origin.json'), eds: read('a/eds.json'), out };
   };
   try {
-    check('runner: both stitches are asked for their --json record; the metas carry fontsFailed [] and the clean row passes (exit 0)', () => {
+    check('runner: both stitches are asked for their capture record; the metas carry fontsFailed [] and the clean row passes (exit 0)', () => {
       const r = runAll('clean', []);
       assert.equal(r.status, 0, r.stderr);
-      assert.ok(existsSync(join(r.out, 'a/origin-shot.json')) && existsSync(join(r.out, 'a/eds-shot.json')), 'the records are beside the captures');
+      assert.ok(existsSync(join(r.out, 'a/origin.capture.json')) && existsSync(join(r.out, 'a/eds.capture.json')), 'the records are beside the captures');
       assert.deepEqual([r.origin.instrument, r.origin.fontsFailed, r.eds.fontsFailed], ['stitch-live', [], []]);
       assert.ok(!('fontCheck' in r.origin) && !('fontCheck' in r.eds), 'a check that ran carries no fontCheck');
       const row = r.summary.rows[0];
@@ -215,24 +215,24 @@ check('formatSummary: the calibration line counts the rows and names the dead fa
     check('runner: a stitch that writes no record (an older copy) → fontsFailed null with the re-copy note, font-check-skipped:build', () => {
       const r = runAll('norec', [], { STUB_NO_JSON_EDS: '1' });
       assert.equal(r.status, 2, r.stderr);
-      assert.equal(r.eds.fontsFailed, null); assert.match(r.eds.fontCheck, /^failed: no readable capture record \(stitch-shot wrote no --json record/);
+      assert.equal(r.eds.fontsFailed, null); assert.match(r.eds.fontCheck, /^failed: no readable capture record \(stitch-shot wrote no capture record/);
       assert.deepEqual(r.summary.rows[0].reasons, ['font-check-skipped:build']);
     });
-    check('runner (prototype stage): the archetype round\'s live.png is reused with the font check of its live-shot.json; none beside it is unchecked (font-check-skipped:origin, the fix named) — never "all loaded"', () => {
+    check('runner (prototype stage): the archetype round\'s live.png is reused with the font check of its live.capture.json; none beside it is unchecked (font-check-skipped:origin, the fix named) — never "all loaded"', () => {
       const proto = pages({ prototypePath: 'stardust/prototypes/a.html' });
       const cached = join(root, 'stardust/replica/gates/a-1440'); mkdirSync(cached, { recursive: true });
       writeFileSync(join(cached, 'live.png'), 'png');
       const none = runAll('proto-none', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
       assert.equal(none.status, 2, none.stderr);
       assert.equal(none.origin.fontsFailed, null);
-      assert.match(none.origin.fontCheck, /^failed: no live-shot\.json beside .*live\.png \(a gate round before the font check\) — delete live\.png to re-take it$/);
+      assert.match(none.origin.fontCheck, /^failed: no live.capture\.json beside .*live\.png \(a gate round before the font check\) — delete live\.png to re-take it$/);
       assert.match(none.origin.note, /^reused .*live\.png/);
       assert.deepEqual(none.summary.rows[0].reasons, ['font-check-skipped:origin']);
-      writeFileSync(join(cached, 'live-shot.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], height: 2000 }));
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: ['Brand Serif'], height: 2000 }));
       const some = runAll('proto-some', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
       assert.equal(some.status, 2, some.stderr);
       assert.deepEqual([some.origin.fontsFailed, some.summary.rows[0].reasons], [['Brand Serif'], ['font-not-loaded:Brand Serif']], 'the cached capture\'s dead face fails the prototype row');
-      writeFileSync(join(cached, 'live-shot.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], height: 2000 }));
+      writeFileSync(join(cached, 'live.capture.json'), JSON.stringify({ url: 'https://origin.example/a', fontsFailed: [], height: 2000 }));
       const clean = runAll('proto-clean', ['--stage', 'prototype', '--proto-base', 'http://127.0.0.1:1'], {}, proto);
       assert.equal(clean.status, 0, clean.stderr);
       assert.deepEqual([clean.origin.fontsFailed, clean.summary.rows[0].pass], [[], true]);

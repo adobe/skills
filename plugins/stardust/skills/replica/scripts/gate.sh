@@ -7,11 +7,14 @@
 # the verdict lines that drive the loop (size / height delta / differing % /
 # hot bands / overflow). The prototype/build side is re-captured every round;
 # the live side only when live.png is absent — delete it explicitly to re-take
-# (site changed, capture hardening changed).
+# (site changed, capture hardening changed, a new --consent / --dismiss selector) —
+# or, opt-in, never: a frozen origin baseline (--gate-against-baseline, below)
+# holds the pixel-compare's origin still.
 #
 # Usage:
 #   stardust/scripts/replica/gate.sh <slug> <live-url> <build-url> <width> [iter-label]
-#       [--marker <string>] [--full] [--main <selector>] [--no-dismiss] [--help]
+#       [--marker <string>] [--full] [--main <selector>] [--consent <sel>] [--dismiss <sel,…>]
+#       [--no-dismiss] [--gate-against-baseline] [--help]
 #
 # Horizontal-overflow assert (every round, build side only — no live hit):
 #   after the build capture, measure.mjs reads document.documentElement's
@@ -39,6 +42,10 @@
 #   exit 1: "no verdict, re-queue the round" — never a FAIL, never a spent
 #   iteration. Only exit 1 is retried; 3 (bot challenge), 4 (identity) and
 #   124 (deadline) are final on the first attempt.
+#
+# Overlay dismissal: one shared dismissOverlays (live-session.mjs) on both captures, the probes and
+#   chrome-parity (flags below); symmetric by construction — the build has nothing to dismiss, so it
+#   cannot bias the diff.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL, each under its own deadline — content-diff
@@ -71,37 +78,49 @@
 #            (the probes in parallel); RUN_BG_SLOTS lowers that on a small machine. Start the
 #            rounds all at once and let the slots pace them — no sleep staggering.
 #   --main <selector>   content root for the diff probes (default: main)
-#   --no-dismiss        do not dismiss consent/marketing overlays on the probes
+#   --consent <sel>     site-specific consent-accept selector (clicked before the built-in candidates) —
+#                       reaches both captures, the diff probes and chrome-parity
+#   --dismiss <sel,…>   extra overlay-dismiss selectors (marketing modals with non-standard closers), same reach
+#   --no-dismiss        do not dismiss consent/marketing overlays — captures, probes and chrome-parity (exit 125
+#                       together with --consent / --dismiss: they contradict)
+#   --gate-against-baseline  Origin baseline (opt-in, default OFF): the frozen baseline.png + baseline.json in the
+#            evidence dir (written once by `stitch-shot.mjs <live-url> <dir>/baseline.png --freeze-baseline --width <w>
+#            --settle`) is the origin side of the pixel-compare instead of a live shot — copied over live.png (sibling
+#            temp + rename), live.json records origin "baseline" + originBaseline { capturedAt, height }, one stdout
+#            line names the capture time. It holds the PIXEL target still only: a --full round's diff probes still
+#            navigate the live URL. Checked BEFORE any capture (`stitch-shot.mjs baseline <dir> --url --width`): a
+#            missing, lone, unreadable or stale baseline (another URL or width) ends the round with that one line on
+#            stderr and exit 125 — never a live shot in its place. Flag OFF: the round is the one it always was; a
+#            live.png whose live.json says origin "baseline" is retaken (one line; its records go with it), a
+#            live.png with no record is reused as before.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
 #     "http://localhost:8791/home-proposed.html" 1440 iter2
 #
 # Evidence lands in stardust/replica/gates/<slug>-<width>/
-# (live.png, build.png, diff-<label>.png, overflow-<label>.txt, and each
-# capture's record: live-shot.json, build-shot.json — stitch-shot --json).
+# (live.png, build.png, diff-<label>.png, overflow-<label>.txt; under
+# --gate-against-baseline also live.json, beside the frozen baseline.png + baseline.json; a
+# capture also leaves its record, live.capture.json / build.capture.json — stitch-shot's).
 #
-# Fonts (every round, both sides — source-fidelity-gate.md § Hardening rule
-#   14): after the overflow line, one `gate.sh: fonts on the <live|build>
-#   capture — …` line per side from the capture records — the DEAD FACE(S)
-#   (the record's fontsFailed: a declared face with no loaded face of its
-#   family, weight and style — a file that failed to fetch, or a local()
-#   source this browser cannot resolve; the capture renders fallback type for
-#   them), `every declared face loaded`, or NOT CHECKED (fontsFailed null —
-#   the check could not run — or no readable record: an older stitch-shot
-#   copy, or a live.png from a round before the check — delete it to re-take).
-#   Information for the loop, never a verdict: the pixel number already
-#   measures a face that forked; the line says which face to fix (gate-all
-#   fails its rows on the same records). live-shot.json goes with live.png.
+# Fonts (every round, both sides — source-fidelity-gate.md § Hardening rule 14): after the
+#   overflow line, one `gate.sh: fonts on the <live|build> capture — …` line per side from the
+#   capture record's fontsFailed — the DEAD FACE(S), `every declared face loaded`, or NOT CHECKED
+#   (null, or no readable record: an older stitch-shot copy, or a live.png from a round before
+#   the check). Under --gate-against-baseline the live side reads the frozen baseline's check.
+#   Information for the loop, never a verdict (gate-all fails its rows on the same records).
 #
-# Fail-loud contract: a stitch-shot bot challenge (exit 3) or capture error
-# aborts the round — a missing/blocked side must never be compared. Exit
-# codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal overflow on
-# the build side), 3 bot challenge, 1 capture/compare error (after the one
+# Fail-loud contract: a stitch-shot bot challenge (exit 3 — an edge
+# interstitial or a 2xx denial page; the capture's one-line reason precedes
+# this script's BLOCKED line on stderr) or capture error aborts the round — a
+# missing/blocked side must never be compared, and a blocked round has no
+# verdict. Exit codes: 0 gate PASS, 2 gate FAIL (over threshold, or horizontal
+# overflow on the build side), 3 bot challenge, 1 capture/compare error (after the one
 # retry — re-queue, not a verdict), 4 build-side identity assertion failed
 # (the URL serves something that isn't this project's page — wrong/stale
 # server), 124 instrument deadline exceeded (not a measurement — see below),
-# 125 unknown argument (usage).
+# 125 unknown argument (usage) or --gate-against-baseline without a usable
+# frozen baseline (freeze one, or drop the flag).
 #
 # Instrument deadlines + stale reap: every node step runs under
 # run-capped.mjs (macOS has no `timeout`). Three field migrations (2026-08/09)
@@ -135,7 +154,10 @@ LBL=iter
 MARKER="$SLUG"
 FULL=0
 MAIN=main
-DISMISS=--dismiss
+DISMISS=1
+CONSENT=""
+DISMISS_EXTRA=""
+BASELINE=0
 shift 4
 if [ $# -gt 0 ] && [ "${1#--}" = "$1" ]; then LBL=$1; shift; fi
 while [ $# -gt 0 ]; do
@@ -143,11 +165,31 @@ while [ $# -gt 0 ]; do
     --marker) MARKER=${2:?--marker needs a value}; shift 2 ;;
     --full) FULL=1; shift ;;
     --main) MAIN=${2:?--main needs a selector}; shift 2 ;;
-    --no-dismiss) DISMISS=""; shift ;;
+    --consent) CONSENT=${2:?--consent needs a selector}; shift 2 ;;
+    --dismiss) DISMISS_EXTRA=${2:?--dismiss needs a selector list}; shift 2 ;;
+    --no-dismiss) DISMISS=0; shift ;;
+    --gate-against-baseline) BASELINE=1; shift ;;
     --help|-h) sed -n '2,/^set -u$/p' "$0" | grep -E '^#' | sed -E 's/^# ?//'; exit 0 ;;
     *) echo "gate.sh: unknown argument $1 (see --help)" >&2; exit 125 ;;
   esac
 done
+
+if [ "$DISMISS" = 0 ] && { [ -n "$CONSENT" ] || [ -n "$DISMISS_EXTRA" ]; }; then
+  echo "gate.sh: --no-dismiss contradicts --consent / --dismiss — drop one (see --help)" >&2; exit 125
+fi
+# Overlay flags per step (header § Overlay dismissal). stitch-shot and chrome-parity take --consent <sel>,
+# --dismiss <sel,…> and --no-dismiss; the diff probes take one --dismiss [sel,…] (bare = the built-in candidates only), so the site's
+# selectors are joined for them. Arrays expand as ${a[@]+"${a[@]}"}: macOS /bin/bash is 3.2, where an empty array
+# under set -u is an unbound variable.
+STITCH_OPTS=(); PROBE_OPTS=(); CHROME_OPTS=()
+if [ "$DISMISS" = 1 ]; then
+  [ -n "$CONSENT" ] && { STITCH_OPTS+=(--consent "$CONSENT"); CHROME_OPTS+=(--consent "$CONSENT"); }
+  [ -n "$DISMISS_EXTRA" ] && { STITCH_OPTS+=(--dismiss "$DISMISS_EXTRA"); CHROME_OPTS+=(--dismiss "$DISMISS_EXTRA"); }
+  EXTRA="${CONSENT:+$CONSENT,}$DISMISS_EXTRA"; EXTRA=${EXTRA%,}
+  if [ -n "$EXTRA" ]; then PROBE_OPTS=(--dismiss "$EXTRA"); else PROBE_OPTS=(--dismiss); fi
+else
+  STITCH_OPTS=(--no-dismiss); CHROME_OPTS=(--no-dismiss)
+fi
 
 HERE=$(cd "$(dirname "$0")" && pwd)
 DIR="stardust/replica/gates/$SLUG-$W"
@@ -159,6 +201,17 @@ PROBE_TIMEOUT=${GATE_PROBE_TIMEOUT:-300}
 OVF_TOL=${GATE_OVERFLOW_TOLERANCE:-4}
 case "$OVF_TOL" in ''|*[!0-9]*) echo "gate.sh: GATE_OVERFLOW_TOLERANCE must be a whole number of px (got '$OVF_TOL')" >&2; exit 125 ;; esac
 REAP_MIN=${GATE_REAP_MIN:-15}
+# --gate-against-baseline (header § flags; default OFF): the flag's precondition is settled before any process is
+# reaped or any capture spent. `stitch-shot.mjs baseline <dir> --url --width` answers with the frozen baseline's
+# capturedAt (exit 0) or the one-line reason it is unusable (exit 1) — then the round ends with that line: the flag
+# exists so the origin cannot move under the run, so a live shot is never taken in the baseline's place.
+BASE_AT=""
+if [ "$BASELINE" = 1 ]; then
+  if ! BASE_AT=$(node "$HERE/stitch-shot.mjs" baseline "$DIR" --url "$LIVE_URL" --width "$W"); then
+    echo "gate.sh: --gate-against-baseline set but ${BASE_AT:-no usable frozen baseline for $SLUG@$W} — not gating against a live shot in its place: freeze one (stitch-shot.mjs \"$LIVE_URL\" $DIR/baseline.png --freeze-baseline --width $W --settle) or drop the flag" >&2
+    exit 125
+  fi
+fi
 capped() { local t=$1 l=$2; shift 2; node "$HERE/run-capped.mjs" --timeout "$t" --label "$l" -- "$@"; }
 # One retry on exit 1 only (the capture/compare error class — Chromium under parallel load); 3, 4 and 124 are
 # final. $1 names the step for the log line; the rest is the command (a function or a program).
@@ -170,6 +223,16 @@ retry_once() {
     "$@"; rc=$?
   fi
   return "$rc"
+}
+# A capture that did not exit 0 ends the round without a verdict. 3 is the blocked class — a bot challenge or a 2xx
+# denial page (stitch-shot's reason line precedes this one): never a pixel number, escalate --headed. $1 side, $2 rc.
+capture_failed() {
+  if [ "$2" -eq 3 ]; then
+    echo "gate.sh: $1 capture BLOCKED (exit 3) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed" >&2
+  else
+    echo "gate.sh: $1 capture failed (exit $2) — not comparing$([ "$2" -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2
+  fi
+  exit "$2"
 }
 
 # Stale-instrument reap (own user, node processes running a replica instrument
@@ -230,23 +293,48 @@ if ! printf '%s' "$PAGE" | grep -qiF -- "$MARKER"; then
 fi
 
 # Live side: captured once per breakpoint per full gate run and reused
-# (--settle: live JS-heavy pages need the lazyload pass). Never swallow the
+# (--settle: live JS-heavy pages need the lazyload pass; STITCH_OPTS: the
+# round's overlay dismissal, header § Overlay dismissal). Never swallow the
 # output — exit 3 here means "blocked, escalate --headed", not "skip".
-# Each capture writes its record (--json <side>-shot.json: fontsFailed, header § Fonts); the live record lives and dies
-# with live.png — a cached live.png from a round before the check has none, and the fonts line says so.
-if [ ! -f "$DIR/live.png" ]; then
-  capture_live() { rm -f "$DIR/live.png" "$DIR/live-shot.json"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle --json "$DIR/live-shot.json"; }
-  retry_once "live capture" capture_live
-  rc=$?
-  [ $rc -ne 0 ] && rm -f "$DIR/live.png" "$DIR/live-shot.json"   # never leave a partial live capture (or its record) to be reused
-  [ $rc -ne 0 ] && { echo "gate.sh: live capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+# --gate-against-baseline: the frozen baseline is the origin side instead — baseline.png copied over live.png
+# (sibling temp + rename, so a crash never leaves a torn origin) and live.json written by `stitch-shot.mjs record`
+# (origin "baseline", originBaseline { capturedAt, height }), so a later round can tell the frozen copy from a live
+# capture; no live shot is taken (a --full round's probes still navigate the live URL). The previous round's records
+# — live.json and the capture record live.capture.json — go first, and a copy or record that fails removes
+# live.png and ends the round (exit 1, one line): baseline bytes never sit under a missing or stale record.
+# Flag OFF: a live.png whose live.json says origin "baseline" was a flagged round's copy — retaken with one line,
+# its records removed with it; a live.png with no record is a live capture and is reused as before.
+if [ "$BASELINE" = 1 ]; then
+  rm -f "$DIR/live.json" "$DIR/live.capture.json"
+  if ! { cp -f "$DIR/baseline.png" "$DIR/live.png.$$.tmp" && mv -f "$DIR/live.png.$$.tmp" "$DIR/live.png"; }; then
+    rm -f "$DIR/live.png.$$.tmp" "$DIR/live.png"
+    echo "gate.sh: could not copy $DIR/baseline.png over live.png — not comparing (re-run the round)" >&2; exit 1
+  fi
+  if ! node "$HERE/stitch-shot.mjs" record "$DIR/live.json" --origin baseline --baseline "$DIR/baseline.json" --url "$LIVE_URL" --width "$W"; then
+    rm -f "$DIR/live.png"
+    echo "gate.sh: could not write $DIR/live.json for the frozen origin — not comparing (a later round would read the copy as a live shot); re-run the round" >&2; exit 1
+  fi
+  echo "gate.sh: gating against the frozen origin baseline (captured $BASE_AT) — origin side from baseline.png, no fresh live shot"
+else
+  if [ -f "$DIR/live.png" ] && [ -f "$DIR/live.json" ] && grep -qE '"origin": *"baseline"' "$DIR/live.json"; then
+    echo "gate.sh: live.png is the frozen origin baseline (a --gate-against-baseline round); this round gates against the live origin — retaking it" >&2
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
+  fi
+  if [ ! -f "$DIR/live.png" ]; then
+    capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
+    retry_once "live capture" capture_live
+    rc=$?
+    [ $rc -ne 0 ] && rm -f "$DIR/live.png"   # never leave a partial live capture to be reused
+    [ $rc -ne 0 ] && capture_failed live "$rc"
+  fi
 fi
 
-# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry).
-capture_build() { rm -f "$DIR/build-shot.json"; capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" --json "$DIR/build-shot.json"; }
+# Build side: re-captured every iteration; exit 1 retried once (header § Capture retry); the same overlay flags as
+# the live side — a symmetric instrument (the build has nothing to dismiss, so the flags are no-ops there).
+capture_build() { capped "$STITCH_TIMEOUT" "stitch-shot build $SLUG@$W" node "$HERE/stitch-shot.mjs" "$BUILD_URL" "$DIR/build.png" --width "$W" ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
 retry_once "build capture" capture_build
 rc=$?
-[ $rc -ne 0 ] && { echo "gate.sh: build capture failed (exit $rc) — not comparing$([ $rc -eq 1 ] && printf ' (twice: no verdict — re-queue the round)')" >&2; exit $rc; }
+[ $rc -ne 0 ] && capture_failed build "$rc"
 
 # Horizontal-overflow assert (header § Horizontal-overflow assert): measure.mjs on the BUILD side only —
 # no live hit — reads documentElement.scrollWidth at $W; its root line is the evidence. The verdict line
@@ -282,19 +370,21 @@ else
   echo "gate.sh: overflow assert at $W — build scrollWidth $SW = viewport → ok"
 fi
 
-# Fonts (header § Fonts): one line per side from the capture records, after the overflow line — the dead faces, every
-# face loaded, or NOT CHECKED (the record's fontsFailed null, or no readable record). Information, never a verdict.
-fonts_line() { # $1 side, $2 record
-  node -e 'const [side, rec] = process.argv.slice(1); let j = null;
-    try { j = JSON.parse(require("fs").readFileSync(rec, "utf8")); } catch (e) { j = null; }
+# Fonts (header § Fonts): one line per side from the capture record, after the overflow line — the dead faces, every
+# face loaded, or NOT CHECKED (fontsFailed null, or no readable record). The live side of a --gate-against-baseline
+# round has no capture record (live.png is the frozen copy): its line reads baseline.json. Information, never a verdict.
+fonts_line() { # $1 side, $2 record, $3 the frozen baseline's record (live side only)
+  node -e 'const [side, rec, base] = process.argv.slice(1); const read = (f) => { try { return JSON.parse(require("fs").readFileSync(f, "utf8")); } catch { return null; } };
+    let j = read(rec); let from = "";
+    if (!(j && typeof j === "object" && "fontsFailed" in j) && base) { const b = read(base); if (b && Array.isArray(b.fontsFailed)) { j = b; from = " (the frozen baseline\x27s check)"; } }
     const hint = side === "live" ? " — delete live.png to re-take it with the check" : " — re-copy stitch-shot.mjs (replica SKILL.md § Setup)";
     if (!j || typeof j !== "object" || !("fontsFailed" in j)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (no readable capture record at ${rec}${hint})`);
     else if (!Array.isArray(j.fontsFailed)) console.log(`gate.sh: fonts on the ${side} capture — NOT CHECKED (${String(j.fontCheck || "the check could not run").replace(/^failed: /, "")}) — no face is known to have loaded`);
-    else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)`);
-    else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded`);' "$1" "$2"
+    else if (j.fontsFailed.length) console.log(`gate.sh: fonts on the ${side} capture — DEAD FACE(S) ${j.fontsFailed.join(", ")}: the capture renders fallback type for them (a file that failed to fetch, or a local() source this browser cannot resolve — recreation-procedure.md § Fonts policy)${from}`);
+    else console.log(`gate.sh: fonts on the ${side} capture — every declared face loaded${from}`);' "$1" "$2" "$3"
 }
-fonts_line live "$DIR/live-shot.json"
-fonts_line build "$DIR/build-shot.json"
+fonts_line live "$DIR/live.capture.json" "$([ "$BASELINE" = 1 ] && echo "$DIR/baseline.json")"
+fonts_line build "$DIR/build.capture.json" ""
 [ "$FULL" = 1 ] || exit $PIXEL_RC
 # No pixel verdict (124 deadline, 1 error, 3 bot challenge, 4 identity): the probes would spend three
 # Chromiums on a round that already has to be re-run — say so in one line and exit with the pixel rc.
@@ -321,13 +411,13 @@ case "${GATE_REGIME:-auto}" in
 esac
 UNITS_FILE="stardust/replica/units.json"
 capped "$PROBE_TIMEOUT" "content-diff $SLUG@$W" node "$DIFF/content-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" $DISMISS > "$CD" 2>&1 &
+  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} > "$CD" 2>&1 &
 P_CD=$!
 capped "$PROBE_TIMEOUT" "visual-diff $SLUG@$W" node "$DIFF/visual-diff.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --profile generic --width "$W" --main "$MAIN" $DISMISS --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
+  --profile generic --width "$W" --main "$MAIN" ${PROBE_OPTS[@]+"${PROBE_OPTS[@]}"} --out "$DIR/vdiff-$LBL" > "$VD" 2>&1 &
 P_VD=$!
 capped "$PROBE_TIMEOUT" "chrome-parity $SLUG@$W" node "$HERE/chrome-parity.mjs" "$LIVE_URL" "$BUILD_URL" \
-  --width "$W" --live-cache "$DIR/chrome-live.json" > "$CP" 2>&1 &
+  --width "$W" --live-cache "$DIR/chrome-live.json" ${CHROME_OPTS[@]+"${CHROME_OPTS[@]}"} > "$CP" 2>&1 &
 P_CP=$!
 # clip-probe on the BUILD side (every regime, no live hit); content-presence live vs build in the published regime;
 # unit-geometry when the project declares repeated-unit families (a slug with none prints n/a, exit 0).
@@ -353,7 +443,7 @@ verdict() { # $1 rc, $2 label, $3 line
   case "$1" in
     0|2) echo "$2: $3" ;;
     124) echo "$2: DEADLINE (exit 124) — re-run, not a verdict" ;;
-    3) echo "$2: BLOCKED (exit 3) — bot challenge on the live side, escalate --headed" ;;
+    3) echo "$2: BLOCKED (exit 3) — bot challenge or 2xx denial page on the live side, escalate --headed" ;;
     *) echo "$2: ERROR (exit $1) — $(grep -iE 'error' "$4" | head -1 | cut -c1-160)" ;;
   esac
 }
