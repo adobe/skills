@@ -656,7 +656,11 @@ rather than erroring.
     "one-line-off" defects vanished). stitch-shot now checks after
     `document.fonts.ready` for declared faces with FontFace status `error`
     and warns loudly with the family names; mirror the check in any ad-hoc
-    capture. On the warning, decide before gating: load the face in a real
+    capture. The capture record carries the dead faces as `fontsFailed`
+    (`null` = the check could not run — never a pass; stitch-shot's
+    `deadFontFaces` owns the rule, `recreation-procedure.md` § Fonts policy
+    the fix); gate.sh prints it per side, gate-all fails the row. On the
+    warning, decide before gating: load the face in a real
     browser — if it loads there, the failure is **instrument-induced** (a
     capture defect: fix the instrument, and the poisoned runs don't consume
     the iteration cap per § Iteration discipline); if it fails there too,
