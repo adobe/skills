@@ -142,20 +142,18 @@ The prototype capture is re-taken every iteration.
    add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
    every text-bearing element by its text, and prints only what differs:
    family / size / weight / style / line-height / letter-spacing /
-   transform / colour / background / padding / radius, the element rect,
-   the clickable box of links and buttons, and the icon inventory
-   (count + size + signature, paired by order). Recorded: one run found
-   what many pixel-band rounds had not — an italic-vs-normal note, a
-   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
-   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
-   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
-   deltas outstanding is wasted iterations. Each run is one live
-   navigation (budget it like any live probe); `--json` records both
-   sides as the round's evidence.
+   transform / colour / background (the painted one) / padding / radius,
+   the element rect, the clickable box of links and buttons, and the icon
+   inventory (count + size, paired by order; the same pixels are the same
+   icon). A page with no `<header>` gets its top bar auto-detected (the line
+   names it); a region moved as one block by the page above is one advisory
+   OFFSET line. Fix every delta, re-run until it is quiet (exit 0), THEN
+   crop-compare — a pixel loop on chrome with parity deltas outstanding is
+   wasted iterations. Each run is one live navigation (budget it like any
+   live probe); `--json` records both sides as the round's evidence.
 
    ```bash
-   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
-     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W   # + --region strip=<sel>|<sel>
    ```
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past

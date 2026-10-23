@@ -4,6 +4,35 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.13 — chrome-parity prints real deltas only: an auto-detected header, painted backgrounds, icons by pixels, one line for a shifted region (#146)
+
+Field learnings (two recorded replica gates): on a home page whose source has no `<header>`, chrome-parity skipped the
+header ("live: no element matches header") until a region was mapped by hand, and printed 24 footer deltas that were
+all invisible — 13 MISSING for column titles the build styles `display: contents` (no box of their own, so they were
+dropped), 3 ICON for thumbnails re-hosted under a media hash, an ICON for a logo drawn as `<img>` instead of inline
+svg, and a REGION STYLE because the background is painted on `<footer>` on one side and an inner wrapper on the other.
+On a long article page its latest run printed 67 deltas that were one fact: the footer and its 66 texts sat 3,526 px
+lower as a block, text identical — the page above was a different height in that run — and nothing in the gate's
+record mentioned it.
+
+- **`replica/scripts/chrome-parity.mjs`:**
+  - the default `header` region on a page without `<header>` is auto-detected (the outermost full-width bar anchored at
+    the top that carries a link, 30–400 px) and the region line names the element; an explicit `--region` is never
+    second-guessed;
+  - text in a `display: contents` element is measured by its text box, widened to its line height;
+  - the region background compared is the painted one (the region's own, else a child covering ≥ 90 % of it, else the
+    nearest ancestor's);
+  - icons are signed with `diff/scripts/image-signature.mjs` and a signature change with the same pixels is no delta;
+  - a tag change alone (same style, same box) is context on a real delta, never a delta;
+  - a region whose box and ≥ 2 paired texts all moved by one Δy (±2 px) is one advisory `OFFSET` line, not counted in
+    the exit code (`collapseOffset`).
+  playwright loads lazily, main runs only as the entry point; `probeRegion`, `detectHeader`, `compareRegion`,
+  `collapseOffset` are exported.
+- Docs: `source-fidelity-gate.md` § chrome-parity — the example drops the default regions, the twice-told anecdote
+  (also in the script header) folds, the new behaviour is one sentence.
+- Test (new): `replica/scripts/test/chrome-parity.test.mjs` — `collapseOffset`, `compareRegion` icons by pixels,
+  `--help`, and an end-to-end page pair with every case above: only the advisory OFFSET remains, exit 0.
+
 ## 0.34.12 — stitch-shot captures fixed and sticky layers once: no seam repeats, no content hidden under them (#145)
 
 Field learning (a recorded replica gate on a home page): both captures repeated the sticky header in every viewport
