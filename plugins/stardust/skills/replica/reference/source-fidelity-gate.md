@@ -309,11 +309,10 @@ loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
 
-Section-level compare (crops) is the escalation when a band stays hot and
-the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
-prepared and never needed, because re-authoring hit exact section heights.
-`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
-this for any y-band, not just chrome.
+When a band stays hot and `diff-iter<N>.png` doesn't show why,
+`../scripts/diff-report.mjs <gateDir> <buildURL>` names the block: the
+differing share per block (EDS `[data-block-name]`, else sections) and a
+`report.html` with live | build | diff crops of the hottest ones.
 
 **Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
 runs over the same stitched PNGs — no live hit):**

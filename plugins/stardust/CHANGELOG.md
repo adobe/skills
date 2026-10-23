@@ -4,6 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.14 — diff-report names the block a pixel difference belongs to (#147)
+
+Field learning (a recorded replica gate on a home page): the band table says where on the page drift sits, never
+which block, and the diff image is 8–15k px tall. The block attribution, the per-block numbers, a live | build | diff
+overview and crops of the hottest blocks were built ad hoc in Python for one report.
+
+- **`replica/scripts/diff-report.mjs` (new):** reads a gate dir's `live.png`, `build.png` and diff PNG (`diff-final.png`,
+  else the newest `diff-*.png`), loads the build once at the round's width for its block boxes (`[data-block-name]`,
+  else `main > .section`, else `main`'s children, or `--blocks <css>`), and prints the differing share per block plus
+  the rows outside every block (pixel-compare's red count; anti-aliased yellow excluded). Writes `report.html`, a
+  live | build | diff `overview.png` and live / build / diff crops of the `--top` hottest blocks. Node + pngjs +
+  playwright, both lazy; `blockTable`, `scaleTo`, `cropRows`, `pickDiff`, `parseArgs` exported.
+- Docs: `source-fidelity-gate.md` § Reading the band breakdown — the crop-compare escalation paragraph (prepared,
+  never needed) is replaced by the instrument; `scripts-index.md` gains its row, and seven rows are shortened to stay
+  under the index's 12,288-byte cap.
+- Test (new): `replica/scripts/test/diff-report.test.mjs` — the pure parts, `--help`, and an end-to-end gate dir with a
+  served two-block build page.
+
 ## 0.34.13 — chrome-parity prints real deltas only: an auto-detected header, painted backgrounds, icons by pixels, one line for a shifted region (#146)
 
 Field learnings (two recorded replica gates): on a home page whose source has no `<header>`, chrome-parity skipped the
