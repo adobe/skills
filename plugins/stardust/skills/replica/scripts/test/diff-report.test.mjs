@@ -96,12 +96,14 @@ else {
   const server = createServer((req, res) => { res.writeHead(200, { 'content-type': 'text/html' }); res.end(req.url.startsWith('/eds') ? eds : page); });
   await new Promise((r) => { server.listen(0, '127.0.0.1', r); });
   const url = `http://127.0.0.1:${server.address().port}/`;
-  const r = await new Promise((done) => {
-    const c = spawn(process.execPath, [SCRIPT, dir, url, '--width', '800']);
+  // async: the fixture server lives in this process, so a spawnSync would block it and the page never loads
+  const run = (args) => new Promise((done) => {
+    const c = spawn(process.execPath, [SCRIPT, ...args]);
     let stdout = ''; let stderr = '';
     c.stdout.on('data', (d) => { stdout += d; }); c.stderr.on('data', (d) => { stderr += d; });
     c.on('close', (status) => done({ status, stdout, stderr }));
   });
+  const r = await run([dir, url, '--width', '800']);
   await check('e2e: the block holding the red rows is named hot (25 %), the other 0 %; report.html, overview.png and the crop triplet written', () => {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /#\s*1 hero\s+y\s+0–400\s+0\.00 %/, r.stdout);
@@ -112,7 +114,7 @@ else {
   writeFileSync(join(dir2, 'live.png'), png(image(800, 300)));
   writeFileSync(join(dir2, 'build.png'), png(image(800, 1000)));
   writeFileSync(join(dir2, 'diff-iter.png'), png(image(800, 300, [[0, 100]])));
-  const r2 = spawnSync(process.execPath, [SCRIPT, dir2, `${url}eds`, '--width', '800', '--json'], { encoding: 'utf8' });
+  const r2 = await run([dir2, `${url}eds`, '--width', '800', '--json']);
   await check('e2e (EDS): default content is a unit, a nested block folds into its outer block, a block past live\'s bottom is partial + a height warning', () => {
     assert.equal(r2.status, 0, r2.stderr);
     const j = JSON.parse(r2.stdout);
