@@ -3,7 +3,8 @@
  *
  * Replays `stardust/dynamics/parity.json` (written by stardust:dynamics Phase 5)
  * against the live base through the dynamics replay engine — flows, not
- * presence. Findings:
+ * presence. When `stardust/martech-contract.json` exists its martech checks
+ * (consent gate + tag routing) are replayed too. Findings:
  *   - parity-missing      info   no parity file → the migration never ran dynamics; nothing to replay
  *   - parity-failed       error  a replayed flow did not complete
  *   - parity-env-limit    warn   a failed flow whose feature records an environment limit
@@ -16,15 +17,20 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { finding, readJSON } from '../lib.mjs';
 
+const CONTRACT = 'stardust/martech-contract.json';
+
 export async function run(ctx) {
   const { base, opts } = ctx;
   const file = opts.parity || 'stardust/dynamics/parity.json';
-  if (!existsSync(file)) return [finding('dynamics', 'parity-missing', 'info', '', `no dynamic parity file at ${file} — run stardust:dynamics (Phases 1–5) if this site was migrated with dynamic features`)];
-  const parity = readJSON(file);
+  const missing = finding('dynamics', 'parity-missing', 'info', '', `no dynamic parity file at ${file} — run stardust:dynamics (Phases 1–5) if this site was migrated with dynamic features`);
+  const hasParity = existsSync(file);
+  const contract = existsSync(CONTRACT) ? readJSON(CONTRACT) : null;
+  if (!hasParity && !contract) return [missing];
+  const parity = hasParity ? readJSON(file) : { features: [] };
   const here = dirname(fileURLToPath(import.meta.url));
   const { replay } = await import(pathToFileURL(join(here, '../../../dynamics/scripts/dynamics-check.mjs')).href);
-  const results = await replay({ origin: base, parity, authHeader: opts.authHeader || null });
-  const out = [];
+  const results = await replay({ origin: base, parity, contract, authHeader: opts.authHeader || null });
+  const out = hasParity ? [] : [missing];
   for (const r of results) {
     if (r.pass) continue;
     const ev = { check: r.type, detail: r.detail, thirdParty: r.thirdParty };

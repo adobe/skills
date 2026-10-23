@@ -1,0 +1,62 @@
+{
+  "url": "https://shop.northwind-outdoor.com/",
+  "timestamp": "2026-10-05T09:14:22.118Z",
+  "steps": [
+    {
+      "name": "default",
+      "config": {
+        "browser": "chromium",
+        "stealth": false,
+        "uaOverride": false
+      },
+      "result": "blocked",
+      "health": {
+        "title": "ERROR: The request could not be satisfied",
+        "url": "https://shop.northwind-outdoor.com/",
+        "bodyLength": 412,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 4211
+    },
+    {
+      "name": "stealth",
+      "config": {
+        "browser": "chromium",
+        "stealth": true,
+        "uaOverride": false
+      },
+      "result": "blocked",
+      "health": {
+        "title": "ERROR: The request could not be satisfied",
+        "url": "https://shop.northwind-outdoor.com/",
+        "bodyLength": 412,
+        "status": 403,
+        "hasMainContent": false
+      },
+      "durationMs": 3987
+    },
+    {
+      "name": "stealth-ua",
+      "config": {
+        "browser": "chromium",
+        "stealth": true,
+        "uaOverride": true
+      },
+      "result": "success",
+      "health": {
+        "title": "Northwind Outdoor | Tents, Packs & Trail Gear",
+        "url": "https://shop.northwind-outdoor.com/",
+        "bodyLength": 18342,
+        "status": 200,
+        "hasMainContent": true
+      },
+      "durationMs": 5120
+    }
+  ],
+  "firstSuccess": "stealth-ua",
+  "detectedSignals": [
+    "cloudfront",
+    "cloudfront-block"
+  ]
+}

@@ -61,7 +61,10 @@ that order. `_provenance` is always the first key. A hands-off run adds
 one optional top-level key, `handsOff` (after `direction`; see
 § Hands-off keys). A migration project adds `flow`, `flowChosenAt`,
 `flowSource` (after `direction` and `handsOff`, before `pages`; see
-§ Flow keys).
+§ Flow keys). `site.captureGaps` (optional, written by `extract --prep`
+from `_crawl-log.json#captureGaps`): `[{ root, slug, linked, uncaptured:
+[<path>…] }]` per captured locale root — uncaptured targets never become
+`pages[]` rows.
 
 ---
 
@@ -83,25 +86,23 @@ When the run was activated hands-off (`skills/stardust/SKILL.md`
 
 ## Flow keys
 
-A migration project records the flow it runs — the answer to the master
-skill's first migration question (`skills/stardust/SKILL.md` § Two
-migration flows) — so every sub-skill checks it instead of inferring it
-from the ask:
+A migration project records the flow it runs — the master skill's
+reading of the ask (`skills/stardust/SKILL.md` § Two migration flows) —
+so every sub-skill checks it instead of inferring it from the ask:
 
 - `"flow": "redesign" | "replica" | "reskin"`.
 - `"flowChosenAt": "<ISO timestamp>"`.
-- `"flowSource": "user-phrase" | "question" | "hands-off-default"` — a
-  keep-design or redesign phrase in the ask, the one keep-vs-redesign
-  question, or the hands-off rule (keep-design phrase → `replica`,
-  otherwise `redesign`).
+- `"flowSource": "user-phrase" | "default" | "question"` — a keep-design
+  or redesign phrase in the ask; the default (a migration ask with no
+  redesign phrase is `replica`); or an explicit switch.
 
 Stamped once, by whichever entry resolves the choice first: the master
 skill when § Two migration flows resolves; `replica` Setup (`replica`),
 `prepare-migration` Setup (`redesign`) and `reskin` Setup (`reskin`) when
 invoked directly; `direct` when a zero-movement phrase hands off
 (`replica`). Absent on redesign-only projects that never migrate (a bare
-`extract` for audit or uplift): the keys mean "a migration flow was
-chosen", not "this is a migration".
+`extract` for audit or uplift, or `spec`, which never stamps): the keys mean
+"a migration flow was chosen", not "this is a migration".
 
 **Guards that read it.** `migrate`, `deploy`, `rollout` and (for migration
 asks only) `extract` refuse to run a migration on a project that has

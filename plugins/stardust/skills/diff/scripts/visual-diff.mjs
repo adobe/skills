@@ -85,6 +85,9 @@ const USAGE = `usage: node skills/diff/scripts/visual-diff.mjs <sourceURL> <buil
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+writes (under --out; created if absent): proto-full.png and eds-full.png (the two full-page
+            captures, source side = proto, build side = eds) plus proto-<section>.png /
+            eds-<section>.png per --sections entry. The report goes to stdout.
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)

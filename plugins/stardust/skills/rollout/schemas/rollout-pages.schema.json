@@ -42,6 +42,7 @@
           "properties": {
             "migratedHtml": { "type": "string", "description": "Path, e.g. stardust/migrated/blog/scaling-teams.html." },
             "metaJson": { "type": ["string", "null"], "description": "Path to the page's _meta.json." },
+            "sourceUrl": { "type": ["string", "null"], "description": "The page's URL on the source site (sidecar, else state.json by slug): the join key with a spec's knowledge." },
             "sourceHash": { "type": "string", "description": "Content hash of the migrated HTML; changes mark the page stale for re-delivery." }
           }
         },
@@ -49,6 +50,11 @@
           "type": "array",
           "description": "Block ids this page composes (rollout/coverage/blocks.json[].id).",
           "items": { "type": "string" }
+        },
+        "widgets": {
+          "type": "array",
+          "description": "Widgets this page mounts (sidecar widgets[]): id = the EDS widget name (rollout/coverage/blocks.json[].id, kind widget), href = the one /widgets/<path>/<name>.html link the page carries, query params included.",
+          "items": { "type": "object", "required": ["id", "href"], "additionalProperties": false, "properties": { "id": { "type": "string" }, "href": { "type": "string" } } }
         },
         "delivery": {
           "type": "object",

@@ -94,22 +94,24 @@ node skills/rollout/scripts/blocks.mjs   # → coverage/blocks.json (the dedup u
 node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion plan
 ```
 
-- `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
-  the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
-  reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
-  authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
-  archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none.
+- `blocks.mjs` collapses every block instance (per-page `modules`, `widgets` + chrome)
+  into the **distinct** set, assigns each a canonical `edsBlockName` (kebab, reserved-class
+  guarded) and records `usedByPages` / `instanceCount`. Chrome (`header`/`nav`/`footer`)
+  is `kind: chrome` → site-wide authored documents (`/nav`, `/footer`). A widget
+  (`kind: widget`, from the sidecar's `widgets[] {id, href}`) needs no document rows:
+  its code ships at `widgets/<path>/<name>.html` and the page carries one
+  `/widgets/…html` link (#133). In archetypes-only mode the archetype sidecars
+  determine the block set; `content-pending` pages add none. A module that maps to
+  EDS **default content** (title, text, image, button, separator) needs no block: record
+  it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
+  such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
-  lists are exactly `deploy`'s Step-7 brief input, so each block converts once
-  **without changing deploy**. `content-pending` pages are always `convert: []`.
+  lists are `deploy`'s Step-7 brief input. `content-pending` pages are always `convert: []`.
 
-> Extending an already-delivered site? A "new template" is almost always a new
-> COMPOSITION of the existing block library, not new block code — audit `blocks/`
-> first. See `reference/operational-learnings.md`.
+> Extending a delivered site: audit `blocks/` and `widgets/` first — a "new template" is
+> usually a new composition of them (`reference/operational-learnings.md`).
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -136,7 +138,28 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
-   it skipped the contract on 27/27 blocks of a real site.
+   it skipped the contract on 27/27 blocks of a real site. **The brief also carries
+   the archetype's `captureState[].restoreAtDelivery` list** (replica `progress.json`):
+   a freeze the gate needed (video at frame 0, carousel on slide 1) is a behaviour to
+   deliver, never the spec (`../replica/reference/recreation-procedure.md § Carousels`).
+
+   **Deploy first, judge on the preview origin.** The local harness
+   (`build-harness.mjs` → `qa-gate.mjs`, `block-roundtrip.mjs --ew`) serves the
+   structural asserts only; every pixel or visual judgment — replica's
+   source-fidelity gate, the header/footer `crop-compare` bands, the deployed
+   eyeball — runs against the page's preview URL after `PUT → preview`, never
+   against the harness before the first PUT (deploy SKILL.md § Local QA before
+   deploy, § Step 10). A recorded delivery session iterated CSS against a local
+   harness pixel diff for its whole budget and delivered no page.
+
+   **Chrome and fragment documents carry `Robots | noindex`.** `content/nav.html`,
+   `content/footer.html`, every per-locale `nav-*` / `footer-*` document and any
+   locale shell that is not a page get one more metadata block row at write time —
+   `<div><div>Robots</div><div>noindex</div></div>` (renders
+   `<meta name="robots" content="noindex">`). Without it the platform's index of
+   published documents, and the `/sitemap.xml` it serves, list them as pages: a
+   recorded hands-off run served 58 sitemap urls for a 36-page site (every page
+   plus 22 chrome documents). Phase D verifies the served sitemap.
 
    **`content-pending` pages** (archetypes-only): no migrated HTML — skip the
    document push entirely (no shell/placeholder), record `content-pending`, surface
@@ -150,21 +173,25 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    `reference/delivery-lint.md`. **A P0/P1 blocks the PUT.**
    ```bash
    node skills/rollout/scripts/delivery-lint.mjs --file <html> --path </da/path>
-   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--apply]
+   node skills/rollout/scripts/media-reconcile.mjs --file <html> --deploy-host <branch>--<repo>--<owner>.aem.live [--media-ledger <file>] [--apply]
    ```
-   `media-reconcile` resolves every image on the network and decides
+   `media-reconcile` resolves every non-hosted image on the network and decides
    optimize/keep/rewrite/omit (`skills/migrate/reference/media-reconciliation.md`)
-   — the authoritative form of the image-fidelity gate below.
+   — the authoritative form of the image-fidelity gate below. A content-host URL
+   (`content.da.live`) is the `hosted` decision instead: checked offline against the
+   media ledger (`--media-ledger <file>`, auto-detected), never fetched anonymously
+   (`401` by design); missing from the ledger fails the gate.
 
 3. **Run the delivery gates** before flipping a page to `deployed`. Each is a
    one-line rule here; mechanics + helpers in `reference/delivery-gates.md`:
    - **Source-fidelity** — don't add sections the source lacks; never fabricate
      facts. `node skills/rollout/scripts/section-fidelity.mjs --file <html> --source <url>`
+     (a static outline check on the authored file — not replica's pixel
+     source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+   - **Path-safety** — `reference/delivery-gates.md` § Gate 3; record
+     original→normalized in `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -176,6 +203,7 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    ```bash
    node skills/rollout/scripts/update-coverage.mjs <slug> --status converting
    node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name <name>
+   node skills/rollout/scripts/update-coverage.mjs --block <id> --status converted --eds-name default-content   # maps to default content, no block
    node skills/rollout/scripts/update-coverage.mjs <slug> --status deployed --url <branch-preview-url>
    node skills/rollout/scripts/update-coverage.mjs <slug> --status content-pending   # no document push
    ```
@@ -191,10 +219,18 @@ prototype, **plus computed-style invariants in a headless render** — grid
 containers compute `display: grid` (not stacked single-column), sections are
 full-bleed where the design says so, and the CTA/button classes are actually
 styled (per `stardust/runtime-contract.json`, `skills/deploy/SKILL.md`
-§ Runtime-detection probe). A wrong runtime assumption (block wrapper class,
+§ Runtime-detection probe). `deployed` means after PUT + preview: the gate's
+probes run against the page's preview URL, never a local harness — a
+pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
 every grid stacks. This one gate is the difference between fixing one page
-and rebuilding every template.
+and rebuilding every template. The same gate runs `qa.mjs --checks metadata`
+against the origin: `favicon-default` means the site's icon never shipped
+(deploy Step 3 § Favicon) — recorded first passes served the boilerplate
+icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):** the
+template's archetype is deployed and passes its full gate row on the preview URL
+(`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
+or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
 
 **Execution model: waves.** Deliver in waves of parallel **author-only** agents
 — each agent curls its source pages and writes files only, never deploys or
@@ -202,7 +238,9 @@ edits blocks — template clusters concurrently (non-overlapping pages),
 representative-first so blocks exist to be reused; then a **central deploy**
 per page; then background batches with a per-page OK/FAIL ledger, re-driving
 FAILs only. For clusters of 6–20+ siblings, the full flow is
-`reference/delivery-gates.md` § Batched delivery. The central deploy step
+`reference/delivery-gates.md` § Batched delivery (it also names the one
+variant where cluster agents deploy themselves — replica's Phase 5 fan-out,
+per-cluster deploy ledgers, lock-safe shared ledgers). The central deploy step
 should run the bundled, resumable driver rather than a serial loop:
 `node skills/deploy/scripts/deploy-batch.mjs --org <org> --repo <repo>
 --branch <branch> --content <dir>` (concurrency pool, persistent ledger that skips
@@ -213,11 +251,24 @@ of 5 minutes or more (the prompt-cache window) — the master skill's wait
 discipline; recorded batch waits of 9–10 minutes re-wrote a ~650k prefix each time.
 After a transient blip, re-run the same command — it re-drives only the FAILs.
 Then reconcile the ledger into coverage with `update-coverage.mjs`.
+**Foundation first:** lint AND commit `styles.css`, header/footer CSS and the
+contract file BEFORE the first agent spawns; no token or custom-property rename
+after fan-out (a recorded rename under three running agents cost seven
+coordination messages). **Disjoint clusters spawn concurrently** — a wave waits
+only on a real dependency (a recorded second wave idled 14 min behind an
+unrelated first). **Every tool call stays under 4 minutes, the main agent's
+included** (the prompt cache holds 5; calls of 5.2 and 6.6 min re-wrote the whole
+context, and so did one 338 s foreground turn on the main agent that ran a pixel
+loop beside a deploy-batch start + wait): a long instrument (gate rounds, pixel
+loops, Playwright captures, deploy batches) goes through `run-bg.mjs start`, and
+`wait` is the NEXT tool call — it returns within its `--max` (100 s by default); never two long instruments
+as parallel tool calls in one turn, never two `wait`s in one command.
 
 ### Phase D — Site assembly (whole-site artifacts)
 
 ```bash
-node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json}
+node skills/rollout/scripts/assemble.mjs   # → rollout/site/{sitemap.xml,robots.txt,manifest.json} — the EXPECTED set
+node skills/rollout/scripts/assemble.mjs --verify-origin https://<branch>--<repo>--<owner>.aem.live   # vs the SERVED /sitemap.xml; exit 1 on a mismatch
 ```
 
 Generates site-wide artifacts: `sitemap.xml` + `robots.txt` from delivered paths,
@@ -225,8 +276,54 @@ and a fragments manifest mapping chrome blocks to the authored chrome documents
 (`content/nav.html`, `content/footer.html`) with their `canon/*.html` source
 (`deploy` authors + deploys the documents through the normal content chain —
 they MUST be published or the chrome 404s sitewide).
+
+**The assembled sitemap is never the served one.** `stardust/rollout/` is in
+`.hlxignore`, so `site/sitemap.xml` is a local artifact — the EXPECTED url set.
+The platform serves its own `/sitemap.xml`, built from its index of every
+published document, chrome documents included unless each carries `Robots |
+noindex` (Phase C). A recorded hands-off run read the local file, reported
+"sitemap 36 urls" and shipped a served sitemap of 58 (36 pages + 22 `nav` /
+`footer` documents). Two remedies, the first required:
+- **Authoring:** every chrome/fragment document — `/nav`, `/footer`, per-locale
+  `nav-*` / `footer-*`, locale shells that are not pages — carries the metadata
+  row `Robots | noindex`; a document already published without it is re-authored
+  and re-published (preview → live) before the check below.
+- **Configuration (alternative, additive):** when the code branch is writable, a
+  `helix-sitemap.yaml` at the project root (`sitemaps.default.include: ['/**']`,
+  `exclude: ['/nav', '/footer', '/**/nav*', '/**/footer*', '/fragments/**']`,
+  `properties.lastmod: lastModified`) keeps chrome out of the served sitemap even
+  when a document lacks the row; the same `exclude` globs go into
+  `helix-query.yaml` (Phase D2) so the index never carries them either.
+
+**Verify the SERVED sitemap, never the local file.** `assemble.mjs --verify-origin
+<live-origin>` fetches `<origin>/sitemap.xml` (a sitemap index is followed),
+compares its `<loc>` paths with the coverage rows, prints served vs assembled
+counts with every extra and missing path, records the result in
+`site/manifest.json` (`servedSitemap`) and exits 1 on any difference. An extra
+path is a chrome document without `noindex` or a page built outside the migrated
+tree with no coverage row (`update-coverage.mjs --new`, Phase D2); a missing path
+is a page not published live. Re-run after the fix until it exits 0. The `D-site`
+ledger `end` line names the SERVED count, never the assembled one — e.g.
+`--detail "sitemap served 36 = assembled 36; redirects wired; / 200"`.
+
+**D-site checklist** (all before the `D-site end` line): `assemble.mjs
+--verify-origin` exits 0 · every chrome document carries `Robots | noindex` and is
+published · the redirects sheet is published (below) · `curl -sIL <origin>/` ends
+in 200.
+
 **Redirects:** if Phase C's path-safety gate emitted `stardust/redirects.tsv`, wire
-it into the EDS redirects mechanism here so original inbound URLs don't 404.
+it into the EDS redirects mechanism here so original inbound URLs don't 404 — the
+redirects sheet at the content root (on a DA-backed site `/redirects.json`, columns
+Source / Destination; PUT through the admin API, then preview + publish it like a
+page). The root MUST answer: when the source root serves a page, deliver it as
+the root `index` document (the pipeline serves `/` from it — `/index` ≡ `/`;
+never also a `/` Source row, which would shadow it); only when the source root
+itself redirects (`curl -sI <source-url>`, follow the Location chain) does the
+sheet carry `/` and `/index.html` → the landing page. Then verify
+`curl -sIL https://<branch>--<repo>--<owner>.aem.page/` ends in 200: a 404 on
+`/` fails the whole delivery after every phase has passed (recorded — a sheet
+with a row for every `.html` path and
+none for `/`).
 
 ### Phase D2 — Dynamic features (`dynamics` Phases 4–5)
 
@@ -240,6 +337,31 @@ Each feature ends with a parity row in `stardust/dynamics/parity.json` carrying 
 Failed replays are `dynamic-gap` / `api-dependency` learnings, never silent passes.
 Index-backed listings ship **document-first** (authored rows, index for non-text and top-up —
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
+
+**A missing query index is a code-branch gap, not a configuration-service problem.**
+`/query-index.json` answering 404 means the project ships no `helix-query.yaml`. Author it
+at the code branch root (a spec's `knowledge/helix-query.yaml` is the draft), publish the
+pages LIVE and poll: `skills/dynamics/reference/listings.md` § Getting an index at all. A
+403 from the configuration service is expected; only an unwritable code branch ships the
+sheet-backed interim index (recorded `interim`, decision named).
+
+**Search parity is count + titles, not presence.** The results block ranks title
+matches first and consults description, then body text, only while fewer than N title
+hits exist (N = the source's visible count for the probe term), dedupes by title +
+description and caps the typeahead at N — N, the top titles and one known hit are read
+from the SOURCE during detect and recorded on the `search-query` check (`expectCount`,
+`expectTitles`, `expectIncludes`); `dynamics-check.mjs` fails the check on a count
+mismatch (`skills/dynamics/reference/patterns.md` § search-index-backed).
+
+**Pages built here enter coverage.** A results page (or any page without a capture)
+has no inventory row, so it stays outside `verify.mjs --all`, `optimize.mjs` and the
+assembled sitemap unless registered:
+```bash
+node skills/rollout/scripts/update-coverage.mjs --new search --path /search --template search --origin dynamics --title "Search"
+```
+then record its status like any page. `inventory.mjs` keeps such rows on a re-run (the
+origin marker in `source.migratedHtml` identifies them; status untouched), so the line
+runs once.
 
 ### Phase D3 — Multilingual (per-language trees) — optional
 
@@ -265,7 +387,18 @@ chrome) are invisible to a text check. On the FIRST delivered page of each
 template (home included), load the live URL in a headless browser and assert
 decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
-zero `pageerror` events, zero broken images.
+zero `pageerror` events, zero broken images, and every `restoreAtDelivery`
+entry of the template's archetype holds: an `autoplay` `<video>` at least a
+quarter visible is playing (`!paused`, `currentTime` advancing — not merely
+present), a rotating carousel advances without interaction.
+
+**Published-origin gate over the roster (#125).** `verify` proves the pages render; the
+DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content per deployed page,
+`../replica/reference/source-fidelity-gate.md` § The all-pages published-origin gate).
+`update-coverage.mjs --gate stardust/replica/gates/all-<w>/summary.json` writes each row into
+`delivery.gate` and flips a failing page to `failed`; `verify` never marks it `verified` while the
+gate fails — completion derives from one place, never from the pixel number alone. In C-deliver
+the roster run is the recorded unit `gate-all` (handoff contract § 3, row C).
 
 ### Phase E2 — Link-audit completeness
 
@@ -288,14 +421,24 @@ link **targets** a roster-driven batch misses
   tree after every wave**: earlier waves' pages gain newly valid targets only
   when a later wave ships them. `--check` is the gate (exit 2 = localizable
   links remain).
-- **Strip trailing slashes and `.html` from internal links.** EDS serves
-  extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
-  both 404 (render the 404 block) while `.plain.html` still passes — nav reads
-  green, every link is dead. Normalize every internal `href` (keep bare `/`);
-  repoint `.html` links with no local page at the working source URL.
-- **The audit GETs each href against the LIVE tree.** Structural resolution
-  against the ledger misses trailing-slash and case defects that only
-  delivery exposes.
+- **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
+  no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
+  slash 404 while `.plain.html` passes. Repoint `.html` links with no local
+  page at the working source URL.
+- **The audit GETs each href against the LIVE tree**: the ledger alone misses
+  slash and case defects.
+- **Targets missing from the capture.** Two cases, both recorded in
+  `direction.md` as a named decision with the list: a target the direction's
+  caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
+  gate, never authored from a live read) and deliver when the gap is ≤ 12
+  pages, else repoint to the source site and list it as scope debt; a target
+  outside the declared caps is SCOPE EXTENSION — repoint regardless of count.
+  External targets: repoint to the source site; other-locale targets: repoint
+  ONLY when that locale root was never captured. Any captured page — a `stardust/state.json` row, including
+  `duplicateOf` shells and locale roots — is in scope and is delivered, never
+  repointed (the ≤ 12 rule is for UNcaptured pages; a recorded run dropped ten
+  captured locale roots by citing it). Never leave a 404 (a recorded audit
+  found 10 uncaptured in-scope pages — delivering them was the right call).
 
 ### Phase F — Optimize: multi-source audit + gate (delivery quality)
 
@@ -314,6 +457,15 @@ tags each by **fixability**, and gates the rollout. Sources (full mapping in
    `site-architecture`.
 4. **`stardust:tensions`** — mechanical design tensions from
    `stardust/current/brand-review.html`.
+
+**Source parity.** When the extract capture exists (`stardust/current/pages/<slug>.json`
+and its rendered sidecar; `--current <dir>` to point elsewhere), baseline findings the
+SOURCE shares — the same `<title>`, no description on the source either, no JSON-LD on
+the source either, the same title shared by the same pages — are tagged `fixability:
+out-of-scope` with the evidence prefix `source parity:` and listed in their own report
+section: informational, excluded from the health score and the open P1/P2/P3 counts,
+never gated, never auto-fixed. A recorded hands-off run accepted 63 such findings by
+hand. Everything else routes as before (`reference/checks.md` § Source parity).
 
 Normalize each source's findings into the ledger with the writer:
 
@@ -377,11 +529,14 @@ Pages       <N> total · <v> verified · <d> deployed · <p> pending · <cp> con
 Templates   <T> (per-template delivered/total)
 Blocks      <B> total · <c> converted · <p> pending
 Quality     health <H>/100 · open P1 <n> / P2 <n> / P3 <n>
+Pixel table prototypes <p>/<P> PASS · deployed <d>/<D> PASS (pixel-only <x>/<D>) — gates/{prototypes,all}-1440/summary.md
 To deliver  <list of remaining slugs>
 Content     <cp> pages awaiting content track (block code deployed, document not yet pushed)
 ```
 
-Surface `pending`/`stale`/`failed` as the explicit "what's missing" list.
+Surface `pending`/`stale`/`failed` as the explicit "what's missing" list. The pixel-table
+line comes from the two `summary.json` totals (`pass`, `pixelOnlyPass`, `pages`); a deployed
+page missing from `all-1440/summary.json` is ungated and belongs in that list (#125).
 `content-pending` pages are listed separately — not failures; their block code is
 live and they advance to `pending` automatically when `migrate` emits their HTML
 and `inventory` is re-run.
@@ -417,12 +572,15 @@ findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
 
+**Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
+exits 0; otherwise it prints one gap per line.
+
 ## Inputs
 
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
-| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`/`type`), `blocks` (`modules`), `title` |
+| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `widgets` (`widgets[] {id, href}`), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 
@@ -440,7 +598,7 @@ boundary. (`state.json` is read-only and optional.)
 | `stardust/rollout/site/{sitemap.xml,robots.txt,manifest.json}` | site-level assembly artifacts |
 | `stardust/rollout/dashboard/{index.html,data.json}` | self-contained progress dashboard + snapshot |
 | edits to the **EDS project** (`content/**`, `styles/`) | applied by `autofix-aem` (the only files rollout writes outside `stardust/rollout/`) |
-| the delivered EDS site | produced by `deploy` per page (blocks/, content/, fragments — owned by `deploy`) |
+| the delivered EDS site | produced by `deploy` per page (blocks/, widgets/, content/, fragments — owned by `deploy`) |
 
 `rollout` writes under `stardust/rollout/` and — only via `autofix-aem` — to the
 **EDS project** it delivers to. It never modifies the agnostic core, `state.json`,
@@ -476,16 +634,21 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/blocks.mjs` — distinct-block dedup ledger (`blocks.json`).
 - `scripts/plan.mjs` — dedup-driven delivery order + per-page convert/reuse briefs.
 - `scripts/update-coverage.mjs` — deterministic delivery state-writer for pages and
-  blocks; re-derives all roll-ups.
+  blocks; re-derives all roll-ups. `--new <slug> --path --template --origin` registers a
+  page built outside the migrated tree (D2) so it enters coverage.
 - `scripts/section-fidelity.mjs` — source-fidelity gate scaffold (authored sections
   vs source heading outline; informs the gate, never auto-decides).
-- `scripts/assemble.mjs` — site-level sitemap / robots / fragments manifest.
+- `scripts/assemble.mjs` — site-level sitemap / robots / fragments manifest (the
+  EXPECTED set); `--verify-origin <live-origin>` compares the SERVED `/sitemap.xml`
+  with it and exits 1 on a mismatch.
 - `scripts/verify.mjs` — full-site structural verification (HTTP or offline `--root`).
 - `scripts/optimize.mjs` — `rollout:baseline` detectors + the multi-source gate;
-  exits non-zero on open P1.
+  exits non-zero on open P1. Findings mirroring the source capture are tagged
+  `source parity:` — informational, not scored, not gated.
 - `scripts/findings.mjs` — record/resolve findings from the external audit sources.
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
+- `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
 
 ## References

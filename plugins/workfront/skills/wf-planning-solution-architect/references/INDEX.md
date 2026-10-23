@@ -10,6 +10,8 @@ Map of reference files used by the wf-planning-solution-architect skill. Load on
 | `best-practice-template.md` | Referencing the Fréscopa exemplar for patterns OR explicitly checking against the known deviations. |
 | `best-practice-template.json` | Trimmed sample export (minified, ~1.6 MB): full structure, ~5 records per record type. Inspect only when a question requires field-level or record-level detail beyond the digest. |
 | `limits-and-tiers.md` | Any limits, capacity, sizing, or tier question. Most limits are identical across tiers; check the customer's tier only for records per workspace, total records per instance, or deployment sizing. |
+| `api-contract.md` | API v2, versioned filters, PATCH, and bulk operations. |
+| `release-and-access.md` | Standalone/bundled licenses, viewing vs editing, field/request permissions, Coworker, dependent connections, business rules, and phased availability. |
 | `public-vs-api-discrepancies.md` | Whenever public docs and observed API behavior could disagree (precision, formulas, color palettes, connection naming, identity model, etc.). |
 | `customer-conversation-framings.md` | When the user is preparing for or in a customer conversation (limit escalation, P95 ask, RPM comparison, reporting expectations, workspace build engagement, template adoption review). |
 
@@ -29,13 +31,13 @@ node scripts/search.js [--all] <keyword1> [keyword2] [...]
 
 | File | When to load |
 |---|---|
-| `synthesized/automations-deep-dive.md` | Canonical decision tree across the 5 automation surfaces (native button-click, native field-change, Fusion, AI Assistant, request-form approval). Load for Category G. |
+| `synthesized/automations-deep-dive.md` | Canonical decision tree across the 5 automation surfaces (native button-click, native field-change, Fusion, Coworker/retained AI Assistant, request-form approval). Load for Category G. |
 | `synthesized/record-collaboration.md` | Comments, history, record layout, and record sharing behavior. |
 | `synthesized/notification-preferences.md` | Notification preference behavior. |
 
 ## API reference layer (programmatic surface)
 
-No separate API reference file is bundled. The API-surface facts most often needed (filter operator sets by field type, formula support gaps, precision limits, connection object types, view behavior) are stated directly in the SKILL.md routing sections, and `public-vs-api-discrepancies.md` records where public documentation and observed API behavior diverge.
+The API-surface facts most often needed (filter operator sets by field type, formula support gaps, precision limits, connection object types, view behavior) are stated directly in the SKILL.md routing sections, and `public-vs-api-discrepancies.md` records where public documentation and observed API behavior diverge. `api-contract.md` adds API v2 guidance and versioned filter examples.
 
 For anything not covered there, confirm against the live Planning API rather than quoting from memory.
 
@@ -53,7 +55,7 @@ If a question spans categories, load only the union of files; do not load every 
 
 **Public docs:** nothing to refresh. Pages are fetched live from Experience League at answer time. If Adobe publishes new Planning articles, add entries to `scripts/docs-index.json` (path, url, title, section, description, headings) so the search can surface them.
 
-**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md. Re-verify them against the live Planning API, or confirm with Adobe, when the product changes.
+**API-surface facts:** the operator sets, precision limits, and function support notes live inline in SKILL.md, with API v2 guidance in `api-contract.md`. Re-verify them against the live Planning API, or confirm with Adobe, when the product changes.
 
 **Best-practice template:** re-export when the canonical template changes meaningfully. Update both the .json (raw) and the .md (digest). Re-validate the "Known deviations" section against the current template state.
 

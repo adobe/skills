@@ -12,9 +12,9 @@ description: >
   Access: 🔐 Signed-In required | Gen AI: ❌ by default — optional background-only cleanup only where the surface permits generative AI (e.g. Codex); none on Claude
 license: Apache-2.0
 compatibility: "Runs on both widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and non-UI agents (e.g. Codex, where those widgets are unavailable). The default flow uses the widgets; each widget step has a text-only fallback. Local files are staged to Creative Cloud first; raw local paths are never passed to image tools."
-allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload asset_preview_file image_auto_straighten image_apply_auto_tone image_apply_adjustments image_select_subject image_apply_preset image_apply_lens_blur image_apply_gaussian_blur image_crop_and_resize image_fill_area create_firefly_board
+allowed-tools: adobe_mandatory_init image_list_presets asset_add_file read_widget_context asset_initialize_file_upload asset_finalize_file_upload asset_preview_file image_auto_straighten image_apply_auto_tone image_apply_adjustments image_select_subject image_apply_preset image_apply_lens_blur image_apply_effects image_apply_gaussian_blur image_crop_and_resize image_fill_area create_firefly_board
 metadata:
-  version: 3.1.1
+  version: 4.0.0
   visibility: public
   surface: [claude, codex]
 ---
@@ -26,6 +26,8 @@ images, optionally adds tweaks, and the agent runs the full batch using Adobe
 for creativity tools.
 
 > **Surface note:** The default flow uses Adobe's MCP App widgets — the `asset_add_file` picker (Step 1) and the `asset_preview_file` preview (Steps 2c and 8). Follow it as written. Only if a widget tool is **not available on this surface** (e.g. Codex) use the *No-widget fallback* attached to that step. Present `AskUserQuestion` prompts as plain-text labeled options wherever no question widget exists.
+
+> **No interactive image editing here.** This overrides the single-image widget offer in the *Interactive Image Widgets* section of `adobe_mandatory_init`: this skill is a batch retouch pipeline, so whatever the image count, never call or mention an interactive editing widget (any `_app` tool) — run the pipeline below as usual.
 
 ---
 
@@ -54,7 +56,7 @@ If the user asks you to generatively modify a person (e.g. "change her hair colo
 | Subject/body detect   | `image_select_subject`                                      | Face + body parts + clothes detection              |
 | Adaptive Enhancements | `image_apply_preset`                                        | Per image, opt-in (see Step 5)                     |
 | Background blur       | `image_apply_lens_blur`                                     | Per image, preferred — depth-aware bokeh           |
-| Heavy/stylized blur   | `image_apply_gaussian_blur`                                 | Per image, only if user explicitly requests heavy  |
+| Heavy/stylized blur   | `image_apply_effects` (`effect: "gaussianBlur"`)            | Per image, only if user explicitly requests heavy; falls back to `image_apply_gaussian_blur` |
 | Background cleanup    | `image_fill_area` (optional; generative)                    | Only where the surface permits generative AI (tool available, e.g. Codex) — backgrounds only, never people; **not used on Claude** |
 | Crop                  | `image_crop_and_resize`                                     | Per image                                          |
 | Sample preview        | `asset_preview_file`                                        | Before/after on image[0] only *(no-widget fallback: present the URLs directly)* |
@@ -67,7 +69,7 @@ If the user asks you to generatively modify a person (e.g. "change her hair colo
 Call `adobe_mandatory_init` first. This returns file handling rules and tool routing guidance required for the rest of the workflow.
 
 ```json
-{ "skill_name": "adobe-retouch-portraits", "skill_version": "3.1.1" }
+{ "skill_name": "adobe-retouch-portraits", "skill_version": "4.0.0" }
 ```
 
 This also tells you which widgets this surface supports and whether egress is enabled. If `asset_add_file` and `asset_preview_file` are available, follow the default flow (Steps 1, 2c, and 8 as written). If one is not available (e.g. Codex), use that step's *No-widget fallback*. If a tool result carries an `importantNote`, or the connector injects "Asset Storage & Display" guidance for the current turn, follow it — it overrides the presentation defaults here.
@@ -101,7 +103,7 @@ Goal: pick exactly **1** preset. Choose something complementary to the mood pres
 
 **4. Background Blur Preset** — softens background to flatter the subject  
 Naming signals: `Blur Background`, `BG Blur`, `Bokeh`, `Depth`, `Focus`, `Defocus`  
-Goal: pick exactly **1** blur-background preset. This replaces `image_apply_gaussian_blur` when the user opts into it.
+Goal: pick exactly **1** blur-background preset. This replaces the Step 6 blur (`image_apply_lens_blur` / `image_apply_effects`) when the user opts into it.
 
 **Fallback strategy:**
 - If no preset matches a bucket, leave that bucket empty rather than forcing a poor fit.
@@ -254,7 +256,7 @@ Question 3 (single_select):
 - "More vibrant" → `vibrance: +15 to +30` (prefer `vibrance` over `saturation` for portraits — vibrance protects skin tones)
 - "Desaturate" → `saturation: -20 to -40` (use -20 for muted; -40 for near-monochrome look)
 - "Blur background — depth-aware bokeh (standard)" → `image_apply_lens_blur` → `blurRadius: 8` (depth-aware, realistic bokeh; skip Step 6 if adaptive blur preset also applied)
-- "Heavy background blur — stylized gaussian blur" → `image_apply_gaussian_blur` → `blurRadius: 12, blurTarget: "background"` (use only when user explicitly requests heavy/stylized blur; do not combine with Blur Background adaptive preset)
+- "Heavy background blur — stylized gaussian blur" → `image_apply_effects` → `effect: "gaussianBlur", blurRadius: 12, blurTarget: "background"` (use only when user explicitly requests heavy/stylized blur; do not combine with Blur Background adaptive preset)
 - "None" → skip Step 4b entirely
 **Crop:**
 - "Auto" → landscape → `"4:3"`, portrait → `"3:4"`, focus: `"face"`
@@ -483,9 +485,23 @@ Params:
     blurRadius: 8    # 6–10 for subtle separation; higher for stronger bokeh
 ```
 
-On failure: fall back to `image_apply_gaussian_blur` below, note "lens blur unavailable — using gaussian".
+On failure: fall back to `image_apply_effects` below, note "lens blur unavailable — using gaussian".
 
 **Heavy/stylized blur** (user explicitly requested "Heavy background blur"):
+```
+Tool: image_apply_effects
+Params:
+  imageURIs: ["<url_N>"]
+  options:
+    effect: "gaussianBlur"
+    blurRadius: 12
+    blurTarget: "background"
+```
+
+If `image_apply_effects` is unavailable on this surface (the tool is not
+registered, or the call fails with an unknown-tool error), retry once with the
+legacy per-effect tool `image_apply_gaussian_blur` — same parameters, minus the
+`effect` discriminator:
 ```
 Tool: image_apply_gaussian_blur
 Params:
@@ -494,6 +510,9 @@ Params:
     blurRadius: 12
     blurTarget: "background"
 ```
+
+The same fallback applies when this step is reached from the `image_apply_lens_blur`
+failure path above (use `blurRadius: 8` there).
 
 On failure: use previous step's output, note "blur skipped" for that image.
 
@@ -631,8 +650,9 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 | `image_select_subject` fails                              | Skip all body-gated presets (Whiten Teeth, body-targeted adaptive); apply Mood and Toon presets normally                                                                                                        |
 | `image_apply_preset` fails (non-403)                      | Use previous step's output; note "[preset name] skipped" in summary                                                                                                                                             |
 | No portrait-appropriate preset found for a bucket         | Leave that bucket empty; do not force an ill-fitting preset                                                                                                                                                     |
-| `image_apply_lens_blur` fails                             | Fall back to `image_apply_gaussian_blur` with `blurRadius: 8, blurTarget: "background"`; note "lens blur unavailable" in summary                                                                                |
-| `image_apply_gaussian_blur` fails                         | Use previous step's output; note "blur skipped"                                                                                                                                                                  |
+| `image_apply_lens_blur` fails                             | Fall back to `image_apply_effects` with `effect: "gaussianBlur", blurRadius: 8, blurTarget: "background"`; note "lens blur unavailable" in summary                                                                |
+| `image_apply_effects` is unavailable / unknown tool        | Retry once with `image_apply_gaussian_blur` using the same `blurRadius` and `blurTarget`; no user-visible change                                                                                                  |
+| `image_apply_effects` and its fallback both fail          | Use previous step's output; note "blur skipped"                                                                                                                                                                  |
 | `image_crop_and_resize` fails                             | Use blur output as final; note in summary                                                                                                                                                                        |
 | `asset_preview_file` fails or is unavailable              | Present final output URLs as plain text links in the summary (see Step 8 no-widget fallback).                                                                                                                    |
 | All steps fail on one image                               | Return original URI; flag clearly in summary                                                                                                                                                                     |
@@ -646,14 +666,14 @@ Output is read from `results[N].outputUrl`. On `success: false` see Error Handli
 - Mood/style is always collected (Step 2a) before the plan is presented — it influences Preset Plan bucket selection.
 - The before/after preview gate (Step 2c) is **mandatory** — the full batch never starts without the user explicitly confirming "Yes". After any settings adjustment, the preview always repeats with the new settings before the batch runs.
 - **Prefer `vibrance` over `saturation`** for portrait boosts — vibrance intelligently protects skin tones from oversaturation.
-- **Prefer `image_apply_lens_blur` over `image_apply_gaussian_blur`** for background separation — lens blur is depth-aware and produces more realistic bokeh without masking. Use gaussian only for heavy/stylized blur explicitly requested by the user.
+- **Prefer `image_apply_lens_blur` over `image_apply_effects` (`effect: "gaussianBlur"`)** for background separation — lens blur is depth-aware and produces more realistic bokeh without masking. Use the gaussian effect only for heavy/stylized blur explicitly requested by the user. Where `image_apply_effects` is not yet available, the legacy `image_apply_gaussian_blur` is the drop-in fallback.
 - **Tweak values are diagnostic, not hardcoded** — choose values from the reference ranges based on image content; `contrast: +15` for mildly flat images, `+30` only for very flat; `highlights: -40` for mild blow, `-70` for severe.
 - **Group/condition awareness** — if the batch contains images from clearly different shooting conditions (e.g. mixed indoor/outdoor, or very different exposures), note this in the confirmation message and apply the same user-selected settings to all. For a future enhancement, per-group pipelines could be run separately.
 - `image_apply_auto_tone` is called with `type: "cameraRawFilter"`.
 - Adaptive enhancements are **off by default** — only run them if the user explicitly selects them.
 - Preset selection is always dynamic: call `image_list_presets` at runtime; never hardcode preset names.
 - All tonal/colour adjustments use `image_apply_adjustments` — the individual tools (`image_adjust_highlights`, `image_adjust_dark_portions`, `image_adjust_vibrance_and_saturation`, etc.) are deprecated and must not be used.
-- Background blur is handled by the Background Blur preset from the Preset Plan (or `image_apply_lens_blur` for standard blur / `image_apply_gaussian_blur` for heavy blur); the adaptive preset and Step 6 are mutually exclusive per image.
+- Background blur is handled by the Background Blur preset from the Preset Plan (or `image_apply_lens_blur` for standard blur / `image_apply_effects` with `effect: "gaussianBlur"` for heavy blur); the adaptive preset and Step 6 are mutually exclusive per image.
 - Whiten Teeth and body-targeted presets only run when the relevant body part is detected via `image_select_subject`.
 - The pipeline is non-generative by default. Generative tools (`image_fill_area`, `image_generative_expand`) run ONLY where the surface permits generative AI (the tool is available, e.g. Codex) — never on a surface without it (e.g. Claude), and never on people even where permitted. See the Generative AI Policy above.
 - Never pass a raw local filesystem path to any `image_*` tool. Local files must reach Creative Cloud first — selected via the `asset_add_file` picker, or (no-widget fallback) staged via `asset_initialize_file_upload` → PUT → `asset_finalize_file_upload`; only the resulting presigned CC URI is valid.

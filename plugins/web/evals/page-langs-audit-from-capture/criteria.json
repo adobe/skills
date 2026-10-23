@@ -1,0 +1,42 @@
+{
+  "context": "The capture is an English product page (html lang=en, hreflang en/de) with an unmarked Spanish shipping section and a German warranty section marked lang=de. Judge the result file and answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "result_file",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "A machine-readable result (e.g. langs.json) is written to the working directory, listing the detected languages with their share of the text and the declared language signals."
+    },
+    {
+      "name": "statistical_detection",
+      "max_score": 15,
+      "category": "DESIGN",
+      "description": "Languages are identified with a language-identification model or library run on the captured text (for example CLD3), not only by the agent reading the text."
+    },
+    {
+      "name": "three_languages",
+      "max_score": 20,
+      "category": "INTENT",
+      "description": "Reports that the body contains English, Spanish and German, with English the largest share."
+    },
+    {
+      "name": "spanish_undeclared",
+      "max_score": 25,
+      "category": "INTENT",
+      "description": "Flags the Spanish shipping/returns section ('Env\u00edo y devoluciones') as content in a language the markup does not declare, and recommends marking it (e.g. lang=\"es\") or moving it to a Spanish page."
+    },
+    {
+      "name": "german_ok",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "Treats the German warranty section as correctly declared (it has lang=\"de\") and does not report it as a problem."
+    },
+    {
+      "name": "no_false_languages",
+      "max_score": 10,
+      "category": "MUST_NOT",
+      "description": "Does not report languages that are not on the page (e.g. Dutch or Portuguese from short labels)."
+    }
+  ]
+}

@@ -1,0 +1,54 @@
+{
+  "context": "The agent runs the structural-reasoning half of a page reduction on real Phase 1 output from https://www.aem.live/ (15 sections). Judge skeleton.html, manifest.json and answer.md.",
+  "type": "weighted_checklist",
+  "checklist": [
+    {
+      "name": "all_sections_marked",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "skeleton.html contains all 15 sections in Phase 1 order, each preceded by a comment of the form `<!-- section:INDEX type:TYPE xpath:XPATH -->` carrying the Phase 1 index and xpath."
+    },
+    {
+      "name": "tokens_preserved",
+      "max_score": 10,
+      "category": "MUST_NOT",
+      "description": "Phase 1 tokens ({HEADING:n}, {TEXT}, {CTA:label}, {IMAGE:WxH}) are kept as tokens; no real page copy is invented in their place."
+    },
+    {
+      "name": "repeats_collapsed",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "In section 6 (columns-wrapper with eight {HEADING:3}+{TEXT} feature items), repeated items are reduced to two representatives followed by a `{REPEAT:N}` token instead of keeping all eight."
+    },
+    {
+      "name": "long_nav_collapsed",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "In the footer navigation (section 13), the Resources list of seven CTAs is reduced to two items plus a `{NAV:N-items}` token (N = the items removed or the total, either is fine)."
+    },
+    {
+      "name": "utility_classes_stripped",
+      "max_score": 10,
+      "category": "DESIGN",
+      "description": "Animation/utility classes such as `fade-up`, `slide-reveal-up` and `block` are removed, while semantic classes (columns, testimonials, hero, footer-nav-\u2026) are kept."
+    },
+    {
+      "name": "sections_retyped",
+      "max_score": 15,
+      "category": "INTENT",
+      "description": "manifest.json re-types sections the detector got wrong: at least the testimonials section (index 9, Phase 1 'unknown', role=tablist/tabpanel) as `tabs`, and the footer navigation (index 13, Phase 1 'columns') as a footer/nav type."
+    },
+    {
+      "name": "manifest_schema",
+      "max_score": 15,
+      "category": "INTEGRATION",
+      "description": "manifest.json has url, title, templateHash and a sections array where each entry has index, type, xpath, layout, features and per-section token counts (headings, texts, images, ctas, links at least)."
+    },
+    {
+      "name": "summary",
+      "max_score": 10,
+      "category": "INTENT",
+      "description": "answer.md reports the number of sections, the section types including the re-typings, and the output file paths."
+    }
+  ]
+}

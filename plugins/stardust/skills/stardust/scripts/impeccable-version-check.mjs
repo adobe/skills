@@ -31,16 +31,31 @@
  * Usage:
  *   node skills/stardust/scripts/impeccable-version-check.mjs [--marketplace impeccable]
  *        [--local <impeccable-dir>] [--offline] [--json]
+ *   node skills/stardust/scripts/impeccable-version-check.mjs --where [--local <impeccable-dir>]
  *
  * Output (text): one line per installed copy —
  *   "impeccable 4.1.3 installed (Claude Code) — 4.2.2 available: claude plugin marketplace update impeccable && claude plugin update impeccable@impeccable"
  *   "impeccable 4.2.2 installed (GitHub Copilot) — current"
  *   "impeccable version check skipped (<reason>)"
  * Exit code: always 0.
+ *
+ * --where prints impeccable's skill directory (the one holding SKILL.md and reference/) for the
+ * first installed copy found, from the same registries, with no network call — later phases read
+ * impeccable's format specs (reference/init.md, reference/document.md) from there by section. A
+ * recorded session searched the whole filesystem for them twice. Exit 0 with the path on stdout;
+ * exit 1 and a stderr line when no copy is found.
  */
 import { readFileSync, existsSync, readdirSync } from 'fs';
 import path from 'path';
 import os from 'os';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const args = process.argv.slice(2);
 const opt = (n, d = null) => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d; };
@@ -49,10 +64,13 @@ const PLUGIN = 'impeccable';
 const LOCAL = opt('local');
 const OFFLINE = args.includes('--offline');
 const JSON_OUT = args.includes('--json');
+const WHERE = args.includes('--where');
 const HOME = process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
 const COPILOT_HOME = process.env.COPILOT_HOME || path.join(os.homedir(), '.copilot');
 
 const readJson = (p) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; } };
+// The skill directory inside a plugin root (or the directory itself when it already is the skill).
+const skillDir = (root) => (existsSync(path.join(root, 'SKILL.md')) ? root : path.join(root, 'skills', PLUGIN));
 const semver = (v) => { const m = String(v || '').match(/^v?(\d+)\.(\d+)\.(\d+)/); return m ? m.slice(1, 4).map(Number) : null; };
 const cmp = (a, b) => { const x = semver(a); const y = semver(b); if (!x || !y) return null; for (let i = 0; i < 3; i += 1) if (x[i] !== y[i]) return x[i] - y[i]; return 0; };
 
@@ -60,7 +78,7 @@ function installedCopies() {
   const copies = [];
   if (LOCAL) {
     const pj = readJson(path.join(LOCAL, '.claude-plugin', 'plugin.json')) || readJson(path.join(LOCAL, 'package.json'));
-    if (pj?.version) copies.push({ version: pj.version, from: `local ${LOCAL}`, harness: 'skills directory', update: `reinstall impeccable through the installer that placed it at ${LOCAL}` });
+    copies.push({ version: pj?.version || null, dir: skillDir(LOCAL), from: `local ${LOCAL}`, harness: 'skills directory', update: `reinstall impeccable through the installer that placed it at ${LOCAL}` });
     return copies;
   }
   const reg = readJson(path.join(HOME, 'plugins', 'installed_plugins.json'));
@@ -68,7 +86,7 @@ function installedCopies() {
   if (entry) {
     const list = Array.isArray(entry) ? entry : [entry];
     const pick = list.find((e) => e.scope === 'user') || list[0];
-    if (pick?.version) copies.push({ version: pick.version, from: 'installed_plugins.json', harness: 'Claude Code', update: `claude plugin marketplace update ${MKT} && claude plugin update ${PLUGIN}@${MKT}` });
+    if (pick?.version) copies.push({ version: pick.version, dir: pick.installPath ? skillDir(pick.installPath) : null, from: 'installed_plugins.json', harness: 'Claude Code', update: `claude plugin marketplace update ${MKT} && claude plugin update ${PLUGIN}@${MKT}` });
   }
   const root = path.join(COPILOT_HOME, 'installed-plugins');
   const dirs = [];
@@ -80,9 +98,16 @@ function installedCopies() {
   } catch {}
   for (const d of dirs) {
     const pj = readJson(path.join(d, '.claude-plugin', 'plugin.json')) || readJson(path.join(d, 'plugin.json'));
-    if (pj?.version) copies.push({ version: pj.version, from: d, harness: 'GitHub Copilot', update: `copilot plugin update ${PLUGIN}` });
+    if (pj?.version) copies.push({ version: pj.version, dir: skillDir(d), from: d, harness: 'GitHub Copilot', update: `copilot plugin update ${PLUGIN}` });
   }
   return copies;
+}
+
+if (WHERE) {
+  const hit = installedCopies().find((c) => c.dir && existsSync(path.join(c.dir, 'SKILL.md')));
+  if (!hit) { console.error(`impeccable skill directory not found (${PLUGIN}@${MKT} in Claude Code, ~/.copilot/installed-plugins${LOCAL ? `, --local ${LOCAL}` : ''})`); process.exit(1); }
+  console.log(hit.dir);
+  process.exit(0);
 }
 
 function marketplaceInfo() {
@@ -106,7 +131,7 @@ async function upstreamVersion(repo) {
   } catch { return null; } finally { clearTimeout(t); }
 }
 
-const copies = installedCopies();
+const copies = installedCopies().filter((c) => c.version); // a --local dir without a manifest can be located but not version-checked
 const { cached, repo } = marketplaceInfo();
 const upstream = await upstreamVersion(repo);
 const latest = upstream || cached;

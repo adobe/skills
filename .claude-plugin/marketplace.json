@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.22.0",
+      "version": "0.34.1",
       "category": "design",
       "keywords": [
         "design",
@@ -158,7 +158,7 @@
     {
       "name": "workfront",
       "source": "./plugins/workfront",
-      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture",
+      "description": "Adobe Workfront skills for AI agents, including Workfront Planning (WFP/Maestro) solution architecture and a Fusion scenario optimizer",
       "version": "1.0.0",
       "category": "project-management",
       "keywords": [
@@ -166,7 +166,8 @@
         "workfront",
         "workfront-planning",
         "maestro",
-        "solution-architecture"
+        "solution-architecture",
+        "fusion"
       ],
       "author": {
         "name": "Adobe"

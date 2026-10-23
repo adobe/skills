@@ -1,0 +1,39 @@
+{
+  "name": "@adobe/web-cli",
+  "version": "0.0.0-semantically-released",
+  "type": "module",
+  "bin": {
+    "web": "./dist/web.mjs"
+  },
+  "exports": {
+    ".": "./dist/lib.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "test": "node --test 'src/**/*.test.mjs'",
+    "test:smoke": "node --test 'test/*.test.mjs'",
+    "build": "node build.mjs",
+    "check:dist": "node build.mjs --check",
+    "lint": "oxlint src bin build.mjs && oxfmt --check src bin build.mjs test",
+    "format": "oxfmt src bin build.mjs test"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "oxfmt": "^0.73.0",
+    "oxlint": "^1.88.0"
+  },
+  "imports": {
+    "#src/*": "./src/*"
+  },
+  "optionalDependencies": {
+    "cld3-asm": "4.0.0"
+  }
+}

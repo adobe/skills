@@ -219,6 +219,7 @@ Schema:
   "renderBranch":     "A | A' | B",
   "template":         "<archetype-slug or null>",
   "modules":          ["<module-id>", "..."],
+  "widgets":          [ { "id": "<name>", "href": "/widgets/<path>/<name>.html?<params>" } ],
   "slotsFilled":      ["<slot-name>", "..."],
   "canonShas":        { "header": "<sha>", "footer": "<sha>", "css": "<sha>" },
   "deviations":       [ { "where": "header", "reason": "..." } ],

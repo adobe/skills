@@ -13,14 +13,28 @@
  *                    tree or a local export) — checks existence + content
  *
  * Checks per page: reachable (HTTP 200 / file exists), body has no `about:error`
- * (#75 broken-image ingestion), and every internal href="/…" resolves to a page
- * in coverage.
+ * (#75 broken-image ingestion), every internal href="/…" resolves to a page
+ * in coverage, and `delivery.gate.pass` is not false (the pixel table's verdict,
+ * written by `update-coverage.mjs --gate` — #125).
  *
  * Usage: node skills/rollout/scripts/verify.mjs [--base <url> | --root <dir>] [--slug <s>] [--all] [--out <rolloutDir>]
+ *   --out defaults to stardust/rollout
+ *
+ * Writes (under <out>/): coverage/pages.json (each checked page flipped to verified | failed),
+ * coverage/templates.json (roll-up) and rollout.json (lastRun) when they exist. The per-page
+ * result lines go to stdout.
  */
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
-import { readJSON, writeJSON, rollupTemplates, rollupConfig } from './lib.mjs';
+import { readJSON, writeJSON, rollupTemplates, rollupConfig, publicUrl } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const OUT = arg('out', 'stardust/rollout');
@@ -56,7 +70,7 @@ async function fetchPage(p) {
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${BASE}${p.path}`);
+    const res = await fetch(`${BASE}${publicUrl(p)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };
@@ -122,6 +136,8 @@ for (const p of target) {
   let status = 'verified'; let reason = null;
   if (!r.ok) { status = 'failed'; reason = r.reason; }
   else { reason = renderCheck(type, r.body); if (reason) status = 'failed'; }
+  // #125: a page the pixel table failed is not verified (update-coverage.mjs --gate wrote delivery.gate)
+  if (status === 'verified' && p.delivery && p.delivery.gate && p.delivery.gate.pass === false) { status = 'failed'; reason = `gate: ${(p.delivery.gate.reasons || []).join('; ') || 'FAIL'}`; }
   p.delivery = p.delivery || {};
   p.delivery.status = status;
   if (status === 'verified') { p.delivery.verifiedAt = now; p.delivery.error = null; }

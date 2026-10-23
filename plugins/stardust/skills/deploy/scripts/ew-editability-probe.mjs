@@ -46,6 +46,10 @@
  *                           comment). Any tag exempts the block's dead texts (they
  *                           are reported as `exempt`, with the declared reasons);
  *                           `@ew-exempt all` = the whole block is index/API-driven.
+ *                           No tag covers a cell whose text is CSS (`padding: 200px …`,
+ *                           `--x: …`): it is reported DEAD with a #134 label (css-as-text.mjs).
+ *   @variants <cell>: a | b (default a)   the closed vocabulary of a variant-word cell (#134);
+ *                           declared, an exempt one-word cell outside it is DEAD (typo).
  *                           Read whenever a blocks dir is known (harness mode
  *                           always; URL mode with --blocks-dir). Union with --exempt.
  *   metadata / section-metadata cells are pipeline config (never displayed) and
@@ -55,6 +59,7 @@
  * 1 = dead non-exempt text OR duplicated index, 2 = probe error (including a
  * block whose JS failed to install/decorate in harness mode — an undecorated
  * block's raw rows would false-pass).
+ * Writes: nothing — the survivor table (or the --json results) goes to stdout.
  *
  * The in-page functions (runtimeMimic, instrument, survey, simulateEditor) and
  * the exemption/aggregation helpers are EXPORTED so block-roundtrip.mjs,
@@ -68,6 +73,7 @@ import fs from 'fs';
 import path from 'path';
 import { createRequire } from 'module';
 import { pathToFileURL } from 'url';
+import { cssAsText } from './css-as-text.mjs';
 
 export const EDITABLE = 'h1, h2, h3, h4, h5, h6, p, ol, ul, pre, blockquote';
 export const QE_CSS = 'https://raw.githubusercontent.com/adobe/da-nx/main/nx/public/plugins/quick-edit/quick-edit.css';
@@ -183,9 +189,15 @@ export function instrument(EDITABLE_SEL) {
     if (isConfig(block) || block.classList.contains('default-content-wrapper') || /-wrapper$/.test(block.classList[0] || '')) return;
     block.querySelectorAll(':scope > div > div').forEach(wrapCell);
   });
+  // The EDS widget mount — a <p> holding only a /widgets/ link — is replaced by the loader at runtime, so its
+  // text can never be found again: key it 'widget' (readBlockExemptions exempts that key for every caller).
+  const isWidgetMount = (p) => !!p && p.childElementCount === 1 && p.firstElementChild.tagName === 'A'
+    && (/\/widgets\//.test(p.firstElementChild.getAttribute('href') || '') || p.firstElementChild.hasAttribute('data-widget'))
+    && p.textContent.trim() === p.firstElementChild.textContent.trim();
   const blockOf = (el) => {
-    const decorated = el.closest('main .block[data-block-name]');
+    const decorated = el.closest('main [data-block-name]'); // the widget loader drops `.block` but keeps data-block-name="widget"
     if (decorated) return decorated.dataset.blockName;
+    if (isWidgetMount(el.closest('p'))) return 'widget';
     const section = el.closest('main > div');
     const top = [...(section?.children ?? [])].find((c) => c.contains(el));
     if (!top || top.tagName !== 'DIV' || !top.classList.length || top.classList.contains('default-content-wrapper')) return 'default';
@@ -316,7 +328,20 @@ export function parseExemptTags(js) {
   if (!reasons.length) return null;
   const all = reasons.some((r) => /^all\b/i.test(r));
   const categories = EW_EXEMPT_CATEGORIES.filter((c) => reasons.some((r) => new RegExp(`\\b${c}\\b`, 'i').test(r)));
-  return { all, reasons, categories };
+  return { all, reasons, categories, variants: parseVariantTags(lead) };
+}
+
+// `@variants <cell>: left | right (default left)` lines in the leading JSDoc (#134) — the closed
+// vocabulary of the block's variant-word cells. Returns a Set of lower-case words (empty = none
+// declared). With a vocabulary declared, an exempt ONE-WORD cell outside it is dead (a typo falls
+// back silently in the block; the probe is where it is caught).
+export function parseVariantTags(lead) {
+  const words = new Set();
+  for (const m of (lead || '').matchAll(/@variants\s+(?:[^:\n]*:\s*)?([^\n]*)/g)) {
+    const list = m[1].replace(/\(default\s+[^)]*\)/i, '').split(/\s+—.*$/)[0];
+    list.split('|').map((w) => w.trim().toLowerCase()).filter((w) => /^[a-z0-9-]+$/.test(w)).forEach((w) => words.add(w));
+  }
+  return words;
 }
 
 // Exemptions for a set of blocks: JSDoc tags from <blocksDir>/<name>/<name>.js
@@ -334,6 +359,8 @@ export function readBlockExemptions(blocksDir, names, cliExempt = new Set()) {
     if (out[name]) out[name].reasons = [...out[name].reasons, '--exempt (CLI)'];
     else out[name] = { all: false, reasons: ['--exempt (CLI)'], categories: [], source: '--exempt' };
   });
+  // every EDS widget: the loader replaces the authored mount with code-rendered markup — nothing authored survives by design
+  out.widget ??= { all: true, reasons: ['widget: rendered by code, nothing authored'], categories: ['all'], source: 'widget' };
   return out;
 }
 
@@ -351,6 +378,16 @@ export function aggregate(rows, { sim = null, exemptions = {}, keyOf = (r) => r.
     const label = `<${r.tag}> ${r.text}`;
     if (r.hits === 1) { b.editable += 1; if (!r.sameText) b.textDrift += 1; }
     else if (r.hits > 1) { b.duplicated += 1; b.editable += 1; b.dupItems.push({ tag: r.tag, text: r.text, hits: r.hits, label: `${label} (×${r.hits})` }); }
+    else if (ex && ex.variants?.size && /^[a-z0-9-]+$/i.test(r.text.trim()) && !ex.variants.has(r.text.trim().toLowerCase())) {
+      // #134 — the block declares a variant vocabulary (@variants); a one-word exempt cell outside
+      // it is a misspelled or undeclared variant word — the block would fall back silently.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — not a declared variant word (@variants: ${[...ex.variants].join(' | ')}) (#134)` });
+    }
+    else if (ex && cssAsText(r.text)?.sev === '🔴') {
+      // #134 — an @ew-exempt tag (config, metadata, …) never covers a style value: CSS authored as a
+      // cell is a modeling defect (D15), not exempt text. The look is block CSS or a named variant word.
+      b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label: `${label} — CSS as content, not covered by @ew-exempt (#134)` });
+    }
     else if (ex) { b.exempt += 1; b.exemptItems.push({ tag: r.tag, text: r.text, label }); }
     else { b.dead += 1; b.deadItems.push({ tag: r.tag, text: r.text, label }); }
   });
@@ -383,7 +420,8 @@ export function formatTable(label, { blocks, totals }, { sim = null, verbose = f
   return out.join('\n');
 }
 
-// Gate verdict over aggregated blocks: dead non-exempt text or duplicated index → fail.
+// Gate verdict over aggregated blocks: dead non-exempt text (including an exempt-tagged cell whose
+// text is CSS, #134) or duplicated index → fail.
 export function verdict({ blocks }) {
   return { dead: blocks.some((b) => b.dead > 0), duplicated: blocks.some((b) => b.duplicated > 0) };
 }
@@ -525,6 +563,13 @@ const USAGE = 'usage: ew-editability-probe.mjs <url> [<url> ...] [--json] [--ver
   + '       ew-editability-probe.mjs --content <content/page.html> [--blocks-dir dir] [--styles css] [--width px] [--json] [--verbose] [--simulate-editor] [--exempt a,b]\n';
 
 async function main() {
+  // --help prints this file's usage header, so an agent never reads the source to learn the flags.
+  if (process.argv.includes('--help') || process.argv.includes('-h')) {
+    const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+    const header = src.match(/\/\*\*[\s\S]*?\*\//);
+    console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+    process.exit(0);
+  }
   const opts = parseArgs(process.argv);
   if (!opts.urls.length && !opts.content) { process.stderr.write(USAGE); process.exit(2); }
   const chromium = await loadChromium();

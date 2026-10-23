@@ -45,6 +45,9 @@
  *                                    for bot-managed sites)
  *     [--locale <tag>]               pin Accept-Language + locale
  *
+ * Writes: the markdown report to --report <path> (parent directories are created);
+ * nothing else. The PASS/FAIL line goes to stderr.
+ *
  * Exit: 0 PASS (text + images), 1 FAIL, 2 setup error,
  *       3 bot challenge / blocked live source (fail loud, never measured).
  */

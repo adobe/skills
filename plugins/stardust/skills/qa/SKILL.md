@@ -17,7 +17,8 @@ rollout asks "did every page ship?", qa asks "is everything that shipped
 actually correct?" — at all three layers a deploy can silently break:
 
 1. **delivery** — what the pipeline serves (`.plain.html`, full HTML, sheets, sitemap)
-2. **rendered** — what a browser shows after block decoration
+2. **rendered** — what a browser shows after block decoration (and what it
+   does: an autoplay video that only shows its poster is a rendered defect)
 3. **regression** — what changed since the last approved state (visual baselines)
 
 A green upper layer never implies the lower one: a publish 200 ≠ delivered,
@@ -33,7 +34,8 @@ delivered HTML ≠ rendered correctly.
    (`site.liveHost`) or ask.
 3. Resolve the **inventory source** — what pages the sweep covers, merged from
    any of: `stardust/template-map.json` (also supplies template assignments for
-   conformance), a paths file, and the live `sitemap.xml` (always fetched;
+   conformance; `scripts/from-knowledge.mjs` writes it from a spec, plus allowlist
+   entries for 404s the source already had), a paths file, and the live `sitemap.xml` (always fetched;
    parity mismatches become findings, so a wrong sitemap can't silently shrink
    coverage).
 4. Optional inputs that unlock deeper checks:

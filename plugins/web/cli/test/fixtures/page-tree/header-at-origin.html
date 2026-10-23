@@ -1,0 +1,37 @@
+<!doctype html><meta charset="utf-8" /><title>
+  A 0 px sticky header at the very top of the page
+</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  .sticky-wrap {
+    position: sticky;
+    top: 0;
+    height: 0;
+    z-index: 10;
+  }
+  #topNav {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 1280px;
+  }
+  .pb {
+    position: absolute;
+    top: 80px;
+    left: 0;
+    width: 1280px;
+    height: 5px;
+    background: #7e45af;
+  }
+  .hero {
+    height: 700px;
+    background: #333;
+    color: #fff;
+  }
+</style>
+<div class="sticky-wrap">
+  <div id="topNav" class="nav"><a href="#">Why us</a></div>
+  <div class="pb"></div>
+</div>
+<div class="hero">Hero</div>
+<div class="content">Body</div>

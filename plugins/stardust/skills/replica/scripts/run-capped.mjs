@@ -28,6 +28,7 @@
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len */
 import { spawn } from 'child_process';
+import { realpathSync } from 'node:fs';
 import { fileURLToPath } from 'url';
 
 export const DEADLINE_EXIT = 124;
@@ -63,7 +64,9 @@ export function runCapped(cmd, args, { timeoutSec = 0, label = cmd } = {}) {
 function cli(argv) {
   const rest = argv.slice(2);
   const HELP = 'Usage: node run-capped.mjs --timeout <s> [--label <name>] -- <cmd> [args...]';
-  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
+  // Only run-capped's own flags (before `--`) can ask for help; a `--help` meant for the child passes through.
+  const own = rest.includes('--') ? rest.slice(0, rest.indexOf('--')) : rest;
+  if (own.includes('--help') || own.includes('-h')) { console.log(HELP); process.exit(0); }
   let timeoutSec = 0; let label = null;
   let i = 0;
   for (; i < rest.length; i += 1) {
@@ -80,4 +83,11 @@ function cli(argv) {
   runCapped(cmd[0], cmd.slice(1), { timeoutSec, label: label || cmd.slice(0, 2).join(' ') }).then((code) => { process.exitCode = code; });
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) cli(process.argv);
+// Main-module guard by REAL path: node resolves the entry's symlinks for import.meta.url but leaves process.argv[1]
+// as typed, so a symlinked checkout or temp dir (e.g. /var → /private/var) would otherwise make the CLI a silent no-op.
+function isMainModule(metaUrl) {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try { return realpathSync(argv1) === fileURLToPath(metaUrl); } catch { return false; }
+}
+if (isMainModule(import.meta.url)) cli(process.argv);

@@ -3,7 +3,7 @@
  * rollout/delivery-lint.mjs — PRE-deploy static linter for the EDS/DA delivery
  * contract. Encodes the deterministic rendering rules the pipeline otherwise
  * re-learns by failing (one-CTA-per-<p>, wrapper, trailing-slash, path-safety,
- * cross-origin image optimization, metadata). Run BEFORE PUT; a P0 blocks deploy.
+ * cross-origin image optimization, metadata, widget links). Run BEFORE PUT; a P0 blocks deploy.
  *
  * This is the static half of the delivery gates (the dynamic half — does it
  * actually render — is verify.mjs § renderer-truth). Reference:
@@ -11,13 +11,31 @@
  *
  * Usage:
  *   node skills/rollout/scripts/delivery-lint.mjs --file <html> [--path </da/path>]
- *        [--type page|fragment|index] [--json]
+ *        [--type page|fragment|index] [--content content] [--json] [--optimizing-blocks a,b,c]
+ * --content: the content tree (default ./content when present) — tells a folder index, served at /x/,
+ * from a leaf served at /x, so a trailing slash is judged by its target. Its parent is the code tree:
+ * when it holds widgets/, every /widgets/<path>/<name>.html link must resolve to a file there.
  * Exit: 0 = clean (no P0/P1), 1 = P0/P1 findings, 2 = bad invocation.
+ * Writes: nothing — findings (text or --json) go to stdout.
  *
  * Blocks known to run createOptimizedPicture over their images (cross-origin
- * breakage risk) — extend per project via --optimizing-blocks a,b,c.
+ * breakage risk) — extend per project via --optimizing-blocks a,b,c
+ * (default cards,columns,hero).
  */
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { reservedStem } from './lib.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fb) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fb; }
 const FILE = arg('file', null);
@@ -26,6 +44,16 @@ const TYPE = arg('type', null); // page | fragment | index — inferred if absen
 const JSON_OUT = process.argv.includes('--json');
 const OPTIMIZING = (arg('optimizing-blocks', 'cards,columns,hero')).split(',').map((s) => s.trim()).filter(Boolean);
 if (!FILE) { console.error('delivery-lint: need --file <html>'); process.exit(2); }
+// the content tree tells a folder index (x/index.html, served at /x/) from a leaf (x.html, served at /x)
+const CONTENT = arg('content', existsSync('content') ? 'content' : null);
+const { pathKey } = await import(pathToFileURL([join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs'), join(HERE, '..', 'deploy', 'eds-path.mjs')].find((x) => existsSync(x)) || join(HERE, '..', '..', 'deploy', 'scripts', 'eds-path.mjs')).href);
+const targetKind = (key) => {
+  if (!CONTENT) return null;
+  if (existsSync(join(CONTENT, key === '/' ? 'index.html' : `${key.slice(1)}/index.html`))) return 'folder';
+  return existsSync(join(CONTENT, `${key.slice(1)}.html`)) ? 'leaf' : null;
+};
+// the code tree (blocks/, widgets/) is the content tree's parent; widget links are checked only when widgets/ exists
+const WIDGETS_DIR = CONTENT ? resolve(CONTENT, '..', 'widgets') : (existsSync('widgets') ? resolve('widgets') : null);
 const html = readFileSync(FILE, 'utf8');
 
 function inferType(p) {
@@ -83,12 +111,23 @@ for (const blk of OPTIMIZING) {
   }
 }
 
-/* ---- internal link hygiene: no trailing slash, no .html ---- */
+/* ---- internal link hygiene: no .html — except the one widget mount, /widgets/<path>/<name>.html?<params>, which
+   must name existing widget code with a block-safe stem; a trailing slash exactly on a folder index (eds-path.mjs) ---- */
 for (const m of html.matchAll(/href="(\/[^"]*)"/gi)) {
-  const href = m[1];
-  if (href === '/') continue;
-  if (/\/(#|$)/.test(href.replace(/[?#].*/, '')) && href.replace(/[?#].*/, '').endsWith('/')) {
-    add('P1', 'trailing-slash', `internal link has a trailing slash (404s on EDS): ${href}`);
+  const href = m[1]; const bare = href.replace(/[?#].*/, '');
+  if (bare === '/') continue;
+  if (/^\/widgets\/.+\.html$/i.test(bare)) {
+    const stem = bare.replace(/^.*\//, '').replace(/\.html$/i, '');
+    if (reservedStem(stem)) add('P1', 'widget-name', `widget name "${stem}" collides with a reserved block class or a derived -wrapper/-container class: ${href}`);
+    else if (WIDGETS_DIR && existsSync(WIDGETS_DIR) && !existsSync(join(WIDGETS_DIR, bare.slice('/widgets/'.length)))) add('P1', 'unknown-widget', `widget link names no file under widgets/ (${bare.slice(1)} missing): ${href}`);
+    continue;
+  }
+  const kind = targetKind(pathKey(bare));
+  if (bare.endsWith('/')) {
+    if (kind === 'leaf') add('P1', 'trailing-slash', `internal link to a page has a trailing slash (404s on EDS): ${href}`);
+    else if (!kind) add('P2', 'trailing-slash', `internal link has a trailing slash; right only for a folder index, and its target is not in ${CONTENT || 'the content tree (pass --content)'}: ${href}`);
+  } else if (kind === 'folder' && !/\.html$/i.test(bare)) {
+    add('P1', 'folder-index-slash', `internal link to a folder index without its trailing slash (404s on a plain EDS site): ${href} → ${bare}/`);
   }
   if (/\.html(\?|#|$)/i.test(href)) add('P1', 'html-extension', `internal link ends in .html (EDS serves extensionless): ${href}`);
 }

@@ -74,17 +74,19 @@ export function resolveAuthHeader() {
   return /^(token|bearer) /i.test(v) ? v : `token ${v}`;
 }
 
-export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1 } = {}) {
+export async function fetchUrl(url, { redirect = 'follow', method = 'GET', timeoutMs = 20000, retries = 1, binary = false } = {}) {
   for (let attempt = 0; ; attempt += 1) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), timeoutMs);
     try {
       const auth = originAuthFor(url);
       const res = await fetch(url, { method, redirect, signal: ctl.signal, headers: { 'user-agent': UA, ...(auth ? { authorization: auth } : {}) } });
-      const body = method === 'HEAD' ? '' : await res.text();
+      const bytes = binary && method !== 'HEAD' ? Buffer.from(await res.arrayBuffer()) : undefined;
+      const body = method === 'HEAD' || binary ? '' : await res.text();
       clearTimeout(timer);
       return {
         ok: res.ok,
+        ...(bytes ? { bytes } : {}),
         status: res.status,
         headers: Object.fromEntries(res.headers.entries()),
         location: res.headers.get('location'),
@@ -184,7 +186,7 @@ export function pageUrl(base, path) {
 }
 export function plainUrl(base, path) {
   const b = base.replace(/\/$/, '');
-  return path === '/' ? `${b}/index.plain.html` : `${b}${path}.plain.html`;
+  return path.endsWith('/') ? `${b}${path}index.plain.html` : `${b}${path}.plain.html`;
 }
 export function pathSlug(path) {
   return path === '/' ? 'index' : path.replace(/^\//, '').replace(/\//g, '__');
@@ -273,10 +275,13 @@ export async function loadPlaywright() {
  */
 export async function buildInventory({ base, pathsFile, templateMap, fragments = ['/nav', '/footer'], mergeSitemap = true }) {
   const pages = new Map(); // path -> {path, sources:[], template}
+  // path is the key (no trailing slash); url is where EDS serves the page: a folder index at /x/, which a source
+  // listing it with its slash tells (/x 404s on a plain EDS site)
   const add = (path, source, template) => {
     const p = path.replace(/\/$/, '') || '/';
-    if (!pages.has(p)) pages.set(p, { path: p, sources: [], template: template || null });
+    if (!pages.has(p)) pages.set(p, { path: p, url: p, sources: [], template: template || null });
     const row = pages.get(p);
+    if (path !== p && path.endsWith('/')) row.url = path;
     if (!row.sources.includes(source)) row.sources.push(source);
     if (template && !row.template) row.template = template;
   };

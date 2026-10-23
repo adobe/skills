@@ -1,8 +1,9 @@
 # Eval: routing a migration ask to the right flow
 
 Pins the master skill's § Two migration flows as an *enforced* contract:
-the flow is chosen on the ask, recorded in `state.json`, and the
-sub-skills refuse to run a migration whose flow was never chosen. Four
+the flow is chosen on the ask (redesign only when the ask says so),
+recorded in `state.json`, and the sub-skills refuse to run a migration
+whose flow was never chosen. Four
 phrasings run as four sessions against the same setup.
 
 ## Setup
@@ -20,12 +21,12 @@ Nothing else is present — no EDS scaffold, no prototypes.
 
 ## Expected behavior
 
-**Prompt 1 (plain migration ask).** The first response names both
-flows and asks the one keep-vs-redesign question — nothing else — before
-any sub-skill loads. No crawl, no `migrate`, no `prepare-migration`, no
-`replica` runs before the answer. After an answer ("keep the design"),
-`state.json.flow` is `replica` with `flowSource: "question"`, and the
-`replica` skill is invoked.
+**Prompt 1 (plain migration ask).** No question: a migration with no
+redesign phrase is a faithful migration. The first response states the
+flow (`replica`) with replica's flow line ("Say `switch to redesign` now
+if it is to change"), `state.json.flow` is `replica` with
+`flowSource: "default"`, and the `replica` skill is invoked;
+`prepare-migration` is never loaded.
 
 **Prompts 2 and 3 (keep-design phrases).** No question. The first
 response states the flow (`replica`) and that `replica` needs no

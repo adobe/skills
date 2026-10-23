@@ -26,18 +26,31 @@
  *                         screenshot shows EDIT MODE (implies --ew instrumentation;
  *                         the quick-edit CSS fetch degrades gracefully offline)
  *
+ * Writes: <out.png> — the full-page screenshot of the decorated content; nothing else
+ * (the --ew survivor table goes to stdout).
+ *
  * Exit codes: 0 rendered (and, with --ew, no dead/duplicated text), 1 = --ew found
  * dead non-exempt text or a duplicated index, 2 = harness error.
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, no-continue */
-import { chromium } from 'playwright';
 import fs from 'fs';
 import path from 'path';
 import {
   EDITABLE, firstExisting, readMainHtml, dropMetadata, discoverBlocks, runtimeMimic, instrument, survey, simulateEditor,
   installBlockJs, runDecorate, readBlockExemptions, aggregate, formatTable, verdict, fetchQuickEditCss,
 } from './ew-editability-probe.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = fs.readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
+
+// playwright is imported only past the --help guard, so --help answers on a checkout without it.
+const { chromium } = await import('playwright');
 
 function parseArgs(argv) {
   const rest = argv.slice(2);

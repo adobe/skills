@@ -56,6 +56,9 @@ done
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/preview/$ORG/$REPO/$BRANCH/$P"       # expect 200
 
+# 3a'. ANY admin 4xx: the reason is in the `x-error` response header, not the body
+#      (deploy-batch appends it to lastError). `… N of 200 images` = the DA pipeline caps a
+#      document at 200 images (#125) → split long grids into /fragments/ documents.
 # 3a. preview 409 "error from content-bus" — the error is OPAQUE (no per-asset
 #     detail); do NOT dead-end on it. Two cheap diagnostics, in order:
 #   (i)  upload a known-good doc to the SAME path and re-preview — separates
@@ -77,7 +80,7 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
 
-# 4. (optional) publish to aem.live
+# 4. publish to aem.live (the default; skip only on an explicit preview-only ask)
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```

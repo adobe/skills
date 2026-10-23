@@ -11,7 +11,7 @@
 -->
 ---
 slug: beers
-url: https://wasatchback.com/beers
+url: https://example.com/beers
 register: brand
 surprise: high
 dominantDimension: composition/catalog-grid
@@ -68,9 +68,8 @@ structural deltas on pair (A, C) and 0 on pair (B, C).
 The validator refuses with:
 
 > Discipline 10 failure: variant C declares trivial compositionDelta —
-> token-level only against both siblings. Variant convergence detected
-> (per `notes/variant-convergence.md`); the variant is a token reskin
-> of variant A. Restart ideation:
+> token-level only against both siblings. Variant convergence detected;
+> the variant is a token reskin of variant A. Restart ideation:
 > - amplify a different captured trait than B (currently both
 >   variants amplify the same composition)
 > - declare structural moves (substrate / section / layout / IA

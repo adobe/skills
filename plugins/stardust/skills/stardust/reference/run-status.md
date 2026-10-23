@@ -25,6 +25,17 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 | `detail` | no | one human-readable line (counts, blocker reason) |
 | `artifact` | no | path to the phase's primary output, when one exists |
 
+**Phase names.** A `Phase N — Title` heading uses the title's descriptive
+word in lower-case kebab form (`render` for "Phase 2 — Per-page render"); a
+`Letter —` or `N.` step heading uses `<Letter or N>-<first word>`
+(`C-deliver`, `I-dashboard`, deploy's `1-audit`). The reference list per skill is the `PHASES` table in
+`skills/stardust/scripts/ledger.mjs`, which writes the line
+(`node skills/stardust/scripts/ledger.mjs <skill> <phase> <start|end|blocked>
+[--detail "…"] [--artifact <path>] [--strict]`), writes a known phase in the
+table's own form (an alias or a differently-cased name is normalised) and
+warns on a name outside the table. Supervising runners key on these strings,
+so a skill's final phase must appear exactly as listed.
+
 ## Rules
 
 - **Append-only, never rewritten.** A correction is a new line, not an
@@ -37,6 +48,19 @@ One JSON object per line (JSONL — no wrapping array, no pretty-print):
 - **One line per phase start, one per end.** No intermediate spam;
   per-page progress lives in each phase's own ledgers (e.g., rollout's
   `coverage/pages.json`).
+- **The `start` line is the FIRST command of a phase** — written
+  before any script of the phase runs, never beside `end` once the
+  work is done (a recorded hands-off run wrote a phase's `start` and
+  `end` one second apart after 109 minutes of work, so a supervisor
+  tailing the ledger saw an idle run the whole time). `ledger.mjs`
+  warns on an `end` with no open `start` — no earlier `start` for the
+  same skill + phase without a later `end` — and refuses it under
+  `--strict` (exit 2, nothing written, one stderr line naming the
+  missing start command).
+- **Every `end` has a journal section.** `ledger.mjs … end` also warns
+  when `stardust/journal.md` (beside the ledger) has no `## ` heading
+  naming the phase (case-insensitive) — a warning only, never an
+  exit-code change; an absent journal is not checked.
 - **Harness-agnostic.** Plugin skills must never reference
   harness-specific progress mechanisms (no `emit_milestone`, no
   session APIs). `stardust/status.jsonl` is the only progress

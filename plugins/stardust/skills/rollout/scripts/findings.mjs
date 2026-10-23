@@ -11,12 +11,27 @@
  * Record:  node findings.mjs record --source <s> --layer <l> --check <c>
  *            --severity P1|P2|P3 --fixability platform-migration|design-pass|out-of-scope
  *            [--scope-level page|site|template|block] --scope-ids <a,b>
- *            --evidence "…" [--recommend "…"]
- * Resolve: node findings.mjs resolve <id> --status fixed|accepted|wontfix|open [--note "…"]
+ *            --evidence "…" [--recommend "…"] [--out <rolloutDir>]
+ * Resolve: node findings.mjs resolve <id> --status fixed|accepted|wontfix|open|in-progress
+ *            [--note "…"] [--out <rolloutDir>]
+ *   --out defaults to stardust/rollout.
+ *
+ * Writes (under <out>/optimize/): findings.json (the ledger; created when absent) and
+ * scorecard.json (current snapshot; history preserved). One result line on stdout.
+ * Exit 0 ok, 2 usage, 1 when resolve names an unknown id.
  */
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readJSON, writeJSON, computeScorecard, autofixFor, ALL_LAYERS } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) { const i = process.argv.indexOf(`--${name}`); return i !== -1 && process.argv[i + 1] ? process.argv[i + 1] : fallback; }
 const cmd = process.argv[2];

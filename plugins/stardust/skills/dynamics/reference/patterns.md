@@ -4,46 +4,70 @@ Pick by class and by whether the target already has an implementation (greenfiel
 library). Each pattern: intent · authoring contract · what the mechanism must do · verification
 (flows, not presence). Where the mechanism is non-obvious a minimal reference implementation is
 embedded as an **example the run adapts** — the plugin ships contracts and tooling, not blocks:
-across three migrations no block was reused as-is, every site's CSS is lifted from the source, and
-an existing library must be fed rather than forked.
+every site's CSS is lifted from the source, and an existing library is fed, never forked.
 
-| pattern | classes | disposition | greenfield | existing library |
-|---|---|---|---|---|
-| `search-index-backed` | S | index-backed | query index + results page + block | feed the library's search (off-origin-data.md) |
-| `listing-index-backed` | L, R | index-backed | listings.md | same |
-| `modal-loader` | M | rebuild-native | link marker + one runtime module | library's own dialog |
-| `chrome-interaction` | M | rebuild-native | motion-observe evidence → header/footer JS | keep |
-| `media-as-url` | V | embed-passthrough | player URL as content | same |
-| `forms` | F | rebuild-native | forms.md | forms.md § existing library |
-| `client-compute` | F | client-only | one block: controls + inline logic | same |
-| `consent-gated-tags` | T, A | embed-passthrough | owner config, disabled | library martech behind a host guard |
-| `off-origin-data` | A, S, D | data-fed | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
-| `sheet-sync` | D | data-fed | — | `scripts/sync-sheets.mjs` |
-| `client-rendered-page` | CR | static-snapshot | settled DOM; blank = human capture | same |
-| `locale-tree` | I18N | rebuild-native | locale-trees.md | same |
-| `decided-out` | X, A | decided-out | register row | library guards |
+| pattern | classes | disposition | target | greenfield | existing library |
+|---|---|---|---|---|---|
+| `search-index-backed` | S | index-backed | widget | query index + results page + search widget | feed the library's search (off-origin-data.md) |
+| `listing-index-backed` | L, R | index-backed | block | listings.md | same |
+| `modal-loader` | M | rebuild-native | runtime | link marker + one runtime module | library's own dialog |
+| `chrome-interaction` | M | rebuild-native | runtime | the header contract → header/footer JS | keep |
+| `media-as-url` | V | embed-passthrough | content | player URL as content | same |
+| `forms` | F | rebuild-native | block / widget | forms.md | forms.md § existing library |
+| `client-compute` | F | client-only | widget | one widget per tool: controls + logic in code | same |
+| `consent-gated-tags` | T, A | embed-passthrough | embed | owner config, disabled | library martech behind a host guard |
+| `off-origin-data` | A, S, D | data-fed | block / widget | snapshot + `Source` row | endpoint indirection + shim (off-origin-data.md) |
+| `sheet-sync` | D | data-fed | content | — | `scripts/sync-sheets.mjs` |
+| `client-rendered-page` | CR | static-snapshot | content | settled DOM; blank = human capture | same |
+| `locale-tree` | I18N | rebuild-native | runtime | locale-trees.md | same |
+| `decided-out` | X, A | decided-out | — | register row | library guards |
+
+`target` = delivery form (triage.md § Target); locators and other API-fed tools with no authored
+copy are `off-origin-data` shipped as a widget.
 
 ## search-index-backed
 
-**Intent.** Search is a service, not a page. The header form's action must never become a
-root-relative link to nowhere. **Contract.** A `/search` page with the results block; the header
-form posts `?q=` (accept the source's parameter name too). **Mechanism.** Query index configured
-through the admin config service (`PUT/POST admin.hlx.page/config/<org>/sites/<site>/content/query.yaml`,
-the DA token is authorised — no UI), one bulk `POST /index/<org>/<site>/<ref>/*` with the page list,
-a `text` property for excerpts; the block ranks title > description > path, clips excerpt windows
-around matches **after skipping the breadcrumb + title lead** the `text` property starts with,
-pages client-side, reflects the query into the inputs. Second corpora (a non-migrated library) are
-explicitly not reproduced. Per locale tree: one results page each and a `lang` index property.
-**Verify.** A known term returns the expected page; pagination; excerpt sample.
+**Intent.** Search is a service, not a page. The header form's action never becomes a
+root-relative link to nowhere, nor stays on the source origin's results page. **Contract.** A `/search` page mounting the
+search widget (`<p><a href="/widgets/search/<name>.html?q=">…</a></p>` — the `?q=` and any other
+query param land as `data-*` on the widget root; accept the source's parameter name too); the
+header form posts `?q=`. **Mechanism.** The query index comes
+from `helix-query.yaml` in the CODE branch (skeleton in listings.md § Getting an index at all):
+commit, push, publish the pages live, poll `/query-index.json` (no more often than every 5 s,
+bounded) — never a configuration-service write (a 403 there with the migration token is
+expected and means nothing; a recorded hands-off run read it as "no index possible" and shipped
+a sheet-backed interim index for want of one yaml file). A `text` property gives excerpts; the
+block clips excerpt windows around matches **after skipping the breadcrumb + title lead** the
+`text` property starts with, pages client-side, reflects the query into the inputs. Second
+corpora (a non-migrated library) are explicitly not reproduced. Per locale tree: one results
+page each and a `lang` index property.
+
+**Ranking and shape — read from the source during detect.** For each probe term the detect step
+records what the SOURCE shows: the visible result count, the top titles (≤ 3) and one expected
+hit, onto the feature's `search-query` check in `parity.json` (`expectCount`, `expectTitles`,
+`expectIncludes`). The block then: (1) title matches rank first; (2) description, then body-text
+(`text`) matches are consulted only while there are fewer than N title hits, N = the source's
+visible count; (3) results are deduped by title + description (two locale home pages under one
+title are one entry, or none — the source showed neither); (4) the typeahead dropdown is capped
+at N; the results page pages beyond it. Chrome and search documents are excluded from the index
+(their `Robots | noindex` row plus the `exclude` globs), so they never surface as results.
+
+**Verify.** `search-query` with `expectCount` + `expectTitles` (+ `expectIncludes`): the count
+must equal the source's, the top titles must be the source's, no duplicates — a count mismatch
+FAILS (`scripts/dynamics-check.mjs`). Then pagination; an excerpt sample.
 
 ```js
-// example — index fetch, token-AND ranking, client paging (adapt selectors, copy, sizes)
-async function search(q, { index = '/query-index.json', pageSize = 20, page = 1 } = {}) {
+// example — index fetch, title-first ranking, deeper fields only below the source's visible count, dedupe, cap
+async function search(q, { index = '/query-index.json', visible = 3, pageSize = 20, page = 1 } = {}) {
   const terms = q.toLowerCase().split(/\s+/).filter((t) => t.length > 1);
   const rows = []; for (let off = 0; ; off += 500) { const j = await (await fetch(`${index}?offset=${off}&limit=500`)).json(); rows.push(...j.data); if (off + 500 >= j.total) break; }
-  const score = (r) => terms.reduce((s, t) => s + (r.title?.toLowerCase().includes(t) ? 3 : 0) + (r.description?.toLowerCase().includes(t) ? 1 : 0) + (r.path?.includes(t) ? 1 : 0), 0);
-  const hits = rows.map((r) => ({ r, s: score(r) })).filter((x) => terms.every((t) => `${x.r.title} ${x.r.description} ${x.r.text || ''}`.toLowerCase().includes(t))).sort((a, b) => b.s - a.s);
-  return { total: hits.length, items: hits.slice((page - 1) * pageSize, page * pageSize).map((x) => x.r) };
+  const hasAll = (s) => terms.every((t) => String(s || '').toLowerCase().includes(t));
+  const titleHits = rows.filter((r) => hasAll(r.title));
+  const descHits = titleHits.length < visible ? rows.filter((r) => !hasAll(r.title) && hasAll(r.description)) : [];
+  const textHits = titleHits.length + descHits.length < visible ? rows.filter((r) => !hasAll(r.title) && !hasAll(r.description) && hasAll(r.text)) : [];
+  const seen = new Set();
+  const hits = [...titleHits, ...descHits, ...textHits].filter((r) => { const k = `${r.title}|${r.description}`.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
+  return { total: hits.length, typeahead: hits.slice(0, visible), items: hits.slice((page - 1) * pageSize, page * pageSize) };
 }
 ```
 
@@ -93,15 +117,19 @@ export default async function openModal(href, { decorateMain, playerHosts = [] }
 account, player and video id, plus `#modal` for overlays; inline via the site's video/embed block.
 Ids come from the detector's V rows **per page and per locale** (six of fourteen locale twins
 carried a different id), never from copy, never reused by path. Drive the probe from every
-target-less CTA, not a hand-made list. **Verify.** Iframe present **and** a playback request to the
-vendor observed with status < 400; with auth scoped to the origin (parity-report.md).
+target-less CTA, not a hand-made list. **Verify.** Playback, not presence: a vendor iframe needs a
+playback request observed with status < 400; a native `<video>` must be PLAYING once at least a
+quarter visible (`!paused`, `currentTime` advancing) and paused under `prefers-reduced-motion` when
+the check sets `reducedMotionPauses` (`dynamics-check.mjs video-plays`); auth scoped to the origin
+(parity-report.md).
 
 ## client-compute
 
 **Intent.** Calculators, filters, score lookups, comparisons: controls + inline logic, no network.
 **Signature.** A form (or control group) without action, inline scripts with no `fetch`/XHR.
-**Contract.** One block per tool; inputs as rows where they are content (labels, ranges, options),
-logic in block JS. **Rule.** Never flatten a client-compute section into a prose block — the
+**Contract.** One widget per tool (`widgets/<path>/<name>`): controls and logic in the widget's
+code, labels/ranges/options in its `.json` or as query params (`?rate=…` → `data-rate`); no
+authored rows. **Rule.** Never flatten a client-compute section into a prose block — the
 deploy/rollout block triage must refuse to convert a section the inventory marks `client-only` or
 modal-bearing into a generic block. **Verify.** Known input → known output.
 
@@ -115,7 +143,8 @@ rest on its groups; a consented phase builds the data layer from page metadata, 
 manager, analytics, marketing, feedback vendors from config. RUM vendors recorded, not proposed.
 First-party collector subdomains need a CNAME on the new host — an owner item. Capture scripts keep
 suppressing the banner. Existing library: its martech already does this; keep it behind a hostname
-guard on sandbox hosts and document the config. **Verify.** Consent declined → no request to any
+guard on sandbox hosts and document the config. When the owner asks to carry the source CMP and tag
+managers over, `martech.md` is the contract. **Verify.** Consent declined → no request to any
 gated host; accepted → host-list parity with `_dynamics.json`. Status in the parity report reads
 `scaffolded-awaiting-owner`, never "dropped".
 
@@ -135,10 +164,9 @@ export async function submit(form, endpoint) {
 
 ## chrome-interaction
 
-Header/footer behaviour (hover dropdowns, search overlay, sticky banner, back-to-top,
-time-of-day greeting) is M `chrome only`. Evidence is motion observation (replica's
-`motion-observe`), not the detector. Dropdown panels are captured as structure (columns → items
-{label, link, description, action}), via a hover probe, not as flat link lists. Clock-dependent
+Header behaviour (mega menus, dropdowns, search overlay, drawers, sticky states) is M `chrome
+only`, recorded and gated by the header contract (`../../diff/SKILL.md` § The header contract),
+not the detector; `dynamics-plan --chrome` adds a row per contract control family. Clock-dependent
 strings are behaviour: reproduce the function with thresholds read from the live JS, never the
 captured string.
 
@@ -151,6 +179,5 @@ surface into one request; check first that the source renders for a real user
 
 ## decided-out
 
-Session-bound (sign-in, shortlists, recent searches), regulated capture, features whose consumer is
-not on the migrated pages. Register row: feature · reason · production statement. Links kept;
-library guards left in place.
+triage.md § Dispositions. Links kept; library guards left in place; the sign-in/account entry UI the
+chrome keeps is a widget.

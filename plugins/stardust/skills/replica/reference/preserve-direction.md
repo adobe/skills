@@ -43,6 +43,9 @@ Rules:
 - **Refresh rule.** If extract re-runs (e.g. `--refresh <slug>` after a
   source-site change), re-promote. The promoted spec must never be older
   than `stardust/current/`.
+- **One permitted addition:** `extensions.breakpoints.target` (§ 4), written
+  into the root `DESIGN.json` after promotion and re-written after every
+  re-promotion. Nothing else in the promoted files changes.
 
 ### 1a. Bounded promotion branch (`--single` / `--pages` entry)
 
@@ -114,6 +117,9 @@ Permitted deltas: ONLY the entries of stardust/replica/inconsistency-register.md
 
 Fidelity: ia verbatim · design verbatim · content verbatim.
 ```
+
+With `--target-breakpoints`, append one line: `Breakpoints: target <list>
+(stardust/replica/breakpoint-map.md).`
 
 On the bounded branch (§ 1a), the `Promoted:` line instead reads
 `Synthesized (bounded-single): current/pages/<slug>.json + Phase-3 CSS lift
@@ -193,3 +199,43 @@ flags inside an applied entry's zone, cross-reference the entry ID in the
 gate log and mark the flag justified. When the pixel diff in that zone
 exceeds what the minimal change explains, the entry leaked — the recreation
 changed more than registered; fix the leak, not the register.
+
+
+## 4. Target breakpoints (`--target-breakpoints` only)
+
+Absent flag → skipped; source breakpoints kept. Present → done here,
+before Phase 3 and C0 author any CSS, so `deploy` only converts target steps:
+
+1. **Persist** the list as `extensions.breakpoints.target` (px integers,
+   ascending) in the root `DESIGN.json`. The content cap
+   (`containerMaxWidth`, `caps[]`) is a separate concern and never changes.
+2. **Inventory** the source's switch points: fetch the live stylesheets now
+   (Phase 3 lifts from the same files), then
+   `node stardust/scripts/replica/breakpoint-lint.mjs --inventory <css dir>`
+   — one row per switch width; a complementary 1px pair is one row.
+3. **Map** each row in `stardust/replica/breakpoint-map.md`:
+
+   | Source px | Layout switch it drives | Target step | Reason |
+   |---|---|---|---|
+
+   - By **intent**, never nearest number: name the tier the switch belongs
+     to (mobile / tablet / desktop) and take that tier's step.
+     Desktop-chrome and listing switches typically land on the middle step.
+   - Output is mobile-first `min-width` (`width >= N`); `max-width` rules are
+     rewritten, rules that collapse onto one step merge, redundant ones drop.
+   - Reused library or boilerplate blocks are not mapped — the lint checks
+     them against the target set.
+4. **Seed ONE register entry**, status `applied`: "Layout tiers switch at the
+   target breakpoints <list> instead of the source's <list>". Evidence = the
+   map + one strip at a shifted-band width from the gate's own captures:
+   `crop-compare.mjs <source.png> <build.png> --strip <out.png>` (`--c` adds
+   the after column on a retrofit: source | before | after). The customer
+   approves the image, not a pass count. Tier-shift gate failures log
+   against this entry; no other breakpoint entry is added.
+
+**Retrofit** (a site already delivered on source breakpoints): the same
+four steps on the existing code, then rewrite the CSS and JS, lint to 0, and
+re-gate the before and after builds on the same harness, the same day, at
+the same widths. State the cost first: a recorded retrofit moved about 250
+rules quickly, then re-gated about 105 pages × 6 widths × 2 builds overnight
+against a live CDN, with several retry rounds.

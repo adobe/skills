@@ -26,10 +26,12 @@ site search (`index-backed`, needs a results page); email + message = intake (`r
 
 Never pretend: success copy on a captured submission says it was captured locally.
 
-## 4. The block
+## 4. The block — or the widget
 
-Definition-driven (`Source | /data/forms/<name>.json`) or field rows; optional `Action`, `Success`,
-`Intro`. Sections, selects with a placeholder option, choice groups, required marks, validation copy
+Definition-driven with no authored copy is a widget (`widgets/forms/<name>`, mounted as
+`<p><a href="/widgets/forms/<name>.html?definition=/data/forms/<name>.json">…</a></p>`); a form with
+authored `Intro` / `Success` rows, or field rows, stays a block (optional `Action`). Either way:
+sections, selects with a placeholder option, choice groups, required marks, validation copy
 from live, dependent fields follow their controlling option, **empty submission refused**, honeypot
 instead of the source's anti-forgery token, posts `{ data, page, timestamp }` as JSON to `Action` or
 a per-page endpoint in `scripts/site-config.js` (empty = native post). Vendor-backed flows
@@ -40,8 +42,7 @@ client-side and let the owner name the vendor form id and field mapping.
 
 `regulated-pii` (SSN, date of birth, financial account, minors, ID upload): rebuild the UI with
 submission **blocked** until a human configures the secured endpoint; never route to a sheet or a
-generic handler; never replicate a payment or card capture on a sandbox. Most intake help pages
-deep-link to an authenticated app — migrate the link, do not manufacture a form.
+generic handler; never replicate a payment or card capture on a sandbox (triage.md rule 3).
 
 ## 6. Verify (flow)
 

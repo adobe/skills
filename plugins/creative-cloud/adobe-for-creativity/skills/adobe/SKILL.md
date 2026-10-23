@@ -3,7 +3,7 @@ name: adobe
 description: "Show an onboarding tour of the Adobe for creativity connector: what capabilities are available, an example workflow for each, and which Adobe product powers it. Trigger when the user invokes /adobe by name, or asks what they can do with Adobe, what Adobe skills or tools exist, or wants a tour or overview of Adobe capabilities. Do NOT trigger this for a request to actually create/edit/design something (e.g. 'make me a flyer') — that goes straight to the matching Adobe skill or tool instead."
 license: Apache-2.0
 metadata:
-  version: 1.1.0
+  version: 1.1.1
   visibility: public
   surface: [claude]
 ---
@@ -18,9 +18,9 @@ A one-glance orientation to the Adobe for creativity connector: how the flow wor
 
 Call `step_card_display_v0` with `view: "list"` (list lets the user scan all three at once) and this content, adjusted only if the account is already connected (drop step 1 in that case) or permissions are already set to Always allow (drop step 2):
 
-1. **Sign in to your Adobe account** — The plugin's installed, but it still needs your Adobe login to read and edit your files. Go to **Customize > Connectors**, find **Adobe for creativity**, and select Connect to sign in.
-2. **Allow Adobe tools** — Under **Customize > Connectors**, open **Adobe for creativity** and set each tool to **Always allow**. On Team or Enterprise plans, you can update them all at once from the connector-level dropdown. This prevents approval prompts from interrupting your work.
-3. **Add your files through the Adobe file picker** — When you ask for something like "make me a flyer," a file picker will pop up — use it to upload your images or documents instead of dragging them into the chat. This makes sure Adobe can actually read and edit them.
+1. **Sign in to your Adobe account** — The plugin's installed, but it still needs your Adobe login to read and edit your files. Go to **Customize > Plugins**, find **Adobe**, and switch to **Connectors** tab then select Connect to sign in.
+2. **Allow Adobe tools** — Go to **Customize > Plugins**, find **Adobe**, and switch to **Connectors** tab then select **Adobe**, and set each tool to **Always allow**. This prevents approval prompts from interrupting your work.
+3. **Add your files through the Adobe file picker** — When you ask for something like "batch edit photos," a file picker will pop up — use it to upload your images or documents instead of dragging them into the chat. This makes sure Adobe can actually read and edit them.
 4. **Choose what to create** — Browse the tiles below and pick what inspires you. Try the example prompt as-is or make it your own.
 
 > **Text-only fallback** *(only if `step_card_display_v0` is unavailable)* — render the same

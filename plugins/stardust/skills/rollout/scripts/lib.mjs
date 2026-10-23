@@ -3,16 +3,59 @@
  * counts from the same per-unit truth (counts are always recomputed, never
  * incremented).
  */
-import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
 export function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
 }
 
+/** Whole-file write through a sibling tmp file + rename: a reader never sees a half-written file. */
 export function writeJSON(path, obj) {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(obj, null, 2)}\n`);
+  const tmp = `${path}.${process.pid}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(obj, null, 2)}\n`);
+  renameSync(tmp, path);
+}
+
+/**
+ * Cross-process mutual exclusion for a read-modify-write of a shared file: a lock DIRECTORY
+ * `<target>.lock` (mkdir is atomic on every filesystem), an `owner` file naming pid + time, a
+ * bounded wait, and a stale lock (older than `staleMs`, a crashed writer) reclaimed. Several
+ * cluster subagents record coverage rows at once during a fan-out; without this the last writer
+ * won and rows were lost. Returns a release function (also run at process exit).
+ */
+export function acquireLock(target, { timeoutMs = 30000, staleMs = 60000, pollMs = 50 } = {}) {
+  const dir = `${target}.lock`;
+  mkdirSync(dirname(dir), { recursive: true });
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      mkdirSync(dir);
+      writeFileSync(join(dir, 'owner'), `${process.pid} ${new Date().toISOString()}\n`);
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      let st = null;
+      try { st = statSync(dir); } catch { continue; }
+      if (Date.now() - st.mtimeMs > staleMs) { try { rmSync(dir, { recursive: true, force: true }); } catch { /* raced */ } continue; }
+      if (Date.now() > deadline) {
+        let owner = '?'; try { owner = readFileSync(join(dir, 'owner'), 'utf8').trim(); } catch { /* none */ }
+        throw new Error(`lock ${dir} held for over ${timeoutMs} ms (owner ${owner}) — a crashed writer leaves it; remove the directory when no such process runs`);
+      }
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, pollMs);
+    }
+  }
+  let released = false;
+  const release = () => { if (released) return; released = true; try { rmSync(dir, { recursive: true, force: true }); } catch { /* gone */ } };
+  process.once('exit', release);
+  return release;
+}
+
+/** Run `fn` under the lock; the file(s) it touches must be re-read INSIDE `fn`, never before. */
+export function withLock(target, fn, opts) {
+  const release = acquireLock(target, opts);
+  try { return fn(); } finally { release(); }
 }
 
 const countBy = (rows, get, val) => rows.filter((r) => get(r) === val).length;
@@ -31,9 +74,18 @@ export function pageCounts(pages) {
   };
 }
 
-/** Block conversion counts from coverage/blocks.json rows. */
+/**
+ * The `edsBlockName` that records a module mapped to EDS default content (title, text, image,
+ * button, separator — deploy's D1): the mapping is the resolved decision and there is no block to
+ * build, so such a row is never pending whatever its status. A recorded hands-off run left four of
+ * them at `status: pending` and the block roll-up read a finished, verified site as unfinished.
+ */
+export const DEFAULT_CONTENT = 'default-content';
+export const isDefaultContent = (b) => !!(b && b.delivery && b.delivery.edsBlockName === DEFAULT_CONTENT);
+
+/** Block conversion counts from coverage/blocks.json rows; a default-content mapping counts as converted. */
 export function blockCounts(blocks) {
-  const converted = blocks.filter((b) => ['converted', 'deployed', 'verified']
+  const converted = blocks.filter((b) => isDefaultContent(b) || ['converted', 'deployed', 'verified']
     .includes(b.delivery && b.delivery.status)).length;
   return { total: blocks.length, converted, pending: blocks.length - converted };
 }
@@ -68,7 +120,7 @@ export function rollupConfig(config, pages, blocks, now) {
 }
 
 /** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
+export const RESERVED = new Set(['section', 'block', 'wrap', 'button', 'widget']);
 export function edsName(id) {
   let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!n) n = 'block';
@@ -80,8 +132,26 @@ export function edsName(id) {
 }
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
+/**
+ * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
+ * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ */
+export function publicUrl(page) {
+  const p = page.path || `/${page.slug}`;
+  const src = (page.source && page.source.migratedHtml) || '';
+  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+}
+
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
+/** A widget's file stem becomes its block class verbatim, so a reserved or -wrapper/-container stem collides (#15); the lint rejects it, nothing renames it. Pure. */
+export const reservedStem = (n) => RESERVED.has(String(n)) || /-(wrapper|container)$/.test(String(n));
+/** Code path of a widget from its authored link: /widgets/<path>/<name>.html?<params> → widgets/<path>/<name>.html. Pure. */
+export const widgetCodePath = (href) => String(href).replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*/, '').replace(/^\//, '');
+/** Widget rows of a page: `{ id, href }` pairs from the sidecar's widgets[]; id defaults to the href's file stem. Pure. */
+export const pageWidgets = (meta) => (Array.isArray(meta && meta.widgets) ? meta.widgets : [])
+  .filter((w) => w && typeof w.href === 'string')
+  .map((w) => ({ id: String(w.id || widgetCodePath(w.href).replace(/^.*\//, '').replace(/\.html$/, '')), href: w.href }));
 
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {
@@ -98,7 +168,7 @@ export async function loadPageHTML(page, { root, base }) {
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${base}${page.path}`);
+    const res = await fetch(`${base}${publicUrl(page)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };
@@ -136,9 +206,44 @@ export function autofixFor(check) {
   return { available: true, target: 'aem-eds', strategy: a.strategy, kind: a.kind, status: 'pending', appliedBy: null, at: null, detail: null };
 }
 
-/** Compute a scorecard snapshot from the full findings list. */
+// --- optimize: source parity ---------------------------------------------------
+/**
+ * A finding whose condition the SOURCE capture shares — the same <title>, no meta description on
+ * the source either, no JSON-LD on the source either, the same title shared by the same pages —
+ * mirrors the source rather than a delivery defect. A recorded hands-off run accepted 63 such
+ * findings by hand. They stay in the ledger (listed in their own report section) but are
+ * informational: never scored, never counted open, never auto-fixed (a faithful migration is not
+ * rewritten). The findings schema has no parity property, so the tag is `fixability:
+ * out-of-scope` (the schema's own "informational" value) plus this evidence prefix; both are read.
+ */
+export const SOURCE_PARITY_PREFIX = 'source parity: ';
+export const isSourceParity = (f) => !!(f && f.fixability === 'out-of-scope' && typeof f.evidence === 'string' && f.evidence.startsWith(SOURCE_PARITY_PREFIX));
+
+/** Tag a detected finding as mirroring the source (`why` names the shared condition). */
+export function markSourceParity(finding, why) {
+  return {
+    ...finding,
+    fixability: 'out-of-scope',
+    evidence: `${SOURCE_PARITY_PREFIX}${finding.evidence} — ${why}`,
+    recommendedMove: 'Mirrors the source capture — informational, not scored, no rollout action; change it on the source (or record a content decision) if wanted.',
+    autofix: { available: false, target: 'aem-eds', strategy: null, kind: null, status: 'unavailable', appliedBy: null, at: null, detail: 'source parity — a faithful migration is not auto-rewritten' },
+  };
+}
+
+/** Open source-parity findings by severity (the report's own section; never in the score). */
+export function sourceParityCounts(findings) {
+  const rows = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && isSourceParity(x));
+  const sev = (s) => rows.filter((x) => x.severity === s).length;
+  return { total: rows.length, P1: sev('P1'), P2: sev('P2'), P3: sev('P3') };
+}
+
+/**
+ * Compute a scorecard snapshot from the full findings list. Open source-parity findings are
+ * excluded from every dimension score and from the open P1/P2/P3 counts (they still mark their
+ * layer as assessed); `fixed` counts are untouched.
+ */
 export function computeScorecard(findings, runId, now) {
-  const open = findings.filter((x) => x.status === 'open' || x.status === 'in-progress');
+  const open = findings.filter((x) => (x.status === 'open' || x.status === 'in-progress') && !isSourceParity(x));
   const fixed = findings.filter((x) => x.status === 'fixed');
   const assessed = new Set();
   for (const f of findings) assessed.add(f.layer);

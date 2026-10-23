@@ -21,6 +21,7 @@
  *
  * Exit codes: 0 = clean (🟡 advisories allowed — review, fix or justify in the
  * conversion log), 2 = at least one 🔴, 1 = usage/parse failure.
+ * Writes: nothing — findings and the PASS/FAIL line go to stdout.
  *
  * 🔴 (block the write)                      🟡 (advisory)
  *   D1  wrapper block around default content   D1  block section with no repeating
@@ -32,7 +33,9 @@
  *   D14 display copy in a key-value block     D10 block rows wider than 4 columns
  *   D15 code visible as text (tags/{{}}/CSS/   D5  complex nested list inside a cell
  *       inline-script text: window./try {)     D15 ALL_CAPS_TOKEN — tracking-token
- *                                                  lookalike (advisory: legit acronyms exist)
+ *   D15 CSS as content (#134): a cell or           lookalike (advisory: legit acronyms exist)
+ *       paragraph whose text IS a declaration   D15 a cell that is only a CSS length or a
+ *       ("padding: 200px 10px") or a --token        lone hex colour (#134, advisory)
  *   HR  authored <hr> (#119 — the section delimiter; fractures the section)
  *
  * Dependency-free by design (regex + balanced-div walking, same technique as
@@ -41,9 +44,19 @@
  */
 import { readFileSync, readdirSync, statSync } from 'fs';
 import path from 'path';
+import { pathKey } from './eds-path.mjs';
+import { cssAsText, decodeEntities } from './css-as-text.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 const WRAPPER_BLOCK_NAMES = new Set(['text', 'heading', 'title', 'image']);
-const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata']);
+const KEY_VALUE_BLOCKS = new Set(['metadata', 'section-metadata', 'library-metadata']);
 const EMBED_HOST = /(youtube\.com|youtu\.be|vimeo\.com|player\.|\/embed\/)/i;
 // Default-content-expressible tags: what a prose section can carry natively.
 const PROSE_TAGS = new Set(['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'a', 'ul', 'ol', 'li', 'picture', 'img', 'source', 'strong', 'em', 'code', 'br']);
@@ -116,6 +129,14 @@ function lintPage(file, html, findings) {
     }
 
     lintSectionShape(file, section, kids, defaultContentText, flag);
+
+    // D15 / #134 — a default-content paragraph that is only CSS.
+    for (const m of childlessHtml(section.inner, kids).matchAll(/<p\b[^>]*>([\s\S]*?)<\/p>/gi)) {
+      const css = cssAsText(stripTags(m[1]));
+      if (css) {
+        flag(css.sev, 'D15', `section ${classOf(section.openTag) || '(unnamed)'}: ${css.what} authored as a paragraph ("${decodeEntities(stripTags(m[1])).slice(0, 40)}") — never CSS in the document (#134)`);
+      }
+    }
   }
 
   lintText(file, main, flag);
@@ -177,6 +198,13 @@ function lintBlock(file, section, block, name, flag) {
         }
       }
 
+      // D15 / #134 — CSS authored as the cell's content. Key-value blocks are
+      // configuration (D14) and may legitimately hold a colour or a length.
+      const css = isKeyValue ? null : cssAsText(stripTags(cell.inner));
+      if (css) {
+        flag(css.sev, 'D15', `${where}: ${css.what} authored as cell text ("${decodeEntities(stripTags(cell.inner)).slice(0, 40)}") — a per-item look is block CSS, an author-facing choice is one word from a closed variant set; never CSS in the document (#134)`);
+      }
+
       // D5 — complex nested list inside a cell (list items carrying headings /
       // multiple paragraphs belong one-per-row, not in a nested list).
       const liComplex = /<li\b[^>]*>(?:(?!<\/li>)[\s\S])*<(?:h[1-6]|p)\b[\s\S]*?<\/li>/i;
@@ -210,8 +238,9 @@ function lintBlock(file, section, block, name, flag) {
 
   // D1 — over-blocking advisory: a lone single-column block whose every cell is
   // prose-expressible and which has no repeating structure reads as default
-  // content wearing a table. (Advisory: bespoke widgets legitimately look
-  // like this — template-slotted heroes, countdowns.)
+  // content wearing a table. (Advisory: bespoke components legitimately look
+  // like this — template-slotted heroes, countdowns. Not to be confused with
+  // an EDS widget, which is a /widgets/ link in default content, never a table.)
   if (!isKeyValue && rows.length > 0 && rows.length <= 3 && maxCols <= 1) {
     const allProse = rows.every((row) => {
       const cells = childDivs(row.inner);
@@ -219,7 +248,7 @@ function lintBlock(file, section, block, name, flag) {
       return tagsIn(htmlIn).every((t) => PROSE_TAGS.has(t));
     });
     if (allProse) {
-      flag('🟡', 'D1', `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke widget)`);
+      flag('🟡', 'D1', `${label}: single-column, ${rows.length}-row block holding only prose elements — default-content candidate (justify in the conversion log if it is a genuine bespoke component)`);
     }
   }
 }
@@ -254,15 +283,8 @@ function lintText(file, main, flag) {
   }
 }
 
-// D4 LOCALIZE — canonical lookup key for a path (mirrors localize-links.mjs).
-function canonicalPath(p) {
-  let s = (p || '').split(/[?#]/)[0].replace(/\/{2,}/g, '/');
-  if (!s.startsWith('/')) s = `/${s}`;
-  s = s.replace(/\.html?$/i, '');
-  if (s.length > 1) s = s.replace(/\/+$/, '');
-  if (s === '' || s === '/index') s = '/';
-  return s.replace(/\/index$/, '').toLowerCase() || '/';
-}
+// D4 LOCALIZE — canonical lookup key for a path: eds-path.mjs pathKey, shared with localize-links.
+const canonicalPath = pathKey;
 let LOCAL = null; // { hosts:Set, paths:Set } when --source-host is given
 
 function lintUrls(file, main, flag) {

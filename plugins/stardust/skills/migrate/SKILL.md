@@ -72,9 +72,8 @@ inline, or run an impeccable command) and re-invoke migrate.
    run: print the two-flow table from the master skill § Two migration
    flows and hand back to its routing — the flow is chosen and stamped
    there before any sub-skill runs
-   (`skills/stardust/reference/state-machine.md` § Flow keys). Under
-   hands-off the master's default applies (keep-design phrase →
-   `replica`, otherwise `redesign`), recorded in `direction.md`.
+   (`skills/stardust/reference/state-machine.md` § Flow keys): `replica`
+   unless the ask names a redesign.
    (Recorded: `migrate <url>` as the first command of two same-design
    migrations led to a hand-built compiler tuned by eye instead of the
    replica gate.)
@@ -197,7 +196,9 @@ For 1-3 pages or `<slug>` invocation, skip the confirmation.
 
 ### Phase 2 — Per-page render
 
-For each page in scope, follow
+In the replica flow a sibling renders only after its archetype is deployed and gated at the
+published origin (`../replica/reference/handoff-contract.md` § 3 row C, unit `C-archetype`; #126);
+the render is the encoder's input, its gate is the row after PUT. For each page in scope, follow
 `reference/migration-procedure.md` and
 `reference/template-and-module-rendering.md`:
 
@@ -208,7 +209,10 @@ For each page in scope, follow
   proposed file or archetype). Refuse when `[data-placeholder]`
   elements or non-empty `_provenance.unsourcedContent[]` are
   present — the user fills the missing content in the proposed
-  file before re-invoking migrate. No bypass flag.
+  file before re-invoking migrate. No bypass flag: shipping
+  placeholders to a public site is the failure mode this gate
+  exists to prevent. Widget mounts are links (`a[data-widget]`),
+  never `data-placeholder`, so the gate does not fire on them.
 - **Render branch selection** (LLM judgment per T&M §
   Render path selection): A / A′ / B. **Declare the page's
   `fidelityTier`** from the branch — A → `archetype` (craft-gated),
@@ -216,8 +220,12 @@ For each page in scope, follow
   once per template before cloning, `reference/fidelity-tiers.md` § Sibling
   variance probe; deltas become variant classes, never per-page forks),
   B/bodyless → `thin` — per `reference/fidelity-tiers.md`. Record
-  `fidelityTier`, `archetypeSource`, and `gatesPassed[]` in
-  `_meta.json` so coverage shows what was craft-gated vs cloned.
+  `fidelityTier`, `archetypeSource`, `template` (the archetype's slug;
+  the archetype's own sidecar leaves it null), `modules[]` (the page's
+  block ids — composite sections only), `widgets[]` (derived from the
+  page's `a[data-widget]` mounts) and `gatesPassed[]` in
+  `_meta.json` so coverage shows what was craft-gated vs cloned and
+  rollout groups and dedups from the sidecars, without a census.
 - **Render** per the chosen branch's procedure in T&M.
 - **Canon application** — chrome injection, canon.css
   injection, deviation logging.
@@ -277,6 +285,34 @@ For each page in scope, follow
   sidecar in the same directory. Provenance block as first
   child of `<head>`. Record `assetsBundled` (count of unique
   asset refs on this page) in `_meta.json`.
+
+The mechanics of this phase are scripted:
+`node skills/migrate/scripts/migrate.mjs render <slug…|--all>` (the
+project copy runs from `stardust/scripts/migrate/`) builds the page
+map, places each page at its URL-literal path, rewrites internal
+links, bundles assets, composes `<head>` (provenance, `:root`,
+canonical and JSON-LD defaults), validates strictly and writes the
+sidecar, skipping pages whose input shas are unchanged. The judgments
+it cannot make are recorded on the sidecar with `gate`, `deviation`,
+`decision`, `variant` and `modules` on the same script; it never
+advances `pages[].status`.
+
+**Recorded units.** A whole-site render is bookkept as units in
+`stardust/migrate/progress.json`, the shape of rollout's C-deliver unit
+ledger (`../replica/reference/handoff-contract.md` § 3 row C):
+`units.<name>: {status: pending|running|done|failed, kind:
+plan|render|assets|report, templates[], pages: n, startedAt, endedAt,
+verdict}`. One `plan` unit (Phase 1), one `render` unit per template
+cluster of at most ~8 siblings (`migrate.mjs render <slug…>` takes the
+cluster's slug list), one `assets` unit when Phase 3 rehosts media, one
+`report` unit (Phase 4). Per unit, in this order: the `progress.json`
+write → the checkpoint commit → the next unit; a unit end is a safe
+resume point, not a stop. A session resumed inside migrate reads the file
+and runs only the units not `done`; a unit left `running` re-renders its
+slugs — the driver is idempotent, unchanged pages are skipped. A recorded
+run rendered 31 siblings through five parallel builders as one unit in
+one session — its most expensive — with no resume point between the plan
+and the final report.
 
 ### Phase 3 — Sitewide assets and bundle finalisation
 
@@ -430,6 +466,12 @@ Next:
 | `stardust/migrated/sitemap.xml`                   | Sitemap derived from migrated inventory + page types.  |
 | `stardust/state.json`                             | Updated with `migrated` status, history, and the `migrate` block (`selfContained: true`, asset counts). |
 
+The driver (`node stardust/scripts/migrate/migrate.mjs render …`) writes
+the per-page rows above (`index.html` / `<name>.html`, `_meta.json`,
+bundled `assets/**`) and the `migrate` block of `state.json` (`pageMap[]`,
+`bundledAssets[]`, `pages[]`, `missingAssets[]`, `lastRun`); status
+changes, robots.txt and sitemap.xml stay with Phases 3–4.
+
 ## Idempotent and incremental
 
 The whole pipeline is built around two properties:
@@ -489,11 +531,9 @@ work, they just mark it as out-of-step.
   output path. Refuse to write the second one and surface to
   the user — manual slug rename needed.
 - **Placeholder content in proposed/archetype file.** Refuse
-  to ship a page whose source contains `[data-placeholder]`
-  elements. Surface the unsourced list and recommend sourcing
-  real content (re-prototype, or edit the proposed file
-  directly). There is no bypass flag — shipping placeholders to
-  a public site is the failure mode this gate exists to prevent.
+  (Phase 2 placeholder gate); surface the unsourced list and
+  recommend sourcing real content (re-prototype, or edit the
+  proposed file directly).
 - **Color reservation violated.** Refuse the page; surface to
   user with the offending color and the reserved-for context.
 - **Brand-faithful inversion conflict.** A hard rule declared

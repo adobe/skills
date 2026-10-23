@@ -1,0 +1,23 @@
+<!doctype html><meta charset="utf-8" /><title>Sticky nav with a wrapper that has area</title>
+<link rel="stylesheet" href="_base.css" />
+<style>
+  .sticky-wrap {
+    position: sticky;
+    top: 0;
+    height: 80px;
+    z-index: 1000;
+  }
+  #topNav {
+    background: rgba(255, 255, 255, 0.9);
+  }
+</style>
+<div id="utility">English · 日本語</div>
+<div class="sticky-wrap">
+  <div class="grid">
+    <div class="inner">
+      <div id="topNav" class="nav"><b>LOGO</b><a href="#">Why us</a><a href="#">Solutions</a></div>
+    </div>
+  </div>
+</div>
+<div class="content">Body</div>
+<div class="footer">Company · Resources · Legal</div>

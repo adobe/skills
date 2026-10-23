@@ -15,12 +15,28 @@
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
  *
+ * Template grouping: a page's `template` from its sidecar. An archetype (fidelityTier
+ * `archetype` or renderBranch `A`) whose `template` is null — the migrate spec's form —
+ * groups under its OWN slug, which its siblings name in their `template`; `type` is the
+ * last resort. A template's representative is its archetype. Sidecars with an empty
+ * `modules[]` are counted in the report: Phase B (blocks.mjs) dedups from them. A sidecar's
+ * `widgets[] {id, href}` (code-only units, one /widgets/<path>/<name>.html link each) rides along
+ * as the row's `widgets` and joins the template's block set under its id.
+ *
  * Archetypes-only mode (`--state <state.json>`): the migrated tree holds only the
  * template archetypes (one per template); the full page roster lives in state.json.
  * Pages present only in state.json (not yet individually migrated) are merged in as
  * `content-pending` siblings — keyed to the archetype their `type` names, inheriting
  * that archetype's blocks, pushing no document. Block code ships from the archetypes;
  * sibling content is populated later by a separate content track.
+ *
+ * Rows added by `update-coverage.mjs --new` (a page built outside the migrated tree —
+ * a search results page from the dynamics phase; `source.migratedHtml` carries the
+ * origin marker `<origin>:<slug>` instead of a file path) are KEPT on a re-run, status
+ * untouched, so the page is registered once — never re-registered after every
+ * inventory run (a recorded hands-off run lost its search page from coverage, the
+ * sitemap and verify this way). Such a row gives way only when the migrated tree now
+ * holds a file for its slug, or a migrated page owns its path.
  *
  * Usage:
  *   node skills/rollout/scripts/inventory.mjs [--migrated <dir>] [--out <rolloutDir>] [--site-url <url>] [--state <state.json>]
@@ -30,6 +46,15 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSy
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { pageWidgets } from './lib.mjs';
+
+// --help prints this file's usage header, so an agent never reads the source to learn the flags.
+if (process.argv.includes('--help') || process.argv.includes('-h')) {
+  const src = readFileSync(new URL(import.meta.url), 'utf8');
+  const header = src.match(/\/\*\*[\s\S]*?\*\//);
+  console.log(header ? header[0].replace(/^\/\*\*\s*|\s*\*\/$/g, '').replace(/^\s*\* ?/gm, '').trim() : 'no usage header');
+  process.exit(0);
+}
 
 function arg(name, fallback) {
   const i = process.argv.indexOf(`--${name}`);
@@ -102,6 +127,9 @@ function readJSON(path, fallback = null) {
   try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return fallback; }
 }
 
+/** The page that IS the template: migrate's Path A (fidelityTier `archetype`, renderBranch `A`). */
+const isArchetype = (meta) => meta.fidelityTier === 'archetype' || meta.renderBranch === 'A';
+
 if (!existsSync(MIGRATED)) {
   console.error(`rollout inventory: migrated tree not found at "${MIGRATED}". Run \`stardust migrate\` first.`);
   process.exit(1);
@@ -118,6 +146,9 @@ const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 
 // --- Inventory the migrated tree -----------------------------------------------
 const htmlFiles = walkHtml(MIGRATED).sort();
+// the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
+const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
+const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
 
 for (const relHtml of htmlFiles) {
@@ -145,13 +176,15 @@ for (const relHtml of htmlFiles) {
     slug,
     path,
     title: (meta.metadata && meta.metadata.title) || meta.slug || slug,
-    templateId: meta.template || meta.type || null,
+    templateId: meta.template || (isArchetype(meta) ? slug : null) || meta.type || null,
     source: {
       migratedHtml: join(MIGRATED, relHtml),
       metaJson: existsSync(join(MIGRATED, sidecarRel)) ? join(MIGRATED, sidecarRel) : null,
       sourceHash,
+      sourceUrl: (meta.source && meta.source.url) || meta.sourceUrl || stateUrls.get(slug) || null,
     },
     blocks: Array.isArray(meta.modules) ? meta.modules : [],
+    widgets: pageWidgets(meta),
     delivery,
   });
 }
@@ -190,12 +223,30 @@ if (STATE) {
       title: sp.title || slug,
       templateId: rep ? rep.slug : (sp.type || 'untyped'),
       representative: rep ? rep.slug : null,
-      source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath },
+      source: { migratedHtml: null, metaJson: null, sourceHash, currentStatePath: csPath, sourceUrl: sp.url },
       blocks: rep ? rep.blocks.slice() : [],
+      widgets: rep ? rep.widgets.map((w) => ({ ...w })) : [],
       delivery,
     });
     coveredPaths.add(path);
   }
+}
+
+// --- Keep the rows update-coverage.mjs --new added (pages built outside the migrated tree) ---
+// The origin marker in source.migratedHtml (`<origin>:<slug>`, never a path with a slash) identifies
+// them. A prior row with the marker whose slug has no migrated file — and whose path no migrated page
+// owns — is carried over untouched (status included); otherwise the migrated row wins.
+const isOriginMarker = (s) => typeof s === 'string' && /^[a-z][a-z0-9-]*:[^/]+$/.test(s);
+const migratedSlugs = new Set(pages.map((p) => p.slug));
+const migratedPaths = new Set(pages.map((p) => p.path));
+const kept = [];
+for (const prior of (priorPages.pages || [])) {
+  if (!prior || !prior.source || !isOriginMarker(prior.source.migratedHtml)) continue;
+  if (migratedSlugs.has(prior.slug) || migratedPaths.has(prior.path)) continue;
+  pages.push(prior);
+  kept.push(prior.slug);
+  migratedSlugs.add(prior.slug);
+  migratedPaths.add(prior.path);
 }
 
 pages.sort((a, b) => a.slug.localeCompare(b.slug));
@@ -208,13 +259,14 @@ for (const p of pages) {
   const t = tmap.get(id);
   t.pages.push(p.slug);
   p.blocks.forEach((b) => t.blocks.add(b));
+  (p.widgets || []).forEach((w) => t.blocks.add(w.id));
 }
 const templates = [...tmap.values()].map((t) => {
   const tp = pages.filter((p) => t.pages.includes(p.slug));
   const count = (s) => tp.filter((p) => p.delivery.status === s).length;
   // The representative is the migrated archetype that converts the blocks — never a
   // content-pending sibling (which pushes no document).
-  const rep = tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
+  const rep = tp.find((p) => p.slug === t.id) || tp.find((p) => p.delivery.status !== 'content-pending') || tp[0];
   return {
     id: t.id,
     representativeSlug: (rep && rep.slug) || null,
@@ -271,6 +323,11 @@ console.log(`rollout inventory → ${OUT}`);
 console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
+if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
+const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
+if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);
+const widgetIds = new Set(pages.flatMap((p) => (p.widgets || []).map((w) => w.id)));
+if (widgetIds.size) console.log(`Widgets     ${widgetIds.size} distinct (${[...widgetIds].sort().join(', ')}) on ${pages.filter((p) => (p.widgets || []).length).length} pages — code only, one /widgets/ link per page`);
 const todo = pages.filter((p) => ['pending', 'stale', 'failed'].includes(p.delivery.status));
 if (todo.length) console.log(`To deliver  ${todo.length}: ${todo.slice(0, 8).map((p) => p.slug).join(', ')}${todo.length > 8 ? ' …' : ''}`);
 else console.log('To deliver  0 — all pages delivered.');

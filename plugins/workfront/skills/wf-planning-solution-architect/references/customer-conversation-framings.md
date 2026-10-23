@@ -79,6 +79,7 @@ Canvas Dashboard is the only Workfront-native reporting surface that treats Plan
 - "Planning is a distinct data model from legacy Workfront. Reports on Planning records build in Canvas Dashboard, not in the classic report builder."
 - "Canvas Dashboard is currently in beta with some cloud-provider exclusions. We can walk through the prerequisites and the report types it supports today."
 - "If you have downstream reporting needs (Power BI, Tableau), the path is via the Planning API; Canvas is the in-product path."
+- "Workfront Data Connect now also provides entitlement-driven access to Planning data in Snowflake."
 
 ### Trap to avoid
 Do not promise that legacy Workfront reports will eventually support Planning record types as base entities. That is a roadmap question that has not been committed.
@@ -119,13 +120,15 @@ Planning handles **strategy and planning** of work: campaigns, OKRs, audiences, 
 
 The bridge is the connection from a Planning record (e.g., Campaign) to a Workfront object (e.g., Project), which is what `the bridge` and the Planning > Workfront workflow are designed for.
 
+Standalone Planning does not include Workfront object connections or Planning automations that create those objects.
+
 ### Key sentences to anchor on
 - "Workfront delivers the work. Planning plans the work that becomes Workfront projects."
 - "The handoff point is the connection from a Planning Campaign to one or more Workfront Projects. Planning stays the system of record for the strategic context; Workfront stays the system of record for the execution."
 - "If a customer is doing all their planning in Workfront Custom Forms today, the migration story is to lift the planning concepts into Planning and keep the execution in Workfront."
 
 ### Trap to avoid
-Do not suggest that Planning replaces Workfront, or that Workfront should be deprecated in favor of Planning. They are designed to work together. Customers on Planning Prime or Ultimate are licensed for both.
+Do not suggest that Planning replaces Workfront, or that Workfront should be deprecated in favor of Planning. They are designed to work together. Customers who bought Planning with a Workflow package license both; standalone Planning customers do not. Planning Prime or Ultimate alone does not establish a Workflow license. See `release-and-access.md` for equal-bundle, unequal-quantity, and standalone license types.
 
 ## 7. Customer instantiates a reference template and asks "is this good for us?"
 

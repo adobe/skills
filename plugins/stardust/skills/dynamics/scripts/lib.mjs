@@ -88,6 +88,15 @@ export function pathPattern(pathname) {
 }
 export function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60); }
 
+/* ---------------------------------------------------------- taxonomy ---- */
+/** The triage vocabulary (reference/triage.md, classes-and-signals.md): every writer of feature rows checks against it. */
+export const TAXONOMY = {
+  class: ['L', 'S', 'F', 'M', 'V', 'T', 'A', 'R', 'X', 'I18N', 'CR', 'D'],
+  disposition: ['rebuild-native', 'index-backed', 'data-fed', 'embed-passthrough', 'client-only', 'static-snapshot', 'decided-out'],
+  reproducibility: ['self', 'needs-credential', 'needs-human-capture', 'needs-backend', 'needs-business-decision'],
+  status: ['pending', 'in-progress', 'interim', 'done', 'scaffolded-awaiting-owner', 'delivered-by-capture', 'decided-out', 'skipped-source-broken'],
+};
+
 /* ----------------------------------------------------------- vendors ---- */
 let VENDORS = null;
 export function vendors() {

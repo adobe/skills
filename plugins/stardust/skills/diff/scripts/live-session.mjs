@@ -225,6 +225,13 @@ function challengeMarker(resp) {
     if (server.includes('big-ip') || server.includes('imperva') || h['x-iinfo']) return `HTTP ${status} + F5/Imperva edge signature`;
     // no edge signature — a genuine app-level status, not a challenge.
   }
+  // Akamai escalates to HTTP 400 {"result":"Bad Request"} after a burst of headless
+  // probes (#125): the instruments refused to measure it but never suggested
+  // escalation. A 400 stamped by AkamaiGHost is a challenge marker.
+  if (status === 400) {
+    const server = (h.server || '').toLowerCase();
+    if (server.includes('akamaighost') || server.includes('akamai') || h['x-akamai-transformed']) return 'HTTP 400 + Akamai edge signature (bot-management escalation)';
+  }
   return null;
 }
 
@@ -306,20 +313,46 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
 }
 
 /**
- * Headed stealth escalation tier (crawl.mjs launchHeadedStealth semantics):
- * headed real Chrome clears TLS/H2-fingerprint blocks, and the stealth args
- * strip the automation signals Cloudflare's managed challenge probes for.
- * Pair with newLiveContext so the navigator.webdriver spoof lands on every
- * context. Takes the caller's `chromium` so this module stays import-free.
+ * Stealth escalation tier (crawl.mjs launchHeadedStealth semantics): the REAL
+ * Chrome binary (`channel: 'chrome'`) clears TLS/H2-fingerprint blocks, and the
+ * stealth args strip the automation signals Cloudflare's managed challenge
+ * probes for. Pair with newLiveContext so the navigator.webdriver spoof lands
+ * on every context. Takes the caller's `chromium` so this module stays import-free.
+ *
+ * WINDOW-FREE BY DEFAULT (#125). The window was never what cleared the block, the
+ * binary was: `channel:'chrome'` + headless gets HTTP 200 from Akamai where bundled
+ * headless Chromium gets 400. Visible windows blocked an operator's desktop under
+ * four parallel agents. A window is opt-in: `STARDUST_HEADED_WINDOW=1`, for a
+ * challenge that genuinely needs a human. Every `--headed` flag means THIS tier.
+ *
+ * `channel: 'chrome'` needs Google Chrome installed; when the launch fails the
+ * bundled Chromium is launched instead with the same stealth args and a loud
+ * stderr warning (the instrument is then the lesser tier — say so in the log).
  */
 export async function launchStealthHeaded(chromium) {
-  return chromium.launch({
-    headless: false,
+  const visible = process.env.STARDUST_HEADED_WINDOW === '1';
+  const opts = {
+    headless: !visible,
     channel: 'chrome',
     args: ['--disable-blink-features=AutomationControlled'],
     ignoreDefaultArgs: ['--enable-automation'],
-  });
+  };
+  try {
+    const b = await chromium.launch(opts);
+    b.stardustTier = visible ? 'chrome-window' : 'chrome';
+    return b;
+  } catch (e) {
+    console.error(`[live-session] WARNING: real Chrome (channel: chrome) failed to launch (${String(e.message).split('\n')[0]}) — falling back to bundled Chromium with the stealth args; bot-managed origins may still block this tier`);
+    const { channel, ...rest } = opts;
+    const b = await chromium.launch(rest);
+    b.stardustTier = 'chromium-fallback';
+    return b;
+  }
 }
+/** The tier a browser from launchStealthHeaded / chromium.launch actually runs: 'chrome' | 'chrome-window' |
+ * 'chromium-fallback' (Chrome elected, not installed) | 'chromium' (elected). Every probe records it in its
+ * evidence so a run that degraded is visible in the artifact, not only in a log line. */
+export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.
