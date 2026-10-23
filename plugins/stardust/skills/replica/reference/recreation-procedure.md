@@ -612,9 +612,23 @@ portation is logged.
 
 stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
 shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
-— and a sticky one while it is stuck — is transparent, so seams neither
-repeat the chrome nor cover the content under it, and a scroll-state morph
-(a header that minimizes once scrolled) never reaches the capture.
+— and a sticky one while it is stuck — is transparent, so the seams it
+covered neither repeat it nor hide the content under it. The scan re-runs
+after every chunk's scroll: a header that turns fixed on a scroll class, or
+a widget injected later, is hidden from the chunk where it appears (a
+stderr WARNING names it), so its scrolled state does not reach the capture
+either.
+
+What it does not cover:
+- a backdrop — a fixed layer with a negative z-index or covering ≥ 90 % of
+  the viewport (a background image or video, a full-screen modal) — stays
+  in every chunk by design; an undismissed full-screen modal with consent /
+  sign-up copy is a WARNING, any other one is not;
+- fixed elements inside a shadow root, an iframe's own document, or a
+  `::before` / `::after` pseudo-element are not seen and still repeat;
+- a layer that turns fixed on scroll is in the flow in the chunks before
+  that, as on the page — chunk 1's geometry is the page's, not a clean
+  top.
 
 Replicate fixed chrome AS fixed all the same (never flattened to
 static/in-flow — that moves chunk 1's geometry), with its scroll-state

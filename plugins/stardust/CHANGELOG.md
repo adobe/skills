@@ -31,6 +31,20 @@ consent bar into every live chunk with no warning.
   marker under its chunk-2 place, a sticky label in place, an undismissable cookie bar); `gate.test.mjs` — the
   stale live capture is re-taken (the stub writes the sidecar as the real capture does).
 
+- **Review fixes:** `stitch-shot.mjs` re-scans for fixed / sticky layers after every chunk's scroll (idempotent
+  tagging), so a header a scroll class makes fixed, or a widget injected later, is hidden from where it appears — a
+  stderr WARNING names it, and `fixedLayers.late` counts them. A backdrop — negative z-index, or ≥ 90 % of the
+  viewport (`position: fixed; inset: 0` background or video) — is never hidden (`isBackdrop`); chunks 2+ no longer
+  show the body background in its place. A sticky layer is "stuck" when displaced from its own in-flow place
+  (measured as `position: static`, so one stuck at the bottom counts too). The in-page pass is `layerAction` /
+  `isBackdrop` serialized into `page.evaluate` (`layerPassScript`), no re-implementation; the opacity restore keeps the
+  page's `!important`. `gate-all.mjs` applies gate.sh's rule (`staleCapture`: no `fixedLayers` in the capture
+  record) before reusing a cached `live.png` or a `--skip-existing` origin / eds capture, and retakes a stale one.
+  gate.sh comments on reusing a record-less `live.png` corrected; `recreation-procedure.md` says what is not covered
+  (backdrops kept, shadow-root / iframe / pseudo-element layers not seen). Tests: `isBackdrop`, the backdrop case of
+  `overlaySuspects`, `layerPassScript` on a stub DOM, an end-to-end scroll-triggered header + backdrop fixture;
+  `gate-all.test` — `staleCapture`.
+
 ## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
 
 Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos and favicons the build re-hosted
