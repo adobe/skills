@@ -149,6 +149,7 @@ import { resolveProfile } from './diff-profiles.mjs';
 // editableInventory = the Experience Workspace outermost-editable classifier, shared
 // with the deploy gates (section-schema editableTexts, block-roundtrip --ew).
 import { inventory, diffInventories, summarise, editableInventory } from './content-inventory.mjs';
+import { sameImage, signElements } from './image-signature.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
 const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <buildURL> [options]
@@ -201,7 +202,7 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
 //          [data-block-name]) keyed by its first heading's text, '' when none — the scope the ICON MOVED pass pairs within first.
 /* eslint-disable no-undef */
 export function attributeInventory(args) {
-  const [rootSel] = args;
+  const [rootSel, refPrefix = 'i'] = args;
   const root = document.querySelector(rootSel) || document.querySelector('main') || document.body;
   const clean = (s) => (s || '').replace(/\s+/g, ' ').trim();
   const norm = (s) => clean(s).toLowerCase();
@@ -236,6 +237,10 @@ export function attributeInventory(args) {
     return p ? norm(textOf(p)).slice(0, 60) : '';
   };
   const attrs = []; const icons = [];
+  // every icon element gets a ref the caller screenshots for its pixel signature (image-signature.mjs)
+  const push = (el, icon) => { const ref = `${refPrefix}${icons.length}`; el.setAttribute('data-sd-icon', ref); icons.push({ ...icon, ref }); };
+  // laid out but drawn at 0×0: nothing anyone sees (a display:none subtree has no client rect and is kept)
+  const zeroBox = (el) => { const r = el.getBoundingClientRect(); return el.getClientRects().length > 0 && (r.width < 1 || r.height < 1); };
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
     if (['script', 'style', 'template', 'noscript'].includes(tag) || el.closest('script, style, template, noscript')) return;
@@ -249,15 +254,16 @@ export function attributeInventory(args) {
       const r = el.getBoundingClientRect();
       const w = r.width || el.naturalWidth || Number(el.getAttribute('width')) || 0;
       const h = r.height || el.naturalHeight || Number(el.getAttribute('height')) || 0;
-      if (w > 0 && h > 0 && w <= 64 && h <= 64) icons.push({ kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
+      if (w > 0 && h > 0 && w <= 64 && h <= 64) push(el, { kind: 'img', value: fileOf(el.currentSrc || el.src), size: `${Math.round(w)}×${Math.round(h)}`, interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     if (tag === 'svg') {
+      if (zeroBox(el)) return;
       const use = el.querySelector('use');
       const ref = (use && (use.getAttribute('href') || use.getAttribute('xlink:href'))) || '';
       const title = el.querySelector('title');
       const value = (ref.includes('#') ? ref.slice(ref.lastIndexOf('#')) : '') || clean(el.getAttribute('aria-label')) || (title && clean(title.textContent)) || `${el.getAttribute('viewBox') || 'no viewBox'} / ${el.querySelectorAll('path, circle, rect, polygon, line, polyline, ellipse').length} shape(s)`;
-      icons.push({ kind: 'svg', value, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
+      push(el, { kind: 'svg', value, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     const iconClass = [...el.classList].some((c) => ICON_CLASS.test(c));
@@ -267,16 +273,17 @@ export function attributeInventory(args) {
     if (!iconClass && !/^inline/.test(cs.display)) return; // an empty block is layout, not an icon
     if (iconClass && el.querySelector('img, svg')) return; // a wrapper — its child is the icon
     if (iconClass && !empty) return; // an icon-class element that is really a text label (ligature fonts) — the text inventory has it
+    if (zeroBox(el)) return;
     const before = pseudo(el, '::before'); const after = pseudo(el, '::after');
     if (before || after) {
       const family = getComputedStyle(el, before ? '::before' : '::after').fontFamily.split(',')[0].replace(/["']/g, '').trim();
-      icons.push({ kind: 'glyph', value: `${before}${after}`, family, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
+      push(el, { kind: 'glyph', value: `${before}${after}`, family, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) });
       return;
     }
     if (!iconClass) return; // an empty inline element with no generated content is nothing
     const mask = urlFile(cs.maskImage || cs.webkitMaskImage); const bg = urlFile(cs.backgroundImage);
-    if (mask || bg) { icons.push({ kind: 'css', value: mask ? `mask:${mask}` : `bg:${bg}`, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); return; }
-    icons.push({ kind: 'glyph', value: '', family: '', size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); // the empty icon box
+    if (mask || bg) { push(el, { kind: 'css', value: mask ? `mask:${mask}` : `bg:${bg}`, size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); return; }
+    push(el, { kind: 'glyph', value: '', family: '', size: size(el), interactive, anchor: anchorOf(el), block: blockOf(el) }); // the empty icon box
   });
   return { attrs, icons };
 }
@@ -311,7 +318,7 @@ const describeIcon = (ic) => {
 // kind + value, then same kind, then any kind at that anchor), then leftovers by IDENTITY + document order (ICON MOVED).
 // 🔴 when the element is interactive, 🟡 otherwise; MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡 (severity
 // table in the header).
-export function diffAttributes(src, tgt, prof) {
+export function diffAttributes(src, tgt, prof, accepted = []) {
   const flags = [];
   const S = prof.source; const T = prof.target; const H = { ...ATTRIBUTE_HINTS, ...(prof.hints || {}) };
   const sev = (interactive) => (interactive ? '🔴' : '🟡');
@@ -332,7 +339,9 @@ export function diffAttributes(src, tgt, prof) {
   // Three ordered passes over ALL source icons — exact (anchor + kind + value), then same kind at the anchor, then any
   // kind there — so an exact match is never stolen by an earlier source icon's fallback.
   const pairs = new Array(si.length).fill(-1); const moved = new Array(si.length).fill(false);
-  const passes = [(a, b) => b.anchor === a.anchor && b.kind === a.kind && b.value === a.value, (a, b) => b.anchor === a.anchor && b.kind === a.kind, (a, b) => b.anchor === a.anchor];
+  // "the same icon" = same kind + value, or the same pixels (sameImage: a re-hosted file, svg drawn as <img>)
+  const same = (a, b) => (b.kind === a.kind && b.value === a.value) || sameImage(a, b);
+  const passes = [(a, b) => b.anchor === a.anchor && same(a, b), (a, b) => b.anchor === a.anchor && b.kind === a.kind, (a, b) => b.anchor === a.anchor];
   for (const pred of passes) {
     si.forEach((a, k) => {
       if (pairs[k] >= 0) return;
@@ -348,8 +357,8 @@ export function diffAttributes(src, tgt, prof) {
   const ident = (ic) => `${ic.kind}\u0000${ic.value}`;
   for (const scope of [(a, b) => Boolean(a.block) && a.block === b.block, () => true]) {
     si.forEach((a, k) => {
-      if (pairs[k] >= 0 || !a.value) return;
-      const i = ti.findIndex((b, j) => !usedI[j] && ident(b) === ident(a) && scope(a, b));
+      if (pairs[k] >= 0 || (!a.value && !a.sig)) return;
+      const i = ti.findIndex((b, j) => !usedI[j] && (ident(b) === ident(a) || sameImage(a, b)) && scope(a, b));
       if (i >= 0) { usedI[i] = true; pairs[k] = i; moved[k] = true; }
     });
   }
@@ -357,6 +366,7 @@ export function diffAttributes(src, tgt, prof) {
     const i = pairs[k];
     if (i < 0) { flags.push({ sev: sev(a.interactive), kind: 'MISSING ICON', msg: `${S} ${describeIcon(a)} at ${q(a.anchor || '(no anchor)', 40)} has no ${T} icon there. ${H.MISSING_ICON}` }); return; }
     const b = ti[i];
+    if (!moved[k] && (b.kind !== a.kind || b.value !== a.value) && sameImage(a, b)) { accepted.push({ kind: b.kind === a.kind ? 'SAME IMAGE' : 'SAME ICON', text: `${a.value || a.kind} ↔ ${b.value || b.kind}` }); return; }
     if (moved[k]) flags.push({ sev: '🟡', kind: 'ICON MOVED', msg: `${S} ${describeIcon(a)} at ${q(a.anchor || '(no anchor)', 40)} is at ${q(b.anchor || '(no anchor)', 40)} in the ${T} — same icon, paired by order${a.block && a.block === b.block ? ` within ${q(a.block, 40)}` : ''}. ${H.ICON_MOVED}` });
     else if (b.kind !== a.kind) flags.push({ sev: '🟡', kind: 'ICON KIND', msg: `${S} ${describeIcon(a)} vs ${T} ${describeIcon(b)} at ${q(a.anchor, 40)}. ${H.ICON_KIND}` });
     else if (b.value !== a.value) flags.push({ sev: sev(a.interactive || b.interactive), kind: 'ICON DIFF', msg: `${S} ${describeIcon(a)} vs ${T} ${describeIcon(b)} at ${q(a.anchor, 40)}. ${H.ICON_DIFF}` });
@@ -399,7 +409,6 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   lines.push(`  ${S}: ${summarise(s)}`);
   lines.push(`  ${T}: ${summarise(t)}`);
   const { flags, accepted } = diffInventories(s.items || [], t.items || [], prof);
-  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${accepted.length} ROLE UPGRADE body → heading, same look — ${accepted.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${accepted.length > 4 ? ' …' : ''}`);
   // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace editability contract): the canvas can
   // only attach an editor to an OUTERMOST h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
   // source means authored elements were rebuilt/merged into wrappers or text.
@@ -408,8 +417,14 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   if (tgtEd < srcEd) flags.push({ sev: '🟡', kind: 'EDITABLE COUNT', msg: `${T} has ${tgtEd} outermost editable element(s) vs ${srcEd} in the ${S} — fewer outermost editable elements after decoration usually means authored elements were rebuilt/merged — see deploy SKILL.md § Experience Workspace editability contract (run ew-editability-probe.mjs on the build URL for the per-block verdict).` });
   const sA = s.attrs || { attrs: [], icons: [] }; const tA = t.attrs || { attrs: [], icons: [] };
   lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
-  flags.push(...diffAttributes(sA, tA, prof));
-  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines };
+  flags.push(...diffAttributes(sA, tA, prof, accepted));
+  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${acceptedLine(accepted)}`);
+  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted };
+}
+// Pure: "23 ROLE UPGRADE — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
+export function acceptedLine(accepted) {
+  const kinds = [...new Set(accepted.map((x) => x.kind))];
+  return kinds.map((k) => { const xs = accepted.filter((x) => x.kind === k); return `${xs.length} ${k} — ${xs.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${xs.length > 4 ? ' …' : ''}`; }).join('; ');
 }
 export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}]` : ''}: ${f.msg}`;
 
@@ -472,10 +487,14 @@ async function grab(browser, url, opts, prof, roots) {
     if (found !== 'yes' && !root.primary) { invs[root.name] = { ...EMPTY_INVENTORY(), absent: true }; continue; }
     const inv = await page.evaluate(inventory, [root.sel, prof.eyebrow]);
     inv.editable = await page.evaluate(editableInventory, [root.sel]);
-    inv.attrs = await page.evaluate(attributeInventory, [root.sel]);
+    inv.attrs = await page.evaluate(attributeInventory, [root.sel, `r${roots.indexOf(root)}i`]);
     if (found !== 'yes') inv.fellBack = found;
     invs[root.name] = inv;
   }
+  // pixel signatures of the visible icons, after every inventory (the screenshots scroll the page)
+  const icons = Object.values(invs).flatMap((inv) => (inv.attrs ? inv.attrs.icons : []));
+  const sigs = await signElements(page, icons.map((ic) => ({ ref: ic.ref, selector: `[data-sd-icon="${ic.ref}"]` })));
+  icons.forEach((ic) => { if (sigs.has(ic.ref)) ic.sig = sigs.get(ic.ref); });
   await ctx.close();
   return invs;
 }

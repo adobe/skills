@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
+
+Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos and favicons the build re-hosted
+under `media_<hash>` — mean pixel difference 0–1.2 / 255, same size — because DA renames every file and identity was
+the file name; 3 🔴 MISSING ICON were laid-out 0×0 inline svgs on the source (nothing to see); 2 more were inline-svg
+logos the build draws as `<img src="*.svg">`.
+
+- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot composited on
+  white and averaged to a 12 × 12 grey grid. `sameImage` = mean |Δ| ≤ 12 / 255 with boxes within 2 px; a near-uniform
+  grid (an empty box, an unrendered glyph) is never an identity. `signElements` screenshots visible elements only.
+- **`content-diff.mjs`:** `attributeInventory` tags each icon with a ref (`data-sd-icon`) that the probe signs after
+  every inventory; laid-out 0×0 svg / glyph / css icons are skipped (a `display:none` subtree is kept, compared by
+  name as before). Pairing treats the same pixels as the same icon in the anchor and ICON MOVED passes; a pair that
+  differs only by file or technique but not by pixels is accepted — `SAME IMAGE` / `SAME ICON` on the root's
+  `accepted` line with the ROLE UPGRADEs (`acceptedLine`, one group per kind) — never a finding. A different logo
+  stays 🔴 ICON DIFF.
+- Docs: `diff/SKILL.md` § Reading content-diff — one line for pixel identity; ICON MOVED / ICON KIND trimmed.
+- Tests: new `test/image-signature.test.mjs` (distance, blank, sameImage); `content-diff.test.mjs` end to end —
+  re-hosted file, svg vs `<img>`, a genuinely different logo, a 0×0 svg; the flag fixture now carries two different
+  flags.
+
 ## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
 
 Field learning (a recorded replica gate on a home page): 23 of its structural 🔴 were ROLE SWAP for footer and

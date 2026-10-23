@@ -236,6 +236,8 @@ if (playwrightOk) {
     .fa-facebook::before{content:"\\f09a"} .icon{display:inline-block;width:16px;height:16px} img.flag{width:24px;height:16px}
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
+  // a mark with structure (a solid fill is a blank signature — no identity to pair by)
+  const mark = (fill) => `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#fff"/><circle cx="8" cy="8" r="6" fill="${fill}"/></svg>`;
   const pages = {
     '/source.html': page('<h1>Welcome</h1><form><input type="search" placeholder="Suche…" aria-label="Suche"></form><p>Body copy here.</p>'
       + '<a href="/de/" class="lang"><img class="flag" src="/flag-de.svg" alt=""> Deutsch</a>'
@@ -253,7 +255,19 @@ if (playwrightOk) {
     // visually hidden description dropped by the build
     '/role-source.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><div class="t">Trending</div><p>Chart <span class="sr">search volume grew from 1K to 9K</span></p>'),
     '/role-build.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}</style><h3 class="t">Trending</h3><p>Chart</p>'),
-    '/flag-de.svg': svg, '/flag-en.svg': svg,
+    // the same logo re-hosted under a media hash, the same mark drawn as inline svg vs <img>, a genuinely different
+    // logo, and a laid-out 0×0 svg on the source only
+    '/icons-source.html': page('<a href="/a" class="tool"><img src="/logo-a.svg" width="24" height="16" alt=""> Alpha</a>'
+      + `<a href="/b" class="tool">${mark('#888')} Beta</a>`
+      + '<a href="/c" class="tool"><img src="/logo-c.svg" width="24" height="16" alt=""> Gamma</a>'
+      + '<p>Text <svg width="0" height="0"><rect width="1" height="1"/></svg> here.</p>'),
+    '/icons-build.html': page('<a href="/a" class="tool"><img src="/media_1a2b.svg" width="24" height="16" alt=""> Alpha</a>'
+      + '<a href="/b" class="tool"><img src="/media_3c4d.svg" width="24" height="16" alt=""> Beta</a>'
+      + '<a href="/c" class="tool"><img src="/media_5e6f.svg" width="24" height="16" alt=""> Gamma</a>'
+      + '<p>Text here.</p>'),
+    '/logo-a.svg': mark('#2a6'), '/media_1a2b.svg': mark('#2a6'), '/media_3c4d.svg': mark('#888'),
+    '/logo-c.svg': mark('#2a6'), '/media_5e6f.svg': mark('#c00'),
+    '/flag-de.svg': svg, '/flag-en.svg': svg.replace('#888', '#c00'),
   };
   const server = createServer((req, res) => {
     const path = req.url.split('?')[0]; const body = pages[path];
@@ -305,10 +319,18 @@ if (playwrightOk) {
   await check('e2e: a same-look div → heading is accepted (named on the root, not a finding); the dropped sr-only description is 🟡 MISSING SR-ONLY TEXT; 0 structural 🔴', async () => {
     const r = await run([`${base}/role-source.html`, `${base}/role-build.html`, '--profile', 'generic', '--width', '1280']);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /^ {2}accepted \(invisible, nothing lost\): 1 ROLE UPGRADE body → heading, same look — "Trending"$/m, r.stdout);
+    assert.match(r.stdout, /^ {2}accepted \(invisible, nothing lost\): 1 ROLE UPGRADE — "Trending"$/m, r.stdout);
     assert.doesNotMatch(r.stdout, /ROLE SWAP/, r.stdout);
     assert.match(r.stdout, /🟡 MISSING SR-ONLY TEXT \[main\]: source body "search volume grew from 1K to 9K"/, r.stdout);
     assert.match(r.stdout, /^Findings: \d+ \(0 structural 🔴\)$/m, r.stdout);
+  });
+  await check('e2e: icons pair by pixels — a re-hosted file is SAME IMAGE, inline svg vs <img> of the same mark is SAME ICON (both accepted, no finding); a different logo stays 🔴 ICON DIFF; a laid-out 0×0 svg is not an icon', async () => {
+    const r = await run([`${base}/icons-source.html`, `${base}/icons-build.html`, '--profile', 'generic', '--width', '1280']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /accepted \(invisible, nothing lost\): 1 SAME IMAGE — "logo-a\.svg ↔ media_1a2b\.svg"; 1 SAME ICON — "[^"]+ ↔ media_3c4d\.svg"$/m, r.stdout);
+    assert.match(r.stdout, /^ {2}attributes \(placeholder\/aria-label\/title\): source 0 \/ build 0; icons: source 3 \/ build 3$/m, r.stdout);
+    assert.match(r.stdout, /^Findings: 1 \(1 structural 🔴\)$/m, r.stdout);
+    assert.match(r.stdout, /🔴 ICON DIFF \[main\]: source image logo-c\.svg \(24×16\) vs build image media_5e6f\.svg \(24×16\) at "gamma"/, r.stdout);
   });
   server.close();
 }
