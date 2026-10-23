@@ -284,12 +284,13 @@ export function parseVerdict(text) {
   return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
 }
 // content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`, then `Tiers: looks-same 🔴 S ·
-// nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count (0 when
-// an older probe printed no tiers).
+// nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count of the
+// SAME round as the last Findings line — on that line or the Tiers line right after it (0 when an older probe printed
+// no tiers), never a count from another round of a multi-round log.
 export function parseFindings(text) {
-  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$/gm)].pop();
+  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$(?:\r?\nTiers: [^\n]*)?/gm)].pop();
   if (!m) return null;
-  const tiers = [...text.matchAll(/nothing-lost 🟡 (\d+)/g)].pop();
+  const tiers = /nothing-lost 🟡 (\d+)/.exec(m[0]);
   return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), lost: tiers ? Number(tiers[1]) : 0, text: m[1].trim() };
 }
 // media-reconcile: last line `<n> keep · <n> optimize · <n> omit …` — one `<n> <decision>` per decision that occurred.

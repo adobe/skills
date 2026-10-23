@@ -435,10 +435,10 @@ and the fidelity gate measures the rendered DOM the same way.
 content-diff classifies every string by **DOM wrapping + computed style**,
 never by text alone: a string inside an `<a>` is a CTA, an uppercase
 small-type node an eyebrow, an `<h*>` a heading. Severity follows
-visibility: a `<div>` title rebuilt as a heading with the same computed
-look is an accepted ROLE UPGRADE, a heading flattened to same-looking body
-is 🟡 ROLE DOWNGRADE, and only a role change that changes the look is
-🔴 ROLE SWAP. So mirror the live **look** and every link per string;
+visibility: a `<div>` title (body or small-caps eyebrow) rebuilt as a
+heading with the same computed look is an accepted ROLE UPGRADE, a heading
+flattened to same-looking body or eyebrow is 🟡 ROLE DOWNGRADE, and any
+other role change (a link included) is 🔴 ROLE SWAP. So mirror the live **look** and every link per string;
 improve the semantics where the look holds. When iteration 1 opens with a
 wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
 page has a span, or the reverse), fix those first and re-run before
@@ -612,9 +612,23 @@ portation is logged.
 
 stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
 shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
-— and a sticky one while it is stuck — is transparent, so seams neither
-repeat the chrome nor cover the content under it, and a scroll-state morph
-(a header that minimizes once scrolled) never reaches the capture.
+— and a sticky one while it is stuck — is transparent, so the seams it
+covered neither repeat it nor hide the content under it. The scan re-runs
+after every chunk's scroll: a header that turns fixed on a scroll class, or
+a widget injected later, is hidden from the chunk where it appears (a
+stderr WARNING names it), so its scrolled state does not reach the capture
+either.
+
+What it does not cover:
+- a backdrop — a fixed layer with a negative z-index or covering ≥ 90 % of
+  the viewport (a background image or video, a full-screen modal) — stays
+  in every chunk by design; an undismissed full-screen modal with consent /
+  sign-up copy is a WARNING, any other one is not;
+- fixed elements inside a shadow root, an iframe's own document, or a
+  `::before` / `::after` pseudo-element are not seen and still repeat;
+- a layer that turns fixed on scroll is in the flow in the chunks before
+  that, as on the page — chunk 1's geometry is the page's, not a clean
+  top.
 
 Replicate fixed chrome AS fixed all the same (never flattened to
 static/in-flow — that moves chunk 1's geometry), with its scroll-state

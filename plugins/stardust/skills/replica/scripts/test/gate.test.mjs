@@ -81,7 +81,7 @@ stub(diff, 'content-diff.mjs', `
   if (process.env.STUB_CD_RC) { console.error('content-diff error: build side answered HTTP 502'); process.exit(Number(process.env.STUB_CD_RC)); }
   const s = Number(process.env.STUB_STRUCTURAL || 0); const l = Number(process.env.STUB_LOST || 0);
   console.log('  live: 12 headings'); console.log('Findings: ' + (s || l ? (s + l + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));
-  console.log('Tiers: looks-same 🔴 ' + s + ' · nothing-lost 🟡 ' + l + ' · accepted 🟢 0 · advisory ' + (s || l ? 2 : 0));`);
+  console.log('Tiers: looks-same 🔴 ' + s + ' · nothing-lost 🟡 ' + l + ' · accepted 🟢 0 (owner 0, auto 0) · advisory ' + (s || l ? 2 : 0));`);
 stub(diff, 'clip-probe.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
   const n = Number(process.env.STUB_CLIPPED || 0);

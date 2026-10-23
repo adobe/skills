@@ -154,7 +154,7 @@ deploy Step 10, on the live host before handover (`done-check` `header_parity`),
 ## Reading content-diff
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
-- 🔴 **ROLE SWAP** — same text under a different role that also changes the look (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. The same look is not a swap: body → heading is an accepted ROLE UPGRADE (named on the root, never a finding), heading → body 🟡 ROLE DOWNGRADE. Lost visually hidden text is 🟡 MISSING SR-ONLY TEXT.
+- 🔴 **ROLE SWAP** — same text under a different role that also changes the look (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. The same look is not a swap: body/eyebrow → heading is an accepted ROLE UPGRADE (named on the root and in `--json` `accepted`, never a finding), heading → body/eyebrow 🟡 ROLE DOWNGRADE. Lost visually hidden text is 🟡 MISSING SR-ONLY TEXT; a lost sr-only link (a skip link) stays 🔴 MISSING CTA.
 - 🔴 **MISSING PLACEHOLDER, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡. A lost aria-label is 🟡 nothing-lost anywhere (invisible, still fails the gate).
 - Icons pair by identity or by **the same pixels**: a re-hosted file (SAME IMAGE) or an svg drawn as `<img>` (SAME ICON) is accepted. A laid-out 0×0 icon is not one.
 - 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon at another anchor, paired after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): CONFIRM its placement. 🟡 **ICON KIND** (pixels not compared, e.g. a hidden icon) and every **EXTRA**.
@@ -191,5 +191,6 @@ block's flattened-shape fallback, not the authoring.
 ## Workflow use
 
 Call both scripts in a validation phase and gate on the output, as deploy's Validate phase does on a served,
-decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags
-(unless justified) and every content-diff 🔴, confirm 🟡/🟠, loop until both are clean.
+decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP/
+HEADING FACE flags (unless justified — a font substitution is one `HEADING FACE ×N` line) and every content-diff 🔴,
+confirm 🟡/🟠, loop until both are clean.

@@ -25,9 +25,10 @@
  * against the first unused same-key target item (duplicates count correctly)
  * and returns { flags, matchedCount, accepted }. Severity follows visibility:
  * a role change that keeps the computed look (size, weight, colour, case, face)
- * is not visible — body → heading is an accepted ROLE UPGRADE, heading → body a
- * 🟡 ROLE DOWNGRADE; any other role change is 🔴 ROLE SWAP. Lost screen-reader-only
- * text is 🟡 MISSING SR-ONLY TEXT whatever its role. All stack-specific labels + hints come
+ * is not visible — body/eyebrow → heading is an accepted ROLE UPGRADE, heading →
+ * body/eyebrow a 🟡 ROLE DOWNGRADE; any other role change is 🔴 ROLE SWAP. Lost
+ * screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its role, except a CTA
+ * (a lost skip link stays 🔴 MISSING CTA). All stack-specific labels + hints come
  * from a diff-profiles.mjs profile. Pass fontDelta: Infinity to suppress the
  * FONT FORK pass (the in-loop harness renders with local fonts, so face
  * fidelity is Step 4/10's business there, not the round-trip's).
@@ -94,24 +95,55 @@ export function inventory(args) {
       !== widthOf(s, '__no_such_face__,monospace', cs.fontWeight);
     return { w, family: loaded ? named : `${named}→sys`, loaded, look: `${cs.fontSize} ${cs.fontWeight} ${cs.color} ${cs.textTransform}` };
   };
-  // visually hidden but read by assistive tech: the sr-only clip, a 1 px box, or off-screen
-  const srOnly = (el, cs) => {
-    if (cs.clip === 'rect(0px, 0px, 0px, 0px)' || cs.clipPath === 'inset(50%)') return true;
-    const r = el.getBoundingClientRect();
-    return cs.position === 'absolute' && ((r.width <= 1 && r.height <= 1) || r.right < 0 || r.left < -999);
+  // visually hidden but read by assistive tech — the element or one of its 3 nearest ancestors
+  // (<div class="sr-only"><p>…</p></div>) carries the sr-only pattern: the clip / clip-path, or,
+  // while RENDERED and absolutely positioned, a ≤1 px overflow-clipped box or its own left/top
+  // pushed off-screen (-9999px). display:none (no client rects: a closed flyout, a tooltip) is
+  // hidden from everyone, and a slide translated off-screen by its track is visible content.
+  const hidesText = (n) => {
+    const c = getComputedStyle(n);
+    if (c.clip === 'rect(0px, 0px, 0px, 0px)' || c.clipPath === 'inset(50%)') return true;
+    if ((c.position !== 'absolute' && c.position !== 'fixed') || !n.getClientRects().length) return false;
+    const r = n.getBoundingClientRect();
+    return (r.width <= 1 && r.height <= 1 && c.overflow !== 'visible') || parseFloat(c.left) <= -999 || parseFloat(c.top) <= -999;
   };
+  const srOnly = (el) => { for (let n = el, k = 0; n && k < 4; n = n.parentElement, k++) if (hidesText(n)) return true; return false; };
 
   // Not page copy: inline JSON / tag-manager <noscript> frames / helper CSS, and the
   // common consent managers' banners (their accept controls: live-session CONSENT_CANDIDATES).
   const PAYLOAD = 'script, noscript, style, template';
+  // In-page, so not importable: test/content-diff.test.mjs pins every copy to CONSENT_CANDIDATES.
   const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
-  // A link's label: its text minus inline-svg <title>/<text> (an <img> icon contributes
-  // nothing either), so an svg-icon link and an img-icon link read the same.
-  const labelOf = (a) => {
+  // text under `node` minus inline-svg <title>/<text> and payloads, and minus any node `skip(parent)` rejects
+  const textOf = (node, skip) => {
     let s = '';
-    const walk = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
-    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest(`svg, ${PAYLOAD}`)) s += ` ${n.textContent}`;
+    const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest(`svg, ${PAYLOAD}`) && !(skip && skip(n.parentElement))) s += ` ${n.textContent}`;
     return clean(s);
+  };
+  const upTo = (el, a, test) => { for (let e = el; e && e !== a; e = e.parentElement) if (test(e)) return true; return false; };
+  // A CARD LINK wraps blocks — 2+ text-bearing blocks, or a heading beside an image
+  // (<a><img><h3>T</h3><p>D</p></a>): its blocks are inventoried as what they are
+  // (heading / body), never collapsed into one CTA, and the link is a CTA only for
+  // its own text outside them ("Read more").
+  const BLOCKS = 'h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, pre, figcaption, td, th, div, section, article, header, footer';
+  const cards = new Map();
+  const isCard = (a) => {
+    if (!cards.has(a)) {
+      const texty = [...a.querySelectorAll(BLOCKS)].filter((b) => textOf(b));
+      const leaves = texty.filter((b) => !texty.some((o) => o !== b && b.contains(o)));
+      cards.set(a, leaves.length >= 2 || Boolean(a.querySelector('img, picture') && texty.some((b) => /^H[1-6]$/.test(b.tagName))));
+    }
+    return cards.get(a);
+  };
+  const inBlock = (el, a) => upTo(el, a, (e) => e.matches(BLOCKS));
+  // A link's label: its text minus inline-svg <title>/<text> (an <img> icon contributes
+  // nothing either), so an svg-icon link and an img-icon link read the same. A card
+  // link's blocks are left out; so is an image/svg link's sr-only text — a logo's
+  // hidden "Home" is no more a CTA than an alt-only logo is.
+  const labelOf = (a) => {
+    const card = isCard(a); const media = Boolean(a.querySelector('img, picture, svg'));
+    return textOf(a, (p) => (card && inBlock(p, a)) || (media && upTo(p, a, hidesText)));
   };
 
   const out = [];
@@ -134,12 +166,13 @@ export function inventory(args) {
     // A text CTA: an <a> whose label is text. Use the FULL label so
     // <strong><a>…</a></strong> and <a><strong>…</strong></a> both resolve, then
     // skip the link's inner nodes below via closest('a'). A link with an icon AND
-    // text is a text CTA whatever draws the icon; a text-less image/logo link is not.
+    // text is a text CTA whatever draws the icon; a text-less image/logo link is not;
+    // a card link is a CTA only for its own text outside its blocks.
     if (tag === 'a') {
       const t = labelOf(el);
       if (!t) return;
       const cs = getComputedStyle(el);
-      out.push({ role: 'cta', order: order++, text: t, key: norm(t), href: el.getAttribute('href') || '', ...face(norm(t), cs), srOnly: srOnly(el, cs) });
+      out.push({ role: 'cta', order: order++, text: t, key: norm(t), href: el.getAttribute('href') || '', ...face(norm(t), cs), srOnly: srOnly(el) });
       return;
     }
 
@@ -147,10 +180,11 @@ export function inventory(args) {
     // isn't double-counted (the <p> carries the text, the <div> is empty).
     const own = clean([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' '));
     if (!own) return;
-    if (el.closest('a')) return; // text inside a link — already captured by the <a>
+    const link = el.closest('a');
+    if (link && !(isCard(link) && inBlock(el, link))) return; // text inside a link — captured by the <a>; a card link's blocks are not
 
     const cs = getComputedStyle(el);
-    const item = { order: order++, text: own, key: norm(own), ...face(norm(own), cs), srOnly: srOnly(el, cs) };
+    const item = { order: order++, text: own, key: norm(own), ...face(norm(own), cs), srOnly: srOnly(el) };
     if (/^h[1-6]$/.test(tag)) item.role = 'heading';
     else if (cs.textTransform === 'uppercase' && parseFloat(cs.fontSize) <= eyebrow.maxFontPx && own.length <= eyebrow.maxLen) item.role = 'eyebrow';
     else item.role = 'body';
@@ -204,7 +238,7 @@ export function diffInventories(srcItems, tgtItems, prof) {
     const i = findTgt(p.key, p.role);
     if (i < 0) {
       const where = `${S} ${p.role} "${p.text.slice(0, 48)}"`;
-      if (p.srOnly) flags.push({ sev: '🟡', kind: 'MISSING SR-ONLY TEXT', msg: `${where} (visually hidden, read by assistive tech) not found in ${T}. ${H.MISSING_SR_ONLY}` });
+      if (p.srOnly && p.role !== 'cta') flags.push({ sev: '🟡', kind: 'MISSING SR-ONLY TEXT', msg: `${where} (visually hidden, read by assistive tech) not found in ${T}. ${H.MISSING_SR_ONLY}` });
       else if (p.role === 'cta') flags.push({ sev: '🔴', kind: 'MISSING CTA', msg: `${where}${p.href ? ` → ${p.href}` : ''} has no ${T} link. ${H.MISSING_CTA}` });
       else if (p.role === 'heading') flags.push({ sev: '🔴', kind: 'MISSING HEADING', msg: `${where} has no ${T} heading of the same text. ${H.MISSING_HEADING}` });
       else if (p.role === 'eyebrow') flags.push({ sev: '🔴', kind: 'MISSING EYEBROW', msg: `${where} has no ${T} match. ${H.MISSING_EYEBROW}` });
@@ -214,10 +248,12 @@ export function diffInventories(srcItems, tgtItems, prof) {
     used[i] = true;
     const e = tgtItems[i];
     if (e.role !== p.role) {
-      // a heading ↔ body change that keeps the computed look is not visible: semantics may improve, a lost heading is 🟡
+      // a heading ↔ body/eyebrow change that keeps the computed look is not visible: semantics may improve, a lost heading
+      // is 🟡 (a small uppercase <div> group title is an eyebrow, the same-look <h3> a heading). A CTA change is never this.
       const sameLook = p.look && p.look === e.look && p.family === e.family;
-      if (sameLook && p.role === 'body' && e.role === 'heading') accepted.push({ kind: 'ROLE UPGRADE', text: p.text.slice(0, 40) });
-      else if (sameLook && p.role === 'heading' && e.role === 'body') flags.push({ sev: '🟡', kind: 'ROLE DOWNGRADE', msg: `"${p.text.slice(0, 40)}" is a heading in the ${S} but body in ${T}, same look — the outline lost it; restore the heading element.` });
+      const plain = (r) => r === 'body' || r === 'eyebrow';
+      if (sameLook && plain(p.role) && e.role === 'heading') accepted.push({ kind: 'ROLE UPGRADE', from: p.role, text: p.text.slice(0, 40) });
+      else if (sameLook && p.role === 'heading' && plain(e.role)) flags.push({ sev: '🟡', kind: 'ROLE DOWNGRADE', msg: `"${p.text.slice(0, 40)}" is a heading in the ${S} but ${e.role} in ${T}, same look — the outline lost it; restore the heading element.` });
       else flags.push({ sev: '🔴', kind: 'ROLE SWAP', msg: `"${p.text.slice(0, 40)}" is a ${p.role} in the ${S} but a ${e.role} in ${T} — ${H.ROLE_SWAP}` });
     }
     matched.push({ p, e });
