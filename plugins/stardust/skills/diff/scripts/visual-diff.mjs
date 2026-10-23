@@ -16,7 +16,7 @@
  * Image and heading flags are TWO-SIDED: a build image is "stretched" only when
  * `object-fit: fill` distorts it AND its source counterpart (same rendered box,
  * same natural ratio) is not distorted the same way; a matched heading is
- * flagged when its size or family (case-insensitive) differs from the source.
+ * flagged when its size or family (normalised name) differs from the source.
  *
  * Usage:
  *   node skills/diff/scripts/visual-diff.mjs <prototypeURL> <edsURL> [options]
@@ -298,11 +298,28 @@ export function sourceTwin(img, sourceImages, used = new Set()) {
   return sourceImages[i];
 }
 
-// Pure: a matched heading's size (> 1 px) or family (case-insensitive) differs.
+// Pure: a family name as one face — the first family of a stack, unquoted, lowercased, without the packaging
+// suffixes a self-hosted copy adds ("Manrope Variable", "InterVF", "Inter Var", "Lato-Bold"). Never empty when given a name.
+const FACE_SUFFIX = /(?:[\s_-]+(?:variable|var|vf|thin|hairline|extra[\s-]?light|ultra[\s-]?light|light|regular|book|medium|semi[\s-]?bold|demi[\s-]?bold|bold|extra[\s-]?bold|ultra[\s-]?bold|black|heavy)|vf)$/;
+export function normFamily(f) {
+  let s = String(f || '').split(',')[0].trim().replace(/^["']|["']$/g, '').trim().toLowerCase();
+  for (let next = s.replace(FACE_SUFFIX, '').trim(); next && next !== s; next = s.replace(FACE_SUFFIX, '').trim()) s = next;
+  return s;
+}
+
+// Pure: a matched heading's size (> 1 px) or family (normFamily) differs.
 export function headingFaceDiffers(src, build) {
   const px = (v) => parseFloat(v) || 0;
   if (Math.abs(px(src.fontSize) - px(build.fontSize)) > 1) return true;
-  return Boolean(src.family && build.family && src.family.toLowerCase() !== build.family.toLowerCase());
+  return Boolean(src.family && build.family && normFamily(src.family) !== normFamily(build.family));
+}
+
+// Pure: [source, build] heading pairs by text (lowercased) in document order — the nth build "Learn more" pairs with
+// the nth source one, never all with the last.
+export function pairHeadings(sourceHeadings, buildHeadings) {
+  const queues = new Map();
+  sourceHeadings.forEach((h) => { const k = h.text.toLowerCase(); if (!queues.has(k)) queues.set(k, []); queues.get(k).push(h); });
+  return buildHeadings.map((h) => [(queues.get(h.text.toLowerCase()) || []).shift(), h]).filter(([p]) => p);
 }
 
 export function redFlags(eds, proto, prof) {
@@ -354,16 +371,23 @@ export function redFlags(eds, proto, prof) {
     });
     // Font mismatch: a named display/body face that loaded in the source but not
     // the target = a missing @font-face silently falling back to serif/sans.
-    // Heading face: a matched heading at another size or in another family (names
-    // compared case-insensitively — "Manrope" and "manrope" are one face).
-    const pFont = new Map(proto.headings.map((h) => [h.text.toLowerCase(), h]));
-    eds.headings.forEach((h) => {
-      const p = pFont.get(h.text.toLowerCase());
-      if (p && p.fontLoaded && !h.fontLoaded && h.family) {
+    // Heading face: a matched heading at another size or in another family (normFamily —
+    // "Manrope Variable" and "manrope" are one face). When every face difference is the same
+    // family pair, that substitution is ONE ×N line (one thing to justify), plus any size differences.
+    const faceDiffs = [];
+    pairHeadings(proto.headings, eds.headings).forEach(([p, h]) => {
+      if (p.fontLoaded && !h.fontLoaded && h.family) {
         flags.push(`FONT MISMATCH: heading "${h.text}" wants "${h.family}" but it did NOT load in ${T} (silent fallback). ${H.FONT_MISMATCH}`);
-      } else if (p && headingFaceDiffers(p, h)) {
-        flags.push(`HEADING FACE: <${h.tag}> "${h.text}" is ${h.fontSize} ${h.family} in ${T} vs ${p.fontSize} ${p.family} in ${S}.`);
-      }
+      } else if (headingFaceDiffers(p, h)) faceDiffs.push([p, h]);
+    });
+    const famKey = ([p, h]) => (p.family && h.family && normFamily(p.family) !== normFamily(h.family) ? `${normFamily(p.family)}→${normFamily(h.family)}` : '');
+    const one = faceDiffs.length > 1 && famKey(faceDiffs[0]) && faceDiffs.every((d) => famKey(d) === famKey(faceDiffs[0]));
+    if (one) {
+      const [p0, h0] = faceDiffs[0];
+      flags.push(`HEADING FACE ×${faceDiffs.length}: "${p0.family}" → "${h0.family}" on every differing heading (${S} → ${T}). ${H.HEADING_FACE}`);
+    }
+    faceDiffs.filter(([p, h]) => !one || Math.abs((parseFloat(p.fontSize) || 0) - (parseFloat(h.fontSize) || 0)) > 1).forEach(([p, h]) => {
+      flags.push(`HEADING FACE: <${h.tag}> "${h.text}" is ${h.fontSize} ${h.family} in ${T} vs ${p.fontSize} ${p.family} in ${S}. ${H.HEADING_FACE}`);
     });
   }
   eds.images.filter((i) => i.failedToLoad).forEach((i) => {
@@ -371,13 +395,22 @@ export function redFlags(eds, proto, prof) {
   });
   // Two-sided: a stretch the source shares (same rendered box, same natural ratio, distorted on both) is the
   // source's own look, not a build defect; the source cropping the same image (cover) while the build distorts it is.
+  // A fill twin that is not stretched sits inside the ±4 % pairing tolerance, under the stretch threshold.
   const used = new Set();
   eds.images.filter((i) => i.stretched).forEach((i) => {
     const twin = proto ? sourceTwin(i, proto.images, used) : null;
     if (twin && twin.stretched) return;
-    const how = twin ? ` (${S}: object-fit ${twin.fit} at the same box)` : '';
+    let how = twin ? ` (${S}: object-fit ${twin.fit} at the same box)` : '';
+    if (twin && twin.fit === 'fill') how = ` (${S}: undistorted fill at the same box, its ratio under the 4 % threshold)`;
     flags.push(`STRETCHED IMAGE: ${i.src} natural ${i.natural} → rendered ${i.rendered}${how}. ${H.STRETCHED}`);
   });
+  // The other way round, informational: the source distorts an image the build crops — a fidelity difference.
+  if (proto) {
+    eds.images.filter((i) => !i.stretched && i.fit !== 'fill').forEach((i) => {
+      const twin = sourceTwin(i, proto.images, used);
+      if (twin && twin.stretched) flags.push(`IMAGE FIT (info): ${i.src} natural ${i.natural} → rendered ${i.rendered} is object-fit ${i.fit} in ${T}; ${S} stretches it (fill) at the same box. ${H.IMAGE_FIT}`);
+    });
+  }
   eds.flushText.forEach((f) => {
     flags.push(`FLUSH-LEFT TEXT: <${f.tag}> "${f.text}" sits at left ${f.left}px (no padding). ${H.FLUSH_LEFT}`);
   });

@@ -34,8 +34,8 @@
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
  *     --live-cache <f>   reuse the live side's measurement from <f> (JSON) when it
- *                        exists for the same URL, width and region selectors; probe
- *                        and write it otherwise. Same contract as gate.sh's live.png:
+ *                        exists for the same probe version, URL, width and region
+ *                        selectors; probe and write it otherwise. Same contract as gate.sh's live.png:
  *                        one live navigation per breakpoint per full gate run, delete
  *                        the file to re-probe. Convention:
  *                        stardust/replica/gates/<slug>-<w>/chrome-live.json
@@ -54,7 +54,7 @@
  *     covering it, else the nearest ancestor's);
  *   - icons pair by pixels too (../../diff/scripts/image-signature.mjs): a
  *     re-hosted file or an svg drawn as <img> is no delta;
- *   - a region whose box and paired texts all moved by one Δy is ONE advisory
+ *   - a region whose box and EVERY paired text moved by one Δy is ONE advisory
  *     OFFSET line (content identical — the page above differs in height), not
  *     counted in the exit code. Exit 0 = parity within tolerance,
  * 2 = deltas printed (fix them, re-run), 1 = error, 3 = bot challenge on the
@@ -295,7 +295,7 @@ export function compareRegion(name, L, B, tol) {
     if (d.length) r.findings.push({ kind: 'ICON', text: a.near, msg: `icon #${i}${a.near ? ` near "${a.near}"` : ''}: ${d.join('; ')}` });
   }
   r.inventory = { live: { atoms: L.atoms.length, icons: L.icons.length }, build: { atoms: B.atoms.length, icons: B.icons.length } };
-  r.findings = collapseOffset(r.findings);
+  r.findings = collapseOffset(r.findings, r.pairs);
   return r;
 }
 
@@ -312,16 +312,21 @@ export function markAccepted(region, list) {
   return region;
 }
 
-// Pure: a region whose box and paired texts all moved by ONE Δy (±2 px) and nothing else is one advisory OFFSET line —
-// the chrome is identical, the page above it is a different height. Other findings are kept as they are.
+// Pure: a region whose own box moved by ONE Δy, with EVERY paired text (≥ 2) moved by that Δy (±2 px), is one advisory
+// OFFSET line — the chrome is identical, the page above it is a different height. Texts that moved inside a box that did
+// not (a nav row sitting low in a fixed-height header), or only some of the texts, are real deltas and stay. A pair that
+// moved AND changed otherwise counts as moved but is kept as it is; other findings are kept as they are.
 const DY_ONLY = /^(?:tag <\w+> → <\w+>; )?Δy ([+-]?\d+)px \(\d+→\d+\)$/;
-export function collapseOffset(findings) {
-  const shifts = findings.filter((f) => (f.kind === 'PAIR' || f.kind === 'REGION BOX') && DY_ONLY.test(f.msg));
-  if (shifts.length < 3) return findings;
-  const dys = shifts.map((f) => Number(f.msg.match(DY_ONLY)[1]));
-  if (Math.max(...dys) - Math.min(...dys) > 2) return findings;
-  const texts = shifts.filter((f) => f.kind === 'PAIR').length;
-  const offset = { kind: 'OFFSET', advisory: true, msg: `the region${texts ? ` and its ${texts} paired text(s)` : ''} sit Δy ${dys[0] > 0 ? '+' : ''}${dys[0]}px from live as one block — content identical; the page above is a different height (fix that, or a live feed rendered another length)` };
+const DY_ANY = /(?:^|[;,] )Δy ([+-]?\d+)px \(/;
+export function collapseOffset(findings, paired) {
+  const box = findings.find((f) => f.kind === 'REGION BOX');
+  if (!box || !DY_ONLY.test(box.msg) || !(paired >= 2)) return findings;
+  const dy = Number(box.msg.match(DY_ONLY)[1]);
+  const moved = findings.filter((f) => f.kind === 'PAIR' && DY_ANY.test(f.msg) && Math.abs(Number(f.msg.match(DY_ANY)[1]) - dy) <= 2);
+  if (moved.length !== paired) return findings;
+  const shifts = [box, ...moved.filter((f) => DY_ONLY.test(f.msg))];
+  const texts = shifts.length - 1;
+  const offset = { kind: 'OFFSET', advisory: true, msg: `the region${texts ? ` and its ${texts} paired text(s)` : ''} sit Δy ${dy > 0 ? '+' : ''}${dy}px from live as one block — content identical; the page above is a different height (fix that, or a live feed rendered another length)` };
   return [offset, ...findings.filter((f) => !shifts.includes(f))];
 }
 
@@ -360,14 +365,18 @@ async function probeSide(browser, url, opts, isLive) {
   return out;
 }
 
-// --live-cache: the live side's probe result keyed on URL + width + live
-// selectors. A key mismatch re-probes and overwrites (never measures a stale
-// site or the wrong breakpoint silently).
-function cacheKey(live, opts) { return { url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
-function readLiveCache(file, live, opts) {
+// --live-cache: the live side's probe result keyed on probe version + URL +
+// width + live selectors. A key mismatch re-probes and overwrites (never
+// measures a stale site or the wrong breakpoint silently, and never compares an
+// older probe's live record against this probe's build). Bump PROBE_VERSION
+// whenever probeRegion / detectHeader / probeSide change what they record.
+export const PROBE_VERSION = 2; // 2 = 0.34.13: painted background, header auto-detect, icon px signatures
+export function cacheKey(live, opts) { return { probe: PROBE_VERSION, url: live, width: opts.width, regions: opts.regions.map((r) => `${r.name}=${r.live}`) }; }
+export function readLiveCache(file, live, opts) {
   if (!file || !existsSync(file)) return null;
   try {
     const c = JSON.parse(readFileSync(file, 'utf8'));
+    if (!c.key || c.key.probe !== PROBE_VERSION) { console.error(`chrome-parity: --live-cache ${file} was written by another probe version (${c.key && c.key.probe ? c.key.probe : 'pre-0.34.13'}, now ${PROBE_VERSION}) — re-probing live`); return null; }
     if (JSON.stringify(c.key) !== JSON.stringify(cacheKey(live, opts))) { console.error(`chrome-parity: --live-cache ${file} was probed for a different url/width/regions — re-probing live`); return null; }
     return c;
   } catch (e) { console.error(`chrome-parity: --live-cache ${file} unreadable (${e.message}) — re-probing live`); return null; }

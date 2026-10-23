@@ -92,7 +92,8 @@
 #            missing, lone, unreadable or stale baseline (another URL or width) ends the round with that one line on
 #            stderr and exit 125 — never a live shot in its place. Flag OFF: the round is the one it always was; a
 #            live.png whose live.json says origin "baseline" is retaken (one line; its records go with it), a
-#            live.png with no record is reused as before.
+#            live.png with no live.json is a live capture: reused when its live.capture.json records fixedLayers,
+#            retaken (one line) when it does not — captured before fixed layers were captured once.
 #
 # Example (iteration 2 of the home archetype at 1440):
 #   stardust/scripts/replica/gate.sh home "https://<site>/" \
@@ -296,7 +297,8 @@ fi
 # — live.json and the capture record live.capture.json — go first, and a copy or record that fails removes
 # live.png and ends the round (exit 1, one line): baseline bytes never sit under a missing or stale record.
 # Flag OFF: a live.png whose live.json says origin "baseline" was a flagged round's copy — retaken with one line,
-# its records removed with it; a live.png with no record is a live capture and is reused as before.
+# its records removed with it; a live.png with no live.json is a live capture — reused only when live.capture.json
+# records fixedLayers, else retaken (below).
 if [ "$BASELINE" = 1 ]; then
   rm -f "$DIR/live.json" "$DIR/live.capture.json"
   if ! { cp -f "$DIR/baseline.png" "$DIR/live.png.$$.tmp" && mv -f "$DIR/live.png.$$.tmp" "$DIR/live.png"; }; then
