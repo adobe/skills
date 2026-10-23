@@ -18,7 +18,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
-import { diffInventories } from '../content-inventory.mjs';
+import { diffInventories, inventory, editableInventory } from '../content-inventory.mjs';
+import * as deployInventory from '../../../deploy/scripts/content-inventory.mjs';
+import { CONSENT_CANDIDATES } from '../live-session.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'content-diff.mjs');
@@ -203,7 +205,7 @@ await check('diffRoot runs the text layer and the editable count per root too: a
 });
 await check('diffRoot: a root absent on both sides is one line and no findings; absent on one side is measured as empty and said so; the primary root\'s fallback is named; missing inventories read as absent', () => {
   const ftr = { name: 'footer', sel: 'footer', primary: false, chrome: true, describe: 'no <footer> / [role="contentinfo"] outside the main root(s)' };
-  assert.deepEqual(diffRoot(ftr, inv({ absent: true }), inv({ absent: true }), prof), { flags: [], lines: ['root "footer": absent on both sides (no <footer> / [role="contentinfo"] outside the main root(s)) — not compared'] });
+  assert.deepEqual(diffRoot(ftr, inv({ absent: true }), inv({ absent: true }), prof), { flags: [], lines: ['root "footer": absent on both sides (no <footer> / [role="contentinfo"] outside the main root(s)) — not compared'], accepted: [] });
   const one = diffRoot(ftr, inv({ absent: true }), inv({ attrs: { attrs: [], icons: [icon('svg', '#icon-x', 'x', true)] } }), prof);
   assert.equal(one.lines[0], 'root "footer" — source: absent (no <footer> / [role="contentinfo"] outside the main root(s)) — measured as empty');
   assert.deepEqual(one.flags.map((f) => `${f.sev} ${f.kind} ${f.root}`), ['🟡 EXTRA ICON footer']);
@@ -211,6 +213,36 @@ await check('diffRoot: a root absent on both sides is one line and no findings; 
   assert.equal(fb.lines[0], 'root "main" — source: "main" absent, fell back to <body>');
   assert.deepEqual(diffRoot(ftr, undefined, null, prof).flags, []);
   assert.equal(diffRoot(ftr, undefined, null, prof).lines.length, 1);
+});
+
+// ---- the consent-banner skip list ----------------------------------------------------------------
+// Each consent manager live-session can dismiss (a vendor accept control in CONSENT_CANDIDATES) → the banner container the
+// in-page inventories skip. A new vendor candidate fails here until its container is listed in every CONSENT_UI copy.
+const CONSENT_CONTAINER_OF = {
+  '#onetrust-accept-btn-handler': '#onetrust-consent-sdk',
+  '#cmpwelcomebtnyes': '#cmpbox', '.cmpboxbtnyes': '#cmpbox', '#cmpbntyestxt': '#cmpbox',
+  '.ch2-allow-all-btn': '.ch2-container',
+  '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll': '#CybotCookiebotDialog', '#CybotCookiebotDialogBodyButtonAccept': '#CybotCookiebotDialog',
+  '#didomi-notice-agree-button': '#didomi-host',
+  '[data-testid="uc-accept-all-button"]': '#usercentrics-root',
+  '.osano-cm-accept-all': '.osano-cm-window',
+  '[data-tid="banner-accept"]': '#termly-code-snippet-support',
+  '#truste-consent-button': '#truste-consent-track',
+  '.qc-cmp2-summary-buttons button[mode="primary"]': '.qc-cmp2-container',
+  '.iubenda-cs-accept-btn': '#iubenda-cs-banner',
+  '.cmplz-accept': '.cmplz-cookiebanner',
+  '.cky-btn-accept': '.cky-consent-container',
+};
+await check('CONSENT_UI: one list in inventory, editableInventory (diff + deploy copies) and attributeInventory, covering exactly the vendors CONSENT_CANDIDATES dismisses', () => {
+  const vendors = CONSENT_CANDIDATES.filter((sel) => !sel.startsWith('button:has-text(') && !sel.startsWith('[data-testid*='));
+  assert.deepEqual(vendors.filter((sel) => !(sel in CONSENT_CONTAINER_OF)), [], 'every vendor candidate maps to a banner container');
+  assert.deepEqual(Object.keys(CONSENT_CONTAINER_OF).filter((sel) => !CONSENT_CANDIDATES.includes(sel)), [], 'no mapping for a dropped candidate');
+  const literal = /CONSENT_UI = '([^']+)'/.exec(inventory.toString());
+  assert.ok(literal, 'inventory declares CONSENT_UI');
+  assert.deepEqual(literal[1].split(', ').sort(), [...new Set(Object.values(CONSENT_CONTAINER_OF))].sort());
+  for (const [name, fn] of [['inventory (deploy)', deployInventory.inventory], ['editableInventory', editableInventory], ['editableInventory (deploy)', deployInventory.editableInventory], ['attributeInventory', attributeInventory]]) {
+    assert.ok(fn.toString().includes(literal[1]), `${name} carries the same consent list`);
+  }
 });
 
 // ---- cli -----------------------------------------------------------------------------------------
@@ -228,18 +260,31 @@ await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MO
 const item = (role, text, o = {}) => ({ role, text, key: text.toLowerCase(), look: '16px 700 rgb(0, 0, 0) none', family: 'Manrope', w: 100, srOnly: false, ...o });
 await check('a body → heading change with the same look is an accepted ROLE UPGRADE (no finding); heading → body with the same look is 🟡 ROLE DOWNGRADE', () => {
   const up = diffInventories([item('body', 'Trending')], [item('heading', 'Trending')], prof);
-  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', text: 'Trending' }]);
+  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', from: 'body', text: 'Trending' }]);
   const down = diffInventories([item('heading', 'Pricing')], [item('body', 'Pricing')], prof);
   assert.deepEqual(kinds(down.flags), ['🟡 ROLE DOWNGRADE']); assert.deepEqual(down.accepted, []);
 });
-await check('a role change that changes the look (size, weight, colour, case or face) stays 🔴 ROLE SWAP; eyebrow ↔ body always does', () => {
+const caps = { look: '12px 700 rgb(0, 0, 0) uppercase' }; // a small uppercase <div> group title is an eyebrow, the same-look <h3> a heading
+await check('eyebrow → heading with the same look is an accepted ROLE UPGRADE, heading → eyebrow 🟡 ROLE DOWNGRADE; a CTA role change is never accepted; diffRoot names the upgrade and returns it', () => {
+  const up = diffInventories([item('eyebrow', 'Company', caps)], [item('heading', 'Company', caps)], prof);
+  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', from: 'eyebrow', text: 'Company' }]);
+  assert.deepEqual(kinds(diffInventories([item('heading', 'Company', caps)], [item('eyebrow', 'Company', caps)], prof).flags), ['🟡 ROLE DOWNGRADE']);
+  assert.deepEqual(kinds(diffInventories([item('cta', 'Company')], [item('heading', 'Company')], prof).flags), ['🔴 ROLE SWAP']);
+  const r = diffRoot({ name: 'footer', sel: 'footer', primary: false, chrome: true, describe: '' }, { items: [item('eyebrow', 'Company', caps), item('body', 'Trending')] }, { items: [item('heading', 'Company', caps), item('heading', 'Trending')] }, prof);
+  assert.ok(r.lines.includes('  accepted (invisible, nothing lost): 2 ROLE UPGRADE eyebrow/body → heading — "Company", "Trending"'), r.lines.join('\n'));
+  assert.deepEqual(r.accepted.map((a) => `${a.from} ${a.text} ${a.root}`), ['eyebrow Company footer', 'body Trending footer']);
+});
+await check('a role change that changes the look (size, weight, colour, case or face) stays 🔴 ROLE SWAP (eyebrow ↔ body can\'t keep the look: the same text with the same look classifies the same)', () => {
   assert.deepEqual(kinds(diffInventories([item('body', 'Trending')], [item('heading', 'Trending', { look: '24px 700 rgb(0, 0, 0) none' })], prof).flags), ['🔴 ROLE SWAP']);
   assert.deepEqual(kinds(diffInventories([item('body', 'Trending')], [item('heading', 'Trending', { family: 'Inter' })], prof).flags), ['🔴 ROLE SWAP']);
   assert.deepEqual(kinds(diffInventories([item('eyebrow', 'New', { look: '12px 700 rgb(0, 0, 0) uppercase' })], [item('body', 'New')], prof).flags), ['🔴 ROLE SWAP']);
 });
-await check('lost screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its role; visible text keeps its severity', () => {
+await check('lost screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its non-CTA role; visible text keeps its severity', () => {
   assert.deepEqual(kinds(diffInventories([item('heading', 'Search volume grew from 1K to 9K', { srOnly: true })], [], prof).flags), ['🟡 MISSING SR-ONLY TEXT']);
   assert.deepEqual(kinds(diffInventories([item('heading', 'Pricing')], [], prof).flags), ['🔴 MISSING HEADING']);
+});
+await check('a lost sr-only CTA (a skip link) stays 🔴 MISSING CTA — interactive losses are not demoted', () => {
+  assert.deepEqual(kinds(diffInventories([item('cta', 'Skip to content', { srOnly: true, href: '#main' })], [], prof).flags), ['🔴 MISSING CTA']);
 });
 
 // ---- end-to-end against two fixture pages (needs playwright) -----------------------------------------
@@ -249,6 +294,7 @@ if (playwrightOk) {
   const page = (body) => `<!doctype html><html><head><meta charset="utf-8"><style>
     @font-face{font-family:Icons;src:local("Arial")} .fa{display:inline-block;width:16px;height:16px} .fa::before{font-family:Icons}
     .fa-facebook::before{content:"\\f09a"} .icon{display:inline-block;width:16px;height:16px} img.flag{width:24px;height:16px}
+    .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap}
     </style></head><body><main>${body}</main></body></html>`;
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="16"><rect width="24" height="16" fill="#888"/></svg>';
   // a mark with structure (a solid fill is a blank signature — no identity to pair by)
@@ -264,12 +310,22 @@ if (playwrightOk) {
     // a consent banner only the source carries: none of it is a content difference
     '/noise-source.html': page('<h2>Tools</h2><a href="/tools/kw"><svg width="16" height="16"><title>icon</title><rect width="16" height="16"/></svg> Keyword Generator</a>'
       + '<script type="application/json">{"props":{"page":"/"}}</script><noscript><iframe src="about:blank"></iframe>Enable JavaScript</noscript><style>.x{color:red}</style>'
-      + '<div class="ch2-container"><p>We use cookies to improve your experience.</p><a href="/privacy">Cookie policy</a><button>Allow all</button></div>'),
+      + '<div class="ch2-container"><p>We use cookies to improve your experience.</p><a href="/privacy">Cookie policy</a><button>Allow all</button>'
+      + '<button aria-label="Close"><svg width="16" height="16"><path d="M0 0L16 16M16 0L0 16"/></svg></button></div>'),
     '/noise-build.html': page('<h2>Tools</h2><a href="/tools/kw"><img src="/flag-de.svg" width="16" height="16" alt=""> Keyword Generator</a>'),
     // menu group titles: a styled <div> on the source, a heading with the same computed look on the build; a chart's
-    // visually hidden description dropped by the build
-    '/role-source.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><div class="t">Trending</div><p>Chart <span class="sr">search volume grew from 1K to 9K</span></p>'),
+    // visually hidden description dropped by the build; also dropped: text inside an sr-only wrapper (sr-only), a
+    // display:none tooltip and a caption on a slide its track translated off-screen (neither sr-only: plain MISSING BODY)
+    '/role-source.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><div class="t">Trending</div><p>Chart <span class="sr">search volume grew from 1K to 9K</span></p>'
+      + '<div class="sr"><p>Opens in a new window</p></div><span style="position:absolute;display:none">Copied to clipboard</span>'
+      + '<div style="position:relative;overflow:hidden;height:40px"><div style="display:flex;transform:translateX(-2600px)"><div style="position:relative;flex:0 0 1280px;height:40px"><p style="position:absolute;left:0;margin:0">Slide caption one</p></div></div></div>'),
     '/role-build.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}</style><h3 class="t">Trending</h3><p>Chart</p>'),
+    // a whole-card link on the source vs the usual EDS card (heading, body, a separate "Read more") on the build
+    '/card-source.html': page('<h2>News</h2><a href="/news/one" class="card"><img src="/flag-de.svg" width="320" height="180" alt=""><h3>Title one</h3><p>The card description.</p></a>'),
+    '/card-build.html': page('<h2>News</h2><div class="card"><picture><img src="/flag-de.svg" width="320" height="180" alt=""></picture><h3>Title one</h3><p>The card description.</p><p><a href="/news/one">Read more</a></p></div>'),
+    // a logo link with sr-only text on the source vs an alt-only logo on the build
+    '/logo-source.html': page('<a href="/" class="logo"><img src="/flag-de.svg" width="120" height="40" alt="Brand"><span class="sr-only">Home</span></a><h1>Welcome</h1><p>Body copy here.</p>'),
+    '/logo-build.html': page('<a href="/" class="logo"><img src="/flag-de.svg" width="120" height="40" alt="Brand"></a><h1>Welcome</h1><p>Body copy here.</p>'),
     // the same logo re-hosted under a media hash, the same mark drawn as inline svg vs <img>, a genuinely different
     // logo, and a laid-out 0×0 svg on the source only
     '/icons-source.html': page('<a href="/a" class="tool"><img src="/logo-a.svg" width="24" height="16" alt=""> Alpha</a>'
@@ -326,18 +382,39 @@ if (playwrightOk) {
   await check('e2e: an icon+text link counts as the same CTA whether the icon is inline svg or <img>; script / noscript / style text and a consent banner are not content — no MISSING CTA / BODY, the banner named once in the summary', async () => {
     const r = await run([`${base}/noise-source.html`, `${base}/noise-build.html`, '--profile', 'generic', '--width', '1280']);
     assert.equal(r.status, 0, r.stderr);
-    assert.doesNotMatch(r.stdout, /MISSING CTA|MISSING BODY|EXTRA \[main\]: build cta/, r.stdout);
+    assert.doesNotMatch(r.stdout, /MISSING CTA|MISSING BODY|EXTRA \[main\]: build cta|MISSING ICON|MISSING ARIA-LABEL/, r.stdout);
     assert.match(r.stdout, /^Findings: (none|\d+ \(0 structural 🔴\))/m, r.stdout);
     assert.match(r.stdout, /source: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 0 img; consent banner skipped \(3 text nodes\)/, r.stdout);
     assert.match(r.stdout, /build: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 1 img$/m, r.stdout);
+    assert.match(r.stdout, /icons: source 1 \/ build 1$/m, r.stdout); // the banner's close-button svg is not counted
   });
-  await check('e2e: a same-look div → heading is accepted (named on the root, not a finding); the dropped sr-only description is 🟡 MISSING SR-ONLY TEXT; 0 structural 🔴', async () => {
-    const r = await run([`${base}/role-source.html`, `${base}/role-build.html`, '--profile', 'generic', '--width', '1280']);
+  await check('e2e: a whole-card link <a><img><h3>T</h3><p>D</p></a> is a heading + body, not one CTA "t d" — against the EDS card (h3, p, separate "Read more") no 🔴, only the build\'s extra CTA', async () => {
+    const r = await run([`${base}/card-source.html`, `${base}/card-build.html`, '--profile', 'generic', '--width', '1280']);
     assert.equal(r.status, 0, r.stderr);
-    assert.match(r.stdout, /^ {2}accepted \(invisible, nothing lost\): 1 ROLE UPGRADE — "Trending"$/m, r.stdout);
+    assert.doesNotMatch(r.stdout, /^  🔴|MISSING/m, r.stdout);
+    assert.match(r.stdout, /source: 3 text nodes — 2 headings, 0 eyebrows, 0 CTAs, 1 body; 1 img$/m, r.stdout);
+    assert.match(r.stdout, /build: 4 text nodes — 2 headings, 0 eyebrows, 1 CTAs, 1 body; 1 img$/m, r.stdout);
+    assert.match(r.stdout, /^Findings: 1 \(0 structural 🔴\)$/m, r.stdout);
+    assert.match(r.stdout, /^  🟠 EXTRA \[main\]: build cta "Read more"/m, r.stdout);
+  });
+  await check('e2e: a logo link whose only text is sr-only "Home" reads like an alt-only logo — no MISSING CTA, no findings', async () => {
+    const r = await run([`${base}/logo-source.html`, `${base}/logo-build.html`, '--profile', 'generic', '--width', '1280']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^Findings: none — content \+ roles match$/m, r.stdout);
+    assert.match(r.stdout, /source: 2 text nodes — 1 headings, 0 eyebrows, 0 CTAs, 1 body; 1 img$/m, r.stdout);
+  });
+  await check('e2e: a same-look div → heading is accepted (named on the root and in --json, not a finding); dropped sr-only text (own clip or an sr-only wrapper) is 🟡 MISSING SR-ONLY TEXT, a display:none tooltip and an off-track slide caption plain MISSING BODY; 0 structural 🔴', async () => {
+    const r = await run([`${base}/role-source.html`, `${base}/role-build.html`, '--profile', 'generic', '--width', '1280', '--json']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^ {2}accepted \(invisible, nothing lost\): 1 ROLE UPGRADE body → heading — "Trending"$/m, r.stdout);
     assert.doesNotMatch(r.stdout, /ROLE SWAP/, r.stdout);
     assert.match(r.stdout, /🟡 MISSING SR-ONLY TEXT \[main\]: source body "search volume grew from 1K to 9K"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING SR-ONLY TEXT \[main\]: source body "Opens in a new window"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING BODY \[main\]: source body "Copied to clipboard"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING BODY \[main\]: source body "Slide caption one"/, r.stdout);
     assert.match(r.stdout, /^Findings: \d+ \(0 structural 🔴\)$/m, r.stdout);
+    const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('Inventories JSON:') + 'Inventories JSON:'.length));
+    assert.deepEqual(j.accepted, [{ kind: 'ROLE UPGRADE', from: 'body', text: 'Trending', root: 'main' }]);
   });
   await check('e2e: icons pair by pixels — a re-hosted file is SAME IMAGE, inline svg vs <img> of the same mark is SAME ICON (both accepted, no finding); a different logo stays 🔴 ICON DIFF; a laid-out 0×0 svg is not an icon', async () => {
     const r = await run([`${base}/icons-source.html`, `${base}/icons-build.html`, '--profile', 'generic', '--width', '1280']);
