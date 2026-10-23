@@ -4,6 +4,38 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
+
+Field learning (a recorded replica gate on a home page, read against the principle agreed with the owner — the hard
+gate is "the page looks the same", and on top "nothing is lost": links, text and accessible names in any wrapping):
+`gate.sh --full` exited 2 on any structural 🔴, so intentional look-neutral improvements failed the gate forever, and
+invisible losses were split across 🔴 (an aria-label on a link) and buried 🟡 (sr-only text). The inconsistency register
+could record an accepted change, but no instrument read it. A page without `<main>` was inventoried as `<body>`
+(mega-menu included) against the build's `<main>`: 142 🔴 instead of 53. And the gate's records cited probe files by
+hand — on another page the latest chrome-parity file disagreed with the recorded verdict.
+
+- **Two tiers (`diff/scripts/content-diff.mjs`):** *looks-same* = every 🔴 (a visible difference); *nothing-lost* =
+  `MISSING ARIA-LABEL` (now 🟡 everywhere — invisible), `MISSING SR-ONLY TEXT`, `ROLE DOWNGRADE`; the rest is advisory.
+  A `Tiers: looks-same 🔴 N · nothing-lost 🟡 K · accepted 🟢 A · advisory M` line follows `Findings:` (unchanged);
+  `--json` findings carry their `tier`. `tierOf`, `tierLine`, `LOST_KINDS` exported.
+- **The accepted list:** `stardust/replica/accepted.json` (`{ accepted: [{ probe?, kind, text?, root?, reason }] }`,
+  or `--accepted <file>`) is read by content-diff (`applyAccepted`) and chrome-parity (`markAccepted`): a matching
+  finding prints 🟢 with its reason and never counts.
+- **Aligned roots:** when one side's main root falls back (→ `<main>` → `<body>`) and the other found it, the side that
+  found it is re-read at the same fallback, said once (`⚠ root "main": … both sides measured at <body> (aligned)`).
+  Found by its test: `inventory()` counted its own width probe as copy whenever the root was `<body>` — fixed in both
+  copies.
+- **`replica/scripts/gate.sh`:** reads the `Tiers:` line, prints it on the `content-diff:` verdict line and fails the
+  round on a nothing-lost 🟡 as on a 🔴; every `--full` round writes `verdict-<label>.json` — each probe's exit code
+  and evidence file, the pixel rc and diff, both tiers. **`gate-evidence.mjs`** passes content-count only with 0 🔴 and
+  0 nothing-lost.
+- **Docs:** `source-fidelity-gate.md` § Pass bar item 1 is the one home of the two tiers, the accepted list and the
+  verdict record; `replica/SKILL.md` and `diff/SKILL.md` point to it; the gate doc's intro anecdote (told again in
+  item 3) folds.
+- Tests: `content-diff.test.mjs` (tiers, applyAccepted, aria-label severity, an end-to-end no-`<main>` page against a
+  `<main>` build with an accepted ticker link), `chrome-parity.test.mjs` (`markAccepted`), `gate.test.mjs` (a
+  nothing-lost round exits 2; the verdict record), `gate-evidence.test.mjs` (`parseFindings` reads the tier).
+
 ## 0.34.14 — diff-report names the block a pixel difference belongs to (#147)
 
 Field learning (a recorded replica gate on a home page): the band table says where on the page drift sits, never

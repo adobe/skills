@@ -11,12 +11,12 @@
 // and prints a skip line otherwise. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ATTRIBUTE_HINTS, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots } from '../content-diff.mjs';
+import { ATTRIBUTE_HINTS, applyAccepted, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots, tierLine, tierOf } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 import { diffInventories } from '../content-inventory.mjs';
 
@@ -51,16 +51,21 @@ await check('pairing is by (attribute, value), case-insensitive, first unused ta
   const src = { attrs: [attr('a', 'aria-label', 'Next', true), attr('a', 'aria-label', 'Next', true), attr('img', 'title', 'Next', false)], icons: [] };
   const tgt = { attrs: [attr('a', 'aria-label', 'next', true), attr('span', 'title', 'Next', false)], icons: [] };
   const flags = diffAttributes(src, tgt, prof);
-  assert.deepEqual(kinds(flags), ['🔴 MISSING ARIA-LABEL'], JSON.stringify(flags));
+  assert.deepEqual(kinds(flags), ['🟡 MISSING ARIA-LABEL'], JSON.stringify(flags));
   assert.match(flags[0].msg, /second|has no build <a> with that aria-label/);
 });
-await check('severity follows the element: a non-interactive title is 🟡, an aria-label on a link 🔴, an aria-label on a landmark 🟡', () => {
-  const src = { attrs: [attr('abbr', 'title', 'Hypertext', false), attr('a', 'aria-label', 'Open menu', true), attr('nav', 'aria-label', 'Main', false)], icons: [] };
-  assert.deepEqual(kinds(diffAttributes(src, { attrs: [], icons: [] }, prof)), ['🟡 MISSING TITLE', '🔴 MISSING ARIA-LABEL', '🟡 MISSING ARIA-LABEL']);
+await check('severity follows visibility: a lost aria-label is 🟡 anywhere (invisible) and in the nothing-lost tier; a lost placeholder on an input is 🔴 (visible); a title is advisory 🟡', () => {
+  const src = { attrs: [attr('abbr', 'title', 'Hypertext', false), attr('a', 'aria-label', 'Open menu', true), attr('nav', 'aria-label', 'Main', false), attr('input', 'placeholder', 'Search', true)], icons: [] };
+  const flags = diffAttributes(src, { attrs: [], icons: [] }, prof);
+  assert.deepEqual(kinds(flags), ['🟡 MISSING TITLE', '🟡 MISSING ARIA-LABEL', '🟡 MISSING ARIA-LABEL', '🔴 MISSING PLACEHOLDER']);
+  assert.deepEqual(flags.map(tierOf), ['advisory', 'lost', 'lost', 'looks']);
 });
-await check('a missing title is 🟡 even on an interactive element (an <img title> inside a link — measured as 🔴 on a delivered replica); placeholder and aria-label there stay 🔴', () => {
-  const src = { attrs: [attr('img', 'title', 'Open the gallery', true), attr('a', 'aria-label', 'Open the gallery', true), attr('input', 'placeholder', 'Search', true)], icons: [] };
-  assert.deepEqual(kinds(diffAttributes(src, { attrs: [], icons: [] }, prof)), ['🟡 MISSING TITLE', '🔴 MISSING ARIA-LABEL', '🔴 MISSING PLACEHOLDER']);
+await check('tierLine counts looks-same / nothing-lost / accepted / advisory; applyAccepted takes a finding out by kind + text (+ root) and keeps its reason', () => {
+  const flags = [{ sev: '🔴', kind: 'MISSING CTA', msg: 'source cta "Knock toner" → /topic/knock-toner has no build link', root: 'main' }, { sev: '🟡', kind: 'MISSING ARIA-LABEL', msg: 'source <a> aria-label="Chart" …', root: 'main' }, { sev: '🟡', kind: 'EXTRA', msg: 'x', root: 'main' }];
+  assert.equal(tierLine(flags, 2), 'Tiers: looks-same 🔴 1 · nothing-lost 🟡 1 · accepted 🟢 2 · advisory 1');
+  const { flags: left, accepted } = applyAccepted(flags, [{ kind: 'MISSING CTA', text: 'knock toner', reason: 'rotating ticker frozen at capture' }, { kind: 'EXTRA', root: 'header', reason: 'other root' }]);
+  assert.deepEqual(left.map((f) => f.kind), ['MISSING ARIA-LABEL', 'EXTRA']);
+  assert.deepEqual(accepted.map((f) => [f.kind, f.reason]), [['MISSING CTA', 'rotating ticker frozen at capture']]);
 });
 
 // ---- pure: icons ---------------------------------------------------------------------------------
@@ -267,6 +272,9 @@ if (playwrightOk) {
       + '<p>Text here.</p>'),
     '/logo-a.svg': mark('#2a6'), '/media_1a2b.svg': mark('#2a6'), '/media_3c4d.svg': mark('#888'),
     '/logo-c.svg': mark('#2a6'), '/media_5e6f.svg': mark('#c00'),
+    // a source with no <main> (its menu sits in a body-level bar) against a build whose <main> holds only the content
+    '/nomain-source.html': '<!doctype html><html><body><div class="bar"><a href="/p">Pricing</a><a href="/l">Login</a></div><div class="content"><h1>Welcome</h1><p>Body copy here.</p><a href="/x">Ticker topic</a></div></body></html>',
+    '/nomain-build.html': '<!doctype html><html><body><div class="bar"><a href="/p">Pricing</a><a href="/l">Login</a></div><main><h1>Welcome</h1><p>Body copy here.</p></main></body></html>',
     '/flag-de.svg': svg, '/flag-en.svg': svg.replace('#888', '#c00'),
   };
   const server = createServer((req, res) => {
@@ -331,6 +339,16 @@ if (playwrightOk) {
     assert.match(r.stdout, /^ {2}attributes \(placeholder\/aria-label\/title\): source 0 \/ build 0; icons: source 3 \/ build 3$/m, r.stdout);
     assert.match(r.stdout, /^Findings: 1 \(1 structural 🔴\)$/m, r.stdout);
     assert.match(r.stdout, /🔴 ICON DIFF \[main\]: source image logo-c\.svg \(24×16\) vs build image media_5e6f\.svg \(24×16\) at "gamma"/, r.stdout);
+  });
+  await check('e2e: a source without <main> against a build with one is measured at <body> on both sides (aligned, said once) — the menu is not missing content; an accepted-list entry takes the frozen ticker link out with its reason', async () => {
+    const acc = join(mkdtempSync(join(tmpdir(), 'cd-acc-')), 'accepted.json');
+    writeFileSync(acc, JSON.stringify({ accepted: [{ kind: 'MISSING CTA', text: 'ticker topic', reason: 'rotating feed, frozen at capture' }] }));
+    const r = await run([`${base}/nomain-source.html`, `${base}/nomain-build.html`, '--profile', 'generic', '--width', '1280', '--accepted', acc]);
+    assert.equal(r.status, 0, r.stderr);
+    assert.match(r.stdout, /^⚠ root "main": source fell back to <body>, build has it — both sides measured at <body> \(aligned\)$/m, r.stdout);
+    assert.doesNotMatch(r.stdout, /MISSING CTA \[main\]: source cta "(pricing|login)"/i, r.stdout);
+    assert.match(r.stdout, /^Tiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 1 · advisory \d+$/m, r.stdout);
+    assert.match(r.stdout, /🟢 MISSING CTA \[main\] accepted \(.*accepted\.json\): rotating feed, frozen at capture/, r.stdout);
   });
   server.close();
 }

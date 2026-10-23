@@ -138,7 +138,7 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len, no-plusplus, newline-per-chained-call, no-continue, no-multi-spaces */
 /* standalone dev tool: playwright is a devDependency (imported lazily in main); sequential page ops use awaited loops by design */
-import { realpathSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 // NOTE: deploy's gates (#93/#94) now use their OWN synced copies in skills/deploy/scripts/
@@ -172,17 +172,23 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
                          sides; optional comma-separated extra selectors
   --headed               headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
+  --accepted <file>      accepted changes ({ accepted: [{ kind, text?, root?, probe?, reason }] }); a matching
+                         finding is printed as accepted with its reason and never counted
+                         (default stardust/replica/accepted.json when it exists)
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
 findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXTRA, FONT FORK,
             EDITABLE COUNT; attribute layer — MISSING|EXTRA PLACEHOLDER|ARIA-LABEL|TITLE,
             MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED (same icon at another
-            anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER|ARIA-LABEL,
-            MISSING ICON, ICON DIFF on an interactive element (input, button, link or inside
-            one); MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡; else 🟡.
+            anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER, MISSING
+            ICON, ICON DIFF on an interactive element (input, button, link or inside one);
+            MISSING ARIA-LABEL, MISSING TITLE, ICON MOVED, ICON KIND and every EXTRA are 🟡.
             Each finding line carries its root — "<sev> <KIND> [<root>]: <msg>"; the
-            Findings: line is unchanged.
+            Findings: line is unchanged. Tiers (the verdict reads both): looks-same = every 🔴
+            (a visible difference); nothing-lost = MISSING ARIA-LABEL, MISSING SR-ONLY TEXT,
+            ROLE DOWNGRADE (invisible, still to fix); the rest is advisory. A side whose main
+            root fell back while the other found it is re-read at the same fallback (aligned).
 `;
 
 // ---- attribute + icon layer ----------------------------------------------------------------------
@@ -330,7 +336,7 @@ export function diffAttributes(src, tgt, prof, accepted = []) {
     const i = ta.findIndex((b, j) => !usedA[j] && key(b) === key(a));
     if (i >= 0) { usedA[i] = true; return; }
     const others = ta.filter((b) => b.attr === a.attr && b.tag === a.tag).map((b) => q(b.value, 40)).slice(0, 3);
-    flags.push({ sev: a.attr === 'title' ? '🟡' : sev(a.interactive), kind: `MISSING ${a.attr.toUpperCase()}`, msg: `${S} <${a.tag}> ${a.attr}=${q(a.value)} has no ${T} <${a.tag}> with that ${a.attr}${others.length ? ` (${T} <${a.tag}> ${a.attr}s: ${others.join(', ')})` : ''}. ${H.MISSING_ATTRIBUTE}` });
+    flags.push({ sev: a.attr === 'placeholder' ? sev(a.interactive) : '🟡', kind: `MISSING ${a.attr.toUpperCase()}`, msg: `${S} <${a.tag}> ${a.attr}=${q(a.value)} has no ${T} <${a.tag}> with that ${a.attr}${others.length ? ` (${T} <${a.tag}> ${a.attr}s: ${others.join(', ')})` : ''}. ${H.MISSING_ATTRIBUTE}` });
   });
   ta.forEach((b, j) => { if (!usedA[j]) flags.push({ sev: '🟡', kind: `EXTRA ${b.attr.toUpperCase()}`, msg: `${T} <${b.tag}> ${b.attr}=${q(b.value)} has no ${S} source. ${H.EXTRA_ATTRIBUTE}` }); });
 
@@ -421,6 +427,26 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${acceptedLine(accepted)}`);
   return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted };
 }
+// ---- verdict tiers + the accepted list --------------------------------------------------------------
+// looks-same = every 🔴 (a visible difference); nothing-lost = invisible losses still to fix; the rest is advisory.
+export const LOST_KINDS = new Set(['MISSING ARIA-LABEL', 'MISSING SR-ONLY TEXT', 'ROLE DOWNGRADE']);
+export const tierOf = (f) => (f.sev === '🔴' ? 'looks' : (LOST_KINDS.has(f.kind) ? 'lost' : 'advisory'));
+// Pure: split findings by an accepted list ({ kind, text?, root?, reason }) — kind equal, text a case-insensitive
+// substring of the message, root equal when given. Returns the findings left and the accepted ones with their reason.
+export function applyAccepted(flags, list) {
+  const left = []; const accepted = [];
+  for (const f of flags) {
+    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'content-diff') && a.kind === f.kind && (!a.root || a.root === f.root) && (!a.text || String(f.msg).toLowerCase().includes(String(a.text).toLowerCase())));
+    if (hit) accepted.push({ ...f, reason: hit.reason || '' }); else left.push(f);
+  }
+  return { flags: left, accepted };
+}
+// Pure: the tier summary line the gate reads.
+export function tierLine(flags, acceptedCount) {
+  const n = (t) => flags.filter((f) => tierOf(f) === t).length;
+  return `Tiers: looks-same 🔴 ${n('looks')} · nothing-lost 🟡 ${n('lost')} · accepted 🟢 ${acceptedCount} · advisory ${n('advisory')}`;
+}
+
 // Pure: "23 ROLE UPGRADE — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
 export function acceptedLine(accepted) {
   const kinds = [...new Set(accepted.map((x) => x.kind))];
@@ -449,6 +475,7 @@ function parseArgs(argv) {
     }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
+    else if (a === '--accepted') { opts.accepted = rest[i += 1]; }
   }
   return { proto, eds, opts };
 }
@@ -512,20 +539,41 @@ async function main() {
     throw new Error(`playwright is not importable from ${dirname(fileURLToPath(import.meta.url))} (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`);
   }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
-  let srcInvs; let tgtInvs;
+  let srcInvs; let tgtInvs; let aligned = null;
   try {
     srcInvs = await grab(browser, proto, opts, prof, roots);
     tgtInvs = await grab(browser, eds, opts, prof, roots);
+    // one side found the main root, the other fell back (→ <main> → <body>): re-read the first at the other's
+    // fallback, so both sides inventory the same scope (a page with no <main> read as <body> against a build's <main>
+    // turned its whole mega-menu into missing content)
+    const sF = srcInvs[roots[0].name].fellBack || null; const tF = tgtInvs[roots[0].name].fellBack || null;
+    if (sF !== tF) {
+      const to = [sF, tF].includes('body') ? 'body' : 'main';
+      const alignedRoots = [{ ...roots[0], sel: to, describe: `<${to}> (aligned)` }, ...roots.slice(1)];
+      if (sF !== to) srcInvs = await grab(browser, proto, opts, prof, alignedRoots);
+      if (tF !== to) tgtInvs = await grab(browser, eds, opts, prof, alignedRoots);
+      aligned = `root "${roots[0].name}": ${prof.source} ${sF ? `fell back to <${sF}>` : 'has it'}, ${prof.target} ${tF ? `fell back to <${tF}>` : 'has it'} — both sides measured at <${to}> (aligned)`;
+    }
   } finally {
     await browser.close();
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
-  const flags = [];
+  if (aligned) process.stdout.write(`⚠ ${aligned}\n`);
+  let flags = [];
+  let inProbeAccepted = 0;
   for (const root of roots) {
-    const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
+    const { flags: rf, lines, accepted: ra } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
     lines.forEach((l) => process.stdout.write(`${l}\n`));
     flags.push(...rf);
+    inProbeAccepted += (ra || []).length;
+  }
+  // the project's accepted list (an owner's decision per change, with its reason)
+  const acceptedFile = opts.accepted || (existsSync('stardust/replica/accepted.json') ? 'stardust/replica/accepted.json' : null);
+  let byList = [];
+  if (acceptedFile) {
+    const list = JSON.parse(readFileSync(acceptedFile, 'utf8')).accepted || [];
+    ({ flags, accepted: byList } = applyAccepted(flags, list));
   }
 
   const primary = roots[0].name;
@@ -537,13 +585,15 @@ async function main() {
   flags.sort((a, b) => order[a.sev] - order[b.sev]);
   const strong = flags.filter((f) => f.sev === '🔴').length;
   process.stdout.write(`\nFindings: ${flags.length ? `${flags.length} (${strong} structural 🔴)` : 'none — content + roles match'}\n`);
+  process.stdout.write(`${tierLine(flags, inProbeAccepted + byList.length)}\n`);
   flags.forEach((f) => process.stdout.write(`${formatFinding(f)}\n`));
+  byList.forEach((f) => process.stdout.write(`  🟢 ${f.kind}${f.root ? ` [${f.root}]` : ''} accepted (${acceptedFile}): ${f.reason}\n`));
 
   if (opts.json) {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, aligned, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags.map((f) => ({ ...f, tier: tierOf(f) })), acceptedByList: byList }, null, 1)}\n`);
   }
 }
 

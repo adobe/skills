@@ -116,6 +116,7 @@ export function inventory(args) {
   let order = 0;
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
+    if (el === probe) return; // the width probe itself sits in <body> — a body root would read its text as copy
     if (el.closest(PAYLOAD)) return;
     if (el.closest(CONSENT_UI)) {
       if ([...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) consentText += 1;

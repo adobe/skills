@@ -289,7 +289,7 @@ node stardust/scripts/replica/cap-probe.mjs "$LIVE" --against "$PROTO" --design 
 a verdict; 0 only when all four ran and passed).
 
 **Pass bar (all four per breakpoint, plus the content-cap row):**
-- content-diff: **0 structural 🔴** on the main root and the chrome roots — the default run covers both, each finding names its root (🟡/🟠 confirmed intended);
+- content-diff: **0 🔴 and 0 nothing-lost 🟡** on the main and chrome roots (gate doc § Pass bar item 1 — the two tiers and `accepted.json`);
 - visual-diff: flags none or justified;
 - pixel diff: **≤ 10%** full-page, with no per-500px band left unexplained
   (the band breakdown is the navigation instrument — fix the first hot band,

@@ -79,8 +79,9 @@ stub(replica, 'chrome-parity.mjs', `
   process.exit(deltas ? 2 : 0);`);
 stub(diff, 'content-diff.mjs', `
   if (process.env.STUB_CD_RC) { console.error('content-diff error: build side answered HTTP 502'); process.exit(Number(process.env.STUB_CD_RC)); }
-  const s = Number(process.env.STUB_STRUCTURAL || 0);
-  console.log('  live: 12 headings'); console.log('Findings: ' + (s ? (s + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));`);
+  const s = Number(process.env.STUB_STRUCTURAL || 0); const l = Number(process.env.STUB_LOST || 0);
+  console.log('  live: 12 headings'); console.log('Findings: ' + (s || l ? (s + l + 2) + ' (' + s + ' structural 🔴)' : 'none — content + roles match'));
+  console.log('Tiers: looks-same 🔴 ' + s + ' · nothing-lost 🟡 ' + l + ' · accepted 🟢 0 · advisory ' + (s || l ? 2 : 0));`);
 stub(diff, 'clip-probe.mjs', `
   console.log('argv ' + process.argv.slice(2).join(' '));
   const n = Number(process.env.STUB_CLIPPED || 0);
@@ -214,7 +215,16 @@ check('--full keeps the full reports out of stdout', !/12 headings/.test(r.stdou
 // --full, structural red → 2 even though pixels pass
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter3', '--full'], { STUB_STRUCTURAL: '1' });
 check('a structural content red fails the round (exit 2)', r.status === 2, `status ${r.status}`);
-check('the structural count is on the verdict line', /^content-diff: 3 \(1 structural 🔴\)/m.test(r.stdout), r.stdout);
+check('the structural count is on the verdict line, with the tiers', /^content-diff: 3 \(1 structural 🔴\) — looks-same 🔴 1 · nothing-lost 🟡 0 /m.test(r.stdout), r.stdout);
+
+// --full, an invisible loss only (nothing-lost 🟡) → 2: the second tier fails the round too; the round's record names its files
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'lost1', '--full'], { STUB_LOST: '2' });
+check('a nothing-lost 🟡 fails the round (exit 2) with 0 structural 🔴', r.status === 2 && /^content-diff: 4 \(0 structural 🔴\) — looks-same 🔴 0 · nothing-lost 🟡 2 /m.test(r.stdout), `status ${r.status} ${r.stdout}`);
+{
+  const vj = join(root, 'stardust/replica/gates/home-1440/verdict-lost1.json');
+  const v = existsSync(vj) ? JSON.parse(readFileSync(vj, 'utf8')) : null;
+  check('verdict-<label>.json records this round: each probe\'s rc and evidence file, the pixel rc + diff, the two tiers', v && v.round === 'lost1' && v.width === 1440 && v.nothingLost === 2 && v.structural === 0 && v.pixel.diff.endsWith('diff-lost1.png') && v.probes['content-diff'].evidence.endsWith('content-diff-lost1.txt') && v.probes['chrome-parity'].rc === 0 && !v.probes['content-presence'], JSON.stringify(v));
+}
 
 // --full, chrome deltas → 2
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter4', '--full'], { STUB_CHROME_DELTAS: '3' });

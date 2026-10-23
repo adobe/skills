@@ -10,7 +10,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { collapseOffset, compareRegion } from '../chrome-parity.mjs';
+import { collapseOffset, compareRegion, markAccepted } from '../chrome-parity.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'chrome-parity.mjs');
@@ -40,6 +40,11 @@ await check('compareRegion: icons with other file names but the same pixels are 
   assert.deepEqual(same.findings, []);
   const other = compareRegion('footer', probe({ icons: [icon('thumb.webp', logo)] }), probe({ icons: [icon('media_9z.webp', logo.map((v) => 255 - v))] }), 1);
   assert.deepEqual(other.findings.map((f) => f.kind), ['ICON']);
+});
+await check('markAccepted: an accepted-list entry (probe chrome-parity or none, kind, text, region) marks the delta accepted + advisory with its reason; a content-diff entry or another region does not', () => {
+  const region = () => ({ name: 'footer', findings: [{ kind: 'REGION STYLE', msg: 'backgroundColor rgb(18, 23, 55) → rgba(0, 0, 0, 0)' }, { kind: 'MISSING', text: 'Careers', msg: 'live <a> "Careers" has no build element with the same text' }] });
+  const r = markAccepted(region(), [{ probe: 'chrome-parity', kind: 'MISSING', text: 'careers', reason: 'page retired, link dropped by the owner' }, { probe: 'content-diff', kind: 'REGION STYLE', reason: 'x' }, { kind: 'REGION STYLE', root: 'header', reason: 'y' }]);
+  assert.deepEqual(r.findings.map((f) => [f.kind, f.accepted || null, Boolean(f.advisory)]), [['REGION STYLE', null, false], ['MISSING', 'page retired, link dropped by the owner', true]]);
 });
 await check('--help answers with no browser', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });

@@ -155,7 +155,7 @@ deploy Step 10, on the live host before handover (`done-check` `header_parity`),
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
 - 🔴 **ROLE SWAP** — same text under a different role that also changes the look (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. The same look is not a swap: body → heading is an accepted ROLE UPGRADE (named on the root, never a finding), heading → body 🟡 ROLE DOWNGRADE. Lost visually hidden text is 🟡 MISSING SR-ONLY TEXT.
-- 🔴 **MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its aria-label or icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡.
+- 🔴 **MISSING PLACEHOLDER, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡. A lost aria-label is 🟡 nothing-lost anywhere (invisible, still fails the gate).
 - Icons pair by identity or by **the same pixels**: a re-hosted file (SAME IMAGE) or an svg drawn as `<img>` (SAME ICON) is accepted. A laid-out 0×0 icon is not one.
 - 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon at another anchor, paired after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): CONFIRM its placement. 🟡 **ICON KIND** (pixels not compared, e.g. a hidden icon) and every **EXTRA**.
 - Every finding line names its root — `🔴 MISSING PLACEHOLDER [header]: …` — and the report prints one block per root (`root "main"`, `root "header"`, …; a root a side lacks is measured as empty there and the line says which side).
@@ -163,7 +163,7 @@ deploy Step 10, on the live host before handover (`done-check` `header_parity`),
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
 - **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.
 
-**Pass bar:** visual red flags none/justified **AND** content-diff **0 structural 🔴** (🟡/🟠 confirmed intended). Re-run BOTH after each fix.
+**Pass bar:** visual red flags none/justified **AND** content-diff **0 🔴 and 0 nothing-lost 🟡** (`../replica/reference/source-fidelity-gate.md` § Pass bar item 1). Re-run BOTH after each fix.
 
 ## Profiles
 
