@@ -265,7 +265,7 @@ not a valid AEMaaCS run mode (honored tokens: `author`/`publish`/`dev`/`stage`/`
 Renaming or merging run modes is not done here: two conflicting run modes (e.g. `config.test` and
 `config.preprod` holding different values for the same PID) cannot both collapse into one Cloud run mode
 without dropping a value. That decision belongs to the developer; the `migration` skill's OSGi branch
-(`references/osgi-cfg-json-cloud-manager.md`, unsupported run modes) is where it is handled.
+(its OSGi configuration guide, section on unsupported run modes) is where it is handled.
 
 **Value conversion — typed, exactly as AEM read the legacy file** (`osgi_formats.py`). Each legacy format is
 read with the same grammar and type rules the AEM 6.x runtime used, so the `.cfg.json` gives Configuration

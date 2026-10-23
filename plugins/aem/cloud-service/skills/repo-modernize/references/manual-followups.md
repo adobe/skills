@@ -205,7 +205,7 @@ The tool flags it but does not auto-resolve it, matching CAM's own copy-filters-
 Run-mode folders Cloud Service ignores (`config.qa`, `config.staging`, `config.prod.author`, ...) are moved
 to `ui.config` unchanged and flagged `RM-108`. Choosing the Cloud run mode each one maps to — and merging
 folders whose values conflict — is a decision for the developer: hand it to the `migration` skill's OSGi
-branch (`references/osgi-cfg-json-cloud-manager.md`, unsupported run modes), which reorders and flags
+branch (its OSGi configuration guide, section on unsupported run modes), which reorders and flags
 without ever merging silently.
 
 ## 9. OSGi values not converted (`RM-907`)
