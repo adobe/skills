@@ -46,6 +46,14 @@ await check('markAccepted: an accepted-list entry (probe chrome-parity or none, 
   const r = markAccepted(region(), [{ probe: 'chrome-parity', kind: 'MISSING', text: 'careers', reason: 'page retired, link dropped by the owner' }, { probe: 'content-diff', kind: 'REGION STYLE', reason: 'x' }, { kind: 'REGION STYLE', root: 'header', reason: 'y' }]);
   assert.deepEqual(r.findings.map((f) => [f.kind, f.accepted || null, Boolean(f.advisory)]), [['REGION STYLE', null, false], ['MISSING', 'page retired, link dropped by the owner', true]]);
 });
+await check('markAccepted matches text inside the delta\'s own text, never its message wording; a text entry never matches a text-less delta; a kind-only entry accepts every delta of the kind', () => {
+  const region = () => ({ name: 'header', findings: [{ kind: 'MISSING', text: 'Careers', msg: 'live <a> "Careers" has no build element with the same text' }, { kind: 'MISSING', text: 'Blog', msg: 'live <a> "Blog" has no build element with the same text' }, { kind: 'REGION STYLE', msg: 'position sticky → static' }] });
+  const acc = (list) => markAccepted(region(), list).findings.filter((f) => f.accepted).map((f) => f.text || f.kind);
+  assert.deepEqual(acc([{ kind: 'MISSING', text: 'element', reason: 'x' }]), [], 'message wording is not the subject');
+  assert.deepEqual(acc([{ kind: 'REGION STYLE', text: 'sticky', reason: 'x' }]), [], 'no text on the delta → no text match');
+  assert.deepEqual(acc([{ kind: 'MISSING', text: 'blog', reason: 'x' }]), ['Blog']);
+  assert.deepEqual(acc([{ kind: 'MISSING', reason: 'kind-only' }]), ['Careers', 'Blog']);
+});
 await check('--help answers with no browser', () => {
   const r = spawnSync(process.execPath, [SCRIPT, '--help'], { encoding: 'utf8' });
   assert.equal(r.status, 0, r.stderr); assert.match(r.stdout, /^chrome-parity — /);

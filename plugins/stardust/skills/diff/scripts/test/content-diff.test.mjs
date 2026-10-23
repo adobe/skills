@@ -16,7 +16,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { ATTRIBUTE_HINTS, applyAccepted, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots, tierLine, tierOf } from '../content-diff.mjs';
+import { ATTRIBUTE_HINTS, alignPrimary, applyAccepted, attributeInventory, diffAttributes, diffRoot, formatFinding, glyphLabel, parseRoots, subjectOf, tierLine, tierOf } from '../content-diff.mjs';
 import { resolveProfile } from '../diff-profiles.mjs';
 import { diffInventories } from '../content-inventory.mjs';
 
@@ -62,10 +62,35 @@ await check('severity follows visibility: a lost aria-label is 🟡 anywhere (in
 });
 await check('tierLine counts looks-same / nothing-lost / accepted / advisory; applyAccepted takes a finding out by kind + text (+ root) and keeps its reason', () => {
   const flags = [{ sev: '🔴', kind: 'MISSING CTA', msg: 'source cta "Knock toner" → /topic/knock-toner has no build link', root: 'main' }, { sev: '🟡', kind: 'MISSING ARIA-LABEL', msg: 'source <a> aria-label="Chart" …', root: 'main' }, { sev: '🟡', kind: 'EXTRA', msg: 'x', root: 'main' }];
-  assert.equal(tierLine(flags, 2), 'Tiers: looks-same 🔴 1 · nothing-lost 🟡 1 · accepted 🟢 2 · advisory 1');
+  assert.equal(tierLine(flags, { owner: 2, auto: 3 }), 'Tiers: looks-same 🔴 1 · nothing-lost 🟡 1 · accepted 🟢 5 (owner 2, auto 3) · advisory 1');
+  assert.equal(tierLine([]), 'Tiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 0 (owner 0, auto 0) · advisory 0');
   const { flags: left, accepted } = applyAccepted(flags, [{ kind: 'MISSING CTA', text: 'knock toner', reason: 'rotating ticker frozen at capture' }, { kind: 'EXTRA', root: 'header', reason: 'other root' }]);
   assert.deepEqual(left.map((f) => f.kind), ['MISSING ARIA-LABEL', 'EXTRA']);
   assert.deepEqual(accepted.map((f) => [f.kind, f.reason]), [['MISSING CTA', 'rotating ticker frozen at capture']]);
+});
+await check('applyAccepted matches text inside the finding\'s quoted subject only — the fixed wording ("has no build link") never matches; a kind-only entry accepts every finding of the kind', () => {
+  const cta = (t) => ({ sev: '🔴', kind: 'MISSING CTA', msg: `source cta "${t}" → /x has no build link. Carry the link over.`, root: 'main' });
+  const flags = [cta('Knock toner'), cta('Pricing'), { sev: '🟡', kind: 'MISSING ARIA-LABEL', msg: 'source <a> aria-label="Open menu" has no build <a> with that aria-label (build <a> aria-labels: "Close").', root: 'header' }];
+  assert.equal(subjectOf(flags[0]), 'Knock toner'); assert.equal(subjectOf(flags[2]), 'Open menu'); assert.equal(subjectOf({ msg: 'no quotes' }), '');
+  assert.equal(applyAccepted(flags, [{ kind: 'MISSING CTA', text: 'link', reason: 'x' }]).accepted.length, 0, 'message wording is not the subject');
+  assert.equal(applyAccepted(flags, [{ kind: 'MISSING CTA', text: 'build', reason: 'x' }]).accepted.length, 0);
+  assert.deepEqual(applyAccepted(flags, [{ kind: 'MISSING CTA', text: 'PRICING', reason: 'x' }]).accepted.map(subjectOf), ['Pricing']);
+  assert.equal(applyAccepted(flags, [{ kind: 'MISSING ARIA-LABEL', text: 'close', reason: 'x' }]).accepted.length, 0, 'the other-values list is not the subject');
+  assert.deepEqual(applyAccepted(flags, [{ kind: 'MISSING CTA', reason: 'kind-only' }]).accepted.map(subjectOf), ['Knock toner', 'Pricing'], 'kind-only accepts every finding of the kind');
+});
+await check('alignPrimary: one side found the root, the other fell back — re-read and say what was really measured; a side re-read at <main> that has none lands at <body>, so both align at <body> (either side)', async () => {
+  const run = async (sF, tF, has) => { const calls = []; const r = await alignPrimary('.content', sF, tF, prof, async (side, to) => { calls.push(`${side}@${to}`); return to === 'main' && !has[side] ? 'body' : to; }); return { r, calls }; };
+  assert.equal(await alignPrimary('main', null, null, prof, async () => { throw new Error('no re-read'); }), null);
+  let { r, calls } = await run('body', null, { src: false, tgt: true });
+  assert.deepEqual(calls, ['tgt@body']); assert.equal(r.note, 'root ".content": source fell back to <body>, build has it — both sides measured at <body> (aligned)');
+  ({ r, calls } = await run(null, 'main', { src: true, tgt: true }));
+  assert.deepEqual(calls, ['src@main']); assert.equal(r.to, 'main'); assert.match(r.note, /both sides measured at <main> \(aligned\)$/);
+  ({ r, calls } = await run(null, 'main', { src: false, tgt: true }));
+  assert.deepEqual(calls, ['src@main', 'tgt@body']); assert.equal(r.to, 'body');
+  assert.equal(r.note, 'root ".content": source has it, build fell back to <main> — both sides measured at <body> (aligned; source has no <main>)');
+  ({ r, calls } = await run('main', null, { src: true, tgt: false }));
+  assert.deepEqual(calls, ['tgt@main', 'src@body']); assert.equal(r.to, 'body');
+  assert.equal(r.note, 'root ".content": source fell back to <main>, build has it — both sides measured at <body> (aligned; build has no <main>)');
 });
 
 // ---- pure: icons ---------------------------------------------------------------------------------
@@ -347,7 +372,7 @@ if (playwrightOk) {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /^⚠ root "main": source fell back to <body>, build has it — both sides measured at <body> \(aligned\)$/m, r.stdout);
     assert.doesNotMatch(r.stdout, /MISSING CTA \[main\]: source cta "(pricing|login)"/i, r.stdout);
-    assert.match(r.stdout, /^Tiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 1 · advisory \d+$/m, r.stdout);
+    assert.match(r.stdout, /^Tiers: looks-same 🔴 0 · nothing-lost 🟡 0 · accepted 🟢 1 \(owner 1, auto 0\) · advisory \d+$/m, r.stdout);
     assert.match(r.stdout, /🟢 MISSING CTA \[main\] accepted \(.*accepted\.json\): rotating feed, frozen at capture/, r.stdout);
   });
   server.close();

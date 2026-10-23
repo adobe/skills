@@ -174,7 +174,9 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
   --locale <tag>         pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --accepted <file>      accepted changes ({ accepted: [{ kind, text?, root?, probe?, reason }] }); a matching
                          finding is printed as accepted with its reason and never counted
-                         (default stardust/replica/accepted.json when it exists)
+                         (default stardust/replica/accepted.json when it exists). text matches inside
+                         the finding's first quoted text (the item, value or anchor), never its wording;
+                         an entry without text accepts EVERY finding of its kind
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
@@ -188,7 +190,9 @@ findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXT
             Findings: line is unchanged. Tiers (the verdict reads both): looks-same = every 🔴
             (a visible difference); nothing-lost = MISSING ARIA-LABEL, MISSING SR-ONLY TEXT,
             ROLE DOWNGRADE (invisible, still to fix); the rest is advisory. A side whose main
-            root fell back while the other found it is re-read at the same fallback (aligned).
+            root fell back while the other found it is re-read at the same fallback (aligned;
+            at <body> when the re-read side has no <main>). accepted 🟢 = owner (the
+            accepted list) + auto (ROLE UPGRADE, SAME IMAGE, SAME ICON).
 `;
 
 // ---- attribute + icon layer ----------------------------------------------------------------------
@@ -431,20 +435,48 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
 // looks-same = every 🔴 (a visible difference); nothing-lost = invisible losses still to fix; the rest is advisory.
 export const LOST_KINDS = new Set(['MISSING ARIA-LABEL', 'MISSING SR-ONLY TEXT', 'ROLE DOWNGRADE']);
 export const tierOf = (f) => (f.sev === '🔴' ? 'looks' : (LOST_KINDS.has(f.kind) ? 'lost' : 'advisory'));
+// Pure: a finding's subject — the first quoted text in its message (the item text, the attribute value or the icon's
+// anchor, as printed), never the fixed wording around it ("has no build link"); '' when the message quotes nothing.
+export const subjectOf = (f) => { const m = /"([^"]*)"/.exec(String((f && f.msg) || '')); return m ? m[1] : ''; };
 // Pure: split findings by an accepted list ({ kind, text?, root?, reason }) — kind equal, text a case-insensitive
-// substring of the message, root equal when given. Returns the findings left and the accepted ones with their reason.
+// substring of the finding's subject (subjectOf), root equal when given; an entry without text accepts EVERY finding of
+// its kind (on its root). Returns the findings left and the accepted ones with their reason.
 export function applyAccepted(flags, list) {
   const left = []; const accepted = [];
   for (const f of flags) {
-    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'content-diff') && a.kind === f.kind && (!a.root || a.root === f.root) && (!a.text || String(f.msg).toLowerCase().includes(String(a.text).toLowerCase())));
+    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'content-diff') && a.kind === f.kind && (!a.root || a.root === f.root) && (!a.text || subjectOf(f).toLowerCase().includes(String(a.text).toLowerCase())));
     if (hit) accepted.push({ ...f, reason: hit.reason || '' }); else left.push(f);
   }
   return { flags: left, accepted };
 }
-// Pure: the tier summary line the gate reads.
-export function tierLine(flags, acceptedCount) {
+// Pure: the tier summary line the gate reads. accepted 🟢 = owner (the accepted list) + auto (the probe's own look-neutral
+// acceptances: ROLE UPGRADE, SAME IMAGE, SAME ICON).
+export function tierLine(flags, { owner = 0, auto = 0 } = {}) {
   const n = (t) => flags.filter((f) => tierOf(f) === t).length;
-  return `Tiers: looks-same 🔴 ${n('looks')} · nothing-lost 🟡 ${n('lost')} · accepted 🟢 ${acceptedCount} · advisory ${n('advisory')}`;
+  return `Tiers: looks-same 🔴 ${n('looks')} · nothing-lost 🟡 ${n('lost')} · accepted 🟢 ${owner + auto} (owner ${owner}, auto ${auto}) · advisory ${n('advisory')}`;
+}
+// Align the primary root's scope across the two sides. sF / tF = where each side measured it: null = the selector itself,
+// else the in-page fallback it took ('main' → 'body'). One side found it and the other fell back: the side not at the
+// fallback is re-read there. reread(side, to) re-reads 'src' | 'tgt' at `to` and resolves to where that side was really
+// measured — a side re-read at <main> that has none falls back to <body> in the page — so the scopes are compared again
+// and, while they differ, aligned one step wider (<body> always exists). Pure given reread. Returns null (already the
+// same scope) or { to, note } — the note says what was measured, and which side lacked the first target.
+export async function alignPrimary(name, sF, tF, prof, reread) {
+  if (sF === tF) return null;
+  const at = { src: sF, tgt: tF }; const label = { src: prof.source, tgt: prof.target };
+  const lacks = []; let to = null;
+  for (let pass = 0; pass < 2 && at.src !== at.tgt; pass += 1) {
+    to = [at.src, at.tgt].includes('body') ? 'body' : 'main';
+    for (const side of ['src', 'tgt']) {
+      if (at[side] === to) continue;
+      const got = await reread(side, to);
+      if (got !== to) lacks.push(`${label[side]} has no <${to}>`);
+      at[side] = got;
+    }
+  }
+  const was = (f) => (f ? `fell back to <${f}>` : 'has it');
+  const both = at.src === at.tgt ? `both sides measured at <${at.src}>` : `${prof.source} measured at <${at.src}>, ${prof.target} at <${at.tgt}>`;
+  return { to: at.src === at.tgt ? at.src : null, note: `root "${name}": ${prof.source} ${was(sF)}, ${prof.target} ${was(tF)} — ${both} (aligned${lacks.length ? `; ${lacks.join(', ')}` : ''})` };
 }
 
 // Pure: "23 ROLE UPGRADE — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
@@ -545,15 +577,15 @@ async function main() {
     tgtInvs = await grab(browser, eds, opts, prof, roots);
     // one side found the main root, the other fell back (→ <main> → <body>): re-read the first at the other's
     // fallback, so both sides inventory the same scope (a page with no <main> read as <body> against a build's <main>
-    // turned its whole mega-menu into missing content)
-    const sF = srcInvs[roots[0].name].fellBack || null; const tF = tgtInvs[roots[0].name].fellBack || null;
-    if (sF !== tF) {
-      const to = [sF, tF].includes('body') ? 'body' : 'main';
-      const alignedRoots = [{ ...roots[0], sel: to, describe: `<${to}> (aligned)` }, ...roots.slice(1)];
-      if (sF !== to) srcInvs = await grab(browser, proto, opts, prof, alignedRoots);
-      if (tF !== to) tgtInvs = await grab(browser, eds, opts, prof, alignedRoots);
-      aligned = `root "${roots[0].name}": ${prof.source} ${sF ? `fell back to <${sF}>` : 'has it'}, ${prof.target} ${tF ? `fell back to <${tF}>` : 'has it'} — both sides measured at <${to}> (aligned)`;
-    }
+    // turned its whole mega-menu into missing content) — alignPrimary re-checks where the re-read really landed
+    const pr = roots[0];
+    const reread = async (side, to) => {
+      const invs = await grab(browser, side === 'src' ? proto : eds, opts, prof, [{ ...pr, sel: to, describe: `<${to}> (aligned)` }, ...roots.slice(1)]);
+      if (side === 'src') srcInvs = invs; else tgtInvs = invs;
+      return invs[pr.name].fellBack || to;
+    };
+    const al = await alignPrimary(pr.name, srcInvs[pr.name].fellBack || null, tgtInvs[pr.name].fellBack || null, prof, reread);
+    aligned = al ? al.note : null;
   } finally {
     await browser.close();
   }
@@ -585,7 +617,7 @@ async function main() {
   flags.sort((a, b) => order[a.sev] - order[b.sev]);
   const strong = flags.filter((f) => f.sev === '🔴').length;
   process.stdout.write(`\nFindings: ${flags.length ? `${flags.length} (${strong} structural 🔴)` : 'none — content + roles match'}\n`);
-  process.stdout.write(`${tierLine(flags, inProbeAccepted + byList.length)}\n`);
+  process.stdout.write(`${tierLine(flags, { owner: byList.length, auto: inProbeAccepted })}\n`);
   flags.forEach((f) => process.stdout.write(`${formatFinding(f)}\n`));
   byList.forEach((f) => process.stdout.write(`  🟢 ${f.kind}${f.root ? ` [${f.root}]` : ''} accepted (${acceptedFile}): ${f.reason}\n`));
 

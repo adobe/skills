@@ -35,6 +35,14 @@ hand — on another page the latest chrome-parity file disagreed with the record
 - Tests: `content-diff.test.mjs` (tiers, applyAccepted, aria-label severity, an end-to-end no-`<main>` page against a
   `<main>` build with an accepted ticker link), `chrome-parity.test.mjs` (`markAccepted`), `gate.test.mjs` (a
   nothing-lost round exits 2; the verdict record), `gate-evidence.test.mjs` (`parseFindings` reads the tier).
+- Review fixes: `accepted 🟢 N (owner M, auto K)` — the accepted list apart from the probe's own ROLE UPGRADE / SAME
+  IMAGE / SAME ICON; an accepted-list `text` matches inside the finding's quoted subject (`subjectOf`; chrome-parity: the
+  delta's own text), never the message wording — `{ kind: 'MISSING CTA', text: 'link' }` no longer accepts every MISSING
+  CTA, and the docs warn that a kind-only entry accepts every finding of its kind; root alignment (`alignPrimary`)
+  checks where a re-read side really landed — one re-read at `<main>` that has none falls to `<body>`, so both sides
+  align at `<body>` and the `⚠` line says so; `parseFindings` takes the nothing-lost count from the same (last) round
+  as the `Findings` line; `handoff-contract.md` row 4 reads both tiers (a lost aria-label is nothing-lost 🟡, on the
+  `Tiers:` line).
 
 ## 0.34.14 — diff-report names the block a pixel difference belongs to (#147)
 

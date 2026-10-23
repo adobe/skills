@@ -97,7 +97,8 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --json             machine-readable output
   --live-cache <f>   reuse/write the live side's measurement (JSON) — one live hit per breakpoint
   --accepted <file>  accepted changes ({ accepted: [{ probe: "chrome-parity", kind, text?, root?: <region>, reason }] });
-                     a matching delta prints as accepted and is not counted (default stardust/replica/accepted.json)
+                     a matching delta prints as accepted and is not counted (default stardust/replica/accepted.json);
+                     text matches inside the delta's own text, never its message; no text = EVERY delta of that kind
   --help             this text
 
 Exit codes: 0 parity within tolerance, 2 deltas printed, 1 error, 3 bot challenge (live side).`;
@@ -299,12 +300,13 @@ export function compareRegion(name, L, B, tol) {
 }
 
 // Pure: an owner's accepted list ({ probe?, kind, text?, root?, reason }) marks a matching delta accepted — kind equal,
-// text a case-insensitive substring of the finding's text or message, root = the region name when given. Accepted
-// deltas print with their reason and never count.
+// text a case-insensitive substring of the finding's own text (the item it is about — never its message wording, so
+// "link" does not accept every MISSING; a finding without text matches no text entry), root = the region name when
+// given; an entry without text accepts EVERY delta of its kind. Accepted deltas print with their reason and never count.
 export function markAccepted(region, list) {
   for (const f of region.findings) {
-    const hay = `${f.text || ''} ${f.msg}`.toLowerCase();
-    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'chrome-parity') && a.kind === f.kind && (!a.root || a.root === region.name) && (!a.text || hay.includes(String(a.text).toLowerCase())));
+    const subject = String(f.text || '').toLowerCase();
+    const hit = (list || []).find((a) => a && (!a.probe || a.probe === 'chrome-parity') && a.kind === f.kind && (!a.root || a.root === region.name) && (!a.text || (subject && subject.includes(String(a.text).toLowerCase()))));
     if (hit) { f.accepted = hit.reason || 'accepted'; f.advisory = true; }
   }
   return region;

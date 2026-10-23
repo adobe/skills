@@ -82,7 +82,11 @@ The prototype capture is re-taken every iteration.
    ledger it once). An owner-accepted change is one entry in
    `stardust/replica/accepted.json` (`{ accepted: [{ probe?, kind, text?,
    root?, reason }] }`): content-diff and chrome-parity print it 🟢 with its
-   reason, uncounted. Cite the round's `verdict-<label>.json` — it names the
+   reason, uncounted (`accepted 🟢 N (owner M, auto K)` — auto = the
+   probe's own ROLE UPGRADE / SAME IMAGE / SAME ICON). `text` matches inside
+   the finding's quoted item text, never its wording; an entry without
+   `text` accepts EVERY finding of its kind (on `root` when given) — always
+   give one. Cite the round's `verdict-<label>.json` — it names the
    evidence file of every verdict.
 2. **visual-diff: flags none or justified.** A live page's own quirks are
    justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
