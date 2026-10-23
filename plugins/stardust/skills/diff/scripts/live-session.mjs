@@ -537,10 +537,27 @@ export const CONSENT_CANDIDATES = [
   '#cmpwelcomebtnyes',
   '.cmpboxbtnyes',
   '#cmpbntyestxt',
+  // the other common consent managers' accept-all controls, by vendor id/class:
+  // CookieHub, Cookiebot (dialog v2, then v1), Didomi, Usercentrics, Osano,
+  // Termly, TrustArc, Quantcast Choice, iubenda, Complianz, CookieYes
+  '.ch2-allow-all-btn',
+  '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll',
+  '#CybotCookiebotDialogBodyButtonAccept',
+  '#didomi-notice-agree-button',
+  '[data-testid="uc-accept-all-button"]',
+  '.osano-cm-accept-all',
+  '[data-tid="banner-accept"]',
+  '#truste-consent-button',
+  '.qc-cmp2-summary-buttons button[mode="primary"]',
+  '.iubenda-cs-accept-btn',
+  '.cmplz-accept',
+  '.cky-btn-accept',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
   'button:has-text("Accept")',
   'button:has-text("I agree")',
+  // CookieHub and Cookiebot label the button "Allow all", which no Accept text matches
+  'button:has-text("Allow all")',
   '[data-testid*="accept"]',
 ];
 

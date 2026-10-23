@@ -346,6 +346,8 @@ if (pwProbe.status !== 0) {
     '/denied-late': html('Notice', `<p>Loading the page.</p><script>document.addEventListener('DOMContentLoaded', () => setTimeout(() => { document.body.innerHTML = ${JSON.stringify(RECORDED)}; }, 500));</script>`),
     '/denied-heading': html('Error', '<h1>Something went wrong</h1><p>Please try again in a few minutes.</p>'),
     '/consent': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#cmp{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="cmp"><button id="yes" onclick="document.getElementById(\'cmp\').remove()">Yes</button></div>'),
+    // a consent manager whose accept control reads "Allow all" (no Accept text): matched by its vendor class, no flag
+    '/cmp-allow-all': html('Consent', '<style>body{height:2400px}h1,p{margin:0}.ch2-container{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div class="ch2-container"><button class="ch2-btn ch2-allow-all-btn" onclick="this.parentNode.remove()">Allow all</button></div>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
   const server = createServer((req, res) => {
@@ -367,7 +369,7 @@ if (pwProbe.status !== 0) {
   });
   try {
     const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
-    const [ok, article, consent, noDismiss, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const [ok, article, consent, noDismiss, allowAll, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
@@ -382,6 +384,10 @@ if (pwProbe.status !== 0) {
       assert.equal(article.status, 0, article.stderr);
       assert.equal(article.cap && article.cap.denialCheck, 'ok');
       assert.doesNotMatch(article.stderr, /denial/);
+    });
+    await check('e2e: a consent manager in the built-in candidates is dismissed with no flag — its "Allow all" button by vendor class', () => {
+      assert.equal(allowAll.status, 0, allowAll.stderr + allowAll.stdout);
+      assert.match(allowAll.stdout, /consent dismissed via \.ch2-allow-all-btn/);
     });
     await check('e2e: --consent <sel> closes the fixture consent box; the capture is width × document height from vh-sized chunks', () => {
       assert.equal(consent.status, 0, consent.stderr + consent.stdout);

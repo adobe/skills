@@ -281,12 +281,15 @@ await checkAsync('gotoLive: the header-marker message is unchanged (botChallenge
 });
 
 // ---- the consent candidates, isLiveHttpUrl, defaultWaitUntil -------------------------------------------------------
-check('consent candidates: OneTrust first, the cmp-prefixed consent-manager buttons present, text fallbacks last, no duplicates', () => {
+check('consent candidates: OneTrust first, the cmp-prefixed and other common consent managers present, text fallbacks last, no duplicates', () => {
   const c = session.CONSENT_CANDIDATES;
   assert.ok(Array.isArray(c) && c.length >= 9, `${c.length} candidates`);
   assert.equal(c[0], '#onetrust-accept-btn-handler');
   for (const sel of ['#cmpwelcomebtnyes', '.cmpboxbtnyes', '#cmpbntyestxt']) assert.ok(c.includes(sel), `${sel} is a candidate`);
-  assert.ok(c.indexOf('#cmpwelcomebtnyes') < c.indexOf('button:has-text("Accept all")'), 'id selectors before the text fallbacks');
+  for (const sel of ['.ch2-allow-all-btn', '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', '#didomi-notice-agree-button', '[data-testid="uc-accept-all-button"]', '.osano-cm-accept-all', '#truste-consent-button', '.cky-btn-accept']) assert.ok(c.includes(sel), `${sel} is a candidate`);
+  const firstText = c.findIndex((sel) => sel.startsWith('button:has-text('));
+  assert.ok(c.slice(firstText).every((sel) => sel.startsWith('button:has-text(') || sel.startsWith('[data-testid*=')), 'vendor id/class selectors all before the text fallbacks');
+  assert.ok(c.includes('button:has-text("Allow all")'), 'the "Allow all" label some managers use is a text fallback');
   assert.equal(new Set(c).size, c.length, 'no duplicate candidate');
   assert.ok(c.every((sel) => typeof sel === 'string' && sel.trim() === sel && sel.length), 'every candidate is a trimmed selector string');
 });

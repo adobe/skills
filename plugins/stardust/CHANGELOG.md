@@ -4,6 +4,22 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.6 — the common consent managers are dismissed with no flag (#139)
+
+Field learning (a recorded replica run on a site whose consent manager labels its button "Allow all"): no built-in
+candidate matched, so the bar was stitched into every live viewport chunk. The pixel round read 7.2 % at 1440 and
+15.0 % at 360 (a FAIL) where the same page read 1.0 % / 1.6 % with the banner accepted, every hot band and section
+attribution pointed at the bar, and content-diff reported the banner's heading, link and buttons as 🔴 missing content.
+
+- **`diff/scripts/live-session.mjs` `CONSENT_CANDIDATES`** gains the accept-all controls of CookieHub, Cookiebot
+  (dialog v2 and v1), Didomi, Usercentrics, Osano, Termly, TrustArc, Quantcast Choice, iubenda, Complianz and
+  CookieYes, by vendor id or class, ahead of the text fallbacks, plus a `button:has-text("Allow all")` fallback.
+  Every instrument on `dismissOverlays` (stitch-shot, the diff probes, chrome-parity) inherits them; `--consent`
+  stays the override for a manager the list misses.
+- Tests: `test/live-session.test.mjs` pins the vendor entries and the order (vendor selectors before the text
+  fallbacks); `replica/scripts/test/stitch-shot.test.mjs` captures a fixture "Allow all" bar with no flag and reads
+  `consent dismissed via .ch2-allow-all-btn`.
+
 ## 0.34.5 — replica: the source-fidelity gate can measure against a frozen origin baseline (opt-in, default off) (#138)
 
 Field learning (a multi-day hands-off replica): the live site changed between rounds — a hero rotated, a banner
