@@ -353,12 +353,12 @@ export function diffAttributes(src, tgt, prof, accepted = []) {
   // value: glyph code point, file name, svg signature) in document order — first within the same nearest block (equal block
   // keys), then anywhere in the root. Such a pair is ICON MOVED 🟡: the icon is present, anchored differently (a text-less
   // <button> host anchors as button#n where the source anchored to its item text) — never MISSING + EXTRA. Empty icon boxes
-  // have no identity to pair by.
+  // have no identity to pair by: they pair only by the same (non-blank) pixels.
   const ident = (ic) => `${ic.kind}\u0000${ic.value}`;
   for (const scope of [(a, b) => Boolean(a.block) && a.block === b.block, () => true]) {
     si.forEach((a, k) => {
       if (pairs[k] >= 0 || (!a.value && !a.sig)) return;
-      const i = ti.findIndex((b, j) => !usedI[j] && (ident(b) === ident(a) || sameImage(a, b)) && scope(a, b));
+      const i = ti.findIndex((b, j) => !usedI[j] && ((a.value && ident(b) === ident(a)) || sameImage(a, b)) && scope(a, b));
       if (i >= 0) { usedI[i] = true; pairs[k] = i; moved[k] = true; }
     });
   }

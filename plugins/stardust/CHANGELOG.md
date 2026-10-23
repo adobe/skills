@@ -11,19 +11,26 @@ under `media_<hash>` — mean pixel difference 0–1.2 / 255, same size — beca
 the file name; 3 🔴 MISSING ICON were laid-out 0×0 inline svgs on the source (nothing to see); 2 more were inline-svg
 logos the build draws as `<img src="*.svg">`.
 
-- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot composited on
-  white and averaged to a 12 × 12 grey grid. `sameImage` = mean |Δ| ≤ 12 / 255 with boxes within 2 px; a near-uniform
-  grid (an empty box, an unrendered glyph) is never an identity. `signElements` screenshots visible elements only.
+- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot (opaque: the page
+  background behind the element is captured with it) averaged to a 12 × 12 RGB grid — colour kept, so the same shape
+  recoloured (red #CE2B37 vs green #009246, the same grey) is another image. `sameImage` = mean |Δ| ≤ 12 / 255 over the
+  drawn cells (those off the grid's border-median background on either side, so a thin-line icon in a mostly-empty box
+  is not averaged away) with boxes within 2 px; a near-uniform grid (an empty box, an unrendered glyph) is never an
+  identity. `signElements` screenshots visible elements only.
 - **`content-diff.mjs`:** `attributeInventory` tags each icon with a ref (`data-sd-icon`) that the probe signs after
   every inventory; laid-out 0×0 svg / glyph / css icons are skipped (a `display:none` subtree is kept, compared by
-  name as before). Pairing treats the same pixels as the same icon in the anchor and ICON MOVED passes; a pair that
+  name as before). Pairing treats the same pixels as the same icon in the anchor and ICON MOVED passes (an empty icon
+  box pairs by pixels only — two blank boxes never pair, so an empty unanchored box stays MISSING ICON); a pair that
   differs only by file or technique but not by pixels is accepted — `SAME IMAGE` / `SAME ICON` on the root's
   `accepted` line with the ROLE UPGRADEs (`acceptedLine`, one group per kind) — never a finding. A different logo
   stays 🔴 ICON DIFF.
 - Docs: `diff/SKILL.md` § Reading content-diff — one line for pixel identity; ICON MOVED / ICON KIND trimmed.
-- Tests: new `test/image-signature.test.mjs` (distance, blank, sameImage); `content-diff.test.mjs` end to end —
-  re-hosted file, svg vs `<img>`, a genuinely different logo, a 0×0 svg; the flag fixture now carries two different
-  flags.
+- Docs: `deploy/SKILL.md` copy set for the Step-10 `content-diff` names every local import (`content-inventory.mjs`,
+  `diff-profiles.mjs`, `image-signature.mjs`, `live-session.mjs`).
+- Tests: new `test/image-signature.test.mjs` (distance, blank, sameImage, red vs green same shape, two thin-line
+  icons); `content-diff.test.mjs` pure — an empty box missing on the build is MISSING ICON, the same signature under
+  another file name is SAME IMAGE — and end to end — re-hosted file, svg vs `<img>`, a genuinely different logo, a 0×0
+  svg; the flag fixture now carries two different flags.
 
 ## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
 

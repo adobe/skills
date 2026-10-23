@@ -138,6 +138,21 @@ await check('anchor passes come first: swapped flags (de at "english", en at "de
   const empty = diffAttributes({ attrs: [], icons: [icon('glyph', '"\ue911"', 'question 1', true, { family: 'Icons' })] }, { attrs: [], icons: [icon('glyph', '', 'button#1', true, { family: '' })] }, prof);
   assert.deepEqual(kinds(empty), ['🔴 MISSING ICON', '🟡 EXTRA ICON']);
 });
+// signature fixtures (image-signature.mjs): a SIG_SIZE × SIG_SIZE RGB grid — a blank box, and a mark with structure
+const sigGrid = (ink) => Array.from({ length: 144 }, (_, i) => (ink(i % 12, Math.floor(i / 12)) ? [42, 170, 102] : [255, 255, 255])).flat();
+const blankSig = sigGrid(() => false); const markSig = sigGrid((x, y) => (x - 5.5) ** 2 + (y - 5.5) ** 2 <= 16);
+await check('pixels never pair two blank boxes: an empty, unanchored source icon box with no build box at its anchor is 🔴 MISSING ICON, not ICON MOVED onto an empty build box elsewhere', () => {
+  const src = { attrs: [], icons: [icon('glyph', '', 'search', true, { family: '', sig: blankSig })] };
+  const tgt = { attrs: [], icons: [icon('glyph', '', 'button#1', true, { family: '', sig: blankSig })] };
+  assert.deepEqual(kinds(diffAttributes(src, tgt, prof)), ['🔴 MISSING ICON', '🟡 EXTRA ICON']);
+});
+await check('the same signature under another value at the anchor is accepted as SAME IMAGE — no finding', () => {
+  const accepted = [];
+  const src = { attrs: [], icons: [icon('img', 'logo-a.svg', 'alpha', true, { size: '24×16', sig: markSig })] };
+  const tgt = { attrs: [], icons: [icon('img', 'media_1a2b.svg', 'alpha', true, { size: '24×16', sig: markSig })] };
+  assert.deepEqual(diffAttributes(src, tgt, prof, accepted), []);
+  assert.deepEqual(accepted, [{ kind: 'SAME IMAGE', text: 'logo-a.svg ↔ media_1a2b.svg' }]);
+});
 await check('glyphLabel: quotes stripped, private-use and non-ASCII code points as U+XXXX, ASCII kept, empty → no glyph', () => {
   assert.equal(glyphLabel('""'), 'U+F09A'); assert.equal(glyphLabel("'→'"), 'U+2192'); assert.equal(glyphLabel('"+"'), '+');
   assert.equal(glyphLabel('"a b"'), 'aU+00A0b'); assert.equal(glyphLabel(''), 'no glyph'); assert.equal(glyphLabel('""'), 'no glyph');
