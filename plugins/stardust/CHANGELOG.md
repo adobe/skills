@@ -4,6 +4,26 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
+
+Field learning (a recorded replica gate on a home page): all 8 STRETCHED IMAGE flags at 1440 were stretched the same
+way on the source (a `fill` hero background at 0 % pixel difference, `cover` footer thumbnails); the one real
+difference — article thumbnails the source crops with `object-fit: cover` and the build distorts — was not separated
+from them, and a report misread the hero as a defect. Reading the printed metrics by hand, 33 matched headings were
+identical and the family differed only in case (`Manrope` / `manrope`).
+
+- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill` (cover / contain / scale-down
+  / none never distort; each image records its `fit`). A build stretch is flagged only when its source twin —
+  same rendered box ±2 px, same natural ratio ±4 % (DA re-hosting renames every file, so never by name) — is not
+  stretched the same way; when the source crops it, the flag says `(source: object-fit cover at the same box)`.
+  A matched heading at another size (> 1 px) or in another family (case-insensitive) is a new `HEADING FACE` flag.
+  playwright loads lazily and `main` runs only as the entry point; `sourceTwin`, `headingFaceDiffers` and
+  `redFlags` are exported.
+- The STRETCHED hint in both `diff-profiles.mjs` copies drops the "unless justified" clause the instrument now
+  decides. `diff/SKILL.md` probe table names the two-sided rule.
+- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the pure pairing and flags, `--help` without a browser, and
+  an end-to-end source-crops / build-distorts fixture.
+
 ## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)
 
 Field learning (a recorded hands-off replica run): the setup status line said "full site" while the hands-off volume

@@ -13,7 +13,10 @@
  * the skill keeps re-learning:
  *   - stretched images        (#36 — EDS <img> width/height attrs + no height:auto)
  *   - full-bleed content      (#37 — dropped max-width .wrap, worst on plain bg)
- * The prototype side is for the agent to compare headings/eyebrow colors etc.
+ * Image and heading flags are TWO-SIDED: a build image is "stretched" only when
+ * `object-fit: fill` distorts it AND its source counterpart (same rendered box,
+ * same natural ratio) is not distorted the same way; a matched heading is
+ * flagged when its size or family (case-insensitive) differs from the source.
  *
  * Usage:
  *   node skills/diff/scripts/visual-diff.mjs <prototypeURL> <edsURL> [options]
@@ -63,9 +66,9 @@
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: playwright is a devDependency; sequential page ops use awaited loops by design */
-import { chromium } from 'playwright';
-import { mkdirSync } from 'fs';
+import { mkdirSync, realpathSync } from 'fs';
 import { resolve } from 'path';
+import { fileURLToPath } from 'url';
 import { resolveProfile } from './diff-profiles.mjs';
 import { REAL_CHROME_UA, isLiveHttpUrl, defaultWaitUntil, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } from './live-session.mjs';
 
@@ -147,11 +150,14 @@ function analyse(mainSel) {
     // aem.page URL that 404s in the local harness) — the #36 stretch check then
     // silently short-circuits to false. Flag it instead of false-passing.
     const failedToLoad = r.width > 1 && r.height > 1 && (nW === 0 || nH === 0);
-    const stretched = !isSvg && natAR && renAR && Math.abs(natAR - renAR) / natAR > 0.04;
+    // cover / contain / scale-down / none never distort — only fill (the default) does
+    const fit = getComputedStyle(img).objectFit;
+    const stretched = !isSvg && fit === 'fill' && natAR && renAR && Math.abs(natAR - renAR) / natAR > 0.04;
     return {
       src: (img.currentSrc || img.src || '').split('/').pop(),
       natural: `${nW}x${nH}`,
       rendered: `${round(r.width)}x${round(r.height)}`,
+      fit,
       stretched,
       failedToLoad,
     };
@@ -275,7 +281,31 @@ async function capture(browser, url, tag, opts) {
   return metrics;
 }
 
-function redFlags(eds, proto, prof) {
+// Pure: the source image a build image stands for — same rendered box (±2 px) and same natural ratio (±4 %), first
+// unused. DA re-hosts every image under a media hash, so the file name never pairs.
+export function sourceTwin(img, sourceImages, used = new Set()) {
+  const dims = (s) => (s || '').split('x').map(Number);
+  const [rw, rh] = dims(img.rendered); const [nw, nh] = dims(img.natural);
+  const ar = nw && nh ? nw / nh : 0;
+  const i = sourceImages.findIndex((c, k) => {
+    if (used.has(k)) return false;
+    const [cw, ch] = dims(c.rendered); const [cnw, cnh] = dims(c.natural);
+    const car = cnw && cnh ? cnw / cnh : 0;
+    return Math.abs(cw - rw) <= 2 && Math.abs(ch - rh) <= 2 && ar && car && Math.abs(ar - car) / car <= 0.04;
+  });
+  if (i < 0) return null;
+  used.add(i);
+  return sourceImages[i];
+}
+
+// Pure: a matched heading's size (> 1 px) or family (case-insensitive) differs.
+export function headingFaceDiffers(src, build) {
+  const px = (v) => parseFloat(v) || 0;
+  if (Math.abs(px(src.fontSize) - px(build.fontSize)) > 1) return true;
+  return Boolean(src.family && build.family && src.family.toLowerCase() !== build.family.toLowerCase());
+}
+
+export function redFlags(eds, proto, prof) {
   const flags = [];
   const S = prof.source; const T = prof.target; const H = prof.hints;
   if (eds.blankRender) {
@@ -324,19 +354,29 @@ function redFlags(eds, proto, prof) {
     });
     // Font mismatch: a named display/body face that loaded in the source but not
     // the target = a missing @font-face silently falling back to serif/sans.
+    // Heading face: a matched heading at another size or in another family (names
+    // compared case-insensitively — "Manrope" and "manrope" are one face).
     const pFont = new Map(proto.headings.map((h) => [h.text.toLowerCase(), h]));
     eds.headings.forEach((h) => {
       const p = pFont.get(h.text.toLowerCase());
       if (p && p.fontLoaded && !h.fontLoaded && h.family) {
         flags.push(`FONT MISMATCH: heading "${h.text}" wants "${h.family}" but it did NOT load in ${T} (silent fallback). ${H.FONT_MISMATCH}`);
+      } else if (p && headingFaceDiffers(p, h)) {
+        flags.push(`HEADING FACE: <${h.tag}> "${h.text}" is ${h.fontSize} ${h.family} in ${T} vs ${p.fontSize} ${p.family} in ${S}.`);
       }
     });
   }
   eds.images.filter((i) => i.failedToLoad).forEach((i) => {
     flags.push(`IMAGE DID NOT LOAD: ${i.src} rendered ${i.rendered} but natural 0x0. ${H.IMAGE_NO_LOAD}`);
   });
+  // Two-sided: a stretch the source shares (same rendered box, same natural ratio, distorted on both) is the
+  // source's own look, not a build defect; the source cropping the same image (cover) while the build distorts it is.
+  const used = new Set();
   eds.images.filter((i) => i.stretched).forEach((i) => {
-    flags.push(`STRETCHED IMAGE: ${i.src} natural ${i.natural} → rendered ${i.rendered}. ${H.STRETCHED}`);
+    const twin = proto ? sourceTwin(i, proto.images, used) : null;
+    if (twin && twin.stretched) return;
+    const how = twin ? ` (${S}: object-fit ${twin.fit} at the same box)` : '';
+    flags.push(`STRETCHED IMAGE: ${i.src} natural ${i.natural} → rendered ${i.rendered}${how}. ${H.STRETCHED}`);
   });
   eds.flushText.forEach((f) => {
     flags.push(`FLUSH-LEFT TEXT: <${f.tag}> "${f.text}" sits at left ${f.left}px (no padding). ${H.FLUSH_LEFT}`);
@@ -352,6 +392,8 @@ async function main() {
   }
   const prof = resolveProfile(opts.profile);
   mkdirSync(resolve(opts.out), { recursive: true });
+  let chromium;
+  try { ({ chromium } = await import('playwright')); } catch (e) { throw new Error(`playwright is not importable from this scripts dir (${e.code || e.message}) — copy the diff skill's scripts dir into the project and run the copy`); }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   let report;
   try {
@@ -371,4 +413,7 @@ async function main() {
 
 // exit 3 = bot challenge on a live side (distinct from generic errors, so a
 // gate runner can tell "blocked — escalate with --headed" from "probe broke").
-main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
+if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
+  main().catch((e) => { process.stderr.write(`visual-diff error: ${e.message}\n`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+}

@@ -26,7 +26,7 @@ Not for: a single static file with no JS decoration (use the build/harness URL s
 
 | Probe | Script | Sees | Blind to |
 |---|---|---|---|
-| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images, dropped max-width wraps, blank renders, surface/ground colour flips, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
+| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images (vs the source), dropped max-width wraps, blank renders, surface/ground colour flips, heading size/face deltas, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
 | **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe); dropped `placeholder`/`aria-label`/`title` values, missing/wrong/moved icons — on the main root AND the `header`/`footer` chrome roots by default | geometry / layout regressions |
 
 `content-diff` extracts an ordered, role-classified inventory (`heading` / `eyebrow` /
