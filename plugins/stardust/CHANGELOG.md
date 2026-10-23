@@ -4,6 +4,22 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)
+
+Field learning (a recorded hands-off replica run): the setup status line said "full site" while the hands-off volume
+caps had cut the roster to 94 of 2,532 discovered URLs — 20 of 820 blog posts. The cap was recorded only as a named
+assumption in `direction.md`; the rollout ledger counted 94 as the total, and the owner learned the scope by asking.
+
+- **`stardust/SKILL.md` § Hands-off defaults:** "all pages" / `--all-pages` in the invocation lifts the caps; the
+  setup status line names the roster against the site (`roster N of M discovered — cap 100/20`), and a capped
+  roster is never called the full site. The locale bullet's anecdote folds.
+- **`rollout/scripts/inventory.mjs`** writes `scope: { pages, discovered, capped, pageCap }` into `rollout.json`
+  from `state.json`'s `site.totalDiscovered` / `site.pageCap` and prints a `Scope` line — "N of M discovered pages
+  in scope — a SUBSET: the other K are not delivered by this rollout …" when the roster is smaller than the site.
+  **`done-check.mjs`** repeats it under its verdict (and in `--json` when known): "complete" is about the roster.
+  `lib.mjs` gains `scopeOf` / `scopeLine`.
+- Test: `rollout/scripts/test/inventory.test.mjs` — capped, whole-site and uncounted rosters.
+
 ## 0.34.7 — content-diff inventories page copy only: icon links, payloads and consent banners stop reading as missing content (#140)
 
 Field learning (a recorded replica gate on a home page whose source has no `<main>`): of 53 structural 🔴, 12 were

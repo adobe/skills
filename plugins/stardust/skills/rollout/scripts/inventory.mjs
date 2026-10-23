@@ -46,7 +46,7 @@ import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, statSy
 import { createHash } from 'node:crypto';
 import { join, dirname, relative, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { pageWidgets } from './lib.mjs';
+import { pageWidgets, scopeOf, scopeLine } from './lib.mjs';
 
 // --help prints this file's usage header, so an agent never reads the source to learn the flags.
 if (process.argv.includes('--help') || process.argv.includes('-h')) {
@@ -148,7 +148,8 @@ const priorBySlug = new Map((priorPages.pages || []).map((p) => [p.slug, p]));
 const htmlFiles = walkHtml(MIGRATED).sort();
 // the source URL of each page (the join key with a spec's knowledge): the sidecar's, else state.json's by slug
 const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.json' : null);
-const stateUrls = new Map((stateFile ? readJSON(stateFile, { pages: [] }).pages || [] : []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
+const stateDoc = stateFile ? readJSON(stateFile, { pages: [] }) : { pages: [] };
+const stateUrls = new Map((stateDoc.pages || []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
 
 for (const relHtml of htmlFiles) {
@@ -314,6 +315,8 @@ const config = {
     da: (priorConfig && priorConfig.site && priorConfig.site.da) || { org: '', site: '', ref: 'main' },
     liveHost: (priorConfig && priorConfig.site && priorConfig.site.liveHost) || null,
   },
+  // the roster against the site: a capped roster is never reported as the site (stardust SKILL.md § Hands-off defaults)
+  scope: scopeOf(counts.total, stateDoc.site),
   lastRun: { at: now, pages: counts, blocks: { total: 0, converted: 0, pending: 0 }, verifyFailures: 0 },
 };
 writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
@@ -322,6 +325,7 @@ writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`);
 console.log(`rollout inventory → ${OUT}`);
 console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
+if (config.scope) console.log(`Scope       ${scopeLine(config.scope)}`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;

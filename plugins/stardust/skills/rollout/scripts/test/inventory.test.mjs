@@ -151,6 +151,24 @@ check('archetypes-only mode: a content-pending sibling inherits the archetype\'s
   assert.match(r.stdout, /^Widgets {5}1 distinct \(tour-finder\) on 2 pages/m, r.stdout);
 });
 
+check('scope: state.json site.totalDiscovered above the roster → rollout.json scope { capped: true } and a loud Scope line; equal → "the whole site"; no count → no line', () => {
+  const state = join(root, 'roster-scope.json');
+  const inv = (site, name) => {
+    writeFileSync(state, JSON.stringify({ site, pages: [{ slug: 'tours-fiji', url: 'https://example.com/tours/fiji/', type: 'tours-bali' }] }));
+    const o = join(root, name);
+    const r = spawnSync(process.execPath, [SCRIPT, '--migrated', migrated, '--out', o, '--state', state], { encoding: 'utf8' }); assert.equal(r.status, 0, r.stderr);
+    return { r, cfg: JSON.parse(readFileSync(join(o, 'rollout.json'), 'utf8')) };
+  };
+  const capped = inv({ totalDiscovered: 400, pageCap: 100 }, 'rollout-capped');
+  const n = capped.cfg.lastRun.pages.total;
+  assert.deepEqual(capped.cfg.scope, { pages: n, discovered: 400, capped: true, pageCap: 100 });
+  assert.match(capped.r.stdout, new RegExp(`^Scope {7}${n} of 400 discovered pages in scope — a SUBSET: the other ${400 - n} are not delivered`, 'm'), capped.r.stdout);
+  const whole = inv({ totalDiscovered: n }, 'rollout-whole');
+  assert.equal(whole.cfg.scope.capped, false); assert.match(whole.r.stdout, /— the whole site$/m);
+  const none = inv({}, 'rollout-uncounted');
+  assert.equal(none.cfg.scope, null); assert.doesNotMatch(none.r.stdout, /^Scope/m);
+});
+
 rmSync(root, { recursive: true, force: true });
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');
 process.exitCode = failed ? 1 : 0;
