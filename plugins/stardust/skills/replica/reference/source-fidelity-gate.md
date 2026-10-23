@@ -618,10 +618,7 @@ rather than erroring.
     the block page as the source and diffed it cleanly, wrongly. A **2xx
     denial page** — a vendor wall answering 200 with its denial text, so no
     header classifies it — fails the same way: after the settle `gotoLive`
-    reads the page (`pageDenial`) for a vendor signature (a phrase pair such
-    as "Access Denied" + "Reference #" anywhere; a single phrase in the
-    title, or in the text or an iframe src only under 2 KB of text) or for
-    under 2 KB of text beneath exactly one error heading, and throws the
+    reads the page (`pageDenial` owns what counts) and throws the
     same error (marker `HTTP <status> denial page — …`, "origin blocked");
     stitch-shot reads once more after its dismissal sweeps and leaves no PNG
     and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`

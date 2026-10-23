@@ -21,8 +21,7 @@
  *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
  *     never captured as if it were the source (the Access-Denied trap). So
- *     does a 2xx DENIAL PAGE — a vendor signature or a page under 2 KB of
- *     text under one error heading (live-session's pageDenial): gotoLive
+ *     does a 2xx DENIAL PAGE (live-session's pageDenial owns the rule): gotoLive
  *     reads the entry, and the page is read once more after the dismissal
  *     sweep(s), before the capture (a denial page a script renders after
  *     domcontentloaded). The message names the signature and says "origin

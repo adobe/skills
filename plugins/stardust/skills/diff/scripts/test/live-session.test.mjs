@@ -85,10 +85,12 @@ check('denialMarker: a pair signature with one half only is no denial page; both
   // the recorded shape: about 900 px of "can't process your request" + "Incident Number" under one heading, status 200
   assert.equal(session.denialMarker(probe({ title: 'Notice', bytes: 180, headings: ['We can\'t process your request'], text: 'We can\'t process your request We\'re sorry, we can\'t process your request right now. Please try again later. Incident Number: 18.4f2a7c31.1700000000.1a2b3c' })), 'denial page — "can\'t process your request" + "Incident Number"', 'the signature wins over the generic rule');
 });
-check('denialMarker: a single phrase counts in the text / an iframe src only under 2048 B of text, in the title on any page', () => {
+check('denialMarker: a single phrase counts only under 2048 B of text — in the title, the text or an iframe src; a title alone on a full page is no denial page', () => {
   const big = { bytes: 20000, headings: ['Welcome'] };
   assert.equal(session.denialMarker(probe({ ...big, title: 'Voice notes', text: 'Press & hold the button to record a voice note.' })), null, 'a 20000 B page that mentions it');
-  assert.equal(session.denialMarker(probe({ ...big, title: 'Press & Hold', text: 'Our catalogue.' })), 'denial page — "Press & Hold"', 'the same phrase in the title');
+  assert.equal(session.denialMarker(probe({ ...big, title: 'Press & Hold', text: 'Our catalogue.' })), null, 'the same phrase as a full page\'s title');
+  assert.equal(session.denialMarker(probe({ ...big, title: 'System Down: what happened and what we changed', text: 'Last Tuesday our checkout…' })), null, 'an article titled with a phrase');
+  assert.equal(session.denialMarker(probe({ bytes: 300, title: 'Press & Hold', text: 'Our catalogue.' })), 'denial page — "Press & Hold"', 'the same title on a small page');
   assert.equal(session.denialMarker(probe({ ...big, frames: ['//geo.captcha-delivery.com/captcha/?initialCid=abc'] })), null, 'an iframe src on a 20000 B page');
   assert.equal(session.denialMarker(probe({ ...big, text: 'Just a moment, the gallery is loading. System down for maintenance on Sunday.' })), null, 'single phrases in a long page\'s text');
   assert.equal(session.denialMarker(probe({ bytes: 2047, text: 'System Down' })), 'denial page — "System Down"', '2047 B is small');

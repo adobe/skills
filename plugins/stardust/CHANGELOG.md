@@ -15,7 +15,7 @@ the response headers, and a vendor wall that answers 200 leaves none to classify
 - **A 2xx denial page is a bot challenge (`diff/scripts/live-session.mjs`).** After the settle `gotoLive` reads the
   page (`pageDenial`): a vendor signature — a phrase pair such as "Access Denied" + "Reference #" or "can't process
   your request" + "Incident Number" anywhere in the title and text; a single phrase ("Just a moment…", "Press & Hold",
-  "Incapsula", "DataDome", "Request unsuccessful", "System Down") in the title, or in the text or an iframe src only on
+  "Incapsula", "DataDome", "Request unsuccessful", "System Down") in the title, the text or an iframe src, only on
   a page under 2 KB of text — or a page under 2 KB of text under exactly one error heading. A match throws the same
   `BotChallengeError` the header path throws (marker `HTTP <status> denial page — …`; the message says "origin blocked"
   and names the `--headed` escalation); a full page that merely mentions a phrase is no denial page. Under `--headed`
@@ -33,7 +33,8 @@ the response headers, and a vendor wall that answers 200 leaves none to classify
   an ordinary page, `gotoLive` on stub pages), `replica/stitch-shot` (new — the re-check, the exit code, the record,
   `--help`; end to end where playwright is installed).
 - **Live URLs only.** The denial probe runs only where a vendor wall can exist (`isLiveHttpUrl`): a localhost or
-  loopback build side serving a tiny page under an error heading is captured as-is; with a test. Merged with 0.34.3, so
+  loopback build side serving a tiny page under an error heading is captured as-is; with a test. A single phrase in the
+  title counts under the same 2 KB bound (an article titled "System Down" is no denial page). Merged with 0.34.3, so
   the two new test files are one per script (`diff/live-session`, `replica/stitch-shot`).
 
 ## 0.34.3 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape (#136)

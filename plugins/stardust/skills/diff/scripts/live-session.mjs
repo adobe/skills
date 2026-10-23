@@ -39,9 +39,8 @@
  *     silently measured as the source (the Access-Denied trap: an "Access Denied"
  *     page diffs cleanly — wrongly). So does a 2xx DENIAL page (a vendor wall
  *     answering 200 with its denial text — no header to classify): after the
- *     settle the page itself is read (pageDenial) for a vendor signature
- *     (DENIAL_SIGNATURES) or under 2 KB of text beneath one error heading, and
- *     the message says "origin blocked" and names the --headed escalation.
+ *     settle the page itself is read (pageDenial / denialMarker own the
+ *     rule), and the message says "origin blocked" and names the --headed escalation.
  *   - Two overlay classes dismissed, not one: cookie consent (clicked, never
  *     DOM-removed) AND timed marketing/newsletter interstitials (CH-1:
  *     a fashion retailer's "Sign up, stay updated!" modal baked a large pixel-diff
@@ -249,9 +248,10 @@ export function isChallengeResponse(response) {
 // headless instrument with HTTP 200 and its denial text ("can't process your request … Incident Number",
 // "Access Denied … Reference #", "System Down") — no header to classify, so the gate measured the denial
 // page as the source. The page itself is classified instead: a vendor signature in the title / visible
-// text / iframe srcs, or a tiny page whose only heading is an error. A single phrase counts in the body
-// only on a page under DENIAL_TEXT_MAX_BYTES of text: a full page that merely mentions "press & hold the
-// button" is no denial page, while a pair ("Access Denied" + "Reference #") is specific enough anywhere.
+// text / iframe srcs, or a tiny page whose only heading is an error. A single phrase counts only on a page
+// under DENIAL_TEXT_MAX_BYTES of text (title, text or iframe src): a full page that mentions "press & hold the
+// button", or an article titled "System Down", is no denial page; a pair ("Access Denied" + "Reference #") is
+// specific enough anywhere.
 export const DENIAL_TEXT_MAX_BYTES = 2048;
 // One probe read's deadline (pageDenial): page.evaluate has no timeout of its own, and a renderer stuck in a busy
 // loop never answers it — unbounded, the read inside gotoLive would undo the bounded navigation the callers rely on.
@@ -309,8 +309,9 @@ export function denialProbeInPage() {
 /**
  * The denial marker of a denialProbeInPage probe, or null (pure). A probe that is not { title: string,
  * text: string, bytes: finite number, headings: array, frames: array } → null. Signatures in order: a pair
- * (`all.length >= 2`) matches when every element occurs in the title + text; a single phrase in the title, or —
- * only when bytes < DENIAL_TEXT_MAX_BYTES — in the text or an iframe src. First match → 'denial page — <label>'.
+ * (`all.length >= 2`) matches when every element occurs in the title + text; a single phrase only when bytes <
+ * DENIAL_TEXT_MAX_BYTES, in the title, the text or an iframe src (a title alone is no evidence on a full page).
+ * First match → 'denial page — <label>'.
  * Else the generic rule: bytes < DENIAL_TEXT_MAX_BYTES, exactly ONE heading, matching DENIAL_ERROR_HEADING →
  * 'denial page — <bytes> B of text under one error heading "<heading, ≤ 80 chars>"'.
  */
@@ -325,7 +326,7 @@ export function denialMarker(probe) {
   for (const sig of DENIAL_SIGNATURES) {
     const hit = sig.all.length >= 2
       ? sig.all.every((el) => has(`${title} ${text}`, el))
-      : has(title, sig.all[0]) || (small && (has(text, sig.all[0]) || frames.some((f) => has(f, sig.all[0]))));
+      : small && (has(title, sig.all[0]) || has(text, sig.all[0]) || frames.some((f) => has(f, sig.all[0])));
     if (hit) return `denial page — ${sig.label}`;
   }
   if (small && probe.headings.length === 1) {
@@ -418,8 +419,7 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
  *         signal, exit stays 0).
  *   - entry status < 400 on a live URL (isLiveHttpUrl — never localhost or
  *     loopback), after the settle: a DENIAL page (pageDenial /
- *     denialMarker — a vendor signature, or a page under 2 KB of text under
- *     one error heading) gets the same `solveWindow` treatment (each reload
+ *     denialMarker) gets the same `solveWindow` treatment (each reload
  *     settled like the entry; a reload answered by an edge challenge or a
  *     >= 400, or one the probe cannot read, does not clear it), then THROWS
  *     BotChallengeError, marker `HTTP <status> denial page — …`, message
