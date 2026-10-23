@@ -9,7 +9,8 @@ description: |
   Custom Design Widgets (cdw), Vault package install-time dependencies (vault-package-dependencies),
   Guava cache → Caffeine swaps (guavaCache), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
-  placeholders) and converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E).
+  placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), and validates
+  migrated code on a local Cloud SDK (Branch G).
 license: Apache-2.0
 ---
 
@@ -39,6 +40,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **Custom widget migration** | *"Fix my CDW findings."* / *"Migrate custom ExtJS widgets to Coral 3."* | Agent reads [references/legacy-ui/cdw/context.md](references/legacy-ui/cdw/context.md) — inventories xtypes, maps or scaffolds Granite UI components via [conversion.md](references/legacy-ui/cdw/conversion.md), validates via [validation.md](references/legacy-ui/cdw/validation.md). BPA pattern id: `cdw`. Run CDW before dialog migration when both are needed. |
 | **Guava cache warnings** | *"Fix **guavaCache** findings using BPA CSV."* / *"Swap Guava cache for Caffeine."* | Agent reads [references/guava-cache.md](references/guava-cache.md) — BPA is the source of truth (subtype `custom.guava.cache`); one finding per **bundle**, not per Guava-internal class row. BPA pattern id: `guavaCache`. Not a `code-assessment` pattern — Guava cache usage only occurs in pre-migration code, never native AEMaaCS code. |
 | **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
+| **Validate a migration** | *"Validate my migration on the local Cloud SDK."* / *"Verify the scheduler fix before I raise a PR."* | Agent reads [references/validation/validate-migration.md](references/validation/validate-migration.md) — builds, deploys to the running local SDK, checks bundle/component state via the AEM Quickstart MCP, and reports the outcome to CAM when a project is linked. **Branch G.** |
 
 **Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
 
@@ -118,6 +120,8 @@ If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a
 5. **Judgment + cross-boundary** — apply the decision catalog in [references/dispatcher/conversion-patterns.md](references/dispatcher/conversion-patterns.md); hand any Cloud Manager environment variables to **Branch A** (OSGi → Cloud Manager); flag CDN-candidate rules. Target end-state conventions are in [references/dispatcher/current-sdk-conventions.md](references/dispatcher/current-sdk-conventions.md). To operationalize this handoff, run `scripts/dispatcher-crossboundary.js` to build the Cloud Manager variable handoff artifact, then apply [references/dispatcher/cross-boundary.md](references/dispatcher/cross-boundary.md) to route each concern — CM vars → **Branch A**; immutable freshness → the `dispatcher` skill's `sdk(diff-baseline)`; security headers / edge → `security-hardening`; validation → `config-authoring`.
 6. **Validate** — validate the converted `src` per [references/dispatcher/validation.md](references/dispatcher/validation.md) (delegates to the `dispatcher` skill's SDK validator + guardrails); iterate until clean. Do not present the result as done on validation failure. After validation, render the consolidated report with `scripts/dispatcher-report.js` (`renderReport` → `writeReport`) as `conversion-report.md`, which includes the coverage counts, the CM handoff, and the delegated next-checks checklist.
 
+**Branch G — Validate migration** (after a migration branch, or on request; no BPA pattern this session): If the user asks to **validate / verify / smoke-test** migrated code on the local Cloud SDK, read [references/validation/validate-migration.md](references/validation/validate-migration.md) and follow it. It never edits customer source; failures go back to the branch that owns the pattern. **Skip** Branch B.
+
 ## When to Use This Skill
 
 - Migrate legacy AEM Java toward **Cloud Service–compatible** patterns (scheduler, ResourceChangeListener, replication, EventListener/EventHandler, AssetManager)
@@ -127,6 +131,7 @@ If the user asks to **convert / migrate a Dispatcher configuration** to AEM as a
 - **OSGi → Cloud Manager** secret/variable externalization (Branch A), **Template Modernization** (Branch C), **Legacy UI** dialog/CDW migration (Branch D)
 - Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**, **one pattern per session**
 - **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
+- **Validate migrated code:** **Branch G** — build, deploy to the local Cloud SDK, and check the migration contract and bundle/component state. Reference: [references/validation/validate-migration.md](references/validation/validate-migration.md).
 
 Branch routing and the read-first delegation for each entry above are defined once in **Required delegation** — this list is only the "when."
 
@@ -269,8 +274,9 @@ The runbook is produced by a **single CLI command**. It runs the local analyzer 
 3. **If CAM/MCP is configured:** make the **one** BPA fetch you would make anyway — call the CAM MCP tool for each relevant slug (`scheduler`, `resourceChangeListener`, `eventListener`, `eventHandler`, `assetApi`, `replication`, `lui`, `cdw`, `templateModernization`, `guavaCache`, `urc`), write the raw targets to a JSON file keyed by slug, and pass it:
    ```bash
    # bpa.json shape: { "<slug>": [ <raw BPA target>, ... ], ... }   (a slug you omit = "not in report", treated as clean)
-   node scripts/runbook-generator.js <workspaceRoot> --bpa-json ./bpa.json --out ./migration-runbook.md --cache ./migration-runbook.json
+   node scripts/runbook-generator.js <workspaceRoot> --bpa-json ./bpa.json --project-id <projectId> --project-name "<confirmed name>" --out ./migration-runbook.md --cache ./migration-runbook.json
    ```
+   Pass the **resolved `projectId`** from the CAM tool response and the **project name the user confirmed**. They are recorded under `project` in `migration-runbook.json`, so `validate-migration` can report its outcome to the same CAM project. For local-CSV runs omit both; the cache records `project: null`.
 
 **The analyzer is always unioned with BPA** — when a BPA source reports a cascade pattern *clean* but real source code exists, the local analyzer's finding is added anyway (deduped by class name, shown as `Detected via: BPA / CAM + analyzer`). So you **don't** reconcile "BPA clean" against the source by hand — the script already does it.
 
@@ -306,6 +312,8 @@ First check the non-Java branches (routed in full under **Required delegation**)
 - **Legacy UI** (Classic UI/Coral 2 dialogs, custom ExtJS widgets, LUI/CDW findings) → Branch D (`lui` → dialog, `cdw` → cdw).
 
 If the request is **dispatcher conversion** — convert or migrate an AMS or on-premise Dispatcher configuration to AEM as a Cloud Service — follow **Branch E**. No Java pattern module is needed. **Skip** Branch B.
+
+If the request is to **validate / verify** already-migrated code on the local Cloud SDK, follow **Branch G**. **Skip** Branch B.
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 

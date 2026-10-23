@@ -1334,3 +1334,42 @@ test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fal
   assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
   assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
 });
+
+// ── CAM project handoff to validate-migration ──────────────────────────────
+
+test('writeRunbookCache records the CAM project in the sidecar when one is given', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now', projectId: '000000000000000000000001', projectName: 'Example Project' }, cache);
+  const cached = JSON.parse(fs.readFileSync(cache, 'utf8'));
+  assert.deepStrictEqual(cached.project, { id: '000000000000000000000001', name: 'Example Project' });
+});
+
+test('writeRunbookCache writes project null when no CAM project is linked', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now' }, cache);
+  assert.strictEqual(JSON.parse(fs.readFileSync(cache, 'utf8')).project, null);
+});
+
+test('generateRunbook keeps the CAM project in migration-runbook.json and creates no separate context.json', async () => {
+  const root = mkworkspace();
+  const cachePath = path.join(root, 'r.json');
+  await generateRunbook({
+    workspaceRoot: root, outputPath: path.join(root, 'r.md'), cachePath,
+    projectId: '000000000000000000000001', projectName: 'Example Project',
+  });
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).project, { id: '000000000000000000000001', name: 'Example Project' });
+  assert.strictEqual(fs.existsSync(path.join(root, '.validate-migration', 'context.json')), false);
+});
+
+test('CLI parseArgs passes the confirmed CAM project through to generateRunbook', () => {
+  const { parseArgs } = require('./runbook-generator');
+  const args = parseArgs(['/ws', '--bpa-json', 'b.json', '--project-id', '000000000000000000000001', '--project-name', 'Example Project']);
+  assert.strictEqual(args.workspaceRoot, '/ws');
+  assert.strictEqual(args.projectId, '000000000000000000000001');
+  assert.strictEqual(args.projectName, 'Example Project');
+  assert.strictEqual(parseArgs(['/ws']).projectId, undefined, 'no project when the flag is omitted');
+});
