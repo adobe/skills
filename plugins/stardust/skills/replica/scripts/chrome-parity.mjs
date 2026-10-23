@@ -29,6 +29,7 @@
  *     --tolerance <px>   ignore rect/size deltas ≤ this        (default 1)
  *     --consent <sel>    extra consent-accept selector (live side)
  *     --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+ *     --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
  *     --headed           headed stealth real Chrome (bot-managed live sites)
  *     --locale <tag>     pin Accept-Language + locale (e.g. en-GB)
  *     --json             machine-readable output
@@ -79,6 +80,7 @@ Usage: node chrome-parity.mjs <liveURL> <buildURL> [options]
   --tolerance <px>   ignore rect/size deltas ≤ this (default 1)
   --consent <sel>    extra consent-accept selector (live side)
   --dismiss <sel,…>  extra overlay-dismiss selectors (live side)
+  --no-dismiss       dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed           headed stealth real Chrome (bot-managed live sites)
   --locale <tag>     pin Accept-Language + locale
   --json             machine-readable output
@@ -91,7 +93,7 @@ function parseArgs(argv) {
   const rest = argv.slice(2);
   if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], headed: false, locale: null, json: false, liveCache: null };
+  const opts = { regions: [], noDefaults: false, width: 1440, tolerance: 1, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, json: false, liveCache: null };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--region') {
@@ -105,6 +107,7 @@ function parseArgs(argv) {
     else if (a === '--tolerance') { opts.tolerance = Number(rest[i += 1]); }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--no-dismiss') { opts.noDismiss = true; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--json') { opts.json = true; }
@@ -248,7 +251,7 @@ async function probeSide(browser, url, opts, isLive) {
   const ctx = await newLiveContext(browser, { locale: opts.locale, viewport: { width: opts.width, height: 900 } });
   const page = await ctx.newPage();
   await gotoLive(page, url, { waitUntil: defaultWaitUntil(url), settleMs: isLiveHttpUrl(url) ? 2500 : 1200, solveWindow: opts.headed && isLive });
-  await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
+  if (!opts.noDismiss) await dismissOverlays(page, { extra: isLive ? [...(opts.consent ? [opts.consent] : []), ...opts.dismiss] : [], lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
   await settleTop(page);
   const out = {};
   for (const reg of opts.regions) out[reg.name] = await page.evaluate(probeRegion, isLive ? reg.live : reg.build);

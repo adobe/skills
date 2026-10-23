@@ -1,7 +1,9 @@
 #!/usr/bin/env node
 // gate.sh contract test: argument parsing, --help, the horizontal-overflow assert (measure.mjs root line → exit 2
-// over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final), the
-// --full probe fan-out and its exit-code rules, with stub instruments (no browser, no network).
+// over a PASS pixel line), the one capture retry on exit 1 (live, build, overflow probe; 3 / 4 / 124 final — 3 is the
+// BLOCKED line: a bot challenge or 2xx denial page, no verdict, on either side), the --full probe fan-out and its
+// exit-code rules, the overlay flags (--consent / --dismiss / --no-dismiss reaching both captures, the diff probes and
+// chrome-parity), with stub instruments (no browser, no network).
 // Run: node skills/replica/scripts/test/gate.test.mjs
 import { spawn } from 'node:child_process';
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
@@ -33,7 +35,7 @@ cpSync(join(scripts, 'run-capped.mjs'), join(replica, 'run-capped.mjs'));
 // Stubs read their behaviour from environment variables so one sandbox covers every case. stitch-shot: per side
 // (LIVE = the https://live.example URL, BUILD = anything else) an exit code (STUB_STITCH_RC_<side>) or a fail-ONCE
 // marker file (STUB_FAIL_ONCE_<side>: exit 1 while the marker is absent, create it); every call appends its side to
-// STUB_STITCH_COUNT so a test can count attempts. measure: the root line gate.sh reads (STUB_OVERFLOW px over the
+// STUB_STITCH_COUNT so a test can count attempts, and its side + argv to STUB_STITCH_ARGS so a test can read the flags. measure: the root line gate.sh reads (STUB_OVERFLOW px over the
 // viewport, STUB_MEASURE_RC exit code, STUB_MEASURE_NO_ROOT drops the line).
 const stub = (dir, name, body) => writeFileSync(join(dir, name), `#!/usr/bin/env node\n${body}\n`);
 // The stub captures; the browserless bookkeeping subcommands (\`baseline\`, \`record\`) are the real stitch-shot's, so
@@ -51,6 +53,7 @@ stub(replica, 'stitch-shot.mjs', `
   const url = process.argv[2]; const out = process.argv[3];
   const side = /^https:\\/\\/live\\.example/.test(url) ? 'LIVE' : 'BUILD';
   if (process.env.STUB_STITCH_COUNT) appendFileSync(process.env.STUB_STITCH_COUNT, side + '\\n');
+  if (process.env.STUB_STITCH_ARGS) appendFileSync(process.env.STUB_STITCH_ARGS, side + ' ' + process.argv.slice(2).join(' ') + '\\n');
   const once = process.env['STUB_FAIL_ONCE_' + side];
   if (once && !existsSync(once)) { writeFileSync(once, '1'); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
   const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
@@ -69,6 +72,7 @@ stub(replica, 'pixel-compare.mjs', `
   console.log('height delta 0px'); console.log('differing 1.20%');
   process.exit(Number(process.env.STUB_PIXEL_RC || 0));`);
 stub(replica, 'chrome-parity.mjs', `
+  console.log('argv ' + process.argv.slice(2).join(' '));
   if (process.env.STUB_SLEEP) await new Promise((r) => setTimeout(r, Number(process.env.STUB_SLEEP)));
   const deltas = Number(process.env.STUB_CHROME_DELTAS || 0);
   console.log('chrome-parity @ 1440px'); console.log(deltas ? '✗ ' + deltas + ' delta(s) — fix these' : '✓ chrome parity');
@@ -92,7 +96,7 @@ stub(diff, 'unit-geometry.mjs', `
   if (process.env.STUB_UNITS_RC === '2') { console.log('Units: 1 compared; elements within 2, off 3, hidden 1, missing 0 → FAIL'); process.exit(2); }
   console.log('unit-geometry: none declared for home in stardust/replica/units.json → n/a');`);
 stub(diff, 'visual-diff.mjs', `
-  console.log('Visual diff @ 1440px'); console.log('build red flags (advisory): ');
+  console.log('argv ' + process.argv.slice(2).join(' ')); console.log('Visual diff @ 1440px'); console.log('build red flags (advisory): ');
   console.log('  • HEADING COLOR: h2 differs'); console.log('  • IMAGE DIMS: hero'); console.log('Full metrics JSON:'); console.log('{}');`);
 
 // A build origin that serves the slug (the identity assertion needs it).
@@ -121,6 +125,7 @@ let r = await gate(['--help']);
 check('--help exits 0', r.status === 0, `status ${r.status}`);
 check('--help prints the usage block', /Usage:/.test(r.stdout) && /--full/.test(r.stdout));
 check('--help names the overflow assert and the capture retry', /Horizontal-overflow assert/.test(r.stdout) && /Capture retry/.test(r.stdout) && /overflow-<label>\.txt/.test(r.stdout));
+check('--help documents the overlay flags', /Overlay dismissal/.test(r.stdout) && /--consent <sel>/.test(r.stdout) && /--dismiss <sel,…>/.test(r.stdout) && /--no-dismiss/.test(r.stdout), r.stdout.slice(0, 400));
 
 // Plain pixel round (no --full): verdict lines, evidence, exit = pixel rc.
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'iter1']);
@@ -173,6 +178,10 @@ check('no overflow line, no pixel verdict after a failed capture', !/overflow as
 resetCount();
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry3'], { STUB_STITCH_RC_BUILD: '3', STUB_STITCH_COUNT: countFile });
 check('exit 3 (bot challenge) is final on the first attempt — not retried', r.status === 3 && attempts().join(',') === 'BUILD' && !/retrying/.test(r.stderr), `status ${r.status} attempts ${attempts().join(',')}`);
+check('the blocked class is named — BLOCKED (exit 3), a bot challenge or 2xx denial page, no verdict, escalate --headed — never "failed"', /^gate\.sh: build capture BLOCKED \(exit 3\) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed$/m.test(r.stderr) && !/build capture failed/.test(r.stderr), r.stderr);
+resetCount();
+r = await gate(['wall', 'https://live.example/wall', buildUrl, '1440', 'retry3b', '--marker', 'home-proposed'], { STUB_STITCH_RC_LIVE: '3', STUB_STITCH_COUNT: countFile });
+check('a live capture that exits 3 ends the round with exit 3 on the first attempt: the live BLOCKED line, no build attempt, no live.png left to be reused as the source', r.status === 3 && attempts().join(',') === 'LIVE' && /^gate\.sh: live capture BLOCKED \(exit 3\) — a bot challenge or 2xx denial page, not the page: no verdict for this round; escalate --headed$/m.test(r.stderr) && !/retrying/.test(r.stderr) && !existsSync(join(root, 'stardust/replica/gates/wall-1440/live.png')), `status ${r.status} attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
 r = await gate(['about', 'https://live.example/about', buildUrl, '1440', 'retry4', '--marker', 'home-proposed'], { STUB_FAIL_ONCE_LIVE: join(root, 'once-live'), STUB_STITCH_COUNT: countFile });
 check('a live capture that exits 1 once is retried; the round passes and live.png is kept', r.status === 0 && existsSync(join(root, 'stardust/replica/gates/about-1440/live.png')), `status ${r.status} ${r.stderr.slice(0, 300)}`);
@@ -239,6 +248,40 @@ const cdPath = join(root, 'stardust/replica/gates/home-1440/content-diff-iter7.t
 const cd = existsSync(cdPath) ? readFileSync(cdPath, 'utf8') : `(missing ${cdPath}; stderr: ${r.stderr.slice(0, 300)})`;
 check('--main is passed to the diff probes', /--main #content/.test(cd), cd);
 check('--no-dismiss drops the dismiss flag', !/--dismiss/.test(cd), cd);
+
+// Overlay dismissal, one vocabulary (header § Overlay dismissal): --consent / --dismiss reach BOTH stitched captures
+// (symmetric), the diff probes (joined into their one --dismiss value) and chrome-parity; a default round dismisses
+// with the built-in candidates (captures: no flag; probes: bare --dismiss); --no-dismiss reaches the captures and
+// chrome-parity as --no-dismiss and drops the probes' flag. Fresh slugs so the live capture runs (live.png is cached per
+// slug × width); the selectors carry spaces and commas on purpose — the quoting through the arrays is the contract.
+const argsFile = join(root, 'stitch-args.txt');
+const stitchArgs = () => (existsSync(argsFile) ? readFileSync(argsFile, 'utf8').trim().split('\n') : []);
+const resetArgs = () => { if (existsSync(argsFile)) unlinkSync(argsFile); };
+const evidence = (slug, name) => { const p = join(root, `stardust/replica/gates/${slug}-1440/${name}`); return existsSync(p) ? readFileSync(p, 'utf8') : `(missing ${p})`; };
+const CONSENT = '#consent-yes, .consent-box-yes'; const EXTRA = '.promo-close,#newsletter-close';
+resetArgs();
+r = await gate(['consent1', 'https://live.example/consent1', buildUrl, '1440', 'c1', '--full', '--marker', 'home-proposed', '--consent', CONSENT, '--dismiss', EXTRA], { STUB_STITCH_ARGS: argsFile });
+check('--consent / --dismiss reach the live capture (after --settle) and the build capture alike, values intact', r.status === 0 && stitchArgs().length === 2
+  && stitchArgs()[0] === `LIVE https://live.example/consent1 stardust/replica/gates/consent1-1440/live.png --width 1440 --settle --consent ${CONSENT} --dismiss ${EXTRA}`
+  && stitchArgs()[1] === `BUILD ${buildUrl} stardust/replica/gates/consent1-1440/build.png --width 1440 --consent ${CONSENT} --dismiss ${EXTRA}`, `status ${r.status} | ${stitchArgs().join(' | ')} ${r.stderr.slice(0, 200)}`);
+check('the diff probes get the same selectors joined into one --dismiss list', new RegExp(`--main main --dismiss ${CONSENT},${EXTRA}$`, 'm').test(evidence('consent1', 'content-diff-c1.txt')) && new RegExp(`--main main --dismiss ${CONSENT},${EXTRA} --out `).test(evidence('consent1', 'visual-diff-c1.txt')), evidence('consent1', 'content-diff-c1.txt') + evidence('consent1', 'visual-diff-c1.txt'));
+check('chrome-parity gets --consent and --dismiss', new RegExp(`--live-cache \\S+ --consent ${CONSENT} --dismiss ${EXTRA}$`, 'm').test(evidence('consent1', 'chrome-parity-c1.txt')), evidence('consent1', 'chrome-parity-c1.txt'));
+resetArgs();
+r = await gate(['consent2', 'https://live.example/consent2', buildUrl, '1440', 'c2', '--full', '--marker', 'home-proposed'], { STUB_STITCH_ARGS: argsFile });
+check('a default round dismisses with the built-in candidates: no overlay flag on either capture, bare --dismiss on the probes, none on chrome-parity', r.status === 0 && stitchArgs().length === 2
+  && stitchArgs().every((l) => !/--consent|--dismiss|--no-dismiss/.test(l))
+  && /--main main --dismiss$/m.test(evidence('consent2', 'content-diff-c2.txt')) && /--main main --dismiss --out /.test(evidence('consent2', 'visual-diff-c2.txt'))
+  && !/--consent|--dismiss/.test(evidence('consent2', 'chrome-parity-c2.txt')), `status ${r.status} | ${stitchArgs().join(' | ')} | ${evidence('consent2', 'content-diff-c2.txt')}`);
+resetArgs();
+r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c3', '--full', '--marker', 'home-proposed', '--no-dismiss'], { STUB_STITCH_ARGS: argsFile });
+check('--no-dismiss reaches both captures and chrome-parity as --no-dismiss and drops the probes\' flag', r.status === 0 && stitchArgs().length === 2
+  && stitchArgs().every((l) => / --no-dismiss$/.test(l) && !/--consent|--dismiss /.test(l))
+  && !/--dismiss/.test(evidence('consent3', 'content-diff-c3.txt')) && !/--dismiss/.test(evidence('consent3', 'visual-diff-c3.txt')) && / --no-dismiss$/m.test(evidence('consent3', 'chrome-parity-c3.txt')) && !/--consent|--dismiss /.test(evidence('consent3', 'chrome-parity-c3.txt')), `status ${r.status} | ${stitchArgs().join(' | ')}`);
+resetArgs();
+r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c4', '--no-dismiss', '--consent', '#consent-yes'], { STUB_STITCH_ARGS: argsFile });
+check('--no-dismiss with --consent is a usage error (exit 125) before any capture', r.status === 125 && /contradicts/.test(r.stderr) && stitchArgs().length === 0, `status ${r.status} ${r.stderr}`);
+r = await gate(['consent3', 'https://live.example/consent3', buildUrl, '1440', 'c5', '--consent']);
+check('--consent without a selector is a usage error', r.status !== 0 && /--consent needs a selector/.test(r.stderr), `status ${r.status} ${r.stderr}`);
 
 // #125: element defects fail a --full round; content-presence and unit-geometry join in the published regime / with a families file
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'clip1', '--full'], { STUB_CLIPPED: '3' });
@@ -320,17 +363,21 @@ r = await gate(['bloff', 'https://live.example/', buildUrl, '1440', 'bl7', '--ma
 check('… and the next round reuses that live.png (BUILD only), as on every round before this flag existed', r.status === 0 && attempts().join(',') === 'BUILD' && liveJson('bloff') === null, `attempts ${attempts().join(',')}`);
 
 resetCount();
+writeFileSync(join(root, gdir('blon'), 'live.capture.json'), '{ "stale": "a live round\'s record" }\n');
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('flag dropped after a flagged round: the baseline-derived live.png is retaken with one line — LIVE then BUILD, live.json removed, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
   && /^gate\.sh: live\.png is the frozen origin baseline \(a --gate-against-baseline round\); this round gates against the live origin — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
   && liveJson('blon') === null && livePng('blon') === 'png', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr} ${liveJson('blon')}`);
+check('… and the stale capture record (live.capture.json) went with the retaken live.png', !existsSync(join(root, gdir('blon'), 'live.capture.json')));
 resetCount();
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl9', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('… the next unflagged round reuses that fresh live.png (BUILD only, no retake line)', r.status === 0 && attempts().join(',') === 'BUILD' && !/retaking/.test(r.stderr), `attempts ${attempts().join(',')} ${r.stderr}`);
 resetCount();
+writeFileSync(join(root, gdir('blon'), 'live.capture.json'), '{ "stale": "the live round\'s record" }\n');
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl10', '--marker', 'home-proposed', '--gate-against-baseline'], { STUB_STITCH_COUNT: countFile });
 check('a flagged round after a live one takes the baseline again: BUILD only, live.png is baseline.png, live.json origin "baseline", no temp file', r.status === 0 && attempts().join(',') === 'BUILD'
   && livePng('blon') === 'baseline-png-bytes' && JSON.parse(liveJson('blon') || '{}').origin === 'baseline' && noTmp('blon'), `attempts ${attempts().join(',')} ${liveJson('blon')}`);
+check('… and the live round\'s capture record (live.capture.json) is removed with the copy — no record describes bytes it did not measure', !existsSync(join(root, gdir('blon'), 'live.capture.json')));
 
 // A record that cannot be written (STUB_RECORD_FAIL): the round ends (exit 1, one line) with live.png removed, so the
 // baseline bytes never sit under a missing record for the next unflagged round to reuse as a live shot.
@@ -349,3 +396,4 @@ if (process.env.GATE_TEST_KEEP) console.log(`sandbox kept at ${root} (build url 
 else rmSync(root, { recursive: true, force: true });
 console.log(failures ? `\n${failures} check(s) failed` : '\nall checks passed');
 process.exit(failures ? 1 : 0);
+

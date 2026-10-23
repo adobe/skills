@@ -20,8 +20,14 @@
  *     sites, and UA alone still 403s on Akamai (F-R1) — the standard headers
  *     (Accept / Accept-Language / sec-ch-ua*) are the other half of the fix.
  *   - a bot-management challenge/blocked interstitial FAILS LOUD (exit 3),
- *     never captured as if it were the source (the Access-Denied trap). Escalate
- *     with --headed (stealth real Chrome).
+ *     never captured as if it were the source (the Access-Denied trap). So
+ *     does a 2xx DENIAL PAGE (live-session's pageDenial owns the rule): gotoLive
+ *     reads the entry, and the page is read once more after the dismissal
+ *     sweep(s), before the capture (a denial page a script renders after
+ *     domcontentloaded). The message names the signature and says "origin
+ *     blocked"; a re-check that cannot read the page is one stderr line
+ *     (`denial-page check skipped`), never a pass. Escalate with --headed
+ *     (stealth real Chrome).
  *   - waitUntil 'domcontentloaded' (never 'networkidle'): live sites with
  *     analytics beacons never reach networkidle — hard timeout otherwise.
  *   - TWO overlay classes dismissed: cookie consent (CLICKED accept, not DOM
@@ -31,7 +37,10 @@
  *     that no prototype fidelity can null out). The mouse is PARKED
  *     afterwards (bottom-left): a dismissal click leaves the cursor over the
  *     page, and any :hover-styled element under it would be silently
- *     captured in hover state.
+ *     captured in hover state. --consent / --dismiss add a site's own
+ *     selectors; --no-dismiss turns both classes off (gate.sh passes all
+ *     three through to BOTH captures, so the live side is dismissed exactly
+ *     like the build side).
  *   - --locale pins Accept-Language + context locale: geo-redirecting sites
  *     (recorded: a car brand → /ch-de/, a fashion brand → /ww/) otherwise capture
  *     a different locale per run — nondeterministic live side.
@@ -64,6 +73,7 @@
  *                         built-in candidates (OneTrust, "Accept all", …)
  *     --dismiss <sel,...> extra overlay-dismiss selectors (marketing modals
  *                         with non-standard close controls)
+ *     --no-dismiss        dismiss no overlay at all (gate.sh --no-dismiss)
  *     --headed            escalation: headed stealth real Chrome
  *     --locale <tag>      pin Accept-Language + locale (e.g. en-GB)
  *     --ua <string>       user agent                        (default real-Chrome)
@@ -82,17 +92,25 @@
  *   node skills/replica/scripts/stitch-shot.mjs https://www.example.com \
  *     stardust/replica/gates/home-1440/live.png --width 1440 --settle
  *
- * Requires: playwright, pngjs (project devDependencies — imported lazily, so
- * --help and the two subcommands answer without them), and the diff skill's
- * scripts dir alongside (live-session.mjs — the replica Setup copies both).
+ * Writes <out.png> and <stem>.capture.json beside it (live.png →
+ * live.capture.json): { writtenBy, url, width, vh, height (the PNG's),
+ * chunks, denialCheck ('ok' | 'skipped: <reason>' — the denial-page read
+ * after the dismissal sweeps), at }. Removed when a capture starts, written
+ * with the PNG — a failed or refused capture leaves none. A --freeze-baseline
+ * capture writes baseline.json instead (HELP § Origin baseline).
+ *
+ * Requires: playwright, pngjs (project devDependencies; imported lazily, so
+ * --help and the two subcommands need neither), and the diff skill's scripts
+ * dir alongside (live-session.mjs — the replica Setup copies both).
  * Exit codes: 0 written, 1 error, 2 a baseline refusal (exists without --force,
  * fonts failed, a check aimed at baseline.png), 3 bot challenge (live side
- * blocked — fail loud, never captured).
+ * blocked — an edge interstitial or a 2xx denial page; fail loud, never
+ * captured, no PNG and no capture.json; escalate with --headed).
  */
 
 /* eslint-disable import/no-extraneous-dependencies, import/extensions, no-await-in-loop, no-restricted-syntax, brace-style, object-curly-newline, max-len */
 /* standalone dev tool: sequential page ops use awaited loops by design */
-import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync, realpathSync, renameSync, rmSync } from 'fs';
 import { basename, dirname, join, resolve as resolvePath } from 'path';
 import { fileURLToPath, pathToFileURL } from 'url';
 
@@ -107,7 +125,8 @@ if (!LIVE_SESSION) {
   console.error('stitch-shot error: live-session.mjs not found (looked in ../../diff/scripts/ and ../diff/). Copy the diff skill\'s scripts dir alongside this one (replica SKILL.md § Setup).');
   process.exit(1);
 }
-const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = await import(pathToFileURL(LIVE_SESSION).href);
+const liveSession = await import(pathToFileURL(LIVE_SESSION).href);
+const { REAL_CHROME_UA, isLiveHttpUrl, launchStealthHeaded, newLiveContext, gotoLive, dismissOverlays } = liveSession;
 
 const HELP = `stitch-shot — scroll-and-stitch full-page screenshot (symmetric capture instrument)
 
@@ -117,6 +136,7 @@ Usage: node stitch-shot.mjs <url> <out.png> [options]
   --settle          slow-scroll lazyload settle pass before capture
   --consent <sel>   extra consent-accept selector (clicked, not removed)
   --dismiss <sel,…> extra overlay-dismiss selectors (marketing modals etc.)
+  --no-dismiss      dismiss no overlay at all (gate.sh --no-dismiss pass-through)
   --headed          headed stealth real Chrome (escalation for bot-managed sites)
   --locale <tag>    pin Accept-Language + locale (e.g. en-GB) for geo determinism
   --ua <string>     user agent (default: real-Chrome desktop UA + standard headers)
@@ -147,14 +167,22 @@ bookkeeping — no browser, no network:
                     plus originBaseline { capturedAt, height }) or "live" (a fresh capture, at = --at).
                     A round without the flag retakes a live.png whose record says "baseline". Exit 0; 1 usage.
 
+Writes <out.png> and <stem>.capture.json beside it (live.png → live.capture.json; removed when a capture starts, so a
+failed or refused one leaves none): { writtenBy, url, width, vh, height, chunks, denialCheck, at } — denialCheck = 'ok' |
+'skipped: <reason>' (the denial-page read after the dismissal sweeps). A --freeze-baseline capture writes baseline.json
+instead.
 Run the SAME command shape against the live page and the served prototype.
-Exit codes: 0 written, 1 error, 2 baseline refusal, 3 bot challenge (live side blocked — fail loud).`;
+Exit codes: 0 written, 1 error, 2 baseline refusal, 3 bot challenge (live side blocked — an edge interstitial or a
+2xx denial page, read by live-session's pageDenial at the entry and after the dismissal sweeps; fail loud, never
+captured: no PNG, no capture.json; escalate --headed).`;
+export { HELP };
+if (process.argv.includes('--help') || process.argv.includes('-h')) { console.log(HELP); process.exit(0); }
+export class UsageError extends Error { constructor(msg) { super(msg); this.name = 'UsageError'; } }
 
 export function parseArgs(argv) {
   const rest = argv.slice(2);
-  if (rest.includes('--help') || rest.includes('-h')) { console.log(HELP); process.exit(0); }
   const pos = [];
-  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
+  const opts = { width: 1440, vh: 900, settle: false, consent: null, dismiss: [], noDismiss: false, headed: false, locale: null, ua: REAL_CHROME_UA, wait: null, timeout: 60000, freezeBaseline: false, checkBaseline: false, force: false };
   for (let i = 0; i < rest.length; i += 1) {
     const a = rest[i];
     if (a === '--width') { opts.width = Number(rest[i += 1]); }
@@ -162,6 +190,7 @@ export function parseArgs(argv) {
     else if (a === '--settle') { opts.settle = true; }
     else if (a === '--consent') { opts.consent = rest[i += 1]; }
     else if (a === '--dismiss') { opts.dismiss = (rest[i += 1] || '').split(',').map((s) => s.trim()).filter(Boolean); }
+    else if (a === '--no-dismiss') { opts.noDismiss = true; }
     else if (a === '--headed') { opts.headed = true; }
     else if (a === '--locale') { opts.locale = rest[i += 1]; }
     else if (a === '--ua') { opts.ua = rest[i += 1]; }
@@ -170,13 +199,33 @@ export function parseArgs(argv) {
     else if (a === '--freeze-baseline') { opts.freezeBaseline = true; }
     else if (a === '--check-baseline') { opts.checkBaseline = true; }
     else if (a === '--force') { opts.force = true; }
-    else if (a.startsWith('--')) { console.error(`unknown flag ${a}\n\n${HELP}`); process.exit(1); }
+    else if (a.startsWith('--')) { throw new UsageError(`unknown flag ${a}`); }
     else pos.push(a);
   }
   const [url, out] = pos;
-  if (!url || !out) { console.error(`need <url> and <out.png>\n\n${HELP}`); process.exit(1); }
+  if (!url || !out) { throw new UsageError('need <url> and <out.png>'); }
   if (opts.wait == null) opts.wait = opts.settle ? 3000 : 1200;
   return { url, out, opts };
+}
+
+// The extra selectors handed to dismissOverlays: the consent selector first, then the dismiss list.
+export const overlayExtras = (opts) => [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
+// Scroll target of the chunk starting at y, clamped so the last chunk ends at the document's bottom.
+export const chunkTarget = (y, totalH, vh) => Math.max(0, Math.min(y, totalH - vh));
+// Scroll-stall guard (chunk loop below): the window did not advance although the target is > 4 px away.
+export const scrollStalled = (prevActualY, actualY, target) => prevActualY !== null && actualY <= prevActualY && target - actualY > 4;
+// Copy each decoded chunk ({ y, img: { width, height, data } }) into one RGBA buffer of width × totalH;
+// rows past totalH and columns past width are dropped.
+export function stitchRows(chunks, width, totalH) {
+  const out = Buffer.alloc(width * totalH * 4);
+  for (const { y: cy, img } of chunks) {
+    for (let row = 0; row < img.height; row += 1) {
+      const destY = cy + row;
+      if (destY >= totalH) break;
+      img.data.copy(out, (destY * width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, width)) * 4);
+    }
+  }
+  return out;
 }
 
 // ── Origin baseline (opt-in, default OFF) ─────────────────────────────────────────────────────
@@ -335,7 +384,7 @@ export function recordCommand(argv) {
 // live-session, log what was closed, and note that the mouse is parked by
 // dismissOverlays itself (bottom-left — rule 10).
 async function dismissAndLog(page, url, opts) {
-  const extra = [...(opts.consent ? [opts.consent] : []), ...opts.dismiss];
+  const extra = overlayExtras(opts);
   // late-modal poll window only on live targets — the served prototype's
   // overlays are not timed third-party scripts, they render immediately.
   const d = await dismissOverlays(page, { extra, lateWindowMs: isLiveHttpUrl(url) ? 6000 : 0 });
@@ -345,12 +394,33 @@ async function dismissAndLog(page, url, opts) {
   return d;
 }
 
+// <out.png> → the record beside it (live.png → live.capture.json).
+export const sidecarOf = (out) => `${out.replace(/\.png$/i, '')}.capture.json`;
+
+// gotoLive reads the entry for a 2xx denial page; this reads the page once more after the dismissal sweep(s) — a
+// denial page a script renders after domcontentloaded. A marker → BotChallengeError (exit 3), with the entry's
+// status. Returns capture.json's denialCheck: 'ok' (read, no marker) | 'skipped: <reason>' (the probe failed twice,
+// or a live-session.mjs copy that predates pageDenial) — a skip is one stderr line AND on the record, never a
+// silent pass.
+export async function recheckDenial(session, page, url, status) {
+  if (typeof session.pageDenial !== 'function' || typeof session.botChallengeError !== 'function') {
+    console.error('stitch-shot: denial-page check skipped (live-session.mjs predates pageDenial — copy the diff skill\'s live-session.mjs alongside)');
+    return 'skipped: live-session.mjs predates pageDenial';
+  }
+  const { marker, skipped } = await session.pageDenial(page);
+  if (skipped) console.error(`stitch-shot: denial-page check skipped (${skipped})`);
+  if (marker) throw session.botChallengeError(url, `HTTP ${status} ${marker}`, { denial: true });
+  return skipped ? `skipped: ${skipped}` : 'ok';
+}
+
+// exit 3 = bot challenge on the live side — an edge interstitial or a 2xx denial page (distinct from generic errors,
+// so a gate runner can tell "blocked — escalate with --headed" from "capture broke").
+export const exitCodeFor = (e) => (e && e.name === 'BotChallengeError' ? 3 : 1);
+
 async function main() {
   // The browserless subcommands gate.sh calls (HELP § Origin baseline) — before parseArgs, which needs <url> <out.png>.
   const sub = process.argv[2];
-  if ((sub === 'record' || sub === 'baseline') && !process.argv.includes('--help') && !process.argv.includes('-h')) {
-    process.exit(sub === 'record' ? recordCommand(process.argv.slice(3)) : baselineCommand(process.argv.slice(3)));
-  }
+  if (sub === 'record' || sub === 'baseline') process.exit(sub === 'record' ? recordCommand(process.argv.slice(3)) : baselineCommand(process.argv.slice(3)));
   const { url, out: given, opts } = parseArgs(process.argv);
   // --freeze-baseline / --check-baseline: the targets are settled before any capture — a freeze always lands in
   // <dir>/baseline.png (never the given live.png), a check never writes baseline.png (refused, exit 2), a
@@ -364,8 +434,12 @@ async function main() {
     console.error(`stitch-shot: a frozen baseline already exists in ${baselineDir} (captured ${prev?.capturedAt ?? 'unknown'}) — pass --force to re-freeze`);
     process.exit(2);
   }
-  // Lazy: --help, the subcommands and the refusals above answer without playwright / pngjs installed.
-  const [{ chromium }, { PNG }] = await Promise.all([import('playwright'), import('pngjs')]);
+  // The capture record beside <out.png>; a freeze writes baseline.json instead and leaves no capture record.
+  const sidecar = opts.freezeBaseline ? null : sidecarOf(out);
+  if (sidecar) rmSync(sidecar, { force: true }); // a refused or failed capture leaves no record of an earlier one
+  // Lazy: --help, the subcommands, the refusals above and the pure tests need neither playwright nor pngjs.
+  let chromium; let PNG;
+  try { ({ chromium } = await import('playwright')); ({ PNG } = await import('pngjs')); } catch (e) { throw new Error(`playwright / pngjs not importable from ${HERE} (${e.code || e.message}) — replica SKILL.md § Setup: copy the scripts dir into the project and run the copy`); }
   const browser = opts.headed ? await launchStealthHeaded(chromium) : await chromium.launch();
   try {
     // UA + standard headers + webdriver spoof on the context (live-session).
@@ -378,9 +452,11 @@ async function main() {
     // challenge page must never be stitched as if it were the source.
     // solveWindow only under --headed: headless clearance never lands, and
     // the solve loop would spend the Akamai block budget (1 hit vs up to 4).
-    await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
+    const entry = await gotoLive(page, url, { waitUntil: 'domcontentloaded', timeoutMs: opts.timeout, settleMs: 0, solveWindow: opts.headed });
     await page.waitForTimeout(opts.wait);
-    await dismissAndLog(page, url, opts);
+    // --no-dismiss: the capture shows whatever the site shows (the gate's --no-dismiss reaches both sides).
+    if (opts.noDismiss) console.log('overlays left as the page shows them (--no-dismiss)');
+    else await dismissAndLog(page, url, opts);
 
     if (opts.settle) {
       // Slow-scroll settle: fires scroll-triggered lazy loaders the way a real
@@ -398,8 +474,11 @@ async function main() {
       // Timed marketing/newsletter modals (CH-1) often fire DURING the settle
       // window — sweep again so a late interstitial isn't baked into the
       // stitched capture (recorded: a fashion retailer's "Sign up, stay updated!").
-      await dismissAndLog(page, url, opts);
+      if (!opts.noDismiss) await dismissAndLog(page, url, opts);
     }
+
+    // A denial page a script rendered after domcontentloaded (gotoLive read the entry): exit 3, no PNG, no sidecar.
+    const denialCheck = await recheckDenial(liveSession, page, url, entry.status());
 
     // Freeze animations/transitions/carets for stable chunks — AFTER settle.
     await page.addStyleTag({ content: '*,*::before,*::after{animation-play-state:paused!important;transition:none!important;caret-color:transparent!important;scroll-behavior:auto!important;}html{scroll-behavior:auto!important}' });
@@ -485,7 +564,7 @@ async function main() {
     let y = 0;
     let prevActualY = null;
     while (y < totalH) {
-      const target = Math.max(0, Math.min(y, totalH - opts.vh));
+      const target = chunkTarget(y, totalH, opts.vh);
       await page.evaluate((ty) => window.scrollTo(0, ty), target);
       await page.waitForTimeout(450);
       // wait for in-viewport images to complete (max 3s per chunk)
@@ -510,7 +589,7 @@ async function main() {
       // actualY reaches the clamped target (the last chunk's totalH - vh is
       // reachable by construction), so the no-advance condition stays false;
       // the 4px slack absorbs fractional-pixel scroll rounding.
-      if (prevActualY !== null && actualY <= prevActualY && target - actualY > 4) {
+      if (scrollStalled(prevActualY, actualY, target)) {
         throw new Error(`scroll stall at chunk target ${target}px: window scroll is a no-op (window.scrollY stuck at ${actualY}px) while the document reports ${totalH}px — likely an inner scroll container / scroll-jacked layout (html/body overflow:hidden). Stitched capture cannot measure this page class (capturing the inner scroller is future work): record the page as gate-blocked for the pixel probe and rely on content-diff/visual-diff.`);
       }
       prevActualY = actualY;
@@ -520,14 +599,7 @@ async function main() {
     }
 
     const outPng = new PNG({ width: opts.width, height: totalH });
-    for (const { y: cy, buf } of chunks) {
-      const img = PNG.sync.read(buf);
-      for (let row = 0; row < img.height; row += 1) {
-        const destY = cy + row;
-        if (destY >= totalH) break;
-        img.data.copy(outPng.data, (destY * opts.width) * 4, (row * img.width) * 4, (row * img.width + Math.min(img.width, opts.width)) * 4);
-      }
-    }
+    outPng.data = stitchRows(chunks.map(({ y: cy, buf }) => ({ y: cy, img: PNG.sync.read(buf) })), opts.width, totalH);
     mkdirSync(dirname(out), { recursive: true });
     const pngBuf = PNG.sync.write(outPng);
     // --freeze-baseline writes baseline.png atomically (sibling temp + rename): a crash mid-write never leaves a
@@ -538,6 +610,7 @@ async function main() {
       writeJsonAtomic(join(baselineDir, BASELINE_JSON), baselineProvenance({ url, width: opts.width, vh: opts.vh, height: totalH, settle: opts.settle, chunks: chunks.length, fontsFailed: failedFonts }));
       console.log(`froze origin baseline in ${baselineDir}: ${BASELINE_PNG} + ${BASELINE_JSON} (${opts.width}x${totalH}px)`);
     }
+    if (sidecar) writeFileSync(sidecar, `${JSON.stringify({ writtenBy: 'skills/replica/scripts/stitch-shot.mjs', url, width: opts.width, vh: opts.vh, height: totalH, chunks: chunks.length, denialCheck, at: new Date().toISOString() }, null, 2)}\n`);
     if (opts.checkBaseline) {
       const base = readBaselineProvenance(baselineDir);
       if (!base) console.log(`check-baseline: no frozen baseline in ${baselineDir} — freeze one first (nothing to compare)`);
@@ -553,10 +626,12 @@ async function main() {
   }
 }
 
-// exit 3 = bot challenge on the live side (distinct from generic errors, so a
-// gate runner can tell "blocked — escalate with --headed" from "capture broke").
-// Main-module guard: importing the module (the tests) runs nothing.
+// Main-module guard by real path (a symlinked checkout or temp dir must not turn the CLI into a silent no-op): the
+// test imports the helpers above without starting a capture.
 function safeRealpath(p) { try { return realpathSync(p); } catch { return p; } }
 if (process.argv[1] && fileURLToPath(import.meta.url) === safeRealpath(process.argv[1])) {
-  main().catch((e) => { console.error(`stitch-shot error: ${e.message}`); process.exit(e.name === 'BotChallengeError' ? 3 : 1); });
+  main().catch((e) => {
+    if (e instanceof UsageError) { console.error(`${e.message}\n\n${HELP}`); process.exit(1); }
+    console.error(`stitch-shot error: ${e.message}`); process.exit(exitCodeFor(e));
+  });
 }
