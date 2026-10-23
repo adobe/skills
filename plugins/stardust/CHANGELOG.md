@@ -4,6 +4,27 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
+
+Field learning (a recorded replica gate on a home page): 23 of its structural 🔴 were ROLE SWAP for footer and
+mega-menu group titles that are `<div>`s on the source and headings in the build, with identical computed size,
+weight and colour (the regions' pixel diff 0–3.7 %, from an unrelated offset). The policy told the recreation to
+mirror the live wrapping, which forbade improving the semantics. The page's genuinely lost content — a chart's
+visually hidden "search volume grew from … to …" text — was a buried 🟡 MISSING BODY.
+
+- **`content-inventory.mjs` (diff + deploy copies):** each item carries its computed `look` (size, weight, colour,
+  text-transform) and `srOnly` (sr-only clip, 1 px box or off-screen). A role change with the same look and face is
+  not visible: body → heading is an accepted `ROLE UPGRADE` (returned as `accepted`, never a finding), heading →
+  body a 🟡 `ROLE DOWNGRADE`; any other role change stays 🔴 `ROLE SWAP`. Lost screen-reader-only text is 🟡
+  `MISSING SR-ONLY TEXT` whatever its role. `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
+- **`content-diff.mjs`** names the accepted upgrades on the root's report block
+  (`accepted (invisible, nothing lost): N ROLE UPGRADE …`); they do not count as findings.
+- **Docs:** `replica/reference/recreation-procedure.md` § Role parity — "mirror the live element wrapping" becomes
+  "mirror the look; semantics may improve", and the iteration-1 anecdote folds; `diff/SKILL.md` § Reading
+  content-diff names the three outcomes and the sr-only class; `replica/SKILL.md` pointer updated.
+- Tests: `content-diff.test.mjs` — the pure outcomes (upgrade, downgrade, swap by size / face / eyebrow, sr-only) and
+  an end-to-end same-look `<div>` → `<h3>` plus a dropped sr-only description (0 structural 🔴).
+
 ## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
 
 Field learning (a recorded replica gate on a home page): all 8 STRETCHED IMAGE flags at 1440 were stretched the same

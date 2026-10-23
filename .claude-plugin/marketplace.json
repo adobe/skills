@@ -15,7 +15,7 @@
       "name": "stardust",
       "source": "./plugins/stardust",
       "description": "Redesign an existing website to make it better. Higher-level guided flow on top of impeccable.",
-      "version": "0.34.9",
+      "version": "0.34.10",
       "category": "design",
       "keywords": [
         "design",

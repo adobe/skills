@@ -530,7 +530,7 @@ PRODUCT.md / DESIGN.md / DESIGN.json    ← promoted verbatim from current/ (Pha
 - `reference/recreation-procedure.md` — CSS-lifting method (per gate
   breakpoint), fonts policy, scrim/luminance recovery, span-face forks,
   capture-state policy, wrap-junction margins, fixed/sticky chrome,
-  granularity parity, role parity (mirror the live wrapping per string),
+  granularity parity, role parity (mirror the live look per string),
   interaction parity (motion observed, never inferred; Swiper-lock),
   CSS-portation fallback criteria.
 - `reference/source-fidelity-gate.md` — full gate contract: commands,

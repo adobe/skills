@@ -398,7 +398,8 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   lines.push(`root "${root.name}"${notes.length ? ` — ${notes.join('; ')}` : ''}`);
   lines.push(`  ${S}: ${summarise(s)}`);
   lines.push(`  ${T}: ${summarise(t)}`);
-  const { flags } = diffInventories(s.items || [], t.items || [], prof);
+  const { flags, accepted } = diffInventories(s.items || [], t.items || [], prof);
+  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${accepted.length} ROLE UPGRADE body → heading, same look — ${accepted.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${accepted.length > 4 ? ' …' : ''}`);
   // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace editability contract): the canvas can
   // only attach an editor to an OUTERMOST h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
   // source means authored elements were rebuilt/merged into wrappers or text.

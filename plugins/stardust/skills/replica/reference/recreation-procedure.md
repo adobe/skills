@@ -430,30 +430,20 @@ authored content is a widget (`widgets/<path>/<name>`, mounted as one link —
 `../../stardust/reference/data-attributes.md`), not a block with empty rows,
 and the fidelity gate measures the rendered DOM the same way.
 
-## Role parity (wrapping and heading level, not text)
+## Role parity (mirror the look; semantics may improve)
 
-content-diff classifies every string by **DOM wrapping + computed style +
-heading level, never by text alone**: a string inside an `<a>` is a CTA, an
-uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
-recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
-eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
-wrapped labels in anchors where the recreation used spans, and vice versa.
-
-Policy:
-
-- **Mirror the live element wrapping per string.** For each text node the
-  gate will inventory, reproduce the live page's wrapping element (`<a>` vs
-  `<button>` vs `<span>`), its heading LEVEL, and the eyebrow-style
-  signature (uppercase + small size) — not just the visible text. This is
-  the same discipline as § Granularity parity, one level up: granularity
-  parity mirrors how text is split, role parity mirrors what it is wrapped
-  in.
-- **Iteration 1's red map IS the parity worklist.** When iteration 1 opens
-  with a wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs, fix the wrapping
-  first and re-run before touching geometry — role reds are cheap,
-  mechanical fixes, and every one cleared un-buries the structural reds
-  that are real. Geometry second.
+content-diff classifies every string by **DOM wrapping + computed style**,
+never by text alone: a string inside an `<a>` is a CTA, an uppercase
+small-type node an eyebrow, an `<h*>` a heading. Severity follows
+visibility: a `<div>` title rebuilt as a heading with the same computed
+look is an accepted ROLE UPGRADE, a heading flattened to same-looking body
+is 🟡 ROLE DOWNGRADE, and only a role change that changes the look is
+🔴 ROLE SWAP. So mirror the live **look** and every link per string;
+improve the semantics where the look holds. When iteration 1 opens with a
+wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
+page has a span, or the reverse), fix those first and re-run before
+touching geometry — they are cheap, and clearing them un-buries the real
+reds.
 
 ## Carousels and animated sections
 
