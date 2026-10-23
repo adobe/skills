@@ -416,7 +416,8 @@ export function botChallengeError(url, marker, { denial = false } = {}) {
  *         the diff probes' advisory contract (a 404 build side is normal on
  *         aem.page before preview propagation; the probe's flags carry the
  *         signal, exit stays 0).
- *   - entry status < 400, after the settle: a DENIAL page (pageDenial /
+ *   - entry status < 400 on a live URL (isLiveHttpUrl — never localhost or
+ *     loopback), after the settle: a DENIAL page (pageDenial /
  *     denialMarker — a vendor signature, or a page under 2 KB of text under
  *     one error heading) gets the same `solveWindow` treatment (each reload
  *     settled like the entry; a reload answered by an edge challenge or a
@@ -460,8 +461,9 @@ export async function gotoLive(page, url, { waitUntil = 'domcontentloaded', time
     }
   }
   if (settleMs > 0) await page.waitForTimeout(settleMs);
-  // a 2xx denial page (vendor wall): read after the settle; the same solve window as the header path
-  if (status < 400) {
+  // a 2xx denial page (vendor wall): read after the settle; the same solve window as the header path. Live URLs
+  // only — localhost and loopback serve no vendor wall, and a tiny build page under an error heading is the page.
+  if (status < 400 && isLiveHttpUrl(url)) {
     let d = await pageDenial(page);
     for (let attempt = 0; solveWindow && attempt < 3 && d.marker; attempt += 1) {
       await page.waitForTimeout(4000);
@@ -526,8 +528,15 @@ export const browserTier = (b) => b.stardustTier || 'chromium';
 
 // Consent-accept candidates (clicked, never DOM-removed, so consent-gated
 // layout settles the way a real visit does) — stitch-shot's proven list.
-const CONSENT_CANDIDATES = [
+// Exported for the test that pins the list; every instrument goes through
+// dismissOverlays below.
+export const CONSENT_CANDIDATES = [
   '#onetrust-accept-btn-handler',
+  // cmp-prefixed consent managers: the welcome box's "yes" button, its box
+  // variant and the button's text span
+  '#cmpwelcomebtnyes',
+  '.cmpboxbtnyes',
+  '#cmpbntyestxt',
   'button:has-text("Accept all")',
   'button:has-text("Accept All")',
   'button:has-text("Accept")',

@@ -104,8 +104,9 @@
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
  * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
- * Exit 0; 1 usage error (a malformed sidecar or progress.json included); 2 --check found a
- * sibling short of the acceptance set or a stale gate.
+ * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
+ * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
+ * of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
@@ -116,8 +117,11 @@
  * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
  * null when the round predates it), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
- * ledger aborts the run with nothing written); every sidecar and the ledger are written through
- * a temp file + rename. Nothing with --dry-run or --help.
+ * ledger aborts the run with nothing written). A ledger with no `types` map whose top level is one
+ * archetype's record (`breakpoints`, or `pageType` + `archetype` — the old documented example) is
+ * wrapped under `types.<archetype>` losslessly and noted on stderr, and only a record naming no
+ * `archetype` is refused (source-fidelity-gate.md § Residual logging format); every sidecar and the
+ * ledger are written through a temp file + rename. Nothing with --dry-run or --help.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-continue */
@@ -524,6 +528,19 @@ export function collect(o) {
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
   if (!prior.data || typeof prior.data !== 'object' || Array.isArray(prior.data)) throw new UsageError(`gate-evidence: ${o.progress} is not a JSON object`);
+  // The ledger is the map of every archetype: the agent's records under `types.<slug>`, this script's `siblings` /
+  // `migrate`, `_provenance`. A file whose top level is one archetype's record (the old documented example) is wrapped
+  // under its own slug, losslessly; only a record without a slug is refused.
+  if (!('types' in prior.data)) {
+    const single = ['breakpoints', 'pageType', 'archetype'].filter((k) => k in prior.data);
+    const looksLikeRecord = single.includes('breakpoints') || (single.includes('pageType') && single.includes('archetype'));
+    if (looksLikeRecord) {
+      const slug = typeof prior.data.archetype === 'string' ? prior.data.archetype.trim() : '';
+      if (!slug) throw new UsageError(`gate-evidence: ${o.progress} is one archetype's residual record at the top level (${single.join(', ')}) and names no archetype — move it under types.<archetype> (source-fidelity-gate.md § Residual logging format)`);
+      prior.data = { types: { [slug]: prior.data } };
+      notes.push(`${o.progress}: one archetype's record at the top level was wrapped under types.${slug} (source-fidelity-gate.md § Residual logging format)`);
+    }
+  }
   const rows = []; let updated = 0;
   for (const page of selected) {
     const d = derive(page, jobs, o, ctx);

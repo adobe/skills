@@ -4,7 +4,7 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
-## 0.34.3 — a 2xx denial page is a bot challenge: the capture refuses it, the gate round has no verdict
+## 0.34.4 — a 2xx denial page is a bot challenge: the capture refuses it, the gate round has no verdict (#137)
 
 Field learning (a recorded hands-off replica run on a site behind a bot wall): the live origin answered the headless
 capture with status 200 and its denial text — about 900 px of "can't process your request … Incident Number" under one
@@ -32,6 +32,48 @@ the response headers, and a vendor wall that answers 200 leaves none to classify
   probe verdict line says the same. Tests: `diff/live-session` (new — every signature, the 2 KB and one-heading rules,
   an ordinary page, `gotoLive` on stub pages), `replica/stitch-shot` (new — the re-check, the exit code, the record,
   `--help`; end to end where playwright is installed).
+- **Live URLs only.** The denial probe runs only where a vendor wall can exist (`isLiveHttpUrl`): a localhost or
+  loopback build side serving a tiny page under an error heading is captured as-is; with a test. Merged with 0.34.3, so
+  the two new test files are one per script (`diff/live-session`, `replica/stitch-shot`).
+
+## 0.34.3 — consent overlays are dismissed on gate captures; the archetype ledger keeps its shape (#136)
+
+Fixes from a recorded hands-off replica run on a site with a consent manager, verified against its artifacts.
+
+- **`replica/scripts/gate.sh` dismisses overlays on its captures the way its probes do.** The probes ran under
+  `--dismiss` while the stitched live capture had no way to receive a site-specific selector: the run captured
+  the live side with the consent banner and its scrim up, and the first pixel rounds measured them as page
+  difference (18–50 % hot bands) until `live.png` was re-taken by hand. Both captures now run the shared
+  dismissal by default, `--no-dismiss` turns it off everywhere in the round (new on `stitch-shot.mjs` as well),
+  and `--consent <sel>` / `--dismiss <sel,…>` — stitch-shot's own vocabulary — reach both captures, the diff
+  probes and chrome-parity; `--no-dismiss` with either is a usage error. `diff/scripts/live-session.mjs` knows
+  the `cmp`-prefixed consent-manager buttons, so that manager needs no flag; its candidate list has a test.
+  `stitch-shot.mjs` loads playwright and pngjs lazily and exports its pure parts (argument parsing, chunk targets, the
+  scroll-stall guard, row stitching); `test/stitch-shot.test.mjs` covers them, `--help` without a browser, and a
+  fixture capture where playwright is importable.
+- **`stardust/replica/progress.json` is the map of every archetype — never one archetype's record.** The
+  residual-logging example in `replica/reference/source-fidelity-gate.md` showed a bare
+  `{pageType, archetype, breakpoints}` object, and the run wrote exactly that as the whole file, destroying the
+  `types` map, the `siblings` / `migrate` blocks `gate-evidence.mjs` writes and the `_provenance` block the resume
+  and unit-boundary readers depend on. The example now shows the record inside `types.<archetype>` beside those
+  blocks, with the rule that the file is extended per entry; `gate-evidence.mjs` wraps a ledger whose top level
+  is one archetype's record under `types.<archetype>` (lossless, noted in its output) and refuses only a record
+  that names no archetype; a ledger with a `types` map is never second-guessed; with a test; `replica/SKILL.md`
+  names the keys.
+
+## 0.34.2 — dynamics: a form's captcha is recorded and rendered, never silently dropped (#135)
+
+Field learning (a newsletter sign-up on a media site): the live form carried a checkbox reCAPTCHA under the email
+field; the replica rendered the field and the button and nothing else. The form definition had no place for it, so
+the parity report read the form as done and the pixel diff saw a shorter card. A captcha is two halves: a public
+site key in the DOM, migratable, and a secret-backed server verify at the endpoint, which is not.
+
+- **`snapshot-forms.mjs`:** the definition gains `protection` — `{ vendor, siteKey, widget }` from any
+  `[data-sitekey]` element or a reCAPTCHA / hCaptcha / Turnstile script (v3 and Enterprise keys read from `render=`),
+  `null` when absent; the per-URL stderr line flags `PROTECTION: <vendor>` next to `REGULATED-PII`.
+- **forms.md § 4:** a recorded `protection` renders the same widget in the same slot with the vendor's published
+  always-pass test key and posts its response field with the data; the owner's real key, domain allowlist and
+  server-side verify are one `needs-backend` decision row. Folded the "53 states / 260 countries" anecdote.
 
 ## 0.34.1 — deploy: CSS never lands in the document — a per-item look is block CSS or a named variant (#134)
 

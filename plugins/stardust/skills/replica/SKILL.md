@@ -262,6 +262,8 @@ node stardust/scripts/replica/run-bg.mjs start --name <slug>-1440-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 1440 iter1 --full --main "<content-root>"
 node stardust/scripts/replica/run-bg.mjs start --name <slug>-360-iter1 -- \
   stardust/scripts/replica/gate.sh <slug> "$LIVE" "$PROTO" 360 iter1 --full --main "<content-root>"
+# A consent manager the built-in candidates miss: add --consent "<accept selector>" to every gate.sh
+# round — it reaches both stitched captures and the probes alike (gate doc § Hardening rule 6).
 node stardust/scripts/replica/run-bg.mjs wait      # verdict lines: pixel %, height delta, hot bands, structural 🔴, flags, chrome deltas
 
 # Iteration inner loop (gate doc § Band breakdown): anchor probe + pixel round
@@ -270,8 +272,7 @@ node stardust/scripts/replica/anchor.mjs "$LIVE"  --width 1440 --cache $G/anchor
 node stardust/scripts/replica/anchor.mjs "$PROTO" --width 1440   # build-side runs are free
 # Chrome: computed-style parity BEFORE any pixel round on header/footer/strips
 node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width 1440 --live-cache $G/chrome-live.json   # exit 0 = quiet, then crop-compare
-# --headed anywhere in these instruments = the WINDOW-FREE real-Chrome stealth tier (live-session
-# launchStealthHeaded, #125): it never opens a window; STARDUST_HEADED_WINDOW=1 is the only way to get one.
+# --headed in any instrument = the window-free real-Chrome stealth tier (#125); STARDUST_HEADED_WINDOW=1 is the only way to a window.
 # gate.sh: live.png cached, every step under a deadline (exit 124 = re-run, not FAIL). Rounds run in
 # the BACKGROUND: start every round at once (the slots pace the Chromiums — no `sleep N;` staggering),
 # then `wait` prints verdict lines only; exit 75 = still going → `wait` again as your NEXT step, never
@@ -469,9 +470,10 @@ had one section for the whole run).
   `update-coverage.mjs --gate` (handoff contract § 3, row C).
 
 **State:** replica writes its own state under `stardust/replica/` — the
-inconsistency register, `progress.json` (per page type: archetype slug,
-iterations used, per-breakpoint gate results, residuals, motion
-inventory), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
+inconsistency register, `progress.json` (one map: `types.<archetype>` —
+page type, iterations used, per-breakpoint gate results, residuals, motion
+inventory — beside `gate-evidence.mjs`'s `siblings` / `migrate`; extended
+per entry, never replaced), `motion/<slug>.json`, and `gates/<slug>-<width>/` evidence.
 The delivery gate (#125) adds `gates/all-<width>/` — one dir per deployed
 page (`origin.png`, `eds.png`, `diff.png`, `pixel.json`, `content.json`,
 `clip.json`, `units.json`), `summary.{json,md}`, `runs/` for `--only` runs and

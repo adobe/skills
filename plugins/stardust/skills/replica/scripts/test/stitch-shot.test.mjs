@@ -9,6 +9,8 @@
 // (the recorded shape — about 900 px of "can't process your request" + "Incident Number" served with 200 — the same
 // rendered by script after load, and a tiny page under one error heading) exit 3 with no PNG and no capture.json;
 // an ordinary page and a long article that mentions "press & hold" exit 0 and capture.json records denialCheck 'ok'.
+// Also (0.34.3): parseArgs, overlayExtras, chunkTarget, scrollStalled, stitchRows, and end to end --consent closing a
+// fixture consent box and --no-dismiss leaving it.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
@@ -17,7 +19,7 @@ import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { exitCodeFor, recheckDenial, sidecarOf } from '../stitch-shot.mjs';
+import { HELP, UsageError, chunkTarget, exitCodeFor, overlayExtras, parseArgs, recheckDenial, scrollStalled, sidecarOf, stitchRows } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'stitch-shot.mjs');
@@ -33,6 +35,54 @@ const stderrOf = async (fn) => {
   try { await fn(); } finally { console.error = error; }
   return lines;
 };
+
+const argv = (...a) => ['node', SCRIPT, ...a];
+await check('parseArgs: positional url + out, defaults (1440×900, no settle, wait 1200, timeout 60000, dismissal on)', () => {
+  const { url, out, opts } = parseArgs(argv('https://a/', 'o.png'));
+  assert.equal(url, 'https://a/'); assert.equal(out, 'o.png');
+  assert.equal(opts.width, 1440); assert.equal(opts.vh, 900); assert.equal(opts.settle, false); assert.equal(opts.wait, 1200); assert.equal(opts.timeout, 60000);
+  assert.equal(opts.consent, null); assert.deepEqual(opts.dismiss, []); assert.equal(opts.noDismiss, false); assert.equal(opts.headed, false); assert.equal(opts.locale, null);
+  assert.match(opts.ua, /Chrome\//);
+});
+await check('parseArgs: --settle raises the default wait to 3000; an explicit --wait wins; --width/--vh/--timeout/--ua/--locale/--headed', () => {
+  assert.equal(parseArgs(argv('u', 'o', '--settle')).opts.wait, 3000);
+  const { opts } = parseArgs(argv('u', 'o', '--settle', '--wait', '500', '--width', '360', '--vh', '640', '--timeout', '9000', '--ua', 'UA/1', '--locale', 'en-GB', '--headed'));
+  assert.equal(opts.wait, 500); assert.equal(opts.width, 360); assert.equal(opts.vh, 640); assert.equal(opts.timeout, 9000); assert.equal(opts.ua, 'UA/1'); assert.equal(opts.locale, 'en-GB'); assert.equal(opts.headed, true);
+});
+await check('parseArgs: --consent keeps one selector, --dismiss splits on commas and trims, --no-dismiss is a flag', () => {
+  const { opts } = parseArgs(argv('u', 'o', '--consent', '#yes', '--dismiss', ' .close , #later,, '));
+  assert.equal(opts.consent, '#yes'); assert.deepEqual(opts.dismiss, ['.close', '#later']); assert.equal(opts.noDismiss, false);
+  assert.equal(parseArgs(argv('u', 'o', '--no-dismiss')).opts.noDismiss, true);
+});
+await check('parseArgs: a missing positional or an unknown flag is a UsageError (the CLI prints HELP and exits 1)', () => {
+  assert.throws(() => parseArgs(argv('u')), (e) => e instanceof UsageError && /need <url> and <out\.png>/.test(e.message));
+  assert.throws(() => parseArgs(argv('u', 'o', '--bogus')), (e) => e instanceof UsageError && /unknown flag --bogus/.test(e.message));
+});
+await check('overlayExtras: the consent selector first, then the dismiss list; nothing when neither is set', () => {
+  assert.deepEqual(overlayExtras({ consent: '#yes', dismiss: ['.a', '.b'] }), ['#yes', '.a', '.b']);
+  assert.deepEqual(overlayExtras({ consent: null, dismiss: ['.a'] }), ['.a']);
+  assert.deepEqual(overlayExtras({ consent: null, dismiss: [] }), []);
+});
+await check('chunkTarget: steps of vh, the last chunk clamped to totalH - vh, never negative', () => {
+  assert.equal(chunkTarget(0, 2400, 900), 0); assert.equal(chunkTarget(900, 2400, 900), 900); assert.equal(chunkTarget(1800, 2400, 900), 1500);
+  assert.equal(chunkTarget(0, 500, 900), 0);
+});
+await check('scrollStalled: fires only when the window did not advance AND the target is more than 4 px away', () => {
+  assert.equal(scrollStalled(null, 0, 0), false, 'first chunk never stalls');
+  assert.equal(scrollStalled(0, 900, 900), false, 'advanced');
+  assert.equal(scrollStalled(900, 900, 1500), true, 'stuck with 600 px to go');
+  assert.equal(scrollStalled(1497, 1497, 1500), false, 'fractional-scroll slack (3 px)');
+  assert.equal(scrollStalled(900, 400, 1500), true, 'went backwards');
+});
+await check('stitchRows: chunks land at their y, rows past totalH and columns past width are dropped', () => {
+  const px = (w, h, v) => ({ width: w, height: h, data: Buffer.alloc(w * h * 4, v) });
+  const out = stitchRows([{ y: 0, img: px(2, 2, 1) }, { y: 2, img: px(3, 2, 2) }], 2, 3);
+  assert.equal(out.length, 2 * 3 * 4);
+  assert.deepEqual([...out.subarray(0, 16)], Array(16).fill(1), 'rows 0–1 from chunk 1');
+  assert.deepEqual([...out.subarray(16, 24)], Array(8).fill(2), 'row 2 from chunk 2, its third column dropped');
+  const short = stitchRows([{ y: 0, img: px(2, 1, 7) }], 2, 3);
+  assert.deepEqual([...short.subarray(8)], Array(16).fill(0), 'rows no chunk covers stay zero');
+});
 
 await check('sidecarOf: <out>.png → <out>.capture.json beside it (live.png → live.capture.json), any case of the extension', () => {
   assert.equal(sidecarOf('stardust/replica/gates/home-1440/live.png'), 'stardust/replica/gates/home-1440/live.capture.json');
@@ -92,7 +142,8 @@ await check('--help in an empty cwd: exit 0, usage, exit 3 named for an edge int
     const r = spawnSync(process.execPath, [SCRIPT, '--help'], { cwd, encoding: 'utf8', timeout: 15000 });
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /Usage: node stitch-shot\.mjs <url> <out\.png>/);
-    assert.match(r.stdout, /3 bot challenge[^]*2xx denial\npage[^]*"origin\nblocked"[^]*no PNG, no capture\.json\. Escalate with --headed/);
+    assert.match(r.stdout, /3 bot challenge[^]*2xx denial page[^]*pageDenial[^]*no PNG, no capture\.json; escalate --headed/);
+    for (const f of ['--consent <sel>', '--dismiss <sel,…>', '--no-dismiss']) assert.ok(r.stdout.includes(f) && HELP.includes(f), f);
     assert.match(r.stdout, /<stem>\.capture\.json/);
     assert.match(r.stdout, /denialCheck = 'ok' \|\n'skipped: <reason>'/);
     assert.equal(r.stderr, '');
@@ -118,6 +169,7 @@ if (pwProbe.status !== 0) {
     '/denied': html('Notice', RECORDED),
     '/denied-late': html('Notice', `<p>Loading the page.</p><script>document.addEventListener('DOMContentLoaded', () => setTimeout(() => { document.body.innerHTML = ${JSON.stringify(RECORDED)}; }, 500));</script>`),
     '/denied-heading': html('Error', '<h1>Something went wrong</h1><p>Please try again in a few minutes.</p>'),
+    '/consent': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#cmp{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="cmp"><button id="yes" onclick="document.getElementById(\'cmp\').remove()">Yes</button></div>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
   const server = createServer((req, res) => {
@@ -138,7 +190,8 @@ if (pwProbe.status !== 0) {
     child.on('close', (status) => resolveRun({ status, stdout, stderr, out, sidecar: sidecarOf(out), cap: existsSync(sidecarOf(out)) ? JSON.parse(readFileSync(sidecarOf(out), 'utf8')) : null }));
   });
   try {
-    const [ok, article, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
+    const [ok, article, consent, noDismiss, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
@@ -153,6 +206,16 @@ if (pwProbe.status !== 0) {
       assert.equal(article.status, 0, article.stderr);
       assert.equal(article.cap && article.cap.denialCheck, 'ok');
       assert.doesNotMatch(article.stderr, /denial/);
+    });
+    await check('e2e: --consent <sel> closes the fixture consent box; the capture is width × document height from vh-sized chunks', () => {
+      assert.equal(consent.status, 0, consent.stderr + consent.stdout);
+      assert.match(consent.stdout, /overlay dismissed via extra selector #yes/); assert.match(consent.stdout, /stitched .*: 800x2400 from 4 chunks/);
+      assert.deepEqual(pngSize(consent.out), { width: 800, height: 2400 }); assert.equal(consent.cap && consent.cap.denialCheck, 'ok');
+    });
+    await check('e2e: --no-dismiss leaves overlays alone and says so', () => {
+      assert.equal(noDismiss.status, 0, noDismiss.stderr + noDismiss.stdout);
+      assert.match(noDismiss.stdout, /overlays left as the page shows them \(--no-dismiss\)/); assert.doesNotMatch(noDismiss.stdout, /dismissed via/);
+      assert.deepEqual(pngSize(noDismiss.out), { width: 800, height: 2400 });
     });
     const expected = [
       ['/denied', 'HTTP 200 denial page — "can\'t process your request" + "Incident Number"'],

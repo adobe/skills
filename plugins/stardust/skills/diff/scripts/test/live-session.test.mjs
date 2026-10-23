@@ -7,6 +7,8 @@
 // ordinary page returns its response, a >= 400 is never probed, a probe that fails twice is ONE "skipped" stderr line
 // and never a pass, the solve window clears only on a clean readable reload, the header-marker message is unchanged.
 // dismissOverlays and denialProbeInPage run inside a page — the instruments' own end-to-end tests cover them.
+// Also: the consent-accept candidate list (cmp-prefixed candidates present, OneTrust first, no duplicates), isLiveHttpUrl,
+// defaultWaitUntil, and the live-URL guard — a localhost / loopback URL is never probed for a denial page.
 // Run: node plugins/stardust/skills/diff/scripts/test/live-session.test.mjs
 import assert from 'node:assert/strict';
 import * as session from '../live-session.mjs';
@@ -24,7 +26,7 @@ const stderrOf = async (fn) => {
 };
 
 check('the exported surface the instruments import, the denial-page names included', () => {
-  for (const name of ['REAL_CHROME_UA', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'isChallengeResponse', 'gotoLive', 'launchStealthHeaded', 'browserTier', 'dismissOverlays',
+  for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'isChallengeResponse', 'gotoLive', 'launchStealthHeaded', 'browserTier', 'dismissOverlays',
     'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.equal(typeof session[name], 'function', name);
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
@@ -274,6 +276,38 @@ await checkAsync('gotoLive: the header-marker message is unchanged (botChallenge
   assert.equal(page.calls.evaluate, 0);
   const built = session.botChallengeError(LIVE_URL, 'cf-mitigated: challenge');
   assert.deepEqual([built.name, built.marker, built.url, built.message], ['BotChallengeError', 'cf-mitigated: challenge', LIVE_URL, HEADER_MESSAGE('cf-mitigated: challenge')]);
+});
+
+// ---- the consent candidates, isLiveHttpUrl, defaultWaitUntil -------------------------------------------------------
+check('consent candidates: OneTrust first, the cmp-prefixed consent-manager buttons present, text fallbacks last, no duplicates', () => {
+  const c = session.CONSENT_CANDIDATES;
+  assert.ok(Array.isArray(c) && c.length >= 9, `${c.length} candidates`);
+  assert.equal(c[0], '#onetrust-accept-btn-handler');
+  for (const sel of ['#cmpwelcomebtnyes', '.cmpboxbtnyes', '#cmpbntyestxt']) assert.ok(c.includes(sel), `${sel} is a candidate`);
+  assert.ok(c.indexOf('#cmpwelcomebtnyes') < c.indexOf('button:has-text("Accept all")'), 'id selectors before the text fallbacks');
+  assert.equal(new Set(c).size, c.length, 'no duplicate candidate');
+  assert.ok(c.every((sel) => typeof sel === 'string' && sel.trim() === sel && sel.length), 'every candidate is a trimmed selector string');
+});
+check('isLiveHttpUrl: live http(s) only — never localhost, loopback, file: or garbage', () => {
+  assert.equal(session.isLiveHttpUrl('https://www.example.com/page'), true);
+  assert.equal(session.isLiveHttpUrl('http://example.org'), true);
+  for (const u of ['http://localhost:8791/x.html', 'http://127.0.0.1:8791/', 'http://[::1]/', 'http://0.0.0.0/', 'file:///tmp/x.html', 'not a url', '']) assert.equal(session.isLiveHttpUrl(u), false, u);
+});
+check('defaultWaitUntil: networkidle for local and EDS origins, domcontentloaded for other live sites', () => {
+  assert.equal(session.defaultWaitUntil('http://localhost:8791/x.html'), 'networkidle');
+  assert.equal(session.defaultWaitUntil('https://main--site--org.aem.page/'), 'networkidle');
+  assert.equal(session.defaultWaitUntil('https://main--site--org.hlx.live/'), 'networkidle');
+  assert.equal(session.defaultWaitUntil('https://www.example.com/'), 'domcontentloaded');
+});
+
+await checkAsync('gotoLive: a localhost or loopback URL is never probed for a denial page — no vendor wall serves there, so a tiny build page under an error heading is returned as the page', async () => {
+  for (const url of ['http://localhost:8791/404.html', 'http://127.0.0.1:3000/', 'http://[::1]/x']) {
+    const page = stubPage({ probes: [SIGNATURE_PAGES['system-down']] });
+    let resp;
+    const lines = await stderrOf(async () => { resp = await session.gotoLive(page, url, { settleMs: 0 }); });
+    assert.equal(resp, page.last, url);
+    assert.deepEqual([page.calls.goto, page.calls.evaluate, lines], [1, 0, []], `${url}: one hit, no probe, nothing on stderr`);
+  }
 });
 
 console.log(failed ? `\n${failed} of ${checks} checks failing` : `\nlive-session: all ${checks} checks passed`);
