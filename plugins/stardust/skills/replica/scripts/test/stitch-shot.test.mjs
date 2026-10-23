@@ -24,8 +24,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
-  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, exitCodeFor, liveRecord, overlayExtras,
-  parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
+  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, exitCodeFor, layerAction, liveRecord, overlayExtras,
+  overlaySuspects, parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
 } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -170,7 +170,7 @@ const URL_A = 'https://origin.example/';
 const freeze = (dir, prov = {}) => {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, BASELINE_PNG), 'frozen-png');
-  writeFileSync(join(dir, BASELINE_JSON), `${JSON.stringify(baselineProvenance({ url: URL_A, width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, capturedAt: AT, ...prov }), null, 2)}\n`);
+  writeFileSync(join(dir, BASELINE_JSON), `${JSON.stringify(baselineProvenance({ url: URL_A, width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, capturedAt: AT, fixedLayers: { capture: 'once', count: 1 }, ...prov }), null, 2)}\n`);
 };
 
 // ---- origin baseline: the parse, default OFF ------------------------------------------------------------------------
@@ -197,8 +197,8 @@ await check('baselineTargets: no flags → the given output and no gate dir; a f
 });
 await check('baselineProvenance has the documented shape; numbers are numbers; a non-array fontsFailed becomes []', () => {
   const p = baselineProvenance({ url: URL_A, width: '1440', vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: ['Brand Sans'], capturedAt: AT });
-  assert.deepEqual(Object.keys(p), ['writtenBy', 'schema', 'capturedAt', 'url', 'width', 'vh', 'height', 'settle', 'chunks', 'fontsFailed']);
-  assert.deepEqual(p, { writtenBy: BASELINE_WRITER, schema: BASELINE_SCHEMA, capturedAt: AT, url: URL_A, width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: ['Brand Sans'] });
+  assert.deepEqual(Object.keys(p), ['writtenBy', 'schema', 'capturedAt', 'url', 'width', 'vh', 'height', 'settle', 'chunks', 'fontsFailed', 'fixedLayers']);
+  assert.deepEqual(p, { writtenBy: BASELINE_WRITER, schema: BASELINE_SCHEMA, capturedAt: AT, url: URL_A, width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: ['Brand Sans'], fixedLayers: null });
   assert.deepEqual(baselineProvenance({ url: URL_A, width: 360, height: 10, fontsFailed: null }).fontsFailed, []);
   assert.match(baselineProvenance({ url: URL_A, width: 360, height: 10 }).capturedAt, /^\d{4}-\d{2}-\d{2}T/, 'capturedAt defaults to now');
 });
@@ -232,6 +232,8 @@ await check('baselineStatus names, in one line, why a baseline is unusable — m
     assert.match(baselineStatus(g).why, /baseline\.json has no baseline\.png beside it — re-freeze with --force$/);
     writeFileSync(join(g, BASELINE_PNG), 'png'); writeFileSync(join(g, BASELINE_JSON), '{ nope');
     assert.match(baselineStatus(g).why, /baseline\.json is unreadable — re-freeze with --force$/);
+    freeze(g, { fixedLayers: null });
+    assert.match(baselineStatus(g).why, /^stale: .*baseline\.json was frozen before fixed\/sticky layers were captured once \(no fixedLayers\) — re-freeze with --force$/, 'frozen the old capture way');
     freeze(g);
     assert.equal(baselineStatus(g).ok, true, 'no url / width asked: present and readable is enough');
     assert.equal(baselineStatus(g, { url: 'https://origin.example', width: 1440 }).ok, true, 'same origin without the trailing slash');
@@ -333,6 +335,22 @@ await check('--freeze-baseline over an existing baseline is refused with exit 2 
 });
 
 // ---- end-to-end (needs playwright + pngjs importable from the script's location) ---------------------------
+await check('layerAction: chunk 1 shows every layer; later chunks hide a fixed layer always and a sticky one only while stuck (moved below its top at scroll 0)', () => {
+  assert.equal(layerAction({ kind: 'fixed', top0: 0 }, 0, 0), 'show');
+  assert.equal(layerAction({ kind: 'fixed', top0: 0 }, 3, 2700), 'hide');
+  assert.equal(layerAction({ kind: 'sticky', top0: 1500 }, 1, 1500), 'show', 'a sticky element still in its own place stays');
+  assert.equal(layerAction({ kind: 'sticky', top0: 0 }, 2, 1800), 'hide', 'a stuck header is hidden');
+});
+await check('overlaySuspects: a visible fixed layer below the top bar, ≥ 5 % of the viewport, reading like consent / sign-up copy; never the header or a quiet chat button', () => {
+  const vw = 1000; const vh = 800;
+  const bar = { kind: 'fixed', visible: true, y: 680, w: 1000, h: 120, text: 'We use cookies to improve your experience. Manage preferences' };
+  assert.deepEqual(overlaySuspects([bar], vw, vh), [bar]);
+  assert.deepEqual(overlaySuspects([{ ...bar, y: 0, text: 'Pricing Login Sign up' }], vw, vh), [], 'the top bar');
+  assert.deepEqual(overlaySuspects([{ ...bar, w: 60, h: 60, text: 'Chat' }], vw, vh), []);
+  assert.deepEqual(overlaySuspects([{ ...bar, visible: false }], vw, vh), []);
+  assert.deepEqual(overlaySuspects([{ ...bar, kind: 'sticky' }], vw, vh), []);
+});
+
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "await import('playwright'); await import('pngjs');"], { cwd: dirname(SCRIPT), encoding: 'utf8' });
 if (pwProbe.status !== 0) {
   console.log('skip  end-to-end stitch-shot (playwright / pngjs not importable from the scripts dir; run this test in an environment that has them)');
@@ -348,6 +366,9 @@ if (pwProbe.status !== 0) {
     '/consent': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#cmp{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="cmp"><button id="yes" onclick="document.getElementById(\'cmp\').remove()">Yes</button></div>'),
     // a consent manager whose accept control reads "Allow all" (no Accept text): matched by its vendor class, no flag
     '/cmp-allow-all': html('Consent', '<style>body{height:2400px}h1,p{margin:0}.ch2-container{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div class="ch2-container"><button class="ch2-btn ch2-allow-all-btn" onclick="this.parentNode.remove()">Allow all</button></div>'),
+    // a fixed 60 px header, a red marker right under the header's place at the top of chunk 2 (y 600–640), a sticky
+    // label in its own place mid-page, and a cookie bar no candidate can close (no button)
+    '/fixed': html('Fixed', '<style>body{height:2400px;position:relative}h1,p{margin:0}#hd{position:fixed;top:0;left:0;right:0;height:60px;background:#000}#mk{position:absolute;top:605px;left:0;width:800px;height:30px;background:#f00}#sp{height:1500px}#st{position:sticky;top:0;height:40px;background:#00f}#ck{position:fixed;left:0;right:0;bottom:0;height:90px;background:#eee}</style><div id="hd"></div><div id="mk"></div><div id="sp"></div><div id="st"></div><div id="ck">We use cookies on this site.</div>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
   const server = createServer((req, res) => {
@@ -369,12 +390,13 @@ if (pwProbe.status !== 0) {
   });
   try {
     const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
-    const [ok, article, consent, noDismiss, allowAll, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const [ok, article, consent, noDismiss, allowAll, fixed, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
       assert.ok(ok.cap, 'the sidecar');
-      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'at']);
+      assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'fixedLayers', 'at']);
+      assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0 });
       assert.deepEqual([ok.cap.writtenBy, ok.cap.url, ok.cap.width, ok.cap.vh, ok.cap.denialCheck], ['skills/replica/scripts/stitch-shot.mjs', `${base}/ok`, 800, 600, 'ok']);
       assert.ok(ok.cap.height >= 1200 && ok.cap.chunks >= 2 && !Number.isNaN(Date.parse(ok.cap.at)), JSON.stringify(ok.cap));
       assert.match(ok.stdout, /stitched .*ok\.png: 800x\d+ from \d+ chunks/);
@@ -388,6 +410,17 @@ if (pwProbe.status !== 0) {
     await check('e2e: a consent manager in the built-in candidates is dismissed with no flag — its "Allow all" button by vendor class', () => {
       assert.equal(allowAll.status, 0, allowAll.stderr + allowAll.stdout);
       assert.match(allowAll.stdout, /consent dismissed via \.ch2-allow-all-btn/);
+    });
+    await check('e2e: fixed layers are captured once — the header shows at the top only, the marker under its chunk-2 place is in the PNG, the sticky label in its own place stays; the undismissable cookie bar is a WARNING', async () => {
+      assert.equal(fixed.status, 0, fixed.stderr + fixed.stdout);
+      assert.deepEqual(fixed.cap.fixedLayers, { capture: 'once', count: 3 });
+      assert.match(fixed.stderr, /stitch-shot WARNING: a fixed overlay is still showing after the dismissal sweeps \(800x90 at y 510: "We use cookies on this site\./);
+      const { PNG } = await import('pngjs');
+      const png = PNG.sync.read(readFileSync(fixed.out));
+      const at = (x, y) => { const i = (y * png.width + x) * 4; return [png.data[i], png.data[i + 1], png.data[i + 2]]; };
+      assert.deepEqual(at(400, 10), [0, 0, 0], 'the header at the top of chunk 1');
+      assert.deepEqual(at(400, 615), [255, 0, 0], 'the marker under the header\'s chunk-2 place');
+      assert.deepEqual(at(400, 1520), [0, 0, 255], 'the sticky label in its own place');
     });
     await check('e2e: --consent <sel> closes the fixture consent box; the capture is width × document height from vh-sized chunks', () => {
       assert.equal(consent.status, 0, consent.stderr + consent.stdout);

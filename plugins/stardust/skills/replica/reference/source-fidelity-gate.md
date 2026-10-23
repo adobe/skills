@@ -601,12 +601,10 @@ rather than erroring.
     reality). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
-11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
-    with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
+11. **Fixed/sticky chrome is captured once** (chunk 1; a stuck sticky
+    layer too), so seams neither repeat it nor hide content under it;
+    gate.sh re-takes a cached `live.png` captured the old way, and a frozen
+    baseline from before is stale (re-freeze).
     `recreation-procedure.md` § Fixed and sticky chrome.
 12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
     live instrument detects bot-management interstitials on every

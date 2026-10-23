@@ -4,6 +4,33 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.12 — stitch-shot captures fixed and sticky layers once: no seam repeats, no content hidden under them (#145)
+
+Field learning (a recorded replica gate on a home page): both captures repeated the sticky header in every viewport
+chunk (9 at 1440, 17 at 360). Symmetric, so it added no diff — but it covered whatever sat under each seam on both
+sides: an oversized partner logo (226 × 44 in the build, smaller on the source) sat under the header at 360, and its
+band scored 0.0 %. Any defect under a seam was invisible to the pixel gate. The same run stitched an undismissed
+consent bar into every live chunk with no warning.
+
+- **`replica/scripts/stitch-shot.mjs`:** fixed and sticky layers (the outermost ones) are tagged at scroll 0; chunk 1
+  shows them, and from chunk 2 a fixed layer — and a sticky one while it is stuck, displaced below its place at
+  scroll 0 — is set to `opacity: 0` (layout never moves; the page's own inline opacity is restored). A sticky
+  element still in its own place mid-page stays in the capture. A visible fixed layer after the dismissal sweeps,
+  ≥ 5 % of the viewport, below the top bar and reading like consent / sign-up copy, is a stderr WARNING naming it
+  and the flags. `capture.json` records `fixedLayers: { capture: 'once', count }`. Pure `layerAction` /
+  `overlaySuspects` exported.
+- **`replica/scripts/gate.sh`:** a cached `live.png` whose `live.capture.json` has no `fixedLayers` (captured the old
+  way) is re-taken, said on stdout — never compared with a build captured the new way. With the frozen origin baseline
+  (0.34.5): `--freeze-baseline` records `fixedLayers` in `baseline.json`, and `baselineStatus` reads a baseline frozen
+  before this change as stale (`re-freeze with --force`), so `--gate-against-baseline` never compares the two capture
+  methods; the gate and stitch-shot test fixtures carry the field.
+- **Docs:** `recreation-procedure.md` § Fixed and sticky chrome — the three seam effects fold to what the instrument
+  now does; the scroll-state-morph JS exception stays, justified by the header contract; gate doc rule 11 and the
+  replica SKILL pointer shortened.
+- Tests: `stitch-shot.test.mjs` — `layerAction`, `overlaySuspects`, and an end-to-end fixture (a fixed header, a
+  marker under its chunk-2 place, a sticky label in place, an undismissable cookie bar); `gate.test.mjs` — the
+  stale live capture is re-taken (the stub writes the sidecar as the real capture does).
+
 ## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
 
 Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos and favicons the build re-hosted

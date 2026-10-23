@@ -610,42 +610,23 @@ portation is logged.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
-`position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (a design-furniture site):
+stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
+shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
+— and a sticky one while it is stuck — is transparent, so seams neither
+repeat the chrome nor cover the content under it, and a scroll-state morph
+(a header that minimizes once scrolled) never reaches the capture.
 
-1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
-   the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
-   Instrument behavior, not a page defect — but only while it is symmetric.
-2. **Content occlusion.** Each repeat occludes a band of real content under
-   that seam; the occluded band is invisible to the pixel probe on both
-   sides (again: harmless only while symmetric).
-3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: the site swaps to a `body.header-minimized` 55px
-   hamburger bar once scrolled, so chunks 2+ carry different chrome than
-   chunk 1 — the stitched live capture contains BOTH states.
-
-**Resolution — symmetry, including the scroll-state trigger.** Replicate
-the fixed chrome AS fixed (never flattened to static/in-flow — that changes
-both the geometry and the seam behavior), and when the live chrome morphs
-with scroll, give the prototype the SAME morph so chunks 2+ match.
-
-This is the one sanctioned exception to the "no JS unless a section's
-initial state requires computing it" rule, and the tension resolves cleanly:
-that rule guards against *behavior for its own sake*, but scroll-state
-chrome is **instrument-induced state** — the capture instrument scrolls, so
-the instrument itself puts the live page into the morphed state, and a
-static prototype can never measure symmetric against it. Minimal prototype
-JS for scroll-state chrome is therefore permitted, tightly bounded: a few
+Replicate fixed chrome AS fixed all the same (never flattened to
+static/in-flow — that moves chunk 1's geometry), with its scroll-state
+morph: the header contract (`chrome-compare`) measures the scrolled state.
+Minimal prototype JS for that morph is the one sanctioned exception to the
+"no JS unless a section's initial state requires computing it" rule: a few
 lines toggling the same class at the same scroll threshold as the live site
-(lift both the class and the threshold from the source JS/CSS — never guess
-them), no frameworks, no other behavior. Log the addition in the progress
-ledger the way a CSS portation is logged.
+(lift both from the source JS/CSS — never guess them), no frameworks, no
+other behavior; log it in the progress ledger like a CSS portation.
 
-**Reading the diff:** any height delta between the captures de-aligns the
-seams, turning every seam repeat into a ghost band in the pixel diff
-(observed: seam ghosting of a fixed newsletter tab, plus a hot band exactly
-at a chunk boundary). Fix the height delta first — seam ghosts below the
-first hot band are offset contamination, not chrome bugs.
+**Reading the diff:** fix any height delta first — hot bands below the
+first one are offset contamination, not chrome bugs.
 
 ## CSS-portation fallback (per-section, never page-level)
 

@@ -340,8 +340,8 @@ symmetric `--main` scoping on both sides (`--main body` is never valid);
 both overlay classes dismissed via `--dismiss` (consent AND timed marketing
 modals); animations frozen for capture; the pointer parked after any
 dismissal click; fixed/sticky chrome replicated fixed, with its
-scroll-state morph, so seam repeats stay symmetric
-(`reference/recreation-procedure.md` § Fixed and sticky chrome);
+scroll-state morph (`reference/recreation-procedure.md` § Fixed and sticky
+chrome);
 granularity-parity policy for JOIN/SPLIT false-reds (#87); capture-state
 policy for CDN-403 images and hydration placeholders (replicate as captured
 + log). Two defect classes only the gate catches — DOM/style capture misses

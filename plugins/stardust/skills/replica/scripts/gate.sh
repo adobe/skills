@@ -313,6 +313,12 @@ else
     echo "gate.sh: live.png is the frozen origin baseline (a --gate-against-baseline round); this round gates against the live origin — retaking it" >&2
     rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
   fi
+  # A live capture from before fixed layers were captured once (its live.capture.json has no fixedLayers) would be
+  # compared with a build captured the new way — asymmetric: retake it.
+  if [ -f "$DIR/live.png" ] && ! grep -q '"fixedLayers"' "$DIR/live.capture.json" 2>/dev/null; then
+    echo "gate.sh: $DIR/live.png predates the fixed-layer capture (no fixedLayers in live.capture.json) — retaking it so both sides capture alike"
+    rm -f "$DIR/live.png" "$DIR/live.json" "$DIR/live.capture.json"
+  fi
   if [ ! -f "$DIR/live.png" ]; then
     capture_live() { rm -f "$DIR/live.png"; capped "$STITCH_TIMEOUT" "stitch-shot live $SLUG@$W" node "$HERE/stitch-shot.mjs" "$LIVE_URL" "$DIR/live.png" --width "$W" --settle ${STITCH_OPTS[@]+"${STITCH_OPTS[@]}"}; }
     retry_once "live capture" capture_live

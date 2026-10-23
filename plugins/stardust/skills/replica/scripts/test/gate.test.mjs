@@ -58,7 +58,7 @@ stub(replica, 'stitch-shot.mjs', `
   if (once && !existsSync(once)) { writeFileSync(once, '1'); console.error('stitch-shot error: Target page, context or browser has been closed'); process.exit(1); }
   const rc = Number(process.env['STUB_STITCH_RC_' + side] || 0);
   if (rc) { console.error('stitch-shot error: stub exit ' + rc); process.exit(rc); }
-  writeFileSync(out, 'png'); console.log('stitched ' + out);`);
+  writeFileSync(out, 'png'); writeFileSync(out.replace(/\.png$/, '.capture.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 0 } })); console.log('stitched ' + out);`);
 stub(replica, 'measure.mjs', `
   import { appendFileSync } from 'node:fs';
   if (process.env.STUB_MEASURE_COUNT) appendFileSync(process.env.STUB_MEASURE_COUNT, 'M\\n');
@@ -170,6 +170,10 @@ r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry1'], { 
 check('a build capture that exits 1 once is retried and the round passes', r.status === 0, `status ${r.status} ${r.stderr.slice(0, 300)}`);
 check('the retry is said on stderr', /^gate\.sh: build capture exited 1 — retrying once \(a capture error under load is not a verdict\)$/m.test(r.stderr), r.stderr);
 check('exactly two build attempts, live cached (no live attempt)', attempts().join(',') === 'BUILD,BUILD', attempts().join(','));
+resetCount();
+writeFileSync(join(root, 'stardust/replica/gates/home-1440/live.capture.json'), JSON.stringify({ chunks: 6 }));
+r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'relive'], { STUB_STITCH_COUNT: countFile });
+check('a cached live.png captured before fixed layers were captured once is re-taken, said on stdout', r.status === 0 && attempts().join(',') === 'LIVE,BUILD' && /live\.png predates the fixed-layer capture/.test(r.stdout), `status ${r.status} attempts ${attempts().join(',')} ${r.stdout.slice(0, 300)}`);
 resetCount();
 r = await gate(['home', 'https://live.example/', buildUrl, '1440', 'retry2'], { STUB_STITCH_RC_BUILD: '1', STUB_STITCH_COUNT: countFile });
 check('two exit-1 build captures end the round with exit 1 and say re-queue, never a FAIL', r.status === 1 && /build capture failed \(exit 1\) — not comparing \(twice: no verdict — re-queue the round\)/.test(r.stderr), `status ${r.status} ${r.stderr}`);
@@ -309,7 +313,7 @@ const gdir = (slug, w = 1440) => join('stardust/replica/gates', `${slug}-${w}`);
 const liveJson = (slug) => { const f = join(root, gdir(slug), 'live.json'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
 const livePng = (slug) => { const f = join(root, gdir(slug), 'live.png'); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
 const noTmp = (slug) => !readdirSync(join(root, gdir(slug))).some((f) => f.endsWith('.tmp'));
-const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: [] };
+const PROV = { writtenBy: 'skills/replica/scripts/stitch-shot.mjs --freeze-baseline', schema: 1, capturedAt: '2026-10-19T08:00:00.000Z', url: 'https://live.example/', width: 1440, vh: 900, height: 2000, settle: true, chunks: 3, fontsFailed: [], fixedLayers: { capture: 'once', count: 1 } };
 const freezeBaseline = (slug, prov = PROV) => {
   const d = join(root, gdir(slug));
   mkdirSync(d, { recursive: true });
@@ -368,7 +372,7 @@ r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl8', '--mar
 check('flag dropped after a flagged round: the baseline-derived live.png is retaken with one line — LIVE then BUILD, live.json removed, live.png is the live capture', r.status === 0 && attempts().join(',') === 'LIVE,BUILD'
   && /^gate\.sh: live\.png is the frozen origin baseline \(a --gate-against-baseline round\); this round gates against the live origin — retaking it$/m.test(r.stderr) && (r.stderr.match(/retaking/g) || []).length === 1
   && liveJson('blon') === null && livePng('blon') === 'png', `status ${r.status} attempts ${attempts().join(',')} ${r.stderr} ${liveJson('blon')}`);
-check('… and the stale capture record (live.capture.json) went with the retaken live.png', !existsSync(join(root, gdir('blon'), 'live.capture.json')));
+check('… and the stale capture record (live.capture.json) went with the retaken live.png (the retake writes its own)', !existsSync(join(root, gdir('blon'), 'live.capture.json')) || !readFileSync(join(root, gdir('blon'), 'live.capture.json'), 'utf8').includes('"stale"'));
 resetCount();
 r = await gate(['blon', 'https://live.example/', buildUrl, '1440', 'bl9', '--marker', 'home-proposed'], { STUB_STITCH_COUNT: countFile });
 check('… the next unflagged round reuses that fresh live.png (BUILD only, no retake line)', r.status === 0 && attempts().join(',') === 'BUILD' && !/retaking/.test(r.stderr), `attempts ${attempts().join(',')} ${r.stderr}`);
