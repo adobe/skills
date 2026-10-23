@@ -21,7 +21,15 @@ identical and the family differed only in case (`Manrope` / `manrope`).
   `redFlags` are exported.
 - The STRETCHED hint in both `diff-profiles.mjs` copies drops the "unless justified" clause the instrument now
   decides. `diff/SKILL.md` probe table names the two-sided rule.
-- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the pure pairing and flags, `--help` without a browser, and
+- Review follow-up: families compare normalised (`normFamily` — first in the stack, unquoted, lowercased, without
+  `Variable` / `VF` / `Var` / weight suffixes, so `Manrope Variable` and `manrope` are one face); one family pair on
+  every differing heading is ONE `HEADING FACE ×N` line (one substitution to justify; size differences still listed);
+  headings with the same text pair in document order (`pairHeadings`), not all with the last. A stretched image whose
+  source twin is an undistorted `fill` (inside the ±4 % pairing tolerance) no longer reads as "the source's object-fit
+  fill". New informational `IMAGE FIT (info)` when the source distorts an image the build crops. `HEADING_FACE` and
+  `IMAGE_FIT` hints in both `diff-profiles.mjs` copies; `diff/SKILL.md` § Workflow use and the replica
+  source-fidelity gate's pass bar name `HEADING FACE`.
+- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the pure pairing and flags, family normalisation, duplicate headings, the ×N summary, `--help` without a browser, and
   an end-to-end source-crops / build-distorts fixture.
 
 ## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)

@@ -85,9 +85,11 @@ The prototype capture is re-taken every iteration.
    text-less accordion button) and 🟠 (font fork) confirmed intended — a
    substituted licensed font is a permanent justified 🟠; record it once in
    the ledger.
-2. **visual-diff: flags none or justified.** A live page's own quirks are
-   justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
-   carousel tile at a negative offset — both real UC1-E1 justifications).
+2. **visual-diff: flags none or justified** — `HEADING FACE` included: a
+   licensed-font substitution is one `×N` line, justified once like the 🟠
+   fork. A live page's own quirks are justified when the prototype mirrors
+   them (e.g. a 1×1 SEO h1 at x0, a carousel tile at a negative offset —
+   both real UC1-E1 justifications).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target; the validated run
    landed at 1.31%.
