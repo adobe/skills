@@ -219,10 +219,12 @@ export function attributeInventory(args) {
     const h = b.querySelector('h1, h2, h3, h4, h5, h6');
     return h ? norm(h.textContent).slice(0, 60) : '';
   };
+  // an element's text minus inline-svg <title>/<text>: an svg icon and an <img> icon leave the same anchor
+  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg')) t += ` ${n.textContent}`; return t; };
   const anchorOf = (el) => {
     const host = el.matches(INTERACTIVE) ? el : el.closest(INTERACTIVE);
     if (host && root.contains(host)) {
-      const label = norm(host.getAttribute('aria-label') || host.getAttribute('title') || host.textContent);
+      const label = norm(host.getAttribute('aria-label') || host.getAttribute('title') || textOf(host));
       if (label) return label.slice(0, 60);
       const href = host.getAttribute('href');
       if (href) { try { return new URL(href, location.href).pathname.toLowerCase() || '/'; } catch { return href.toLowerCase(); } }
@@ -230,8 +232,8 @@ export function attributeInventory(args) {
       return `${host.tagName.toLowerCase()}#${hostIds.get(host)}`;
     }
     let p = el.parentElement;
-    while (p && p !== root && !clean(p.textContent)) p = p.parentElement;
-    return p ? norm(p.textContent).slice(0, 60) : '';
+    while (p && p !== root && !clean(textOf(p))) p = p.parentElement;
+    return p ? norm(textOf(p)).slice(0, 60) : '';
   };
   const attrs = []; const icons = [];
   root.querySelectorAll('*').forEach((el) => {

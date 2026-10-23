@@ -558,19 +558,12 @@ rather than erroring.
    adopt the live content-root class so one `--main` value fits both. Both
    diff scripts take `--main` (visual-diff's is the upstreamed flag: on
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
-   while the main-scoped checks silently no-op). Two guardrails:
-   - **`--main body` is NEVER a valid replica scope.** A too-broad root
-     self-poisons the instrument regardless of symmetry: reproduced
-     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
-     produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
-     from analytics/inline-script text plus a nondeterministic
-     cookie-settings panel pulled into the inventory. The content root must
-     exclude consent/analytics chrome.
-   - **Verify the consent banner is actually gone post-dismiss before
-     trusting an inventory** — consent UIs render nondeterministically
-     between two sequential captures (one capture caught the expanded
-     cookie panel, the other didn't). If reds cluster on cookie/consent
-     strings, the scope or the dismissal is wrong, not the recreation.
+   while the main-scoped checks silently no-op). **`--main body` is never a
+   valid replica scope** (the chrome lands in the content inventory).
+   Script / style payloads and the common consent managers' banners are not
+   inventoried — a skipped banner is named on its root's summary line; reds
+   that cluster on cookie strings mean a manager the list misses: pass
+   `--consent`.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument

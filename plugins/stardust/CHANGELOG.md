@@ -4,6 +4,25 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.34.7 — content-diff inventories page copy only: icon links, payloads and consent banners stop reading as missing content (#140)
+
+Field learning (a recorded replica gate on a home page whose source has no `<main>`): of 53 structural 🔴, 12 were
+MISSING CTA for menu links present on both sides with the same href and text — the build drew their icons as `<img>`,
+the source as inline `<svg>`, and the inventory dropped every link containing an image — and 9 🟡 MISSING BODY were
+inline payloads (`__NEXT_DATA__`, a tag manager's `<noscript>` frame, consent-manager helpers).
+
+- **A link with an icon and text is a text CTA, whatever draws the icon** (`content-inventory.mjs`, both the diff and
+  the deploy copy): only a text-less link (a logo or image link) is skipped, and the label leaves out inline-svg
+  `<title>` / `<text>`, so an svg-icon link and an img-icon link read the same. content-diff's icon anchors use the
+  same label, so that pair is one 🟡 ICON KIND instead of MISSING ICON + EXTRA ICON.
+- **Not page copy:** `script`, `noscript`, `style` and `template` subtrees, and the banners of the common consent
+  managers (the ones `CONSENT_CANDIDATES` accepts), are left out of the role inventory and the Experience Workspace
+  editable count. A skipped banner is named once on the root's summary line (`consent banner skipped (N text nodes)`).
+- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — the two guardrails about inline-script text and cookie
+  panels in the inventory fold to one sentence.
+- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg-icon vs img-icon link, inline payloads and a
+  consent banner on one side: no MISSING CTA / BODY, 0 structural 🔴, the banner named in the summary.
+
 ## 0.34.6 — the common consent managers are dismissed with no flag (#139)
 
 Field learning (a recorded replica run on a site whose consent manager labels its button "Allow all"): no built-in

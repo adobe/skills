@@ -224,6 +224,12 @@ if (playwrightOk) {
     '/build.html': page('<h1>Welcome</h1><form><input type="search" aria-label="Suche"></form><p>Body copy here.</p>'
       + '<a href="/de/" class="lang"><img class="flag" src="/flag-en.svg" alt=""> Deutsch</a>'
       + '<ul class="social"><li><a href="https://social.example/x" aria-label="Facebook"><span class="icon"></span></a></li></ul>'),
+    // a menu link drawn with an inline-svg icon on one side and an <img> icon on the other, plus inline payloads and
+    // a consent banner only the source carries: none of it is a content difference
+    '/noise-source.html': page('<h2>Tools</h2><a href="/tools/kw"><svg width="16" height="16"><title>icon</title><rect width="16" height="16"/></svg> Keyword Generator</a>'
+      + '<script type="application/json">{"props":{"page":"/"}}</script><noscript><iframe src="about:blank"></iframe>Enable JavaScript</noscript><style>.x{color:red}</style>'
+      + '<div class="ch2-container"><p>We use cookies to improve your experience.</p><a href="/privacy">Cookie policy</a><button>Allow all</button></div>'),
+    '/noise-build.html': page('<h2>Tools</h2><a href="/tools/kw"><img src="/flag-de.svg" width="16" height="16" alt=""> Keyword Generator</a>'),
     '/flag-de.svg': svg, '/flag-en.svg': svg,
   };
   const server = createServer((req, res) => {
@@ -264,6 +270,14 @@ if (playwrightOk) {
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /^Findings: none — content \+ roles match$/m, r.stdout);
     assert.match(r.stdout, /icons: source 2 \/ build 2$/m);
+  });
+  await check('e2e: an icon+text link counts as the same CTA whether the icon is inline svg or <img>; script / noscript / style text and a consent banner are not content — no MISSING CTA / BODY, the banner named once in the summary', async () => {
+    const r = await run([`${base}/noise-source.html`, `${base}/noise-build.html`, '--profile', 'generic', '--width', '1280']);
+    assert.equal(r.status, 0, r.stderr);
+    assert.doesNotMatch(r.stdout, /MISSING CTA|MISSING BODY|EXTRA \[main\]: build cta/, r.stdout);
+    assert.match(r.stdout, /^Findings: (none|\d+ \(0 structural 🔴\))/m, r.stdout);
+    assert.match(r.stdout, /source: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 0 img; consent banner skipped \(3 text nodes\)/, r.stdout);
+    assert.match(r.stdout, /build: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 1 img$/m, r.stdout);
   });
   server.close();
 }
