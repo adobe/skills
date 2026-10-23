@@ -10,7 +10,10 @@
  *
  * Idempotent + incremental: existing delivery status is preserved. When a page's
  * migrated HTML changed (sourceHash differs) after it was already deployed/verified,
- * it is re-flagged `stale` so the delivery loop re-delivers just that page.
+ * it is re-flagged `stale` so the delivery loop re-delivers just that page — unless the row is
+ * pinned (`delivery.pinned`, written by `update-coverage.mjs --gate <table> --pin` for a page replica's
+ * first page first delivered on its own track): a pinned row keeps its delivery state across a
+ * re-render, and the report names it.
  *
  * Phase 1 scope: pages + template grouping only. Block dedup (blocks.json) is a
  * first-class step deferred to Phase 2 — see notes/rollout/PLAN.md § 8.
@@ -151,6 +154,7 @@ const stateFile = STATE || (existsSync('stardust/state.json') ? 'stardust/state.
 const stateDoc = stateFile ? readJSON(stateFile, { pages: [] }) : { pages: [] };
 const stateUrls = new Map((stateDoc.pages || []).filter((p) => p && p.slug && p.url).map((p) => [p.slug, p.url]));
 const pages = [];
+const pinnedChanged = []; // pinned rows whose migrated HTML changed: kept, not re-flagged stale
 
 for (const relHtml of htmlFiles) {
   const absHtml = join(MIGRATED, relHtml);
@@ -164,7 +168,10 @@ for (const relHtml of htmlFiles) {
   let delivery;
   if (prior && prior.delivery) {
     const changed = prior.source && prior.source.sourceHash !== sourceHash;
-    if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
+    if (changed && prior.delivery.pinned) {
+      delivery = prior.delivery;
+      pinnedChanged.push(slug);
+    } else if (changed && ['deployed', 'verified'].includes(prior.delivery.status)) {
       delivery = { ...prior.delivery, status: 'stale' };
     } else {
       delivery = prior.delivery;
@@ -327,6 +334,7 @@ console.log('='.repeat(60));
 console.log(`Pages       ${counts.total} total · ${counts.verified} verified · ${counts.deployed} deployed · ${counts.pending} pending · ${counts.contentPending} content-pending · ${counts.stale} stale`);
 if (config.scope) console.log(`Scope       ${scopeLine(config.scope)}`);
 console.log(`Templates   ${templates.length} (${templates.map((t) => `${t.id}:${t.pageCount}`).join(', ')})`);
+if (pinnedChanged.length) console.log(`Pinned      ${pinnedChanged.length} row(s) whose migrated HTML changed kept their delivery (delivered on their own track; \`update-coverage.mjs <slug> --status stale\` re-delivers): ${pinnedChanged.join(', ')}`);
 if (kept.length) console.log(`Kept        ${kept.length} row(s) built outside the migrated tree (update-coverage.mjs --new), status untouched: ${kept.join(', ')}`);
 const blockless = pages.filter((p) => p.source.metaJson && !p.blocks.length).length;
 if (blockless) console.log(`Blocks      modules[] empty on ${blockless}/${pages.length} sidecars — Phase B (blocks.mjs) dedups from them: fill each page's block ids (composite sections; title, text, image, button, separator are default content) and re-run the inventory`);

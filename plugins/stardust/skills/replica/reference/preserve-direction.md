@@ -19,7 +19,9 @@ Two branches, keyed on one observable fact: does
 descriptive synthesis; a bounded `--single`/`--pages` run does not —
 crawl.mjs alone writes only `pages/*.json` (+ the `pages/*.html`
 rendered-DOM sidecars), screenshots, and `_crawl-log.json`.) Never mix them: when the `--prep` artifacts exist,
-promotion is verbatim and synthesis is forbidden.
+promotion is verbatim and synthesis is forbidden. **An explicit first-page track overrides the check:** Track A of a
+first-page-first run always takes § 1a, from `stardust/first-page/current/`, even when Track B's `--prep` has
+already written `current/PRODUCT.md`; RECONCILE then takes the full-prep branch (`first-page-first.md`).
 
 ### Full-prep branch — verbatim promotion (unchanged)
 
@@ -85,7 +87,8 @@ Rules:
 - **`direction.md` records the branch** (see § 2): downstream skills and a
   later site-scope re-run must be able to tell a `bounded-single` spec from
   a promoted one. When the pilot grows to site scope and Phase 1 re-runs
-  with `--prep`, the verbatim promotion REPLACES the synthesized spec.
+  with `--prep` (first page first: at RECONCILE), the verbatim promotion
+  REPLACES the synthesized spec — never merged with it.
 
 ## 2. `stardust/direction.md` — the preserve-mode record
 

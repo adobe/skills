@@ -41,6 +41,9 @@ eyeballing.
 - `--register <file>` — optional. User-supplied inconsistency items to seed
   the register (see Phase 2). Without it and without an audit, the register
   is empty — a pure replica.
+- `--first-page <url|home>` — optional. The page a full-site run delivers
+  first, beside the site-scope work (`reference/first-page-first.md`);
+  hands-off default `home`.
 
 ## Setup
 
@@ -98,9 +101,10 @@ read it back by query.
 Five phases. Phases 1 and 5 delegate to existing skills unchanged; phases
 2–4 are owned by `replica`. A full-site run opens **first page first**
 (`--first-page <url|home>`; hands-off: home): that page runs Phases 1–5 on
-the bounded entry while Phase 1 `--prep` and the dynamics triage run beside
-it, and the two meet at RECONCILE — `reference/first-page-first.md` (tracks,
-who writes what, the seven checks).
+the bounded entry in its own workspace, `stardust/first-page/`, while Phase 1
+`--prep` and the dynamics triage run beside it, and the two meet at
+RECONCILE — `reference/first-page-first.md` (tracks, who writes what, the
+seven checks, the hand-off to rollout).
 
 ### Phase 1 — EXTRACT (delegate to `$stardust extract --prep --dynamics`)
 
@@ -135,7 +139,7 @@ harvest and per-breakpoint computed styles come from Phase 3's CSS lifting
 either way. What a bounded run skips is the prep-only inventory (page
 typing, module detection), which is only needed when Phase 5 fans out to
 siblings, and the descriptive synthesis (Phase 2 takes the bounded
-promotion branch, item 1).
+promotion branch, `reference/preserve-direction.md` § 1a).
 
 Extract's failure modes apply as-is (bot-management headed fallback, consent
 handling, no-synthesis rule). If extract had to fall back to headed Chrome,
@@ -153,7 +157,9 @@ Full contract: `reference/preserve-direction.md`. Summary:
    § 1a): synthesize a minimal descriptive spec from the captured page JSON
    + the Phase-3 CSS lift (palette, type ramp, container, buttons — exactly
    the values the lift produces anyway), provenance `bounded-single`. Never
-   mix the branches: if `current/PRODUCT.md` exists, promotion is verbatim.
+   mix the branches: if `current/PRODUCT.md` exists, promotion is verbatim
+   — except on a first-page track, which is always bounded
+   (`reference/first-page-first.md`).
 2. **Write `stardust/direction.md`** recording preserve mode: what was
    promoted, from where, provenance (verbatim `--prep` promotion vs
    `bounded-single` synthesis), and the register pointer. This is what

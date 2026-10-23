@@ -5,7 +5,8 @@
 // report, delivery state preserved across re-runs, and a row added by `update-coverage.mjs --new`
 // (origin marker in source.migratedHtml) kept across a re-run until the migrated tree holds it; a sidecar's
 // widgets[] through inventory → blocks.mjs (kind widget, code path, no document rows) → plan.mjs, and inherited
-// by content-pending siblings in archetypes-only mode.
+// by content-pending siblings in archetypes-only mode; a pinned row (first page first) keeps its
+// delivery across a re-render.
 // Run: node plugins/stardust/skills/rollout/scripts/test/inventory.test.mjs
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
@@ -130,6 +131,20 @@ check('once the migrated tree holds the slug, the migrated row replaces the mark
   assert.equal(rows[0].delivery.status, 'stale', 'a deployed page whose HTML changed is re-flagged stale');
   assert.doesNotMatch(fourth.stdout, /^Kept /m, fourth.stdout);
   assert.equal(json('rollout.json').lastRun.pages.total, 6);
+});
+
+// first page first: the page delivered on its own track is pinned; a re-render must not re-deliver it
+{ const pj = join(out, 'coverage', 'pages.json'); const pages = json('coverage/pages.json'); for (const p of pages.pages) { if (p.slug === 'home') p.delivery = { ...p.delivery, status: 'verified', verifiedAt: 'now', pinned: { by: 'first-page', table: 't', at: 'now' } }; if (p.slug === 'faq') p.delivery = { ...p.delivery, status: 'verified', verifiedAt: 'now' }; } writeFileSync(pj, JSON.stringify(pages)); }
+writeFileSync(join(migrated, 'index.html'), '<html><body><main>home, re-rendered</main></body></html>');
+writeFileSync(join(migrated, 'faq/index.html'), '<html><body><main>faq, re-rendered</main></body></html>');
+const pinRun = run();
+check('a pinned row whose migrated HTML changed keeps its delivery (not stale) and is named on the report; an unpinned one is re-flagged stale', () => {
+  assert.equal(pinRun.status, 0, pinRun.stderr);
+  const by = Object.fromEntries(json('coverage/pages.json').pages.map((p) => [p.slug, p]));
+  assert.equal(by.home.delivery.status, 'verified'); assert.equal(by.home.delivery.pinned.by, 'first-page');
+  assert.equal(by.faq.delivery.status, 'stale');
+  assert.match(pinRun.stdout, /^Pinned {6}1 row\(s\) whose migrated HTML changed kept their delivery .*: home$/m, pinRun.stdout);
+  assert.doesNotMatch(pinRun.stdout.match(/^To deliver.*$/m)[0], /\bhome\b/);
 });
 
 check('sourceUrl: the sidecar\'s source URL, else state.json\'s by slug, else null', () => {

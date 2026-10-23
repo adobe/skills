@@ -17,10 +17,20 @@ home page, which defined the canon anyway. Design note: `notes/first-page-first/
   They meet at RECONCILE: seven checks (page type, blocks, chrome, dynamics, listings, scope, canon), each recorded
   `confirmed | corrected (<commit>) | deferred (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome
   correction re-gates the published page. The flow then continues with the first page's blocks and chrome as the
-  foundation, recorded delivered with `update-coverage.mjs <slug> --status verified`.
+  foundation, handed to rollout through its gate record (`update-coverage.mjs --gate … --pin`, then `verify.mjs`).
 - **`replica/SKILL.md`** names the opening in the Procedure intro; the bounded-entry paragraph's twice-told
   promotion detail folds to a pointer. **`stardust/SKILL.md`** § Hands-off defaults: first page first.
 - **`stardust/scripts/ledger.mjs`:** replica phases `first-page` and `reconcile-first-page` (alias `reconcile`).
+- **Review fixes — one writer per path, literally.** Track A works in `stardust/first-page/` (capture via `crawl.mjs
+  --out`, `cap-probe --write-design`, dynamics `--out`, gate-all `--state/--out`) and never writes `current/`,
+  `state.json` or the dynamics docs; Track B never writes `direction.md` (the caps reach it at RECONCILE); the doc
+  tables the writer of each path before and after RECONCILE. Track A's Phase 2 is pinned to the bounded branch
+  (`preserve-direction.md` § 1: the track overrides the `current/PRODUCT.md` check). RECONCILE promotes verbatim
+  first (replace, never merge) and its corrections are code commits after it, so check-7 deltas survive.
+  `ledger.mjs --track <name>`: the start guard pairs on skill + phase + track; `last <skill> --track`; tail shows it.
+  Hand-off: `update-coverage.mjs --gate <table> --pin` (row matched by path, `delivery.gate` recorded, row pinned
+  and `deployed`), then `verify.mjs --slug`; `inventory.mjs` never flags a pinned row `stale`. `--first-page` is in
+  replica's Inputs. Tests: ledger (tracks, `reconcile` alias), update-coverage (`--pin`), inventory (pinned row).
 
 ## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
 

@@ -246,7 +246,8 @@ otherwise):
   representative spread of detail pages across all templates. The setup
   status line names the roster against the site (`roster 94 of 2,532
   discovered — cap 100/20`); a capped roster is never called the full
-  site. Record the caps in `direction.md`.
+  site. Record the caps in `direction.md` (first page first: at
+  RECONCILE).
 - **First page first.** A full-site replica run starts the home page (or
   the page the invocation names) on its own track at once, beside the
   site-scope work (`../replica/reference/first-page-first.md`).

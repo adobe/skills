@@ -43,7 +43,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `dynamics/sync-sheets.mjs` — sheet JSON → DA + preview — `--source <o> --org --repo --paths a.json,b.json`
 - `extract/crawl.mjs` — crawler → pages, shots, `captureGaps` — `--url <u> [--pages a,b] [--max 25] [--out stardust/current] [--dynamics]`
 - `extract/style-census.mjs` — computed-style census (one live pass) — `[--pages <dir>|--urls a,b] [--width <px>] [--headed]`
-- `extract/thumb.mjs` — thumbnails ≤ --max-bytes — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
+- `extract/thumb.mjs` — thumbnails — `<png|dir…> [--width 480] [--max-height <px>] [--max-bytes 150000] [--min-share 60] [--offset <px>]`
 - `migrate/migrate.mjs` — per-page render driver + sidecar — `render <slug…|--all>`; `gate|deviation|variant|modules <slug>`
 - `qa/from-knowledge.mjs` — knowledge → template map + 404 allowlist — `[--dry-run]`
 - `qa/lib.mjs` — library, no CLI
@@ -77,7 +77,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `reskin/donor-probe.mjs` — design-adoption gate — `--tokens <donor.json> --rendered <u|f> [--spec <json>]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
-- `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <origin>]`
+- `rollout/assemble.mjs` — sitemap, robots, manifest; served-sitemap check — `[--canon <dir>] [--verify-origin <origin>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
 - `rollout/dashboard.mjs` — progress dashboard — `[--out <dir>]`
@@ -91,7 +91,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `rollout/plan.mjs` — conversion plan — `[--out <dir>] [--pending-only]`
 - `rollout/section-fidelity.mjs` — authored vs source outline — `--file <html> --source <u>|--source-file <p>`
 - `rollout/seed-redirects.mjs` — knowledge → redirects.tsv — `[--dry-run]`
-- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`
+- `rollout/update-coverage.mjs` — status writer — `<slug> --status <s> [--url]`; `--block <id> --status <s>`; `--new <slug> --path <p> --template <id> --origin <o>`; `--gate <table> [--pin]`
 - `rollout/verify.mjs` — full-site verify — `[--base <u>|--root <dir>] [--all]`
 - `spec/lib.mjs` — library, no CLI
 - `spec/rules.mjs` — library (rules), no CLI
@@ -109,5 +109,5 @@ Run the project copies under `stardust/scripts/<skill>/`. Read before any `--hel
 - `spec/spec-sheet.mjs` — contact sheet — `<component|row-shape>`
 - `spec/spec-variants.mjs` — S8 variants — `[--cut 0.5]`
 - `stardust/impeccable-version-check.mjs` — newer impeccable? — `[--offline] [--json]`; `--where`
-- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--strict]`; `tail`; `last`
+- `stardust/ledger.mjs` — status.jsonl writer — `<skill> <phase> start|end|blocked [--detail] [--track <t>] [--strict]`; `tail`; `last`
 - `stardust/state.mjs` — page status writer — `advance <slug…> --to <status> [--by]`; `summary [--slugs]`

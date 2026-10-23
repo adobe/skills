@@ -25,20 +25,32 @@ light roster pass as prerequisite.
 
 ## Design
 
-- **Two tracks, one writer each.** Track A owns code and DA; Track B owns knowledge (`current/`, `state.json`,
-  dynamics docs, spec). No file has two writers, so the tracks never merge-conflict; a Track-B finding that needs code
-  queues for RECONCILE.
-- **The existing bounded entry is Track A.** replica already had a first-class single-page entry
-  (`extract --single --dynamics`, bounded promotion); first-page-first runs it to the published origin instead of
-  stopping at a pilot prototype.
+- **Two tracks, one writer per path at a time.** Track A owns code, DA, the root spec, `direction.md` and its own
+  workspace `stardust/first-page/`; Track B owns knowledge (`current/`, `state.json`, dynamics docs, spec). The
+  bounded procedures as first written broke this — `extract --single` writes `current/pages/<slug>.json`,
+  `_crawl-log.json` and `state.json`, the bounded cap-probe writes `current/DESIGN.json`, Phase 2 writes the dynamics
+  docs, and the caps rule had Track B write `direction.md` — so Track A's capture, breakpoints, dynamics and gate
+  state moved to the workspace (the scripts' existing `--out` / `--write-design` / `--state` flags), and the caps
+  reach `direction.md` at RECONCILE. Ownership moves only at RECONCILE, which runs while neither track writes. The
+  ledger is shared: every line carries `--track`, and the start guard pairs per track.
+- **The existing bounded entry is Track A**, pinned: Phase 2's branch is chosen by the track, not by whether
+  `current/PRODUCT.md` exists (Track B writes that file, so the existence check would race).
 - **RECONCILE is a checklist with a record**, not a re-run: seven checks, each confirmed / corrected (with its commit)
   / deferred, in `stardust/reconcile-first-page.md`. Corrections to blocks or chrome re-gate the published page.
-- **No new instrument.** The ledger gains two replica phases (`first-page`, `reconcile-first-page`); rollout already
-  records a delivered page with `update-coverage.mjs <slug> --status verified --url …`.
+- **Promotion replaces, corrections follow.** RECONCILE promotes Track B's spec verbatim first (the bounded spec is
+  replaced, never merged), then checks; corrections are commits on code and documents, so a canon delta is never
+  overwritten by the promotion.
+- **The hand-off goes through the gate record.** `update-coverage.mjs --gate <Track A's table> --pin` matches the
+  coverage row by path (the inventory's slug can differ from Track A's), records `delivery.gate` and pins the row;
+  `verify.mjs` then derives `verified`; inventory never flags a pinned row `stale`, so a migrate re-render does not
+  re-deliver the page.
+- **Small instruments only.** The ledger gains two replica phases (`first-page`, `reconcile-first-page`) and
+  `--track`; `update-coverage.mjs --gate` gains `--pin`, which inventory honours.
 
 ## Open questions
 
-- Track B's verbatim Phase 2 promotion vs Track A's bounded spec: the contract keeps what RECONCILE confirmed; a
-  mechanical merge (`preserve-direction.md` § 1a) may be needed once runs show where they disagree.
-- Status reporting: one status line per track (setup, then both tracks' phase) — today the ledger interleaves them.
+- Where Track B's promoted spec and Track A's bounded spec disagree, check 7 turns each difference into a code
+  commit; runs will show whether that list is short enough to stay manual.
+- Status reporting: `last replica --track <t>` reads each track; a status line naming both is not built yet.
+- Track A's gate-all input is a one-row state file it writes by hand; a `gate-all.mjs --url` form would remove it.
 - Measure: time to the first published page and the number of RECONCILE corrections across the next three runs.
