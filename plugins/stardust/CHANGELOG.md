@@ -24,8 +24,11 @@ record mentioned it.
     nearest ancestor's);
   - icons are signed with `diff/scripts/image-signature.mjs` and a signature change with the same pixels is no delta;
   - a tag change alone (same style, same box) is context on a real delta, never a delta;
-  - a region whose box and ≥ 2 paired texts all moved by one Δy (±2 px) is one advisory `OFFSET` line, not counted in
-    the exit code (`collapseOffset`).
+  - a region whose box and every paired text (≥ 2) moved by one Δy (±2 px) is one advisory `OFFSET` line, not counted
+    in the exit code (`collapseOffset`); texts that moved inside a box that did not (a nav row sitting low in a
+    fixed-height header), or only some of them, stay real deltas;
+  - the `--live-cache` key carries a probe version (`PROBE_VERSION`): a live cache written by an older probe (no
+    painted background, header auto-detect or icon pixels) is re-probed, never compared against this build side.
   playwright loads lazily, main runs only as the entry point; `probeRegion`, `detectHeader`, `compareRegion`,
   `collapseOffset` are exported.
 - Docs: `source-fidelity-gate.md` § chrome-parity — the example drops the default regions, the twice-told anecdote
