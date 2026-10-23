@@ -41,12 +41,9 @@
 #   iteration. Only exit 1 is retried; 3 (bot challenge), 4 (identity) and
 #   124 (deadline) are final on the first attempt.
 #
-# Overlay dismissal (both captures AND the probes, one vocabulary): stitch-shot runs the shared
-#   dismissOverlays (live-session.mjs — the built-in consent candidates + timed marketing modals) on
-#   the live and the build capture alike, as the diff probes do under --dismiss; --consent <sel> and
-#   --dismiss <sel,…> hand a site's own selectors to every step; --no-dismiss turns dismissal off
-#   everywhere in the round. Symmetric by construction — the build side has nothing to dismiss, so
-#   the same flags on both sides cannot bias the diff.
+# Overlay dismissal: one shared dismissOverlays (live-session.mjs) on both captures, the probes and
+#   chrome-parity (flags below); symmetric by construction — the build has nothing to dismiss, so it
+#   cannot bias the diff.
 #
 #   --full   the whole probe set in one round: after the pixel verdict the other
 #            probes run IN PARALLEL, each under its own deadline — content-diff
