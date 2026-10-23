@@ -1,8 +1,8 @@
 #!/bin/sh
 # PreToolUse hook for compatible AI agent clients on macOS/Linux (and Git Bash on
 # Windows): requests approval before the ADP connector's destructive tools run,
-# even if the user has an allow rule. Clients differ on matcher support (VS Code's Local harness
-# ignores matchers), so this script re-checks the tool name itself.
+# even if the user has an allow rule. Clients differ on matcher support (some harnesses
+# ignore matchers), so this script re-checks the tool name itself.
 #
 # Needs only a POSIX shell, grep and sed, which ship with every macOS and Linux install.
 # requireApproval.ps1 is the Windows PowerShell twin; keep both in sync with the tools

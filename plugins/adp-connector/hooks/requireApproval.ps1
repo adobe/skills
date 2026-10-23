@@ -1,6 +1,6 @@
 # PreToolUse hook for compatible AI agent clients on Windows: requests approval
 # before the ADP connector's destructive tools run, even if allow-listed. Clients differ on
-# matcher support (VS Code's Local harness ignores matchers), so this script re-checks
+# matcher support (some harnesses ignore matchers), so this script re-checks
 # the tool name itself.
 #
 # Needs only the Windows PowerShell 5.1 that ships with Windows. requireApproval.sh is

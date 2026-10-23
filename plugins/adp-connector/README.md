@@ -13,7 +13,7 @@ The plugin connects to the hosted ADP Connector MCP server at `https://adp-conne
 /plugin install adp-connector@adobe-skills
 ```
 
-### GitHub Copilot CLI and VS Code
+### GitHub Copilot CLI
 
 ```bash
 copilot plugin marketplace add adobe/skills
@@ -26,7 +26,7 @@ copilot plugin install adp-connector@adobe-skills
 | --------- | ---- | ------- |
 | MCP server | [`.mcp.json`](.mcp.json) | Registers the hosted `adp-connector` server |
 | Skills | [`skills/`](skills/) | Guided Developer Console, I/O Events, and documentation flows |
-| Approval hook | [`hooks/`](hooks/) | Asks before destructive Developer Console tools run (Claude Code, Copilot CLI, VS Code) |
+| Approval hook | [`hooks/`](hooks/) | Asks before destructive Developer Console tools run (Claude Code, Copilot CLI) |
 
 | Skill | Use it to |
 | ----- | --------- |
@@ -48,7 +48,3 @@ These tools permanently delete or remove Developer Console resources:
 - `unsubscribe_credential_from_service`
 
 The server marks them as destructive. In Claude Code and GitHub Copilot CLI the plugin's `PreToolUse` hook also asks for approval, even when a tool is on an allow list.
-
-## Source
-
-The MCP server and the canonical copy of this plugin are maintained in `adobe-developer-platform/platform-internals-adp-connector`. Keep the destructive-tool list in `hooks/hooks.json`, `hooks/requireApproval.sh`, and `hooks/requireApproval.ps1` in sync with that server.
