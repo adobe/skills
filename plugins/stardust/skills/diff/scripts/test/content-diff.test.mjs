@@ -188,7 +188,7 @@ await check('diffRoot runs the text layer and the editable count per root too: a
 });
 await check('diffRoot: a root absent on both sides is one line and no findings; absent on one side is measured as empty and said so; the primary root\'s fallback is named; missing inventories read as absent', () => {
   const ftr = { name: 'footer', sel: 'footer', primary: false, chrome: true, describe: 'no <footer> / [role="contentinfo"] outside the main root(s)' };
-  assert.deepEqual(diffRoot(ftr, inv({ absent: true }), inv({ absent: true }), prof), { flags: [], lines: ['root "footer": absent on both sides (no <footer> / [role="contentinfo"] outside the main root(s)) — not compared'] });
+  assert.deepEqual(diffRoot(ftr, inv({ absent: true }), inv({ absent: true }), prof), { flags: [], lines: ['root "footer": absent on both sides (no <footer> / [role="contentinfo"] outside the main root(s)) — not compared'], accepted: [] });
   const one = diffRoot(ftr, inv({ absent: true }), inv({ attrs: { attrs: [], icons: [icon('svg', '#icon-x', 'x', true)] } }), prof);
   assert.equal(one.lines[0], 'root "footer" — source: absent (no <footer> / [role="contentinfo"] outside the main root(s)) — measured as empty');
   assert.deepEqual(one.flags.map((f) => `${f.sev} ${f.kind} ${f.root}`), ['🟡 EXTRA ICON footer']);
@@ -213,18 +213,31 @@ await check('--help: exit 0, usage on stdout naming the attribute layer, ICON MO
 const item = (role, text, o = {}) => ({ role, text, key: text.toLowerCase(), look: '16px 700 rgb(0, 0, 0) none', family: 'Manrope', w: 100, srOnly: false, ...o });
 await check('a body → heading change with the same look is an accepted ROLE UPGRADE (no finding); heading → body with the same look is 🟡 ROLE DOWNGRADE', () => {
   const up = diffInventories([item('body', 'Trending')], [item('heading', 'Trending')], prof);
-  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', text: 'Trending' }]);
+  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', from: 'body', text: 'Trending' }]);
   const down = diffInventories([item('heading', 'Pricing')], [item('body', 'Pricing')], prof);
   assert.deepEqual(kinds(down.flags), ['🟡 ROLE DOWNGRADE']); assert.deepEqual(down.accepted, []);
 });
-await check('a role change that changes the look (size, weight, colour, case or face) stays 🔴 ROLE SWAP; eyebrow ↔ body always does', () => {
+const caps = { look: '12px 700 rgb(0, 0, 0) uppercase' }; // a small uppercase <div> group title is an eyebrow, the same-look <h3> a heading
+await check('eyebrow → heading with the same look is an accepted ROLE UPGRADE, heading → eyebrow 🟡 ROLE DOWNGRADE; a CTA role change is never accepted; diffRoot names the upgrade and returns it', () => {
+  const up = diffInventories([item('eyebrow', 'Company', caps)], [item('heading', 'Company', caps)], prof);
+  assert.deepEqual(up.flags, []); assert.deepEqual(up.accepted, [{ kind: 'ROLE UPGRADE', from: 'eyebrow', text: 'Company' }]);
+  assert.deepEqual(kinds(diffInventories([item('heading', 'Company', caps)], [item('eyebrow', 'Company', caps)], prof).flags), ['🟡 ROLE DOWNGRADE']);
+  assert.deepEqual(kinds(diffInventories([item('cta', 'Company')], [item('heading', 'Company')], prof).flags), ['🔴 ROLE SWAP']);
+  const r = diffRoot({ name: 'footer', sel: 'footer', primary: false, chrome: true, describe: '' }, { items: [item('eyebrow', 'Company', caps), item('body', 'Trending')] }, { items: [item('heading', 'Company', caps), item('heading', 'Trending')] }, prof);
+  assert.ok(r.lines.includes('  accepted (invisible, nothing lost): 2 ROLE UPGRADE eyebrow/body → heading, same look — "Company", "Trending"'), r.lines.join('\n'));
+  assert.deepEqual(r.accepted.map((a) => `${a.from} ${a.text} ${a.root}`), ['eyebrow Company footer', 'body Trending footer']);
+});
+await check('a role change that changes the look (size, weight, colour, case or face) stays 🔴 ROLE SWAP (eyebrow ↔ body can\'t keep the look: the same text with the same look classifies the same)', () => {
   assert.deepEqual(kinds(diffInventories([item('body', 'Trending')], [item('heading', 'Trending', { look: '24px 700 rgb(0, 0, 0) none' })], prof).flags), ['🔴 ROLE SWAP']);
   assert.deepEqual(kinds(diffInventories([item('body', 'Trending')], [item('heading', 'Trending', { family: 'Inter' })], prof).flags), ['🔴 ROLE SWAP']);
   assert.deepEqual(kinds(diffInventories([item('eyebrow', 'New', { look: '12px 700 rgb(0, 0, 0) uppercase' })], [item('body', 'New')], prof).flags), ['🔴 ROLE SWAP']);
 });
-await check('lost screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its role; visible text keeps its severity', () => {
+await check('lost screen-reader-only text is 🟡 MISSING SR-ONLY TEXT whatever its non-CTA role; visible text keeps its severity', () => {
   assert.deepEqual(kinds(diffInventories([item('heading', 'Search volume grew from 1K to 9K', { srOnly: true })], [], prof).flags), ['🟡 MISSING SR-ONLY TEXT']);
   assert.deepEqual(kinds(diffInventories([item('heading', 'Pricing')], [], prof).flags), ['🔴 MISSING HEADING']);
+});
+await check('a lost sr-only CTA (a skip link) stays 🔴 MISSING CTA — interactive losses are not demoted', () => {
+  assert.deepEqual(kinds(diffInventories([item('cta', 'Skip to content', { srOnly: true, href: '#main' })], [], prof).flags), ['🔴 MISSING CTA']);
 });
 
 // ---- end-to-end against two fixture pages (needs playwright) -----------------------------------------
@@ -250,8 +263,11 @@ if (playwrightOk) {
       + '<div class="ch2-container"><p>We use cookies to improve your experience.</p><a href="/privacy">Cookie policy</a><button>Allow all</button></div>'),
     '/noise-build.html': page('<h2>Tools</h2><a href="/tools/kw"><img src="/flag-de.svg" width="16" height="16" alt=""> Keyword Generator</a>'),
     // menu group titles: a styled <div> on the source, a heading with the same computed look on the build; a chart's
-    // visually hidden description dropped by the build
-    '/role-source.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><div class="t">Trending</div><p>Chart <span class="sr">search volume grew from 1K to 9K</span></p>'),
+    // visually hidden description dropped by the build; also dropped: text inside an sr-only wrapper (sr-only), a
+    // display:none tooltip and a caption on a slide its track translated off-screen (neither sr-only: plain MISSING BODY)
+    '/role-source.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}</style><div class="t">Trending</div><p>Chart <span class="sr">search volume grew from 1K to 9K</span></p>'
+      + '<div class="sr"><p>Opens in a new window</p></div><span style="position:absolute;display:none">Copied to clipboard</span>'
+      + '<div style="position:relative;overflow:hidden;height:40px"><div style="display:flex;transform:translateX(-2600px)"><div style="position:relative;flex:0 0 1280px;height:40px"><p style="position:absolute;left:0;margin:0">Slide caption one</p></div></div></div>'),
     '/role-build.html': page('<style>.t{font:700 15px/1.2 Arial;color:#123;margin:0}</style><h3 class="t">Trending</h3><p>Chart</p>'),
     '/flag-de.svg': svg, '/flag-en.svg': svg,
   };
@@ -302,13 +318,18 @@ if (playwrightOk) {
     assert.match(r.stdout, /source: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 0 img; consent banner skipped \(3 text nodes\)/, r.stdout);
     assert.match(r.stdout, /build: 2 text nodes — 1 headings, 0 eyebrows, 1 CTAs, 0 body; 1 img$/m, r.stdout);
   });
-  await check('e2e: a same-look div → heading is accepted (named on the root, not a finding); the dropped sr-only description is 🟡 MISSING SR-ONLY TEXT; 0 structural 🔴', async () => {
-    const r = await run([`${base}/role-source.html`, `${base}/role-build.html`, '--profile', 'generic', '--width', '1280']);
+  await check('e2e: a same-look div → heading is accepted (named on the root and in --json, not a finding); dropped sr-only text (own clip or an sr-only wrapper) is 🟡 MISSING SR-ONLY TEXT, a display:none tooltip and an off-track slide caption plain MISSING BODY; 0 structural 🔴', async () => {
+    const r = await run([`${base}/role-source.html`, `${base}/role-build.html`, '--profile', 'generic', '--width', '1280', '--json']);
     assert.equal(r.status, 0, r.stderr);
     assert.match(r.stdout, /^ {2}accepted \(invisible, nothing lost\): 1 ROLE UPGRADE body → heading, same look — "Trending"$/m, r.stdout);
     assert.doesNotMatch(r.stdout, /ROLE SWAP/, r.stdout);
     assert.match(r.stdout, /🟡 MISSING SR-ONLY TEXT \[main\]: source body "search volume grew from 1K to 9K"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING SR-ONLY TEXT \[main\]: source body "Opens in a new window"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING BODY \[main\]: source body "Copied to clipboard"/, r.stdout);
+    assert.match(r.stdout, /🟡 MISSING BODY \[main\]: source body "Slide caption one"/, r.stdout);
     assert.match(r.stdout, /^Findings: \d+ \(0 structural 🔴\)$/m, r.stdout);
+    const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('Inventories JSON:') + 'Inventories JSON:'.length));
+    assert.deepEqual(j.accepted, [{ kind: 'ROLE UPGRADE', from: 'body', text: 'Trending', root: 'main' }]);
   });
   server.close();
 }

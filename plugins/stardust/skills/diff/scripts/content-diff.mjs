@@ -16,8 +16,11 @@
  * <main>, classifying by COMPUTED STYLE + tag (symmetric across the prototype's
  * .ds-* DOM and the EDS block DOM), then DIFFS the two inventories:
  *   - MISSING   a proto heading / CTA / eyebrow with no EDS match   (🔴 structural)
- *   - ROLE SWAP same text present but under a different role         (🔴 the #76 class)
+ *   - ROLE SWAP same text under a different role AND a different look (🔴 the #76 class);
+ *     same look: body/eyebrow → heading is an accepted ROLE UPGRADE (root line, --json
+ *     `accepted`), heading → body/eyebrow 🟡 ROLE DOWNGRADE
  *   - MISSING BODY / EXTRA  body copy dropped / invented             (🟡 advisory)
+ *   - MISSING SR-ONLY TEXT  visually hidden non-CTA text dropped      (🟡; a lost skip link stays MISSING CTA)
  *   - FONT DIFF a matched line whose rendered FACE differs           (🟠 width probe, #77)
  *
  * Text nodes are not the whole content. A second inventory (attributeInventory,
@@ -129,7 +132,7 @@
  * line per finding (gate.sh and gate-evidence read the Findings line only); with
  * --json, `Inventories JSON:` followed by { primaryRoot, [source]: inv, [build]: inv
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
- * findings: [{ sev, kind, root, msg }] }.
+ * findings: [{ sev, kind, root, msg }], accepted: [{ kind, from, text, root }] }.
  *
  * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
@@ -174,7 +177,9 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
-findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXTRA, FONT FORK,
+findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY|SR-ONLY TEXT, ROLE SWAP (the look
+            changed too; same look: body/eyebrow → heading is an accepted ROLE UPGRADE, not a
+            finding, heading → body/eyebrow 🟡 ROLE DOWNGRADE), EXTRA, FONT FORK,
             EDITABLE COUNT; attribute layer — MISSING|EXTRA PLACEHOLDER|ARIA-LABEL|TITLE,
             MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED (same icon at another
             anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER|ARIA-LABEL,
@@ -392,14 +397,14 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   const S = prof.source; const T = prof.target;
   const s = srcInv || { ...EMPTY_INVENTORY(), absent: true }; const t = tgtInv || { ...EMPTY_INVENTORY(), absent: true };
   const lines = [];
-  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines }; }
+  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines, accepted: [] }; }
   const note = (inv, side) => (inv.absent ? `${side}: absent (${root.describe}) — measured as empty` : inv.fellBack ? `${side}: ${root.describe} absent, fell back to <${inv.fellBack}>` : '');
   const notes = [note(s, S), note(t, T)].filter(Boolean);
   lines.push(`root "${root.name}"${notes.length ? ` — ${notes.join('; ')}` : ''}`);
   lines.push(`  ${S}: ${summarise(s)}`);
   lines.push(`  ${T}: ${summarise(t)}`);
   const { flags, accepted } = diffInventories(s.items || [], t.items || [], prof);
-  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${accepted.length} ROLE UPGRADE body → heading, same look — ${accepted.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${accepted.length > 4 ? ' …' : ''}`);
+  if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${accepted.length} ROLE UPGRADE ${[...new Set(accepted.map((x) => x.from))].join('/')} → heading, same look — ${accepted.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${accepted.length > 4 ? ' …' : ''}`);
   // Experience Workspace editability advisory (deploy SKILL.md § Experience Workspace editability contract): the canvas can
   // only attach an editor to an OUTERMOST h1-h6/p/ul/ol element that survives decorate(); fewer on the build than on the
   // source means authored elements were rebuilt/merged into wrappers or text.
@@ -409,7 +414,7 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   const sA = s.attrs || { attrs: [], icons: [] }; const tA = t.attrs || { attrs: [], icons: [] };
   lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
   flags.push(...diffAttributes(sA, tA, prof));
-  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines };
+  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted: accepted.map((a) => ({ ...a, root: root.name })) };
 }
 export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}]` : ''}: ${f.msg}`;
 
@@ -502,11 +507,11 @@ async function main() {
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
-  const flags = [];
+  const flags = []; const accepted = [];
   for (const root of roots) {
-    const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
+    const { flags: rf, lines, accepted: ra } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
     lines.forEach((l) => process.stdout.write(`${l}\n`));
-    flags.push(...rf);
+    flags.push(...rf); accepted.push(...ra);
   }
 
   const primary = roots[0].name;
@@ -524,7 +529,7 @@ async function main() {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags, accepted }, null, 1)}\n`);
   }
 }
 
