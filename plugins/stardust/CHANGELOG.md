@@ -4,6 +4,24 @@ This file starts at 0.14.0. Prior versions (0.3.0 – 0.13.1) are documented in
 git history only (plus the branch-scoped notes in
 `CHANGELOG-redesign-adobecom.md` and `CHANGELOG-delivery-media-fidelity.md`).
 
+## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
+
+Field learning (a recorded hands-off replica run on a content site): the phases ran strictly in sequence — spec,
+extract of the whole roster, dynamics triage, every archetype recreated and gated as a prototype, rollout planning, the
+foundation — and five hours in no content page was published. Almost nothing the site-wide work produced changed the
+home page, which defined the canon anyway. Design note: `notes/first-page-first/README.md`.
+
+- **`replica/reference/first-page-first.md` (new):** a full-site run opens with two tracks. Track A takes the first
+  page (`--first-page <url|home>`; hands-off: home) through the existing bounded entry to the published origin and
+  owns code and DA; Track B runs Phase 1 `--prep`, the catalogs and the dynamics triage and writes knowledge only.
+  They meet at RECONCILE: seven checks (page type, blocks, chrome, dynamics, listings, scope, canon), each recorded
+  `confirmed | corrected (<commit>) | deferred (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome
+  correction re-gates the published page. The flow then continues with the first page's blocks and chrome as the
+  foundation, recorded delivered with `update-coverage.mjs <slug> --status verified`.
+- **`replica/SKILL.md`** names the opening in the Procedure intro; the bounded-entry paragraph's twice-told
+  promotion detail folds to a pointer. **`stardust/SKILL.md`** § Hands-off defaults: first page first.
+- **`stardust/scripts/ledger.mjs`:** replica phases `first-page` and `reconcile-first-page` (alias `reconcile`).
+
 ## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
 
 Field learning (a recorded replica gate on a home page, read against the principle agreed with the owner — the hard

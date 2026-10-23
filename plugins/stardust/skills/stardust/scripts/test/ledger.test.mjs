@@ -49,6 +49,8 @@ check('checkPhase: canonical and alias forms pass case-insensitively; unknown sk
   assert.equal(checkPhase('stardust:rollout', 'c-deliver'), null);
   assert.equal(checkPhase('stardust:rollout', 'I-dashboard'), null);
   assert.equal(checkPhase('stardust:replica', 'source-fidelity-gate'), null);
+  assert.equal(checkPhase('stardust:replica', 'first-page'), null, 'first page first: Track A');
+  assert.equal(checkPhase('stardust:replica', 'reconcile-first-page'), null, 'first page first: RECONCILE');
   assert.equal(checkPhase('stardust:dynamics', 'triage'), null);
   assert.equal(checkPhase('stardust:deploy', '7-blocks'), null);
   assert.equal(checkPhase('stardust:prototype', 'approval'), null);

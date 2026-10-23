@@ -105,6 +105,8 @@ export const PHASES = {
     recreate: [], // ### Phase 3 — RECREATE
     'source-fidelity-gate': ['gate'], // ### Phase 4 — SOURCE-FIDELITY GATE
     handoff: [], // ### Phase 5 — HANDOFF
+    'first-page': [], // reference/first-page-first.md § Track A
+    'reconcile-first-page': ['reconcile'], // reference/first-page-first.md § RECONCILE
   },
   // skills/dynamics/SKILL.md
   dynamics: {
