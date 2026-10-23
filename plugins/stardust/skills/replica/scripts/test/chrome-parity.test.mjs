@@ -47,7 +47,7 @@ await check('collapseOffset: texts moved inside a box that did not, or only some
 });
 const atom = (text, y) => ({ key: text.toLowerCase(), text, tag: 'a', boxTag: 'a', rect: { x: 24, y, w: 60, h: 24 }, box: { x: 24, y, w: 60, h: 24 }, style: { color: 'rgb(0, 0, 0)' }, boxStyle: null });
 const nav = (y) => ['Pricing', 'Login', 'Docs'].map((t) => atom(t, y));
-const logo = Array.from({ length: 144 }, (_, i) => (i % 3 ? 40 : 230));
+const logo = Array.from({ length: 12 * 12 * 3 }, (_, i) => (Math.floor(i / 3) % 3 ? 40 : 230)); // a 12×12 RGB grid, grey
 const probe = (o = {}) => ({ found: true, sel: 'footer', rect: { x: 0, y: 1000, w: 800, h: 200 }, position: 'static', backgroundColor: 'rgb(18, 23, 55)', atoms: [], icons: [], ...o });
 await check('compareRegion: icons with other file names but the same pixels are no delta; different pixels with another name are', () => {
   const icon = (sig, px) => ({ tag: 'img', rect: { x: 10, y: 1010, w: 80, h: 80 }, sig, px, near: 'case study' });
