@@ -62,10 +62,19 @@ inline payloads (`__NEXT_DATA__`, a tag manager's `<noscript>` frame, consent-ma
 - **Not page copy:** `script`, `noscript`, `style` and `template` subtrees, and the banners of the common consent
   managers (the ones `CONSENT_CANDIDATES` accepts), are left out of the role inventory and the Experience Workspace
   editable count. A skipped banner is named once on the root's summary line (`consent banner skipped (N text nodes)`).
-- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — the two guardrails about inline-script text and cookie
-  panels in the inventory fold to one sentence.
+- **A card link is not one CTA** (review): an `<a>` wrapping 2+ text blocks, or a heading beside an image
+  (`<a><img><h3>T</h3><p>D</p></a>`), has its blocks inventoried as heading / body and is a CTA only for its own text
+  outside them, so it pairs with the usual EDS card (h3, p, a separate "Read more") instead of a 🔴 MISSING CTA
+  "t d". An image/svg link's sr-only text is not a label either: a logo with a hidden "Home" reads like an alt-only logo.
+- **The attribute + icon layer skips the consent banners too** (review): a banner's `<button aria-label="Close"><svg>`
+  no longer reads as 🔴 MISSING ICON / ARIA-LABEL; its anchor text leaves out payload text, as the inventory label does.
+- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — the inline-script and cookie-panel guardrails fold to
+  one paragraph, which keeps "verify the banner is actually gone after dismissal": `--consent` adds an accept click, it
+  does not extend the skip list, and the inventory has no visibility filter.
 - Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg-icon vs img-icon link, inline payloads and a
-  consent banner on one side: no MISSING CTA / BODY, 0 structural 🔴, the banner named in the summary.
+  consent banner (with an icon close button) on one side: no MISSING CTA / BODY / ICON, 0 structural 🔴, the banner
+  named in the summary; a card link vs an EDS card and an sr-only logo vs an alt-only logo: no 🔴. Every in-page consent list
+  (both inventory copies, `attributeInventory`) is pinned to one value and to `CONSENT_CANDIDATES` (vendor → banner).
 
 ## 0.34.6 — the common consent managers are dismissed with no flag (#139)
 

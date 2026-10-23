@@ -563,9 +563,14 @@ rather than erroring.
    while the main-scoped checks silently no-op). **`--main body` is never a
    valid replica scope** (the chrome lands in the content inventory).
    Script / style payloads and the common consent managers' banners are not
-   inventoried — a skipped banner is named on its root's summary line; reds
-   that cluster on cookie strings mean a manager the list misses: pass
-   `--consent`.
+   inventoried — a skipped banner is named on its root's summary line. Reds
+   that cluster on cookie strings mean a manager the list misses, or a
+   banner the dismissal hid rather than removed: `--consent <sel>` (rule 6)
+   only adds an accept click — it does not extend the skip list, and the
+   inventory has no visibility filter. **Verify the banner is actually gone
+   after dismissal before trusting an inventory** (consent UIs render
+   nondeterministically between captures); if it lingers, the scope or the
+   dismissal is wrong, not the recreation.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument

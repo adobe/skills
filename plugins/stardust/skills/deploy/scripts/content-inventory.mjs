@@ -94,14 +94,40 @@ export function inventory(args) {
   // Not page copy: inline JSON / tag-manager <noscript> frames / helper CSS, and the
   // common consent managers' banners (their accept controls: live-session CONSENT_CANDIDATES).
   const PAYLOAD = 'script, noscript, style, template';
+  // In-page, so not importable: test/content-diff.test.mjs pins every copy to CONSENT_CANDIDATES.
   const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
-  // A link's label: its text minus inline-svg <title>/<text> (an <img> icon contributes
-  // nothing either), so an svg-icon link and an img-icon link read the same.
-  const labelOf = (a) => {
+  // text under `node` minus inline-svg <title>/<text> and payloads, and minus any node `skip(parent)` rejects
+  const textOf = (node, skip) => {
     let s = '';
-    const walk = document.createTreeWalker(a, NodeFilter.SHOW_TEXT);
-    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest(`svg, ${PAYLOAD}`)) s += ` ${n.textContent}`;
+    const walk = document.createTreeWalker(node, NodeFilter.SHOW_TEXT);
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) if (!n.parentElement.closest(`svg, ${PAYLOAD}`) && !(skip && skip(n.parentElement))) s += ` ${n.textContent}`;
     return clean(s);
+  };
+  const upTo = (el, a, test) => { for (let e = el; e && e !== a; e = e.parentElement) if (test(e)) return true; return false; };
+  // visually hidden: the sr-only pattern (absolutely positioned, clipped or at most 1px)
+  const srOnly = (e) => { const cs = getComputedStyle(e); return cs.position === 'absolute' && (cs.clip.startsWith('rect') || cs.clipPath.startsWith('inset') || (parseFloat(cs.width) <= 1 && parseFloat(cs.height) <= 1)); };
+  // A CARD LINK wraps blocks — 2+ text-bearing blocks, or a heading beside an image
+  // (<a><img><h3>T</h3><p>D</p></a>): its blocks are inventoried as what they are
+  // (heading / body), never collapsed into one CTA, and the link is a CTA only for
+  // its own text outside them ("Read more").
+  const BLOCKS = 'h1, h2, h3, h4, h5, h6, p, li, dt, dd, blockquote, pre, figcaption, td, th, div, section, article, header, footer';
+  const cards = new Map();
+  const isCard = (a) => {
+    if (!cards.has(a)) {
+      const texty = [...a.querySelectorAll(BLOCKS)].filter((b) => textOf(b));
+      const leaves = texty.filter((b) => !texty.some((o) => o !== b && b.contains(o)));
+      cards.set(a, leaves.length >= 2 || Boolean(a.querySelector('img, picture') && texty.some((b) => /^H[1-6]$/.test(b.tagName))));
+    }
+    return cards.get(a);
+  };
+  const inBlock = (el, a) => upTo(el, a, (e) => e.matches(BLOCKS));
+  // A link's label: its text minus inline-svg <title>/<text> (an <img> icon contributes
+  // nothing either), so an svg-icon link and an img-icon link read the same. A card
+  // link's blocks are left out; so is an image/svg link's sr-only text — a logo's
+  // hidden "Home" is no more a CTA than an alt-only logo is.
+  const labelOf = (a) => {
+    const card = isCard(a); const media = Boolean(a.querySelector('img, picture, svg'));
+    return textOf(a, (p) => (card && inBlock(p, a)) || (media && upTo(p, a, srOnly)));
   };
 
   const out = [];
@@ -123,7 +149,8 @@ export function inventory(args) {
     // A text CTA: an <a> whose label is text. Use the FULL label so
     // <strong><a>…</a></strong> and <a><strong>…</strong></a> both resolve, then
     // skip the link's inner nodes below via closest('a'). A link with an icon AND
-    // text is a text CTA whatever draws the icon; a text-less image/logo link is not.
+    // text is a text CTA whatever draws the icon; a text-less image/logo link is not;
+    // a card link is a CTA only for its own text outside its blocks.
     if (tag === 'a') {
       const t = labelOf(el);
       if (!t) return;
@@ -135,7 +162,8 @@ export function inventory(args) {
     // isn't double-counted (the <p> carries the text, the <div> is empty).
     const own = clean([...el.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join(' '));
     if (!own) return;
-    if (el.closest('a')) return; // text inside a link — already captured by the <a>
+    const link = el.closest('a');
+    if (link && !(isCard(link) && inBlock(el, link))) return; // text inside a link — captured by the <a>; a card link's blocks are not
 
     const cs = getComputedStyle(el);
     const item = { order: order++, text: own, key: norm(own), ...face(norm(own), cs) };
