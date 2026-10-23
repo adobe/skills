@@ -13,10 +13,13 @@
 // fixture consent box and --no-dismiss leaving it. And (0.34.5) the origin-baseline contract, no browser: the pure
 // bookkeeping (baselineTargets, baselineProvenance, writeJsonAtomic, baselineExists / readBaselineProvenance,
 // baselineStatus, compareBaseline, liveRecord), the two subcommands gate.sh calls (`baseline <dir>`, `record <live.json>`),
-// the refusals that precede any capture and the default-OFF parse.
+// the refusals that precede any capture and the default-OFF parse. And (0.34.12) fixed / sticky layers captured once:
+// layerAction, isBackdrop, overlaySuspects, layerPassScript (the in-page pass) on a stub DOM, and end to end a fixed
+// header, a scroll-triggered one and a fixed inset:0 backdrop.
 // Run: node plugins/stardust/skills/replica/scripts/test/stitch-shot.test.mjs
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
+import { runInNewContext } from 'node:vm';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
@@ -24,8 +27,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   BASELINE_JSON, BASELINE_PNG, BASELINE_SCHEMA, BASELINE_WRITER, HELP, LIVE_RECORD_WRITER, UsageError,
-  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, exitCodeFor, layerAction, liveRecord, overlayExtras,
-  overlaySuspects, parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
+  baselineExists, baselineProvenance, baselineStatus, baselineTargets, chunkTarget, compareBaseline, exitCodeFor, isBackdrop, layerAction, layerPassScript,
+  liveRecord, overlayExtras, overlaySuspects, parseArgs, readBaselineProvenance, recheckDenial, recordCommand, scrollStalled, sidecarOf, stitchRows, writeJsonAtomic,
 } from '../stitch-shot.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -335,13 +338,27 @@ await check('--freeze-baseline over an existing baseline is refused with exit 2 
 });
 
 // ---- end-to-end (needs playwright + pngjs importable from the script's location) ---------------------------
-await check('layerAction: chunk 1 shows every layer; later chunks hide a fixed layer always and a sticky one only while stuck (moved below its top at scroll 0)', () => {
+await check('layerAction: chunk 1 shows every layer; later chunks hide a fixed layer always and a sticky one only while stuck (displaced from its own place); a backdrop and a layer back in the flow show', () => {
   assert.equal(layerAction({ kind: 'fixed', top0: 0 }, 0, 0), 'show');
   assert.equal(layerAction({ kind: 'fixed', top0: 0 }, 3, 2700), 'hide');
   assert.equal(layerAction({ kind: 'sticky', top0: 1500 }, 1, 1500), 'show', 'a sticky element still in its own place stays');
   assert.equal(layerAction({ kind: 'sticky', top0: 0 }, 2, 1800), 'hide', 'a stuck header is hidden');
+  assert.equal(layerAction({ kind: 'sticky', top0: 3000 }, 1, 1440), 'hide', 'a bar stuck at the viewport bottom, above its own place');
+  assert.equal(layerAction({ kind: 'fixed', top0: null, backdrop: true }, 2, null), 'show', 'a backdrop is never hidden');
+  assert.equal(layerAction({ kind: 'sticky', top0: 0, backdrop: true }, 2, 1800), 'show');
+  assert.equal(layerAction({ kind: 'static', top0: null }, 2, null), 'show', 'a scroll class took it back into the flow');
 });
-await check('overlaySuspects: a visible fixed layer below the top bar, ≥ 5 % of the viewport, reading like consent / sign-up copy; never the header or a quiet chat button', () => {
+await check('isBackdrop: a negative z-index, or ≥ 90 % of the viewport covered (clipped to the viewport); never a header, a bar or a chat button', () => {
+  const vw = 1000; const vh = 800;
+  assert.equal(isBackdrop({ x: 0, y: 0, w: 1000, h: 800, z: -1 }, vw, vh), true, 'position:fixed; inset:0; z-index:-1');
+  assert.equal(isBackdrop({ x: 0, y: 0, w: 1000, h: 800, z: NaN }, vw, vh), true, 'a full-viewport video, z-index auto');
+  assert.equal(isBackdrop({ x: 0, y: -100, w: 1000, h: 3000, z: 0 }, vw, vh), true, 'taller than the viewport');
+  assert.equal(isBackdrop({ x: 0, y: 0, w: 60, h: 60, z: -5 }, vw, vh), true, 'negative z-index: behind the content, whatever its size');
+  assert.equal(isBackdrop({ x: 0, y: 0, w: 1000, h: 60, z: 100 }, vw, vh), false, 'the header');
+  assert.equal(isBackdrop({ x: 0, y: 680, w: 1000, h: 120, z: NaN }, vw, vh), false, 'a cookie bar');
+  assert.equal(isBackdrop({ x: 0, y: 200, w: 1000, h: 800, z: 0 }, vw, vh), false, '75 % on screen');
+});
+await check('overlaySuspects: a visible fixed layer below the top bar, ≥ 5 % of the viewport, reading like consent / sign-up copy; never the header or a quiet chat button; a full-viewport (backdrop) one too', () => {
   const vw = 1000; const vh = 800;
   const bar = { kind: 'fixed', visible: true, y: 680, w: 1000, h: 120, text: 'We use cookies to improve your experience. Manage preferences' };
   assert.deepEqual(overlaySuspects([bar], vw, vh), [bar]);
@@ -349,6 +366,84 @@ await check('overlaySuspects: a visible fixed layer below the top bar, ≥ 5 % o
   assert.deepEqual(overlaySuspects([{ ...bar, w: 60, h: 60, text: 'Chat' }], vw, vh), []);
   assert.deepEqual(overlaySuspects([{ ...bar, visible: false }], vw, vh), []);
   assert.deepEqual(overlaySuspects([{ ...bar, kind: 'sticky' }], vw, vh), []);
+  const modal = { ...bar, y: 0, h: 800, backdrop: true, text: 'Subscribe to our newsletter' };
+  assert.deepEqual(overlaySuspects([modal], vw, vh), [modal], 'a full-viewport sign-up modal, kept in every chunk');
+  assert.deepEqual(overlaySuspects([{ ...modal, text: '' }], vw, vh), [], 'a background video');
+});
+
+// layerPassScript — the code page.evaluate runs — on a stub DOM in a vm: the rule in the page is layerAction /
+// isBackdrop themselves (no copy to drift), tagging is idempotent, a layer that turns fixed later is tagged where it
+// does, and the opacity restore keeps the page's own value AND its priority.
+function stubPage() {
+  const win = { innerWidth: 1000, innerHeight: 800, scrollY: 0 };
+  const els = [];
+  const mk = (id, { position = 'static', rect, inFlowTop = null, z = 'auto', parent = null, opacity = null }) => {
+    const props = new Map(); const attrs = new Map();
+    if (opacity) props.set('opacity', opacity);
+    const el = {
+      id, tagName: 'DIV', innerText: '', parentElement: parent, position,
+      style: {
+        getPropertyValue: (k) => (props.get(k) || [''])[0], getPropertyPriority: (k) => (props.get(k) || ['', ''])[1],
+        setProperty: (k, v, pr = '') => { props.set(k, [v, pr]); }, removeProperty: (k) => { props.delete(k); },
+      },
+      props, attrs,
+      hasAttribute: (k) => attrs.has(k), getAttribute: (k) => (attrs.has(k) ? attrs.get(k) : null),
+      setAttribute: (k, v) => { attrs.set(k, String(v)); }, removeAttribute: (k) => { attrs.delete(k); },
+      closest: (sel) => { for (let e = el; e; e = e.parentElement) if (sel === '[data-sd-layer]' && e.attrs.has('data-sd-layer')) return e; return null; },
+      // a sticky element's box: where it is stuck (rect, in viewport coordinates) or, under position:static, its own place
+      getBoundingClientRect: () => {
+        const top = (props.get('position') || [])[0] === 'static' && inFlowTop != null ? inFlowTop - win.scrollY : rect.y;
+        return { left: rect.x, top, width: rect.w, height: rect.h, bottom: top + rect.h };
+      },
+      z,
+    };
+    els.push(el); return el;
+  };
+  const context = {
+    window: win,
+    document: { querySelectorAll: (sel) => (sel === 'body *' ? els : els.filter((e) => e.attrs.has('data-sd-layer'))) },
+    getComputedStyle: (el) => ({ position: (el.props.get('position') || [])[0] || el.position, zIndex: el.z, visibility: 'visible' }),
+  };
+  // (through JSON: the vm's arrays have another realm's prototype)
+  return { win, mk, run: (i) => JSON.parse(JSON.stringify(runInNewContext(layerPassScript(i), context))) };
+}
+await check('layerPassScript: the in-page pass is layerAction + isBackdrop serialized (the tested rule is the rule that runs)', () => {
+  const src = layerPassScript(2);
+  assert.ok(src.includes(String(layerAction)) && src.includes(String(isBackdrop)), src.slice(0, 200));
+  assert.match(src, /^\(function layerPass\(chunkIndex, action, backdropOf\)/);
+});
+await check('layerPassScript in a stub page: chunk 1 tags at scroll 0 and shows all; chunk 2 hides the header and the stuck sticky, keeps the backdrop, the sticky in its place and the in-flow block', () => {
+  const { win, mk, run } = stubPage();
+  const hd = mk('hd', { position: 'fixed', rect: { x: 0, y: 0, w: 1000, h: 60 }, opacity: ['0.9', 'important'] });
+  mk('inner', { position: 'fixed', rect: { x: 0, y: 0, w: 100, h: 60 }, parent: hd });
+  const bg = mk('bg', { position: 'fixed', rect: { x: 0, y: 0, w: 1000, h: 800 }, z: '-1' });
+  const st = mk('st', { position: 'sticky', rect: { x: 0, y: 1500, w: 1000, h: 40 }, inFlowTop: 1500 });
+  const late = mk('late', { position: 'static', rect: { x: 0, y: 0, w: 1000, h: 80 } });
+  const t0 = run(0);
+  assert.deepEqual(t0.map((l) => [l.name, l.kind, l.backdrop]), [['div#hd', 'fixed', false], ['div#bg', 'fixed', true], ['div#st', 'sticky', false]], 'the outermost layers only; the backdrop flagged');
+  assert.equal(hd.getAttribute('data-sd-opacity'), null, 'chunk 1 hides nothing');
+  win.scrollY = 900;
+  st.getBoundingClientRect = () => ({ left: 0, top: 1500 - win.scrollY, width: 1000, height: 40, bottom: 1540 - win.scrollY }); // in its place
+  assert.deepEqual(run(1), [], 'nothing new');
+  assert.deepEqual([hd.style.getPropertyValue('opacity'), hd.style.getPropertyPriority('opacity')], ['0', 'important']);
+  assert.equal(bg.getAttribute('data-sd-opacity'), null, 'the backdrop stays');
+  assert.equal(st.getAttribute('data-sd-opacity'), null, 'the sticky in its own place stays');
+  assert.equal(late.getAttribute('data-sd-layer'), null);
+  // chunk 3: a scroll class made the in-flow header fixed; the sticky is stuck at the top (its own place is 1500)
+  win.scrollY = 1800; late.position = 'fixed';
+  const st2 = { ...st.getBoundingClientRect() };
+  st.getBoundingClientRect = () => ((st.props.get('position') || [])[0] === 'static' ? { ...st2, top: 1500 - win.scrollY } : { left: 0, top: 0, width: 1000, height: 40, bottom: 40 });
+  const t2 = run(2);
+  assert.deepEqual(t2.map((l) => l.name), ['div#late'], 'the late layer, tagged where it appeared');
+  assert.equal(late.style.getPropertyValue('opacity'), '0');
+  assert.equal(st.style.getPropertyValue('opacity'), '0', 'the stuck sticky is hidden');
+  assert.equal(st.style.getPropertyValue('position'), '', 'the in-flow measure leaves no inline position behind');
+  assert.deepEqual(run(2), [], 'tagging is idempotent');
+  // the restore keeps the page's own inline opacity and its !important
+  run(0);
+  assert.deepEqual([hd.style.getPropertyValue('opacity'), hd.style.getPropertyPriority('opacity')], ['0.9', 'important']);
+  assert.equal(late.props.has('opacity'), false, 'no inline opacity before → none after');
+  assert.equal(hd.getAttribute('data-sd-opacity-priority'), null);
 });
 
 const pwProbe = spawnSync(process.execPath, ['--input-type=module', '-e', "await import('playwright'); await import('pngjs');"], { cwd: dirname(SCRIPT), encoding: 'utf8' });
@@ -369,6 +464,9 @@ if (pwProbe.status !== 0) {
     // a fixed 60 px header, a red marker right under the header's place at the top of chunk 2 (y 600–640), a sticky
     // label in its own place mid-page, and a cookie bar no candidate can close (no button)
     '/fixed': html('Fixed', '<style>body{height:2400px;position:relative}h1,p{margin:0}#hd{position:fixed;top:0;left:0;right:0;height:60px;background:#000}#mk{position:absolute;top:605px;left:0;width:800px;height:30px;background:#f00}#sp{height:1500px}#st{position:sticky;top:0;height:40px;background:#00f}#ck{position:fixed;left:0;right:0;bottom:0;height:90px;background:#eee}</style><div id="hd"></div><div id="mk"></div><div id="sp"></div><div id="st"></div><div id="ck">We use cookies on this site.</div>'),
+    // a header a scroll class makes fixed (in the flow at scroll 0), the red marker under its chunk-2 place, and a
+    // `position:fixed; inset:0; z-index:-1` green backdrop that must stay in every chunk
+    '/late': html('Late', '<style>body{height:2400px;position:relative}h1,p{margin:0}#bg{position:fixed;inset:0;z-index:-1;background:#0f0}#hd{height:60px;background:#000}#hd.stuck{position:fixed;top:0;left:0;right:0}#mk{position:absolute;top:605px;left:0;width:800px;height:30px;background:#f00}</style><div id="bg"></div><div id="hd"></div><div id="mk"></div><script>addEventListener(\'scroll\', () => { document.getElementById(\'hd\').classList.toggle(\'stuck\', scrollY > 100); });</script>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
   const server = createServer((req, res) => {
@@ -390,13 +488,13 @@ if (pwProbe.status !== 0) {
   });
   try {
     const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
-    const [ok, article, consent, noDismiss, allowAll, fixed, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const [ok, article, consent, noDismiss, allowAll, fixed, late, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
       assert.ok(ok.cap, 'the sidecar');
       assert.deepEqual(Object.keys(ok.cap), ['writtenBy', 'url', 'width', 'vh', 'height', 'chunks', 'denialCheck', 'fixedLayers', 'at']);
-      assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0 });
+      assert.deepEqual(ok.cap.fixedLayers, { capture: 'once', count: 0, late: 0 });
       assert.deepEqual([ok.cap.writtenBy, ok.cap.url, ok.cap.width, ok.cap.vh, ok.cap.denialCheck], ['skills/replica/scripts/stitch-shot.mjs', `${base}/ok`, 800, 600, 'ok']);
       assert.ok(ok.cap.height >= 1200 && ok.cap.chunks >= 2 && !Number.isNaN(Date.parse(ok.cap.at)), JSON.stringify(ok.cap));
       assert.match(ok.stdout, /stitched .*ok\.png: 800x\d+ from \d+ chunks/);
@@ -413,7 +511,7 @@ if (pwProbe.status !== 0) {
     });
     await check('e2e: fixed layers are captured once — the header shows at the top only, the marker under its chunk-2 place is in the PNG, the sticky label in its own place stays; the undismissable cookie bar is a WARNING', async () => {
       assert.equal(fixed.status, 0, fixed.stderr + fixed.stdout);
-      assert.deepEqual(fixed.cap.fixedLayers, { capture: 'once', count: 3 });
+      assert.deepEqual(fixed.cap.fixedLayers, { capture: 'once', count: 3, late: 0 });
       assert.match(fixed.stderr, /stitch-shot WARNING: a fixed overlay is still showing after the dismissal sweeps \(800x90 at y 510: "We use cookies on this site\./);
       const { PNG } = await import('pngjs');
       const png = PNG.sync.read(readFileSync(fixed.out));
@@ -421,6 +519,17 @@ if (pwProbe.status !== 0) {
       assert.deepEqual(at(400, 10), [0, 0, 0], 'the header at the top of chunk 1');
       assert.deepEqual(at(400, 615), [255, 0, 0], 'the marker under the header\'s chunk-2 place');
       assert.deepEqual(at(400, 1520), [0, 0, 255], 'the sticky label in its own place');
+    });
+    await check('e2e: a header a scroll class makes fixed is tagged where it turns fixed (a WARNING) and captured once; a fixed inset:0 z-index:-1 backdrop stays in every chunk', async () => {
+      assert.equal(late.status, 0, late.stderr + late.stdout);
+      assert.deepEqual(late.cap.fixedLayers, { capture: 'once', count: 2, late: 1 });
+      assert.match(late.stderr, /stitch-shot WARNING: fixed div#hd turned fixed \/ sticky after scroll 0 \(chunk 2, y 600:/);
+      const { PNG } = await import('pngjs');
+      const png = PNG.sync.read(readFileSync(late.out));
+      const at = (x, y) => { const i = (y * png.width + x) * 4; return [png.data[i], png.data[i + 1], png.data[i + 2]]; };
+      assert.deepEqual(at(400, 10), [0, 0, 0], 'the header in the flow at the top of chunk 1');
+      assert.deepEqual(at(400, 615), [255, 0, 0], 'the marker under the header\'s chunk-2 place');
+      for (const y of [300, 1000, 1600, 2300]) assert.deepEqual(at(400, y), [0, 255, 0], `the backdrop at y ${y}`);
     });
     await check('e2e: --consent <sel> closes the fixture consent box; the capture is width × document height from vh-sized chunks', () => {
       assert.equal(consent.status, 0, consent.stderr + consent.stdout);

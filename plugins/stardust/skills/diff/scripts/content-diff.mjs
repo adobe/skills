@@ -16,8 +16,11 @@
  * <main>, classifying by COMPUTED STYLE + tag (symmetric across the prototype's
  * .ds-* DOM and the EDS block DOM), then DIFFS the two inventories:
  *   - MISSING   a proto heading / CTA / eyebrow with no EDS match   (🔴 structural)
- *   - ROLE SWAP same text present but under a different role         (🔴 the #76 class)
+ *   - ROLE SWAP same text under a different role AND a different look (🔴 the #76 class);
+ *     same look: body/eyebrow → heading is an accepted ROLE UPGRADE (root line, --json
+ *     `accepted`), heading → body/eyebrow 🟡 ROLE DOWNGRADE
  *   - MISSING BODY / EXTRA  body copy dropped / invented             (🟡 advisory)
+ *   - MISSING SR-ONLY TEXT  visually hidden non-CTA text dropped      (🟡; a lost skip link stays MISSING CTA)
  *   - FONT DIFF a matched line whose rendered FACE differs           (🟠 width probe, #77)
  *
  * Text nodes are not the whole content. A second inventory (attributeInventory,
@@ -129,7 +132,7 @@
  * line per finding (gate.sh and gate-evidence read the Findings line only); with
  * --json, `Inventories JSON:` followed by { primaryRoot, [source]: inv, [build]: inv
  * (the first root), roots: { <other root>: { [source]: inv, [build]: inv } },
- * findings: [{ sev, kind, root, msg }] }.
+ * findings: [{ sev, kind, root, msg }], accepted: [{ kind, from, text, root }] }.
  *
  * attributeInventory (in-page) and diffAttributes, parseRoots, diffRoot, formatFinding
  * (pure) are exported; playwright is imported lazily in main, so the contract test runs
@@ -175,7 +178,9 @@ const USAGE = `usage: node skills/diff/scripts/content-diff.mjs <sourceURL> <bui
 exit codes: 0 ran (flags advisory; an HTTP-error side, e.g. a 404 build pre-propagation,
             is measured + flagged with a warning, not fatal), 1 error,
             3 bot challenge (live side blocked — fail loud)
-findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY, ROLE SWAP, EXTRA, FONT FORK,
+findings:   text/role layer — MISSING CTA|HEADING|EYEBROW|BODY|SR-ONLY TEXT, ROLE SWAP (the look
+            changed too; same look: body/eyebrow → heading is an accepted ROLE UPGRADE, not a
+            finding, heading → body/eyebrow 🟡 ROLE DOWNGRADE), EXTRA, FONT FORK,
             EDITABLE COUNT; attribute layer — MISSING|EXTRA PLACEHOLDER|ARIA-LABEL|TITLE,
             MISSING ICON, ICON DIFF, ICON KIND, EXTRA ICON, ICON MOVED (same icon at another
             anchor, paired by identity + document order). 🔴 = MISSING PLACEHOLDER|ARIA-LABEL,
@@ -220,8 +225,10 @@ export function attributeInventory(args) {
     const h = b.querySelector('h1, h2, h3, h4, h5, h6');
     return h ? norm(h.textContent).slice(0, 60) : '';
   };
-  // an element's text minus inline-svg <title>/<text>: an svg icon and an <img> icon leave the same anchor
-  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg')) t += ` ${n.textContent}`; return t; };
+  // an element's text minus inline-svg <title>/<text> and payloads (as content-inventory labelOf): an svg icon and an <img> icon leave the same anchor
+  const textOf = (el) => { let t = ''; const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT); for (let n = w.nextNode(); n; n = w.nextNode()) if (!n.parentElement.closest('svg, script, noscript, style, template')) t += ` ${n.textContent}`; return t; };
+  // the consent managers' banners, as content-inventory skips them (test/content-diff.test.mjs pins the copies)
+  const CONSENT_UI = '#onetrust-consent-sdk, #cmpbox, .ch2-container, #CybotCookiebotDialog, #didomi-host, #usercentrics-root, .osano-cm-window, #termly-code-snippet-support, #truste-consent-track, .qc-cmp2-container, #iubenda-cs-banner, .cmplz-cookiebanner, .cky-consent-container';
   const anchorOf = (el) => {
     const host = el.matches(INTERACTIVE) ? el : el.closest(INTERACTIVE);
     if (host && root.contains(host)) {
@@ -244,6 +251,7 @@ export function attributeInventory(args) {
   root.querySelectorAll('*').forEach((el) => {
     const tag = el.tagName.toLowerCase();
     if (['script', 'style', 'template', 'noscript'].includes(tag) || el.closest('script, style, template, noscript')) return;
+    if (el.closest(CONSENT_UI)) return; // a consent banner's close / accept controls are not page content
     if (el.ownerSVGElement) return; // svg internals — the <svg> itself is the icon
     const interactive = Boolean(el.closest(INTERACTIVE)); // closest() includes the element itself
     for (const attr of ['placeholder', 'aria-label', 'title']) {
@@ -353,12 +361,12 @@ export function diffAttributes(src, tgt, prof, accepted = []) {
   // value: glyph code point, file name, svg signature) in document order — first within the same nearest block (equal block
   // keys), then anywhere in the root. Such a pair is ICON MOVED 🟡: the icon is present, anchored differently (a text-less
   // <button> host anchors as button#n where the source anchored to its item text) — never MISSING + EXTRA. Empty icon boxes
-  // have no identity to pair by.
+  // have no identity to pair by: they pair only by the same (non-blank) pixels.
   const ident = (ic) => `${ic.kind}\u0000${ic.value}`;
   for (const scope of [(a, b) => Boolean(a.block) && a.block === b.block, () => true]) {
     si.forEach((a, k) => {
       if (pairs[k] >= 0 || (!a.value && !a.sig)) return;
-      const i = ti.findIndex((b, j) => !usedI[j] && (ident(b) === ident(a) || sameImage(a, b)) && scope(a, b));
+      const i = ti.findIndex((b, j) => !usedI[j] && ((a.value && ident(b) === ident(a)) || sameImage(a, b)) && scope(a, b));
       if (i >= 0) { usedI[i] = true; pairs[k] = i; moved[k] = true; }
     });
   }
@@ -402,7 +410,7 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   const S = prof.source; const T = prof.target;
   const s = srcInv || { ...EMPTY_INVENTORY(), absent: true }; const t = tgtInv || { ...EMPTY_INVENTORY(), absent: true };
   const lines = [];
-  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines }; }
+  if (s.absent && t.absent) { lines.push(`root "${root.name}": absent on both sides (${root.describe}) — not compared`); return { flags: [], lines, accepted: [] }; }
   const note = (inv, side) => (inv.absent ? `${side}: absent (${root.describe}) — measured as empty` : inv.fellBack ? `${side}: ${root.describe} absent, fell back to <${inv.fellBack}>` : '');
   const notes = [note(s, S), note(t, T)].filter(Boolean);
   lines.push(`root "${root.name}"${notes.length ? ` — ${notes.join('; ')}` : ''}`);
@@ -419,12 +427,13 @@ export function diffRoot(root, srcInv, tgtInv, prof) {
   lines.push(`  attributes (placeholder/aria-label/title): ${S} ${sA.attrs.length} / ${T} ${tA.attrs.length}; icons: ${S} ${sA.icons.length} / ${T} ${tA.icons.length}`);
   flags.push(...diffAttributes(sA, tA, prof, accepted));
   if (accepted.length) lines.push(`  accepted (invisible, nothing lost): ${acceptedLine(accepted)}`);
-  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted };
+  return { flags: flags.map((f) => ({ ...f, root: root.name })), lines, accepted: accepted.map((a) => ({ ...a, root: root.name })) };
 }
-// Pure: "23 ROLE UPGRADE — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
+// Pure: "23 ROLE UPGRADE body → heading — "a", "b" …; 6 SAME IMAGE — …" — one group per kind, the first four examples each.
 export function acceptedLine(accepted) {
   const kinds = [...new Set(accepted.map((x) => x.kind))];
-  return kinds.map((k) => { const xs = accepted.filter((x) => x.kind === k); return `${xs.length} ${k} — ${xs.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${xs.length > 4 ? ' …' : ''}`; }).join('; ');
+  const label = (k, xs) => (k === 'ROLE UPGRADE' && xs[0].from ? `${k} ${[...new Set(xs.map((x) => x.from))].join('/')} → heading` : k);
+  return kinds.map((k) => { const xs = accepted.filter((x) => x.kind === k); return `${xs.length} ${label(k, xs)} — ${xs.slice(0, 4).map((x) => `"${x.text}"`).join(', ')}${xs.length > 4 ? ' …' : ''}`; }).join('; ');
 }
 export const formatFinding = (f) => `  ${f.sev} ${f.kind}${f.root ? ` [${f.root}]` : ''}: ${f.msg}`;
 
@@ -521,11 +530,11 @@ async function main() {
   }
 
   process.stdout.write(`\nContent diff @ ${opts.width}px (profile "${prof.name}", roots: ${roots.map((r) => r.name).join(', ')})\n`);
-  const flags = [];
+  const flags = []; const accepted = [];
   for (const root of roots) {
-    const { flags: rf, lines } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
+    const { flags: rf, lines, accepted: ra } = diffRoot(root, srcInvs[root.name], tgtInvs[root.name], prof);
     lines.forEach((l) => process.stdout.write(`${l}\n`));
-    flags.push(...rf);
+    flags.push(...rf); accepted.push(...ra);
   }
 
   const primary = roots[0].name;
@@ -543,7 +552,7 @@ async function main() {
     const others = {};
     roots.slice(1).forEach((r) => { others[r.name] = { [prof.source]: srcInvs[r.name], [prof.target]: tgtInvs[r.name] }; });
     process.stdout.write('\nInventories JSON:\n');
-    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags }, null, 1)}\n`);
+    process.stdout.write(`${JSON.stringify({ primaryRoot: primary, [prof.source]: srcInvs[primary], [prof.target]: tgtInvs[primary], roots: others, findings: flags, accepted }, null, 1)}\n`);
   }
 }
 
