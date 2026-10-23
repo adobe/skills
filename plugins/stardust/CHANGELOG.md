@@ -10,17 +10,23 @@ Field learning (a recorded replica gate on a home page): the band table says whe
 which block, and the diff image is 8–15k px tall. The block attribution, the per-block numbers, a live | build | diff
 overview and crops of the hottest blocks were built ad hoc in Python for one report.
 
-- **`replica/scripts/diff-report.mjs` (new):** reads a gate dir's `live.png`, `build.png` and diff PNG (`diff-final.png`,
-  else the newest `diff-*.png`), loads the build once at the round's width for its block boxes (`[data-block-name]`,
-  else `main > .section`, else `main`'s children, or `--blocks <css>`), and prints the differing share per block plus
-  the rows outside every block (pixel-compare's red count; anti-aliased yellow excluded). Writes `report.html`, a
-  live | build | diff `overview.png` and live / build / diff crops of the `--top` hottest blocks. Node + pngjs +
-  playwright, both lazy; `blockTable`, `scaleTo`, `cropRows`, `pickDiff`, `parseArgs` exported.
+- **`replica/scripts/diff-report.mjs` (new):** reads a gate dir's `live.png`, `build.png` and diff PNG (the newest
+  `diff-*.png` — gate.sh's `diff-<label>.png` — or `--diff`, relative to the gate dir or absolute), loads the build once
+  at the round's width, lets lazy images settle, and reads its block boxes (`[data-block-name]` plus each
+  `.default-content-wrapper` as "default content (section N)", else `main > .section`, else `main`'s children, or
+  `--blocks <css>`; a block nested in another is folded into the outermost, so no pixel counts twice). Prints the
+  differing share per block plus the rows outside every block (pixel-compare's red count; anti-aliased yellow
+  excluded). pixel-compare diffs only the shorter capture's height, so when live and build heights differ a warning is
+  printed, a block below the compared height reads "not compared" (never a false 0 %) and one straddling it "partial"
+  with the compared rows. Writes `report.html`, a live | build | diff `overview.png` and live / build / diff crops of the
+  `--top` hottest blocks. Node + pngjs + playwright, both lazy; `blockTable`, `foldNested`, `rowText`,
+  `heightWarning`, `scaleTo`, `cropRows`, `pickDiff`, `parseArgs` exported.
 - Docs: `source-fidelity-gate.md` § Reading the band breakdown — the crop-compare escalation paragraph (prepared,
   never needed) is replaced by the instrument; `scripts-index.md` gains its row, and seven rows are shortened to stay
   under the index's 12,288-byte cap.
-- Test (new): `replica/scripts/test/diff-report.test.mjs` — the pure parts, `--help`, and an end-to-end gate dir with a
-  served two-block build page.
+- Test (new): `replica/scripts/test/diff-report.test.mjs` — the pure parts (incl. not-compared / partial rows, nesting,
+  an absolute `--diff`), `--help`, and end-to-end gate dirs with a served two-block build page and an EDS-shaped page
+  (default content, a nested block, a build taller than live).
 
 ## 0.34.13 — chrome-parity prints real deltas only: an auto-detected header, painted backgrounds, icons by pixels, one line for a shifted region (#146)
 
