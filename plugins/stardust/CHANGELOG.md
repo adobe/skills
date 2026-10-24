@@ -22,31 +22,22 @@ assumption in `direction.md`; the rollout ledger counted 94 as the total, and th
 
 ## 0.34.7 — content-diff inventories page copy only: icon links, payloads and consent banners stop reading as missing content (#140)
 
-Field learning (a recorded replica gate on a home page whose source has no `<main>`): of 53 structural 🔴, 12 were
-MISSING CTA for menu links present on both sides with the same href and text — the build drew their icons as `<img>`,
-the source as inline `<svg>`, and the inventory dropped every link containing an image — and 9 🟡 MISSING BODY were
-inline payloads (`__NEXT_DATA__`, a tag manager's `<noscript>` frame, consent-manager helpers).
+Field learning (a recorded replica gate on a home page with no `<main>`): 12 of 53 structural 🔴 were MISSING CTA for
+menu links whose icon was `<img>` in the build and `<svg>` on the source; 9 🟡 MISSING BODY were inline payloads.
 
-- **A link with an icon and text is a text CTA, whatever draws the icon** (`content-inventory.mjs`, both the diff and
-  the deploy copy): only a text-less link (a logo or image link) is skipped, and the label leaves out inline-svg
-  `<title>` / `<text>`, so an svg-icon link and an img-icon link read the same. content-diff's icon anchors use the
-  same label, so that pair is one 🟡 ICON KIND instead of MISSING ICON + EXTRA ICON.
-- **Not page copy:** `script`, `noscript`, `style` and `template` subtrees, and the banners of the common consent
-  managers (the ones `CONSENT_CANDIDATES` accepts), are left out of the role inventory and the Experience Workspace
-  editable count. A skipped banner is named once on the root's summary line (`consent banner skipped (N text nodes)`).
-- **A card link is not one CTA** (review): an `<a>` wrapping 2+ text blocks, or a heading beside an image
-  (`<a><img><h3>T</h3><p>D</p></a>`), has its blocks inventoried as heading / body and is a CTA only for its own text
-  outside them, so it pairs with the usual EDS card (h3, p, a separate "Read more") instead of a 🔴 MISSING CTA
-  "t d". An image/svg link's sr-only text is not a label either: a logo with a hidden "Home" reads like an alt-only logo.
-- **The attribute + icon layer skips the consent banners too** (review): a banner's `<button aria-label="Close"><svg>`
-  no longer reads as 🔴 MISSING ICON / ARIA-LABEL; its anchor text leaves out payload text, as the inventory label does.
-- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — the inline-script and cookie-panel guardrails fold to
-  one paragraph, which keeps "verify the banner is actually gone after dismissal": `--consent` adds an accept click, it
-  does not extend the skip list, and the inventory has no visibility filter.
-- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg-icon vs img-icon link, inline payloads and a
-  consent banner (with an icon close button) on one side: no MISSING CTA / BODY / ICON, 0 structural 🔴, the banner
-  named in the summary; a card link vs an EDS card and an sr-only logo vs an alt-only logo: no 🔴. Every in-page consent list
-  (both inventory copies, `attributeInventory`) is pinned to one value and to `CONSENT_CANDIDATES` (vendor → banner).
+- **`content-inventory.mjs` (diff + deploy copies):** a link with an icon and text is a text CTA, whatever draws the
+  icon; only a text-less link is skipped. The label leaves out inline-svg `<title>` / `<text>`, and an image link's
+  sr-only text is not a label. A card link — an `<a>` wrapping 2+ text blocks, or a heading beside an image — has its
+  blocks inventoried as heading / body and is a CTA only for its own remaining text, so it pairs with an EDS card.
+- **Not page copy:** `script`, `noscript`, `style`, `template` and the common consent managers' banners (those
+  `CONSENT_CANDIDATES` accepts) are left out of the role inventory, the Experience Workspace editable count and the
+  attribute + icon layer; the root's summary line names a skipped banner (`consent banner skipped (N text nodes)`).
+- **`content-diff.mjs`:** icon anchors use the same label, so an svg-icon vs img-icon link is one 🟡 ICON KIND.
+- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — `--consent` only adds an accept click; verify the banner
+  is actually gone after dismissal.
+- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg- vs img-icon link, inline payloads, a consent
+  banner with an icon close button, a card link vs an EDS card, an sr-only vs alt-only logo: no 🔴, the banner named in
+  the summary. Every in-page consent list is pinned to `CONSENT_CANDIDATES`.
 
 ## 0.34.6 — the common consent managers are dismissed with no flag (#139)
 
