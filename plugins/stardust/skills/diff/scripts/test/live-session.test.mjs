@@ -26,7 +26,7 @@ const stderrOf = async (fn) => {
 };
 
 check('the exported surface the instruments import, the denial-page names included', () => {
-  for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'isChallengeResponse', 'gotoLive', 'launchStealthHeaded', 'browserTier', 'dismissOverlays',
+  for (const name of ['REAL_CHROME_UA', 'CONSENT_CANDIDATES', 'isLiveHttpUrl', 'defaultWaitUntil', 'standardHeaders', 'contextOptions', 'newLiveContext', 'resolveSiteAuth', 'attachOriginAuth', 'isChallengeResponse', 'gotoLive', 'launchStealthHeaded', 'browserTier', 'acceptConsent', 'dismissOverlays',
     'DENIAL_TEXT_MAX_BYTES', 'DENIAL_PROBE_MS', 'DENIAL_SIGNATURES', 'DENIAL_ERROR_HEADING', 'normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.ok(name in session, `${name} exported`);
   for (const name of ['normalizeDenialText', 'denialProbeInPage', 'denialMarker', 'withDeadline', 'pageDenial', 'botChallengeError']) assert.equal(typeof session[name], 'function', name);
   assert.equal(session.DENIAL_TEXT_MAX_BYTES, 2048);
@@ -287,9 +287,13 @@ check('consent candidates: OneTrust first, the cmp-prefixed and other common con
   assert.equal(c[0], '#onetrust-accept-btn-handler');
   for (const sel of ['#cmpwelcomebtnyes', '.cmpboxbtnyes', '#cmpbntyestxt']) assert.ok(c.includes(sel), `${sel} is a candidate`);
   for (const sel of ['.ch2-allow-all-btn', '#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll', '#didomi-notice-agree-button', '[data-testid="uc-accept-all-button"]', '.osano-cm-accept-all', '#truste-consent-button', '.cky-btn-accept']) assert.ok(c.includes(sel), `${sel} is a candidate`);
-  const firstText = c.findIndex((sel) => sel.startsWith('button:has-text('));
-  assert.ok(c.slice(firstText).every((sel) => sel.startsWith('button:has-text(') || sel.startsWith('[data-testid*=')), 'vendor id/class selectors all before the text fallbacks');
-  assert.ok(c.includes('button:has-text("Allow all")'), 'the "Allow all" label some managers use is a text fallback');
+  const isText = (sel) => /^button:(has-text|text-matches)\(/.test(sel) || sel.startsWith('[data-testid*=');
+  const firstText = c.findIndex(isText);
+  assert.ok(firstText > 0 && c.slice(firstText).every(isText), 'vendor id/class selectors all before the text fallbacks');
+  const allowAll = c.findIndex((sel) => sel.startsWith('button:text-matches(') && /allow all/.test(sel));
+  assert.ok(allowAll > 0, 'the "Allow all" label some managers use is a text fallback');
+  assert.ok(!c.includes('button:has-text("Allow all")'), '"Allow all" is never a :has-text substring (it would match "Disallow all")');
+  assert.ok(allowAll < c.indexOf('button:has-text("Accept")'), '"Allow all" before the bare "Accept" substring ("Accept only necessary")');
   assert.equal(new Set(c).size, c.length, 'no duplicate candidate');
   assert.ok(c.every((sel) => typeof sel === 'string' && sel.trim() === sel && sel.length), 'every candidate is a trimmed selector string');
 });
