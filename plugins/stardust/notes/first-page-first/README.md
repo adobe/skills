@@ -43,7 +43,7 @@ The contract (tracks, ownership table, the seven checks, the hand-off) is the re
 
 ## Open questions
 
-- Where Track B's promoted spec and Track A's bounded spec disagree, check 7 turns each difference into a code
+- Where Track B's promoted design spec and Track A's bounded one disagree, check 7 turns each difference into a code
   commit; runs will show whether that list is short enough to stay manual.
 - Status reporting: `last replica --track <t>` reads each track; a status line naming both is not built yet.
 - Track A's gate-all input is a one-row state file it writes by hand; a `gate-all.mjs --url` form would remove it.

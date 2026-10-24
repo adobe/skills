@@ -13,7 +13,7 @@ almost none of the site-wide work changed the home page. Design note: `notes/fir
   Track A takes the first page (replica Input `--first-page <url|home>`; hands-off: home) through the bounded entry
   to the published origin, in its own workspace `stardust/first-page/`, and owns code and DA; its Phase 2 is always
   the bounded branch (`preserve-direction.md` § 1). Track B runs Phase 1 `--prep`, the catalogs and the dynamics
-  triage and writes knowledge only. At RECONCILE, Track B's spec replaces the bounded one, then seven checks (page
+  triage and writes knowledge only. At RECONCILE, Track B's design spec replaces the bounded one, then seven checks (page
   type, blocks, chrome, dynamics, listings, scope, canon) are recorded `confirmed | corrected (<commit>) | deferred
   (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome correction re-gates the page. Hand-off to
   rollout: `update-coverage.mjs --gate <table> --pin`, then `verify.mjs --slug`.

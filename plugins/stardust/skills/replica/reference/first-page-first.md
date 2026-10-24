@@ -12,8 +12,8 @@ One writer per path; ownership moves only at RECONCILE, while neither track writ
 | Path | Before RECONCILE | From RECONCILE on |
 |---|---|---|
 | `stardust/first-page/**` (capture, breakpoints, dynamics, gate state and tables) | Track A | read-only evidence |
-| `stardust/current/**`, `stardust/state.json`, `stardust/dynamic-features*.md`, `stardust/dynamics/`, the spec | Track B | RECONCILE, then the flow |
-| root `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`; `stardust/direction.md` | Track A (bounded spec) | RECONCILE, then the flow |
+| `stardust/current/**` (the captured design spec included), `stardust/state.json`, `stardust/dynamic-features*.md`, `stardust/dynamics/` | Track B | RECONCILE, then the flow |
+| root `PRODUCT.md`, `DESIGN.md`, `DESIGN.json`; `stardust/direction.md` | Track A (bounded design spec) | RECONCILE, then the flow |
 | `stardust/replica/**`, `stardust/prototypes/**`, code, DA | Track A | RECONCILE, then the flow |
 
 ## Track A — the first page, to the published origin
@@ -45,8 +45,9 @@ site-scope`. The roster caps go in its extract `end` line; a finding that needs 
 Starts after Track B's last `end`, once Track A is at a phase boundary past Phase 2; Track A writes nothing until it
 ends. Ledger `replica reconcile-first-page` (no track). In order:
 
-1. **Promote.** Phase 2 re-runs on the full-prep branch (`preserve-direction.md` § 1a): Track B's spec replaces the
-   bounded one verbatim; `direction.md` (with the roster caps) and the target breakpoints (§ 4) are rewritten.
+1. **Promote.** Phase 2 re-runs on the full-prep branch (`preserve-direction.md` § 1a): Track B's design spec
+   (`current/PRODUCT.md`, `DESIGN.*`) replaces the bounded one verbatim; `direction.md` (with the roster caps) and the
+   target breakpoints (§ 4) are rewritten.
 2. **Check**, one row each in `stardust/reconcile-first-page.md`: `confirmed | corrected (<commit>) | deferred (<why>)`.
    1. **Page type** — type and archetype role match the catalog.
    2. **Blocks** — each maps to a catalog module; names, variants and content models fit the reusing siblings
@@ -56,11 +57,11 @@ ends. Ledger `replica reconcile-first-page` (no track). In order:
       interim tier), endpoints as planned.
    5. **Listings** — the page's metadata fits the listings contract.
    6. **Scope** — no link treats a decided-out or app-routed path as an EDS page.
-   7. **Canon** — base styles, tokens and breakpoints match the promoted spec, or the deltas are applied now.
+   7. **Canon** — base styles, tokens and breakpoints match the promoted design spec, or the deltas are applied now.
 
-   Corrections are code and DA-document commits, never spec edits, so a canon delta survives the promotion; a block
-   or chrome correction re-runs the published-origin gate. Hands-off: they apply without asking and the run summary
-   lists them.
+   Corrections are code and DA-document commits, never design-spec edits, so a canon delta survives the promotion; a
+   block or chrome correction re-runs the published-origin gate. Hands-off: they apply without asking and the run
+   summary lists them.
 3. **Record.** On the `state.json` row whose `url` is Track A's (the slugs may differ): `state.mjs advance <slug> --to
    approved --by <who> --prototype stardust/prototypes/<Track A slug>-proposed.html`.
 
