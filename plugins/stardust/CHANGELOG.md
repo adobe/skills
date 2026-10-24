@@ -6,31 +6,22 @@ git history only (plus the branch-scoped notes in
 
 ## 0.36.0 — first page first: one page is delivered while the site scope is still being defined (#149)
 
-Field learning (a recorded hands-off replica run on a content site): the phases ran strictly in sequence — spec,
-extract of the whole roster, dynamics triage, every archetype recreated and gated as a prototype, rollout planning, the
-foundation — and five hours in no content page was published. Almost nothing the site-wide work produced changed the
-home page, which defined the canon anyway. Design note: `notes/first-page-first/README.md`.
+A recorded hands-off replica run ran every phase in sequence and published no content page in five hours, though
+almost none of the site-wide work changed the home page. Design note: `notes/first-page-first/README.md`.
 
-- **`replica/reference/first-page-first.md` (new):** a full-site run opens with two tracks. Track A takes the first
-  page (`--first-page <url|home>`; hands-off: home) through the existing bounded entry to the published origin and
-  owns code and DA; Track B runs Phase 1 `--prep`, the catalogs and the dynamics triage and writes knowledge only.
-  They meet at RECONCILE: seven checks (page type, blocks, chrome, dynamics, listings, scope, canon), each recorded
-  `confirmed | corrected (<commit>) | deferred (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome
-  correction re-gates the published page. The flow then continues with the first page's blocks and chrome as the
-  foundation, handed to rollout through its gate record (`update-coverage.mjs --gate … --pin`, then `verify.mjs`).
-- **`replica/SKILL.md`** names the opening in the Procedure intro; the bounded-entry paragraph's twice-told
-  promotion detail folds to a pointer. **`stardust/SKILL.md`** § Hands-off defaults: first page first.
-- **`stardust/scripts/ledger.mjs`:** replica phases `first-page` and `reconcile-first-page` (alias `reconcile`).
-- **Review fixes — one writer per path, literally.** Track A works in `stardust/first-page/` (capture via `crawl.mjs
-  --out`, `cap-probe --write-design`, dynamics `--out`, gate-all `--state/--out`) and never writes `current/`,
-  `state.json` or the dynamics docs; Track B never writes `direction.md` (the caps reach it at RECONCILE); the doc
-  tables the writer of each path before and after RECONCILE. Track A's Phase 2 is pinned to the bounded branch
-  (`preserve-direction.md` § 1: the track overrides the `current/PRODUCT.md` check). RECONCILE promotes verbatim
-  first (replace, never merge) and its corrections are code commits after it, so check-7 deltas survive.
-  `ledger.mjs --track <name>`: the start guard pairs on skill + phase + track; `last <skill> --track`; tail shows it.
-  Hand-off: `update-coverage.mjs --gate <table> --pin` (row matched by path, `delivery.gate` recorded, row pinned
-  and `deployed`), then `verify.mjs --slug`; `inventory.mjs` never flags a pinned row `stale`. `--first-page` is in
-  replica's Inputs. Tests: ledger (tracks, `reconcile` alias), update-coverage (`--pin`), inventory (pinned row).
+- **`replica/reference/first-page-first.md` (new):** a full-site run opens with two tracks, one writer per path.
+  Track A takes the first page (replica Input `--first-page <url|home>`; hands-off: home) through the bounded entry
+  to the published origin, in its own workspace `stardust/first-page/`, and owns code and DA; its Phase 2 is always
+  the bounded branch (`preserve-direction.md` § 1). Track B runs Phase 1 `--prep`, the catalogs and the dynamics
+  triage and writes knowledge only. At RECONCILE, Track B's spec replaces the bounded one, then seven checks (page
+  type, blocks, chrome, dynamics, listings, scope, canon) are recorded `confirmed | corrected (<commit>) | deferred
+  (<why>)` in `stardust/reconcile-first-page.md`; a block or chrome correction re-gates the page. Hand-off to
+  rollout: `update-coverage.mjs --gate <table> --pin`, then `verify.mjs --slug`.
+- **Scripts:** `ledger.mjs` adds replica phases `first-page` and `reconcile-first-page` (alias `reconcile`) and
+  `--track <name>` (start/end pair per track; `last <skill> --track`); `update-coverage.mjs --gate --pin` matches
+  rows by path, pins them and marks them `deployed`; `inventory.mjs` never flags a pinned row `stale`. Tests cover
+  each.
+- **`replica/SKILL.md`** and **`stardust/SKILL.md`** § Hands-off defaults point to the new reference.
 
 ## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
 

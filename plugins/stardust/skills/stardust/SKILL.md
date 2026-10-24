@@ -246,11 +246,9 @@ otherwise):
   representative spread of detail pages across all templates. The setup
   status line names the roster against the site (`roster 94 of 2,532
   discovered — cap 100/20`); a capped roster is never called the full
-  site. Record the caps in `direction.md` (first page first: at
-  RECONCILE).
-- **First page first.** A full-site replica run starts the home page (or
-  the page the invocation names) on its own track at once, beside the
-  site-scope work (`../replica/reference/first-page-first.md`).
+  site. Record the caps in `direction.md`.
+- **First page first.** A full-site replica run delivers one page (home,
+  or the one named) first: `../replica/reference/first-page-first.md`.
 - **Captured pages stay in the roster.** Locale is never a reason to
   drop a captured page: every `state.json` row is delivered —
   duplicate-content locale shells ride the sibling tier of their twin;

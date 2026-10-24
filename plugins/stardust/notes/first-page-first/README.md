@@ -23,29 +23,23 @@ light roster pass as prerequisite.
    and confirmed or corrected.
 4. The flow continues as today, with the first page already done.
 
-## Design
+## Design rationale
 
-- **Two tracks, one writer per path at a time.** Track A owns code, DA, the root spec, `direction.md` and its own
-  workspace `stardust/first-page/`; Track B owns knowledge (`current/`, `state.json`, dynamics docs, spec). The
-  bounded procedures as first written broke this — `extract --single` writes `current/pages/<slug>.json`,
-  `_crawl-log.json` and `state.json`, the bounded cap-probe writes `current/DESIGN.json`, Phase 2 writes the dynamics
-  docs, and the caps rule had Track B write `direction.md` — so Track A's capture, breakpoints, dynamics and gate
-  state moved to the workspace (the scripts' existing `--out` / `--write-design` / `--state` flags), and the caps
-  reach `direction.md` at RECONCILE. Ownership moves only at RECONCILE, which runs while neither track writes. The
-  ledger is shared: every line carries `--track`, and the start guard pairs per track.
-- **The existing bounded entry is Track A**, pinned: Phase 2's branch is chosen by the track, not by whether
-  `current/PRODUCT.md` exists (Track B writes that file, so the existence check would race).
-- **RECONCILE is a checklist with a record**, not a re-run: seven checks, each confirmed / corrected (with its commit)
-  / deferred, in `stardust/reconcile-first-page.md`. Corrections to blocks or chrome re-gate the published page.
-- **Promotion replaces, corrections follow.** RECONCILE promotes Track B's spec verbatim first (the bounded spec is
-  replaced, never merged), then checks; corrections are commits on code and documents, so a canon delta is never
-  overwritten by the promotion.
-- **The hand-off goes through the gate record.** `update-coverage.mjs --gate <Track A's table> --pin` matches the
-  coverage row by path (the inventory's slug can differ from Track A's), records `delivery.gate` and pins the row;
-  `verify.mjs` then derives `verified`; inventory never flags a pinned row `stale`, so a migrate re-render does not
-  re-deliver the page.
-- **Small instruments only.** The ledger gains two replica phases (`first-page`, `reconcile-first-page`) and
-  `--track`; `update-coverage.mjs --gate` gains `--pin`, which inventory honours.
+The contract (tracks, ownership table, the seven checks, the hand-off) is the reference doc; this keeps the why.
+
+- **One writer per path, by workspace.** The bounded procedures as first written broke it: `extract --single` writes
+  `current/pages/<slug>.json`, `_crawl-log.json` and `state.json`, the bounded cap-probe writes `current/DESIGN.json`,
+  Phase 2 writes the dynamics docs, and the caps rule had Track B write `direction.md`. Track A's files moved to
+  `stardust/first-page/` through the scripts' existing `--out` / `--write-design` / `--state` flags.
+- **Track A's Phase 2 branch is pinned by the track,** not chosen by whether `current/PRODUCT.md` exists: Track B
+  writes that file, so the existence check would race.
+- **RECONCILE is a checklist with a record, not a re-run.**
+- **Promotion replaces, corrections follow:** corrections made before the verbatim promotion would be overwritten by
+  it; as commits after it, a canon delta survives.
+- **The hand-off goes through the gate record**, not a bare status write, and the pin keeps a migrate re-render from
+  re-delivering the page.
+- **Small instruments only:** two ledger phases and `--track`; `update-coverage.mjs --gate --pin`, which inventory
+  honours.
 
 ## Open questions
 
