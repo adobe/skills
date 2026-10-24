@@ -6,43 +6,30 @@ git history only (plus the branch-scoped notes in
 
 ## 0.35.0 — the gate has two tiers: looks the same, nothing lost; owners accept changes in one file (#148)
 
-Field learning (a recorded replica gate on a home page, read against the principle agreed with the owner — the hard
-gate is "the page looks the same", and on top "nothing is lost": links, text and accessible names in any wrapping):
-`gate.sh --full` exited 2 on any structural 🔴, so intentional look-neutral improvements failed the gate forever, and
-invisible losses were split across 🔴 (an aria-label on a link) and buried 🟡 (sr-only text). The inconsistency register
-could record an accepted change, but no instrument read it. A page without `<main>` was inventoried as `<body>`
-(mega-menu included) against the build's `<main>`: 142 🔴 instead of 53. And the gate's records cited probe files by
-hand — on another page the latest chrome-parity file disagreed with the recorded verdict.
+Field learning (a recorded home-page replica gate): `gate.sh --full` failed on any structural 🔴, so intentional
+look-neutral changes failed forever, invisible losses were split between 🔴 and buried 🟡, and no instrument read the
+owner's accepted changes. A page without `<main>` was compared at `<body>` against the build's `<main>` (142 🔴
+instead of 53), and gate records cited probe files by hand.
 
-- **Two tiers (`diff/scripts/content-diff.mjs`):** *looks-same* = every 🔴 (a visible difference); *nothing-lost* =
-  `MISSING ARIA-LABEL` (now 🟡 everywhere — invisible), `MISSING SR-ONLY TEXT`, `ROLE DOWNGRADE`; the rest is advisory.
-  A `Tiers: looks-same 🔴 N · nothing-lost 🟡 K · accepted 🟢 A · advisory M` line follows `Findings:` (unchanged);
-  `--json` findings carry their `tier`. `tierOf`, `tierLine`, `LOST_KINDS` exported.
-- **The accepted list:** `stardust/replica/accepted.json` (`{ accepted: [{ probe?, kind, text?, root?, reason }] }`,
-  or `--accepted <file>`) is read by content-diff (`applyAccepted`) and chrome-parity (`markAccepted`): a matching
-  finding prints 🟢 with its reason and never counts.
-- **Aligned roots:** when one side's main root falls back (→ `<main>` → `<body>`) and the other found it, the side that
-  found it is re-read at the same fallback, said once (`⚠ root "main": … both sides measured at <body> (aligned)`).
-  Found by its test: `inventory()` counted its own width probe as copy whenever the root was `<body>` — fixed in both
-  copies.
-- **`replica/scripts/gate.sh`:** reads the `Tiers:` line, prints it on the `content-diff:` verdict line and fails the
-  round on a nothing-lost 🟡 as on a 🔴; every `--full` round writes `verdict-<label>.json` — each probe's exit code
-  and evidence file, the pixel rc and diff, both tiers. **`gate-evidence.mjs`** passes content-count only with 0 🔴 and
-  0 nothing-lost.
-- **Docs:** `source-fidelity-gate.md` § Pass bar item 1 is the one home of the two tiers, the accepted list and the
-  verdict record; `replica/SKILL.md` and `diff/SKILL.md` point to it; the gate doc's intro anecdote (told again in
-  item 3) folds.
-- Tests: `content-diff.test.mjs` (tiers, applyAccepted, aria-label severity, an end-to-end no-`<main>` page against a
-  `<main>` build with an accepted ticker link), `chrome-parity.test.mjs` (`markAccepted`), `gate.test.mjs` (a
-  nothing-lost round exits 2; the verdict record), `gate-evidence.test.mjs` (`parseFindings` reads the tier).
-- Review fixes: `accepted 🟢 N (owner M, auto K)` — the accepted list apart from the probe's own ROLE UPGRADE / SAME
-  IMAGE / SAME ICON; an accepted-list `text` matches inside the finding's quoted subject (`subjectOf`; chrome-parity: the
-  delta's own text), never the message wording — `{ kind: 'MISSING CTA', text: 'link' }` no longer accepts every MISSING
-  CTA, and the docs warn that a kind-only entry accepts every finding of its kind; root alignment (`alignPrimary`)
-  checks where a re-read side really landed — one re-read at `<main>` that has none falls to `<body>`, so both sides
-  align at `<body>` and the `⚠` line says so; `parseFindings` takes the nothing-lost count from the same (last) round
-  as the `Findings` line; `handoff-contract.md` row 4 reads both tiers (a lost aria-label is nothing-lost 🟡, on the
-  `Tiers:` line).
+- **Two tiers (`diff/scripts/content-diff.mjs`):** *looks-same* = every 🔴; *nothing-lost* = `MISSING ARIA-LABEL` (now
+  🟡 everywhere), `MISSING SR-ONLY TEXT`, `ROLE DOWNGRADE`; the rest is advisory. A `Tiers: looks-same 🔴 N ·
+  nothing-lost 🟡 L · accepted 🟢 A (owner O, auto P) · advisory M` line follows `Findings:` (unchanged); auto =
+  ROLE UPGRADE / SAME IMAGE / SAME ICON; `--json` findings carry their `tier`.
+- **Accepted list:** `stardust/replica/accepted.json` (or `--accepted <file>`), one owner decision and reason per entry,
+  read by content-diff (`applyAccepted`) and chrome-parity (`markAccepted`): a match prints 🟢 and never counts. `text`
+  matches inside the finding's quoted subject (`subjectOf`), never its wording; an entry without `text` accepts every
+  finding of its kind.
+- **Aligned roots (`alignPrimary`):** when only one side's main root fell back, the other is re-read where that fallback
+  really lands (no `<main>` → both at `<body>`), said once in a `⚠ root "main": …` line. `inventory()` no longer counts
+  its own width probe as copy at a `<body>` root (`diff/` and `deploy/` `content-inventory.mjs`).
+- **`replica/scripts/gate.sh`:** prints the `Tiers:` line on its `content-diff:` verdict line, fails the round on a
+  nothing-lost 🟡 as on a 🔴, and writes `verdict-<label>.json` per `--full` round (every probe's exit code and evidence
+  file, both tiers). **`gate-evidence.mjs`** passes content-count only at 0 🔴 and 0 nothing-lost, both from the
+  last round (`parseFindings`).
+- **Docs:** `source-fidelity-gate.md` § Pass bar item 1 is the one home of the tiers, accepted list and verdict record;
+  `replica/SKILL.md`, `diff/SKILL.md` and `handoff-contract.md` row 4 point to it.
+- Tests: `content-diff`, `chrome-parity`, `gate` and `gate-evidence` `.test.mjs` cover each change, incl. a
+  no-`<main>` page against a `<main>` build.
 
 ## 0.34.14 — diff-report names the block a pixel difference belongs to (#147)
 
