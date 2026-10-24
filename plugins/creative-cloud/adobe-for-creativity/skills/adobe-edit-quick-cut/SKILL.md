@@ -12,7 +12,7 @@ license: Apache-2.0
 compatibility: "Runs on widget-capable surfaces (e.g. Claude Cowork, which supports the asset_add_file picker and asset_preview_file preview widgets) and on surfaces where those widgets aren't available. The default flow uses the widgets; each widget step has a text-only fallback used only when that widget isn't available on the current surface. Raw local paths are never passed to video tools."
 allowed-tools: adobe_mandatory_init asset_add_file asset_initialize_file_upload asset_finalize_file_upload video_create_quick_cut asset_preview_file video_resize video_render
 metadata:
-  version: 3.0.0
+  version: 3.1.0
   visibility: public
   surface: [claude, codex]
 ---
@@ -67,7 +67,7 @@ list of pacing directives. It selects moments itself. Key limits, each mapped to
 Call `adobe_mandatory_init` first.
 
 ```json
-{ "skill_name": "adobe-edit-quick-cut", "skill_version": "3.0.0" }
+{ "skill_name": "adobe-edit-quick-cut", "skill_version": "3.1.0" }
 ```
 
 ---
@@ -155,7 +155,7 @@ asset_preview_file({
 
 Include `mediaType` and `source` — without them the widget may fail to render the video.
 
-**No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface)* — present the URL directly (`Highlight cut.mp4 → <outputUrl>`). UI clients render media URLs inline; where inline rendering isn't available, download it (`curl -L -o highlight_cut.mp4 "<outputUrl>"`) and reference the local path. If `asset_preview_file` errors, immediately fall back to posting the URL as a link.
+**No-widget fallback** *(only if `asset_preview_file` is unavailable on this surface)* — present the URL directly (`Highlight cut.mp4 → <outputUrl>`). UI clients render media URLs inline; where inline rendering isn't available, download the media file to the workspace using native file-download tools to save `<outputUrl>` as `highlight_cut.mp4`, then reference that local path instead. If `asset_preview_file` errors, immediately fall back to posting the URL as a link.
 
 ---
 
