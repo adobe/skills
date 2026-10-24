@@ -7,30 +7,21 @@ git history only (plus the branch-scoped notes in
 ## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
 
 Field learning (a recorded replica gate on a home page): all 8 STRETCHED IMAGE flags at 1440 were stretched the same
-way on the source (a `fill` hero background at 0 % pixel difference, `cover` footer thumbnails); the one real
-difference — article thumbnails the source crops with `object-fit: cover` and the build distorts — was not separated
-from them, and a report misread the hero as a defect. Reading the printed metrics by hand, 33 matched headings were
-identical and the family differed only in case (`Manrope` / `manrope`).
+way on the source, burying the one real difference (thumbnails the source crops and the build distorts); heading faces
+could only be compared by hand.
 
-- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill` (cover / contain / scale-down
-  / none never distort; each image records its `fit`). A build stretch is flagged only when its source twin —
-  same rendered box ±2 px, same natural ratio ±4 % (DA re-hosting renames every file, so never by name) — is not
-  stretched the same way; when the source crops it, the flag says `(source: object-fit cover at the same box)`.
-  A matched heading at another size (> 1 px) or in another family (case-insensitive) is a new `HEADING FACE` flag.
-  playwright loads lazily and `main` runs only as the entry point; `sourceTwin`, `headingFaceDiffers` and
-  `redFlags` are exported.
-- The STRETCHED hint in both `diff-profiles.mjs` copies drops the "unless justified" clause the instrument now
-  decides. `diff/SKILL.md` probe table names the two-sided rule.
-- Review follow-up: families compare normalised (`normFamily` — first in the stack, unquoted, lowercased, without
-  `Variable` / `VF` / `Var` / weight suffixes, so `Manrope Variable` and `manrope` are one face); one family pair on
-  every differing heading is ONE `HEADING FACE ×N` line (one substitution to justify; size differences still listed);
-  headings with the same text pair in document order (`pairHeadings`), not all with the last. A stretched image whose
-  source twin is an undistorted `fill` (inside the ±4 % pairing tolerance) no longer reads as "the source's object-fit
-  fill". New informational `IMAGE FIT (info)` when the source distorts an image the build crops. `HEADING_FACE` and
-  `IMAGE_FIT` hints in both `diff-profiles.mjs` copies; `diff/SKILL.md` § Workflow use and the replica
-  source-fidelity gate's pass bar name `HEADING FACE`.
-- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the pure pairing and flags, family normalisation, duplicate headings, the ×N summary, `--help` without a browser, and
-  an end-to-end source-crops / build-distorts fixture.
+- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill`. A build stretch is flagged
+  only when its source twin — same rendered box ±2 px, same natural ratio ±4 %, never by file name — is not stretched
+  the same way, and the flag names the source's fit (`(source: object-fit cover at the same box)`). The reverse — the
+  source distorts an image the build crops — is an informational `IMAGE FIT (info)`.
+- **`HEADING FACE`** (new): a matched heading at another size (> 1 px) or family. Families compare normalised (first
+  in the stack, unquoted, lowercased, without `Variable` / `VF` / weight suffixes); one family pair across every
+  differing heading is one `HEADING FACE ×N` line. Same-text headings pair in document order.
+- `diff-profiles.mjs` (both copies): the STRETCHED hint drops "unless justified"; new `HEADING_FACE` and `IMAGE_FIT`
+  hints. `diff/SKILL.md` and the replica source-fidelity gate's pass bar name the two-sided rule and `HEADING FACE`.
+- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the exported pure helpers (`sourceTwin`, `normFamily`,
+  `pairHeadings`, `headingFaceDiffers`, `redFlags`), the ×N summary, `--help` without a browser, and an end-to-end
+  source-crops / build-distorts fixture.
 
 ## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)
 
