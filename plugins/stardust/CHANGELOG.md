@@ -7,43 +7,28 @@ git history only (plus the branch-scoped notes in
 ## 0.34.12 — stitch-shot captures fixed and sticky layers once: no seam repeats, no content hidden under them (#145)
 
 Field learning (a recorded replica gate on a home page): both captures repeated the sticky header in every viewport
-chunk (9 at 1440, 17 at 360). Symmetric, so it added no diff — but it covered whatever sat under each seam on both
-sides: an oversized partner logo (226 × 44 in the build, smaller on the source) sat under the header at 360, and its
-band scored 0.0 %. Any defect under a seam was invisible to the pixel gate. The same run stitched an undismissed
-consent bar into every live chunk with no warning.
+chunk, covering whatever sat under each seam on both sides — an oversized partner logo under it scored 0.0 %, so a
+defect under a seam was invisible to the pixel gate. The same run stitched an undismissed consent bar into every live
+chunk unwarned.
 
-- **`replica/scripts/stitch-shot.mjs`:** fixed and sticky layers (the outermost ones) are tagged at scroll 0; chunk 1
-  shows them, and from chunk 2 a fixed layer — and a sticky one while it is stuck, displaced below its place at
-  scroll 0 — is set to `opacity: 0` (layout never moves; the page's own inline opacity is restored). A sticky
-  element still in its own place mid-page stays in the capture. A visible fixed layer after the dismissal sweeps,
-  ≥ 5 % of the viewport, below the top bar and reading like consent / sign-up copy, is a stderr WARNING naming it
-  and the flags. `capture.json` records `fixedLayers: { capture: 'once', count }`. Pure `layerAction` /
-  `overlaySuspects` exported.
-- **`replica/scripts/gate.sh`:** a cached `live.png` whose `live.capture.json` has no `fixedLayers` (captured the old
-  way) is re-taken, said on stdout — never compared with a build captured the new way. With the frozen origin baseline
-  (0.34.5): `--freeze-baseline` records `fixedLayers` in `baseline.json`, and `baselineStatus` reads a baseline frozen
-  before this change as stale (`re-freeze with --force`), so `--gate-against-baseline` never compares the two capture
-  methods; the gate and stitch-shot test fixtures carry the field.
-- **Docs:** `recreation-procedure.md` § Fixed and sticky chrome — the three seam effects fold to what the instrument
-  now does; the scroll-state-morph JS exception stays, justified by the header contract; gate doc rule 11 and the
-  replica SKILL pointer shortened.
-- Tests: `stitch-shot.test.mjs` — `layerAction`, `overlaySuspects`, and an end-to-end fixture (a fixed header, a
-  marker under its chunk-2 place, a sticky label in place, an undismissable cookie bar); `gate.test.mjs` — the
-  stale live capture is re-taken (the stub writes the sidecar as the real capture does).
-
-- **Review fixes:** `stitch-shot.mjs` re-scans for fixed / sticky layers after every chunk's scroll (idempotent
-  tagging), so a header a scroll class makes fixed, or a widget injected later, is hidden from where it appears — a
-  stderr WARNING names it, and `fixedLayers.late` counts them. A backdrop — negative z-index, or ≥ 90 % of the
-  viewport (`position: fixed; inset: 0` background or video) — is never hidden (`isBackdrop`); chunks 2+ no longer
-  show the body background in its place. A sticky layer is "stuck" when displaced from its own in-flow place
-  (measured as `position: static`, so one stuck at the bottom counts too). The in-page pass is `layerAction` /
-  `isBackdrop` serialized into `page.evaluate` (`layerPassScript`), no re-implementation; the opacity restore keeps the
-  page's `!important`. `gate-all.mjs` applies gate.sh's rule (`staleCapture`: no `fixedLayers` in the capture
-  record) before reusing a cached `live.png` or a `--skip-existing` origin / eds capture, and retakes a stale one.
-  gate.sh comments on reusing a record-less `live.png` corrected; `recreation-procedure.md` says what is not covered
-  (backdrops kept, shadow-root / iframe / pseudo-element layers not seen). Tests: `isBackdrop`, the backdrop case of
-  `overlaySuspects`, `layerPassScript` on a stub DOM, an end-to-end scroll-triggered header + backdrop fixture;
-  `gate-all.test` — `staleCapture`.
+- **`replica/scripts/stitch-shot.mjs`:** fixed and sticky layers are captured once. Chunk 1 shows them; from chunk 2 a
+  fixed layer, and a sticky one while stuck (displaced from its own in-flow place, top or bottom), is set to
+  `opacity: 0` — layout never moves. A sticky element still in its place mid-page stays. Layers are re-scanned after
+  every scroll, so a header a scroll class makes fixed, or a widget injected later, is hidden from where it appears,
+  with a stderr WARNING. A backdrop (negative z-index, or ≥ 90 % of the viewport) is never hidden. A fixed layer still
+  visible after the dismissal sweeps, ≥ 5 % of the viewport, below the top bar and reading like consent / sign-up
+  copy, is a stderr WARNING naming it and `--consent` / `--dismiss`. `capture.json` records
+  `fixedLayers: { capture: 'once', count, late }`. Shadow-root, iframe and pseudo-element layers are not seen.
+- **`replica/scripts/gate.sh`, `replica/scripts/gate-all.mjs`:** a cached `live.png` (or a gate-all `--skip-existing`
+  origin / eds capture) whose capture record has no `fixedLayers` is re-taken with one line, never compared with a
+  build captured the new way (`staleCapture`). `--freeze-baseline` (0.34.5) records `fixedLayers` in `baseline.json`;
+  a baseline frozen before this change reads as stale (`re-freeze with --force`), so `--gate-against-baseline` never
+  compares the two capture methods.
+- **Docs:** `recreation-procedure.md` § Fixed and sticky chrome describes what the instrument does and does not cover;
+  gate doc rule 11 and the replica SKILL pointer shortened.
+- Tests: `stitch-shot.test.mjs` — `layerAction`, `isBackdrop`, `overlaySuspects`, `layerPassScript` on a stub DOM, and
+  end-to-end fixtures (fixed header, in-place sticky label, undismissable cookie bar, scroll-triggered header,
+  backdrop); `gate.test.mjs` — a stale live capture is re-taken; `gate-all.test.mjs` — `staleCapture`.
 
 ## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
 
