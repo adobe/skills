@@ -115,9 +115,23 @@ export const CONSENT_ACCEPT = [
   '[id*="accept-all" i]', '[id*="acceptAll" i]', 'button[aria-label*="accept" i]', 'button[title*="accept all" i]',
 ].join(', ');
 
+// the shared consent pass (diff/scripts/live-session.mjs acceptConsent) when the diff skill's
+// scripts sit beside these — plugin tree or project copy; CONSENT_ACCEPT stays the fallback
+let sharedConsent;
+async function sharedAcceptConsent() {
+  if (sharedConsent === undefined) {
+    const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs'].map((p) => join(HERE, p)).find((p) => existsSync(p));
+    sharedConsent = found ? (await import(pathToFileURL(found).href).catch(() => ({}))).acceptConsent || null : null;
+  }
+  return sharedConsent;
+}
+
 /** accept consent (so tags fire), settle, scroll (lazy bands/tags), settle again */
 export async function settlePage(page, { settleMs = 5000, scrollStep = 800, maxScroll = 8000 } = {}) {
-  try { await page.click(CONSENT_ACCEPT, { timeout: 3000 }); } catch { /* no dialog */ }
+  const accept = await sharedAcceptConsent();
+  if (!(accept && await accept(page).catch(() => null))) {
+    try { await page.click(CONSENT_ACCEPT, { timeout: 3000 }); } catch { /* no dialog */ }
+  }
   await page.waitForTimeout(settleMs);
   for (let y = 0; y < maxScroll; y += scrollStep) { await page.mouse.wheel(0, scrollStep); await page.waitForTimeout(80); }
   await page.waitForTimeout(1500);
