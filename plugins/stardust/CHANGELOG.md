@@ -32,85 +32,61 @@ chunk unwarned.
 
 ## 0.34.11 — content-diff pairs icons by their pixels: a re-hosted logo or an svg drawn as an image is the same icon (#144)
 
-Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos and favicons the build re-hosted
-under `media_<hash>` — mean pixel difference 0–1.2 / 255, same size — because DA renames every file and identity was
-the file name; 3 🔴 MISSING ICON were laid-out 0×0 inline svgs on the source (nothing to see); 2 more were inline-svg
-logos the build draws as `<img src="*.svg">`.
+Field learning (a recorded replica gate on a home page): 6 🔴 ICON DIFF were logos the build re-hosted under
+`media_<hash>` with ≤ 1.2 / 255 mean pixel difference, because identity was the file name; 5 🔴 MISSING ICON were 0×0
+inline svgs or inline-svg logos the build draws as `<img src="*.svg">`.
 
-- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot (opaque: the page
-  background behind the element is captured with it) averaged to a 12 × 12 RGB grid — colour kept, so the same shape
-  recoloured (red #CE2B37 vs green #009246, the same grey) is another image. `sameImage` = mean |Δ| ≤ 12 / 255 over the
-  drawn cells (those off the grid's border-median background on either side, so a thin-line icon in a mostly-empty box
-  is not averaged away) with boxes within 2 px; a near-uniform grid (an empty box, an unrendered glyph) is never an
-  identity. `signElements` screenshots visible elements only.
-- **`content-diff.mjs`:** `attributeInventory` tags each icon with a ref (`data-sd-icon`) that the probe signs after
-  every inventory; laid-out 0×0 svg / glyph / css icons are skipped (a `display:none` subtree is kept, compared by
-  name as before). Pairing treats the same pixels as the same icon in the anchor and ICON MOVED passes (an empty icon
-  box pairs by pixels only — two blank boxes never pair, so an empty unanchored box stays MISSING ICON); a pair that
-  differs only by file or technique but not by pixels is accepted — `SAME IMAGE` / `SAME ICON` on the root's
-  `accepted` line with the ROLE UPGRADEs (`acceptedLine`, one group per kind) — never a finding. A different logo
-  stays 🔴 ICON DIFF.
-- Docs: `diff/SKILL.md` § Reading content-diff — one line for pixel identity; ICON MOVED / ICON KIND trimmed.
-- Docs: `deploy/SKILL.md` copy set for the Step-10 `content-diff` names every local import (`content-inventory.mjs`,
-  `diff-profiles.mjs`, `image-signature.mjs`, `live-session.mjs`).
-- Tests: new `test/image-signature.test.mjs` (distance, blank, sameImage, red vs green same shape, two thin-line
-  icons); `content-diff.test.mjs` pure — an empty box missing on the build is MISSING ICON, the same signature under
-  another file name is SAME IMAGE — and end to end — re-hosted file, svg vs `<img>`, a genuinely different logo, a 0×0
-  svg; the flag fixture now carries two different flags.
+- **`diff/scripts/image-signature.mjs` (new library):** an icon's signature is its element screenshot averaged to a
+  12×12 RGB grid, so a recoloured shape is another image. `sameImage` = mean |Δ| ≤ 12 / 255 over the drawn cells with
+  boxes within 2 px; a near-uniform grid (an empty box, an unrendered glyph) is never an identity.
+- **`content-diff.mjs`:** visible icons are signed; laid-out 0×0 icons are skipped (`display:none` ones still compare
+  by name). Same pixels are the same icon when pairing anchors and ICON MOVED (two blank boxes never pair). A pair
+  differing only by file or technique is accepted — `SAME IMAGE` / `SAME ICON` on the root's `accepted` line — never a
+  finding; a different logo stays 🔴 ICON DIFF.
+- Docs: `diff/SKILL.md` § Reading content-diff names pixel identity; the `deploy/SKILL.md` Step-10 copy set names
+  every local import.
+- Tests: new `test/image-signature.test.mjs` (blank, a recoloured shape, thin-line icons); `content-diff.test.mjs` —
+  an empty box missing on the build stays MISSING ICON; end to end, a re-hosted file is SAME IMAGE, svg vs `<img>`
+  pairs, a different logo stays 🔴, a 0×0 svg is skipped.
 
 ## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
 
-Field learning (a recorded replica gate on a home page): 23 of its structural 🔴 were ROLE SWAP for footer and
-mega-menu group titles that are `<div>`s on the source and headings in the build, with identical computed size,
-weight and colour (the regions' pixel diff 0–3.7 %, from an unrelated offset). The policy told the recreation to
-mirror the live wrapping, which forbade improving the semantics. The page's genuinely lost content — a chart's
-visually hidden "search volume grew from … to …" text — was a buried 🟡 MISSING BODY.
+Field learning (a recorded replica gate on a home page): 23 structural 🔴 were ROLE SWAP for footer and mega-menu
+group titles — source `<div>`s, same-look build headings — while the one real loss, a chart's visually hidden
+summary, was a buried 🟡 MISSING BODY.
 
 - **`content-inventory.mjs` (diff + deploy copies):** each item carries its computed `look` (size, weight, colour,
-  text-transform) and `srOnly` (the sr-only clip, or — rendered and absolutely positioned — a ≤1 px clipped box or
-  its own left/top at -9999px, on the element or one of its 3 nearest ancestors; a display:none tooltip or a slide
-  translated off-screen is not sr-only). A role change with the same look and face is not visible: body or eyebrow
-  → heading is an accepted `ROLE UPGRADE` (returned as `accepted`, never a finding), heading → body or eyebrow a
-  🟡 `ROLE DOWNGRADE`; any other role change (a CTA's included) stays 🔴 `ROLE SWAP`. Lost screen-reader-only text
-  is 🟡 `MISSING SR-ONLY TEXT` whatever its role, except a CTA: a lost skip link stays 🔴 `MISSING CTA`. `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
-- **`content-diff.mjs`** names the accepted upgrades on the root's report block
-  (`accepted (invisible, nothing lost): N ROLE UPGRADE …`) and in `--json` (`accepted`); they do not count as
-  findings. Header and usage text name ROLE DOWNGRADE and MISSING SR-ONLY TEXT.
-- **Docs:** `replica/reference/recreation-procedure.md` § Role parity — "mirror the live element wrapping" becomes
-  "mirror the look; semantics may improve", and the iteration-1 anecdote folds; `diff/SKILL.md` § Reading
-  content-diff names the three outcomes and the sr-only class; `replica/SKILL.md` pointer updated.
-- Tests: `content-diff.test.mjs` — the pure outcomes (body and eyebrow upgrade / downgrade, swap by size / face /
-  CTA, sr-only, a lost sr-only CTA stays 🔴) and an end-to-end same-look `<div>` → `<h3>` plus dropped sr-only text
-  (own clip and inside an sr-only wrapper) against a display:none tooltip and an off-track slide caption (plain
-  MISSING BODY), 0 structural 🔴, `accepted` in `--json`.
+  text-transform) and `srOnly` (sr-only clip, ≤1 px clipped box or -9999px offset on the element or its 3 nearest
+  ancestors; display:none and off-screen slides excluded). With the same look and face, body/eyebrow → heading is an
+  accepted `ROLE UPGRADE`, heading → body/eyebrow a 🟡 `ROLE DOWNGRADE`; any other role change, a CTA's included, stays
+  🔴 `ROLE SWAP`. Lost sr-only text is 🟡 `MISSING SR-ONLY TEXT`, except a link (a lost skip link stays 🔴
+  `MISSING CTA`). `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
+- **`content-diff.mjs`** lists accepted upgrades on each root's block and in `--json` `accepted`, not as findings;
+  header and usage name the new kinds.
+- **Docs:** `diff/SKILL.md` § Reading content-diff grades the outcomes; `replica/reference/recreation-procedure.md`
+  § Role parity now says "mirror the look; semantics may improve" and points there, as do `deploy/SKILL.md`
+  and `replica/SKILL.md`.
+- **Tests:** `content-diff.test.mjs` — each outcome, plus an end-to-end page: same-look `<div>` → `<h3>`, dropped
+  sr-only text, and display:none / off-track-slide text (plain MISSING BODY).
 
 ## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
 
 Field learning (a recorded replica gate on a home page): all 8 STRETCHED IMAGE flags at 1440 were stretched the same
-way on the source (a `fill` hero background at 0 % pixel difference, `cover` footer thumbnails); the one real
-difference — article thumbnails the source crops with `object-fit: cover` and the build distorts — was not separated
-from them, and a report misread the hero as a defect. Reading the printed metrics by hand, 33 matched headings were
-identical and the family differed only in case (`Manrope` / `manrope`).
+way on the source, burying the one real difference (thumbnails the source crops and the build distorts); heading faces
+could only be compared by hand.
 
-- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill` (cover / contain / scale-down
-  / none never distort; each image records its `fit`). A build stretch is flagged only when its source twin —
-  same rendered box ±2 px, same natural ratio ±4 % (DA re-hosting renames every file, so never by name) — is not
-  stretched the same way; when the source crops it, the flag says `(source: object-fit cover at the same box)`.
-  A matched heading at another size (> 1 px) or in another family (case-insensitive) is a new `HEADING FACE` flag.
-  playwright loads lazily and `main` runs only as the entry point; `sourceTwin`, `headingFaceDiffers` and
-  `redFlags` are exported.
-- The STRETCHED hint in both `diff-profiles.mjs` copies drops the "unless justified" clause the instrument now
-  decides. `diff/SKILL.md` probe table names the two-sided rule.
-- Review follow-up: families compare normalised (`normFamily` — first in the stack, unquoted, lowercased, without
-  `Variable` / `VF` / `Var` / weight suffixes, so `Manrope Variable` and `manrope` are one face); one family pair on
-  every differing heading is ONE `HEADING FACE ×N` line (one substitution to justify; size differences still listed);
-  headings with the same text pair in document order (`pairHeadings`), not all with the last. A stretched image whose
-  source twin is an undistorted `fill` (inside the ±4 % pairing tolerance) no longer reads as "the source's object-fit
-  fill". New informational `IMAGE FIT (info)` when the source distorts an image the build crops. `HEADING_FACE` and
-  `IMAGE_FIT` hints in both `diff-profiles.mjs` copies; `diff/SKILL.md` § Workflow use and the replica
-  source-fidelity gate's pass bar name `HEADING FACE`.
-- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the pure pairing and flags, family normalisation, duplicate headings, the ×N summary, `--help` without a browser, and
-  an end-to-end source-crops / build-distorts fixture.
+- **`diff/scripts/visual-diff.mjs`:** an image is stretched only under `object-fit: fill`. A build stretch is flagged
+  only when its source twin — same rendered box ±2 px, same natural ratio ±4 %, never by file name — is not stretched
+  the same way, and the flag names the source's fit (`(source: object-fit cover at the same box)`). The reverse — the
+  source distorts an image the build crops — is an informational `IMAGE FIT (info)`.
+- **`HEADING FACE`** (new): a matched heading at another size (> 1 px) or family. Families compare normalised (first
+  in the stack, unquoted, lowercased, without `Variable` / `VF` / weight suffixes); one family pair across every
+  differing heading is one `HEADING FACE ×N` line. Same-text headings pair in document order.
+- `diff-profiles.mjs` (both copies): the STRETCHED hint drops "unless justified"; new `HEADING_FACE` and `IMAGE_FIT`
+  hints. `diff/SKILL.md` and the replica source-fidelity gate's pass bar name the two-sided rule and `HEADING FACE`.
+- Test (new): `diff/scripts/test/visual-diff.test.mjs` — the exported pure helpers (`sourceTwin`, `normFamily`,
+  `pairHeadings`, `headingFaceDiffers`, `redFlags`), the ×N summary, `--help` without a browser, and an end-to-end
+  source-crops / build-distorts fixture.
 
 ## 0.34.8 — the roster is reported against the site: a capped run never reads as the full site (#141)
 
@@ -130,31 +106,22 @@ assumption in `direction.md`; the rollout ledger counted 94 as the total, and th
 
 ## 0.34.7 — content-diff inventories page copy only: icon links, payloads and consent banners stop reading as missing content (#140)
 
-Field learning (a recorded replica gate on a home page whose source has no `<main>`): of 53 structural 🔴, 12 were
-MISSING CTA for menu links present on both sides with the same href and text — the build drew their icons as `<img>`,
-the source as inline `<svg>`, and the inventory dropped every link containing an image — and 9 🟡 MISSING BODY were
-inline payloads (`__NEXT_DATA__`, a tag manager's `<noscript>` frame, consent-manager helpers).
+Field learning (a recorded replica gate on a home page with no `<main>`): 12 of 53 structural 🔴 were MISSING CTA for
+menu links whose icon was `<img>` in the build and `<svg>` on the source; 9 🟡 MISSING BODY were inline payloads.
 
-- **A link with an icon and text is a text CTA, whatever draws the icon** (`content-inventory.mjs`, both the diff and
-  the deploy copy): only a text-less link (a logo or image link) is skipped, and the label leaves out inline-svg
-  `<title>` / `<text>`, so an svg-icon link and an img-icon link read the same. content-diff's icon anchors use the
-  same label, so that pair is one 🟡 ICON KIND instead of MISSING ICON + EXTRA ICON.
-- **Not page copy:** `script`, `noscript`, `style` and `template` subtrees, and the banners of the common consent
-  managers (the ones `CONSENT_CANDIDATES` accepts), are left out of the role inventory and the Experience Workspace
-  editable count. A skipped banner is named once on the root's summary line (`consent banner skipped (N text nodes)`).
-- **A card link is not one CTA** (review): an `<a>` wrapping 2+ text blocks, or a heading beside an image
-  (`<a><img><h3>T</h3><p>D</p></a>`), has its blocks inventoried as heading / body and is a CTA only for its own text
-  outside them, so it pairs with the usual EDS card (h3, p, a separate "Read more") instead of a 🔴 MISSING CTA
-  "t d". An image/svg link's sr-only text is not a label either: a logo with a hidden "Home" reads like an alt-only logo.
-- **The attribute + icon layer skips the consent banners too** (review): a banner's `<button aria-label="Close"><svg>`
-  no longer reads as 🔴 MISSING ICON / ARIA-LABEL; its anchor text leaves out payload text, as the inventory label does.
-- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — the inline-script and cookie-panel guardrails fold to
-  one paragraph, which keeps "verify the banner is actually gone after dismissal": `--consent` adds an accept click, it
-  does not extend the skip list, and the inventory has no visibility filter.
-- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg-icon vs img-icon link, inline payloads and a
-  consent banner (with an icon close button) on one side: no MISSING CTA / BODY / ICON, 0 structural 🔴, the banner
-  named in the summary; a card link vs an EDS card and an sr-only logo vs an alt-only logo: no 🔴. Every in-page consent list
-  (both inventory copies, `attributeInventory`) is pinned to one value and to `CONSENT_CANDIDATES` (vendor → banner).
+- **`content-inventory.mjs` (diff + deploy copies):** a link with an icon and text is a text CTA, whatever draws the
+  icon; only a text-less link is skipped. The label leaves out inline-svg `<title>` / `<text>`, and an image link's
+  sr-only text is not a label. A card link — an `<a>` wrapping 2+ text blocks, or a heading beside an image — has its
+  blocks inventoried as heading / body and is a CTA only for its own remaining text, so it pairs with an EDS card.
+- **Not page copy:** `script`, `noscript`, `style`, `template` and the common consent managers' banners (those
+  `CONSENT_CANDIDATES` accepts) are left out of the role inventory, the Experience Workspace editable count and the
+  attribute + icon layer; the root's summary line names a skipped banner (`consent banner skipped (N text nodes)`).
+- **`content-diff.mjs`:** icon anchors use the same label, so an svg-icon vs img-icon link is one 🟡 ICON KIND.
+- Docs: `replica/reference/source-fidelity-gate.md` rule 3 — `--consent` only adds an accept click; verify the banner
+  is actually gone after dismissal.
+- Test: `diff/scripts/test/content-diff.test.mjs` end to end — svg- vs img-icon link, inline payloads, a consent
+  banner with an icon close button, a card link vs an EDS card, an sr-only vs alt-only logo: no 🔴, the banner named in
+  the summary. Every in-page consent list is pinned to `CONSENT_CANDIDATES`.
 
 ## 0.34.6 — the common consent managers are dismissed with no flag (#139)
 
