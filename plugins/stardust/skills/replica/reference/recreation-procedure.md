@@ -435,11 +435,9 @@ and the fidelity gate measures the rendered DOM the same way.
 content-diff classifies every string by **DOM wrapping + computed style**,
 never by text alone: a string inside an `<a>` is a CTA, an uppercase
 small-type node an eyebrow, an `<h*>` a heading. Severity follows
-visibility: a `<div>` title (body or small-caps eyebrow) rebuilt as a
-heading with the same computed look is an accepted ROLE UPGRADE, a heading
-flattened to same-looking body or eyebrow is 🟡 ROLE DOWNGRADE, and any
-other role change (a link included) is 🔴 ROLE SWAP. So mirror the live **look** and every link per string;
-improve the semantics where the look holds. When iteration 1 opens with a
+visibility (`../../diff/SKILL.md` § Reading content-diff), so mirror the
+live **look** and every link per string; improve the semantics where the
+look holds. When iteration 1 opens with a
 wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
 page has a span, or the reverse), fix those first and re-run before
 touching geometry — they are cheap, and clearing them un-buries the real
