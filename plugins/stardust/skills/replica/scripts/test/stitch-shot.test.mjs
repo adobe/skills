@@ -467,6 +467,10 @@ if (pwProbe.status !== 0) {
     // a header a scroll class makes fixed (in the flow at scroll 0), the red marker under its chunk-2 place, and a
     // `position:fixed; inset:0; z-index:-1` green backdrop that must stay in every chunk
     '/late': html('Late', '<style>body{height:2400px;position:relative}h1,p{margin:0}#bg{position:fixed;inset:0;z-index:-1;background:#0f0}#hd{height:60px;background:#000}#hd.stuck{position:fixed;top:0;left:0;right:0}#mk{position:absolute;top:605px;left:0;width:800px;height:30px;background:#f00}</style><div id="bg"></div><div id="hd"></div><div id="mk"></div><script>addEventListener(\'scroll\', () => { document.getElementById(\'hd\').classList.toggle(\'stuck\', scrollY > 100); });</script>'),
+    // the vendor class repeated in a hidden preference panel ahead of the banner: the visible copy is the one clicked
+    '/cmp-hidden-first': html('Consent', '<style>body{height:2400px}h1,p{margin:0}.cky-consent-bar{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><div class="cky-preference-center" style="display:none"><button class="cky-btn-accept">Accept all</button></div><h1>Welcome</h1><p>Ordinary copy.</p><div class="cky-consent-bar"><button class="cky-btn-accept" onclick="this.parentNode.remove()">Accept all</button></div>'),
+    // an unlisted manager: "Disallow all" and "Accept only necessary" come first in the DOM; only "Allow all" is the accept
+    '/cmp-unlisted': html('Consent', '<style>body{height:2400px}h1,p{margin:0}#bar{position:fixed;inset:auto 0 0 0;height:120px;background:#fff}</style><h1>Welcome</h1><p>Ordinary copy.</p><div id="bar"><button onclick="this.parentNode.remove()">Disallow all</button><button onclick="this.parentNode.remove()">Accept only necessary</button><button onclick="this.parentNode.remove()">Allow all</button></div>'),
     '/article': html('Voice notes', `<h1>Voice notes</h1>${'<p>Press &amp; hold the button to record a voice note, then release it to send. The note is kept for thirty days and can be replayed from the thread.</p>'.repeat(30)}<section></section><section></section>`),
   };
   const server = createServer((req, res) => {
@@ -488,7 +492,7 @@ if (pwProbe.status !== 0) {
   });
   try {
     const pngSize = (f) => { const b = readFileSync(f); return { width: b.readUInt32BE(16), height: b.readUInt32BE(20) }; };
-    const [ok, article, consent, noDismiss, allowAll, fixed, late, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
+    const [ok, article, consent, noDismiss, allowAll, fixed, late, hiddenFirst, unlisted, ...denied] = await Promise.all([stitch('/ok', 'ok'), stitch('/article', 'article'), stitch('/consent', 'consent', ['--consent', '#yes']), stitch('/consent', 'nodismiss', ['--no-dismiss']), stitch('/cmp-allow-all', 'allow-all'), stitch('/fixed', 'fixed'), stitch('/late', 'late'), stitch('/cmp-hidden-first', 'hidden-first'), stitch('/cmp-unlisted', 'unlisted'), stitch('/denied', 'denied'), stitch('/denied-late', 'denied-late'), stitch('/denied-heading', 'denied-heading')]);
     await check('e2e: an ordinary page → exit 0, the PNG and capture.json beside it — { writtenBy, url, width, vh, height, chunks, denialCheck: \'ok\', at }', () => {
       assert.equal(ok.status, 0, ok.stderr);
       assert.ok(existsSync(ok.out), 'the PNG');
@@ -530,6 +534,14 @@ if (pwProbe.status !== 0) {
       assert.deepEqual(at(400, 10), [0, 0, 0], 'the header in the flow at the top of chunk 1');
       assert.deepEqual(at(400, 615), [255, 0, 0], 'the marker under the header\'s chunk-2 place');
       for (const y of [300, 1000, 1600, 2300]) assert.deepEqual(at(400, y), [0, 255, 0], `the backdrop at y ${y}`);
+    });
+    await check('e2e: a vendor class repeated in a hidden panel first — the visible copy is clicked, the vendor entry credited', () => {
+      assert.equal(hiddenFirst.status, 0, hiddenFirst.stderr + hiddenFirst.stdout);
+      assert.match(hiddenFirst.stdout, /consent dismissed via \.cky-btn-accept/);
+    });
+    await check('e2e: an unlisted manager — "Allow all" is clicked, never "Disallow all" or "Accept only necessary" ahead of it', () => {
+      assert.equal(unlisted.status, 0, unlisted.stderr + unlisted.stdout);
+      assert.match(unlisted.stdout, /consent dismissed via button:text-matches\("\^\[\^a-z\]\*allow all/);
     });
     await check('e2e: --consent <sel> closes the fixture consent box; the capture is width × document height from vh-sized chunks', () => {
       assert.equal(consent.status, 0, consent.stderr + consent.stdout);

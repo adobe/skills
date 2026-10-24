@@ -132,12 +132,19 @@ attribution pointed at the bar, and content-diff reported the banner's heading, 
 
 - **`diff/scripts/live-session.mjs` `CONSENT_CANDIDATES`** gains the accept-all controls of CookieHub, Cookiebot
   (dialog v2 and v1), Didomi, Usercentrics, Osano, Termly, TrustArc, Quantcast Choice, iubenda, Complianz and
-  CookieYes, by vendor id or class, ahead of the text fallbacks, plus a `button:has-text("Allow all")` fallback.
-  Every instrument on `dismissOverlays` (stitch-shot, the diff probes, chrome-parity) inherits them; `--consent`
-  stays the override for a manager the list misses.
+  CookieYes, by vendor id or class, ahead of the text fallbacks, plus an "Allow all" fallback that must start the
+  button text (a `:has-text` substring also hits "Disallow all") and sits before the bare "Accept" substring (which
+  also hits "Accept only necessary"). `--consent` stays the override for a manager the list misses.
+- **`acceptConsent`** (new, `live-session.mjs`) is the one consent pass: each candidate resolves to its first
+  *visible* match (CMPs repeat the accept class in a hidden preference panel), a click is credited only once that
+  control is hidden, else the next candidate is tried, and one union probe makes a page with no consent control a
+  single round trip. `dismissOverlays` (stitch-shot, the diff probes, chrome-parity) runs it, and so do
+  `extract/scripts/crawl.mjs` and `dynamics/scripts/lib.mjs` `settlePage` when `live-session.mjs` resolves beside
+  them, their own lists kept as the fallback.
 - Tests: `test/live-session.test.mjs` pins the vendor entries and the order (vendor selectors before the text
-  fallbacks); `replica/scripts/test/stitch-shot.test.mjs` captures a fixture "Allow all" bar with no flag and reads
-  `consent dismissed via .ch2-allow-all-btn`.
+  fallbacks, "Allow all" before "Accept"); `replica/scripts/test/stitch-shot.test.mjs` captures fixture bars with no
+  flag: an "Allow all" bar (`consent dismissed via .ch2-allow-all-btn`), a vendor class repeated in a hidden panel
+  first, and an unlisted manager whose "Disallow all" and "Accept only necessary" precede "Allow all".
 
 ## 0.34.5 — replica: the source-fidelity gate can measure against a frozen origin baseline (opt-in, default off) (#138)
 
