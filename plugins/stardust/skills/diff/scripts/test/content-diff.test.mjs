@@ -219,7 +219,7 @@ const CONSENT_CONTAINER_OF = {
   '.cky-btn-accept': '.cky-consent-container',
 };
 await check('CONSENT_UI: one list in inventory, editableInventory (diff + deploy copies) and attributeInventory, covering exactly the vendors CONSENT_CANDIDATES dismisses', () => {
-  const vendors = CONSENT_CANDIDATES.filter((sel) => !sel.startsWith('button:has-text(') && !sel.startsWith('[data-testid*='));
+  const vendors = CONSENT_CANDIDATES.filter((sel) => !/^button:(has-text|text-matches)\(/.test(sel) && !sel.startsWith('[data-testid*='));
   assert.deepEqual(vendors.filter((sel) => !(sel in CONSENT_CONTAINER_OF)), [], 'every vendor candidate maps to a banner container');
   assert.deepEqual(Object.keys(CONSENT_CONTAINER_OF).filter((sel) => !CONSENT_CANDIDATES.includes(sel)), [], 'no mapping for a dropped candidate');
   const literal = /CONSENT_UI = '([^']+)'/.exec(inventory.toString());
