@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<workspaceFilter version="1.0">
+    <filter root="/apps/wknd">
+        <exclude pattern="/apps/wknd/install" />
+        <include pattern="/apps/wknd/components/structure" />
+        <include pattern="/apps/wknd/components/content" />
+    </filter>
+    <filter root="/apps/sling" />
+    <filter root="/etc/designs/wknd"/>
+    <filter root="/libs/cq/core/content/nav/wknd"/>
+</workspaceFilter>

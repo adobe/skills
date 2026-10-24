@@ -57,6 +57,7 @@ Granite Workflow Engine lifecycle: design, develop, deploy, debug.
 |-------|-------------|--------|
 | [code-assessment](skills/code-assessment/SKILL.md) | Detect and fix AEM CS code-quality issues locally — Sling Model patterns (`@Inject` to injector-specific), deprecated APIs, scheduler, replication, resource listeners, unbounded queries, outbound call timeouts, event migration, asset manager API, outdated Maven dependencies. Verifies with `mvn compile`. | `Scan this AEM project for code issues` |
 | [migration](skills/migration/SKILL.md) | Migrate legacy AEM (6.x, AMS, on-prem) to AEM CS using BPA CSV/cache or CAM/MCP discovery. Covers scheduler, ResourceChangeListener, replication, EventListener, OSGi EventHandler, DAM AssetManager, HTL lint, Classic UI dialog migration, Custom Design Widgets, static to editable template modernization, and OSGi config to Cloud Manager. One pattern per session; delegates refactors to `code-assessment`. | `Review my code for AEMaaCS migration` |
+| [repo-modernize](skills/repo-modernize/SKILL.md) *(beta)* | Restructure a legacy AEM (6.x, AMS, on-prem) Maven project into the AEM as a Cloud Service package layout (`ui.apps`, `ui.apps.structure`, `ui.config`, `ui.content`, `all`) on a git branch — the CAM Repository Modernizer outcome, produced locally. Plan, review with the user, apply, and verify nothing was lost; findings by priority, with hand-offs to `migration` and `code-assessment`. Requires Python 3.9+ with lxml. | `Restructure my project for AEM as a Cloud Service` |
 
 ### Content distribution
 
