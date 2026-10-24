@@ -102,7 +102,7 @@ import { mkdir, writeFile, readFile } from 'node:fs/promises';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Compare by real path: a symlinked checkout or temp dir must not turn the CLI into a silent no-op — and
 // a test that imports the pure helpers below (captureGaps, localeRootPath) must not start a crawl.
@@ -389,17 +389,34 @@ async function discover(args, page) {
   return withEntry(links);
 }
 
+// The shared consent pass (diff/scripts/live-session.mjs acceptConsent — the vendor list every
+// gate instrument uses) runs first when live-session.mjs is beside this script (plugin tree,
+// project copy or a flat copy); the passes below stay the fallback when it is absent or misses.
+let sharedConsent;
+async function sharedAcceptConsent() {
+  if (sharedConsent === undefined) {
+    const here = path.dirname(SELF);
+    const found = ['../../diff/scripts/live-session.mjs', '../diff/live-session.mjs', './live-session.mjs']
+      .map((p) => path.resolve(here, p)).find((p) => existsSync(p));
+    sharedConsent = found ? (await import(pathToFileURL(found).href).catch(() => ({}))).acceptConsent || null : null;
+  }
+  return sharedConsent;
+}
+
 async function dismissConsent(page) {
+  const accept = await sharedAcceptConsent();
+  const shared = accept && await accept(page).catch(() => null);
+  if (shared) console.error(`[crawl] consent dismissed via ${shared}`);
   const sels = ['#onetrust-accept-btn-handler', '.truste-button2', '[aria-label*="Accept" i]',
     'button[id*="accept" i]', 'button[class*="accept" i]'];
-  let matched = false;
-  for (const s of sels) {
+  let matched = Boolean(shared);
+  for (const s of matched ? [] : sels) {
     const el = await page.$(s);
     if (el) { await el.click().catch(() => {}); matched = true; await page.waitForTimeout(300); break; }
   }
   // Usercentrics renders inside shadow DOM (#usercentrics-root) — regular
   // selectors can't reach it (tools-retailer e2e finding).
-  const ucMatched = await page.evaluate(() => {
+  const ucMatched = !matched && await page.evaluate(() => {
     const root = document.querySelector('#usercentrics-root')?.shadowRoot;
     if (root) {
       const btn = root.querySelector('[data-testid="uc-deny-all-button"], [data-testid="uc-accept-all-button"]');
