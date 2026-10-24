@@ -6,29 +6,23 @@ git history only (plus the branch-scoped notes in
 
 ## 0.34.10 — content-diff severity follows visibility: a same-look heading is an improvement, not a swap (#143)
 
-Field learning (a recorded replica gate on a home page): 23 of its structural 🔴 were ROLE SWAP for footer and
-mega-menu group titles that are `<div>`s on the source and headings in the build, with identical computed size,
-weight and colour (the regions' pixel diff 0–3.7 %, from an unrelated offset). The policy told the recreation to
-mirror the live wrapping, which forbade improving the semantics. The page's genuinely lost content — a chart's
-visually hidden "search volume grew from … to …" text — was a buried 🟡 MISSING BODY.
+Field learning (a recorded replica gate on a home page): 23 structural 🔴 were ROLE SWAP for footer and mega-menu
+group titles — source `<div>`s, same-look build headings — while the one real loss, a chart's visually hidden
+summary, was a buried 🟡 MISSING BODY.
 
 - **`content-inventory.mjs` (diff + deploy copies):** each item carries its computed `look` (size, weight, colour,
-  text-transform) and `srOnly` (the sr-only clip, or — rendered and absolutely positioned — a ≤1 px clipped box or
-  its own left/top at -9999px, on the element or one of its 3 nearest ancestors; a display:none tooltip or a slide
-  translated off-screen is not sr-only). A role change with the same look and face is not visible: body or eyebrow
-  → heading is an accepted `ROLE UPGRADE` (returned as `accepted`, never a finding), heading → body or eyebrow a
-  🟡 `ROLE DOWNGRADE`; any other role change (a CTA's included) stays 🔴 `ROLE SWAP`. Lost screen-reader-only text
-  is 🟡 `MISSING SR-ONLY TEXT` whatever its role, except a CTA: a lost skip link stays 🔴 `MISSING CTA`. `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
-- **`content-diff.mjs`** names the accepted upgrades on the root's report block
-  (`accepted (invisible, nothing lost): N ROLE UPGRADE …`) and in `--json` (`accepted`); they do not count as
-  findings. Header and usage text name ROLE DOWNGRADE and MISSING SR-ONLY TEXT.
-- **Docs:** `replica/reference/recreation-procedure.md` § Role parity — "mirror the live element wrapping" becomes
-  "mirror the look; semantics may improve", and the iteration-1 anecdote folds; `diff/SKILL.md` § Reading
-  content-diff names the three outcomes and the sr-only class; `replica/SKILL.md` pointer updated.
-- Tests: `content-diff.test.mjs` — the pure outcomes (body and eyebrow upgrade / downgrade, swap by size / face /
-  CTA, sr-only, a lost sr-only CTA stays 🔴) and an end-to-end same-look `<div>` → `<h3>` plus dropped sr-only text
-  (own clip and inside an sr-only wrapper) against a display:none tooltip and an off-track slide caption (plain
-  MISSING BODY), 0 structural 🔴, `accepted` in `--json`.
+  text-transform) and `srOnly` (sr-only clip, ≤1 px clipped box or -9999px offset on the element or its 3 nearest
+  ancestors; display:none and off-screen slides excluded). With the same look and face, body/eyebrow → heading is an
+  accepted `ROLE UPGRADE`, heading → body/eyebrow a 🟡 `ROLE DOWNGRADE`; any other role change, a CTA's included, stays
+  🔴 `ROLE SWAP`. Lost sr-only text is 🟡 `MISSING SR-ONLY TEXT`, except a link (a lost skip link stays 🔴
+  `MISSING CTA`). `diff-profiles.mjs` (both copies) gains the `MISSING_SR_ONLY` hint.
+- **`content-diff.mjs`** lists accepted upgrades on each root's block and in `--json` `accepted`, not as findings;
+  header and usage name the new kinds.
+- **Docs:** `diff/SKILL.md` § Reading content-diff grades the outcomes; `replica/reference/recreation-procedure.md`
+  § Role parity now says "mirror the look; semantics may improve" and points there, as do `deploy/SKILL.md`
+  and `replica/SKILL.md`.
+- **Tests:** `content-diff.test.mjs` — each outcome, plus an end-to-end page: same-look `<div>` → `<h3>`, dropped
+  sr-only text, and display:none / off-track-slide text (plain MISSING BODY).
 
 ## 0.34.9 — visual-diff flags what differs from the source, not what the build does alone (#142)
 
