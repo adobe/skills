@@ -1,0 +1,11 @@
+{
+  "name": "adp-connector",
+  "displayName": "Adobe for Developers",
+  "version": "1.1.0",
+  "description": "Helps developers complete common Adobe developer workflows from Claude, including Documentation search, Developer Console project and API management, and Adobe I/O Events setup.",
+  "author": {
+    "name": "Adobe Developer Platform"
+  },
+  "license": "Apache-2.0",
+  "keywords": ["adobe", "adobe-developer-platform", "developer-console", "credentials", "io-events", "documentation", "mcp"]
+}
