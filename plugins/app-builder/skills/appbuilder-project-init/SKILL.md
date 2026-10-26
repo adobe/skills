@@ -5,7 +5,7 @@ metadata:
   category: project-initialization
 license: Apache-2.0
 compatibility: Requires aio CLI (Adobe I/O CLI) — install or refresh with `npm install -g @adobe/aio-cli` so the bundled plugins (`aio-cli-plugin-console`, `aio-cli-plugin-app`, etc.) are current. Node.js 18+ (Node 24 supported on Stage runtimes). Bash shell.
-allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write
+allowed-tools: Bash(aio:*) Bash(npm:*) Bash(node:*) Read Write Edit
 ---
 # App Builder Project Initialization
 
@@ -189,6 +189,7 @@ Pick the template that matches the user's intent. When unclear, default to `@ado
 | User wants | Template |
 | --- | --- |
 | SPA with actions + React UI | @adobe/generator-app-excshell |
+| Content Hub extension (asset details panel, card action, bulk action) | No generator — scaffold from sample app, see [`references/templates.md`](references/templates.md) |
 | AEM Content Fragment Console extension | @adobe/aem-cf-admin-ui-ext-tpl |
 | AEM React SPA (WKND-based) | @adobe/generator-app-aem-react |
 | Adobe API Mesh (GraphQL) | @adobe/generator-app-api-mesh |
@@ -351,5 +352,5 @@ After initialization, hand off to:
 ## References
 
 - [references/bootstrap.md](references/bootstrap.md) — Agentic Developer Console bootstrap (project, workspace, API subscriptions) via raw `aio console …` commands from the latest `@adobe/aio-cli`
-- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance
+- [references/templates.md](references/templates.md) — Template catalog with intent mapping and per-template post-init guidance (includes the Content Hub extension)
 - [references/debugging.md](references/debugging.md) — Troubleshooting guide for init failures, Node/npm issues, login problems, and first-run errors

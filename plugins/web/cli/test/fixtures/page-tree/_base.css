@@ -1,0 +1,39 @@
+/* Shared by the fixtures: a 1280 px wide page with plain, deterministic geometry. */
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 1280px;
+  font: 16px/1.4 sans-serif;
+}
+#utility {
+  height: 53px;
+  background: #222;
+  color: #fff;
+  padding: 0 20px;
+  line-height: 53px;
+}
+.content {
+  height: 3000px;
+  background: #f4f4f4;
+  padding: 20px;
+}
+.footer {
+  height: 600px;
+  background: #111;
+  color: #eee;
+  padding: 40px 20px;
+}
+.nav {
+  height: 80px;
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  padding: 0 20px;
+}
+.nav a {
+  color: inherit;
+}

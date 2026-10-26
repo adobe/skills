@@ -128,7 +128,7 @@ The Campaigns hierarchy uses the full 4-level depth (Campaigns > Channel Tactics
 
 `businessRules: list[0]`. For a template marketed as best-practice exemplar, the absence of any rules is a teaching gap.
 
-**Skill behavior:** when building a workspace, consider whether business rules would enforce useful invariants (e.g., "Campaign Status cannot move to Complete unless End Date is in the past"). Recommend 1 to 2 rules where they earn their keep. Do not skip them just because this template did.
+**Skill behavior:** when building a workspace, consider whether business rules would enforce useful editing or deleting restrictions (e.g., allow editing only while Campaign Status is Draft). Recommend 1 to 2 rules where they earn their keep. Do not skip them just because this template did. Business rules are unavailable on global record types, and Formula, Lookup, and Reference fields cannot be used in conditions.
 
 ### 7. 500-connected-records sizing ceiling on Channel Tactics
 

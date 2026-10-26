@@ -50,6 +50,16 @@
  * pause off-viewport: poke them with --click rather than waiting for
  * autoplay events.
  *
+ * TIMER-DRIVEN MEDIA IS FIRED BEHAVIOR. The gate captures (stitch-shot)
+ * pause every <video> at t=0 and clear all timers, so under the freeze
+ * autoplay never "fires" — a recorded run classified every autoplay loop
+ * as dead and shipped posters (26/26 parity rows green, nothing played).
+ * The `media` block is sampled BEFORE any scroll or poke, unfrozen: per
+ * <video> the autoplay/loop/muted attributes, paused state and currentTime
+ * twice 1.5 s apart (playing = advancing), plus the class mutations that
+ * fire while nothing is touched (a slide index moving unpoked = a timer
+ * carousel). motion-compare reads it as the `media` class.
+ *
  * Usage:
  *   node skills/replica/scripts/motion-observe.mjs <url> <out.json> [options]
  *     --width <px>        viewport width                    (default 1440)
@@ -64,6 +74,7 @@
  *     --timeout <ms>      goto timeout                      (default 60000)
  *
  * Output JSON: { url, width, headerTimeline, widgetSamples, hoverSamples,
+ * media: { videos[], idleClassMutations[], idleClassMutationCount },
  * events: { animations, transitions, classMutations } }.
  * Exit codes: 0 written, 1 error, 3 bot challenge (fail loud, never observed
  * as if it were the source).
@@ -130,6 +141,31 @@ function parseArgs(argv) {
   const [url, out] = pos;
   if (!url || !out) { console.error(`need <url> and <out.json>\n\n${HELP}`); process.exit(1); }
   return { url, out, opts };
+}
+
+// Unfrozen media sample: what the gate's freeze hides. Per <video> two reads
+// 1.5 s apart (advancing currentTime = playing) and the class mutations that
+// fire with no scroll or poke in between (timer-driven rotation).
+async function sampleMedia(page) {
+  const read = () => page.evaluate(() => [...document.querySelectorAll('video')].slice(0, 12).map((v) => {
+    const r = v.getBoundingClientRect();
+    return {
+      src: (v.currentSrc || v.src || v.querySelector('source')?.src || '').slice(0, 200),
+      autoplay: v.hasAttribute('autoplay'), loop: v.loop, muted: v.muted,
+      paused: v.paused, currentTime: v.currentTime, readyState: v.readyState,
+      inViewport: r.width > 0 && r.bottom > 0 && r.top < window.innerHeight,
+    };
+  }));
+  const before = await read();
+  const idleFrom = await page.evaluate(() => window.__motion.classMutations.length);
+  await page.waitForTimeout(1500);
+  const after = await read();
+  const idle = await page.evaluate((n) => window.__motion.classMutations.slice(n), idleFrom);
+  const videos = before.map((b, i) => {
+    const a = after[i] || b;
+    return { ...b, currentTimeAfter: a.currentTime, playing: !a.paused && a.currentTime > b.currentTime };
+  });
+  return { videos, idleClassMutations: idle.slice(0, 40).map((m) => ({ added: m.added, el: m.el })), idleClassMutationCount: idle.length };
 }
 
 async function main() {
@@ -205,6 +241,9 @@ async function main() {
       });
       mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'], attributeOldValue: true, subtree: true });
     });
+
+    // ---- media, unfrozen and unpoked (see header): what the gate freeze hides
+    const media = await sampleMedia(page);
 
     // ---- header state sampler: the chrome state machine is only visible as
     // computed state per scroll position + direction. headerCount catches the
@@ -341,8 +380,8 @@ async function main() {
 
     const events = await page.evaluate(() => window.__motion);
     mkdirSync(dirname(out), { recursive: true });
-    writeFileSync(out, JSON.stringify({ url, width: opts.width, headerTimeline, widgetSamples, hoverSamples, events }, null, 2));
-    console.error(`motion-observe ${out}: ${events.animations.length} animations, ${events.transitions.length} transitions, ${events.classMutations.length} class mutations, ${widgetSamples.length} widget pokes, ${hoverSamples.length} hover probes`);
+    writeFileSync(out, JSON.stringify({ url, width: opts.width, headerTimeline, widgetSamples, hoverSamples, media, events }, null, 2));
+    console.error(`motion-observe ${out}: ${media.videos.filter((v) => v.playing).length}/${media.videos.length} videos playing, ${media.idleClassMutationCount} unpoked class mutations, ${events.animations.length} animations, ${events.transitions.length} transitions, ${events.classMutations.length} class mutations, ${widgetSamples.length} widget pokes, ${hoverSamples.length} hover probes`);
   } finally {
     await browser.close();
   }

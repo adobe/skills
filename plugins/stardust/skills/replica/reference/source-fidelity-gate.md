@@ -6,11 +6,6 @@ craft gates entirely: an archetype ships because it measured true, never
 because it looked right. Every fix in the loop comes off the instruments;
 eyeballing is not an input.
 
-Validated (UC1-E1, a typographic retail home page): 8.31% → 2.93% → 1.31% pixel diff across
-exactly 3 iterations, 0 structural 🔴, height Δ 0 — and the two defects the
-capture phase missed (span font fork, hero scrim) were both found only by
-these instruments.
-
 ## The three probes
 
 | Probe | Script | Catches | Blind to |
@@ -24,7 +19,8 @@ false "looks fine".
 
 ## Per-breakpoint procedure
 
-Breakpoints: **1440 AND 360** by default (`--breakpoints`). **Mobile is not
+Breakpoints: **1440 AND 360** by default (`--breakpoints`; plus each target
+step when one is set — § Target breakpoints). **Mobile is not
 free**: UC1-E1's gate-passing 1440 prototype measured 24.2% / height Δ
 −1572px at 360. Each breakpoint is its own full gate pass with its own
 iteration budget. Gate 1440 first (the geometry lifted from desktop CSS),
@@ -43,8 +39,7 @@ LIVE="https://<site>/<path>"
 W=1440   # then 360
 GATE="stardust/replica/gates/<slug>-$W"
 
-# 1. structural — --dismiss keeps consent + timed marketing modals out of the
-#    inventory on both sides; add extra selectors for non-standard closers.
+# 1. structural — --dismiss: rule 6's overlay dismissal, both sides.
 #    The header and footer roots are compared beside --main BY DEFAULT — this is
 #    the whole command, no chrome flag; the report has one block per root and a
 #    finding reads "[header]" / "[footer]" where it sits (--no-chrome = main only)
@@ -56,7 +51,8 @@ node stardust/scripts/diff/content-diff.mjs "$LIVE" "$PROTO" --profile generic -
 node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic --width $W \
   --main "<content-root>" --dismiss --out "$GATE/vdiff" | tee "$GATE/visual-diff-iter<N>.txt"
 
-# 3. pixel — stitched captures on BOTH sides (never fullPage:true)
+# 3. pixel — stitched captures on BOTH sides (never fullPage:true); a consent manager the
+#    built-in candidates miss: the same --consent "<accept selector>" on both (rule 6)
 node stardust/scripts/replica/stitch-shot.mjs "$LIVE"  "$GATE/live.png"  --width $W --settle
 node stardust/scripts/replica/stitch-shot.mjs "$PROTO" "$GATE/proto.png" --width $W
 node stardust/scripts/replica/pixel-compare.mjs "$GATE/live.png" "$GATE/proto.png" \
@@ -77,16 +73,23 @@ The prototype capture is re-taken every iteration.
 
 ## Pass bar (all five per breakpoint, plus the content-cap row)
 
-1. **content-diff: 0 structural 🔴 — across the main root AND the chrome
-   roots (`header`, `footer`), which the default run covers on every gate
-   page; each finding line names its root.** 🟡 (body/EXTRA, a missing
-   `title`, an `ICON MOVED` — the same icon at another anchor, e.g. inside a
-   text-less accordion button) and 🟠 (font fork) confirmed intended — a
-   substituted licensed font is a permanent justified 🟠; record it once in
-   the ledger.
-2. **visual-diff: flags none or justified.** A live page's own quirks are
-   justified when the prototype mirrors them (e.g. a 1×1 SEO h1 at x0, a
-   carousel tile at a negative offset — both real UC1-E1 justifications).
+1. **content-diff, two tiers, on the main and chrome roots** (each finding
+   names its root): *looks the same* = 0 🔴; *nothing lost* = 0
+   nothing-lost 🟡 (a lost aria-label, sr-only text or heading — invisible,
+   still a defect). gate.sh fails on either (`Tiers:`). Look-neutral changes
+   are accepted, never findings; other 🟡 and 🟠 are advisory, confirmed
+   intended (a substituted licensed font is a permanent justified 🟠 —
+   ledger it once). An owner's per-change decision, with its reason, is one
+   entry in `stardust/replica/accepted.json`: content-diff and chrome-parity
+   print it 🟢, uncounted (schema and matching: their `--help`). An entry
+   without `text` accepts EVERY finding of its kind — always give one.
+   Cite the round's `verdict-<label>.json` — it names the evidence file of
+   every verdict.
+2. **visual-diff: flags none or justified** — `HEADING FACE` included: a
+   licensed-font substitution is one `×N` line, justified once like the 🟠
+   fork. A live page's own quirks are justified when the prototype mirrors
+   them (e.g. a 1×1 SEO h1 at x0, a carousel tile at a negative offset —
+   both real UC1-E1 justifications).
 3. **pixel diff ≤ 10% full-page** — AND no band left unexplained (§ Band
    breakdown). 10% is the ship bar, not the target; the validated run
    landed at 1.31%.
@@ -141,20 +144,18 @@ The prototype capture is re-taken every iteration.
    add sticky strips with `--region strip=<liveSel>|<buildSel>`), pairs
    every text-bearing element by its text, and prints only what differs:
    family / size / weight / style / line-height / letter-spacing /
-   transform / colour / background / padding / radius, the element rect,
-   the clickable box of links and buttons, and the icon inventory
-   (count + size + signature, paired by order). Recorded: one run found
-   what many pixel-band rounds had not — an italic-vs-normal note, a
-   regular-vs-bold link, a wrong nav link colour, 12px row offsets, a 97×40
-   vs 71×32 button, six missing icons. Fix every delta, re-run until it is
-   quiet (exit 0), THEN crop-compare — a pixel loop on chrome with parity
-   deltas outstanding is wasted iterations. Each run is one live
-   navigation (budget it like any live probe); `--json` records both
-   sides as the round's evidence.
+   transform / colour / background (the painted one) / padding / radius,
+   the element rect, the clickable box of links and buttons, and the icon
+   inventory (count + size, paired by order; the same pixels are the same
+   icon). A page with no `<header>` gets its top bar auto-detected (the line
+   names it); a region moved as one block by the page above is one advisory
+   OFFSET line. Fix every delta, re-run until it is quiet (exit 0), THEN
+   crop-compare — a pixel loop on chrome with parity deltas outstanding is
+   wasted iterations. Each run is one live navigation (budget it like any
+   live probe); `--json` records both sides as the round's evidence.
 
    ```bash
-   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W \
-     --region header=header --region footer=footer   # + --region strip=<sel>|<sel>
+   node stardust/scripts/replica/chrome-parity.mjs "$LIVE" "$PROTO" --width $W   # + --region strip=<sel>|<sel>
    ```
 
    **Glyph-dense chrome has a pixel noise floor — the ONE justified way past
@@ -247,6 +248,37 @@ ledger, and judge each against its own regime's precedent.
    with n > 0 (every regime), a `content-presence` MISSING / HIDDEN link or heading
    (published regime), a required repeated unit off (`stardust/replica/units.json`).
 
+## Target breakpoints — shifted bands (#131)
+
+Only when `DESIGN.json` `extensions.breakpoints.target` is set (replica
+`--target-breakpoints`); otherwise nothing here applies.
+
+- **Widths:** `--breakpoints` plus every target step, each a full pass
+  (optionally step − 1: the band below a step is otherwise unmeasured).
+- **Shifted band:** per `breakpoint-map.md` row, the widths between the
+  source breakpoint and its step. There the build legitimately shows the
+  layout the source shows only past its own breakpoint.
+- **Classify every pixel / height failure at a width inside a shifted band:**
+  - **tier-shift** — the failing band matches the source captured at a width
+    in the build's tier (one extra live capture per shifted width, cached as
+    `live-tier.png` in the gate dir; compare by one crop each), or the only
+    difference is a uniform vertical offset from the chrome swap. Logged as
+    `tierShift[]` against the register entry (§ Residual logging format);
+    never iterated; outside the 3-iteration cap.
+  - **defect** — overflow, clipping, overlap, broken columns, missing
+    content. A hard failure as everywhere else: the overflow assert,
+    `clip-probe` and `content-presence` are never classified tier-shift.
+- **Reporting:** every report at a target step states pass / tier-shift /
+  defect separately (ledger `--detail`, progress.json). At the delivery gate
+  a tier-shift page gets an `overrides.json` row — `{"<slug>": {"verdict":
+  "tier-shift", "reason": "R-<nn>"}}` — only when clip and content pass; the
+  measured number stays beside it.
+- **Noise check:** a width outside every shifted band whose pass count
+  moves by more than a few pages is re-captured before reporting (recorded:
+  42 → 57 at an unaffected width was live retry noise).
+- **Header:** the desktop nav fits on one line at the lowest desktop step;
+  `--nav-height` is reserved per target step.
+
 ## Reading the band breakdown
 
 The overall % hides WHERE drift starts. `pixel-compare.mjs` prints per-500px
@@ -279,11 +311,10 @@ loop roughly halved iterations vs band-reading alone. `../scripts/gate.sh`
 wraps one full pixel round (stitch both sides — live cached — + compare +
 verdict) in one command.
 
-Section-level compare (crops) is the escalation when a band stays hot and
-the cause isn't visible in `diff-iter<N>.png` — in the validated run it was
-prepared and never needed, because re-authoring hit exact section heights.
-`crop-compare.mjs` (the chrome-gate script, pass-bar item 5) does exactly
-this for any y-band, not just chrome.
+When a band stays hot and `diff-iter<N>.png` doesn't show why,
+`../scripts/diff-report.mjs <gateDir> <buildURL>` names the block: the
+differing share per block (EDS `[data-block-name]`, else sections) and a
+`report.html` with live | build | diff crops of the hottest ones.
 
 **Two row-level instruments replace eyeballing crops (`../scripts/row-profile.mjs`,
 runs over the same stitched PNGs — no live hit):**
@@ -416,9 +447,7 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   <gates-dir>/chrome-live.json` and `anchor.mjs --cache
   <gates-dir>/anchor-live.json` (live URL only) write the live measurement
   on the first run and reuse it while URL, width and selectors match —
-  delete the file to re-probe. Recorded without it: a chrome-parity round
-  on an AEM site cost 5½ minutes of live settle per iteration, ×3
-  iterations ×4 archetypes. On hard-CDN sites
+  delete the file to re-probe. On hard-CDN sites
   (Akamai-class), take the live captures with `--headed` and treat further
   live hits as spent budget — the recorded failure mode (luggage retailer) was an
   IP-level block escalating within ~3–4 automated requests, after which
@@ -427,6 +456,15 @@ lifted, capture unhardened), and the fix is upstream, not a fourth loop.
   `BotChallengeError` on the first challenge-classified response (the
   wait+reload solve window runs only under `--headed`, where clearance can
   actually land) — so the block budget is still intact when you escalate.
+- **Origin baseline (opt-in, default off): gate every round against ONE
+  frozen origin.** When the live site changes between rounds (a hero
+  rotates, a banner appears) the pixel target moves under the fix rounds and
+  a FAIL measures the origin, not the build. Freeze it once per archetype and
+  width (`stitch-shot.mjs "$LIVE" "$GATE/baseline.png" --freeze-baseline
+  --width $W --settle`), then pass `--gate-against-baseline` to every
+  `gate.sh` round. It holds the pixel-compare's origin still and nothing
+  else — a `--full` round's diff probes still read the live page. The two
+  `--help` texts own the refusals, the records and the exit codes.
 - **Instrument deadlines are the gate's, not yours.** `gate.sh` runs each
   capture under `run-capped.mjs` (stitch 300 s, compare 120 s —
   `GATE_STITCH_TIMEOUT` / `GATE_COMPARE_TIMEOUT`) and reaps this user's
@@ -519,19 +557,17 @@ rather than erroring.
    adopt the live content-root class so one `--main` value fits both. Both
    diff scripts take `--main` (visual-diff's is the upstreamed flag: on
    sites without a `<main>`, both sides otherwise false-flag BLANK RENDER
-   while the main-scoped checks silently no-op). Two guardrails:
-   - **`--main body` is NEVER a valid replica scope.** A too-broad root
-     self-poisons the instrument regardless of symmetry: reproduced
-     (a furniture retailer), content-diff run live-vs-ITSELF with `--main body`
-     produced **103 structural 🔴** and asymmetric node counts (461 vs 73)
-     from analytics/inline-script text plus a nondeterministic
-     cookie-settings panel pulled into the inventory. The content root must
-     exclude consent/analytics chrome.
-   - **Verify the consent banner is actually gone post-dismiss before
-     trusting an inventory** — consent UIs render nondeterministically
-     between two sequential captures (one capture caught the expanded
-     cookie panel, the other didn't). If reds cluster on cookie/consent
-     strings, the scope or the dismissal is wrong, not the recreation.
+   while the main-scoped checks silently no-op). **`--main body` is never a
+   valid replica scope** (the chrome lands in the content inventory).
+   Script / style payloads and the common consent managers' banners are not
+   inventoried — a skipped banner is named on its root's summary line. Reds
+   that cluster on cookie strings mean a manager the list misses, or a
+   banner the dismissal hid rather than removed: `--consent <sel>` (rule 6)
+   only adds an accept click — it does not extend the skip list, and the
+   inventory has no visibility filter. **Verify the banner is actually gone
+   after dismissal before trusting an inventory** (consent UIs render
+   nondeterministically between captures); if it lingers, the scope or the
+   dismissal is wrong, not the recreation.
 4. **Stitched captures only, never `fullPage:true`.** Chromium's
    captureBeyondViewport renders lazy-decoded images as gray placeholders
    even when the DOM says loaded. Stitch on BOTH sides — the instrument
@@ -540,16 +576,17 @@ rather than erroring.
    Injection before the settle breaks some lazy loaders' swaps (recorded
    failure mode). stitch-shot.mjs orders this correctly.
 6. **Overlays dismissed — BOTH classes, by clicking, not DOM removal** (so
-   layout settles as a real visit does). Two classes, both handled by the
-   shared `dismissOverlays` (stitch-shot always; diff probes via
-   `--dismiss`): (a) cookie consent (clicked accept; `--consent <sel>` /
-   `--dismiss <sel,...>` for non-standard banners); (b) **timed
-   marketing/newsletter interstitials** — recorded (fashion retailer): an
-   undismissed "Sign up, stay updated!" modal fired ~5–9s after load and
-   baked a pixel-diff contributor into the LIVE capture, repeated at every
-   chunk seam, that no prototype fidelity could null out. These fire on a
-   timer, so the dismissal polls for late arrivals and stitch-shot sweeps
-   again after the settle pass.
+   layout settles as a real visit does). Two classes, one shared
+   `dismissOverlays` (stitch-shot and the diff probes alike; `gate.sh`
+   carries `--consent <sel>` / `--dismiss <sel,...>` to both captures AND
+   its probes, `--no-dismiss` turns it off everywhere in the round):
+   (a) cookie consent (clicked accept; the flags above for a banner the
+   built-in candidates miss); (b) **timed marketing/newsletter interstitials** —
+   recorded (fashion retailer): an undismissed "Sign up, stay updated!"
+   modal fired ~5–9s after load and baked a pixel-diff contributor into the
+   LIVE capture, repeated at every chunk seam, that no prototype fidelity
+   could null out. These fire on a timer, so the dismissal polls for late
+   arrivals and stitch-shot sweeps again after the settle pass.
 7. **Granularity parity for JOIN/SPLIT false-reds (#87)** — mirror live
    node granularity or confirm-justify per
    `recreation-procedure.md` § Granularity parity.
@@ -568,22 +605,25 @@ rather than erroring.
     reality). The shared `dismissOverlays` parks the mouse (bottom-left)
     after every dismissal pass — all three instruments inherit it; mirror
     it in any ad-hoc capture that clicks anything.
-11. **Fixed/sticky chrome × stitched capture.** Fixed elements repeat at
-    every chunk seam, occlude a band of content per seam, and can morph
-    with scroll state — chunks 2+ then capture different chrome than
-    chunk 1. Symmetry requires the prototype to replicate the chrome
-    including its scroll-state trigger; any height delta turns the seam
-    repeats into ghost bands in the diff. Full treatment:
+11. **Fixed/sticky chrome is captured once** (chunk 1; a stuck sticky
+    layer too), so seams neither repeat it nor hide content under it;
+    gate.sh re-takes a cached `live.png` captured the old way, and a frozen
+    baseline from before is stale (re-freeze).
     `recreation-procedure.md` § Fixed and sticky chrome.
-12. **A challenge/blocked response FAILS LOUD — it is never measured.** All
-    three instruments detect bot-management interstitials on every
+12. **A challenge/blocked response FAILS LOUD — it is never measured.** Every
+    live instrument detects bot-management interstitials on every
     navigation (crawl.mjs semantics: `cf-mitigated: challenge`, or
     403/429/503 with a Cloudflare/Akamai/F5/Imperva edge signature) and
-    exit **3** with a `BotChallengeError` naming the URL and the marker.
+    exits **3** with a `BotChallengeError` naming the URL and the marker.
     Recorded (luggage retailer): Akamai served "Access Denied" to the headless
     instruments — which, without this rule, would have silently measured
-    the block page as the source and diffed it cleanly, wrongly. The
-    escalation ladder: default (UA + standard headers) → `--headed`
+    the block page as the source and diffed it cleanly, wrongly. A **2xx
+    denial page** — a vendor wall answering 200 with its denial text, so no
+    header classifies it — fails the same way: after the settle `gotoLive`
+    reads the page (`pageDenial` owns what counts) and throws the
+    same error (marker `HTTP <status> denial page — …`, "origin blocked");
+    stitch-shot reads once more after its dismissal sweeps and leaves no PNG
+    and no `capture.json`. The escalation ladder: default (UA + standard headers) → `--headed`
     (stealth real Chrome, same tier as crawl.mjs's fallback) → if STILL
     blocked, the site needs crawl.mjs-class capture and **the gate must
     not silently degrade** — record the breakpoint as gate-blocked in the
@@ -639,10 +679,8 @@ node stardust/scripts/diff/visual-diff.mjs "$LIVE" "$PROTO" --profile generic \
 #   --dismiss "#custom-close"    --locale en-GB    --headed
 ```
 
-Defaults when no flags are passed: real-Chrome UA + standard headers on
-every context; `domcontentloaded` for non-localhost http(s) URLs and
-`networkidle` for local ones (per side); no overlay dismissal (pass
-`--dismiss` for live pairs); exit 3 on a challenge (rule 12).
+Defaults without flags: rules 1, 2 and 12 as written; the diff probes
+dismiss no overlay unless passed `--dismiss` (gate.sh passes it for you).
 
 **A project copy re-implementing retired adaptations is a defect**, not
 diligence: the edits were 10 distinct changes across 2 files, and a partial
@@ -694,7 +732,7 @@ Two rules for that final run:
   campaign hero). A deploy gated against crawl-time captures ships
   yesterday's chrome. Immediately before the published-origin gate, re-run
   the chrome probes (anchor + crop gate, computed styles of matched
-  header/footer elements) against the live origin, never the crawl
+  header/footer elements, the header contract) against the live origin, never the crawl
   snapshot; mask live-content drift (campaign creatives, promo slots) out
   of the fidelity number — it is authored content, not conversion fidelity.
 - **Budget ONE anchors-driven reconcile round at the published origin.** The
@@ -815,35 +853,59 @@ criterion pixel 30, height 6, clip 23, content 31; content n/a on 37 (edge-block
 
 ## Residual logging format
 
-Per archetype per breakpoint, in `stardust/replica/progress.json`:
+`stardust/replica/progress.json` is ONE file for the whole run: the map of every archetype under
+`types` (this section's record per archetype, keyed by its slug) beside the `siblings` and `migrate`
+blocks `gate-evidence.mjs` writes and the `_provenance` block every stardust JSON artifact carries.
+Extend YOUR archetype's entry in place — read, merge, write back (`gate-evidence.mjs` preserves every
+key it does not own). Never write one archetype's record as the file; `gate-evidence.mjs` wraps such
+a file under `types.<archetype>` and refuses only a record that names no archetype. Per archetype per
+breakpoint:
 
 ```json
 {
-  "pageType": "landing",
-  "archetype": "home",
-  "breakpoints": {
-    "1440": {
-      "iterations": 3,
-      "result": { "structuralRed": 0, "visualFlags": "3 justified",
-                   "pixelPct": 1.31, "heightDelta": 0, "pass": true },
-      "justified": [
-        { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
-        { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
-      ],
-      "residuals": [
-        { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
-        { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
-      ],
-      "captureState": [ { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2" } ]
+  "_provenance": { "writtenBy": "…", "writtenAt": "…" },
+  "types": {
+    "home": {
+      "pageType": "landing",
+      "archetype": "home",
+      "breakpoints": {
+        "1440": {
+          "iterations": 3,
+          "result": { "structuralRed": 0, "visualFlags": "3 justified",
+                       "pixelPct": 1.31, "heightDelta": 0, "pass": true },
+          "justified": [
+            { "probe": "visual", "flag": "1x1 h1 at x0", "why": "mirrors live SEO h1" },
+            { "probe": "content", "flag": "🟠 font fork ×2", "why": "licensed kit substituted, R-policy fonts", "permanent": true }
+          ],
+          "residuals": [
+            { "band": "y 4500–5000", "pct": 6.2, "cause": "capture-state: 3 CDN-403 placeholder tiles", "flaggedFor": "delivery" },
+            { "region": "footer", "pct": 4.8, "cause": "glyph-antialiasing", "parity": "gates/home-1440/chrome-parity-iter3.json", "texture": { "thickPct": 6.1 }, "flaggedFor": "user" }
+          ],
+          "captureState": [
+            { "what": "product tiles 4–6 on placeholder data-URIs", "where": "carousel-2", "restoreAtDelivery": null },
+            { "what": "hero video paused at frame 0, carousel-2 held on slide 1 (stitch-shot freeze)", "where": "hero, carousel-2",
+              "restoreAtDelivery": "hero: autoplay muted loop playsinline, paused under prefers-reduced-motion; carousel-2: auto-rotate 5 s, pause on hover" }
+          ]
+        },
+        "900": { "...": "...", "tierShift": [
+            { "band": "y 0–5200", "pct": 14.2, "register": "R-07", "why": "desktop header at 900 (source: 1024); uniform +40 px offset below it" } ] },
+        "360": { "...": "..." }
+      },
+      "motion": { "observed": "…", "implemented": "…", "dead": [] }
     },
-    "360": { "...": "..." }
-  }
+    "<next archetype slug>": { "...": "..." }
+  },
+  "siblings": { "...": "written by gate-evidence.mjs" },
+  "migrate": { "...": "written by gate-evidence.mjs" }
 }
 ```
 
 Rules: every residual names its band, its %, its cause, and who inherits it
 (`delivery` for capture-state items, `user` for accepted trade-offs). A
 residual without a cause is not a residual — it's an unfinished iteration;
-either diagnose it or spend the remaining budget on it. The rollout phase's
+either diagnose it or spend the remaining budget on it. Every `captureState`
+entry carries `restoreAtDelivery`: the live behaviour the freeze or mask hid,
+as observed (`null` only when live is static there too) — a promise C-deliver
+implements (`recreation-procedure.md § Carousels and animated sections`). The rollout phase's
 final report surfaces the residual list per page type so "gate passed"
 can't hide "passed with 6% unexplained".

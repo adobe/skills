@@ -405,7 +405,8 @@ px, authored via, tier) into `extensions.breakpoints`: `containerMaxWidth`
 it), once DESIGN.json is authored (it merges). A cap on the shell or
 on every archetype is design intent whatever its value; `capRegister` lists
 single-module or archetype-divergent caps for the inconsistency register.
-Source breakpoints are never inherited — the target keeps its own two.
+The cap model never records layout breakpoints: a redesign target keeps its own two;
+replica keeps the source's, or maps them to `--target-breakpoints`.
 Captures:
 
 - **Logo** by the v1 priority chain: inline SVG → `<img>` with
@@ -795,6 +796,8 @@ reference):
   runs captured `/ca/en` as a locale root while 15 `/ca/en/*` pages
   existed on the source, and found out six hours later, when 15 links
   answered 404 and the gap exceeded the 12-page deliver threshold.
+- **The header contract is recorded here** (`../diff/SKILL.md` § The header
+  contract); its summary line in the prep summary sizes the header.
 - The prep summary replaces the Phase 6 report; its
   `Provenance: <live>/<total> live` line is mandatory, and any
   ratio short of `<total>/<total>` means the run failed the

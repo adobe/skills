@@ -80,7 +80,7 @@ curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -c about:error      # expect 0
 curl -s --compressed "https://$BRANCH--$REPO--$ORG.aem.page/$P.plain.html" | grep -oc '<img'          # expect = authored editorial image count
 
-# 4. (optional) publish to aem.live
+# 4. publish to aem.live (the default; skip only on an explicit preview-only ask)
 curl -sS -X POST -H "Authorization: Bearer $TOKEN" \
   "https://admin.hlx.page/live/$ORG/$REPO/$BRANCH/$P"
 ```

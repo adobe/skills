@@ -30,17 +30,17 @@ function write(root, rel, content) {
 
 // ── Pattern registry ────────────────────────────────────────────────────────
 
-test('registry includes all 13 migration patterns with a valid strategy', () => {
+test('registry includes all 15 migration patterns with a valid strategy', () => {
   const expected = [
     'scheduler', 'resourceChangeListener', 'event-migration', 'assetApi', 'replication',
     'vault-package-dependencies', 'htlLint', 'osgiConfig', 'lui', 'cdw', 'templateModernization',
-    'guavaCache', 'dispatcherConversion',
+    'guavaCache', 'inputStream', 'dispatcherConversion', 'oakIndex',
   ];
   assert.strictEqual(CANONICAL_PATTERNS.length, expected.length, 'no unexpected patterns');
   for (const key of expected) {
     assert.ok(CANONICAL_PATTERNS.includes(key), `${key} in CANONICAL_PATTERNS`);
     assert.ok(
-      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan', 'bpa-only'].includes(PATTERN_META[key].strategy),
+      ['cascade', 'html-scan', 'config-scan', 'content-scan', 'pom-scan', 'bpa-only', 'java-scan'].includes(PATTERN_META[key].strategy),
       `${key} has a valid strategy`
     );
   }
@@ -52,6 +52,19 @@ test('guavaCache has no analyzer/content-scan fallback — bpaSlugs only, no heu
   assert.strictEqual(PATTERN_META.guavaCache.strategy, 'bpa-only');
   assert.deepStrictEqual(PATTERN_META.guavaCache.bpaSlugs, ['guavaCache']);
   assert.ok(!PATTERN_META.guavaCache.heuristic, 'guavaCache findings are BPA-authoritative, not heuristic');
+});
+
+test('oakIndex has no analyzer/content-scan fallback — bpaSlugs only, no heuristic flag', () => {
+  assert.strictEqual(PATTERN_META.oakIndex.strategy, 'bpa-only');
+  assert.deepStrictEqual(PATTERN_META.oakIndex.bpaSlugs, ['oakIndex']);
+  assert.ok(!PATTERN_META.oakIndex.heuristic, 'oakIndex findings are BPA-authoritative, not heuristic');
+});
+
+test('inputStream is a java-scan pattern that merges BPA rows (no LLM tier, no bpaIncomplete)', () => {
+  assert.strictEqual(PATTERN_META.inputStream.strategy, 'java-scan');
+  assert.deepStrictEqual(PATTERN_META.inputStream.bpaSlugs, ['inputStream']);
+  assert.ok(PATTERN_META.inputStream.heuristic, 'site classification is regex-based — re-confirmed at apply time');
+  assert.ok(!PATTERN_META.inputStream.bpaIncomplete);
 });
 
 test('inject-in-sling-model and outdated-dependencies stay out of scope', () => {
@@ -999,6 +1012,50 @@ test('guavaCache dedupes multiple rows for one bundle to a single target, and wa
   );
 });
 
+function writeOakIndexBpaCsv(root) {
+  const rows = [
+    'code,type,subtype,importance,identifier,message,context',
+    // Two rule-violation rows for the SAME index path — must dedupe to one target.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/content/oak:index/enablementResourceName,The /content/oak:index/enablementResourceName Oak index has a rule violation: Path must begin with /oak:/index,ctx',
+    // A distinct rule-violation path.
+    'OID,oak.index.definition,index.rule.violation,CRITICAL,/oak:index/wkndId,The /oak:index/wkndId Oak index has a rule violation: Custom definition name must follow the pattern <name>-custom-<version>,ctx',
+    // A standard-index-modification finding (OOTB index modified in place).
+    'OID,oak.index.definition,standard.index.modification,CRITICAL,/oak:index/damAssetLucene,The /oak:index/damAssetLucene Oak index modifies a standard OOTB index definition,ctx',
+    // Summary row — bare numeric identifier, must be excluded, not mistaken for a path.
+    '_COUNT_OID,_count.oak.index.definition,index.rule.violation,CRITICAL,182,Count: 182,ctx',
+  ];
+  const p = path.join(root, 'oakindex.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+test('oakIndex dedupes repeat rows for the same index path, excludes _COUNT_OID, and splits by sub-type', async () => {
+  const root = mkworkspace();
+  const csv = writeOakIndexBpaCsv(root);
+  const opts = { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 };
+
+  const result = await getBpaFindings('oakIndex', opts);
+
+  assert.strictEqual(result.targets.length, 3, 'two rule-violation rows for the same path dedupe to one target, plus the distinct path and the standard-modification finding');
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'index.rule.violation').length, 2,
+    'two distinct rule-violation index paths'
+  );
+  assert.strictEqual(
+    result.targets.filter(t => t.identifier === 'standard.index.modification').length, 1,
+    'one standard-index-modification finding'
+  );
+  assert.ok(
+    result.targets.some(t => t.className === '/content/oak:index/enablementResourceName'),
+    'JCR index path preserved as the actionable className'
+  );
+  assert.ok(
+    !result.targets.some(t => t.className === '182'),
+    '_COUNT_OID summary row (bare numeric identifier) must not be mistaken for an index path'
+  );
+});
+
 test('a real BPA fetch failure is surfaced (warning + needsLlmScan), NOT reported clean', async () => {
   const root = mkworkspace();
   const gathered = await gatherFindings({
@@ -1333,4 +1390,303 @@ test('bpaIncomplete: when BPA DOES report the pattern, BPA still owns it (no fal
   });
   assert.strictEqual(gathered.sourceByPattern.templateModernization, 'mcp', 'BPA owns it when it reports findings');
   assert.strictEqual(gathered.findingsByPattern.templateModernization.length, 1, 'BPA finding, not the content-scan one');
+});
+
+// ── CAM project handoff to validate-migration ──────────────────────────────
+
+test('writeRunbookCache records the CAM project in the sidecar when one is given', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now', projectId: '000000000000000000000001', projectName: 'Example Project' }, cache);
+  const cached = JSON.parse(fs.readFileSync(cache, 'utf8'));
+  assert.deepStrictEqual(cached.project, { id: '000000000000000000000001', name: 'Example Project' });
+});
+
+test('writeRunbookCache writes project null when no CAM project is linked', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root });
+  const cache = path.join(root, 'migration-runbook.json');
+  writeRunbookCache(gathered, { generatedAt: 'now' }, cache);
+  assert.strictEqual(JSON.parse(fs.readFileSync(cache, 'utf8')).project, null);
+});
+
+test('generateRunbook keeps the CAM project in migration-runbook.json and creates no separate context.json', async () => {
+  const root = mkworkspace();
+  const cachePath = path.join(root, 'r.json');
+  await generateRunbook({
+    workspaceRoot: root, outputPath: path.join(root, 'r.md'), cachePath,
+    projectId: '000000000000000000000001', projectName: 'Example Project',
+  });
+  assert.deepStrictEqual(JSON.parse(fs.readFileSync(cachePath, 'utf8')).project, { id: '000000000000000000000001', name: 'Example Project' });
+  assert.strictEqual(fs.existsSync(path.join(root, '.validate-migration', 'context.json')), false);
+});
+
+test('CLI parseArgs passes the confirmed CAM project through to generateRunbook', () => {
+  const { parseArgs } = require('./runbook-generator');
+  const args = parseArgs(['/ws', '--bpa-json', 'b.json', '--project-id', '000000000000000000000001', '--project-name', 'Example Project']);
+  assert.strictEqual(args.workspaceRoot, '/ws');
+  assert.strictEqual(args.projectId, '000000000000000000000001');
+  assert.strictEqual(args.projectName, 'Example Project');
+  assert.strictEqual(parseArgs(['/ws']).projectId, undefined, 'no project when the flag is omitted');
+});
+
+// ── inputStream (java.io.inputstream) ───────────────────────────────────────
+
+function writeInputStreamBpaCsv(root, { withOther = true } = {}) {
+  const header = withOther
+    ? 'code,type,subtype,importance,identifier,other,message,moreInfo,context'
+    : 'code,type,subtype,importance,identifier,message,moreInfo,context';
+  const row = (cls, api, bundle) => {
+    const msg = `The ${cls} class in the ${bundle} bundle uses ${api}. This may cause issues if used in AEM as a Cloud Service.`;
+    const ctx = `"{""data"":{""toId"":""${api}"",""bundle"":""${bundle}"",""class"":""${cls}""},""type"":""java.io.inputstream""}"`;
+    return withOther
+      ? `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${api},${msg},https://www.adobe.com/go/aem_pd_DG,${ctx}`
+      : `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${msg},https://www.adobe.com/go/aem_pd_DG,${ctx}`;
+  };
+  const rows = [
+    header,
+    withOther
+      ? '_COUNT_DG,_count.development.guideline,java.io.inputstream,ADVISORY,4,\\N,Count: 4,\\N,\\N'
+      : '_COUNT_DG,_count.development.guideline,java.io.inputstream,ADVISORY,4,Count: 4,\\N,\\N',
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.InputStream', 'com.acme.core'),
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.InputStream', 'com.acme.core'), // duplicate row
+    row('com.acme.core.servlets.DownloadServlet', 'java.io.FileInputStream', 'com.acme.core'),
+    row('acscommons.com.google.common.cache.LocalCache$LoadingSerializationProxy', 'java.io.ObjectInputStream', 'com.adobe.acs.acs-aem-commons-bundle'),
+  ];
+  const p = path.join(root, 'inputstream.csv');
+  fs.writeFileSync(p, rows.join('\n') + '\n', 'utf8');
+  return p;
+}
+
+for (const withOther of [true, false]) {
+  test(`inputStream CSV parsing keys targets by java.io API, dedupes, drops _COUNT rows (other column: ${withOther})`, async () => {
+    const root = mkworkspace();
+    const csv = writeInputStreamBpaCsv(root, { withOther });
+    const result = await getBpaFindings('inputStream', {
+      bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0,
+    });
+
+    assert.ok(result.success, result.error);
+    const got = result.targets.map(t => `${t.identifier}|${t.className}`).sort();
+    assert.deepStrictEqual(got, [
+      'java.io.FileInputStream|com.acme.core.servlets.DownloadServlet',
+      'java.io.InputStream|com.acme.core.servlets.DownloadServlet',
+      'java.io.ObjectInputStream|acscommons.com.google.common.cache.LocalCache$LoadingSerializationProxy',
+    ]);
+    assert.ok(result.targets.every(t => t.pattern === 'inputStream'));
+    const acs = result.targets.find(t => t.className.startsWith('acscommons.'));
+    assert.strictEqual(acs.bundle, 'com.adobe.acs.acs-aem-commons-bundle', 'bundle survives CSV → unified collection → target');
+  });
+}
+
+test('inputStream: an unparseable row warns and is dropped, not silently counted', async () => {
+  const root = mkworkspace();
+  const p = path.join(root, 'bad.csv');
+  fs.writeFileSync(p, [
+    'code,type,subtype,importance,identifier,message,context',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.Foo,Unexpected message format.,ctx',
+    'DG,development.guideline,java.io.inputstream,ADVISORY,com.acme.Bar,The com.acme.Bar class in the b bundle uses java.io.InputStream. x,ctx',
+  ].join('\n') + '\n', 'utf8');
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(' '));
+  let result;
+  try {
+    result = await getBpaFindings('inputStream', { bpaFilePath: p, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.deepStrictEqual(result.targets.map(t => t.className), ['com.acme.Bar']);
+  assert.ok(warnings.some(w => /java\.io\.inputstream row could not be parsed/.test(w)));
+});
+
+test('inputStream: a class listed under two bundles keeps one target per bundle, and Forms add-on rows are platform-provided', async () => {
+  const root = mkworkspace();
+  const csv = path.join(root, 'bundles.csv');
+  const row = (cls, api, bundle) =>
+    `DG,development.guideline,java.io.inputstream,ADVISORY,${cls},${api},The ${cls} class in the ${bundle} bundle uses ${api}. This may cause issues if used in AEM as a Cloud Service.,https://www.adobe.com/go/aem_pd_DG,ctx`;
+  fs.writeFileSync(csv, [
+    'code,type,subtype,importance,identifier,other,message,moreInfo,context',
+    row('shaded.io.ByteSource', 'java.io.InputStream', 'com.adobe.acs.acs-aem-commons-bundle'),
+    row('shaded.io.ByteSource', 'java.io.InputStream', 'com.adobe.acs.acs-aem-tools-bundle'),
+    row('com.adobe.fd.signatures.Sig', 'java.io.ObjectInputStream', 'adobe-aemfd-signatures'),
+  ].join('\n') + '\n', 'utf8');
+
+  const targets = (await getBpaFindings('inputStream', { bpaFilePath: csv, collectionsDir: path.join(root, 'uc'), limit: null, offset: 0 })).targets;
+  assert.deepStrictEqual(targets.map(t => `${t.className}@${t.bundle}`).sort(), [
+    'com.adobe.fd.signatures.Sig@adobe-aemfd-signatures',
+    'shaded.io.ByteSource@com.adobe.acs.acs-aem-commons-bundle',
+    'shaded.io.ByteSource@com.adobe.acs.acs-aem-tools-bundle',
+  ]);
+
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  const groups = gathered.rawFindingsByPattern.inputStream.filter(r => r.file === null);
+  assert.deepStrictEqual(groups.map(g => `${g.kind}:${g.bundle}:${g.rowCount}`), [
+    'not-in-workspace:com.adobe.acs.acs-aem-commons-bundle:1',
+    'not-in-workspace:com.adobe.acs.acs-aem-tools-bundle:1',
+    'platform-provided:adobe-aemfd-signatures:1',
+  ]);
+});
+
+function writeDownloadServlet(root) {
+  return write(root, 'core/src/main/java/com/acme/core/servlets/DownloadServlet.java', [
+    'package com.acme.core.servlets;',
+    '',
+    'import java.io.FileInputStream;',
+    'import java.io.InputStream;',
+    'import org.apache.commons.io.IOUtils;',
+    '',
+    'public class DownloadServlet {',
+    '    protected void doGet(Asset asset, SlingHttpServletResponse response) throws Exception {',
+    '        InputStream in = asset.getOriginal().getStream();',
+    '        IOUtils.copy(in, response.getOutputStream());',
+    '    }',
+    '',
+    '    String config() throws Exception {',
+    '        try (InputStream in = new FileInputStream("/opt/acme/config.json")) {',
+    '            return IOUtils.toString(in, "UTF-8");',
+    '        }',
+    '    }',
+    '}',
+    '',
+  ].join('\n'));
+}
+
+test('inputStream: CAM has no rows for the subtype → the Java source scan owns it (no LLM tier)', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: { inputStream: [] },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.bpaMode, 'mcp');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  assert.ok(!gathered.needsLlmScan.includes('inputStream'));
+  assert.strictEqual(gathered.findingsByPattern.inputStream.length, 1, 'one finding per file, not per site');
+});
+
+test('inputStream: a workspace with no Java sources is clean, not LLM-scanned, and emits no warning', async () => {
+  const root = mkworkspace();
+  const gathered = await gatherFindings({ workspaceRoot: root, collectionsDir: path.join(root, 'nocollections'), analyzeScript: path.join(root, 'missing-analyze.sh') });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  assert.deepStrictEqual(gathered.findingsByPattern.inputStream, []);
+  assert.ok(!gathered.needsLlmScan.includes('inputStream'));
+  assert.ok(!gathered.analyzerWarnings.some(w => /inputStream/.test(w)));
+});
+
+function writeLocalOnlyStreamFile(root) {
+  // Uses streams, but isn't in the BPA report.
+  return write(root, 'core/src/main/java/com/acme/core/LocalOnly.java', [
+    'package com.acme.core;',
+    'import java.io.InputStream;',
+    'public class LocalOnly {',
+    '    void run(Resource res) { InputStream in = res.adaptTo(InputStream.class); use(in); }',
+    '    void use(InputStream in) {}',
+    '}',
+    '',
+  ].join('\n'));
+}
+
+test('inputStream: BPA rows take precedence — only BPA-reported classes become findings; third-party rows collapse per bundle', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const csv = writeInputStreamBpaCsv(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    bpaFilePath: csv,
+    collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'csv', 'BPA owns the pattern, like the other BPA patterns');
+
+  const raw = gathered.rawFindingsByPattern.inputStream;
+  const sourceFiles = raw.filter(r => r.kind === 'source').map(r => path.basename(r.file));
+  assert.deepStrictEqual(sourceFiles, ['DownloadServlet.java'], 'LocalOnly.java is not in the BPA report, so it is out of scope');
+  const fileFinding = raw.find(r => r.kind === 'source');
+  assert.deepStrictEqual(fileFinding.bpa.apis, ['java.io.FileInputStream', 'java.io.InputStream']);
+  const cats = fileFinding.sites.map(s => `${s.line}:${s.categories.join('+')}`);
+  assert.deepStrictEqual(cats, ['9:E+B', '14:D'], 'E (proxied binary) + B (unclosed) on L9, D (local file) on L14');
+  assert.strictEqual(fileFinding.severity, 'high');
+
+  const group = raw.find(r => r.kind === 'not-in-workspace');
+  assert.strictEqual(group.bundle, 'com.adobe.acs.acs-aem-commons-bundle');
+  assert.strictEqual(group.informational, true);
+
+  // Only the workspace file counts as outstanding work.
+  const actionable = gathered.findingsByPattern.inputStream.filter(f => !f.informational);
+  assert.strictEqual(actionable.length, 1);
+});
+
+test('inputStream: a BPA report without inputStream rows falls back to the local scan', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const csv = path.join(root, 'other.csv');
+  fs.writeFileSync(csv, [
+    'code,type,subtype,importance,identifier,message,context',
+    'GC,development.guideline,custom.guava.cache,INFO,com.google.common.cache.Cache,The com.google.common.cache.Cache class in the b bundle uses com.google.common.cache.Cache.,ctx',
+  ].join('\n') + '\n', 'utf8');
+  const gathered = await gatherFindings({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.bpaMode, 'csv');
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'source-scan');
+  const files = gathered.rawFindingsByPattern.inputStream.filter(r => r.kind === 'source').map(r => path.basename(r.file)).sort();
+  assert.deepStrictEqual(files, ['DownloadServlet.java', 'LocalOnly.java']);
+});
+
+test('inputStream: CAM targets (no bundle names) take precedence and group Forms classes by package', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  writeLocalOnlyStreamFile(root);
+  const gathered = await gatherFindings({
+    workspaceRoot: root,
+    collectionsDir: path.join(root, 'nocollections'),
+    preFetchedBpa: {
+      inputStream: [
+        { pattern: 'inputStream', className: 'com.acme.core.servlets.DownloadServlet', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'com.adobe.fd.signatures.SigUtil', identifier: 'java.io.InputStream' },
+        { pattern: 'inputStream', className: 'org.jsoup.helper.DataUtil', identifier: 'java.io.InputStream' },
+      ],
+    },
+    analyzeScript: path.join(root, 'missing-analyze.sh'),
+  });
+  assert.strictEqual(gathered.sourceByPattern.inputStream, 'mcp');
+  const raw = gathered.rawFindingsByPattern.inputStream;
+  assert.deepStrictEqual(raw.filter(r => r.kind === 'source').map(r => path.basename(r.file)), ['DownloadServlet.java']);
+  assert.deepStrictEqual(raw.filter(r => r.file === null).map(g => `${g.kind}:${g.group}`), [
+    'not-in-workspace:package org.jsoup.helper',
+    'platform-provided:package com.adobe.fd',
+  ]);
+});
+
+test('inputStream: rendered runbook + cache stay workspace-relative and carry site-level detail', async () => {
+  const root = mkworkspace();
+  writeDownloadServlet(root);
+  const csv = writeInputStreamBpaCsv(root);
+  const out = path.join(root, 'migration-runbook.md');
+  const cachePath = path.join(root, 'migration-runbook.json');
+  await generateRunbook({
+    workspaceRoot: root, bpaFilePath: csv, collectionsDir: path.join(root, 'uc'),
+    analyzeScript: path.join(root, 'missing-analyze.sh'), outputPath: out, cachePath,
+  });
+  const md = fs.readFileSync(out, 'utf8');
+  assert.ok(!md.includes(root), 'no absolute workspace path in the runbook');
+  assert.ok(md.includes('core/src/main/java/com/acme/core/servlets/DownloadServlet.java:9'));
+  assert.ok(/bundle com\.adobe\.acs\.acs-aem-commons-bundle/.test(md));
+
+  const cache = JSON.parse(fs.readFileSync(cachePath, 'utf8'));
+  const entry = cache.findingsByPattern.inputStream.find(r => r.kind === 'source');
+  assert.strictEqual(entry.file, 'core/src/main/java/com/acme/core/servlets/DownloadServlet.java');
+  assert.strictEqual(entry.confidence, 'heuristic');
+  assert.ok(entry.sites.every(s => Number.isInteger(s.line) && s.fix));
 });

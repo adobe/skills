@@ -120,7 +120,7 @@ export function rollupConfig(config, pages, blocks, now) {
 }
 
 /** EDS block name from a block id: kebab + guard against reserved EDS classes (#15). */
-const RESERVED = new Set(['section', 'block', 'wrap', 'button']);
+export const RESERVED = new Set(['section', 'block', 'wrap', 'button', 'widget']);
 export function edsName(id) {
   let n = String(id).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   if (!n) n = 'block';
@@ -132,8 +132,26 @@ export function edsName(id) {
 }
 
 /** Chrome ids deliver as site-wide authored documents (/nav, /footer), not per-page blocks. */
+/**
+ * The URL EDS serves a page at: its path, plus `/` when the page is a folder index (its migrated file is
+ * `…/index.html`; `/a` 404s on a plain EDS site). `path` stays the page's key. Pure.
+ */
+export function publicUrl(page) {
+  const p = page.path || `/${page.slug}`;
+  const src = (page.source && page.source.migratedHtml) || '';
+  return p !== '/' && !p.endsWith('/') && /(^|[/\\])index\.html$/.test(src) ? `${p}/` : p;
+}
+
 export const CHROME_IDS = new Set(['header', 'nav', 'footer']);
 export const kindOf = (id) => (CHROME_IDS.has(String(id).toLowerCase()) ? 'chrome' : 'module');
+/** A widget's file stem becomes its block class verbatim, so a reserved or -wrapper/-container stem collides (#15); the lint rejects it, nothing renames it. Pure. */
+export const reservedStem = (n) => RESERVED.has(String(n)) || /-(wrapper|container)$/.test(String(n));
+/** Code path of a widget from its authored link: /widgets/<path>/<name>.html?<params> → widgets/<path>/<name>.html. Pure. */
+export const widgetCodePath = (href) => String(href).replace(/^https?:\/\/[^/]+/, '').replace(/[?#].*/, '').replace(/^\//, '');
+/** Widget rows of a page: `{ id, href }` pairs from the sidecar's widgets[]; id defaults to the href's file stem. Pure. */
+export const pageWidgets = (meta) => (Array.isArray(meta && meta.widgets) ? meta.widgets : [])
+  .filter((w) => w && typeof w.href === 'string')
+  .map((w) => ({ id: String(w.id || widgetCodePath(w.href).replace(/^.*\//, '').replace(/\.html$/, '')), href: w.href }));
 
 /** Map a delivered (extensionless) path to a file under root (migrated-tree shape). */
 export function resolveLocalFile(root, p) {
@@ -150,7 +168,7 @@ export async function loadPageHTML(page, { root, base }) {
     return { ok: true, body: readFileSync(f, 'utf8') };
   }
   try {
-    const res = await fetch(`${base}${page.path}`);
+    const res = await fetch(`${base}${publicUrl(page)}`);
     const body = await res.text();
     if (!res.ok) return { ok: false, reason: `HTTP ${res.status}` };
     return { ok: true, body };
@@ -243,4 +261,18 @@ export function computeScorecard(findings, runId, now) {
     severity: { P1: sev(open, 'P1'), P2: sev(open, 'P2'), P3: sev(open, 'P3') },
     fixed: { P1: sev(fixed, 'P1'), P2: sev(fixed, 'P2'), P3: sev(fixed, 'P3') },
   };
+}
+
+/** The roster against the site: { pages, discovered, capped } from state.json's site block (extract writes
+ * totalDiscovered and pageCap), or null when the site was never counted. */
+export function scopeOf(pages, site) {
+  const discovered = site && Number.isFinite(site.totalDiscovered) ? site.totalDiscovered : null;
+  if (discovered === null) return null;
+  return { pages, discovered, capped: discovered > pages, pageCap: site.pageCap ?? null };
+}
+
+/** One report line: "94 of 2532 discovered pages in scope — …" (says so loudly when the roster is a subset). */
+export function scopeLine(scope) {
+  if (!scope.capped) return `${scope.pages} of ${scope.discovered} discovered pages in scope — the whole site`;
+  return `${scope.pages} of ${scope.discovered} discovered pages in scope — a SUBSET: the other ${scope.discovered - scope.pages} are not delivered by this rollout (capped roster, decided-out or app-routed — direction.md names which); widen the roster to deliver them`;
 }

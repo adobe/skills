@@ -10,11 +10,13 @@
  * Options:
  *   --base <url>            live host to sweep (required)
  *   --checks <list>         comma list: routing,content,templates,metadata,links,browse,perf,
- *                           editability,dynamics,ai-readability (default: all)
+ *                           editability,dynamics,chrome,ai-readability (default: all)
  *   --paths-file <txt>      inventory source: one path per line
  *   --template-map <json>   inventory + template assignments (stardust/template-map.json)
  *   --scrape <dir>          stardust scrape captures for verbatim fidelity
  *   --expected-blocks <json> explicit per-template block expectations
+ *   --redirects <tsv>       the expected redirects (default stardust/redirects.tsv when present):
+ *                           each source must be a row of the live /redirects.json, to the same destination
  *   --allowlist <json>      documented non-defects (default: <out>/allowlist.json)
  *   --out <dir>             output dir (default: stardust/qa)
  *   --baselines <dir>       visual baselines (default: <out>/baselines)
@@ -53,7 +55,7 @@
  */
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync } from 'node:fs';
 import {
   arg, flag, provenance, writeJSON, ensureDir, loadAllowlist, applyAllowlist, buildInventory,
   createPageCache, resolveAuthHeader, setOriginAuth,
@@ -73,11 +75,12 @@ const BASE = (arg('base') || '').replace(/\/$/, '');
 if (!BASE) { console.error('qa: --base <live-url> is required'); process.exit(2); }
 
 const OUT = arg('out', 'stardust/qa');
-const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean);
+const CHECKS = (arg('checks', 'routing,content,templates,metadata,links,browse,perf,editability,dynamics,chrome,ai-readability')).split(',').map((s) => s.trim()).filter(Boolean);
 const opts = {
   outDir: OUT,
   scrapeDir: arg('scrape', null),
   expectedBlocks: arg('expected-blocks', null),
+  expectedRedirects: arg('redirects', existsSync('stardust/redirects.tsv') ? 'stardust/redirects.tsv' : null),
   baselineDir: arg('baselines', join(OUT, 'baselines')),
   perfPages: Number(arg('perf-pages', 10)),
   budgetTransferKb: Number(arg('budget-transfer-kb', 800)),
@@ -100,6 +103,7 @@ const MODULES = {
   perf: 'checks/perf.mjs',
   editability: 'checks/editability.mjs',
   dynamics: 'checks/dynamics.mjs',
+  chrome: 'checks/chrome.mjs',
   'ai-readability': 'checks/ai-readability.mjs',
 };
 

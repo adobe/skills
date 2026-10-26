@@ -85,14 +85,20 @@ links). Rules:
   as the `branch--repo--owner` host delimiter, so a `--` in a path 400s.
 
 Append each change to `stardust/redirects.tsv` (`source<TAB>destination`); wiring
-those into the EDS redirects config is a Phase D/assembly step.
+those into the EDS redirects config is a Phase D/assembly step. When a spec exists
+(`stardust/spec/knowledge/`), run `seed-redirects.mjs` first: it adds every source
+URL that changes on EDS and points the source's own redirects at the delivered
+page (`deploy/scripts/eds-path.mjs` is the path contract), only toward delivered
+pages, so re-run it after each wave; rows already in the file win.
 
 ## Gate 4 — Source-content hygiene (a sitemap roster contains dead and bodyless URLs)
 
 At ~1000-page scale the roster comes from the source sitemap, which includes URLs
 that **404 on the source** (stale entries) and pages with **no HTML body**
 (PDF-only publication entries — a title plus a PDF download). Two rules:
-- **Verify the source returns 200 before authoring.** A dead source URL is not a
+- **Verify the source returns 200 before authoring** (a spec's `knowledge/urls.jsonl`
+  says: `http-*`, `redirect-broken`, `loop` dead, `flag=empty` bodyless; probe `blocked`
+  rows). A dead source URL is not a
   page to fabricate — leave it un-authored and let it show as the lone gap in the
   dashboard (e.g. 814/815). Never invent a body to fill the slot.
 - **Bodyless/PDF-only source → author metadata + hero + the real download link,

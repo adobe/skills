@@ -116,6 +116,7 @@ Once setup is done, route on the user's input:
   | `audit` | three-perspective site audit — design tensions, SEO/technical, LLM visibility — scored report + findings ledger |
   | `qa` | read-only post-deploy QA sweep of the live site — routing, fidelity, template conformance, rendering, visual regression, SEO, links, a11y, perf — findings report only, never fixes |
   | `uplift` | one-shot presales orchestrator (3 variants) |
+  | `spec` | pre-migration spec of a site — pages, blocks with reuse verdicts, dynamic features, martech, open decisions — as committed knowledge files |
 
   - `prototype` accepts `--cinematic` (or `--cinematic=<register>`)
     to layer a brand-faithful motion register on top of the static
@@ -138,9 +139,13 @@ Once setup is done, route on the user's input:
 ## Two migration flows — pick one, never mix
 
 When the user wants to migrate a site to AEM Edge Delivery (or any clean
-front end), the FIRST question is whether the design is kept or changed.
-That answer selects the flow; the downstream chain is shared.
+front end), the ask decides whether the design is kept or changed: a
+migration keeps its design unless the ask says to redesign it. That
+selects the flow; the downstream chain is shared.
 
+- **Scoping, before either flow:** "scope / estimate / plan / spec the
+  migration of X", "which pages use block X", a redirect or 404 inventory →
+  `spec`. Flow-neutral: it never stamps `flow`.
 - **Redesign while migrating:** `extract` → `direct` → `prototype`, or in
   one orchestrated step `prepare-migration` (the prep cascade with
   confirmation gates) → `migrate` → `deploy` (one-page pilot) /
@@ -172,12 +177,13 @@ loads:
   (`ia-fidelity: verbatim` with palette, type and density all pinned).
 - **Redesign phrases select the redesign flow:** "redesign", "modernise",
   "refresh", "new look", "rethink", "reimagine" — any phrase that moves a
-  design axis.
-- **Anything else** ("migrate X to EDS", "build a migration plan for X")
-  asks the one keep-vs-redesign question — the only question this section
-  asks. Under hands-off it is not asked: a keep-design phrase selects
-  `replica`, otherwise `redesign`, recorded as a named assumption in
-  `direction.md`.
+  design axis. Only an explicit phrase does; nothing is inferred.
+- **Anything else** ("migrate X to EDS") is a faithful migration: `replica`, `flowSource: "default"`, no
+  question, interactive and hands-off alike. The first response carries
+  replica's flow line ("Flow: replica — the design is kept. Say `switch to
+  redesign` now if it is to change."), so the one decision stays visible.
+  With 1,000+ sitemap URLs and no spec, it adds "Large site: say `spec
+  first` to scope it." Offered only, never in hands-off mode.
 
 Stamp the choice in `state.json` as `flow` / `flowChosenAt` / `flowSource`
 (`reference/state-machine.md` § Flow keys) before delegating. The
@@ -226,24 +232,27 @@ auto-resolves:
 | prototype approval | granted by the agent's own judgment **only after all quality gates pass** (craft bar, validation loop, motion gates); recorded as `approvedBy: "hands-off"` on the page's `approved` history entry in `state.json` |
 | `prepare-migration` phase gates | behave as `--skip-confirm` |
 | `rollout` | runs full-auto end-to-end |
-| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked |
+| `dynamics` owner decisions (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record each decision by name in `dynamic-features.md` and the parity report, continue; regulated-pii forms stay blocked; a named assumption never sets `decided-out` |
 
 Defaults under hands-off (override only when the invocation says
 otherwise):
 
 - **One canonical direction.** No variant fan-out — commit to a
   single direction and record the rationale in `direction.md`.
-- **Volume caps as reasoned proposals.** Default **100 pages overall,
-  20 per template**. Roster priority: (1) every page linked from the
-  header and footer, (2) section landing/overview pages, (3) a
-  representative spread of detail pages across all templates. State
-  the chosen caps in `direction.md`.
+- **Volume caps as reasoned proposals, said out loud.** Default **100
+  pages overall, 20 per template**; "all pages" (or `--all-pages`) in
+  the invocation lifts them. Roster priority: (1) every page linked from
+  the header and footer, (2) section landing/overview pages, (3) a
+  representative spread of detail pages across all templates. The setup
+  status line names the roster against the site (`roster 94 of 2,532
+  discovered — cap 100/20`); a capped roster is never called the full
+  site. Record the caps in `direction.md`.
+- **First page first.** A full-site replica run delivers one page (home,
+  or the one named) first: `../replica/reference/first-page-first.md`.
 - **Captured pages stay in the roster.** Locale is never a reason to
   drop a captured page: every `state.json` row is delivered —
   duplicate-content locale shells ride the sibling tier of their twin;
-  `D3-multilingual` is for language trees that were never captured, not
-  for skipping captured ones (a recorded run lost ten locale roots to an
-  extract agent that hard-coded one locale).
+  `D3-multilingual` is for language trees that were never captured.
 - **Delegate by file pointer, read by section.** A brief to a delegated
   agent names the files and sections it needs (`state.json`, the page's
   schema, the phase's SKILL.md sections); it never inlines reference docs.

@@ -22,7 +22,8 @@
  * Asserts (FAIL → exit 1):
  *   - the runtime booted: body.appear present (a blank render = harness bug, #40)
  *   - exactly one <h1>, no heading nested inside it (#35/#55)
- *   - >0 sections; every [data-block-name] reaches data-block-status="loaded"
+ *   - >0 sections; every [data-block-name] reaches data-block-status="loaded" (an EDS widget
+ *     is a `widget` block loaded from widgets/<path>/<name>.* — the dev server must serve widgets/)
  *   - zero pageerror events; zero broken images (loaded but naturalWidth 0)
  *   - every block instance renders non-empty (height > 5px, has child elements)
  *   - schema unit counts: each schema section with repeats count N≥2 renders

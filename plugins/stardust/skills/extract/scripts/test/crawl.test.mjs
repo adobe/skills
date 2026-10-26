@@ -11,7 +11,7 @@ import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureGaps, localeRootPath } from '../crawl.mjs';
+import { captureGaps, localeRootPath, maxPages } from '../crawl.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = join(HERE, '..', 'crawl.mjs');
@@ -75,6 +75,10 @@ check('--help prints the usage header (naming captureGaps) and exits 0 without p
   assert.deepEqual(readdirSync(cwd), []);
   rmSync(cwd, { recursive: true, force: true });
   // this file imported ../crawl.mjs above: a module that ran main() on import would have exited 2 on the missing browser
+});
+
+check('maxPages: 0 is no cap (--all / --prep); missing or bad values fall back to 25; others are floored and at least 1', () => {
+  assert.equal(maxPages('0'), Infinity); assert.equal(maxPages(undefined), 25); assert.equal(maxPages('abc'), 25); assert.equal(maxPages('40'), 40); assert.equal(maxPages('2.7'), 2);
 });
 
 console.log(failed ? `\n${failed} failing` : '\ncrawl: all checks passed');

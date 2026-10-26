@@ -26,7 +26,7 @@ Not for: a single static file with no JS decoration (use the build/harness URL s
 
 | Probe | Script | Sees | Blind to |
 |---|---|---|---|
-| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images, dropped max-width wraps, blank renders, surface/ground colour flips, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
+| **Pixel / layout** | `skills/diff/scripts/visual-diff.mjs` | stretched images (vs the source), dropped max-width wraps, blank renders, surface/ground colour flips, heading size/face deltas, image-count gaps | "right text, wrong slot"; a dropped CTA (full pixels, plausible colours → no flag) |
 | **Structural content + type** | `skills/diff/scripts/content-diff.mjs` | MISSING / ROLE-SWAPPED headings·eyebrows·CTAs, invented/dropped body copy, rendered-FACE font forks (width probe); dropped `placeholder`/`aria-label`/`title` values, missing/wrong/moved icons — on the main root AND the `header`/`footer` chrome roots by default | geometry / layout regressions |
 
 `content-diff` extracts an ordered, role-classified inventory (`heading` / `eyebrow` /
@@ -38,27 +38,20 @@ root carries the `placeholder` / `aria-label` / `title` values and the icons.
 ## Run it
 
 ```bash
-# Prereq 0: playwright importable from the project root — probe
-#   node -e "import('playwright').then(()=>process.exit(0))"
-# and on failure install it AS A devDependency (npm i -D playwright pixelmatch pngjs cheerio
-# --legacy-peer-deps — never --no-save: a --no-save install is PRUNED by the next real npm i,
-# recorded twice in one run; extract SKILL.md § Setup). Run the copied scripts from the project
-# root, not the plugin: ESM resolves `playwright` from the script's own location.
+# Prereq 0: playwright importable from the project root (node -e "import('playwright')"), else
+# npm i -D playwright pixelmatch pngjs cheerio --legacy-peer-deps
+# (never --no-save; extract SKILL.md § Setup). Run the copied scripts from the project
+# root: ESM resolves from the script.
 # Copy the WHOLE skills/diff/scripts/ dir: content-diff imports its local diff-profiles.mjs
-# AND content-inventory.mjs. (The deploy gates #93/#94 now use their OWN synced copies in
-# skills/deploy/scripts/ — A6/A2 are independent of this skill; the two copies must stay in
-# sync until the diff-skill abrasion PR consolidates them.)
+# AND content-inventory.mjs (deploy keeps its own synced copies for #93/#94).
 # Prereq: a RENDERABLE source. Static → serve from its own dir (python3 -m http.server).
 # The build URL must be the DECORATED page (live/preview or a local harness), not raw markup.
 # ONE server, ONE port — probe before starting one (curl is always present, lsof is not):
 curl -sI localhost:8791/ | head -1                   # 200/404 = something serves the port; no line = free
 curl -sI localhost:8791/<prototype>.html | head -1   # 200 = it serves YOUR dir: reuse it
 command -v lsof >/dev/null && lsof -nP -iTCP:8791 -sTCP:LISTEN   # optional: names the pid
-# Nothing answered → start yours. Answers but not your file → a foreign server: never kill
-# a listener you did not start; prefer a per-project port — a stale server from another
-# project makes both probes measure a foreign page. `lsof … || echo free` is not a probe —
-# without lsof it prints "free" beside a live listener (recorded: a second server on the
-# same port died at once and the round chased 404s).
+# Nothing answered → start yours. A foreign server: never kill it; use a per-project port
+# (the traps: ../deploy/SKILL.md § Step 10).
 PROTO="http://localhost:8791/<prototype>.html"
 BUILD="https://<branch>--<repo>--<owner>.aem.page/<path>"   # or http://localhost:3000/<harness>
 
@@ -135,18 +128,42 @@ region, confirm by eye. The origin side fails loud on HTTP ≥ 400 (exit 4) and 
 line says so), header / footer left to the chrome crop gate unless `--chrome`; the count-phrase
 and "read more" heuristics are English word lists (`--count-words`, `--more-words`).
 
+## The header contract (#132)
+
+Every probe above sees the header at rest (pointer parked, motion frozen), so it passes with every menu wrong;
+runs shipped boilerplate click dropdowns for hover mega menus, search and cart as plain links, a static list for a
+drill-down drawer. The header's behaviour is recorded from the source once and the build compared with it:
+
+```bash
+node stardust/scripts/diff/chrome-explore.mjs "$ORIGIN" stardust/chrome/header-contract.json   # 1440 + 390
+node stardust/scripts/diff/chrome-explore.mjs "$SERVED" stardust/chrome/header-build.json
+node stardust/scripts/diff/chrome-compare.mjs stardust/chrome/header-contract.json stardust/chrome/header-build.json \
+  --profile replica --json stardust/chrome/header-parity.json    # functional under redesign and reskin
+```
+
+The explorer hovers (desktop), clicks and keys every header control and records each opened state (links,
+headings, crop, `aria-expanded`, focus, scroll lock, motion, close paths), nested levels within `--max-states 400
+--max-depth 4`, search typeahead and submit, and the header scrolled; its summary line sizes the work. The comparer
+exits 2 on a missing control or state (hover rebuilt as click included), panel links, keyboard, close paths or
+scroll lock; `replica` adds open-state crops (2 %), motion (max(80 ms, 25 %)) and scroll states. **Only the site
+owner clears a finding**: `stardust/chrome/header-decisions.json` (`{ decisions: [{ finding, decision, reason, by,
+at }] }`), never signed by an agent. It runs at extract `--prep` (the contract), on the foundation shell and in
+deploy Step 10, on the live host before handover (`done-check` `header_parity`), and in qa. Crops stay in
+`stardust/.work/chrome/`.
+
 ## Reading content-diff
 
 - 🔴 **MISSING CTA / HEADING / EYEBROW** — real dropped content. FIX. A missing eyebrow is most often a segmentation drop where the eyebrow precedes its heading; a missing CTA means the component never rendered the link. These are exactly what the pixel probe cannot see.
-- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation.
-- 🔴 **MISSING PLACEHOLDER / ARIA-LABEL, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its aria-label or icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡.
-- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon (glyph code point / file name / svg signature) at another anchor, paired by identity and document order after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): the icon is present, CONFIRM its placement. 🟡 **ICON KIND** (glyph vs svg vs image — the pixel probe judges) and every **EXTRA**.
+- 🔴 **ROLE SWAP** — same text under a different role (body painted as eyebrow, eyebrow folded into a teaser). FIX the component's node segmentation. With the same look, body/eyebrow → heading is an accepted ROLE UPGRADE (root line and `--json` `accepted`, not a finding), heading → body/eyebrow 🟡 ROLE DOWNGRADE. Lost visually hidden (sr-only) text is 🟡 MISSING SR-ONLY TEXT; a lost sr-only link stays 🔴 MISSING CTA.
+- 🔴 **MISSING PLACEHOLDER, MISSING ICON, ICON DIFF on an interactive element** (an input, a button, a link or inside one) — a dropped localized search placeholder, a share link without its icon, a wrong flag in a locale link, an empty icon box. FIX. Outside interactive elements the same findings are 🟡. A lost aria-label is a nothing-lost 🟡 anywhere (fails the gate).
+- Icons pair by identity or by **the same pixels**: a re-hosted file (SAME IMAGE) or an svg drawn as `<img>` (SAME ICON) is accepted. A laid-out 0×0 icon is not one.
+- 🟡 **MISSING TITLE** — always 🟡: a title tooltip is not read by most assistive tech and is commonly dropped by design. 🟡 **ICON MOVED** — the same icon at another anchor, paired after the anchor passes (typically a text-less `<button>` host that anchors as `button#n`): CONFIRM its placement. 🟡 **ICON KIND** (pixels not compared, e.g. a hidden icon) and every **EXTRA**.
 - Every finding line names its root — `🔴 MISSING PLACEHOLDER [header]: …` — and the report prints one block per root (`root "main"`, `root "header"`, …; a root a side lacks is measured as empty there and the line says which side).
 - 🟡 **MISSING BODY / EXTRA** — body prose dropped, or build copy with no source. Usually a placeholder→real-copy rewrite. CONFIRM intended; don't blindly "fix".
 - 🟠 **FONT FORK** — matched lines whose rendered FACE differs (width probe, never `document.fonts.check`). `source X→sys` means the prototype named font X but never loaded it and fell back to system — the build self-hosting the intended fallback is then CORRECT, not a bug. All forked lines are grouped into one advisory.
 - **Known limitation — node-granularity JOIN/SPLIT reads as 🔴 (#87).** When the source renders one text run as N sibling nodes and the build renders the same text as ONE node (or vice versa — e.g. three fact chips vs one combined chip span), the diff currently reports MISSING + ROLE SWAP + EXTRA for what is a non-defect. Until concat-matching lands (a source node that is a substring of a same-region build node → 🟡 JOIN/SPLIT advisory), verify a 🔴 whose texts concatenate into an EXTRA finding's text before treating it as dropped content — confirmed-justified is a pass.
 
-**Pass bar:** visual red flags none/justified **AND** content-diff **0 structural 🔴** (🟡/🟠 confirmed intended). Re-run BOTH after each fix.
+**Pass bar:** visual red flags none/justified **AND** content-diff **0 🔴 and 0 nothing-lost 🟡** (`../replica/reference/source-fidelity-gate.md` § Pass bar item 1). Re-run BOTH after each fix.
 
 ## Profiles
 
@@ -163,9 +180,7 @@ Add a profile by copying `generic` in `diff-profiles.mjs` and editing `hints`.
 ## Shared engine + the in-loop sibling
 
 The structural probe's classifier + differ live in `skills/diff/scripts/content-inventory.mjs`
-(and a synced copy in `skills/deploy/scripts/content-inventory.mjs` that the deploy gates import
-locally so they don't depend on this skill — keep the two copies in sync until consolidated).
-They measure with the same instrument as two gates of the stardust `deploy` skill:
+(deploy imports its synced copy). They measure with the same instrument as two gates of the stardust `deploy` skill:
 `section-schema.mjs` (the pre-code ENCODE/DECODE contract, deploy #93) and `block-roundtrip.mjs`
 (the in-loop per-block gate, deploy #94 — the same inventory diff, run per block at authoring time
 against a local decorate() harness, no DA needed, exit-code gated). Run the in-loop gate while
@@ -175,15 +190,7 @@ block's flattened-shape fallback, not the authoring.
 
 ## Workflow use
 
-Call both scripts in a validation phase and gate on the output. The
-the stardust `deploy` skill's conversion workflow Validate phase runs both after building
-a local harness; mirror that:
-
-1. Build/serve the decorated build page (e.g. a local QA harness, or the branch preview).
-2. `visual-diff … --profile eds` → fix STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP flags (unless justified).
-3. `content-diff … --profile eds` → fix every 🔴; confirm 🟡/🟠.
-4. Loop until visual none/justified AND content-diff 0 structural 🔴.
-
-> Naming note: this skill ships in the `stardust` plugin and is invoked as
-> the stardust `diff` skill. It pairs with the stardust `deploy` skill, whose Step 10 runs both probes
-> as its Validate gate.
+Call both scripts in a validation phase and gate on the output, as deploy's Validate phase does on a served,
+decorated build (local harness or branch preview): fix visual-diff's STRETCHED/FLUSH-LEFT/SURFACE-GROUND/GAP/
+HEADING FACE flags (unless justified — a font substitution is one `HEADING FACE ×N` line) and every content-diff 🔴,
+confirm 🟡/🟠, loop until both are clean.

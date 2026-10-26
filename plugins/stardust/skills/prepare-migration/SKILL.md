@@ -58,16 +58,12 @@ this site" a conscious gesture and keeps idempotency obvious.
    `prepare-migration` before or after `replica`" and the switch
    command (`$stardust prepare-migration --switch-flow`, which marks
    the replica artefacts stale — master skill § Two migration flows).
-   If `flow` is absent, resolve it first: a keep-design phrase in the
-   ask ("1:1", "exact replica", "same design", "faithful",
-   "re-platform") means this skill does not apply — say so and hand to
-   `replica`; a plain migration ask gets the one keep-vs-redesign
-   question (hands-off: default `redesign`, recorded in
-   `direction.md`); then stamp `flow: "redesign"`
-   (`skills/stardust/reference/state-machine.md` § Flow keys).
-   (Recorded: "build a 1:1 migration plan" entered here on a plugin
-   that already described both flows and ran the redesign cascade for
-   two hours before `direct` was asked for an "exact replica".)
+   If `flow` is absent, resolve it first: only an explicit redesign
+   phrase ("redesign", "modernise", "refresh", "new look") selects this
+   skill — stamp `flow: "redesign"`
+   (`skills/stardust/reference/state-machine.md` § Flow keys). Any other
+   migration ask, keep-design phrase or plain "migrate", means this skill
+   does not apply — say so and hand to `replica`.
 2. Verify `stardust/state.json` exists with at least one extracted
    page. If not, recommend `$stardust extract <url>` and stop.
 3. Verify `stardust/direction.md` exists with an active direction.
@@ -354,8 +350,6 @@ canon-author prototype was re-iterated, etc.).
   `reference/listings.md` — Phase 4.5 is its Phases 1–3
 - `skills/migrate/SKILL.md` — the consumer of every data
   structure this cascade prepares
-- `notes/migrate-template-canon-refactor.md` — design plan and
-  rationale
 - `skills/stardust/reference/state-machine.md` — page typing,
   stale-flagging cascade
 - `skills/stardust/reference/artifact-map.md` — file structure,

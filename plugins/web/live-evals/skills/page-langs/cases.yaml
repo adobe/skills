@@ -1,0 +1,44 @@
+# `expect` keys (all optional): top (first detected language), detected (exact set),
+# html_lang, undeclared / declared_not_detected / agreement (exact sets); a `_includes` suffix
+# (agreement_includes, ...) asks only that those languages are in the set.
+- description: fixture, English page declared en
+  vars:
+    url: http://localhost:8765/langs-en.html
+    expect: { top: en, detected: [en], html_lang: en, undeclared: [], declared_not_detected: [], agreement: [en] }
+- description: fixture, es+de body declared en with hreflang fr
+  vars:
+    url: http://localhost:8765/langs-mismatch.html
+    expect: { detected: [de, es], html_lang: en, undeclared: [de, es], declared_not_detected: [en, fr], agreement: [] }
+- description: es.wikipedia.org/wiki/Madrid (Spanish)
+  vars:
+    url: https://es.wikipedia.org/wiki/Madrid
+    expect: { top: es, html_lang: es }
+- description: aem.live (English)
+  vars:
+    url: https://www.aem.live/
+    expect: { top: en, html_lang: en }
+- description: fixture, nested lang attribute (en page with a German block)
+  vars:
+    url: http://localhost:8765/langs-nested.html
+    expect: { detected: [en, de], html_lang: en, agreement: [en, de], undeclared: [], declared_not_detected: [] }
+- description: fixture, French page with no language markup
+  vars:
+    url: http://localhost:8765/langs-unmarked.html
+    expect: { detected: [fr], html_lang: null, undeclared: [fr], declared_not_detected: [], agreement: [] }
+- description: fixture, too little text to detect a language
+  metadata: { noskill: skip } # depends on CLD3 skipping short blocks, a property of the skill's detector
+  vars:
+    url: http://localhost:8765/langs-short.html
+    expect: { detected: [], html_lang: fr, declared_not_detected: [fr], undeclared: [], agreement: [] }
+- description: live, webflowmarketingmain.com/fr (French, hreflang de/en/fr)
+  vars:
+    url: https://webflowmarketingmain.com/fr
+    expect: { top: fr, html_lang: fr, agreement_includes: [fr] }
+- description: live, stripe.com/fr-ch (regional html lang, many hreflang)
+  vars:
+    url: https://stripe.com/fr-ch
+    expect: { top: fr, html_lang: fr-CH }
+- description: live, wpbeginner.com (English page, hreflang-only languages)
+  vars:
+    url: https://www.wpbeginner.com/
+    expect: { detected: [en], html_lang: en-US, declared_not_detected_includes: [de, fr] }

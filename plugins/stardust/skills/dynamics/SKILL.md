@@ -38,8 +38,8 @@ other platforms later), not a redesign one.
 `dynamic-features.generated.md`. Evidence only. `reference/classes-and-signals.md`. For every
 search form found, run one probe term on the SOURCE and record what it shows — the visible result
 count, the top titles (≤ 3), one known hit — as `expectCount` / `expectTitles` / `expectIncludes`
-on the feature's `search-query` check (Phase 5); without them the rebuilt search can only be
-checked for presence.
+on the feature's `search-query` check (Phase 5; a spec's `knowledge/search-probes.json` already
+holds them); without them the rebuilt search can only be checked for presence.
 
 ## Phase 2 — Classify
 
@@ -50,19 +50,24 @@ there and marks dead ones **host-bound** — the signal a pixel gate reports as 
 
 ## Phase 3 — Triage (the gate output)
 
-`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] --out stardust/dynamics`
+`node skills/dynamics/scripts/dynamics-plan.mjs [--target-origin …] [--migrated stardust/migrated] [--knowledge] [--chrome] --out stardust/dynamics`
 drafts one row per finding with the four axes pre-filled — **class · disposition ·
-reproducibility · status** — plus pattern, phase and the owner decision. Curate it into
-`stardust/dynamic-features.md` (subsumes the former dynamic-blocks map: § Listings contract +
-§ Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
+reproducibility · status** — plus pattern, phase, the owner decision and `target`, the delivery form
+(`widget` where no authored rows remain — `reference/triage.md` § Target); `--knowledge` adds a spec's
+curated features, decisions from its open questions; `--chrome` a row per header-contract family (cart and
+account decide their backend, the UI ships). Curate it into `stardust/dynamic-features.md` (§ Listings
+contract + § Features + § Decision batch + § Register) and `stardust/dynamic-features-plan.md`.
 `reference/triage.md` is the contract. Rules that decide the shape of the phase:
 
 - **Reconcile against the migrated output** before scheduling anything.
 - Only reproducibility `self` ships autonomously; everything else is **one decision batch**.
 - Never fabricate copy for a blank client-rendered capture; never auto-wire a `regulated-pii` form;
-  a search box implies a results page; decided-out is explicit.
+  a search box implies a results page; decided-out is explicit and owner-stated — a hands-off
+  assumption never writes it.
 - **Gate:** a row without a disposition fails prepare-migration 4.5 / replica Phase 2 / rollout B2.
   The static migration continues regardless.
+- **Martech only on request:** when the owner asks to keep tags or consent, add `--martech`
+  (`reference/martech.md`); everything is scaffolded off.
 
 ## Phase 4 — Implement (per plan phase)
 
@@ -75,9 +80,8 @@ ends with the flow verified on the published origin at 1440 and 360, a parity ro
 and a commit. Tooling: `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`. **The query index
 comes from `helix-query.yaml` in the code branch** — commit, push, publish live, poll — never from a
 configuration-service write; the sheet-backed interim index only when the branch is not writable
-(`reference/listings.md` § Getting an index at all). **Search** ranks title matches first, dedupes by
-title + description and caps the dropdown at the source's visible count (`reference/patterns.md`
-§ search-index-backed). **Listings and data-fed bands are document-first**: the document carries the item text as authored rows, the block reads the index or snapshot only for non-text fields and top-up (`reference/listings.md` § Block contract; why: `deploy/reference/ai-readability.md`).
+(`reference/listings.md` § Getting an index at all). **Search** follows `reference/patterns.md`
+§ search-index-backed. **Listings and data-fed bands are document-first**: the document carries the item text as authored rows, the block reads the index or snapshot only for non-text fields and top-up (`reference/listings.md` § Block contract; why: `deploy/reference/ai-readability.md`).
 
 ## Phase 5 — Verify: dynamic parity
 
@@ -92,7 +96,7 @@ every assertion.
 
 | gate | resolution |
 |---|---|
-| owner decision (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record the decision by name in the plan and parity report, continue |
+| owner decision (backend, tags on the new host, datasource ownership, locale scope) | ship the interim tier, record the decision by name in the plan and parity report, continue — never as `decided-out`, which takes an owner's statement or a hard blocker |
 | unknown third-party host | classify from the XHR body; else `T` "inspect" — never drop silently |
 | blank client-rendered capture | hard content gap → human-capture batch; never migrate blank |
 | regulated-pii form | UI rebuilt, submission blocked, mandatory decision |
@@ -109,6 +113,7 @@ required; an interim tier that would capture regulated data (record as decided-o
 `stardust/current/_dynamics.json`, `dynamic-features.generated.md` · `stardust/dynamics/dynamic-features.generated-plan.{md,json}` ·
 `stardust/dynamic-features.md`, `stardust/dynamic-features-plan.md` (curated) · `helix-query.yaml` (listings + search, committed in the code branch) ·
 `data/<feature>/*.json` + `_provenance.json` (snapshots, code bus) · `scripts/site-config.js` (owner-facing integrations, disabled) ·
+`stardust/martech-contract.json`, `martech-handoff.md`, `scripts/martech.js` (opt-in) ·
 `stardust/dynamics/parity.json` · `stardust/qa/dynamics-report.{md,json}` · register rows · journal + status lines.
 
 ## References
@@ -121,4 +126,5 @@ required; an interim tier that would capture regulated data (record as decided-o
 - `reference/forms.md` — controls not form tags; intake by content source; regulated data.
 - `reference/parity-report.md` — schema, check types, rules.
 - `reference/locale-trees.md` — I18N as a tree.
-- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`.
+- `reference/martech.md` — opt-in martech contract, owner enablement, runtime, verification.
+- `scripts/` — `dynamics-detect.mjs`, `dynamics-plan.mjs`, `dynamics-check.mjs`, `snapshot-api.mjs`, `snapshot-forms.mjs`, `sync-sheets.mjs`, `vendors.json`, `lib.mjs`, `martech.mjs`.

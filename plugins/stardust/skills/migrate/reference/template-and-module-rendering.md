@@ -5,10 +5,8 @@ but its type has an approved sibling (Path A′), or when a page
 matches no template and must be rendered as a one-off (Path B —
 `unique` rendering).
 
-This is the substantive new behavior introduced by the migrate-
-template-canon refactor. Path A (page is itself `approved`) is
-unchanged — the proposed.html is used verbatim, with `:root`
-refreshed from latest DESIGN.md.
+Path A (page is itself `approved`) uses the proposed.html verbatim,
+with `:root` refreshed from latest DESIGN.md.
 
 ## Render path selection
 
@@ -85,9 +83,14 @@ target page's module-instance values from
 values just like templates).
 
 If the target page has a module instance the archetype doesn't
-position (e.g., target has a `donate-band` after the body that
-the archetype's article template doesn't include), insert the
-module at a sensible position; log as `template-adapted`.
+position, insert the module at a sensible position; log as
+`template-adapted`.
+
+A widget instance (`DESIGN.json.extensions.widgets[]`) has no slot
+values to inject: render it as the single mount link
+`<p><a data-widget="<path>/<name>" href="/widgets/<path>/<name>.html?<params>">…</a></p>`
+— a link, never `data-placeholder`, so the placeholder gate does not
+fire; the driver lists it in `_meta.json.widgets[]`.
 
 ### Step 5 — canon application
 

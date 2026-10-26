@@ -41,6 +41,12 @@ const ALLOW = [
   'youtube.com', 'youtu.be', 'vimeo.com', 'x.com', 'twitter.com', 'linkedin.com', 'facebook.com', 'instagram.com',
   'google.com', 'shopify.com', 'linear.app', 'datawrapper.de', 'cloudflarestream.com', 'edgesuite.net',
   'akamaized.net', 'cloudfront.net', 'wp.com', 'hubspot.com', 'typeform.com', 'calendly.com',
+  // tag-manager and consent vendor hosts spec-martech reads public configuration from
+  'adobedtm.com', 'cookielaw.org', 'cookiebot.com', 'googletagmanager.com', 'tiqcdn.com', 'ensighten.com',
+  // Adobe Web SDK hosts: the vendors.json loader pattern and the aem-martech plugin's default edge
+  'adoberesources.net', 'adobedc.net',
+  // the Internet Archive API spec-inventory and spec-fetch read captures from (--archive)
+  'archive.org',
 ];
 // Synthetic or runner-pinned eval sites — allowed under evals/ only.
 const EVAL_ALLOW = ['ledgerline.com', 'stripe.com'];

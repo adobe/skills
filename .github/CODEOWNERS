@@ -56,5 +56,5 @@
 /plugins/commerce/app-migration/                       @adobe/commerce-decepticons
 /plugins/commerce/app-review/                          @adobe/commerce-decepticons @adobe/commerce-mercury
 
-# Adobe Workfront (Planning solution architecture)
+# Adobe Workfront (Planning solution architecture, Fusion optimizer)
 /plugins/workfront                                     @ashot3232

@@ -70,12 +70,14 @@ const converted = new Map(); // block id -> slug that converts it
 const steps = [];
 for (const slug of order) {
   const p = bySlug.get(slug);
-  const modules = (p.blocks || []).filter((id) => !isChrome(id));
+  // widgets ride along: their code converts once too (widgets/<path>/<name>.html); the page only carries a link
+  const modules = [...(p.blocks || []).filter((id) => !isChrome(id)), ...(p.widgets || []).map((w) => w.id)];
   const convert = [];
   const reuse = [];
   for (const id of modules) {
-    if (!converted.has(id)) { converted.set(id, slug); convert.push({ id, edsBlockName: edsNameOf(id) }); }
-    else reuse.push({ id, edsBlockName: edsNameOf(id), convertedBy: converted.get(id) });
+    const kind = (blockById.get(id) || {}).kind === 'widget' ? { kind: 'widget' } : {};
+    if (!converted.has(id)) { converted.set(id, slug); convert.push({ id, edsBlockName: edsNameOf(id), ...kind }); }
+    else reuse.push({ id, edsBlockName: edsNameOf(id), convertedBy: converted.get(id), ...kind });
   }
   const pending = ['pending', 'stale', 'failed'].includes(p.delivery && p.delivery.status);
   steps.push({ slug, path: p.path, templateId: p.templateId, status: p.delivery.status, isRepresentative: convert.length > 0, convert, reuse });

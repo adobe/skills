@@ -83,7 +83,8 @@ full mode; pages present only in `state.json` are seeded with `templateId` from
 content-pending`.
 
 Inventory is **idempotent and incremental**: delivery status is preserved; a page
-whose migrated HTML changed after delivery is re-flagged `stale`. Fill in the DA
+whose migrated HTML changed after delivery is re-flagged `stale` (never a
+pinned row: replica's first page first). Fill in the DA
 coordinates in `rollout.json` (`site.da.org`, `site.site`, `site.da.ref`,
 `site.liveHost`) if not inferred.
 
@@ -94,25 +95,24 @@ node skills/rollout/scripts/blocks.mjs   # → coverage/blocks.json (the dedup u
 node skills/rollout/scripts/plan.mjs     # → plan.json + a readable conversion plan
 ```
 
-- `blocks.mjs` collapses every block instance (per-page `modules` + chrome) into
-  the **distinct** set, assigns each a canonical `edsBlockName` (kebab,
-  reserved-class-guarded per deploy #15), and records `usedByPages` /
-  `instanceCount`. Chrome (`header`/`nav`/`footer`) is `kind: chrome` → site-wide
-  authored documents (`/nav`, `/footer`) fed to the header/footer blocks. In
-  archetypes-only mode the archetype sidecars fully determine the
-  block set; `content-pending` pages add none. A module that maps to EDS **default
-  content** (title, text, image, button, separator — deploy's D1) needs no block: record
+- `blocks.mjs` collapses every block instance (per-page `modules`, `widgets` + chrome)
+  into the **distinct** set, assigns each a canonical `edsBlockName` (kebab, reserved-class
+  guarded) and records `usedByPages` / `instanceCount`. Chrome (`header`/`nav`/`footer`)
+  is `kind: chrome` → site-wide authored documents (`/nav`, `/footer`). A widget
+  (`kind: widget`, from the sidecar's `widgets[] {id, href}`) needs no document rows:
+  its code ships at `widgets/<path>/<name>.html` and the page carries one
+  `/widgets/…html` link (#133). In archetypes-only mode the archetype sidecars
+  determine the block set; `content-pending` pages add none. A module that maps to
+  EDS **default content** (title, text, image, button, separator) needs no block: record
   it `update-coverage.mjs --block <id> --status converted --eds-name default-content`;
   such a row is never counted pending, whatever its status.
 - `plan.mjs` orders pages **representative-first per template** and gives each
   distinct block a **single conversion point**: the first page that uses it
   CONVERTS it, every later page REUSES it by name. The per-page `convert`/`reuse`
-  lists are exactly `deploy`'s Step-7 brief input, so each block converts once
-  **without changing deploy**. `content-pending` pages are always `convert: []`.
+  lists are `deploy`'s Step-7 brief input. `content-pending` pages are always `convert: []`.
 
-> Extending an already-delivered site? A "new template" is almost always a new
-> COMPOSITION of the existing block library, not new block code — audit `blocks/`
-> first. See `reference/operational-learnings.md`.
+> Extending a delivered site: audit `blocks/` and `widgets/` first — a "new template" is
+> usually a new composition of them (`reference/operational-learnings.md`).
 
 ### Phase B2 — Dynamic surface (PRE-IMPORT GATE — verify the inventory)
 
@@ -139,7 +139,10 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
    editability contract** (deploy SKILL.md § 8, EW1–EW10): every converted block
    moves authored elements into wrappers (never rebuilds from text) and passes the
    EW gate (`block-roundtrip --ew`) before it counts as delivered — a brief without
-   it skipped the contract on 27/27 blocks of a real site.
+   it skipped the contract on 27/27 blocks of a real site. **The brief also carries
+   the archetype's `captureState[].restoreAtDelivery` list** (replica `progress.json`):
+   a freeze the gate needed (video at frame 0, carousel on slide 1) is a behaviour to
+   deliver, never the spec (`../replica/reference/recreation-procedure.md § Carousels`).
 
    **Deploy first, judge on the preview origin.** The local harness
    (`build-harness.mjs` → `qa-gate.mjs`, `block-roundtrip.mjs --ew`) serves the
@@ -188,9 +191,8 @@ Walk `plan.json.steps` in order (representative pages first). For each page:
      source-fidelity gate, which runs on the published origin after `deployed`)
    - **Image-fidelity** — every authored `<img>` src must return 200 or be omitted;
      never ship `<img src="about:error">`. Run `media-reconcile.mjs` (step 2).
-   - **Path-safety** — normalize source paths to AEM-Edge-safe form (lowercase, no
-     trailing `-`/`_`, no `--` segment); record original→normalized in
-     `stardust/redirects.tsv`. (delivery-lint flags violations.)
+   - **Path-safety** — `reference/delivery-gates.md` § Gate 3; record
+     original→normalized in `stardust/redirects.tsv`. (delivery-lint flags violations.)
    - **Source-content hygiene** — skip dead source URLs; author bodyless/PDF-only
      sources thin and faithful (tier `thin`,
      `skills/migrate/reference/fidelity-tiers.md`), don't pad with invented prose.
@@ -223,7 +225,10 @@ probes run against the page's preview URL, never a local harness — a
 pre-deploy harness pixel diff is NOT this gate. A wrong runtime assumption (block wrapper class,
 button classes) is silent and sitewide — typography still looks fine while
 every grid stacks. This one gate is the difference between fixing one page
-and rebuilding every template. **Archetype first, per template (#126):** the
+and rebuilding every template. The same gate runs `qa.mjs --checks metadata`
+against the origin: `favicon-default` means the site's icon never shipped
+(deploy Step 3 § Favicon) — recorded first passes served the boilerplate
+icon while `/favicon.ico` answered 200. **Archetype first, per template (#126):** the
 template's archetype is deployed and passes its full gate row on the preview URL
 (`gate-all.mjs --only`, cap 3 fix rounds) before any of its siblings is rendered
 or converted — the recorded unit `C-archetype` (handoff contract § 3, row C).
@@ -335,19 +340,11 @@ Index-backed listings ship **document-first** (authored rows, index for non-text
 `dynamics/reference/listings.md`); the deploy AI-readability gate runs on every listing page.
 
 **A missing query index is a code-branch gap, not a configuration-service problem.**
-`/query-index.json` answering 404 means the project ships no `helix-query.yaml` (the
-demo boilerplate does not). The FIRST remedy: author `helix-query.yaml` at the code
-branch root indexing the delivered content roots into `target: /query-index.json`
-(`title` from `og:title`, `description`, `image`, `lastModified`; chrome and search
-documents excluded — skeleton in `skills/dynamics/reference/listings.md` § Getting an
-index at all), push the branch, make sure the pages are published LIVE, then poll
-`/query-index.json` no more often than every 5 s for at most 10 minutes until `total`
-settles at the page count. No admin-configuration write is part of this — the indexer
-builds from live-published pages; a 403 from the configuration service with the
-migration token is expected and is not a reason to stop. Only when the code branch is
-NOT writable does the sheet-backed interim index ship (recorded `interim`, decision
-named). A recorded hands-off run probed the configuration service, read its 403 as "no
-index can be configured" and built the interim index — the fix was one committed yaml.
+`/query-index.json` answering 404 means the project ships no `helix-query.yaml`. Author it
+at the code branch root (a spec's `knowledge/helix-query.yaml` is the draft), publish the
+pages LIVE and poll: `skills/dynamics/reference/listings.md` § Getting an index at all. A
+403 from the configuration service is expected; only an unwritable code branch ships the
+sheet-backed interim index (recorded `interim`, decision named).
 
 **Search parity is count + titles, not presence.** The results block ranks title
 matches first and consults description, then body text, only while fewer than N title
@@ -391,7 +388,10 @@ chrome) are invisible to a text check. On the FIRST delivered page of each
 template (home included), load the live URL in a headless browser and assert
 decoration ran: the runtime's `body.appear` class is set (per
 `stardust/runtime-contract.json`), `main .section` count > 0,
-zero `pageerror` events, zero broken images.
+zero `pageerror` events, zero broken images, and every `restoreAtDelivery`
+entry of the template's archetype holds: an `autoplay` `<video>` at least a
+quarter visible is playing (`!paused`, `currentTime` advancing — not merely
+present), a rotating carousel advances without interaction.
 
 **Published-origin gate over the roster (#125).** `verify` proves the pages render; the
 DELIVERY verdict is replica's `gate-all.mjs` (pixel + height + clip + content per deployed page,
@@ -422,14 +422,12 @@ link **targets** a roster-driven batch misses
   tree after every wave**: earlier waves' pages gain newly valid targets only
   when a later wave ships them. `--check` is the gate (exit 2 = localizable
   links remain).
-- **Strip trailing slashes and `.html` from internal links.** EDS serves
-  extensionless documents with no trailing slash, so `/x/y/` and `/x/y.html`
-  both 404 (render the 404 block) while `.plain.html` still passes — nav reads
-  green, every link is dead. Normalize every internal `href` (keep bare `/`);
-  repoint `.html` links with no local page at the working source URL.
-- **The audit GETs each href against the LIVE tree.** Structural resolution
-  against the ledger misses trailing-slash and case defects that only
-  delivery exposes.
+- **Link every internal page at its served URL** (`deploy/scripts/eds-path.mjs`):
+  no `.html`, a slash only on a folder index (`/x/`). `.html` and a leaf's
+  slash 404 while `.plain.html` passes. Repoint `.html` links with no local
+  page at the working source URL.
+- **The audit GETs each href against the LIVE tree**: the ledger alone misses
+  slash and case defects.
 - **Targets missing from the capture.** Two cases, both recorded in
   `direction.md` as a named decision with the list: a target the direction's
   caps meant to include is a CAPTURE GAP — crawl it first (capture → migrate →
@@ -575,12 +573,15 @@ findings shows a red count. Also a templates table + the quality scorecard.
 `dashboard/data.json` is the inspectable snapshot — regenerate at every iteration
 boundary. (`state.json` is read-only and optional.)
 
+**Done is one verdict:** the rollout is complete when `node skills/rollout/scripts/done-check.mjs`
+exits 0; otherwise it prints one gap per line.
+
 ## Inputs
 
 | Input | Source | Used for |
 |---|---|---|
 | `stardust/migrated/*.html` | `migrate` | the pages to deliver (read-only) |
-| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `title` |
+| `stardust/migrated/**/_meta.json` | `migrate` | `templateId` (`template`; an archetype with `template: null` groups under its own slug; else `type`), `blocks` (`modules` — the inventory report counts sidecars with an empty list: fill them before Phase B), `widgets` (`widgets[] {id, href}`), `title` |
 | `stardust/state.json` | stardust core | *(archetypes-only mode)* full page roster + `type` for pages not yet migrated |
 | `stardust/rollout/rollout.json` | rollout / user | DA target coordinates |
 
@@ -598,7 +599,7 @@ boundary. (`state.json` is read-only and optional.)
 | `stardust/rollout/site/{sitemap.xml,robots.txt,manifest.json}` | site-level assembly artifacts |
 | `stardust/rollout/dashboard/{index.html,data.json}` | self-contained progress dashboard + snapshot |
 | edits to the **EDS project** (`content/**`, `styles/`) | applied by `autofix-aem` (the only files rollout writes outside `stardust/rollout/`) |
-| the delivered EDS site | produced by `deploy` per page (blocks/, content/, fragments — owned by `deploy`) |
+| the delivered EDS site | produced by `deploy` per page (blocks/, widgets/, content/, fragments — owned by `deploy`) |
 
 `rollout` writes under `stardust/rollout/` and — only via `autofix-aem` — to the
 **EDS project** it delivers to. It never modifies the agnostic core, `state.json`,
@@ -648,6 +649,7 @@ Normalize each one's output into the ledger via `findings.mjs record`. See
 - `scripts/findings.mjs` — record/resolve findings from the external audit sources.
 - `scripts/autofix-aem.mjs` — the AEM autofix engine (edits the EDS project).
 - `scripts/dashboard.mjs` — design-identity dashboard + `data.json` snapshot.
+- `scripts/done-check.mjs` — the completion verdict (Phase I); exit 0 = complete.
 - `scripts/lib.mjs` — shared IO + roll-up + page-loading + autofix-registry helpers.
 
 ## References
