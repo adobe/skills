@@ -86,7 +86,8 @@ def git_problem(root: str) -> Optional[str]:
         if not line or ".modernize/" in path or path.endswith(".modernize"):
             continue
         full = top_dir / path
-        if any(t == full or t in full.parents for t in tooling):
+        # a multi-agent install links e.g. .claude/skills/<skill> to the copy in .agents/skills
+        if any(t == p or t in p.parents for t in tooling for p in (full, full.resolve())):
             continue
         dirty.append(path)
     if dirty:

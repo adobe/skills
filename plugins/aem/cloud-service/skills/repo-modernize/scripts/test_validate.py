@@ -140,6 +140,19 @@ class NoLoss(unittest.TestCase):
         (d / "a.txt").unlink()
         self.assertTrue(any(v.kind == "content-lost" for v in V.check_no_loss(str(d), inv, _config())))
 
+    def test_in_project_skill_copy_cannot_mask_a_loss(self):
+        """A lost project file is still lost when the skill installed in the project
+        (.agents/skills/...) happens to hold a file with identical bytes."""
+        from unittest import mock
+        d = Path(tempfile.mkdtemp()); (d / "a.txt").write_text("payload")
+        inv = {"files": [{"path": "a.txt", "sha256": V_C.sha256_file(d / "a.txt")}]}
+        (d / "a.txt").unlink()
+        skill = d / ".agents/skills/repo-modernize"
+        skill.mkdir(parents=True); (skill / "same.txt").write_text("payload")
+        with mock.patch.object(V_C, "SKILL_DIR", skill.resolve()):
+            lost = V.check_no_loss(str(d), inv, _config())
+        self.assertTrue(any(v.kind == "content-lost" for v in lost))
+
     def test_uber_jar_drop_is_exempt(self):
         d = Path(tempfile.mkdtemp())
         inv = {"files": [{"path": "core/target/uber-jar-6.5.jar", "sha256": "deadbeef"}]}

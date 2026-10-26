@@ -140,12 +140,15 @@ class Preflight(unittest.TestCase):
                     "skills-lock.json"):
             (d / rel).parent.mkdir(parents=True, exist_ok=True)
             (d / rel).write_text("x")
+        (d / ".claude/skills").mkdir(parents=True)
+        os.symlink("../../.agents/skills/repo-modernize", d / ".claude/skills/repo-modernize")
         with mock.patch.object(O.C, "SKILL_DIR", (d / ".agents/skills/repo-modernize").resolve()):
             self.assertIsNone(O.git_problem(str(d)))
             (d / "notes.txt").write_text("user work")
             problem = O.git_problem(str(d))
         self.assertIn("notes.txt", problem)
         self.assertNotIn(".agents", problem)
+        self.assertNotIn(".claude", problem)
         self.assertNotIn("skills-lock.json", problem)
 
     def test_skill_outside_a_skills_folder_excludes_only_itself(self):
@@ -181,6 +184,11 @@ class InProjectInstall(unittest.TestCase):
         return subprocess.run([sys.executable, str(script), *args],
                               capture_output=True, text=True, env=env)
 
+    @staticmethod
+    def _digest(folder: Path) -> dict:
+        return {str(p.relative_to(folder)): O.C.sha256_file(p) for p in sorted(folder.rglob("*"))
+                if p.is_file() and "__pycache__" not in p.parts and ".venv" not in p.parts}
+
     def test_plan_and_apply_from_an_in_project_copy(self):
         d = Path(tempfile.mkdtemp()) / "proj"
         shutil.copytree(FIX, d)
@@ -189,8 +197,11 @@ class InProjectInstall(unittest.TestCase):
         shutil.copytree(SKILL, installed, ignore=shutil.ignore_patterns("__pycache__", ".venv"))
         (d / ".agents/skills/other-skill").mkdir()
         (d / ".agents/skills/other-skill/SKILL.md").write_text("x")
+        (d / ".claude/skills").mkdir(parents=True)
+        os.symlink("../../.agents/skills/repo-modernize", d / ".claude/skills/repo-modernize")
         (d / "skills-lock.json").write_text("{}\n")
-        script = installed / "scripts/orchestrate.py"
+        before = self._digest(installed)
+        script = d / ".claude/skills/repo-modernize/scripts/orchestrate.py"
 
         plan = self._run(script, str(d), "--plan")
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
@@ -203,10 +214,11 @@ class InProjectInstall(unittest.TestCase):
         self.assertIn("structural PASS", applied.stdout)
         self.assertTrue((d / "ui.config/pom.xml").is_file())
         install_status = subprocess.run(
-            ["git", "status", "--porcelain", "--", ".agents", "skills-lock.json"],
+            ["git", "status", "--porcelain", "--", ".agents", ".claude", "skills-lock.json"],
             cwd=d, capture_output=True, text=True, check=True).stdout.splitlines()
         self.assertTrue(install_status)
         self.assertTrue(all(line.startswith("??") for line in install_status), install_status)
+        self.assertEqual(self._digest(installed), before)     # the skill's own files untouched
 
 
 if __name__ == "__main__":

@@ -251,7 +251,7 @@ def check_no_loss(project_root, inventory, config) -> List[Violation]:
         `.xml`, pre-existing `.cfg.json`) are deliberately NOT included here.
     """
     root = Path(project_root)
-    present = {C.sha256_file(p) for p in C.iter_files(root)}
+    present = {C.sha256_file(p) for p in C.iter_files(root, exclude=C.agent_tooling_paths(root))}
     out: List[Violation] = []
     for entry in inventory.get("files", []):
         if any(s in entry["path"] for s in EXEMPT_SUBSTRINGS):
