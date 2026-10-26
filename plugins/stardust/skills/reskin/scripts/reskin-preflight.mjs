@@ -17,6 +17,7 @@
  *   FAIL  every module a typed page's mapping uses has a canon skeleton (DESIGN.json extensions.modules)
  *   FAIL  no agent approval outside hands-off (approvedBy hands-off/autopilot/agent needs state.handsOff and "hands-off")
  *   FAIL  the reskin predicate: each type's archetype is gated in reskin/ledger.json (reskin-ledger.mjs) —
+ *         its deployed evidence's codeStamp still the project's code (deployed-gate stamp) —
  *         gates PASS or residual accepted, no open residual, eyeball pass, prototype unchanged, M2 figma/deployed families PASS when recorded
  *   WARN  migrated pages whose migrate output has no passing sibling gate (reskin-ledger.mjs record --stage migrated)
  *   WARN  pages without a type (migrate renders them Path A, never from an archetype)
@@ -28,8 +29,9 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { codeStamp } from './deployed/stamp.mjs';
 import { gateVerdicts, NEVER_ACCEPTED, ownerAccepted, residualCovers } from './reskin-ledger.mjs';
 
 const HELP = `usage: node reskin-preflight.mjs [--dir stardust] [--root .] [--json]
@@ -42,7 +44,8 @@ Exit 0 ready (warnings allowed), 1 not ready, 2 usage.`;
 const sha = (s) => createHash('sha1').update(s).digest('hex').slice(0, 12);
 
 // Pure over a file reader: read(rel) → string | null. Returns [{ level: 'ok'|'fail'|'warn', check, detail }].
-export function preflight(read, { dir = 'stardust' } = {}) {
+// stamp(): the project's current code stamp (deployed/stamp.mjs codeStamp of the parent of dir), or null to skip the check.
+export function preflight(read, { dir = 'stardust', stamp = null } = {}) {
   const out = [];
   const ok = (check, detail = '') => out.push({ level: 'ok', check, detail });
   const fail = (check, detail) => out.push({ level: 'fail', check, detail });
@@ -93,6 +96,9 @@ export function preflight(read, { dir = 'stardust' } = {}) {
         else if (e.eyeball.verdict !== 'pass') problems.push(`${t}/${a}: eyeball ${e.eyeball.verdict}`);
         const proto = page?.prototypePath && read(page.prototypePath);
         if (proto != null && e.prototypeSha && sha(proto) !== e.prototypeSha) problems.push(`${t}/${a}: prototype changed since it was recorded — re-run the gates and reskin-ledger.mjs record ${a}`);
+        // M2a evidence stamps the EDS code it measured; a block/CSS/script change after it makes the evidence stale.
+        const was = e.gates?.deployed?.codeStamp; const now = was && stamp ? stamp() : null;
+        if (now && now !== was) problems.push(`${t}/${a}: deployed evidence is stale (EDS code changed after the preview run: stamp ${was}, now ${now}) — re-run deployed-gate all --page ${a} and reskin-ledger.mjs record ${a}`);
         if (!problems.some((x) => x.startsWith(`${t}/`))) good.push(`${t}: ${a}`);
       }
       if (problems.length) fail('archetype-gates', problems.join('; '));
@@ -172,7 +178,7 @@ function main(argv) {
   }
   const root = resolve(o.root);
   const read = (rel) => { const f = join(root, rel); return existsSync(f) ? readFileSync(f, 'utf8') : null; };
-  const res = preflight(read, { dir: o.dir });
+  const res = preflight(read, { dir: o.dir, stamp: () => codeStamp(dirname(resolve(o.dir))) });
   const fails = res.filter((r) => r.level === 'fail').length;
   if (o.json) console.log(JSON.stringify({ ready: !fails, checks: res }, null, 2));
   else {

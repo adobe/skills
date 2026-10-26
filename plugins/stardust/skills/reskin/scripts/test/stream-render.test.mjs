@@ -147,6 +147,21 @@ check('first button of a slot is .btn, later ones .btn btn-secondary', () => {
   assert.match(html, /<a class="btn" href="https:\/\/example\.test\/go">Sign in<\/a>/);
   assert.match(html, /<a class="btn btn-secondary" href="https:\/\/example\.test\/reg">Register<\/a>/);
 });
+check('optional contract tokens: card, button height and mobile padding/gutter use the :root names; absent, the literals stay', () => {
+  const plain = render({ ...base }).html;
+  assert.match(plain, /min-height: 40px;/);
+  assert.match(plain, /\.site-main \.card \{ background: [^;]+; border-radius: [^;]+; box-shadow: [^;]+; padding: 40px; \}/);
+  assert.match(plain, /\.site-main section \{ padding-top: 24px; padding-bottom: 24px; \}/);
+  assert.doesNotMatch(plain, /--card-|--button-height|--gutter-mobile|--section-padding-mobile/);
+  const t2 = { ...tokens, cards: { primary: { background: '#fafafa', borderRadius: '12px', padding: '32px', titleColor: '#123456' } }, buttons: { ...(tokens.buttons || {}), primary: { ...(tokens.buttons?.primary || {}), height: '48px' } }, layout: { ...(tokens.layout || {}), mobile: { sectionPaddingY: '40px', gutter: '16px' } } };
+  const { html } = render({ ...base, tokens: t2 });
+  for (const [name, value] of [['--card-bg', '#fafafa'], ['--card-radius', '12px'], ['--card-padding', '32px'], ['--card-title-color', '#123456'], ['--button-height', '48px'], ['--section-padding-mobile', '40px'], ['--gutter-mobile', '16px']]) assert.ok(html.includes(`${name}: ${value};`), `${name} in :root`);
+  assert.match(html, /min-height: var\(--button-height\);/);
+  assert.match(html, /\.site-main \.card \{ background: var\(--card-bg\); border-radius: var\(--card-radius\);[^}]*padding: var\(--card-padding\); \}/);
+  assert.match(html, /\.site-main \.card :is\(h2, h3, h4, \.heading\) \{ color: var\(--card-title-color\); \}/);
+  assert.match(html, /\.site-main section \{ padding-top: var\(--section-padding-mobile\); padding-bottom: var\(--section-padding-mobile\); \}/);
+  assert.match(html, /\.container \{ padding-left: var\(--gutter-mobile\); padding-right: var\(--gutter-mobile\); \}/);
+});
 check('heading alignment: type.display.textAlign token when present, else left', () => {
   assert.match(render(base).html, /\.site-main \.heading \{[^}]*text-align: left;/);
   const t2 = structuredClone(tokens); t2.type.display.textAlign = 'center';

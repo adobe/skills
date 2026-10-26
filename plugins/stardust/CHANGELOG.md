@@ -137,6 +137,7 @@ Figma tree. Every rule is generic; per-file choices live in `reskin/content-rule
 Measured by target ↔ EDS design fidelity (7 pages × 1440/390, pixel + SSIM) on a Figma-donor reskin of a
 multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 with the 0.42.0 table padding); all are generic.
 
+- **Reskin uses the optional curated tokens and the code stamp.** `stream-render` styles cards (`--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`), the button height and the mobile section padding and gutter from the `:root` contract tokens when the donor curates them (the output is unchanged without them); `reskin-preflight` fails an archetype whose deployed evidence's `codeStamp` no longer matches the project's code.
 - **Card listings survive uneven items.** `findRepeat` needed byte-identical item shapes, so an event with one extra
   paragraph broke the run part-way: two cards, then stacked full-width images. It now falls back to an anchored
   run (each item starts at the same anchor — image or heading — and may carry a different number of paragraphs) and
