@@ -581,13 +581,37 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
   if (placeholderOnly) flag('placeholder.only', 'block', frame.id, `${blocking}/${bodyTexts.length} body texts are placeholder copy: the design holds no real content`);
   for (const a of orderLog.ambiguous) flag('order.ambiguous', 'review', a.node, a.why);
 
-  // responsive variant: same text, or the differences are listed
+  // responsive variant: same text, or the differences are listed. A text still at its kit component's default
+  // (an instance sublayer whose characters no instance overrides) where the responsive frame draws its own text is
+  // the kit's placeholder left unfilled: block, naming the responsive frame's text as the copy to use.
   if (responsive?.frame) {
-    const mine = textReference(frame, { rules: rawRules }).map((r) => r.text);
-    const theirs = textReference(responsive.frame, { rules: rawRules }).map((r) => r.text);
+    const mineRefs = textReference(frame, { rules: rawRules });
+    const theirRefs = textReference(responsive.frame, { rules: rawRules });
+    const mine = mineRefs.map((r) => r.text);
+    const theirs = theirRefs.map((r) => r.text);
     const missingThere = mine.filter((t) => !theirs.includes(t));
     const extraThere = theirs.filter((t) => !mine.includes(t));
     if (missingThere.length || extraThere.length) flag('variant.text-differs', 'review', responsive.frame.id, `the responsive variant differs: ${missingThere.length} text(s) only here${missingThere.length ? ` ("${missingThere[0].slice(0, 30)}"…)` : ''}, ${extraThere.length} only there${extraThere.length ? ` ("${extraThere[0].slice(0, 30)}"…)` : ''}`);
+    const overridden = new Set();
+    (function walk(n) {
+      if (n.type === 'INSTANCE') for (const o of n.overrides || []) if ((o.overriddenFields || []).includes('characters')) overridden.add(o.id);
+      for (const c of n.children || []) walk(c);
+    }(frame));
+    const kitLike = (t) => { const s = t.toLowerCase(); return KIT_WORDS.has(s) || /lorem ipsum|dolor sit amet/.test(s) || (KIT_TERMS.test(s) && t.split(/\s+/).length <= 6); };
+    const hits = replacedRuns(mine, theirs).flatMap(({ here, there }) => here.map((at, k) => ({ r: mineRefs[at], use: k < there.length ? theirs[there[k]] : null })))
+      .filter(({ r }) => String(r.node).startsWith('I') && !overridden.has(r.node) && !theirs.includes(r.text));
+    // an instance whose untouched copy reads like kit copy, or repeats such an instance's copy, holds the component's
+    // sample copy: block; else review
+    const owner = (r) => String(r.node).slice(1).split(';')[0];
+    const sampleOwners = new Set(hits.filter(({ r }) => kitLike(r.text)).map(({ r }) => owner(r)));
+    const sampleTexts = new Set(hits.filter(({ r }) => sampleOwners.has(owner(r))).map(({ r }) => r.text));
+    const sample = new Set(hits.filter(({ r }) => sampleOwners.has(owner(r)) || sampleTexts.has(r.text)).map(({ r }) => owner(r)));
+    for (const { r, use } of hits) {
+      const there = use ? ` "${use.slice(0, 120)}"` : ' its own text';
+      flag('placeholder.kit-default', sample.has(owner(r)) ? 'block' : 'review', r.node, sample.has(owner(r))
+        ? `"${r.text.slice(0, 50)}" is the kit component's sample copy (no override); the responsive frame has${there}: set the real copy in Figma and re-run content`
+        : `"${r.text.slice(0, 50)}" is the kit component's default text (no override); the responsive frame has${there}: confirm which copy is meant`, r.slot);
+    }
   }
 
   const visibleTextNormalized = norm(sections.map((s) => s.visibleText).join(' '));
@@ -619,6 +643,34 @@ export function buildContentModel({ frame, fileKey, version, slug, tokens = null
     flags,
   };
   return { model, flags, needs: [...needs.values()], chrome: chromeSlots, placeholderOnly, slug };
+}
+
+// Replacement runs of an LCS alignment of two text lists: the indexes only in a beside the indexes only in b.
+function replacedRuns(a, b) {
+  const L = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+  for (let i = a.length - 1; i >= 0; i -= 1) for (let j = b.length - 1; j >= 0; j -= 1) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const runs = [];
+  let cur = null;
+  let i = 0;
+  let j = 0;
+  while (i < a.length || j < b.length) {
+    if (i < a.length && j < b.length && a[i] === b[j]) {
+      if (cur) runs.push(cur);
+      cur = null;
+      i += 1;
+      j += 1;
+    } else if (j < b.length && (i === a.length || L[i][j + 1] >= L[i + 1][j])) {
+      cur ||= { here: [], there: [] };
+      cur.there.push(j);
+      j += 1;
+    } else {
+      cur ||= { here: [], there: [] };
+      cur.here.push(i);
+      i += 1;
+    }
+  }
+  if (cur) runs.push(cur);
+  return runs;
 }
 
 // Per-type arrays and visibleText from the stream, in stream (render) order.

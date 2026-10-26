@@ -191,6 +191,32 @@ await test('placeholders: lorem/kit-word/pattern block; all-placeholder page is 
   assert.ok(!flagIds(ok).includes('placeholder.only'));
 });
 
+await test('placeholders: kit default copy the responsive frame replaces → placeholder.kit-default naming its copy', () => {
+  const I = (id, x, y, kids, overrides = []) => F(id, 'Block Content', x, y, 1440, 300, kids, { type: 'INSTANCE', overrides });
+  const desk = page([
+    I('5:1', 0, 100, [T('I5:1;9:1', 'The most inspiring heading', 0, 100, 600, 40, { fontSize: 32 }), T('I5:1;9:2', 'One of the biggest challenges with DCM is its presentation.', 0, 160, 600, 24)]),
+    I('5:2', 0, 500, [T('I5:2;9:3', 'Confirm Access', 0, 500, 200, 24)]),
+    I('5:3', 0, 900, [T('I5:3;9:4', 'Signed copy', 0, 900, 200, 24)], [{ id: 'I5:3;9:4', overriddenFields: ['characters'] }]),
+    I('5:4', 0, 1300, [T('I5:4;9:5', 'One of the biggest challenges with DCM is its presentation.', 0, 1300, 600, 24)]),
+  ]);
+  const resp = F('2:1', 'Page=Welcome, Device=Mobile', 0, 0, 390, 2100, [
+    I('6:1', 0, 100, [T('I6:1;8:1', 'Account found', 0, 100, 300, 40, { fontSize: 32 }), T('I6:1;8:2', 'We sent a login link to your inbox.', 0, 160, 300, 24)], [{ id: 'I6:1;8:1', overriddenFields: ['characters'] }, { id: 'I6:1;8:2', overriddenFields: ['characters'] }]),
+    I('6:2', 0, 500, [T('I6:2;8:3', 'Verify E-mail', 0, 500, 200, 24)], [{ id: 'I6:2;8:3', overriddenFields: ['characters'] }]),
+    I('6:3', 0, 900, [T('I6:3;8:4', 'Other signed copy', 0, 900, 200, 24)], [{ id: 'I6:3;8:4', overriddenFields: ['characters'] }]),
+  ]);
+  const m = build(desk, { responsive: { frame: resp } });
+  const kd = m.flags.filter((f) => f.id === 'placeholder.kit-default');
+  const at = (node) => kd.find((f) => f.node === node);
+  assert.equal(at('I5:1;9:1')?.severity, 'block');
+  assert.match(at('I5:1;9:1').detail, /"Account found"/);
+  assert.equal(at('I5:1;9:2')?.severity, 'block', 'the run holds kit-like copy: its body text blocks too');
+  assert.match(at('I5:1;9:2').detail, /"We sent a login link/);
+  assert.equal(at('I5:4;9:5')?.severity, 'block', 'the same sample copy in another instance blocks too');
+  assert.equal(at('I5:2;9:3')?.severity, 'review', 'a lone default label is a question, not a placeholder');
+  assert.ok(!at('I5:3;9:4'), 'overridden text is the designer\'s copy');
+  assert.ok(!build(desk).flags.some((f) => f.id === 'placeholder.kit-default'), 'no responsive frame, no comparison');
+});
+
 await test('headings: first heading is h1, extra h1 demoted, no heading → heading.none', () => {
   const m = build(page([F('hb', 'Body', 0, 100, 1440, 400, [T('hh1', 'Main title text', 0, 100, 600, 56, { fontSize: 46 }), T('hh2', 'Another big title', 0, 200, 600, 56, { fontSize: 46 })])]));
   const heads = m.sections.flatMap((s) => s.ordered).filter((o) => o.kind === 'heading');

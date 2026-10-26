@@ -501,6 +501,11 @@ mapping, `stream-render`, `slot-coverage` and the handoff read it unchanged. Wha
   or `--force`).
 - Placeholder copy (lorem, kit words such as "Button", `XX-XXXX` patterns, a string repeated ≥ 3 times)
   is a block flag; a page whose body is all placeholder is `placeholderOnly` and `content` exits 1.
+- Kit default copy: a text still at its kit component's default (an instance sublayer with no
+  `characters` override) where the responsive frame draws other text is `placeholder.kit-default`,
+  naming the responsive text to use. It is a block flag when the instance's copy also reads like kit
+  copy ("The most inspiring heading"), or repeats such copy; otherwise review ("confirm which copy is
+  meant"). Either keeps `blocklist` at exit 1: set the real copy in Figma and re-run `content`.
 - Design strings are untrusted: the model keeps them raw, every renderer escapes them, and layer names
   become class tokens only when they pass block-name validation.
 
