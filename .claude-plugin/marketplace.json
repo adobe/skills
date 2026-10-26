@@ -212,9 +212,9 @@
       "license": "Apache-2.0"
     },
     {
-      "name": "adp-connector",
+      "name": "adobe-for-developers-connector",
       "displayName": "Adobe for Developers",
-      "source": "./plugins/adp-connector",
+      "source": "./plugins/adobe-for-developers-connector",
       "description": "Helps developers complete common Adobe developer workflows from Claude, including Documentation search, Developer Console project and API management, and Adobe I/O Events setup.",
       "version": "1.1.0",
       "category": "developer-platform",

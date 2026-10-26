@@ -1,7 +1,7 @@
 # PreToolUse hook for compatible AI agent clients on Windows: requests approval
-# before the ADP connector's destructive tools run, even if allow-listed. Clients differ on
-# matcher support (some harnesses ignore matchers), so this script re-checks
-# the tool name itself.
+# before the Adobe for Developers connector's destructive tools run, even if
+# allow-listed. Clients differ on matcher support (some harnesses ignore matchers),
+# so this script re-checks the tool name itself.
 #
 # Needs only the Windows PowerShell 5.1 that ships with Windows. requireApproval.sh is
 # the macOS/Linux twin; keep both in sync with the tools the server marks
@@ -30,15 +30,16 @@ $toolSuffix = '(?:^|[^A-Za-z0-9])(?:' + ($destructiveTools -join '|') + ')\z'
 function Test-DestructiveConnectorTool([string] $Name) {
   $suffixMatch = [regex]::Match($Name, $toolSuffix)
   if (-not $suffixMatch.Success) { return $false }
-  # Checking if the tool call came from ADP-connector based on standard tool name formats.
+  # Checking if the tool call came from the Adobe for Developers connector based on
+  # standard tool name formats.
   if ($Name.StartsWith('mcp__', [System.StringComparison]::Ordinal)) {
     $end = $Name.LastIndexOf('__', [System.StringComparison]::Ordinal)
     $server = if ($end -gt 5) { $Name.Substring(5, $end - 5) } else { '' }
-    return $server -match 'adp.*connector'
+    return $server -match 'adobe.*developers.*connector'
   }
   if ($suffixMatch.Value.StartsWith('-', [System.StringComparison]::Ordinal)) {
     $server = $Name.Substring(0, $Name.Length - $suffixMatch.Value.Length)
-    return $server -ieq 'adp-connector'
+    return $server -ieq 'adobe-for-developers-connector'
   }
   return $true
 }
