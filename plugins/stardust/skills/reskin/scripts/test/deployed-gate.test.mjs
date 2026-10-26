@@ -730,6 +730,18 @@ await check('all: --reskin reaches parity, sanity and figma-gate and the invocat
   assert.equal(figma2.calls()[0].argv[figma2.calls()[0].argv.indexOf('--reskin') + 1], 'my page.html');
 });
 
+await check('all: --waiver-budget reaches the figma-gate child; without it the child gets none', async () => {
+  const root = allRoot('all-waiver-budget', { checks: true });
+  const figma = stubFigma();
+  await runAll(root, { figmaGate: figma.file, extra: ['--waiver-budget', '50'] });
+  const argv = figma.calls()[0].argv;
+  assert.equal(argv[argv.indexOf('--waiver-budget') + 1], '50');
+  const plain = allRoot('all-no-waiver-budget', { checks: true });
+  const figma2 = stubFigma();
+  await runAll(plain, { figmaGate: figma2.file });
+  assert.equal(figma2.calls()[0].argv.includes('--waiver-budget'), false);
+});
+
 await check('all: failing steps are "FAIL k/n" in the fragment (sanity with hard: true), their findings sit indented under one verdict line each, and the exit is 1', async () => {
   const root = allRoot('all-fail');
   const r = await runAll(root, {

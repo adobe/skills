@@ -225,6 +225,8 @@ stamp    Recomputes the code stamp of the project root (the parent of --dir) and
 --path         the page's delivered path, without .html (/ns/home)
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
+--waiver-budget <pct>  all only: passed to the figma-gate child, so the preview run allows the waiver budget the
+               local figma-gate run used (figma-gate validates it).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, never a real preview. It is recorded:
                preview.json's originOverride, the "(origin override: …)" ending of the PASS preview line, and summary.json
@@ -272,7 +274,7 @@ const SPEC = {
     positional: [],
   },
   all: {
-    values: ['--page', '--reskin', '--dir'],
+    values: ['--page', '--reskin', '--dir', '--waiver-budget'],
     bools: [],
     positional: [],
   },
@@ -522,11 +524,12 @@ function passLedger(rows) {
 
 // figma-gate all --target preview as a child process, its exit mapped as the other steps' are. Its ledgerFragment (the
 // summary.json of the preview regime it wrote) is the step's ledger value; a setup error (its exit 2) stops the run.
-async function figmaOutcome({ dir, slug, preview, reskin, env, figmaGate, UsageError }) {
+async function figmaOutcome({ dir, slug, preview, reskin, env, figmaGate, UsageError, waiverBudget }) {
   const [{ childEnv, coded, firstLine, runChild }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
   const summaryPath = join(workDir(dir, slug, 'preview'), 'summary.json');
   rmSync(summaryPath, { force: true });
   const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, '--dir', dir];
+  if (waiverBudget !== undefined) args.push('--waiver-budget', waiverBudget);
   let r;
   try { r = await runChild(process.execPath, args, { env: childEnv(env) }); } catch (e) { throw coded(124, `figma-gate did not start: ${e.message}`); }
   const out = r.stdout;
@@ -584,7 +587,7 @@ async function allStep(ctx) {
       parity: async () => { const r = await (runners.parity ?? runParity)(withPage); return rowsOutcome('parity', r, parityLines(r)); },
       sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
       inherited: async () => { const r = await (runners.inherited ?? runInherited)(base); return rowsOutcome('inherited', r, inheritedLines(r)); },
-      figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError }),
+      figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError, waiverBudget: opts['waiver-budget'] }),
     };
   } else log(`SKIPPED deployed leg: ${preview.reason}`);
 
