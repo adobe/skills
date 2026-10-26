@@ -210,6 +210,7 @@ export function resolveRules(rules, { foundation, moduleCandidates, screenshotIn
       else if (ids.has(m.id)) problems.push(`duplicate module id ${m.id}`);
       ids.add(m.id);
       if (!nonEmpty(m.anatomy)) problems.push(`${label}: needs an anatomy (the slots it carries)`);
+      if (m.eds !== undefined && !(isObj(m.eds) && (m.eds.block === null || nonEmpty(m.eds.block)) && (m.eds.variant == null || nonEmpty(m.eds.variant)))) problems.push(`${label}: eds must be { "block": "<EDS block>" | null (default content), "variant": "<class>" | null } (deploy Step 2)`);
     } else problems.push(`${label}: status must be include or excluded`);
     modules.push({ ...m, slug: w.slug });
   });

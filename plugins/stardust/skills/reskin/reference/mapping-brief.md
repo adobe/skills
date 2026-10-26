@@ -55,6 +55,15 @@ vocabulary at 91% mapped, 1 new-module, 1 chrome swap.
   3. Nothing is ever improvised mid-render: a renderer needing a
      module the brief doesn't grant stops, and the brief is amended
      first.
+  4. **Figma donor:** a `new-module` row is no new EDS block. What a
+     slot renders as in EDS — an existing block (its name and content
+     model mirrored) or default content — is decided by `deploy`
+     Step 2 (D1/D11,
+     [`../../deploy/SKILL.md` § 2](../../deploy/SKILL.md#2-decide-names--reuse--lock-before-writing-any-code)),
+     never invented here. A `mapped` row's EDS block is its module's
+     (`donor-modules.md` EDS block column); the preview join lists
+     each slot authored as another block (`gates.md` § Figma on a
+     preview).
 - **`chrome`** — nav / footer swapped for donor chrome carrying the
   source's links (labels and destinations preserved — the
   `../../migrate/reference/content-preservation.md` rules apply to
