@@ -226,6 +226,23 @@ Gates before any rendering:
 Composite source sections (one wrapper div holding two logical
 regions) are split into atomic slots in the brief — section ≠ slot.
 
+Then write `stardust/reskin/mapping.json` — the same decisions in the
+shape the renderer reads (`reference/mapping-json.md`): per page, per
+slot, the `module`, `layout`, `width`, `tone`, `heading`, `columns`,
+`inset` / `split`, plus the `chrome` zones (`header`, `footer`,
+`footerTone`, `navAlign`). Then
+
+```bash
+node stardust/scripts/reskin/stream-render.mjs --check <slug…>
+```
+
+must exit 0 (one problem per line otherwise: unknown keys, bad values,
+slots the content model lacks, pages missing). `mapping.md` is the
+brief, `mapping.json` the record: every later per-section decision —
+a gate fix, a review note, an EDS preview finding — is made in
+`mapping.json` (or `donor-tokens.json`), re-rendered and re-gated,
+never in the page or the EDS blocks alone.
+
 ### Phase 4 — PROGRAMMATIC RENDER
 
 The decisive validated rule: **the page is GENERATED from
@@ -516,6 +533,7 @@ sibling gate — is `reference/handoff.md`.
 | `stardust/reskin/content-model/<slug>/content-model.json` | Byte-oriented per-page content model (+ source screenshot) |
 | `stardust/reskin/normalize/<slug>.mjs` | Per-page executable normalization ledger (shared capture ↔ gates) |
 | `stardust/reskin/mapping.md` | The mapping brief: every slot → donor module, status, rationale |
+| `stardust/reskin/mapping.json` | The per-section decisions the renderer reads (`reference/mapping-json.md`; `stream-render --check`) |
 | `stardust/reskin/renderers/<archetype>.mjs` | Programmatic renderers (model in, HTML out) |
 | `stardust/reskin/pages/<slug>.html` | Rendered reskin pages |
 | `stardust/reskin/reports/` | Per-page gate reports + screenshots |
@@ -539,6 +557,8 @@ sibling gate — is `reference/handoff.md`.
 - `reference/mapping-brief.md` — entry schema (the table form the
   Figma join reads), the ≥80% gate, new-module composition rules,
   casing policy.
+- `reference/mapping-json.md` — `mapping.json`: every key the
+  renderer reads, its values and defaults; `stream-render --check`.
 - `reference/gates.md` — the gates' commands, pass bars, tolerances,
   failure modes, residual logging; § (d) the Figma checks; § (e) the
   deployed bars.

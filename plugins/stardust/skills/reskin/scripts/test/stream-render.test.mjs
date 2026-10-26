@@ -6,11 +6,11 @@
 // and an unknown stream node kind throws instead of dropping content. Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { captureSmells, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
+import { captureSmells, checkMapping, chromeTextMissing, contrast, findRepeat, localSubpath, modelHasButton, render, rendersButton, tokenVars } from '../stream-render.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'stream-render.mjs');
 let failed = 0;
@@ -374,6 +374,84 @@ check('0.36.1 main: an icon-font word is a glyph without the flag; a ledgered em
   assert.match(html, /<div class="embed-placeholder" aria-hidden="true"><\/div>/);
   const plain = render({ ...base, slug: 'login', model: { sections: [{ slot: 's01', ordered }] } }).html;
   assert.doesNotMatch(plain, /<div class="embed-placeholder"/);
+});
+
+
+// ---- mapping.json --check (reference/mapping-json.md) ----
+const chromeM = { sections: [{ slot: 'h1', ordered: [] }, { slot: 'f1', ordered: [] }] };
+const goodMapping = {
+  $schema: 'stardust:reskin-mapping', _note: 'annotations are allowed',
+  chrome: { model: 'stardust/reskin/content-model/_chrome', header: ['h1'], footer: ['f1'], footerTone: 'dark', navAlign: 'center' },
+  pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'split cards', width: 'wide', tone: 'accent', columns: 3, heading: 'h3', inset: '80px', split: '531px 1fr' } } } },
+};
+check('checkMapping: a valid mapping (every key, annotations) has no problems', () => {
+  assert.deepEqual(checkMapping(goodMapping, { models: { login: model }, chromeModel: chromeM, slugs: ['login'] }), []);
+  assert.deepEqual(checkMapping(mapping, { models: { login: model } }), []);
+});
+check('checkMapping: unknown keys at every level', () => {
+  const m = structuredClone(goodMapping); m.extra = 1; m.chrome.logo = 'x'; m.pages.login.status = 'mapped'; m.pages.login.slots.s01.rationale = 'why';
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  assert.deepEqual(p.map((x) => x.split(':')[0]), ['extra', 'chrome.logo', 'pages.login.status', 'pages.login.slots.s01.rationale']);
+  assert.ok(p.every((x) => /unknown key \(allowed: /.test(x)), p.join('\n'));
+});
+check('checkMapping: bad enums and malformed values, one problem each', () => {
+  const m = structuredClone(goodMapping);
+  Object.assign(m.chrome, { footerTone: 'neon', navAlign: 'left' });
+  Object.assign(m.pages.login.slots.s01, { layout: 'stack carousel', width: 'full', tone: 'blue', heading: 'h9', columns: 0, inset: '80;}', split: '1fr; color:red', module: '' });
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM });
+  for (const k of ['chrome.footerTone', 'chrome.navAlign', '.layout', '.width', '.tone', '.heading', '.columns', '.inset', '.split', '.module']) assert.ok(p.some((x) => x.includes(`${k}:`)), `${k} reported\n${p.join('\n')}`);
+  assert.equal(p.length, 10);
+});
+check('checkMapping: slots the content model lacks, chrome slots the chrome model lacks, chrome without a model, requested pages missing', () => {
+  const m = structuredClone(goodMapping); m.pages.login.slots.s09 = { module: 'M1' }; m.chrome.header = ['h1', 'h7'];
+  const p = checkMapping(m, { models: { login: model }, chromeModel: chromeM, slugs: ['login', 'about'] });
+  assert.ok(p.includes('pages.login.slots.s09: no slot s09 in the content model (slots: s01)'), p.join('\n'));
+  assert.ok(p.some((x) => /^chrome\.header: no slot h7 in the chrome model/.test(x)));
+  assert.ok(p.includes('pages.about: missing — the page was requested but mapping.json has no entry'));
+  assert.equal(p.length, 3);
+  assert.deepEqual(checkMapping({ chrome: { header: ['h1'] }, pages: {} }), ['chrome.header: set but chrome.model is missing — the header renders empty']);
+  assert.deepEqual(checkMapping(m, { models: {}, chromeModel: null }).filter((x) => /no slot/.test(x)), [], 'no model → slot ids not checked');
+  assert.deepEqual(checkMapping([]), ['(root): mapping.json must be a JSON object']);
+  assert.match(checkMapping({ pages: { login: { slots: [] } } })[0], /^pages\.login\.slots: must be an object/);
+});
+// A minimal reskin project: content model, tokens, mapping (and optional state) under <root>/stardust.
+function project({ map = mapping, state = null } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'sr-proj-'));
+  const d = join(root, 'stardust', 'reskin');
+  mkdirSync(join(d, 'content-model', 'login'), { recursive: true });
+  writeFileSync(join(d, 'content-model', 'login', 'content-model.json'), JSON.stringify(model));
+  writeFileSync(join(d, 'donor-tokens.json'), JSON.stringify(tokens));
+  writeFileSync(join(d, 'mapping.json'), JSON.stringify(map));
+  writeFileSync(join(d, 'mapping.md'), '# mapping\n');
+  if (state) writeFileSync(join(root, 'stardust', 'state.json'), JSON.stringify(state, null, 2));
+  return root;
+}
+check('--check CLI: valid exit 0 and writes nothing; problems exit 1 one per line; missing mapping exit 2', () => {
+  const root = project();
+  const ok = spawnSync(process.execPath, [SCRIPT, '--check', 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(ok.status, 0, ok.stderr); assert.equal(ok.stdout, ''); assert.match(ok.stderr, /ok — 1 page\(s\), 1 slot\(s\)/);
+  assert.equal(existsSync(join(root, 'stardust', 'reskin', 'pages')), false, 'nothing rendered');
+  const badRoot = project({ map: { pages: { login: { slots: { s01: { tone: 'neon' }, s02: {} } } } } });
+  const bad = spawnSync(process.execPath, [SCRIPT, '--check', 'login', 'about'], { cwd: badRoot, encoding: 'utf8' });
+  assert.equal(bad.status, 1);
+  assert.deepEqual(bad.stdout.trim().split('\n').sort(), [
+    'pages.about: missing — the page was requested but mapping.json has no entry',
+    'pages.login.slots.s01.tone: "neon" is not dark | light | accent',
+    'pages.login.slots.s02: no slot s02 in the content model (slots: s01)',
+  ]);
+  assert.deepEqual(readdirSync(join(badRoot, 'stardust', 'reskin')).sort(), ['content-model', 'donor-tokens.json', 'mapping.json', 'mapping.md']);
+  const none = spawnSync(process.execPath, [SCRIPT, '--check', '--mapping', 'nope.json'], { cwd: root, encoding: 'utf8' });
+  assert.equal(none.status, 2); assert.match(none.stderr, /missing mapping\.json: nope\.json/);
+  const unk = spawnSync(process.execPath, [SCRIPT, 'login', '--bogus'], { cwd: root, encoding: 'utf8' });
+  assert.equal(unk.status, 2); assert.match(unk.stderr, /unknown option --bogus/);
+});
+check('CLI render is unchanged: the default out, the same bytes as render() bar the timestamp', () => {
+  const root = project();
+  const r = spawnSync(process.execPath, [SCRIPT, 'login'], { cwd: root, encoding: 'utf8' });
+  assert.equal(r.status, 0, r.stderr);
+  const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+  const strip = (h) => h.replace(/writtenAt: +\S+/, 'writtenAt: T');
+  assert.equal(strip(html), strip(render({ ...base, now: 'T' }).html));
 });
 
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.

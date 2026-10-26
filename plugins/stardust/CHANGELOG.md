@@ -36,6 +36,10 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
 - **Icon-font glyphs.** A lone lowercase word in an icon-font span (`material-icons|symbols`, `icon`) renders as
   a drawn glyph (word kept at font-size 0), so "east" no longer prints in a card. A card's trailing arrow is drawn
   at 28px in the accent; a card whose first line is only a link takes the h4 heading style.
+- **`mapping.json` is a Phase 3 deliverable with a schema and a check.** `reskin/reference/mapping-json.md` lists
+  every key `stream-render` reads (types, values, defaults); `stream-render --check [<slug>…]` reports unknown keys,
+  bad values, slots the content model lacks and missing pages, one per line, and writes nothing. SKILL Phase 3
+  writes `mapping.json` beside `mapping.md`; later per-section fixes go back to it.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

@@ -80,7 +80,7 @@ Run the project copies under `stardust/scripts/<skill>/`. Read this before `--he
 - `reskin/reskin-preflight.mjs` — ready to migrate? exit 0 = yes — `[--dir] [--root] [--json]`
 - `reskin/slot-coverage.mjs` — slot coverage gate — `--model <content-model.json> --rendered <u|f>`
 - `reskin/source-normalize.mjs` — default normalize ledger — no flags
-- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`
+- `reskin/stream-render.mjs` — generic renderer — `<slug> [--mapping] [--out] [--localize-images]`; `--check [<slug>…]` validates mapping.json
 - `rollout/assemble.mjs` — sitemap, robots, manifest — `[--out stardust/rollout] [--canon <dir>] [--verify-origin <o>]`
 - `rollout/autofix-aem.mjs` — fix findings in the EDS project — `--project <root> [--dry-run]`
 - `rollout/blocks.mjs` — block dedup ledger — `[--out <dir>]`
