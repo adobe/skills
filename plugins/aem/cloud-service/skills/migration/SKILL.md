@@ -11,7 +11,7 @@ description: |
   Oak index conversion (oakIndex, beta), and static→editable template modernization. Also
   externalizes OSGi config secrets to Cloud Manager (scans ui.config/.cfg.json for $[secret:]/$[env:]
   placeholders), converts AMS/on-prem Dispatcher configs to AEMaaCS (Branch E), and validates
-  migrated code on a local Cloud SDK (Branch G).
+  migrated code on a local Cloud SDK (Branch G, beta).
 license: Apache-2.0
 ---
 
@@ -43,7 +43,7 @@ This skill drives the **migration workflow**: BPA data, CAM/MCP, **one pattern p
 | **Guava cache warnings** | *"Fix **guavaCache** findings using BPA CSV."* / *"Swap Guava cache for Caffeine."* | Agent reads [references/guava-cache.md](references/guava-cache.md) — BPA is the source of truth (subtype `custom.guava.cache`); one finding per **bundle**, not per Guava-internal class row. BPA pattern id: `guavaCache`. Not a `code-assessment` pattern — Guava cache usage only occurs in pre-migration code, never native AEMaaCS code. |
 | **InputStream advisories** | *"Fix **inputStream** findings."* / *"Triage the `java.io.InputStream` warnings in my BPA report."* | Agent reads [references/input-stream.md](references/input-stream.md) and runs the deterministic scanner `scripts/input-stream-runner.js` (pure Node). Adobe documents the risk as binary data streamed through the JVM, fixed by direct binary upload and CDN delivery. The scanner produces one finding per file, ordered by risk, with every stream site pre-classified (F deserialization / E binary streamed or processed in the JVM / D local filesystem / C unbounded read / B unclosed stream or undisposed `Binary` / A benign) and tagged with a fix kind (`decision` / `review` / `auto`). Same precedence as the other BPA patterns: BPA findings first (CAM, then a BPA CSV, subtype `java.io.inputstream`), whose classes the scanner resolves to workspace files for line-level sites, with classes outside the workspace collapsed to one informational row per bundle (customer code kept elsewhere, platform-provided AEM Forms add-on, or third-party); the whole workspace is scanned only when BPA has no `inputStream` findings. The agent proposes tier-aware fixes for D/E/F, fixes unclosed streams, and verifies each edit with a `--files` re-scan. BPA pattern id: `inputStream`. Not a `code-assessment` pattern, since BPA only raises it for code carried over from legacy AEM. |
 | **Dispatcher conversion** | *"Convert my AMS / on-prem Dispatcher config to AEM as a Cloud Service."* | Agent reads [references/dispatcher/context.md](references/dispatcher/context.md) — detects the config **mode**, generates the tool config, runs Adobe's `dispatcher-converter`, **verifies** output (filter/ACL hard-gate), and validates. **Branch E.** Runbook pattern id: `dispatcherConversion` (heuristic). |
-| **Validate a migration** | *"Validate my migration on the local Cloud SDK."* / *"Verify the scheduler fix before I raise a PR."* | Agent reads [references/validation/validate-migration.md](references/validation/validate-migration.md) — builds, deploys to the running local SDK, checks bundle/component state via the AEM Quickstart MCP, and reports the outcome to CAM when a project is linked. **Branch G.** |
+| **Validate a migration** [BETA] | *"Validate my migration on the local Cloud SDK."* / *"Verify the scheduler fix before I raise a PR."* | Agent reads [references/validation/validate-migration.md](references/validation/validate-migration.md) — builds, deploys to the running local SDK, checks bundle/component state via the AEM Quickstart MCP, and reports the outcome to CAM when a project is linked. **Branch G.** |
 
 **Starter prompts (copy-paste)** — the Quick start table above covers each pattern individually; these add the whole-project entry point, source-specific invocations (CSV / CAM / manual), and multi-step combinations:
 
@@ -139,7 +139,11 @@ If the user asks to **fix Oak index findings / convert `_oak_index` definitions*
 5. **Apply** (after user confirms) — copy tool output into the repo, applying the Step 2 name override if one was computed.
 6. **Validate** — `mvn -pl ui.apps clean install`, then `mvn -pl all aem-analyser:project-analyse` if configured. Report PASS/FAIL with file:line evidence.
 
-**Branch G — Validate migration** (after a migration branch, or on request; no BPA pattern this session): If the user asks to **validate / verify / smoke-test** migrated code on the local Cloud SDK, read [references/validation/validate-migration.md](references/validation/validate-migration.md) and follow it. It never edits customer source; failures go back to the branch that owns the pattern. **Skip** Branch B.
+**Branch G — Validate migration** (after a migration branch, or on request; no BPA pattern this session):
+
+> **Beta**: Validate migration (Branch G) is in beta and under active development. Treat a PASS as a strong signal, not a guarantee — review the report before raising a PR or deploying to a Cloud Manager environment.
+
+If the user asks to **validate / verify / smoke-test** migrated code on the local Cloud SDK, read [references/validation/validate-migration.md](references/validation/validate-migration.md) and follow it. It never edits customer source; failures go back to the branch that owns the pattern. **Skip** Branch B.
 
 ## When to Use This Skill
 
@@ -152,7 +156,7 @@ If the user asks to **fix Oak index findings / convert `_oak_index` definitions*
 - Drive work from **BPA** (CSV or cached collection) or **CAM via MCP**, **one pattern per session**
 - **Dispatcher Conversion:** **Branch E** — convert AMS / on-premise Apache+Dispatcher configs to AEMaaCS via Adobe's `dispatcher-converter`, with mode detection, config generation, output verification (filter/ACL hard-gate), cross-boundary handoff, and SDK validation. References: [references/dispatcher/](references/dispatcher/).
 - **Oak Index Migration:** **Branch F** (beta) — convert legacy `_oak_index/*.xml` definitions via Adobe's `index-converter`, with a dynamic `-custom-N` naming override, a type/datatype compatibility check, and validation. BPA pattern id: `oakIndex`. Reference: [references/oak-index.md](references/oak-index.md).
-- **Validate migrated code:** **Branch G** — build, deploy to the local Cloud SDK, and check the migration contract and bundle/component state. Reference: [references/validation/validate-migration.md](references/validation/validate-migration.md).
+- **Validate migrated code:** **Branch G** (beta) — build, deploy to the local Cloud SDK, and check the migration contract and bundle/component state. Reference: [references/validation/validate-migration.md](references/validation/validate-migration.md).
 
 Branch routing and the read-first delegation for each entry above are defined once in **Required delegation** — this list is only the "when."
 
@@ -338,7 +342,7 @@ If the request is **dispatcher conversion** — convert or migrate an AMS or on-
 
 If the request is **oak index migration** — fix `oakIndex` findings, or convert `_oak_index` definitions to AEM as a Cloud Service — follow **Branch F** (beta). No Java pattern module is needed. **Skip** Branch B.
 
-If the request is to **validate / verify** already-migrated code on the local Cloud SDK, follow **Branch G**. **Skip** Branch B.
+If the request is to **validate / verify** already-migrated code on the local Cloud SDK, follow **Branch G** (beta). **Skip** Branch B.
 
 Otherwise map the request to a pattern id: `scheduler`, `resourceChangeListener`, `replication`, `eventListener`, `eventHandler`, `assetApi`, `htlLint`, `lui`, `cdw`, `inputStream`. If unclear, use **Manual Pattern Hints** in **`{code-assessment}/SKILL.md`** or ask the user to pick one of those.
 
