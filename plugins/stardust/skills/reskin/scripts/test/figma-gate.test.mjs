@@ -244,7 +244,8 @@ if (playwrightOk && pngOk) {
     assert.equal(r.status, 0, r.stdout + r.stderr);
     for (const re of [/^PASS join/m, /^geometry PASS \d+\/\d+$/m, /^ramp PASS \d+\/\d+/m, /^pixel advisory/m, /^register written: /m]) assert.match(r.stdout, re);
     const s = summaryOf(p);
-    assert.deepEqual(Object.keys(s), ['_provenance', 'page', 'url', 'regime', 'figma', 'steps', 'ledgerFragment', 'invocation']);
+    assert.deepEqual(Object.keys(s), ['_provenance', 'page', 'url', 'regime', 'figma', 'steps', 'waiverBudget', 'ledgerFragment', 'invocation']);
+    assert.deepEqual(s.waiverBudget, { limitPct: 25, required: 8, excused: 0, mobileRequired: 0, mobileExcused: 0, raised: false });
     assert.equal(s._provenance.writtenBy, 'stardust:reskin/figma-gate.mjs');
     assert.deepEqual([s.page, s.url, s.regime, s.figma], ['home', p.page, 'local', { version: VERSION }]);
     assert.deepEqual(Object.entries(s.steps).map(([k, v]) => [k, v.verdict, v.exit]), [['join', 'PASS', 0], ['geometry', 'PASS', 0], ['ramp', 'PASS', 0], ['pixel', 'advisory', 0], ['register', 'written', 0]]);
@@ -325,6 +326,31 @@ if (playwrightOk && pngOk) {
     const w = rows.find((x) => x.class === 'waived');
     assert.deepEqual([w.slot, w.node, w.check], ['s01', '1:6', 'waive node "Lead" (1:6)']);
     assert.match(w.detail, /^"lead copy is long-form": drops 1 text style \(1 text node\) at 1440px/);
+  });
+
+  queue('waiver budget: waivers that excuse 3 of 8 floor items are over 25% (exit 2, listed); --waiver-budget 50 allows them and is recorded in summary.json, the fragment and the invocation; a budget outside 0–100 is a usage error', async () => {
+    const p = await framed();
+    const file = join(p.dir, 'reskin', 'figma-checks', 'home.json');
+    const checksFile = JSON.parse(readFileSync(file, 'utf8'));
+    const waived = ['1:6', 'I1:20;3:5', 'I1:21;3:7'];
+    checksFile.sections.s01.type = checksFile.sections.s01.type.filter((e) => !waived.includes(e.node));
+    checksFile.sections.s01.waive = waived.map((node) => ({ node, why: 'set by the rich-text block' }));
+    writeFileSync(file, JSON.stringify(checksFile));
+    const refused = await runAll(p);
+    assert.equal(refused.status, 2, refused.stdout + refused.stderr);
+    assert.match(refused.stderr, /waiver budget: waivers and skips excuse 3 of 8 floor items \(37\.5%\), over the 25% a checks file may waive: .*--waiver-budget <pct>/);
+    const args = ['all', '--page', p.slug, '--url', p.page, '--waiver-budget', '50', '--dir', p.dir];
+    const raised = await runAsync(args, p.root);
+    assert.equal(raised.status, 0, raised.stdout + raised.stderr);
+    const s = summaryOf(p);
+    assert.deepEqual(s.waiverBudget, { limitPct: 50, required: 8, excused: 3, mobileRequired: 0, mobileExcused: 0, raised: true });
+    assert.equal(s.ledgerFragment.waiverBudget, 50);
+    assert.equal(s.invocation, `figma-gate.mjs all --page home --url ${p.page} --waiver-budget 50 --dir ${p.dir}`);
+    for (const bad of ['101', '-5', 'half']) {
+      const r = await runAsync(['all', '--page', p.slug, '--url', p.page, '--waiver-budget', bad, '--dir', p.dir], p.root);
+      assert.equal(r.status, 2, `${bad}: ${r.stdout}${r.stderr}`);
+      assert.match(r.stderr, /--waiver-budget is a percentage from 0 to 100/);
+    }
   });
 
   queue('all with a checks file the floor refuses: exit 2, the whole problem list is in floor-problems.txt beside the evidence and the error ends with its path; a valid file removes it', async () => {

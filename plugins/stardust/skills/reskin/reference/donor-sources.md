@@ -160,7 +160,7 @@ environment only. Recipe:
    `.work/reskin/figma/` (swapped in whole: a failed `--refresh` keeps the
    last complete capture), then `canon-source/foundation/*.json`
    (normalized values, each citing its node), `role-candidates.json`
-   (ranked sources for the 13 probe paths), `module-candidates.json`
+   (ranked sources for the 13 probe paths and the 7 recommended ones), `module-candidates.json`
    (frames with their page, sections by y, component sets, remote
    components), `spec-tables.json`, frame screenshots and
    `_crawl-log.json`. What to capture depends on the file's shape. A
@@ -191,6 +191,17 @@ environment only. Recipe:
    (`reference/gates.md` § (d)); it reads `.work/reskin/figma/`, so
    keep it, and the rules' `weightMap` and `familyEquivalence` apply to
    the Figma side of its type ramp.
+
+Seven recommended role paths are optional:
+`cards.primary.background|borderRadius|padding|titleColor`,
+`buttons.primary.height`, `layout.mobile.sectionPaddingY|gutter`. They
+feed card and button sizing and the mobile section padding and gutter
+of the rendered page and EDS blocks. Source them from a component
+record (`cards.primary` from a card component; `titleColor` reads its
+label color, `height` its painted box), a spacing record at the mobile
+frame, or a curation with its proving rule. `curate` prints a `note:`
+for each one neither mapped nor marked absent and lists them in
+`coverage.recommended`; the exit code is unchanged.
 
 | Figma source | Maps to | Canon-source artifact |
 |---|---|---|
@@ -266,11 +277,13 @@ keys feed `--spec` assertions):
     "body": { "fontSize": "18px", "lineHeight": "28px", "fontWeight": "300" },
     "eyebrow": { "fontSize": "15px", "fontWeight": "425", "color": "rgb(…)", "style": "<casing idiom note>" }
   },
-  "layout": { "containerMaxWidth": "1266px", "containerPadding": "0 32px", "sectionPaddingY": "96px", "navHeight": "76px", "grid": "<prose note>" },
+  "layout": { "containerMaxWidth": "1266px", "containerPadding": "0 32px", "sectionPaddingY": "96px", "navHeight": "76px", "grid": "<prose note>",
+              "mobile": { "sectionPaddingY": "48px", "gutter": "16px" } },
   "buttons": {
-    "primary":   { "background": "rgb(…)", "color": "rgb(…)", "borderRadius": "4px", "padding": "15.5px 24px 16.5px", "fontSize": "16px", "fontWeight": "400" },
+    "primary":   { "background": "rgb(…)", "color": "rgb(…)", "borderRadius": "4px", "padding": "15.5px 24px 16.5px", "fontSize": "16px", "fontWeight": "400", "height": "48px" },
     "secondary": { }
   },
+  "cards": { "primary": { "background": "rgb(…)", "borderRadius": "8px", "padding": "24px", "titleColor": "rgb(…)" } },
   "radii": { "card": "6px", "media": "8px", "button": "4px" },
   "shadows": { "cardResting": "…", "cardFloating": "…" },
   "motifs": [ "<prose: the donor's signature gestures — gradient heroes, arrow-suffixed links, band rhythm>" ]

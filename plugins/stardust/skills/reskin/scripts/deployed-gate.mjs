@@ -18,12 +18,13 @@
 //   all      The whole leg in one run: content, tokens, parity, sanity, inherited, chrome in this process, then figma-gate
 //            all --target preview as a child process when the page has a figma-checks file. One verdict line per
 //            step, and summary.json with the ledger fragment for pages.<slug>.gates.deployed.
+//   stamp    Whether summary.json's codeStamp still matches the project's code: current, or stale (re-run the leg).
 // Writes go only under <dir>/.work/reskin/gates/<slug>/deployed/ (and, for the figma-gate child, its own figma-preview/).
 // --help answers before any helper import, so it works even from a partial copy of the scripts.
 // Exit codes: 0 pass, advisory or skipped · 1 a blocking check failed · 2 usage or setup · 3 bot challenge
 // · 124 no verdict (re-run once, never a fix iteration). `all` reports the first present of 2, 3, 124, 1, 0.
 import { existsSync, realpathSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const SELF = fileURLToPath(import.meta.url);
@@ -40,6 +41,7 @@ export const HELP = `Usage:
   node deployed-gate.mjs inherited --page <slug> [--dir stardust]
   node deployed-gate.mjs chrome --page <slug> [--dir stardust]
   node deployed-gate.mjs all --page <slug> [--reskin <file>] [--dir stardust]
+  node deployed-gate.mjs stamp --page <slug> [--dir stardust]
 
 Checks of a deployed reskin page on its aem.page branch preview. Run preview first, then the checks one by one or all
 at once; every step reads the record preview wrote and writes under <dir>/.work/reskin/gates/<slug>/deployed/.
@@ -84,7 +86,9 @@ content  A1. Checks the preview's content against the live source, through two g
 tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
          settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
          on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
-         :root token of the block the reskin renders from the sheet, verbatim. Reads preview.json (no record, or
+         :root token of the block the reskin renders from the sheet, verbatim (the optional --card-*,
+         --button-height, --section-padding-mobile and --gutter-mobile too, when the sheet carries them; the probe
+         runs at 1440 only, so the mobile ones are asserted as :root values). Reads preview.json (no record, or
          one with problems, is exit 2; a skipped leg prints "not run: skipped", exit 0), the donor token sheet
          <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
          root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
@@ -104,6 +108,9 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
            pixel          pixel-compare: differing pixels at most 10%
            height         |Δh| at most 5% of the reskin page's height (Δh = the preview's height − the reskin page's)
+           section-height the reskin page's main section[data-slot] paired in order with the preview's non-empty
+                          main > .section: the worst |Δh| at most 10% of its reskin section's height, naming the
+                          slot; "n/a: section counts differ (reskin N, preview M)" when the counts differ
            header crop    crop-compare of the header band, at most 2%: the reskin page's measured header height
            footer crop    the same for the footer, counted from the bottom of each capture
          a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,
@@ -217,10 +224,12 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
          then "summary written: <path>". Exit: the first present of 2, 3, 124, 1, 0.
          Writes <deployed>/summary.json:
            { _provenance, page, url, regime: "preview", originOverride?, steps: { <step>: { verdict, exit, detail } },
-             ledgerFragment, invocation }
+             codeStamp, ledgerFragment, invocation }
          ledgerFragment is what the agent copies to ledger.json pages.<slug>.gates.deployed:
            { regime: "preview", url, originOverride?, content, tokens, parity, sanity: { verdict, hard: true },
-             inherited, chrome: { verdict, hard: true }, figma, invocation }
+             inherited, chrome: { verdict, hard: true }, figma, codeStamp, invocation }
+         codeStamp is sha256 (hex, first 16 characters) over the sorted relative paths and contents of the project
+         root's blocks/, styles/, scripts/ (node_modules and .DS_Store ignored) and head.html, taken as the run starts.
          originOverride is preview.json's, { env: "DEPLOY_VERIFY_ORIGIN", origin }, and only when the measured origin
          was not the branch preview's.
          Each of content, tokens, parity, inherited and sanity's verdict is "PASS", "PASS (n/a: <checks>)" (it passed, but
@@ -233,9 +242,14 @@ all      The whole leg: content, tokens, parity, sanity, inherited and chrome in
          a browser):
            node stardust/scripts/replica/run-bg.mjs start --name deployed-<slug> --dir stardust/.work/reskin/bg -- node stardust/scripts/reskin/deployed-gate.mjs all --page <slug>
            node stardust/scripts/replica/run-bg.mjs wait deployed-<slug> --dir stardust/.work/reskin/bg
+stamp    Recomputes the code stamp of the project root (the parent of --dir) and compares it with summary.json's
+         codeStamp: prints "current" (exit 0) or "stale: summary <a>, now <b>" (exit 1: a block, CSS or script changed
+         after the run, so its evidence no longer stands: re-run all). No summary.json is exit 2.
 --path         the page's delivered path, without .html (/ns/home)
 --reskin <f>   the local reskin page parity holds the preview to, sanity's content-presence compares it with and
                all's figma-gate child measures against (default <dir>/reskin/pages/<slug>.html).
+--waiver-budget <pct>  all only: passed to the figma-gate child, so the preview run allows the waiver budget the
+               local figma-gate run used (figma-gate validates it).
 --dir <d>      the stardust directory (default stardust).
 DEPLOY_VERIFY_ORIGIN (environment) replaces the preview origin: a test hook, never a real preview. It is recorded:
                preview.json's originOverride, the "(origin override: …)" ending of the PASS preview line, and summary.json
@@ -288,7 +302,12 @@ const SPEC = {
     positional: [],
   },
   all: {
-    values: ['--page', '--reskin', '--dir'],
+    values: ['--page', '--reskin', '--dir', '--waiver-budget'],
+    bools: [],
+    positional: [],
+  },
+  stamp: {
+    values: ['--page', '--dir'],
     bools: [],
     positional: [],
   },
@@ -543,11 +562,12 @@ function passLedger(rows) {
 
 // figma-gate all --target preview as a child process, its exit mapped as the other steps' are. Its ledgerFragment (the
 // summary.json of the preview regime it wrote) is the step's ledger value; a setup error (its exit 2) stops the run.
-async function figmaOutcome({ dir, slug, preview, reskin, env, figmaGate, UsageError }) {
+async function figmaOutcome({ dir, slug, preview, reskin, env, figmaGate, UsageError, waiverBudget }) {
   const [{ childEnv, coded, firstLine, runChild }, { workDir }, { readJsonIf }] = await Promise.all([helper('child'), helper('io', 'figma-gate'), helper('io', 'figma')]);
   const summaryPath = join(workDir(dir, slug, 'preview'), 'summary.json');
   rmSync(summaryPath, { force: true });
   const args = [figmaGate, 'all', '--page', slug, '--url', preview.url, '--target', 'preview', '--reskin', reskin, '--dir', dir];
+  if (waiverBudget !== undefined) args.push('--waiver-budget', waiverBudget);
   let r;
   try { r = await runChild(process.execPath, args, { env: childEnv(env) }); } catch (e) { throw coded(124, `figma-gate did not start: ${e.message}`); }
   const out = r.stdout;
@@ -589,6 +609,8 @@ async function allStep(ctx) {
   const preview = await readRecord('all', ctx);
   if (!preview.skipped && (typeof preview.url !== 'string' || !preview.url)) throw new UsageError(`${join(deployed, 'preview.json')} has no url: run deployed-gate preview --page ${slug} again`);
   const reskin = opts.reskin ?? join(dir, 'reskin', 'pages', `${slug}.html`);
+  const { codeStamp } = await helper('stamp');
+  const stamp = codeStamp(dirname(resolve(dir)));
 
   let run = {};
   if (!preview.skipped) {
@@ -604,7 +626,7 @@ async function allStep(ctx) {
       sanity: async () => { const r = await (runners.sanity ?? runSanity)(withPage); return rowsOutcome('sanity', r, sanityLines(r), 'sanity (hard)'); },
       inherited: async () => { const r = await (runners.inherited ?? runInherited)(base); return rowsOutcome('inherited', r, inheritedLines(r)); },
       chrome: async () => { const r = await (runners.chrome ?? runChrome)(base); return rowsOutcome('chrome', r, chromeLines(r), 'chrome (hard)'); },
-      figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError }),
+      figma: () => figmaOutcome({ ...base, reskin, figmaGate, UsageError, waiverBudget: opts['waiver-budget'] }),
     };
   } else log(`SKIPPED deployed leg: ${preview.reason}`);
 
@@ -639,16 +661,30 @@ async function allStep(ctx) {
   const invocation = invocationOf(argv);
   const url = preview.url ?? null;
   const override = preview.originOverride ? { originOverride: preview.originOverride } : {};
-  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, chrome: { verdict: ledger.chrome, hard: true }, figma: ledger.figma, invocation };
+  const ledgerFragment = { regime: 'preview', url, ...override, content: ledger.content, tokens: ledger.tokens, parity: ledger.parity, sanity: { verdict: ledger.sanity, hard: true }, inherited: ledger.inherited, chrome: { verdict: ledger.chrome, hard: true }, figma: ledger.figma, codeStamp: stamp, invocation };
   const readArtifacts = ['preview.json', 'content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json'].filter((f) => existsSync(join(deployed, f)));
   const summary = {
     _provenance: provenance({ at: new Date().toISOString(), readArtifacts, note: 'deployed-gate.mjs all', writtenBy: 'stardust:reskin/deployed-gate.mjs' }),
-    page: slug, url, regime: 'preview', ...override, steps: recorded, ledgerFragment, invocation,
+    page: slug, url, regime: 'preview', ...override, steps: recorded, codeStamp: stamp, ledgerFragment, invocation,
   };
   writeJson(join(deployed, 'summary.json'), summary);
   log(`summary written: ${join(deployed, 'summary.json')} (its ledgerFragment is pages.${slug}.gates.deployed in ledger.json)`);
   // A setup error (exit 2) stopped the run above; of the rest the first present wins.
   return [3, 124, 1].find((c) => exits.includes(c)) ?? 0;
+}
+
+// stamp: summary.json's codeStamp against the project's code now. No summary is a setup error (exit 2).
+async function stampStep({ dir, opts, log, UsageError }) {
+  const slug = pageSlug('stamp', opts, UsageError);
+  const [{ deployedDir }, { codeStamp }, { readJsonIf }] = await Promise.all([helper('io'), helper('stamp'), helper('io', 'figma')]);
+  const path = join(deployedDir(dir, slug), 'summary.json');
+  let summary = null;
+  try { summary = readJsonIf(path); } catch (e) { throw new UsageError(`${path} is not valid JSON (${e.message}): re-run deployed-gate all --page ${slug}`); }
+  if (!summary) throw new UsageError(`missing ${path}: run deployed-gate all --page ${slug} first`);
+  const now = codeStamp(dirname(resolve(dir)));
+  if (summary.codeStamp === now) { log('current'); return 0; }
+  log(`stale: summary ${summary.codeStamp ?? 'none'}, now ${now}`);
+  return 1;
 }
 
 // steps lets a test replace a step function; runners and figmaGate, `all`'s run functions and figma-gate script.
@@ -657,7 +693,7 @@ export async function main(argv, { env = process.env, log = console.log, warn = 
   const { UsageError } = await helper('errors', 'figma');
   const { cmd, opts } = parseArgs(argv, UsageError);
   const dir = opts.dir || 'stardust';
-  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, inherited: inheritedStep, chrome: chromeStep, all: allStep, ...steps };
+  const table = { preview: previewStep, content: contentStep, tokens: tokensStep, parity: parityStep, sanity: sanityStep, inherited: inheritedStep, chrome: chromeStep, all: allStep, stamp: stampStep, ...steps };
   return table[cmd]({ dir, opts, env, log, warn, UsageError, steps: table, argv, runners, figmaGate });
 }
 

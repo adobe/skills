@@ -15,14 +15,15 @@ import { localTarget } from './target.mjs';
 // floor ({ styles: { covered, total }, widths, waived }); an invalid checks file is a usage error listing every problem,
 // and with `out` (the regime's evidence directory) the whole list is also written to out/floor-problems.txt, which the
 // error ends with: a run-bg wait shows the last lines of the output only. A valid file removes a stale list.
-// inputs holds checks and donorTokens (readInputs).
-export function checksFor({ dir, slug, inputs, join, out = null }) {
+// inputs holds checks and donorTokens (readInputs). waiverBudget (percent) raises the waiver budget; budget is the count
+// validateChecks made of it ({ limitPct, required, excused, mobileRequired, mobileExcused }).
+export function checksFor({ dir, slug, inputs, join, out = null, waiverBudget }) {
   const boxes = loadBoxes(dir, rootsNamed(inputs.checks, join));
-  const { sections, problems, coverage } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens });
+  const { sections, problems, coverage, budget } = validateChecks(inputs.checks, { join, boxes, tokens: inputs.donorTokens, waiverBudget });
   const listFile = out ? pathJoin(out, 'floor-problems.txt') : null;
   if (!problems.length) {
     if (listFile) rmSync(listFile, { force: true });
-    return { boxes, checks: sections, coverage };
+    return { boxes, checks: sections, coverage, budget };
   }
   if (listFile) {
     mkdirSync(out, { recursive: true });
@@ -31,15 +32,15 @@ export function checksFor({ dir, slug, inputs, join, out = null }) {
   throw new UsageError(`${dir}/reskin/figma-checks/${slug}.json has ${problems.length} problem(s):\n${problems.map((p) => `  ${p}`).join('\n')}${listFile ? `\nfull list: ${listFile}` : ''}`);
 }
 
-// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, out }, where
+// → { drift: true, join, out } or { drift: false, target, join, boxes, tokens, rules, checks, coverage, budget, out }, where
 // rules is curation-rules.json, checks is validateChecks(...).sections and coverage its per-slot coverage floor.
 // target is the regime to measure: the local page at url by default, or a built Target (previewTarget for a
 // deployed preview); out is that regime's work dir.
-export async function prepare({ dir, slug, url, target = localTarget(url) }) {
+export async function prepare({ dir, slug, url, target = localTarget(url), waiverBudget }) {
   const inputs = readInputs(dir, slug, ['mapping', 'contentModel', 'rules', 'donorTokens', 'checks']);
   const out = workDir(dir, slug, target.regime);
   const join = await runJoin({ target, inputs, out, page: slug });
   if (!join.pass) return { drift: true, join, out };
-  const { boxes, checks, coverage } = checksFor({ dir, slug, inputs, join, out });
-  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, out };
+  const { boxes, checks, coverage, budget } = checksFor({ dir, slug, inputs, join, out, waiverBudget });
+  return { drift: false, target, join, boxes, tokens: inputs.donorTokens, rules: inputs.rules, checks, coverage, budget, out };
 }

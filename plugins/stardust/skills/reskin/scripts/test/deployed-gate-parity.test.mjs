@@ -56,14 +56,19 @@ const previewOf = (root) => readJson(join(outOf(root), 'preview.json'));
 const parity = (root, extra = [], opts = {}) => run(['parity', '--page', 'home', ...extra], { cwd: root, ...opts });
 
 // A small page: 64px header, 600px main, 40px footer, each left out on request; `css` adds rules, `body` markup before main.
+// main holds one `section[data-slot].section` (both sides' section selector) unless `sections` gives [slot, height] pairs;
+// a null slot is an empty `div.section` (the metadata section EDS leaves).
 let pageCount = 0;
-const smallPage = ({ header = true, footer = true, css = '', body = '' } = {}) => {
+const sectionsHtml = (sections) => (sections
+  ? sections.map(([slot, h]) => (slot === null ? '<div class="section"></div>' : `<section data-slot="${slot}" class="section" style="height:${h}px">${slot}</section>`)).join('')
+  : '<section data-slot="hero" class="section"><h1>Body</h1></section>');
+const smallPage = ({ header = true, footer = true, css = '', body = '', sections = null } = {}) => {
   pageCount += 1;
   const file = join(scratch, `page-${pageCount}.html`);
   writeFileSync(file, `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>parity</title>
 <style>body{margin:0;font:16px/24px sans-serif}header{height:64px}main{height:600px}footer{height:40px}${css}</style></head>
-<body>${body}${header ? '<header>Head</header>' : ''}<main><h1>Body</h1></main>${footer ? '<footer>Foot</footer>' : ''}</body></html>
+<body>${body}${header ? '<header>Head</header>' : ''}<main>${sectionsHtml(sections)}</main>${footer ? '<footer>Foot</footer>' : ''}</body></html>
 `);
   return file;
 };
@@ -277,12 +282,14 @@ if (playwrightOk) {
     assert.deepEqual(brief(result.rows), [
       { check: 'pixel', width: 1440, value: '1.20%', bar: '≤ 10%', status: 'PASS' },
       { check: 'height', width: 1440, value: 'Δh +10px (1.0% of 1000px)', bar: '≤ 5%', status: 'PASS' },
+      { check: 'section-height', width: 1440, value: 'worst hero: Δh 0px (0.0% of 24px)', bar: '≤ 10%', status: 'PASS' },
       { check: 'header crop', width: 1440, value: '0.40%', bar: '≤ 2%', status: 'PASS' },
       { check: 'footer crop', width: 1440, value: '0.40%', bar: '≤ 2%', status: 'PASS' },
       { check: 'chrome-parity', width: 1440, value: 'no deltas', bar: 'advisory', status: 'PASS' },
       { check: 'cap-probe', width: 1440, value: '0 of 1 rows differ', bar: '±20px', status: 'PASS' },
       { check: 'pixel', width: 360, value: '1.20%', bar: '≤ 10%', status: 'PASS' },
       { check: 'height', width: 360, value: 'Δh +10px (1.0% of 1000px)', bar: '≤ 5%', status: 'PASS' },
+      { check: 'section-height', width: 360, value: 'worst hero: Δh 0px (0.0% of 24px)', bar: '≤ 10%', status: 'PASS' },
       { check: 'header crop', width: 360, value: '0.40%', bar: '≤ 2%', status: 'PASS' },
       { check: 'footer crop', width: 360, value: '0.40%', bar: '≤ 2%', status: 'PASS' },
     ]);
@@ -431,6 +438,40 @@ if (playwrightOk) {
 
     const failing = await scenario('hide-fail', { pixel: { stdout: { pct: 11, heightDelta: 0, compared: { width: 1440, height: 1000 } }, exit: 2 } }, { reskin: smallPage({ header: false, footer: false }), previewPage: smallPage() });
     assert.deepEqual(parityLines(failing.result).slice(0, 3), ['FAIL parity', '  pixel @1440: 11.00% (bar ≤ 10%)', '    preview header/footer excluded: reskin page renders none']);
+  });
+
+  await check('section-height pairs main section[data-slot] with the preview\'s non-empty main > .section in order: the worst |Δh| within 10% passes and names its slot; the empty metadata section is no section', async () => {
+    const reskin = smallPage({ sections: [['hero', 300], ['cards', 200]] });
+    const previewPage = smallPage({ sections: [['hero', 300], ['cards', 210], [null]] });
+    const { result, error } = await scenario('sections-pass', {}, { reskin, previewPage, widths: [1440, 360] });
+    assert.ifError(error);
+    for (const width of [1440, 360]) {
+      assert.deepEqual(brief([pick(result.rows, 'section-height', width)]), [{ check: 'section-height', width, value: 'worst cards: Δh +10px (5.0% of 200px)', bar: '≤ 10%', status: 'PASS' }]);
+    }
+    assert.equal(result.verdict, 'PASS');
+    assert.deepEqual(parityLines(result), ['PASS parity']);
+  });
+
+  await check('section-height: one preview section 20% taller than its reskin slot is a blocking FAIL naming the slot', async () => {
+    const reskin = smallPage({ sections: [['hero', 300], ['cards', 200], ['cta', 100]] });
+    const previewPage = smallPage({ sections: [['hero', 300], ['cards', 240], ['cta', 100]] });
+    const { result, error } = await scenario('sections-fail', {}, { reskin, previewPage });
+    assert.ifError(error);
+    assert.equal(result.verdict, 'FAIL');
+    assert.equal(result.exit, 1);
+    assert.deepEqual(brief(result.rows).filter((r) => r.status === 'FAIL'), [{ check: 'section-height', width: 1440, value: 'worst cards: Δh +40px (20.0% of 200px)', bar: '≤ 10%', status: 'FAIL' }]);
+    assert.deepEqual(parityLines(result), ['FAIL parity', '  section-height @1440: worst cards: Δh +40px (20.0% of 200px) (bar ≤ 10%)']);
+  });
+
+  await check('section-height: different section counts are "n/a: section counts differ (reskin N, preview M)", never a pass of the pairs there are', async () => {
+    const reskin = smallPage({ sections: [['hero', 300], ['cards', 200]] });
+    const previewPage = smallPage({ sections: [['hero', 300], ['cards', 200], ['extra', 100]] });
+    const { result, error } = await scenario('sections-na', {}, { reskin, previewPage });
+    assert.ifError(error);
+    const r = pick(result.rows, 'section-height', 1440);
+    assert.deepEqual({ status: r.status, value: r.value }, { status: 'n/a', value: 'n/a: section counts differ (reskin 2, preview 3)' });
+    assert.equal(result.verdict, 'PASS');
+    assert.deepEqual(parityLines(result), ['PASS parity', 'n/a: section counts differ (reskin 2, preview 3) (section-height @1440)']);
   });
 
   await check('chrome: a preview that renders no <header> or <footer> where the reskin page does is a FAIL row naming it, and its crop is not run', async () => {

@@ -21,6 +21,7 @@ import { runChild } from '../deployed/child.mjs';
 import { runContent } from '../deployed/content.mjs';
 import { runTokens } from '../deployed/eds-spec.mjs';
 import { deployedDir, readPreview } from '../deployed/io.mjs';
+import { codeStamp } from '../deployed/stamp.mjs';
 import { eligibility, headMetadata, isolation, previewOrigin, runPreview } from '../deployed/preview.mjs';
 import { runSanity } from '../deployed/sanity.mjs';
 import { VERDICT_RE } from '../../../replica/scripts/run-bg.mjs';
@@ -170,7 +171,7 @@ await check('--help answers from a directory holding only the script: exit 0, us
     assert.match(r.stdout, /usage/i);
     assert.match(r.stdout, /deployed-gate\.mjs preview --page <slug> --org <o> --repo <r> --branch <b> --path <\/ns\/slug>/);
     for (const flagName of ['--namespace', '--sandbox', '--max-wait', '--dir']) assert.ok(r.stdout.includes(flagName), `usage names ${flagName}`);
-    for (const cmd of ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'all']) assert.match(r.stdout, new RegExp(`deployed-gate\\.mjs ${cmd} --page <slug>`), `usage names ${cmd}`);
+    for (const cmd of ['content', 'tokens', 'parity', 'sanity', 'inherited', 'chrome', 'all', 'stamp']) assert.match(r.stdout, new RegExp(`deployed-gate\\.mjs ${cmd} --page <slug>`), `usage names ${cmd}`);
   }
   assert.deepEqual(readdirSync(dir), ['deployed-gate.mjs'], 'wrote nothing');
   const bare = await run(['preview', ...PAGE, '--namespace', 'ns'], { cwd: dir, script: join(dir, 'deployed-gate.mjs') });
@@ -650,11 +651,48 @@ await check('all: content, tokens, parity, sanity, inherited, then figma-gate as
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), STEPS.map(() => ['PASS', 0]));
   assert.equal(s.invocation, `deployed-gate.mjs all --page home --dir ${dirOf(root)}`);
   assert.deepEqual(s.ledgerFragment, {
-    regime: 'preview', url: ALL_URL, content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, figma: FRAGMENT, invocation: s.invocation,
+    regime: 'preview', url: ALL_URL, content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: { verdict: 'PASS', hard: true }, inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, figma: FRAGMENT, codeStamp: codeStamp(root), invocation: s.invocation,
   });
+  assert.equal(s.codeStamp, codeStamp(root));
+  assert.match(s.codeStamp, /^[0-9a-f]{16}$/);
   assert.deepEqual(figma.calls(), [{
     argv: ['all', '--page', 'home', '--url', ALL_URL, '--target', 'preview', '--reskin', join(dirOf(root), 'reskin', 'pages', 'home.html'), '--dir', dirOf(root)],
   }]);
+});
+
+await check('stamp: "current" (exit 0) while the code of the project root is what all ran on; a changed block is "stale: summary <a>, now <b>" (exit 1); node_modules is ignored; no summary.json is exit 2', async () => {
+  const root = allRoot('stamp');
+  const write = (rel, body) => { mkdirSync(dirname(join(root, rel)), { recursive: true }); writeFileSync(join(root, rel), body); };
+  write('blocks/cards/cards.js', 'export default function decorate() {}\n');
+  write('blocks/cards/cards.css', '.cards { gap: 16px; }\n');
+  write('styles/styles.css', ':root { --x: 1px; }\n');
+  write('head.html', '<script src="/scripts/aem.js" type="module"></script>\n');
+  const stamp = (opts = {}) => run(['stamp', '--page', 'home', '--dir', dirOf(root)], { cwd: root, ...opts });
+
+  const missing = await stamp();
+  assert.equal(missing.status, 2, missing.all);
+  assert.match(missing.stderr, /missing .*summary\.json: run deployed-gate all --page home first/);
+
+  assert.equal((await runAll(root)).code, 0);
+  const before = summaryAt(root).codeStamp;
+  assert.equal(before, codeStamp(root));
+  const current = await stamp();
+  assert.equal(current.status, 0, current.all);
+  assert.equal(current.stdout.trim(), 'current');
+
+  write('node_modules/x/index.js', 'x\n');
+  write('blocks/node_modules/y.js', 'y\n');
+  assert.equal((await stamp()).status, 0, 'node_modules is not code of the project');
+
+  write('blocks/cards/cards.css', '.cards { gap: 24px; }\n');
+  const stale = await stamp();
+  assert.equal(stale.status, 1, stale.all);
+  assert.equal(stale.stdout.trim(), `stale: summary ${before}, now ${codeStamp(root)}`);
+  assert.notEqual(codeStamp(root), before);
+  write('blocks/cards/cards.css', '.cards { gap: 16px; }\n');
+  assert.equal((await stamp()).status, 0, 'the same code is the same stamp');
+  write('scripts/scripts.js', '// new\n');
+  assert.equal((await stamp()).status, 1, 'a new script file is a change');
 });
 
 await check('all: an origin override in preview.json is carried into summary.json and the ledger fragment, and left out of both otherwise', async () => {
@@ -691,6 +729,18 @@ await check('all: --reskin reaches parity, sanity and figma-gate and the invocat
   const figma2 = stubFigma();
   await runAll(withChecks, { figmaGate: figma2.file, extra: ['--reskin', 'my page.html'] });
   assert.equal(figma2.calls()[0].argv[figma2.calls()[0].argv.indexOf('--reskin') + 1], 'my page.html');
+});
+
+await check('all: --waiver-budget reaches the figma-gate child; without it the child gets none', async () => {
+  const root = allRoot('all-waiver-budget', { checks: true });
+  const figma = stubFigma();
+  await runAll(root, { figmaGate: figma.file, extra: ['--waiver-budget', '50'] });
+  const argv = figma.calls()[0].argv;
+  assert.equal(argv[argv.indexOf('--waiver-budget') + 1], '50');
+  const plain = allRoot('all-no-waiver-budget', { checks: true });
+  const figma2 = stubFigma();
+  await runAll(plain, { figmaGate: figma2.file });
+  assert.equal(figma2.calls()[0].argv.includes('--waiver-budget'), false);
 });
 
 await check('all: failing steps are "FAIL k/n" in the fragment (sanity with hard: true), their findings sit indented under one verdict line each, and the exit is 1', async () => {
@@ -830,7 +880,7 @@ await check('all: a step whose gate stalls on the decoration is that step\'s FAI
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), [['FAIL', 1], ['FAIL', 1], ['PASS', 0], ['FAIL', 1], ['PASS', 0], ['PASS', 0], ['FAIL', 1]]);
   assert.deepEqual(s.ledgerFragment, {
     regime: 'preview', url: ALL_URL, content: 'FAIL stalled decoration: block cards', tokens: 'FAIL stalled decoration: block cards', parity: 'PASS', sanity: { verdict: 'FAIL 1/2', hard: true },
-    inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, figma: 'FAIL stalled decoration: block cards, block hero', invocation: s.invocation,
+    inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, figma: 'FAIL stalled decoration: block cards, block hero', codeStamp: codeStamp(root), invocation: s.invocation,
   });
 
   const lone = await runAll(allRoot('all-stalled-lone'), { over: { content: stall('slot-coverage') } });
@@ -902,7 +952,7 @@ await check('all: a skipped preview is every step "not run: skipped", figma incl
   assert.ok(r.lines.some((l) => /not an aem-boilerplate project/.test(l)), 'the reason is shown');
   const s = summaryAt(root);
   assert.deepEqual(s.ledgerFragment, {
-    regime: 'preview', url: null, content: 'not run: skipped', tokens: 'not run: skipped', parity: 'not run: skipped', sanity: { verdict: 'not run: skipped', hard: true }, inherited: 'not run: skipped', chrome: { verdict: 'not run: skipped', hard: true }, figma: 'not run: skipped', invocation: s.invocation,
+    regime: 'preview', url: null, content: 'not run: skipped', tokens: 'not run: skipped', parity: 'not run: skipped', sanity: { verdict: 'not run: skipped', hard: true }, inherited: 'not run: skipped', chrome: { verdict: 'not run: skipped', hard: true }, figma: 'not run: skipped', codeStamp: codeStamp(root), invocation: s.invocation,
   });
   assert.deepEqual(Object.values(s.steps).map((x) => [x.verdict, x.exit]), STEPS.map(() => ['not run: skipped', null]));
 });
@@ -1072,7 +1122,7 @@ if (playwrightOk) {
       assert.equal(qa?.status, 'PASS', JSON.stringify(qa));
       assert.match(readFileSync(join(out, 'inherited', 'qa-gate.txt'), 'utf8'), /^QA GATE: PASS — /m, 'qa-gate\'s measurement receipt is kept');
       assert.deepEqual(s.ledgerFragment, {
-        regime: 'preview', url: `${server.origin}/ns/home`, originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), chrome: { verdict: passWith('chrome.json'), hard: true }, figma: 'not run: no figma checks', invocation: s.invocation,
+        regime: 'preview', url: `${server.origin}/ns/home`, originOverride: { env: 'DEPLOY_VERIFY_ORIGIN', origin: server.origin }, content: 'PASS', tokens: 'PASS', parity: passWith('parity.json'), sanity: { verdict: passWith('sanity.json'), hard: true }, inherited: passWith('inherited.json'), chrome: { verdict: passWith('chrome.json'), hard: true }, figma: 'not run: no figma checks', codeStamp: codeStamp(root), invocation: s.invocation,
       });
       assert.equal(s.invocation, `deployed-gate.mjs all --page home --reskin ${reskin}`);
       for (const f of ['content.json', 'tokens.json', 'parity.json', 'sanity.json', 'inherited.json', 'chrome.json', 'summary.json']) assert.ok(existsSync(join(out, f)), f);

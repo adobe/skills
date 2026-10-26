@@ -346,6 +346,12 @@ A miss is exit 2, every one listed, in `floor-problems.txt` too (the error's
 last line, for `run-bg wait`). A `boxes` TEXT line prints the colour and
 letter spacing a style is keyed by.
 
+**Waiver budget.** Per checks file, waivers and skips may excuse at most 25%
+of the floor's items (each root's text styles, plus a waived mobile or
+desktop root's and a skipped section's), and never every mobile root the
+floor requires. Over it is a floor problem (exit 2). `--waiver-budget <pct>`
+raises the share; `summary.json` and the fragment record it.
+
 | Step | Class | Asserts | Tolerance |
 |---|---|---|---|
 | B0 join | blocks | `mapping.md`'s rendered rows are exactly the page's top-level `section[data-slot]`s, in order, with the mapped `data-module` and the slot's first heading | exact; drift names the slot |
@@ -394,8 +400,8 @@ fetches `.plain.html` without a browser.
 | Step | Class | Asserts | Bar |
 |---|---|---|---|
 | `content` A1 | blocks; advisory while the delta file says `"blocking": false` | `dom-equality` and `slot-coverage` on the preview, through `--deltas`; a Figma-sourced model runs `figma-text-gate` in place of `dom-equality` | both exit 0; unused deltas warn |
-| `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
-| `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height, a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
+| `tokens` A2 | blocks | `donor-probe`: palette and type on `body`, `main h1`, `main h2`, the primary button on `main a.button.primary`, `layout.sectionPaddingY` on every non-empty `main > .section` (top and bottom), every `:root` token verbatim, with the optional `--card-bg`, `--card-radius`, `--card-padding`, `--card-title-color`, `--button-height`, `--section-padding-mobile`, `--gutter-mobile` when the sheet carries `cards.primary.*`, `buttons.primary.height`, `layout.mobile.*` (the probe runs at 1440 only: the mobile ones are asserted as `:root` values) | exact, first font family only (a font not served fails nothing); sections ±16px; container width is `parity`'s cap row |
+| `parity` A3 | blocks | at 1440 and 360 the preview against the reskin page (replica's instruments); at 1440 also `chrome-parity` and `cap-probe` | pixels ≤ 10% and Δh ≤ 5% of the reskin page's height; per section (`section[data-slot]` paired in order with non-empty `main > .section`) the worst Δh ≤ 10% of its height, n/a when the counts differ; a header or footer the reskin page lacks left out of the preview's capture; header and footer crops ≤ 2%; caps ±20px, a missing cap fails; `chrome-parity` advisory |
 | `sanity` A4 | **hard**: no delta file or residual waives it | at 1440 and 360 overflow, decoration, images, page errors; at 1440 `clip-probe` and `content-presence` | overflow ≤ 4px; every `data-section-status` and `data-block-status` `loaded`; broken images 0; page errors 0; `clip-probe` 0; HIDDEN + MISSING 0; a page answering HTTP 400 or more is no verdict (exit 124), never a pass |
 | `inherited` A5 | blocks | `.plain.html`, `ai-readability`, `qa-gate` (with `eds-schema/<slug>.json` and `design.json`) | `.plain.html` 200, one `<h1>`, no `about:error`, no `/img/` src, a top-level `<div>`; `ai-readability` ≥ 98; `qa-gate` exit 0 on the inputs there are, a missing one (`eds-schema/<slug>.json`, `design.json`) being a FAIL row `incomplete: no …`, never `n/a`. `localize-links --check`, `davids-model-lint` and `block-roundtrip --ew` ran in `deploy`'s loop: "by deploy", not in the verdict |
 | `chrome` A6 | **hard**, as `sanity`; a header/footer residual (`step10.header`, …) is accepted only `--by` the site owner | at 1440 and 360 the `<header>` and `<footer>` against `mapping.json` `chrome` and its model (ctas, `iconLinks`, images, footer text) | present and decorated; a logo ≥ 16px when mapped; header ≤ 240px closed, covering main ≤ 4px, band above it ≤ 48px; every mapped link rendered and visible (at 360 a toggle shows the hidden ones); no icon-font ligature word as text; every mapped footer text. No chrome in the mapping: those rows `n/a`; a mapped slot empty in the model is exit 2 |

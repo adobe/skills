@@ -49,4 +49,23 @@ await check('output is deterministic and ROOT_MAP is exposed in contract order',
   assert.equal(rootTokens({}).entries.length, 0);
 });
 
+await check('a sheet without the optional paths renders byte-identical to before (optional names are never listed absent)', () => {
+  const before = ':root {\n  --heading-font-family: Inter, "Inter-fallback", sans-serif;\n  --body-font-family: Inter, "Inter-fallback", sans-serif;\n  --heading-xxl: 56px;\n  --heading-xl: 40px;\n  --body: 18px;\n  --line-height-heading: 1.143;\n  --line-height-body: 28px;\n  --color-bg: rgb(255, 255, 255);\n  --color-fg: rgb(26, 26, 26);\n  --color-accent: rgb(31, 58, 95);\n  --section-padding: 80px;\n  --max-width: 1200px;\n  --radius: 8px;\n  --type-display-size: 56px;\n  --type-display-line-height: 1.143;\n  --type-display-weight: 700;\n  --type-h2-size: 40px;\n  --type-body-size: 18px;\n  --type-body-line-height: 28px;\n  --type-card-label-size: 14px;\n  --type-card-label-weight: 500;\n  --type-card-label-letter-spacing: 0.02em;\n  /* absent in donor-tokens.json: --heading-lg, --heading-md, --body-sm, --spacing-xs, --spacing-sm, --spacing-md, --spacing-lg, --spacing-xl, --spacing-2xl */\n}\n';
+  assert.equal(rootTokens(T).css, before);
+  assert.ok(!rootTokens({}).absent.some((a) => /card|button-height|mobile/.test(a.name)));
+});
+
+await check('optional curated paths are emitted when present, after the contract names', () => {
+  const t = structuredClone(T);
+  t.cards = { primary: { background: 'rgb(245, 245, 245)', borderRadius: '12px', padding: '24px', titleColor: 'rgb(9, 9, 9)' } };
+  t.buttons.primary.height = '48px';
+  t.layout.mobile = { sectionPaddingY: '40px', gutter: '16px' };
+  const r = rootTokens(t);
+  const v = Object.fromEntries(r.entries.map((e) => [e.name, e.from]));
+  assert.deepEqual(Object.keys(v).filter((k) => !k.startsWith('--type-')).slice(-7), ['--card-bg', '--card-radius', '--card-padding', '--card-title-color', '--button-height', '--section-padding-mobile', '--gutter-mobile']);
+  assert.equal(v['--section-padding-mobile'], 'layout.mobile.sectionPaddingY');
+  assert.match(r.css, /  --card-radius: 12px;\n/); assert.match(r.css, /  --gutter-mobile: 16px;\n/);
+  assert.deepEqual(r.absent, rootTokens(T).absent);
+});
+
 if (failed) { console.log(`${failed} check(s) failed`); process.exitCode = 1; } else console.log('all checks passed');
