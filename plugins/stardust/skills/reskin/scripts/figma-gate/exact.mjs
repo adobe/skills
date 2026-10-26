@@ -106,7 +106,9 @@ export async function runExact({ dir, slug, url, bar = DEFAULT_BAR, heightTol = 
       if (!ref || !existsSync(ref)) { rows.push({ key, breakpoint: f.breakpoint, verdict: 'FAIL', why: ['no Figma render (re-run figma-donor.mjs renders)'] }); continue; }
       const size = await pngSize(ref);
       const width = Math.round(size.width / (renders.scale || 1));
-      const ctx = await browser.newContext({ viewport: { width, height: 900 }, deviceScaleFactor: renders.scale || 1 });
+      // the frame is the viewport: its height sizes 100vh layouts and lets a frame shorter than a screen pass
+      const height = Math.round(size.height / (renders.scale || 1));
+      const ctx = await browser.newContext({ viewport: { width, height }, deviceScaleFactor: renders.scale || 1 });
       const page = await ctx.newPage();
       await page.goto(toUrl(url), { waitUntil: 'load' });
       await settle(page);
