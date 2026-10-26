@@ -46,7 +46,13 @@
  * Reads: <dir>/state.json, the archetype's prototypePath (and the other types' approved archetypes'),
  *        the tokens, mapping, content models, the module
  *        table, the previous <root>/DESIGN.json and migrate sidecars (stale flagging).
- * Writes: the files listed above; <dir>/reskin/approvals/*.png; <dir>/state.json only when a page is flagged stale.
+ * Siblings (flow reskin only): per page type with an approved/migrated page, every `extracted` page of that
+ * type advances to `directed` through state.mjs (_provenance writtenBy stardust:reskin) — the status migrate
+ * renders at the sibling tier, which `direct` would write but refuses under reskin. Stale and `prototyped`
+ * siblings are left and named; `directed`-or-later pages are untouched; other flows print a no-op line.
+ *
+ * Writes: the files listed above; <dir>/reskin/approvals/*.png; <dir>/state.json only when a page is flagged stale
+ *         or a sibling is advanced.
  * Exit: 0 ok · 1 refused (archetype not approved, missing input, canon exists without --force) · 2 usage.
  */
 import { spawnSync } from 'node:child_process';
@@ -60,7 +66,8 @@ const HELP = `usage: node canon-from-reskin.mjs <archetype-slug> [--dir stardust
          [--mapping <file>] [--models <dir>] [--modules <file>] [--visual-threshold <pct>] [--force]
 
 Derive migrate's inputs (canon/, DESIGN.md/.json, direction.md, dynamic-features.md) from an approved
-reskin archetype. --force re-authors an existing canon and flags affected pages stale. A changed canon
+reskin archetype; under flow reskin, advance each approved type's extracted siblings to directed (migrate's
+sibling tier). --force re-authors an existing canon and flags affected pages stale. A changed canon
 is captured and pixel-compared with the previous approval (warn above --visual-threshold, default 10).
 Exit 0 ok, 1 refused, 2 usage.`;
 
@@ -190,6 +197,29 @@ export function staleFlags({ pages, archetype, changed, sidecars = {}, next }) {
     } else if (p.slug !== archetype && changed.length) out.push({ slug: p.slug, affected: [...changed] });
   }
   return out;
+}
+
+// ---- pure: siblings ready for migrate ------------------------------------------------------------
+// migrate renders a same-type sibling at the sibling tier (Path A′) only from status `directed`, which
+// `direct` writes — and `direct` refuses under flow reskin. So the bridge writes it: per type with an
+// approved/migrated page, every `extracted` page of that type advances to `directed`. Stale ones are left
+// and named; so is a `prototyped` one (rendered before its type had an archetype — `migrate render --all`
+// skips it). Pages already `directed` or later are untouched (idempotent). Generic on type + status, so
+// a Figma-only page (source: figma) is handled like any other. Returns { advance: [{ slug, type }],
+// left: [{ slug, type, why }] }.
+export function siblingsToDirect(pages = []) {
+  const typed = new Set(pages.filter((p) => p?.type && ['approved', 'migrated'].includes(p.status)).map((p) => p.type));
+  const advance = []; const left = [];
+  for (const p of pages) {
+    if (!p?.type || !typed.has(p.type)) continue;
+    if (p.status === 'extracted') {
+      if (p.stale) left.push({ slug: p.slug, type: p.type, why: `stale (${p.staleReason || 'no reason'}) — left extracted` });
+      else advance.push({ slug: p.slug, type: p.type });
+    } else if (p.status === 'prototyped') {
+      left.push({ slug: p.slug, type: p.type, why: 'prototyped, not approved — migrate render --all skips it: approve it, or move it back with state.mjs advance <slug> --to directed --force --skill reskin to render it at the sibling tier' });
+    }
+  }
+  return { advance, left };
 }
 
 // ---- pure: compositional moves (deterministic, from mapping.json) --------------------------------
@@ -423,12 +453,18 @@ async function main(argv) {
     for (const f of [resolve(root, side), resolve(opt.dir, '..', side)]) if (existsSync(f)) { try { sidecars[rec.slug] = readJson(f); } catch { /* unreadable sidecar: blanket rule */ } break; }
   }
   const flags = staleFlags({ pages: state.pages, archetype: slug, changed, sidecars, next });
-  if (flags.length) {
-    for (const { slug: s, affected } of flags) {
-      const p = state.pages.find((x) => x.slug === s);
-      p.stale = true; p.staleReason = `canon changed at ${at}; affected: ${affected.join(', ')}`;
-    }
-    const lib = await stateLib();
+  for (const { slug: s, affected } of flags) {
+    const p = state.pages.find((x) => x.slug === s);
+    p.stale = true; p.staleReason = `canon changed at ${at}; affected: ${affected.join(', ')}`;
+  }
+  // siblings → directed (flow reskin only: elsewhere `direct` owns it), through state.mjs
+  const lib = await stateLib();
+  const sib = state.flow === 'reskin' ? siblingsToDirect(state.pages) : null;
+  let advanced = [];
+  if (sib?.advance.length) {
+    if (lib) { lib.advance(state, sib.advance.map((x) => x.slug), { to: 'directed', at }); advanced = sib.advance; } else findings.push(`siblings not advanced to directed (${sib.advance.map((x) => x.slug).join(', ')}): state.mjs not found next to the reskin scripts`);
+  }
+  if (flags.length || advanced.length) {
     if (lib) { state._provenance = lib.stampProvenance(state._provenance, 'stardust:reskin', at); lib.writeState(stateFile, state); } else writeFileSync(stateFile, `${JSON.stringify(state, null, 2)}\n`);
   }
 
@@ -436,6 +472,12 @@ async function main(argv) {
   if (changed) console.log(`  canon delta: ${changed.length ? changed.join(', ') : 'none'}; stale flagged: ${flags.length ? flags.map((f) => f.slug).join(', ') : 'none'}`);
   if (entry.visual) console.log(`  visual diff vs previous approval: ${entry.visual.pct}% (threshold ${entry.visual.threshold}%) → ${entry.visual.diff}`);
   else if (entry.shot) console.log(`  visual record: ${entry.shot}`);
+  if (!sib) console.log(`  siblings: not advanced — state.json flow is ${state.flow ? `"${state.flow}"` : 'unset'}, not reskin`);
+  else {
+    const byType = (xs) => [...new Set(xs.map((x) => x.type))].map((t) => `${xs.filter((x) => x.type === t).map((x) => x.slug).join(', ')} (${t})`).join('; ');
+    console.log(`  siblings → directed: ${advanced.length ? byType(advanced) : 'none (already directed or later)'}`);
+    for (const l of sib.left) console.log(`  sibling ${l.slug} (${l.type}) not advanced: ${l.why}`);
+  }
   for (const f of findings) console.log(`  FINDING ${f}`);
   return 0;
 }

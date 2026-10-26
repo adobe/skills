@@ -12,7 +12,7 @@ import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { canonDelta, compositionalMoves, liftCss, mappingModuleIssues, moduleSkeletons, otherArchetypes, previousShot, staleFlags, withoutStamp } from '../canon-from-reskin.mjs';
+import { canonDelta, compositionalMoves, liftCss, mappingModuleIssues, moduleSkeletons, otherArchetypes, previousShot, siblingsToDirect, staleFlags, withoutStamp } from '../canon-from-reskin.mjs';
 
 const SCRIPT = join(dirname(fileURLToPath(import.meta.url)), '..', 'canon-from-reskin.mjs');
 let failed = 0;
@@ -190,6 +190,53 @@ check('--force after the archetype changed: delta named, approved sibling flagge
   assert.equal(s.pages[1].stale, true); assert.match(s.pages[1].staleReason, /^canon changed at .*; affected: css$/);
   assert.equal(s.pages[0].stale, undefined); assert.equal(s.pages[1].status, 'approved');
   assert.equal(JSON.parse(read('DESIGN.json')).extensions.canon.history.at(-1).kind, 're-approval');
+});
+
+
+// ---- siblings → directed (flow reskin) -----------------------------------------------------------
+const P = (slug, type, status, extra = {}) => ({ slug, type, status, history: [{ status, at: 'T0' }], ...extra });
+check('siblingsToDirect: extracted pages of an approved type advance; other types, stale, prototyped and later are not', () => {
+  const pages = [P('arch', 'article', 'approved'), P('a1', 'article', 'extracted'), P('a2', 'article', 'extracted', { source: 'figma' }),
+    P('a3', 'article', 'directed'), P('a4', 'article', 'migrated'), P('a5', 'article', 'extracted', { stale: true, staleReason: 'flow-switch' }),
+    P('a6', 'article', 'prototyped'), P('l1', 'listing', 'extracted'), P('u1', null, 'extracted'), P('m0', 'form', 'migrated'), P('f1', 'form', 'extracted')];
+  const r = siblingsToDirect(pages);
+  assert.deepEqual(r.advance, [{ slug: 'a1', type: 'article' }, { slug: 'a2', type: 'article' }, { slug: 'f1', type: 'form' }]);
+  assert.deepEqual(r.left.map((x) => x.slug), ['a5', 'a6']);
+  assert.match(r.left[0].why, /^stale \(flow-switch\)/); assert.match(r.left[1].why, /migrate render --all skips it/);
+  assert.deepEqual(siblingsToDirect([P('l1', 'listing', 'extracted')]), { advance: [], left: [] }, 'no approved archetype: nothing');
+});
+const sibTmp = mkdtempSync(join(tmpdir(), 'cfr-sib-'));
+const sibRun = (cwd, args) => { const r = spawnSync(process.execPath, [SCRIPT, ...args], { cwd, encoding: 'utf8' }); return { status: r.status, out: r.stdout, err: r.stderr }; };
+const sibProject = (dir, flow) => {
+  const w = (rel, data) => { const f = join(dir, rel); mkdirSync(dirname(f), { recursive: true }); writeFileSync(f, data); };
+  w('stardust/state.json', JSON.stringify({ _provenance: { writtenBy: 'stardust:extract' }, flow, pages: [
+    P('login', 'form', 'approved', { prototypePath: 'stardust/reskin/pages/login.html' }), P('contact', 'form', 'extracted'), P('apply', 'form', 'extracted', { source: 'figma' }),
+    P('news', 'article', 'extracted'), P('old', 'form', 'extracted', { stale: true, staleReason: 'flow-switch' })] }, null, 2));
+  w('stardust/reskin/donor-tokens.json', JSON.stringify({ palette: { accent: 'red' }, layout: { sectionPaddingY: '64px' } }));
+  w('stardust/reskin/mapping.json', JSON.stringify({ pages: { login: { template: 'login', slots: { s01: { module: 'M2', layout: 'media-band' } } } } }));
+  w('stardust/reskin/pages/login.html', page());
+};
+check('bridge under flow reskin: approved type\'s extracted siblings → directed via state.mjs; others untouched; idempotent', () => {
+  sibProject(sibTmp, 'reskin');
+  const r = sibRun(sibTmp, ['login']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /siblings → directed: contact, apply \(form\)/);
+  assert.match(r.out, /sibling old \(form\) not advanced: stale \(flow-switch\)/);
+  const s = JSON.parse(readFileSync(join(sibTmp, 'stardust', 'state.json'), 'utf8'));
+  const by = Object.fromEntries(s.pages.map((p) => [p.slug, p]));
+  assert.equal(by.contact.status, 'directed'); assert.equal(by.apply.status, 'directed');
+  assert.deepEqual(by.contact.history.at(-1).status, 'directed');
+  assert.equal(by.news.status, 'extracted'); assert.equal(by.old.status, 'extracted'); assert.equal(by.login.status, 'approved');
+  assert.equal(s._provenance.writtenBy, 'stardust:reskin');
+  const again = sibRun(sibTmp, ['login', '--force']); assert.equal(again.status, 0, again.err);
+  assert.match(again.out, /siblings → directed: none \(already directed or later\)/);
+  assert.equal(JSON.parse(readFileSync(join(sibTmp, 'stardust', 'state.json'), 'utf8')).pages.find((p) => p.slug === 'contact').history.length, 2);
+});
+check('bridge outside flow reskin: siblings not advanced, said so', () => {
+  const d = mkdtempSync(join(tmpdir(), 'cfr-sib-')); sibProject(d, 'redesign');
+  const before = readFileSync(join(d, 'stardust', 'state.json'), 'utf8');
+  const r = sibRun(d, ['login']); assert.equal(r.status, 0, r.err);
+  assert.match(r.out, /siblings: not advanced — state\.json flow is "redesign", not reskin/);
+  assert.equal(readFileSync(join(d, 'stardust', 'state.json'), 'utf8'), before);
 });
 
 console.log(failed ? `\n${failed} check(s) failed` : '\nall checks passed');

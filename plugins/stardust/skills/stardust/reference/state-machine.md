@@ -123,6 +123,9 @@ reskin approval carries `approvedBy` (`user`, or `hands-off` only when
 `state.json` has `handsOff: true` — anything else is refused by preflight).
 `canon-from-reskin.mjs` stamps each page `designSource: "donor"` and
 `DESIGN.json` `source.kind: "donor"`; `direct` never writes under reskin.
+Under `flow: reskin` the bridge also writes `directed` on the `extracted`
+pages of each type that has an approved archetype (since `direct`
+refuses there), so `migrate` renders them at the sibling tier.
 
 **Switching.** `$stardust replica --switch-flow` / `$stardust
 prepare-migration --switch-flow` / `$stardust reskin --switch-flow` rewrite `flow` (+ `flowChosenAt`,

@@ -48,6 +48,9 @@ multi-page school site. Each fix kept only when the score rose (76.1 → 83.1 wi
   back to `mapping.json` / donor tokens and is re-rendered, re-gated and re-deployed. `stream-render <slug>
   --deploy-map` prints `block-roundtrip`'s `--map` arguments; block names come from `mapping.json` `blocks`, else
   the module id lower-cased.
+- **The handoff marks siblings ready for migrate.** Under flow `reskin`, `canon-from-reskin` advances each approved
+  type's `extracted` pages to `directed` through `state.mjs` (`direct` refuses under reskin, and `migrate` renders
+  siblings only from `directed`); stale and `prototyped` siblings are named, not moved; re-runs are no-ops.
 
 ## 0.36.0 — reskin → migrate hardened on two end-to-end runs
 

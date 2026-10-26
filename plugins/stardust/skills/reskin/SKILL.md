@@ -463,7 +463,9 @@ pipeline:
 - **Bridge, then check.** After the archetype is approved, run
   `scripts/canon-from-reskin.mjs <archetype-slug>` — it writes
   migrate's inputs (`canon/`, donor-sourced `DESIGN.*`, `direction.md`,
-  `dynamic-features.md`) and, on a re-run with `--force`, flags
+  `dynamic-features.md`), advances the approved type's `extracted`
+  siblings to `directed` (migrate's sibling tier; then render each with
+  `stream-render <slug> --register`) and, on a re-run with `--force`, flags
   approved/migrated pages stale where the canon change reaches them.
   A changed canon is captured to `stardust/reskin/approvals/` and
   pixel-compared with the previous approval (warn above
@@ -501,8 +503,9 @@ the core state machine (`../stardust/reference/state-machine.md`) it
 only stamps `flow` (Setup) and `designSource` (Phase 1: `extract
 --design-source` for URL and directory donors, `figma-donor.mjs stamp`
 for Figma), registers each rendered page (`prototypePath` and
-`prototyped`, or `directed` for a sibling — Phase 4 `--register`) and
-writes `approved` on the archetype (Phase 6). The full
+`prototyped`, or `directed` for a sibling — Phase 4 `--register`),
+writes `approved` on the archetype and, through the bridge, `directed`
+on its type's `extracted` siblings (Phase 6). The full
 handoff contract — predicate, approval, tier record, bounded inventory,
 sibling gate — is `reference/handoff.md`.
 

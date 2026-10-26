@@ -13,14 +13,20 @@ page type, a donor-sourced canon, and a ledger; `migrate`, `deploy` and
 2. Approve the archetype (§ Approval) → `reskin-ledger.mjs record <archetype>`
    again, so `handoff.<type>` names it.
 3. `canon-from-reskin.mjs <archetype>` — canon, donor-sourced `DESIGN.*`,
-   `direction.md`, `dynamic-features.md`.
-4. `reskin-preflight.mjs` exit 0 (§ The predicate).
-5. `migrate render` — archetypes at their own tier, same-type pages at the
-   sibling tier; migrate merges `handoff.<type>.gates` into each first
-   sidecar's `gatesPassed` / `gateEvidence`.
-6. Sibling gate per migrated page (§ Sibling gate) →
+   `direction.md`, `dynamic-features.md` — and, per type with an approved
+   archetype, its `extracted` pages advanced to `directed` (the status `migrate`
+   renders at the sibling tier; `direct` refuses under reskin). It names the
+   siblings it left: stale ones, and `prototyped` ones (`migrate render --all`
+   skips them). Re-run it after approving another type's archetype.
+4. Render each sibling: `stream-render.mjs <slug> --register` (it stays
+   `directed`, with the `prototypePath` migrate reads as its source).
+5. `reskin-preflight.mjs` exit 0 (§ The predicate).
+6. `migrate render --all` — archetypes at their own tier,
+   same-type pages at the sibling tier; migrate merges `handoff.<type>.gates`
+   into each first sidecar's `gatesPassed` / `gateEvidence`.
+7. Sibling gate per migrated page (§ Sibling gate) →
    `reskin-ledger.mjs record <slug> --stage migrated`.
-7. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
+8. `deploy` / `rollout`, unchanged; rollout re-checks the predicate.
 
 ## The predicate (`flow: reskin`)
 
