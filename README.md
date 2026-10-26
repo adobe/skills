@@ -274,7 +274,7 @@ Skills for building customized **Workfront** UI applications on Adobe App Builde
 | `workfront-actions`       | Runtime actions: `{data,error}` shape, IMS auth passthrough, inputs/config, CommonJS, and the Workfront Public API v21 (search/count, bulk PUT, custom `DE:` fields) |
 | `workfront-local-testing` | Preview a local (`extensionOverride`) or deployed (Extension Manager BYO) build inside Workfront; fix common "not showing" issues |
 
-### Adobe Developer Platform Connector
+### Adobe for Developers Connector
 
 Helps developers complete common Adobe developer workflows from Claude, including Document Search and Development Console project and API management, and Adobe I/O Events setup. The plugin registers the hosted Adobe for Developers MCP server (`https://adp-connector.adobe.io/mcp`, Adobe IMS sign-in)
 
