@@ -1,5 +1,5 @@
 'use strict';
-// Test inputs for the Branch F tests, kept in this one file instead of fixture folders.
+// Test inputs for the Branch H tests, kept in this one file instead of fixture folders.
 // PROJECT_FILES is a minimal customer project (ui.apps / ui.content / all, the layout the tool scans);
 // TOOL_WRITTEN and TOOL_DELETED are what wf-migrator 0.6.0 wrote and deleted when run on it, so the
 // fixer and verify tests need no Java. asset-workflow-e2e.test.js (ASSET_WF_E2E=1) checks them

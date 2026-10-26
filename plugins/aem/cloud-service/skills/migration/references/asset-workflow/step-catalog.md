@@ -1,4 +1,4 @@
-# Asset Workflow Migration — Step Catalog (Branch F)
+# Asset Workflow Migration — Step Catalog (Branch H)
 
 How each workflow step is treated. Categories are those of Adobe's tool (`workflowSteps.properties` in [`adobe/aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration/blob/master/src/main/resources/workflowSteps.properties), wf-migrator 0.6.0). The machine-readable copy is `scripts/asset-workflow-catalog.js` — keep both in sync with `TOOL_VERSION` in `scripts/asset-workflow-run.js` when the tool is upgraded.
 

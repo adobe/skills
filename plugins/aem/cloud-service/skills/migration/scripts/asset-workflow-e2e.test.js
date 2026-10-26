@@ -1,5 +1,5 @@
 'use strict';
-// Branch F end to end with the real wf-migrator JAR. Opt in with ASSET_WF_E2E=1 (needs Java 11+ and git;
+// Branch H end to end with the real wf-migrator JAR. Opt in with ASSET_WF_E2E=1 (needs Java 11+ and git;
 // the catalog check also needs unzip).
 //   ASSET_WF_JAR=<path>     use a local wf-migrator-0.6.0.jar instead of downloading the pinned release
 const { test } = require('node:test');

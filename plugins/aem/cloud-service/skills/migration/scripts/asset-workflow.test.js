@@ -1,5 +1,5 @@
 'use strict';
-// Branch F (asset workflow migration): catalog, XML, inventory, verification and runner helpers.
+// Branch H (asset workflow migration): catalog, XML, inventory, verification and runner helpers.
 // No Java needed — the tool's output is recorded in fixtures/asset-workflow.js.
 const { test } = require('node:test');
 const assert = require('node:assert');
@@ -116,7 +116,7 @@ test('inventory: runbook content scan reports one finding per asset workflow', (
   const r = I.runAssetWorkflowScan(T.PROJECT);
   assert.ok(r.ok);
   assert.strictEqual(r.findings.length, 3);
-  assert.ok(r.findings.every(f => /Branch F/.test(f.detail)));
+  assert.ok(r.findings.every(f => /Branch H/.test(f.detail)));
   assert.ok(r.rawFindings.every(f => f.pattern === 'assetWorkflowMigration'));
   const high = r.findings.filter(f => f.severity === 'high').length;
   assert.strictEqual(high, 3, 'every fixture workflow has custom or unsupported steps');

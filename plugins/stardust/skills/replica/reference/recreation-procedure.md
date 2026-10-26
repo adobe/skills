@@ -430,30 +430,18 @@ authored content is a widget (`widgets/<path>/<name>`, mounted as one link —
 `../../stardust/reference/data-attributes.md`), not a block with empty rows,
 and the fidelity gate measures the rendered DOM the same way.
 
-## Role parity (wrapping and heading level, not text)
+## Role parity (mirror the look; semantics may improve)
 
-content-diff classifies every string by **DOM wrapping + computed style +
-heading level, never by text alone**: a string inside an `<a>` is a CTA, an
-uppercase small-type node is an eyebrow, an `<h3>` is not an `<h2>`. So a
-recreation that carries every string verbatim can still open with dozens of
-structural 🔴 — recorded (furniture retailer, iteration 1): 43 CTAs vs 58 and 12
-eyebrows vs 6, **all role swaps, zero dropped copy** — the live page
-wrapped labels in anchors where the recreation used spans, and vice versa.
-
-Policy:
-
-- **Mirror the live element wrapping per string.** For each text node the
-  gate will inventory, reproduce the live page's wrapping element (`<a>` vs
-  `<button>` vs `<span>`), its heading LEVEL, and the eyebrow-style
-  signature (uppercase + small size) — not just the visible text. This is
-  the same discipline as § Granularity parity, one level up: granularity
-  parity mirrors how text is split, role parity mirrors what it is wrapped
-  in.
-- **Iteration 1's red map IS the parity worklist.** When iteration 1 opens
-  with a wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs, fix the wrapping
-  first and re-run before touching geometry — role reds are cheap,
-  mechanical fixes, and every one cleared un-buries the structural reds
-  that are real. Geometry second.
+content-diff classifies every string by **DOM wrapping + computed style**,
+never by text alone: a string inside an `<a>` is a CTA, an uppercase
+small-type node an eyebrow, an `<h*>` a heading. Severity follows
+visibility (`../../diff/SKILL.md` § Reading content-diff), so mirror the
+live **look** and every link per string; improve the semantics where the
+look holds. When iteration 1 opens with a
+wall of ROLE SWAP / MISSING-CTA-plus-EXTRA pairs (a link where the live
+page has a span, or the reverse), fix those first and re-run before
+touching geometry — they are cheap, and clearing them un-buries the real
+reds.
 
 ## Carousels and animated sections
 
@@ -620,42 +608,37 @@ portation is logged.
 
 ## Fixed and sticky chrome (headers, floating tabs × stitched capture)
 
-`position: fixed`/`sticky` chrome interacts with the stitched capture in
-three ways, each observed live on the first fresh-site run (a design-furniture site):
+stitch-shot captures `position: fixed`/`sticky` layers **once**: chunk 1
+shows the top of the page as a visitor sees it; from chunk 2 a fixed layer
+— and a sticky one while it is stuck — is transparent, so the seams it
+covered neither repeat it nor hide the content under it. The scan re-runs
+after every chunk's scroll: a header that turns fixed on a scroll class, or
+a widget injected later, is hidden from the chunk where it appears (a
+stderr WARNING names it), so its scrolled state does not reach the capture
+either.
 
-1. **Seam repeats.** A fixed element renders in EVERY viewport chunk, so
-   the stitched PNG shows it repeated at each chunk seam (every `--vh` px).
-   Instrument behavior, not a page defect — but only while it is symmetric.
-2. **Content occlusion.** Each repeat occludes a band of real content under
-   that seam; the occluded band is invisible to the pixel probe on both
-   sides (again: harmless only while symmetric).
-3. **Scroll-state morph.** Chrome that changes with scroll captures
-   differently per chunk: the site swaps to a `body.header-minimized` 55px
-   hamburger bar once scrolled, so chunks 2+ carry different chrome than
-   chunk 1 — the stitched live capture contains BOTH states.
+What it does not cover:
+- a backdrop — a fixed layer with a negative z-index or covering ≥ 90 % of
+  the viewport (a background image or video, a full-screen modal) — stays
+  in every chunk by design; an undismissed full-screen modal with consent /
+  sign-up copy is a WARNING, any other one is not;
+- fixed elements inside a shadow root, an iframe's own document, or a
+  `::before` / `::after` pseudo-element are not seen and still repeat;
+- a layer that turns fixed on scroll is in the flow in the chunks before
+  that, as on the page — chunk 1's geometry is the page's, not a clean
+  top.
 
-**Resolution — symmetry, including the scroll-state trigger.** Replicate
-the fixed chrome AS fixed (never flattened to static/in-flow — that changes
-both the geometry and the seam behavior), and when the live chrome morphs
-with scroll, give the prototype the SAME morph so chunks 2+ match.
-
-This is the one sanctioned exception to the "no JS unless a section's
-initial state requires computing it" rule, and the tension resolves cleanly:
-that rule guards against *behavior for its own sake*, but scroll-state
-chrome is **instrument-induced state** — the capture instrument scrolls, so
-the instrument itself puts the live page into the morphed state, and a
-static prototype can never measure symmetric against it. Minimal prototype
-JS for scroll-state chrome is therefore permitted, tightly bounded: a few
+Replicate fixed chrome AS fixed all the same (never flattened to
+static/in-flow — that moves chunk 1's geometry), with its scroll-state
+morph: the header contract (`chrome-compare`) measures the scrolled state.
+Minimal prototype JS for that morph is the one sanctioned exception to the
+"no JS unless a section's initial state requires computing it" rule: a few
 lines toggling the same class at the same scroll threshold as the live site
-(lift both the class and the threshold from the source JS/CSS — never guess
-them), no frameworks, no other behavior. Log the addition in the progress
-ledger the way a CSS portation is logged.
+(lift both from the source JS/CSS — never guess them), no frameworks, no
+other behavior; log it in the progress ledger like a CSS portation.
 
-**Reading the diff:** any height delta between the captures de-aligns the
-seams, turning every seam repeat into a ghost band in the pixel diff
-(observed: seam ghosting of a fixed newsletter tab, plus a hot band exactly
-at a chunk boundary). Fix the height delta first — seam ghosts below the
-first hot band are offset contamination, not chrome bugs.
+**Reading the diff:** fix any height delta first — hot bands below the
+first one are offset contamination, not chrome bugs.
 
 ## CSS-portation fallback (per-section, never page-level)
 

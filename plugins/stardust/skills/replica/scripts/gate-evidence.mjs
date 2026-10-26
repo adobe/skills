@@ -40,8 +40,8 @@
  *                       says. Without any table the log rule above stands and one note names the
  *                       missing table.
  *   content-count       latest content-diff.mjs job for the page (`Findings: none …` or
- *                       `Findings: N (0 structural 🔴)`); when no such job exists, the newest
- *                       gate.sh --full round's `content-diff:` line; structural 🔴 > 0 → OPEN:
+ *                       `Findings: N (0 structural 🔴)` and nothing-lost 🟡 0); when no such job exists, the
+ *                       newest gate.sh --full round's `content-diff:` line; structural 🔴 or nothing-lost > 0 → OPEN:
  *   media-reconcile     latest media-reconcile.mjs job whose counts line has no `omit` and no
  *                       `unresolved` (the instrument's own exit-1 rule); either → OPEN: — but only once
  *                       the page's DELIVERED content file exists (`<--content>/<da-path>.html`, or
@@ -104,8 +104,9 @@
  * Prints one row per page — `<slug>  <tier>  1440=<pct>%/Δ<px>[/ovf+<px>]  360=…  cd=<…>  lint=<…>
  * media=<…>  gates=<n>` (`/ovf+<px>` only when the round's overflow assert fired) — then
  * `gate-evidence: <n> pages, <n> sidecars updated`.
- * Exit 0; 1 usage error (a malformed sidecar or progress.json included); 2 --check found a
- * sibling short of the acceptance set or a stale gate.
+ * Exit 0; 1 usage error (a malformed sidecar or progress.json included, and a progress.json whose
+ * top level is one archetype's record naming no archetype — below); 2 --check found a sibling short
+ * of the acceptance set or a stale gate.
  *
  * Writes: each page's sidecar (`_meta.json` / `<name>._meta.json`): `gatesPassed[]` =
  * existing ∪ derived (existing first) and `gateEvidence{}` merged (derived lines overwrite
@@ -116,8 +117,11 @@
  * gatesPassed, migrated}}` (`overflowX`: px over the viewport, 0 when the assert ran clean,
  * null when the round predates it), other keys
  * preserved. progress.json is read and parsed BEFORE the first sidecar is touched (a malformed
- * ledger aborts the run with nothing written); every sidecar and the ledger are written through
- * a temp file + rename. Nothing with --dry-run or --help.
+ * ledger aborts the run with nothing written). A ledger with no `types` map whose top level is one
+ * archetype's record (`breakpoints`, or `pageType` + `archetype` — the old documented example) is
+ * wrapped under `types.<archetype>` losslessly and noted on stderr, and only a record naming no
+ * `archetype` is refused (source-fidelity-gate.md § Residual logging format); every sidecar and the
+ * ledger are written through a temp file + rename. Nothing with --dry-run or --help.
  */
 
 /* eslint-disable no-restricted-syntax, brace-style, object-curly-newline, max-len, no-continue */
@@ -279,11 +283,15 @@ export function parseVerdict(text) {
   const h = [...text.matchAll(/→ compare \d+x\d+, height delta (-?\d+)px/g)].pop();
   return { px: Number(v[1]), total: Number(v[2]), pct: Number(v[3]), threshold: Number(v[4]), verdict: v[5], heightDelta: h ? Number(h[1]) : null };
 }
-// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`; gate.sh --full echoes the same after `content-diff: `.
+// content-diff: `Findings: none — content + roles match` | `Findings: N (S structural 🔴)`, then `Tiers: looks-same 🔴 S ·
+// nothing-lost 🟡 L · …`; gate.sh --full echoes both on one `content-diff: ` line. lost = the nothing-lost count of the
+// SAME round as the last Findings line — on that line or the Tiers line right after it (0 when an older probe printed
+// no tiers), never a count from another round of a multi-round log.
 export function parseFindings(text) {
-  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$/gm)].pop();
+  const m = [...text.matchAll(/^(?:Findings|content-diff): (none[^\n]*|(\d+) \((\d+) structural[^\n]*)$(?:\r?\nTiers: [^\n]*)?/gm)].pop();
   if (!m) return null;
-  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), text: m[1].trim() };
+  const tiers = /nothing-lost 🟡 (\d+)/.exec(m[0]);
+  return { total: m[2] === undefined ? 0 : Number(m[2]), structural: m[3] === undefined ? 0 : Number(m[3]), lost: tiers ? Number(tiers[1]) : 0, text: m[1].trim() };
 }
 // media-reconcile: last line `<n> keep · <n> optimize · <n> omit …` — one `<n> <decision>` per decision that occurred.
 export function parseCounts(text) {
@@ -413,7 +421,7 @@ export function derive(page, jobs, o, ctx) {
   if (cd) {
     facts.contentDiff = cd.v.text;
     const line = `content-diff: ${cd.v.text} ${cite(cd.j)}`;
-    if (cd.v.structural === 0) pass('content-count', line); else open('content-count', line);
+    if (cd.v.structural === 0 && cd.v.lost === 0) pass('content-count', line); else open('content-count', line);
   }
 
   const md = pick(ofKind('media-reconcile'), parseCounts, 'media-reconcile');
@@ -524,6 +532,19 @@ export function collect(o) {
   // The ledger is parsed before any sidecar is touched: a malformed progress.json aborts with nothing written.
   const prior = existsSync(o.progress) ? readJson(o.progress) : { data: {}, indent: 2, eol: true };
   if (!prior.data || typeof prior.data !== 'object' || Array.isArray(prior.data)) throw new UsageError(`gate-evidence: ${o.progress} is not a JSON object`);
+  // The ledger is the map of every archetype: the agent's records under `types.<slug>`, this script's `siblings` /
+  // `migrate`, `_provenance`. A file whose top level is one archetype's record (the old documented example) is wrapped
+  // under its own slug, losslessly; only a record without a slug is refused.
+  if (!('types' in prior.data)) {
+    const single = ['breakpoints', 'pageType', 'archetype'].filter((k) => k in prior.data);
+    const looksLikeRecord = single.includes('breakpoints') || (single.includes('pageType') && single.includes('archetype'));
+    if (looksLikeRecord) {
+      const slug = typeof prior.data.archetype === 'string' ? prior.data.archetype.trim() : '';
+      if (!slug) throw new UsageError(`gate-evidence: ${o.progress} is one archetype's residual record at the top level (${single.join(', ')}) and names no archetype — move it under types.<archetype> (source-fidelity-gate.md § Residual logging format)`);
+      prior.data = { types: { [slug]: prior.data } };
+      notes.push(`${o.progress}: one archetype's record at the top level was wrapped under types.${slug} (source-fidelity-gate.md § Residual logging format)`);
+    }
+  }
   const rows = []; let updated = 0;
   for (const page of selected) {
     const d = derive(page, jobs, o, ctx);

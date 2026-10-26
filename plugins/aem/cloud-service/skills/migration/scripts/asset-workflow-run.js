@@ -1,5 +1,5 @@
 'use strict';
-// Branch F one-command runner: pre-flight → gate → baseline → Adobe wf-migrator (pinned JAR) →
+// Branch H one-command runner: pre-flight → gate → baseline → Adobe wf-migrator (pinned JAR) →
 // fixers → verification → report. Exit codes: 0 verified, 1 verification or tool failure,
 // 2 stopped before changing anything (pre-flight failure or unacknowledged unsupported steps).
 //

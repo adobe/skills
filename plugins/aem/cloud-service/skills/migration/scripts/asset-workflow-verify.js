@@ -1,5 +1,5 @@
 'use strict';
-// Verification gates for Branch F (asset workflow migration). Compares the pre-run inventory of the
+// Verification gates for Branch H (asset workflow migration). Compares the pre-run inventory of the
 // project (baseline) with the post-fix inventory and fails on anything that would silently lose
 // work or break on AEM as a Cloud Service. Read-only.
 const fs = require('fs');

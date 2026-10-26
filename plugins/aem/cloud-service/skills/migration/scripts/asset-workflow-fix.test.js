@@ -1,5 +1,5 @@
 'use strict';
-// Branch F fixers on the recorded wf-migrator 0.6.0 output for the fixture project
+// Branch H fixers on the recorded wf-migrator 0.6.0 output for the fixture project
 // (fixtures/asset-workflow.js), plus the report. No Java needed.
 const { test } = require('node:test');
 const assert = require('node:assert');

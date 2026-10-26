@@ -515,7 +515,7 @@ function runAssetWorkflowScan(workspaceRoot) {
       const target = isRenditionsOnly(w) ? 'processing-profile renditions only' : 'post-processing workflow + processing profile';
       findings.push({
         location: path.relative(workspaceRoot, w.model.file) || w.model.file,
-        detail: `Asset workflow ${w.model.confPath} (launchers: ${launchers})${parts.length ? ' — ' + parts.join(', ') : ''} → ${target} (Branch F)`,
+        detail: `Asset workflow ${w.model.confPath} (launchers: ${launchers})${parts.length ? ' — ' + parts.join(', ') : ''} → ${target} (Branch H)`,
         severity: s.custom.length || s.unsupported.length || s.nestedRenditions.length ? 'high' : 'medium',
       });
       rawFindings.push({ pattern: 'assetWorkflowMigration', file: w.model.file, line: null, snippet: `model=${w.model.confPath} migrate=${w.toolWillMigrate}` });

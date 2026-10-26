@@ -1,5 +1,5 @@
 'use strict';
-// Markdown report for Branch F (asset workflow migration): what the tool and the fixers changed,
+// Markdown report for Branch H (asset workflow migration): what the tool and the fixers changed,
 // the verification verdict (echoed, never recomputed), and the post-deploy checklist that has to be
 // done on AEM as a Cloud Service because it cannot be expressed in code.
 const fs = require('fs');

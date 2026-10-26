@@ -3,15 +3,16 @@
 // criteria (pixel, height, clip + allowance, content), n/a content never fails a page, required vs advisory
 // units, pixelOnlyPass vs pass (the calibration pair), reasons text, overrides shown beside the number;
 // formatSummary (header, calibration line, one row per page, asymmetric-origin flag); parseArgs defaults and
-// --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff.
+// --out derived from --width; --help in an empty cwd; pixel-compare's textBoxPct over a synthetic diff; staleCapture (a
+// capture with no fixedLayers in its record is retaken, gate.sh's rule).
 // Run: node <this file>.
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatSummary, parseArgs, verdict } from '../gate-all.mjs';
+import { captureRecordOf, formatSummary, parseArgs, staleCapture, verdict } from '../gate-all.mjs';
 
 // pixel-compare imports pngjs at module level (a project devDependency, absent in the plugin checkout):
 // import it lazily and skip its one check where it does not resolve, like the other browser/dep-bound tests.
@@ -92,6 +93,29 @@ if (textBoxPct) check('pixel-compare textBoxPct: differing pixels counted inside
   assert.equal(r.boxes, 1); assert.equal(r.pixels, 16); assert.equal(r.pct, 12.5);
   masked[1] = 1;
   assert.equal(textBoxPct({ data }, [{ x: 0, y: 0, w: 4, h: 4 }], w, h, masked).pct, 0);
+});
+check('staleCapture: gate.sh\'s rule — a capture is reusable only when its capture record has fixedLayers; a baseline copy of live.png goes by baseline.json', () => {
+  const d = mkdtempSync(join(tmpdir(), 'gate-all-stale-'));
+  try {
+    const png = (name) => { const f = join(d, name); writeFileSync(f, 'png'); return f; };
+    const origin = png('origin.png');
+    assert.equal(captureRecordOf(origin), join(d, 'origin.capture.json'));
+    assert.equal(staleCapture(origin), true, 'no record: an old-style capture');
+    writeFileSync(captureRecordOf(origin), JSON.stringify({ chunks: 4, denialCheck: 'ok' }));
+    assert.equal(staleCapture(origin), true, 'a record from before fixedLayers');
+    writeFileSync(captureRecordOf(origin), '{ torn');
+    assert.equal(staleCapture(origin), true, 'an unreadable record');
+    writeFileSync(captureRecordOf(origin), JSON.stringify({ fixedLayers: { capture: 'once', count: 2, late: 0 } }));
+    assert.equal(staleCapture(origin), false);
+    const live = png('live.png');
+    writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'baseline' }));
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers: null }));
+    assert.equal(staleCapture(live), true, 'a copy of a baseline frozen the old way');
+    writeFileSync(join(d, 'baseline.json'), JSON.stringify({ fixedLayers: { capture: 'once', count: 1 } }));
+    assert.equal(staleCapture(live), false, 'a copy of a baseline frozen the new way');
+    writeFileSync(join(d, 'live.json'), JSON.stringify({ origin: 'live' }));
+    assert.equal(staleCapture(live), true, 'a live round with no live.capture.json');
+  } finally { rmSync(d, { recursive: true, force: true }); }
 });
 check('--help exits 0 in an empty cwd and writes nothing', () => {
   const cwd = mkdtempSync(join(tmpdir(), 'gate-all-help-'));

@@ -19,12 +19,13 @@ This skill drives migration **from legacy AEM (6.x, AMS, or on-prem) to AEM as a
 - Manual flow and pattern auto-detection
 - Points to **`code-assessment`** for all detailed transformation steps
 - **Template modernization:** static → editable templates and AEM Modernize Tools rules (`references/template-modernization/`)
+- **`java.io.InputStream` advisories (`inputStream`):** triage and remediation of the BPA `DG` / `java.io.inputstream` findings (`references/input-stream.md`), driven by the deterministic scanner `scripts/input-stream-runner.js`. BPA findings come first (CAM, then a BPA CSV); the scanner checks the whole workspace only when BPA has none. This is migration-only, with no `code-assessment` pattern guide.
 - **Legacy UI migration (`legacy-ui/`)**: Extensible folder for legacy UI remediation. Current sub-folders:
   - `dialog/` — Classic UI (ExtJS `cq:Dialog`) → Coral 3 `_cq_dialog`; Coral 2 in-place upgrade. BPA `lui` pattern (dialog sub-types only). Handles listeners, optionsProvider, namePrefix, filter.xml.
   - `cdw/` — Custom ExtJS widget (`cq:Widget` with unknown xtype) → known Coral 3 mapping or scaffolded Granite UI form component. BPA `cdw` pattern.
   - Future: `foundation-component/`, `cf-template/` sub-folders.
 - **Dispatcher conversion (Branch E):** AMS / on-prem Dispatcher → Cloud Service via Adobe's `dispatcher-converter` (`references/dispatcher/`)
-- **Asset workflow migration (Branch F):** DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) → processing profiles + post-processing workflows via Adobe's [`aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration) `wf-migrator`, with a removed-step gate, follow-up fixes, verification and a post-deploy checklist (`references/asset-workflow/`). Needs Java 11+; the pinned JAR is downloaded on first use.
+- **Asset workflow migration (Branch H):** DAM asset workflows (launchers, `DAM Update Asset` overlays, custom steps) → processing profiles + post-processing workflows via Adobe's [`aem-cloud-migration`](https://github.com/adobe/aem-cloud-migration) `wf-migrator`, with a removed-step gate, follow-up fixes, verification and a post-deploy checklist (`references/asset-workflow/`). Needs Java 11+; the pinned JAR is downloaded on first use.
 
 **First run:** In chat, name **one BPA pattern** (e.g. scheduler) and either a **CSV path**, **CAM/MCP**, or **concrete Java files**. See **Quick start** in `SKILL.md` for copy-paste prompts and the CAM happy path in `references/cam-mcp.md`.
 
