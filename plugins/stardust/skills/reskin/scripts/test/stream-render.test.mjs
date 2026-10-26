@@ -658,6 +658,32 @@ await (async () => {
   } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); } finally { srv.close(); await browser?.close(); }
 })();
 
+// A Figma-only model's cached bytes (assets/<node>.png beside the model) are copied under prototypes/assets/img/figma/
+// and mirrored beside the page, so the page shows them and migrate bundles them with its default --proto-dir.
+await (async () => {
+  const name = 'figma assets: src="assets/img/figma/<slug>/…" displays from reskin/pages and migrate bundles it with default flags';
+  const PNG = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8cfc0f01f0005000201a1f3a2a40000000049454e44ae426082', 'hex');
+  const run = (cwd, args) => new Promise((ok) => { const c = spawn(process.execPath, args, { cwd }); let out = ''; c.stdout.on('data', (d) => { out += d; }); c.stderr.on('data', (d) => { out += d; }); c.on('close', (status) => ok({ status, out })); });
+  try {
+    const m = { _provenance: { source: { kind: 'figma' } }, metadata: { title: 'Sign in' }, sections: [{ slot: 's01', ordered: [{ kind: 'heading', level: 'h1', text: 'Hi' }, { kind: 'image', currentSrc: 'assets/1-2.png', alt: 'A' }] }] };
+    const root = project({ state: { ...reskinState([page('login', 'extracted')]), site: { originUrl: 'https://example.test/' } } });
+    const modelDir = join(root, 'stardust', 'reskin', 'content-model', 'login');
+    writeFileSync(join(modelDir, 'content-model.json'), JSON.stringify(m));
+    mkdirSync(join(modelDir, 'assets'), { recursive: true }); writeFileSync(join(modelDir, 'assets', '1-2.png'), PNG);
+    mkdirSync(join(root, 'stardust', 'canon'), { recursive: true }); writeFileSync(join(root, 'stardust', 'canon', 'canon.css'), ':root { --x: 1; }\n');
+    const r = await run(root, [SCRIPT, 'login', '--register']);
+    assert.equal(r.status, 0, r.out);
+    const html = readFileSync(join(root, 'stardust', 'reskin', 'pages', 'login.html'), 'utf8');
+    assert.match(html, /<img src="assets\/img\/figma\/login\/assets\/1-2\.png" data-source-src="assets\/1-2\.png" alt="A">/);
+    for (const d of ['reskin/pages/assets', 'prototypes/assets']) assert.ok(existsSync(join(root, 'stardust', d, 'img', 'figma', 'login', 'assets', '1-2.png')), d);
+    const mg = await run(root, [MIGRATE, 'render', 'login']);
+    assert.equal(mg.status, 0, mg.out);
+    assert.ok(existsSync(join(root, 'stardust', 'migrated', 'assets', 'img', 'figma', 'login', 'assets', '1-2.png')), 'bundled into migrated/assets');
+    assert.deepEqual(JSON.parse(readFileSync(join(root, 'stardust', 'state.json'), 'utf8')).migrate.missingAssets, []);
+    console.log(`✓ ${name}`);
+  } catch (e) { failed += 1; console.log(`✗ ${name}\n  ${e.message.split('\n').join('\n  ')}`); }
+})();
+
 // In a browser at 390px: the menu is folded, the toggle opens and closes it.
 await (async () => {
   const name = 'mobile menu toggle in a browser at 390px: folded, opens on click, closes again';
