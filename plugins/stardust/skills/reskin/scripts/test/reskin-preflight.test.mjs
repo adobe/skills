@@ -104,7 +104,7 @@ check('the reskin predicate: missing ledger, failing gate, open residual, no eye
   assert.match(ag(L(gated({ prototypeSha: sha(proto) })), { 'stardust/state.json': st, 'stardust/prototypes/login-proposed.html': '<html>v2</html>' }).detail, /prototype changed/);
 });
 check('the reskin predicate: deployed evidence whose codeStamp no longer matches the EDS code fails archetype-gates', () => {
-  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', codeStamp: 'aaaa000011112222' };
+  const dep = { regime: 'preview', content: 'PASS', tokens: 'PASS', parity: 'PASS', sanity: 'PASS', inherited: 'PASS', chrome: { verdict: 'PASS', hard: true }, codeStamp: 'aaaa000011112222' };
   const files = project({ 'stardust/reskin/ledger.json': JSON.stringify({ pages: { login: gated({ gates: { ...gated().gates, deployed: dep } }) }, handoff: { form: { archetype: 'login', gates: {} } } }) });
   const ag = (stamp) => preflight(files, { stamp }).find((x) => x.check === 'archetype-gates');
   assert.equal(ag(() => 'aaaa000011112222').level, 'ok');
