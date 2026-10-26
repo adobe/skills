@@ -125,6 +125,20 @@ await check('edsSpec: layout.sectionPaddingY becomes top and bottom padding asse
   assert.ok(!edsSpec({ tokens: t, runtimeContract: contract() }).some((e) => e.selector === SECTIONS), 'a sheet without the token has no section entry');
 });
 
+await check('edsSpec: the optional curated paths (cards.primary.*, buttons.primary.height, layout.mobile.*) are asserted as :root entries when present, and add nothing when absent', () => {
+  const t = sheet();
+  const base = edsSpec({ tokens: t, runtimeContract: contract() });
+  assert.ok(!base.some((e) => /--card-|--button-height|-mobile$/.test(e.property)), 'the fixture sheet carries none of them');
+  t.cards = { primary: { background: 'rgb(245, 245, 245)', borderRadius: '12px', padding: '24px', titleColor: 'rgb(9, 9, 9)' } };
+  t.buttons.primary.height = '48px';
+  t.layout.mobile = { sectionPaddingY: '40px', gutter: '16px' };
+  const spec = edsSpec({ tokens: t, runtimeContract: contract() });
+  for (const [name, value] of [['--card-bg', 'rgb(245, 245, 245)'], ['--card-radius', '12px'], ['--card-padding', '24px'], ['--card-title-color', 'rgb(9, 9, 9)'], ['--button-height', '48px'], ['--section-padding-mobile', '40px'], ['--gutter-mobile', '16px']]) {
+    assert.deepEqual(spec.find((e) => e.property === name), { label: `:root ${name}`, selector: ':root', property: name, value });
+  }
+  assert.equal(spec.length, base.length + 7, 'the desktop section rhythm is unchanged: the tokens step measures 1440px only');
+});
+
 await check('edsSpec: a layout.sectionPaddingY that is not a px length cannot be asserted: a UsageError (exit 2) naming the path and the value', () => {
   for (const bad of ['4rem', '5%', '80px 0', 'var(--space)', '80', 'calc(2 * 40px)', 80, ['80px']]) {
     const t = sheet();

@@ -36,6 +36,9 @@ with exit 2. This release adds no site auth: the gates send no Authorization hea
 - **Honest coverage.** `parity` compares main to main and says what it left out; an unserved font is recorded, never a
   failure; B4 `conflict` scans the checked roots, composites alpha and lists texts with no opaque ground as "Contrast not
   assessed" (`register.unassessable`), neither a class nor a PASS.
+- **Optional tokens.** `render/root-tokens.mjs` emits `--card-bg`, `--card-radius`, `--card-padding`,
+  `--card-title-color`, `--button-height`, `--section-padding-mobile` and `--gutter-mobile` when the sheet carries
+  `cards.primary.*`, `buttons.primary.height` or `layout.mobile.*`; `tokens` asserts them. Without them the block is unchanged.
 - **Migration.** An M2-era checks file exits 2 under the floor: add entries or waivers. `figma-gate register` needs the
   checks file and `donor-tokens.json`, and reads `figma-preview/` only with `--target preview`.
 - **Field.** Two blind runs took a component kit's home page to an aem.page preview with 0 blockers (44 and 60 min). The

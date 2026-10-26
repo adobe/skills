@@ -80,7 +80,9 @@ content  A1. Checks the preview's content against the live source, through two g
 tokens   A2. Asserts the donor tokens on the EDS DOM of the preview, through donor-probe.mjs (the decoration
          settled first, no overflow sanity): palette and type on body, main h1 and main h2, the primary button
          on main a.button.primary (the runtime contract's buttonClasses must name .button.primary), then each
-         :root token of the block the reskin renders from the sheet, verbatim. Reads preview.json (no record, or
+         :root token of the block the reskin renders from the sheet, verbatim (the optional --card-*,
+         --button-height, --section-padding-mobile and --gutter-mobile too, when the sheet carries them; the probe
+         runs at 1440 only, so the mobile ones are asserted as :root values). Reads preview.json (no record, or
          one with problems, is exit 2; a skipped leg prints "not run: skipped", exit 0), the donor token sheet
          <dir>/reskin/donor-tokens.json and the runtime contract stardust/runtime-contract.json at the project
          root (missing either is exit 2). layout.sectionPaddingY, when the sheet carries it (a px length, else exit
