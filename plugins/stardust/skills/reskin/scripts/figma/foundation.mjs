@@ -1,6 +1,6 @@
 // skills/reskin/scripts/figma/foundation.mjs — buildFoundation: a Figma nodes response for the chosen
 // frames → the donor foundation (canon-source/foundation/*.json), ranked role candidates for the 13
-// default-probe paths, module candidates (frames, sections, component sets, remote components) and
+// default-probe paths and the 7 recommended paths, module candidates (frames, sections, component sets, remote components) and
 // spec tables. Pure and deterministic: document order breaks every tie, nothing reads a clock.
 //
 // Foundation files: colors, typography, effects, radii, spacing, components. Each record is
@@ -8,7 +8,7 @@
 //   typography and components), figma = the raw REST value, node = first node seen, nodes = ≤ 5 ids.
 // Colors add hex and usage {fill,text,stroke}; components add set, variant and divergent[] (later
 // instances whose computed values differ from the first: reported, never averaged). A component's box
-// values (fill, radius, padding, border, shadow) come from the layers its label sits in, innermost
+// values (fill, radius, padding, border, shadow, height) come from the layers its label sits in, innermost
 // first, with their same-size background layers (figma.box lists them; figma.fields cites the node
 // behind each value). Keys are the
 // Figma style name slug when any use carries a style (the most frequent wins), else value-derived
@@ -31,6 +31,11 @@
 //   container    maxWidth values and widths of frames named /container|content|wrapper|grid/i,
 //                desktop-scale (≥ 960px) first
 //   section pad  paddingTop of auto-layout sections (direct children of the top-level frames)
+// Recommended paths (optional):
+//   cards.*      components or instances named /card/i (and not /button|btn|cta/i), ranked like buttons
+//   buttons.primary.height  the button candidates
+//   layout.mobile.*  paddingTop (sectionPaddingY) and paddingLeft (gutter) of auto-layout sections in
+//                top-level frames narrower than 600px
 // Each path: ≤ 5 candidates { from: "<file>/<key>", count, evidence: [≤ 5 node ids] }, ties by
 // document order.
 import {
@@ -62,9 +67,29 @@ export const PROBE_SOURCES = {
   'layout.sectionPaddingY': { file: 'spacing', field: null },
 };
 
+// Optional paths the renderer reads when present (card and button sizing, mobile rhythm); curate
+// notes the ones neither resolved nor marked absent, never fails on them.
+export const RECOMMENDED_PATHS = [
+  'cards.primary.background', 'cards.primary.borderRadius', 'cards.primary.padding', 'cards.primary.titleColor',
+  'buttons.primary.height',
+  'layout.mobile.sectionPaddingY', 'layout.mobile.gutter',
+];
+
+export const RECOMMENDED_SOURCES = {
+  'cards.primary.background': { file: 'components', field: 'background' },
+  'cards.primary.borderRadius': { file: 'components', field: 'borderRadius' },
+  'cards.primary.padding': { file: 'components', field: 'padding' },
+  'cards.primary.titleColor': { file: 'components', field: 'color' },
+  'buttons.primary.height': { file: 'components', field: 'height' },
+  'layout.mobile.sectionPaddingY': { file: 'spacing', field: null },
+  'layout.mobile.gutter': { file: 'spacing', field: null },
+};
+
 export const FOUNDATION_FILES = ['colors', 'typography', 'effects', 'radii', 'spacing', 'components'];
 const SECTION_TYPES = new Set(['FRAME', 'INSTANCE', 'COMPONENT', 'GROUP', 'SECTION']);
 const BUTTON = /button|btn|cta/i;
+const CARD = /card/i;
+const MOBILE_MAX = 600;
 const CONTAINER = /container|content|wrapper|grid/i;
 const MAX = 5;
 const CONTAINER_MIN = 960;
@@ -229,6 +254,7 @@ function buttonValue(n) {
     : chain.find((x) => autoLayout(x) && pads(x).some((p) => p > 0)) ?? chain.find(autoLayout);
   const rounded = (box && radiusCss(box) ? box : null) ?? chain.find((x) => radiusCss(x));
   const shadowed = chain.find((x) => shadowCss(x.effects));
+  const sized = [box, n].find((x) => x?.absoluteBoundingBox?.height > 0);
   const label = firstText(n);
   const st = label?.style || {};
   const value = {
@@ -244,6 +270,7 @@ function buttonValue(n) {
     padding: padded ? paddingShorthand(pads(padded)) : null,
     border: stroked ? `${px(stroked.strokeWeight)} solid ${solidFill(stroked.strokes).css}` : null,
     boxShadow: shadowed ? shadowCss(shadowed.effects) : null,
+    height: sized ? px(sized.absoluteBoundingBox.height) : null,
   };
   const at = (node, raw) => ({ node: node.id, raw });
   const fields = {
@@ -258,6 +285,7 @@ function buttonValue(n) {
     padding: padded ? at(padded, pads(padded)) : null,
     border: stroked ? at(stroked, { strokeWeight: stroked.strokeWeight, paint: topPaint(stroked.strokes) }) : null,
     boxShadow: shadowed ? at(shadowed, shadowed.effects.filter((e) => e && e.visible !== false && /SHADOW$/.test(e.type))) : null,
+    height: sized ? at(sized, sized.absoluteBoundingBox.height) : null,
   };
   return { value, fields: Object.fromEntries(Object.entries(fields).filter(([, f]) => f)) };
 }
@@ -285,6 +313,9 @@ export function buildFoundation({ file, nodes, frameIds }) {
   const specTables = [];
   const pageBg = tally();
   const sectionPad = tally();
+  const mobilePad = tally();
+  const mobileGutter = tally();
+  const kinds = new Map();
   const frames = [];
   const missing = [];
   const usedSlugs = new Set();
@@ -363,11 +394,14 @@ export function buildFoundation({ file, nodes, frameIds }) {
 
     if (n.type === 'INSTANCE' || n.type === 'COMPONENT') {
       const info = componentInfo(n, maps, parentSet);
-      if ([n.name, info.compName, info.setName].some((x) => BUTTON.test(x || ''))) {
+      const named = (re) => [n.name, info.compName, info.setName].some((x) => re.test(x || ''));
+      const kind = named(BUTTON) ? 'button' : named(CARD) ? 'card' : null;
+      if (kind) {
         const variant = variantOf(n, info.compName);
         const { value, fields: sources } = buttonValue(n);
         const identity = `component:${n.type === 'INSTANCE' ? n.componentId : n.id}`;
         const existing = g.components.byId.get(identity);
+        if (!kinds.has(identity)) kinds.set(identity, kind);
         const r = g.components.add(identity, {
           value, node: n.id,
           figma: {
@@ -407,11 +441,14 @@ export function buildFoundation({ file, nodes, frameIds }) {
     const bg = solidFill(root.fills);
     if (bg.kind === 'SOLID') pageBg.add(bg.css, root.id);
     const top = root.absoluteBoundingBox?.y ?? 0;
+    const mobile = (root.absoluteBoundingBox?.width ?? 0) > 0 && root.absoluteBoundingBox.width < MOBILE_MAX;
     const sections = (root.children || [])
       .filter((c) => visible(c) && SECTION_TYPES.has(c.type))
       .map((c, i) => {
         const fill = solidFill(c.fills);
         if (autoLayout(c) && (c.paddingTop ?? 0) > 0) sectionPad.add(`padding:${px(c.paddingTop)}`, c.id);
+        if (mobile && autoLayout(c) && (c.paddingTop ?? 0) > 0) mobilePad.add(`padding:${px(c.paddingTop)}`, c.id);
+        if (mobile && autoLayout(c) && (c.paddingLeft ?? 0) > 0) mobileGutter.add(`padding:${px(c.paddingLeft)}`, c.id);
         const info = c.type === 'INSTANCE' ? componentInfo(c, maps, null) : null;
         return {
           i,
@@ -483,11 +520,14 @@ export function buildFoundation({ file, nodes, frameIds }) {
       return { from: top.from, count: fam.count, chars: fam.chars, evidence: fam.evidence };
     });
 
-  const buttons = [...g.components.byId.values()]
-    .map((r, order) => ({ r, order, primary: [...Object.values(r.variant), r.fallbackKey].some((v) => /primary/i.test(String(v ?? ''))) }))
+  const componentCandidates = (kind) => [...g.components.byId.entries()]
+    .map(([identity, r], order) => ({ identity, r, order, primary: [...Object.values(r.variant), r.fallbackKey].some((v) => /primary/i.test(String(v ?? ''))) }))
+    .filter(({ identity }) => kinds.get(identity) === kind)
     .sort((a, b) => (b.primary - a.primary) || (b.r.count - a.r.count) || a.order - b.order)
     .slice(0, MAX)
     .map(({ r }) => ({ from: `components/${shaped.components.keyOf.get(`component:${r.figma.componentId}`)}`, count: r.count, evidence: r.nodes }));
+  const buttons = componentCandidates('button');
+  const cards = componentCandidates('card');
 
   // Desktop page containers are rarely narrower than 960px; narrower max-widths are usually text
   // measures, which can outnumber the container by hundreds on a component kit.
@@ -514,6 +554,13 @@ export function buildFoundation({ file, nodes, frameIds }) {
     'buttons.primary.fontSize': buttons,
     'layout.containerMaxWidth': container.slice(0, MAX),
     'layout.sectionPaddingY': rank(sectionPad, 'spacing', byCount),
+    'cards.primary.background': cards,
+    'cards.primary.borderRadius': cards,
+    'cards.primary.padding': cards,
+    'cards.primary.titleColor': cards,
+    'buttons.primary.height': buttons,
+    'layout.mobile.sectionPaddingY': rank(mobilePad, 'spacing', byCount),
+    'layout.mobile.gutter': rank(mobileGutter, 'spacing', byCount),
   };
 
   // ---- module candidates --------------------------------------------------------------------------

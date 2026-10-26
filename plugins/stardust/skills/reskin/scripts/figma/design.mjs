@@ -137,6 +137,15 @@ export function buildDesign({ foundation, moduleCandidates, rules, manifest, don
     if (b.color) fm.push(`    textColor: ${ref(b.color)}`);
     if (b.borderRadius) fm.push(`    rounded: ${q(b.borderRadius)}`);
     if (b.padding) fm.push(`    padding: ${q(b.padding)}`);
+    if (b.height) fm.push(`    height: ${q(b.height)}`);
+  }
+  for (const [k, c] of Object.entries(donorTokens.cards || {})) {
+    if (!c || typeof c !== 'object') continue;
+    fm.push(`  card-${k}:`);
+    if (c.background) fm.push(`    backgroundColor: ${ref(c.background)}`);
+    if (c.titleColor) fm.push(`    textColor: ${ref(c.titleColor)}`);
+    if (c.borderRadius) fm.push(`    rounded: ${q(c.borderRadius)}`);
+    if (c.padding) fm.push(`    padding: ${q(c.padding)}`);
   }
   fm.push('---');
 

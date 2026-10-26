@@ -71,6 +71,11 @@ longer emits radii or shadows the rules mark absent.
   so values come from the children; a button's paint often sits on a same-size wrapper frame, so each property cites the
   layer that paints it. One MCP export capped renders at 1024px and rate limits follow the file's plan: REST with a cached
   file version is the primary path. The capture recipes and curation method come from #315, kept open as the reference.
+- **Optional card, button-height and mobile layout roles.** Curation accepts a `cards` group and seven recommended paths
+  (`cards.primary.background|borderRadius|padding|titleColor`, `buttons.primary.height`,
+  `layout.mobile.sectionPaddingY|gutter`) with role candidates from card components, button box heights and frames
+  narrower than 600px. They never block: `curate` notes each one left unmapped and lists them in
+  `coverage.recommended`.
 
 ## 0.32.1 — spec knowledge, wave 4: what a reviewing client had to guess
 

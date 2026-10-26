@@ -69,7 +69,7 @@ await check('capture writes foundation, candidates, spec tables, screenshots, in
     assert.equal(j._provenance.writtenBy, 'stardust:reskin/figma-donor.mjs');
   }
   for (const f of ['role-candidates.json', 'module-candidates.json', 'spec-tables.json', '_crawl-log.json', 'assets/screenshots/index.json']) assert.ok(existsSync(join(cs, f)), f);
-  assert.equal(Object.keys(json(join(cs, 'role-candidates.json'))).length, 14);
+  assert.equal(Object.keys(json(join(cs, 'role-candidates.json'))).length, 21);
   assert.deepEqual(json(join(cs, 'spec-tables.json')).tables.map((t) => t.node), ['2:6']);
   const index = json(join(cs, 'assets', 'screenshots', 'index.json'));
   assert.deepEqual(index.home, { node: '1:2', width: 1440, height: 1840, version: 'v1', renderable: true });
@@ -356,6 +356,8 @@ await check('curate writes donor-tokens.json and donor-modules.md; 13/13 asserte
   const r = await run(['curate'], { cwd: P1, token: '' });
   assert.equal(r.code, 0, r.stderr);
   assert.match(r.stdout, /13\/13 probe paths asserted/);
+  assert.match(r.stdout, /^note: recommended token not curated: cards\.primary\.borderRadius \(map it, or mark it absent with a why\)$/m);
+  assert.doesNotMatch(r.stdout, /not curated: buttons\.primary\.height/);
   assert.equal(fake.requests.length, 0);
   const tokensPath = join(P1, 'stardust', 'reskin', 'donor-tokens.json');
   const t = json(tokensPath);
