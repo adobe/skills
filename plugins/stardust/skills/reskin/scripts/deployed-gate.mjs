@@ -102,6 +102,9 @@ parity   A3. Holds the preview to the local reskin page with replica's instrumen
          Per width, stitch-shot of both sides (--settle; the preview with --wait 3000 for the decoration), then:
            pixel          pixel-compare: differing pixels at most 10%
            height         |Δh| at most 5% of the reskin page's height (Δh = the preview's height − the reskin page's)
+           section-height the reskin page's main section[data-slot] paired in order with the preview's non-empty
+                          main > .section: the worst |Δh| at most 10% of its reskin section's height, naming the
+                          slot; "n/a: section counts differ (reskin N, preview M)" when the counts differ
            header crop    crop-compare of the header band, at most 2%: the reskin page's measured header height
            footer crop    the same for the footer, counted from the bottom of each capture
          a crop is "n/a: reskin page renders no chrome" where the reskin page has no such element, and a FAIL,

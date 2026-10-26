@@ -8,6 +8,10 @@
 //                  top, no fixed bar repeated in each viewport slice, no footer at the bottom), so both rows compare
 //                  `main` to `main`; their detail says "preview header/footer excluded: reskin page renders none".
 //                  A part the reskin page does render stays in both captures
+//   section-height the reskin page's `main section[data-slot]` paired in document order with the preview's non-empty
+//                  `main > .section`: the worst |Δh| as % of the reskin section's height ≤ 10%, naming its slot;
+//                  "n/a: section counts differ (reskin N, preview M)" when the counts differ. Measured in the same
+//                  browser pass as the header and footer heights
 //   header crop    crop-compare of the header band ≤ 2%, from the top of both captures
 //   footer crop    crop-compare of the footer band ≤ 2%, from the bottom of both captures
 //                  the band is the reskin page's measured header / footer height, measured in a browser at that
@@ -29,6 +33,7 @@
 //        answers 401 or 403 to the step's own browser is a setup error (a protected preview is out of scope).
 //        `tools` maps stitch, pixel, crop, chrome and cap to script paths (default: replicaTools()), for tests.
 //   replicaTools(from)  the five instruments in either layout of the scripts, or a UsageError naming what is missing
+//   sectionRow(width, chrome)  the section-height row of one width from its measured sections
 //   previewExclusion(chrome)  which parts of the preview the pixel and height rows leave out, for one width's measured
 //        chrome: { parts, hide, detail } (hide = the --hide selector list for stitch-shot, null for none)
 //   parityLines(result) the lines the CLI prints
@@ -52,10 +57,11 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const REPLICA = ['../../../replica/scripts', '../../replica'];
 const TOOL_FILES = { stitch: 'stitch-shot.mjs', pixel: 'pixel-compare.mjs', crop: 'crop-compare.mjs', chrome: 'chrome-parity.mjs', cap: 'cap-probe.mjs' };
 
-const BARS = { pixel: 10, height: 5, crop: 2, cap: 20 };
+const BARS = { pixel: 10, height: 5, section: 10, crop: 2, cap: 20 };
 const BAR_OF = {
   pixel: `≤ ${BARS.pixel}%`,
   height: `≤ ${BARS.height}%`,
+  'section-height': `≤ ${BARS.section}%`,
   'header crop': `≤ ${BARS.crop}%`,
   'footer crop': `≤ ${BARS.crop}%`,
   'chrome-parity': 'advisory',
@@ -103,13 +109,16 @@ function pngSize(file) {
   return { width: head.readUInt32BE(16), height: head.readUInt32BE(20) };
 }
 
-// In the page: the heights of the first header and footer element, 0 where there is none.
-const chromeHeights = () => {
-  const heightOf = (sel) => { const el = document.querySelector(sel); return el ? Math.round(el.getBoundingClientRect().height) : 0; };
-  return { header: heightOf('header'), footer: heightOf('footer') };
+// In the page: the heights of the first header and footer element, 0 where there is none, and of each section of main in
+// document order (the reskin page's slots, the preview's non-empty EDS sections: the empty metadata one is no section).
+const chromeHeights = (sectionSelector) => {
+  const heightOf = (el) => (el ? Math.round(el.getBoundingClientRect().height) : 0);
+  const sections = [...document.querySelectorAll(sectionSelector)].map((el) => ({ slot: el.getAttribute('data-slot'), height: heightOf(el) }));
+  return { header: heightOf(document.querySelector('header')), footer: heightOf(document.querySelector('footer')), sections };
 };
+const SECTIONS = { reskin: 'main section[data-slot]', preview: 'main > .section:not(:empty)' };
 
-// { [width]: { reskin: { header, footer }, preview: { header, footer } } } as each side renders at that width: the
+// { [width]: { reskin: { header, footer, sections }, preview: { … } } } as each side renders at that width: the
 // reskin page after networkidle, the preview once its EDS decoration has settled (a stall is A4's finding, not this one's).
 // A 401 or 403 on the preview side measures nothing and is a setup error.
 async function measureChrome({ widths, urls }) {
@@ -129,7 +138,7 @@ async function measureChrome({ widths, urls }) {
             throw new UsageError(`${urls.preview} answered HTTP ${response.status()}: the preview is protected, and a protected preview is out of scope: make it reachable without auth`);
           }
           if (side === 'preview') await edsSettle(page, { timeoutMs: EDS_TIMEOUT_MS }); else await page.evaluate(() => document.fonts.ready);
-          heights[width][side] = await page.evaluate(chromeHeights);
+          heights[width][side] = await page.evaluate(chromeHeights, SECTIONS[side]);
         } finally { await ctx.close(); }
       }
     }
@@ -150,7 +159,23 @@ export function previewExclusion(chrome) {
   return { parts, hide: parts.map((part) => HIDE_SELECTOR[part]).join(','), detail: `preview ${parts.join('/')} excluded: reskin page renders none` };
 }
 
-// The rows of one width that come from the two stitched captures: pixel, height, header crop, footer crop.
+// section-height at one width: the sections paired in document order, the worst |Δh| against the reskin section's height.
+export function sectionRow(width, chrome) {
+  const reskin = chrome.reskin.sections ?? [];
+  const preview = chrome.preview.sections ?? [];
+  if (reskin.length !== preview.length) return naRow('section-height', width, `section counts differ (reskin ${reskin.length}, preview ${preview.length})`);
+  if (!reskin.length) return naRow('section-height', width, 'no sections to pair');
+  const pct = (r, p) => (r.height ? (Math.abs(p.height - r.height) / r.height) * 100 : (p.height ? Infinity : 0));
+  let worst = 0;
+  for (let i = 1; i < reskin.length; i += 1) if (pct(reskin[i], preview[i]) > pct(reskin[worst], preview[worst])) worst = i;
+  const [r, p] = [reskin[worst], preview[worst]];
+  const delta = p.height - r.height;
+  const value = pct(r, p);
+  return row('section-height', width, value > BARS.section ? 'FAIL' : 'PASS', `worst ${r.slot || `#${worst + 1}`}: Δh ${delta > 0 ? '+' : ''}${delta}px (${Number.isFinite(value) ? value.toFixed(1) : '∞'}% of ${r.height}px)`);
+}
+
+// The rows of one width: pixel, height (the two stitched captures), section-height (the measured sections), header crop,
+// footer crop.
 async function captureRows({ width, urls, out, chrome, tools, env }) {
   const png = { reskin: join(out, `reskin-${width}.png`), preview: join(out, `preview-${width}.png`) };
   const excluded = previewExclusion(chrome);
@@ -181,6 +206,7 @@ async function captureRows({ width, urls, out, chrome, tools, env }) {
     const over = Math.abs(delta) * 100 > BARS.height * reskinH;
     rows.push(row('height', width, over ? 'FAIL' : 'PASS', `Δh ${delta > 0 ? '+' : ''}${delta}px (${((Math.abs(delta) / reskinH) * 100).toFixed(1)}% of ${reskinH}px)`, { detail: excluded.detail }));
   }
+  rows.push(sectionRow(width, chrome));
 
   for (const part of ['header', 'footer']) {
     const check = `${part} crop`;
